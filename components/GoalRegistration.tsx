@@ -175,7 +175,20 @@ const GoalRegistration: React.FC<GoalRegistrationProps> = ({ stores, performance
   const parseRawNumber = (value: any): number => {
       if (typeof value === 'number') return value;
       if (typeof value === 'string') {
-          const clean = value.replace(/\./g, '').replace(',', '.');
+          // Remove % and spaces
+          let clean = value.replace('%', '').trim();
+          if (!clean || clean === '-') return 0;
+          
+          // Logic for PT-BR vs US formats
+          if (clean.includes(',') && clean.includes('.')) {
+              // 1.200,50 -> 1200.50
+              clean = clean.replace(/\./g, '').replace(',', '.');
+          } else if (clean.includes(',')) {
+              // 1200,50 -> 1200.50
+              clean = clean.replace(',', '.');
+          }
+          // if just dots (2.5), parseFloat handles it as 2.5
+          
           return parseFloat(clean) || 0;
       }
       return 0;
@@ -193,17 +206,28 @@ const GoalRegistration: React.FC<GoalRegistrationProps> = ({ stores, performance
           const sheet = workbook.Sheets[sheetName];
           const jsonData = XLSX.utils.sheet_to_json(sheet, { header: 1 }) as any[][];
 
-          // Locate Header Row (Dynamic)
+          // 1. Locate Header Row (for reference only, we start reading after it)
           let startRowIndex = -1;
-          for (let r = 0; r < 20 && r < jsonData.length; r++) {
-              const rowStr = jsonData[r].join(' ').toLowerCase();
-              if (rowStr.includes('loja') && (rowStr.includes('ticket') || rowStr.includes('pa') || rowStr.includes('p.a'))) {
+          for (let r = 0; r < 30 && r < jsonData.length; r++) {
+              const rowStr = jsonData[r]?.join(' ').toLowerCase();
+              if (rowStr.includes('loja')) {
                   startRowIndex = r + 1;
                   break;
               }
           }
 
-          if (startRowIndex === -1) throw new Error("Cabeçalho não encontrado. A planilha deve ter colunas como 'Loja', 'P.A', 'Ticket'.");
+          if (startRowIndex === -1) throw new Error("Cabeçalho não encontrado. A planilha deve ter uma coluna 'Loja'.");
+
+          // 2. Process Data using Strict Column Indices
+          // Col 1 (A) = Index 0 = Loja
+          // Col 3 (C) = Index 2 = Itens
+          // Col 4 (D) = Index 3 = P.A
+          // Col 5 (E) = Index 4 = P.U
+          // Col 6 (F) = Index 5 = Ticket
+          // Col 7 (G) = Index 6 = Meta
+          // Col 8 (H) = Index 7 = Realizado (Assumed)
+          // Col 15 (O) = Index 14 = Inadimplência
+          // Col 16 (P) = Index 15 = Fallback Inadimplência
 
           const importedData: Partial<MonthlyPerformance>[] = [];
           let successCount = 0;
@@ -212,46 +236,40 @@ const GoalRegistration: React.FC<GoalRegistrationProps> = ({ stores, performance
               const row = jsonData[i];
               if (!row || row.length === 0) continue;
               
-              const rawStoreNumber = row[0]; // Assuming Col A is Store
-              if (!rawStoreNumber || String(rawStoreNumber).toLowerCase().includes('total')) continue;
+              const rawStoreNumber = String(row[0] || ''); // Col 1
+              if (rawStoreNumber.toLowerCase().includes('total')) continue;
 
-              const storeNumber = String(parseInt(String(rawStoreNumber).replace(/\D/g, ''), 10));
-              const store = stores.find(s => s.number === storeNumber);
+              const storeNumber = rawStoreNumber.replace(/\D/g, '');
+              const store = stores.find(s => s.number === String(parseInt(storeNumber || '0')));
 
               if (store) {
-                  // Mappings based on standard report layout:
-                  // Col A: Loja
-                  // Col B: Qtde Vendas (Ignore or use as check)
-                  // Col C: Qtde Itens (Requested: use Column C) -> Index 2
-                  // Standard: D=PA, E=PU, F=Ticket
+                  const salesQty = parseRawNumber(row[2]); // Col 3
+                  const pa = parseRawNumber(row[3]);       // Col 4
+                  const pu = parseRawNumber(row[4]);       // Col 5
+                  const ticket = parseRawNumber(row[5]);   // Col 6
+                  const meta = parseRawNumber(row[6]);     // Col 7 (META)
+                  const revenueActual = parseRawNumber(row[7]); // Col 8 (REALIZADO)
                   
-                  // CHANGED: Read quantity of items from Column C (Index 2)
-                  const salesQty = parseRawNumber(row[2]); 
-                  
-                  const pa = parseRawNumber(row[3]);
-                  const pu = parseRawNumber(row[4]);
-                  const ticket = parseRawNumber(row[5]);
-                  
-                  // Calculate Revenue Actual from Ticket if available, or try to read it
-                  let revenueActual = 0;
-                  if (salesQty > 0 && ticket > 0) revenueActual = salesQty * ticket; // Approx check
-                  else if (ticket > 0) revenueActual = ticket * 1000; // Fallback
+                  // Inadimplência: Check Col 15 (14), then fallback to Col 16 (15)
+                  let delinquencyRate = parseRawNumber(row[14]); 
+                  if (delinquencyRate === 0 && row[15] !== undefined) {
+                      delinquencyRate = parseRawNumber(row[15]);
+                  }
 
-                  // Better revenue calculation: items * PU or transactions * ticket?
-                  // If we have PA and PU: Revenue = (Items / PA) * Ticket. Or Items * PU.
-                  if (salesQty > 0 && pu > 0) {
-                      revenueActual = salesQty * pu;
+                  if (delinquencyRate > 0 && delinquencyRate < 1) {
+                      delinquencyRate = delinquencyRate * 100;
                   }
 
                   importedData.push({
                       storeId: store.id,
-                      month: selectedMonthStr, // Force import into CURRENTLY SELECTED month context
+                      month: selectedMonthStr, 
                       itemsPerTicket: pa,
                       unitPriceAverage: pu,
                       averageTicket: ticket,
+                      revenueTarget: meta, // Importing Target as well
                       revenueActual: Number(revenueActual.toFixed(2)),
-                      itemsActual: salesQty, // Save realized quantity
-                      delinquencyRate: 0 // Default
+                      itemsActual: salesQty, 
+                      delinquencyRate: Number(delinquencyRate.toFixed(2))
                   });
                   successCount++;
               }
@@ -264,24 +282,31 @@ const GoalRegistration: React.FC<GoalRegistrationProps> = ({ stores, performance
               importedData.forEach(item => {
                   const existingIndex = updatedPerformanceData.findIndex(p => p.storeId === item.storeId && p.month === selectedMonthStr);
                   
+                  // Calc percent if missing
+                  const percent = (item.revenueTarget && item.revenueTarget > 0) 
+                        ? ((item.revenueActual || 0) / item.revenueTarget) * 100 
+                        : 0;
+
                   if (existingIndex >= 0) {
-                      // Update existing record's ACTUALS only, preserve TARGETS
+                      // Update existing record
                       updatedPerformanceData[existingIndex] = {
                           ...updatedPerformanceData[existingIndex],
                           itemsPerTicket: item.itemsPerTicket!,
                           unitPriceAverage: item.unitPriceAverage!,
                           averageTicket: item.averageTicket!,
+                          revenueTarget: item.revenueTarget!, // Update target from file
                           revenueActual: item.revenueActual!,
-                          itemsActual: item.itemsActual! // Merge new field
-                          // Keep existing targets
+                          itemsActual: item.itemsActual!,
+                          delinquencyRate: item.delinquencyRate!,
+                          percentMeta: percent
                       };
                   } else {
                       // New Record
                       updatedPerformanceData.push({
                           storeId: item.storeId!,
                           month: selectedMonthStr,
-                          revenueTarget: 0,
-                          itemsTarget: 0, // Default 0
+                          revenueTarget: item.revenueTarget || 0,
+                          itemsTarget: 0, 
                           paTarget: 0,
                           ticketTarget: 0,
                           puTarget: 0,
@@ -290,9 +315,9 @@ const GoalRegistration: React.FC<GoalRegistrationProps> = ({ stores, performance
                           unitPriceAverage: item.unitPriceAverage!,
                           averageTicket: item.averageTicket!,
                           revenueActual: item.revenueActual!,
-                          itemsActual: item.itemsActual!, // New field
-                          delinquencyRate: 0,
-                          percentMeta: 0,
+                          itemsActual: item.itemsActual!, 
+                          delinquencyRate: item.delinquencyRate!,
+                          percentMeta: percent,
                           trend: 'stable',
                           correctedDailyGoal: 0
                       });
@@ -300,7 +325,7 @@ const GoalRegistration: React.FC<GoalRegistrationProps> = ({ stores, performance
               });
 
               onUpdateData(updatedPerformanceData);
-              alert(`${successCount} lojas atualizadas com dados de realizado!`);
+              alert(`${successCount} lojas atualizadas! Metas e Realizados importados.`);
               setShowImportModal(false);
               setSelectedFile(null);
           } else {
@@ -689,7 +714,7 @@ const GoalRegistration: React.FC<GoalRegistrationProps> = ({ stores, performance
                Selecione a planilha (.xlsx, .xls) com os resultados de <strong>{months[selectedMonthIndex-1].label}</strong>.
                <br/>
                <span className="text-xs mt-2 block">
-                   <strong>Colunas esperadas:</strong> Loja, Qtde (ou Vendas), P.A, P.U, Ticket.
+                   <strong>Colunas esperadas:</strong> Loja, Vendas, P.A, P.U, Ticket, Inadimplência (Col P).
                    <br/>
                    Os dados serão vinculados a este mês selecionado automaticamente.
                </span>
@@ -723,6 +748,11 @@ const GoalRegistration: React.FC<GoalRegistrationProps> = ({ stores, performance
                         <span className="text-xs text-gray-400 mt-1">Excel (.xlsx)</span>
                     </>
                 )}
+             </div>
+
+             <div className="text-xs text-gray-500 bg-gray-50 p-3 rounded mb-4">
+                 <strong>Colunas Esperadas (Excel):</strong><br/>
+                 1: Loja | 3: Itens | 4: P.A | 5: P.U | 6: Ticket | 7: Meta | 8: Realizado | 15: Inadimplência
              </div>
 
              {importStatus && (

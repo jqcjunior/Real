@@ -1,3 +1,4 @@
+
 import React, { useState, useMemo, useRef } from 'react';
 import { Store, MonthlyPerformance } from '../types';
 import { formatCurrency } from '../constants';
@@ -91,46 +92,108 @@ const DashboardAdmin: React.FC<DashboardAdminProps> = ({ stores, performanceData
       const sheet = workbook.Sheets[workbook.SheetNames[0]];
       const jsonData = XLSX.utils.sheet_to_json(sheet, { header: 1 }) as any[][];
       
-      // Basic finding logic
-      let startRow = -1;
-      for(let i=0; i<20; i++) {
-          if(jsonData[i]?.join(' ').toLowerCase().includes('loja')) {
-              startRow = i+1; 
+      // 1. Encontrar linha de cabeçalho
+      let startRowIndex = -1;
+      for(let i=0; i<30; i++) {
+          const rowStr = jsonData[i]?.join(' ').toLowerCase();
+          if(rowStr.includes('loja')) {
+              startRowIndex = i + 1; 
               break;
           }
       }
-      if(startRow === -1) throw new Error("Cabeçalho não encontrado");
+      if(startRowIndex === -1) throw new Error("Cabeçalho 'Loja' não encontrado na planilha.");
 
       const updates: MonthlyPerformance[] = [...performanceData];
       let count = 0;
 
-      for(let i=startRow; i<jsonData.length; i++) {
+      // 2. Processar Linhas (Indices 0-based)
+      // Col 1 (Loja) -> Index 0
+      // Col 3 (Itens) -> Index 2
+      // Col 4 (PA) -> Index 3
+      // Col 5 (PU) -> Index 4
+      // Col 6 (Ticket) -> Index 5
+      // Col 7 (Meta) -> Index 6
+      // Col 8 (Realizado - Assumido H) -> Index 7
+      // Col 15 (Inadimplência - O) -> Index 14
+      // Col 16 (Inadimplência - P - Fallback) -> Index 15
+
+      for(let i=startRowIndex; i<jsonData.length; i++) {
           const row = jsonData[i];
-          if(!row || !row[0]) continue;
+          if(!row || row.length === 0) continue;
           
-          const storeNum = String(row[0]).replace(/\D/g, '');
+          const rawStore = String(row[0] || ''); // Col 1
+          if (rawStore.toLowerCase().includes('total')) continue; 
+
+          const storeNum = rawStore.replace(/\D/g, ''); 
+          if (!storeNum) continue;
+
           const store = stores.find(s => s.number === String(parseInt(storeNum)));
           
           if(store) {
-             // Assuming specific columns based on standard report: Loja, ..., PA(3), PU(4), Ticket(5)
-             const pa = parseFloat(String(row[3] || '0').replace(',','.'));
-             const pu = parseFloat(String(row[4] || '0').replace(',','.'));
-             const ticket = parseFloat(String(row[5] || '0').replace(',','.'));
+             const parseNum = (val: any) => {
+                 if (typeof val === 'number') return val;
+                 if (typeof val === 'string') {
+                     // Remove % e espaços
+                     let clean = val.replace('%', '').trim();
+                     if (!clean || clean === '-') return 0;
+                     
+                     // Lógica PT-BR vs US
+                     if (clean.includes(',') && clean.includes('.')) {
+                         // Formato 1.200,50
+                         clean = clean.replace(/\./g, '').replace(',', '.');
+                     } else if (clean.includes(',')) {
+                         // Formato 1200,50
+                         clean = clean.replace(',', '.');
+                     }
+                     // Se só tem ponto (2.5), o parseFloat já entende como decimal
+                     
+                     return parseFloat(clean) || 0;
+                 }
+                 return 0;
+             };
+
+             const qtde = parseNum(row[2]); // Col 3
+             const pa = parseNum(row[3]);   // Col 4
+             const pu = parseNum(row[4]);   // Col 5
+             const ticket = parseNum(row[5]); // Col 6
+             const meta = parseNum(row[6]);   // Col 7
+             const realizado = parseNum(row[7]); // Col 8
              
+             // Inadimplência: Tenta Coluna 15 (Index 14), se zerado tenta Coluna 16 (Index 15/P)
+             let inad = parseNum(row[14]); 
+             if (inad === 0 && row[15] !== undefined) {
+                 inad = parseNum(row[15]);
+             }
+
+             // Normalização Inadimplência
+             if (inad > 0 && inad < 1) inad = inad * 100; // 0.02 -> 2%
+
+             let percent = 0;
+             if (meta > 0) {
+                 percent = (realizado / meta) * 100;
+             }
+
              const idx = updates.findIndex(p => p.storeId === store.id && p.month === selectedMonth);
+             
+             const newData = {
+                 revenueTarget: meta,
+                 revenueActual: realizado,
+                 percentMeta: percent,
+                 itemsPerTicket: pa,
+                 unitPriceAverage: pu,
+                 averageTicket: ticket,
+                 itemsActual: qtde,
+                 delinquencyRate: inad
+             };
+
              if(idx >= 0) {
-                 updates[idx] = { ...updates[idx], itemsPerTicket: pa, unitPriceAverage: pu, averageTicket: ticket };
+                 updates[idx] = { ...updates[idx], ...newData };
              } else {
                  updates.push({
                      storeId: store.id,
                      month: selectedMonth,
-                     revenueTarget: 0,
-                     revenueActual: 0,
-                     itemsPerTicket: pa,
-                     unitPriceAverage: pu,
-                     averageTicket: ticket,
-                     delinquencyRate: 0,
-                     percentMeta: 0,
+                     ...newData,
+                     itemsTarget: 0,
                      trend: 'stable',
                      correctedDailyGoal: 0
                  });
@@ -143,6 +206,7 @@ const DashboardAdmin: React.FC<DashboardAdminProps> = ({ stores, performanceData
   };
 
   const processPDF = async (file: File) => {
+      // PDF processing remains generic AI based
       const reader = new FileReader();
       return new Promise<number>((resolve, reject) => {
           reader.onload = async () => {
@@ -159,20 +223,13 @@ const DashboardAdmin: React.FC<DashboardAdminProps> = ({ stores, performanceData
                           const targetMonth = item.month || selectedMonth;
                           const idx = updates.findIndex(p => p.storeId === store.id && p.month === targetMonth);
                           
-                          let revenueActual = 0;
-                          const existingTarget = idx >= 0 ? updates[idx].revenueTarget : 0;
-                          if (item.percentMeta && existingTarget > 0) {
-                              revenueActual = (existingTarget * item.percentMeta) / 100;
-                          }
-
                           if(idx >= 0) {
                               updates[idx] = { 
                                   ...updates[idx], 
                                   itemsPerTicket: item.pa, 
                                   unitPriceAverage: item.pu, 
                                   averageTicket: item.ticket,
-                                  percentMeta: item.percentMeta,
-                                  revenueActual: revenueActual || updates[idx].revenueActual 
+                                  percentMeta: item.percentMeta
                               };
                           } else {
                               updates.push({
@@ -214,7 +271,7 @@ const DashboardAdmin: React.FC<DashboardAdminProps> = ({ stores, performanceData
           } else {
               count = await processPDF(selectedFile);
           }
-          alert(`Importação concluída! ${count} registros processados.`);
+          alert(`Importação concluída! ${count} lojas atualizadas.`);
           setShowImportModal(false);
           setSelectedFile(null);
       } catch (error: any) {
@@ -231,7 +288,7 @@ const DashboardAdmin: React.FC<DashboardAdminProps> = ({ stores, performanceData
        <div className="flex flex-col md:flex-row justify-between items-center gap-4">
           <div>
              <h2 className="text-3xl font-bold text-gray-800">Visão Geral da Rede</h2>
-             <p className="text-gray-500">Monitoramento consolidado de todas as unidades.</p>
+             <p className="text-gray-500">Monitoramento consolidado e comparação Meta x Realizado.</p>
           </div>
           
           <div className="flex items-center gap-3">
@@ -317,14 +374,14 @@ const DashboardAdmin: React.FC<DashboardAdminProps> = ({ stores, performanceData
                 <thead className="bg-gray-50 text-gray-900 font-semibold">
                     <tr>
                         <th className="p-4">Loja</th>
-                        <th className="p-4">Meta</th>
-                        <th className="p-4">Realizado</th>
-                        <th className="p-4">%</th>
-                        <th className="p-4">P.A.</th>
-                        <th className="p-4">P.U.</th>
-                        <th className="p-4">Ticket Médio</th>
-                        <th className="p-4">Qtde Itens</th>
-                        <th className="p-4">Trend</th>
+                        <th className="p-4 text-right">Meta (Col 7)</th>
+                        <th className="p-4 text-right">Realizado (Col 8)</th>
+                        <th className="p-4 text-center">% Ating.</th>
+                        <th className="p-4 text-center">P.A. (Col 4)</th>
+                        <th className="p-4 text-center">P.U. (Col 5)</th>
+                        <th className="p-4 text-right">Ticket (Col 6)</th>
+                        <th className="p-4 text-center">Itens (Col 3)</th>
+                        <th className="p-4 text-center">Inad. (Col 15/16)</th>
                     </tr>
                 </thead>
                 <tbody className="divide-y divide-gray-100">
@@ -333,19 +390,19 @@ const DashboardAdmin: React.FC<DashboardAdminProps> = ({ stores, performanceData
                          return (
                             <tr key={data.storeId} className="hover:bg-gray-50">
                                 <td className="p-4 font-medium text-gray-900">{store?.name}</td>
-                                <td className="p-4">{formatCurrency(data.revenueTarget)}</td>
-                                <td className="p-4">{formatCurrency(data.revenueActual)}</td>
-                                <td className={`p-4 font-bold ${data.percentMeta >= 100 ? 'text-green-600' : 'text-red-600'}`}>
-                                    {data.percentMeta.toFixed(1)}%
+                                <td className="p-4 text-right">{formatCurrency(data.revenueTarget)}</td>
+                                <td className="p-4 text-right">{formatCurrency(data.revenueActual)}</td>
+                                <td className="p-4 text-center">
+                                    <span className={`px-2 py-1 rounded font-bold ${data.percentMeta >= 100 ? 'bg-green-100 text-green-700' : 'bg-red-100 text-red-700'}`}>
+                                        {data.percentMeta.toFixed(1)}%
+                                    </span>
                                 </td>
-                                <td className="p-4">{data.itemsPerTicket.toFixed(2)}</td>
-                                <td className="p-4">{data.unitPriceAverage.toFixed(2)}</td>
-                                <td className="p-4">{formatCurrency(data.averageTicket)}</td>
-                                <td className="p-4 font-medium text-blue-800">{data.itemsActual || 0}</td>
-                                <td className="p-4">
-                                    {data.trend === 'up' ? <TrendingUp size={16} className="text-green-500" /> : 
-                                     data.trend === 'down' ? <TrendingDown size={16} className="text-red-500" /> : 
-                                     <span className="text-gray-400">-</span>}
+                                <td className="p-4 text-center">{data.itemsPerTicket.toFixed(2)}</td>
+                                <td className="p-4 text-center">{data.unitPriceAverage.toFixed(2)}</td>
+                                <td className="p-4 text-right">{formatCurrency(data.averageTicket)}</td>
+                                <td className="p-4 font-medium text-blue-800 text-center">{data.itemsActual || 0}</td>
+                                <td className={`p-4 font-bold text-center ${data.delinquencyRate > 2 ? 'text-red-600' : 'text-green-600'}`}>
+                                    {data.delinquencyRate ? data.delinquencyRate.toFixed(2) + '%' : '-'}
                                 </td>
                             </tr>
                          );
@@ -404,6 +461,11 @@ const DashboardAdmin: React.FC<DashboardAdminProps> = ({ stores, performanceData
                             accept={importType === 'excel' ? ".xlsx, .xls" : ".pdf"}
                             onChange={handleFileChange} 
                         />
+                   </div>
+
+                   <div className="text-xs text-gray-500 bg-gray-50 p-3 rounded mb-4">
+                       <strong>Colunas Esperadas (Excel):</strong><br/>
+                       1: Loja | 3: Itens | 4: P.A | 5: P.U | 6: Ticket | 7: Meta | 8: Realizado | 15: Inadimplência
                    </div>
 
                    {importStatus && (
