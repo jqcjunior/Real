@@ -38,6 +38,10 @@ export interface MonthlyPerformance {
   revenueActual: number; // Realizado (Valor)
   percentMeta: number; // % Atingido
   
+  // Físico / Quantidade (NOVO)
+  itemsTarget?: number; // Meta de Peças/Pares
+  itemsActual?: number; // Realizado de Peças/Pares
+
   // Operacional - Realizado
   itemsPerTicket: number; // P.A.
   unitPriceAverage: number; // P.U.

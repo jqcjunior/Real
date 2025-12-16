@@ -1,7 +1,8 @@
+
 import React, { useState, useMemo } from 'react';
 import { Store, MonthlyPerformance, User, ProductPerformance } from '../types';
 import { formatCurrency, formatPercent } from '../constants';
-import { Medal, Trophy, TrendingUp, Target, ShoppingBag, CreditCard, Tag, AlertCircle, Sparkles, BarChart2, Bot, Calendar, DollarSign, Activity, ArrowUp, ArrowDown } from 'lucide-react';
+import { Medal, Trophy, TrendingUp, Target, ShoppingBag, CreditCard, Tag, AlertCircle, Sparkles, BarChart2, Bot, Calendar, DollarSign, Activity, ArrowUp, ArrowDown, Package } from 'lucide-react';
 import { analyzePerformance } from '../services/geminiService';
 import { BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, Cell, LineChart, Line, ComposedChart, CartesianGrid, Legend } from 'recharts';
 
@@ -80,6 +81,8 @@ const DashboardManager: React.FC<DashboardManagerProps> = ({ user, stores, perfo
       month: selectedMonth,
       revenueTarget: 0,
       revenueActual: 0,
+      itemsTarget: 0,
+      itemsActual: 0,
       percentMeta: 0,
       itemsPerTicket: 0,
       unitPriceAverage: 0,
@@ -283,8 +286,8 @@ const DashboardManager: React.FC<DashboardManagerProps> = ({ user, stores, perfo
       </div>
 
       {/* Main Metrics Grid */}
-      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-5 gap-6">
-         {/* Meta Card */}
+      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-6 gap-6">
+         {/* 1. Meta Card */}
          <div title="Mais detalhes sobre este item" className="bg-white p-6 rounded-xl shadow-sm border border-gray-100 transition-all duration-300 hover:shadow-xl hover:-translate-y-1 hover:scale-[1.02] group cursor-default">
             <div className="flex items-center gap-3 mb-3 text-blue-800 group-hover:text-red-600 transition-colors">
                <Target size={20} />
@@ -300,11 +303,11 @@ const DashboardManager: React.FC<DashboardManagerProps> = ({ user, stores, perfo
             </div>
          </div>
 
-         {/* P.A. Card */}
+         {/* 2. P.A. Card */}
          <div title="Mais detalhes sobre este item" className="bg-white p-6 rounded-xl shadow-sm border border-gray-100 transition-all duration-300 hover:shadow-xl hover:-translate-y-1 hover:scale-[1.02] group cursor-default">
             <div className="flex items-center gap-3 mb-3 text-blue-800 group-hover:text-blue-600 transition-colors">
                <ShoppingBag size={20} />
-               <h3 className="font-semibold text-gray-700">P.A. (Peças/Atend.)</h3>
+               <h3 className="font-semibold text-gray-700">P.A.</h3>
             </div>
             <div className="flex flex-col">
                <span className={`text-3xl font-bold ${myData.itemsPerTicket >= (myData.paTarget || 0) ? 'text-green-600' : 'text-gray-900'}`}>
@@ -318,7 +321,25 @@ const DashboardManager: React.FC<DashboardManagerProps> = ({ user, stores, perfo
             </div>
          </div>
 
-         {/* Ticket Medio Card */}
+         {/* 3. P.U. Card */}
+         <div title="Mais detalhes sobre este item" className="bg-white p-6 rounded-xl shadow-sm border border-gray-100 transition-all duration-300 hover:shadow-xl hover:-translate-y-1 hover:scale-[1.02] group cursor-default">
+            <div className="flex items-center gap-3 mb-3 text-blue-800 group-hover:text-blue-600 transition-colors">
+               <Tag size={20} />
+               <h3 className="font-semibold text-gray-700">P.U.</h3>
+            </div>
+            <div className="flex flex-col">
+               <span className={`text-3xl font-bold ${myData.unitPriceAverage >= (myData.puTarget || 0) ? 'text-green-600' : 'text-gray-900'}`}>
+                   {myData.unitPriceAverage.toFixed(2)}
+               </span>
+               {myData.puTarget ? (
+                   <ComparisonBadge current={myData.unitPriceAverage} target={myData.puTarget} />
+               ) : (
+                   <span className="text-xs text-gray-500 mt-1">Média Sub Grupo: {Number(averages.pu).toFixed(2)}</span>
+               )}
+            </div>
+         </div>
+
+         {/* 4. Ticket Medio Card */}
          <div title="Mais detalhes sobre este item" className="bg-white p-6 rounded-xl shadow-sm border border-gray-100 transition-all duration-300 hover:shadow-xl hover:-translate-y-1 hover:scale-[1.02] group cursor-default">
             <div className="flex items-center gap-3 mb-3 text-blue-800 group-hover:text-blue-600 transition-colors">
                <CreditCard size={20} />
@@ -336,25 +357,25 @@ const DashboardManager: React.FC<DashboardManagerProps> = ({ user, stores, perfo
             </div>
          </div>
 
-         {/* P.U. Card (New) */}
-         <div title="Mais detalhes sobre este item" className="bg-white p-6 rounded-xl shadow-sm border border-gray-100 transition-all duration-300 hover:shadow-xl hover:-translate-y-1 hover:scale-[1.02] group cursor-default">
+         {/* 5. Quantity (Items) Card - NEW */}
+         <div title="Quantidade de Itens Vendidos" className="bg-white p-6 rounded-xl shadow-sm border border-gray-100 transition-all duration-300 hover:shadow-xl hover:-translate-y-1 hover:scale-[1.02] group cursor-default">
             <div className="flex items-center gap-3 mb-3 text-blue-800 group-hover:text-blue-600 transition-colors">
-               <Tag size={20} />
-               <h3 className="font-semibold text-gray-700">Preço Médio (P.U.)</h3>
+               <Package size={20} />
+               <h3 className="font-semibold text-gray-700">Quantidade</h3>
             </div>
             <div className="flex flex-col">
-               <span className={`text-3xl font-bold ${myData.unitPriceAverage >= (myData.puTarget || 0) ? 'text-green-600' : 'text-gray-900'}`}>
-                   {myData.unitPriceAverage.toFixed(2)}
+               <span className={`text-3xl font-bold ${(myData.itemsActual || 0) >= (myData.itemsTarget || 0) ? 'text-green-600' : 'text-gray-900'}`}>
+                   {myData.itemsActual || 0}
                </span>
-               {myData.puTarget ? (
-                   <ComparisonBadge current={myData.unitPriceAverage} target={myData.puTarget} />
+               {myData.itemsTarget ? (
+                   <ComparisonBadge current={myData.itemsActual || 0} target={myData.itemsTarget} />
                ) : (
-                   <span className="text-xs text-gray-500 mt-1">Média Sub Grupo: {Number(averages.pu).toFixed(2)}</span>
+                   <span className="text-xs text-gray-500 mt-1">Peças Vendidas</span>
                )}
             </div>
          </div>
 
-         {/* Inadimplencia Card */}
+         {/* 6. Inadimplencia Card */}
          <div title="Mais detalhes sobre este item" className="bg-white p-6 rounded-xl shadow-sm border border-gray-100 transition-all duration-300 hover:shadow-xl hover:-translate-y-1 hover:scale-[1.02] group cursor-default">
             <div className="flex items-center gap-3 mb-3 text-red-600">
                <AlertCircle size={20} />

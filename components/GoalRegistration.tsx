@@ -1,6 +1,7 @@
+
 import React, { useState, useEffect, useMemo, useRef } from 'react';
 import { Store, MonthlyPerformance } from '../types';
-import { Save, Calendar, Target, AlertCircle, DollarSign, ShoppingBag, CreditCard, Tag, AlertTriangle, X, TrendingUp, TrendingDown, Activity, Upload, FileSpreadsheet, Loader2, CheckCircle } from 'lucide-react';
+import { Save, Calendar, Target, AlertCircle, DollarSign, ShoppingBag, CreditCard, Tag, AlertTriangle, X, TrendingUp, TrendingDown, Activity, Upload, FileSpreadsheet, Loader2, CheckCircle, Package } from 'lucide-react';
 import { formatCurrency, formatPercent } from '../constants';
 import * as XLSX from 'xlsx';
 
@@ -61,6 +62,7 @@ const GoalRegistration: React.FC<GoalRegistrationProps> = ({ stores, performance
         // Initialize with zeros if no data exists
         newFormData[store.id] = {
           revenueTarget: 0,
+          itemsTarget: 0, // NEW: Init Items Goal
           paTarget: 0,
           ticketTarget: 0,
           puTarget: 0,
@@ -90,7 +92,7 @@ const GoalRegistration: React.FC<GoalRegistrationProps> = ({ stores, performance
       // Check if ANY data exists for this month in the permanent database (not local form) with targets set
       const hasExistingTargets = performanceData.some(p => 
         p.month === selectedMonthStr && 
-        (p.revenueTarget > 0 || (p.paTarget || 0) > 0)
+        (p.revenueTarget > 0 || (p.itemsTarget || 0) > 0)
       );
 
       if (hasExistingTargets) {
@@ -119,6 +121,7 @@ const GoalRegistration: React.FC<GoalRegistrationProps> = ({ stores, performance
         updatedPerformanceData[existingIndex] = {
           ...currentRecord,
           revenueTarget: data.revenueTarget || 0,
+          itemsTarget: data.itemsTarget || 0, // Save Items Goal
           paTarget: data.paTarget || 0,
           ticketTarget: data.ticketTarget || 0,
           puTarget: data.puTarget || 0,
@@ -135,6 +138,8 @@ const GoalRegistration: React.FC<GoalRegistrationProps> = ({ stores, performance
           month: selectedMonthStr,
           revenueTarget: data.revenueTarget || 0,
           revenueActual: 0,
+          itemsTarget: data.itemsTarget || 0, // Save Items Goal
+          itemsActual: 0,
           percentMeta: 0,
           itemsPerTicket: 0,
           unitPriceAverage: 0,
@@ -216,21 +221,27 @@ const GoalRegistration: React.FC<GoalRegistrationProps> = ({ stores, performance
               if (store) {
                   // Mappings based on standard report layout:
                   // Col A: Loja
-                  // Col B: Qtde Vendas (skip)
-                  // Col C: Valor Venda (Calculated or imported?) -> Let's try to find PA/Ticket cols
+                  // Col B: Qtde Vendas (Ignore or use as check)
+                  // Col C: Qtde Itens (Requested: use Column C) -> Index 2
                   // Standard: D=PA, E=PU, F=Ticket
+                  
+                  // CHANGED: Read quantity of items from Column C (Index 2)
+                  const salesQty = parseRawNumber(row[2]); 
                   
                   const pa = parseRawNumber(row[3]);
                   const pu = parseRawNumber(row[4]);
                   const ticket = parseRawNumber(row[5]);
                   
                   // Calculate Revenue Actual from Ticket if available, or try to read it
-                  // Fallback simulation: Ticket * 1000 (just like Dashboard logic if qty missing)
-                  // Better: Try to read sales qty at Col B (index 1)
-                  const salesQty = parseRawNumber(row[1]);
                   let revenueActual = 0;
-                  if (salesQty > 0 && ticket > 0) revenueActual = salesQty * ticket;
+                  if (salesQty > 0 && ticket > 0) revenueActual = salesQty * ticket; // Approx check
                   else if (ticket > 0) revenueActual = ticket * 1000; // Fallback
+
+                  // Better revenue calculation: items * PU or transactions * ticket?
+                  // If we have PA and PU: Revenue = (Items / PA) * Ticket. Or Items * PU.
+                  if (salesQty > 0 && pu > 0) {
+                      revenueActual = salesQty * pu;
+                  }
 
                   importedData.push({
                       storeId: store.id,
@@ -239,6 +250,7 @@ const GoalRegistration: React.FC<GoalRegistrationProps> = ({ stores, performance
                       unitPriceAverage: pu,
                       averageTicket: ticket,
                       revenueActual: Number(revenueActual.toFixed(2)),
+                      itemsActual: salesQty, // Save realized quantity
                       delinquencyRate: 0 // Default
                   });
                   successCount++;
@@ -259,7 +271,8 @@ const GoalRegistration: React.FC<GoalRegistrationProps> = ({ stores, performance
                           itemsPerTicket: item.itemsPerTicket!,
                           unitPriceAverage: item.unitPriceAverage!,
                           averageTicket: item.averageTicket!,
-                          revenueActual: item.revenueActual!
+                          revenueActual: item.revenueActual!,
+                          itemsActual: item.itemsActual! // Merge new field
                           // Keep existing targets
                       };
                   } else {
@@ -268,6 +281,7 @@ const GoalRegistration: React.FC<GoalRegistrationProps> = ({ stores, performance
                           storeId: item.storeId!,
                           month: selectedMonthStr,
                           revenueTarget: 0,
+                          itemsTarget: 0, // Default 0
                           paTarget: 0,
                           ticketTarget: 0,
                           puTarget: 0,
@@ -276,6 +290,7 @@ const GoalRegistration: React.FC<GoalRegistrationProps> = ({ stores, performance
                           unitPriceAverage: item.unitPriceAverage!,
                           averageTicket: item.averageTicket!,
                           revenueActual: item.revenueActual!,
+                          itemsActual: item.itemsActual!, // New field
                           delinquencyRate: 0,
                           percentMeta: 0,
                           trend: 'stable',
@@ -433,7 +448,7 @@ const GoalRegistration: React.FC<GoalRegistrationProps> = ({ stores, performance
             <table className="w-full text-left border-collapse relative">
                 <thead className="bg-gray-100 text-gray-600 text-xs font-bold uppercase tracking-wider sticky top-0 z-10 shadow-sm">
                     <tr>
-                        <th className="p-4 bg-gray-100 w-64 border-r border-gray-200">Loja</th>
+                        <th className="p-4 bg-gray-100 w-52 border-r border-gray-200">Loja</th>
                         <th className="p-4 bg-gray-100 text-center text-blue-800 border-r border-gray-200 min-w-[160px]">
                             Venda (R$)
                         </th>
@@ -445,6 +460,9 @@ const GoalRegistration: React.FC<GoalRegistrationProps> = ({ stores, performance
                         </th>
                         <th className="p-4 bg-gray-100 text-center text-blue-800 border-r border-gray-200 min-w-[140px]">
                             Ticket (R$)
+                        </th>
+                        <th className="p-4 bg-gray-100 text-center text-blue-800 border-r border-gray-200 min-w-[120px]">
+                            Qtde Itens
                         </th>
                         <th className="p-4 bg-gray-100 text-center text-red-700 border-r border-gray-200 min-w-[120px]">
                             Inadimp. (%)
@@ -468,7 +486,7 @@ const GoalRegistration: React.FC<GoalRegistrationProps> = ({ stores, performance
                                         </div>
                                     )}
                                 </td>
-                                
+
                                 {/* Meta Venda + Analysis */}
                                 <td className="p-3 border-r border-gray-100 bg-white group-hover:bg-blue-50/30 align-top">
                                     <div className="space-y-2">
@@ -566,6 +584,28 @@ const GoalRegistration: React.FC<GoalRegistrationProps> = ({ stores, performance
                                     </div>
                                 </td>
 
+                                {/* Meta Items (Reordered) */}
+                                <td className="p-3 border-r border-gray-100 bg-white group-hover:bg-blue-50/30 align-top">
+                                    <div className="space-y-2">
+                                        <div className="relative">
+                                            <span className="absolute left-3 top-2.5 text-gray-400"><Package size={14}/></span>
+                                            <input 
+                                                type="number" 
+                                                value={data.itemsTarget || ''}
+                                                onChange={(e) => handleInputChange(store.id, 'itemsTarget', e.target.value)}
+                                                className="w-full pl-9 pr-3 py-2 bg-white border border-blue-200 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none text-right font-medium text-gray-700"
+                                                placeholder="0"
+                                            />
+                                        </div>
+                                        <div className="flex justify-between items-center text-[10px] px-1 bg-gray-50 rounded py-1 border border-gray-100">
+                                            <span className="text-gray-500">Real:</span>
+                                            <span className={`font-bold ${getPerfColor(data.itemsActual || 0, data.itemsTarget || 0)}`}>
+                                                {data.itemsActual || 0}
+                                            </span>
+                                        </div>
+                                    </div>
+                                </td>
+
                                 {/* Meta Inadimplência + Analysis (Inverse Logic) */}
                                 <td className="p-3 border-r border-gray-100 bg-white group-hover:bg-blue-50/30 align-top">
                                     <div className="space-y-2">
@@ -649,7 +689,7 @@ const GoalRegistration: React.FC<GoalRegistrationProps> = ({ stores, performance
                Selecione a planilha (.xlsx, .xls) com os resultados de <strong>{months[selectedMonthIndex-1].label}</strong>.
                <br/>
                <span className="text-xs mt-2 block">
-                   <strong>Colunas esperadas:</strong> Loja, P.A, P.U, Ticket (ou cabeçalho similar).
+                   <strong>Colunas esperadas:</strong> Loja, Qtde (ou Vendas), P.A, P.U, Ticket.
                    <br/>
                    Os dados serão vinculados a este mês selecionado automaticamente.
                </span>

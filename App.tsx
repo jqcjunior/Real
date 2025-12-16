@@ -1,5 +1,6 @@
+
 import React, { useState } from 'react';
-import { LayoutDashboard, ShoppingBag, Target, Calculator, DollarSign, Instagram, Download, Shield, AlertOctagon, FileSignature, LogOut, Menu, Users, Calendar, Settings, X, Camera, User as UserIcon } from 'lucide-react';
+import { LayoutDashboard, ShoppingBag, Target, Calculator, DollarSign, Instagram, Download, Shield, AlertOctagon, FileSignature, LogOut, Menu, Users, Calendar, Settings, X, Camera, User as UserIcon, FileText } from 'lucide-react';
 import LoginScreen from './components/LoginScreen';
 import DashboardAdmin from './components/DashboardAdmin';
 import DashboardManager from './components/DashboardManager';
@@ -14,6 +15,7 @@ import SystemAudit from './components/SystemAudit';
 import CashErrorsModule from './components/CashErrorsModule';
 import AdminSettings from './components/AdminSettings';
 import PurchaseAuthorization from './components/PurchaseAuthorization';
+import TermoAutorizacao from './components/TermoAutorizacao';
 import { User, Store, MonthlyPerformance, UserRole, ProductPerformance, Cota, AgendaItem, DownloadItem, SystemLog, CashError } from './types';
 import { MOCK_USERS, MOCK_STORES, MOCK_PERFORMANCE, MOCK_PRODUCT_PERFORMANCE, MOCK_COTAS, MOCK_AGENDA, MOCK_DOWNLOADS } from './constants';
 
@@ -64,6 +66,13 @@ const App: React.FC = () => {
   const handleLogin = (u: User) => {
     setUser(u);
     logAction('LOGIN', `Usuário ${u.name} realizou login`, u);
+    
+    // Set initial view based on role
+    if (u.role === UserRole.CASHIER) {
+        setCurrentView('agenda');
+    } else {
+        setCurrentView('dashboard');
+    }
   };
 
   const handleLogout = () => {
@@ -121,6 +130,9 @@ const App: React.FC = () => {
 
     switch (currentView) {
       case 'dashboard':
+        // Cashiers should not access dashboard, fallback to agenda if somehow here
+        if (user.role === UserRole.CASHIER) return <AgendaSystem user={user} tasks={tasks} onAddTask={(t) => setTasks([...tasks, t])} onUpdateTask={(t) => setTasks(tasks.map(old => old.id === t.id ? t : old))} onDeleteTask={(id) => setTasks(tasks.filter(t => t.id !== id))} onLogAction={(a, d) => logAction(a, d)} />;
+        
         return user.role === UserRole.MANAGER 
           ? <DashboardManager user={user} stores={stores} performanceData={performanceData} purchasingData={productData} />
           : <DashboardAdmin stores={stores} performanceData={performanceData} onImportData={setPerformanceData} />;
@@ -146,6 +158,8 @@ const App: React.FC = () => {
         return <AdminSettings stores={stores} onStoreUpdate={setStores} />;
       case 'auth_print':
         return <PurchaseAuthorization />;
+      case 'termo_print':
+        return <TermoAutorizacao user={user} store={stores.find(s => s.id === user.storeId)} />;
       default:
         return <div className="p-10">Página não encontrada</div>;
     }
@@ -169,27 +183,45 @@ const App: React.FC = () => {
           </div>
 
           <nav className="flex-1 space-y-1 overflow-y-auto no-scrollbar">
-            <NavButton view="dashboard" icon={LayoutDashboard} label="Visão Geral" active={currentView === 'dashboard'} onClick={() => { setCurrentView('dashboard'); setIsSidebarOpen(false); }} />
             
-            <NavButton view="purchases" icon={ShoppingBag} label="Compras & Marcas" active={currentView === 'purchases'} onClick={() => { setCurrentView('purchases'); setIsSidebarOpen(false); }} />
+            {/* 1. VISÃO GERAL (Hidden for Cashiers) */}
+            {user.role !== UserRole.CASHIER && (
+                <NavButton view="dashboard" icon={LayoutDashboard} label="Visão Geral" active={currentView === 'dashboard'} onClick={() => { setCurrentView('dashboard'); setIsSidebarOpen(false); }} />
+            )}
             
-            {(user.role === UserRole.ADMIN || user.role === UserRole.MANAGER) && (
+            {/* 2. COMPRAS (Hidden for Cashiers) */}
+            {user.role !== UserRole.CASHIER && (
+                <NavButton view="purchases" icon={ShoppingBag} label="Compras & Marcas" active={currentView === 'purchases'} onClick={() => { setCurrentView('purchases'); setIsSidebarOpen(false); }} />
+            )}
+            
+            {/* 3. METAS (Admin Only) */}
+            {user.role === UserRole.ADMIN && (
                <NavButton view="goals" icon={Target} label="Metas" active={currentView === 'goals'} onClick={() => { setCurrentView('goals'); setIsSidebarOpen(false); }} />
             )}
             
-            <NavButton view="cotas" icon={Calculator} label="Cotas & Pedidos" active={currentView === 'cotas'} onClick={() => { setCurrentView('cotas'); setIsSidebarOpen(false); }} />
+            {/* 4. COTAS (Hidden for Cashiers) */}
+            {user.role !== UserRole.CASHIER && (
+                <NavButton view="cotas" icon={Calculator} label="Cotas & Pedidos" active={currentView === 'cotas'} onClick={() => { setCurrentView('cotas'); setIsSidebarOpen(false); }} />
+            )}
             
+            {/* 5. AGENDA (Visible to All) */}
             <NavButton view="agenda" icon={Calendar} label="Agenda" active={currentView === 'agenda'} onClick={() => { setCurrentView('agenda'); setIsSidebarOpen(false); }} />
             
+            <div className="pt-4 pb-2 text-xs font-bold text-blue-400 uppercase tracking-wider">Caixas</div>
             <NavButton view="financial" icon={DollarSign} label="Caixa & Recibos" active={currentView === 'financial'} onClick={() => { setCurrentView('financial'); setIsSidebarOpen(false); }} />
-            
             <NavButton view="cash_errors" icon={AlertOctagon} label="Quebra de Caixa" active={currentView === 'cash_errors'} onClick={() => { setCurrentView('cash_errors'); setIsSidebarOpen(false); }} />
 
+            <div className="pt-4 pb-2 text-xs font-bold text-blue-400 uppercase tracking-wider">Marketing</div>
             <NavButton view="marketing" icon={Instagram} label="Marketing Studio" active={currentView === 'marketing'} onClick={() => { setCurrentView('marketing'); setIsSidebarOpen(false); }} />
             
-            <NavButton view="downloads" icon={Download} label="Downloads" active={currentView === 'downloads'} onClick={() => { setCurrentView('downloads'); setIsSidebarOpen(false); }} />
+            {/* Downloads (Hidden for Cashiers per request) */}
+            {user.role !== UserRole.CASHIER && (
+                <NavButton view="downloads" icon={Download} label="Downloads" active={currentView === 'downloads'} onClick={() => { setCurrentView('downloads'); setIsSidebarOpen(false); }} />
+            )}
             
+            <div className="pt-4 pb-2 text-xs font-bold text-blue-400 uppercase tracking-wider">Impressos</div>
             <NavButton view="auth_print" icon={FileSignature} label="Autorização Compra" active={currentView === 'auth_print'} onClick={() => { setCurrentView('auth_print'); setIsSidebarOpen(false); }} />
+            <NavButton view="termo_print" icon={FileText} label="Termo Autorização" active={currentView === 'termo_print'} onClick={() => { setCurrentView('termo_print'); setIsSidebarOpen(false); }} />
 
             {user.role === UserRole.ADMIN && (
               <>

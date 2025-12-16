@@ -78,9 +78,16 @@ const STACK_COLORS = [
 const CotasManagement: React.FC<CotasManagementProps> = ({ user, stores, cotas, onAddCota, onDeleteCota, onUpdateCota, onLogAction }) => {
   // --- STATE ---
   // FIX: Memoize activeStores to prevent reference instability on every render
+  // UPDATE: Filter strictly by user.storeId if role is MANAGER
   const activeStores = useMemo(() => {
-      return stores.filter(s => s.status === 'active').sort((a, b) => parseInt(a.number) - parseInt(b.number));
-  }, [stores]);
+      let filtered = stores.filter(s => s.status === 'active');
+      
+      if (user.role === UserRole.MANAGER && user.storeId) {
+          filtered = filtered.filter(s => s.id === user.storeId);
+      }
+
+      return filtered.sort((a, b) => parseInt(a.number) - parseInt(b.number));
+  }, [stores, user]);
 
   const isManager = user.role === UserRole.MANAGER;
   
