@@ -1,6 +1,6 @@
 
 import React, { useState, useEffect } from 'react';
-import { LayoutDashboard, ShoppingBag, Target, Calculator, DollarSign, Instagram, Download, Shield, AlertOctagon, FileSignature, LogOut, Menu, Users, Calendar, Settings, X, Camera, User as UserIcon, FileText } from 'lucide-react';
+import { LayoutDashboard, ShoppingBag, Target, Calculator, DollarSign, Instagram, Download, Shield, AlertOctagon, FileSignature, LogOut, Menu, Users, Calendar, Settings, X, Camera, User as UserIcon, FileText, IceCream } from 'lucide-react';
 import LoginScreen from './components/LoginScreen';
 import DashboardAdmin from './components/DashboardAdmin';
 import DashboardManager from './components/DashboardManager';
@@ -16,7 +16,8 @@ import CashErrorsModule from './components/CashErrorsModule';
 import AdminSettings from './components/AdminSettings';
 import PurchaseAuthorization from './components/PurchaseAuthorization';
 import TermoAutorizacao from './components/TermoAutorizacao';
-import { User, Store, MonthlyPerformance, UserRole, ProductPerformance, Cota, AgendaItem, DownloadItem, SystemLog, CashError, CreditCardSale, Receipt, CotaSettings, CotaDebt } from './types';
+import IceCreamModule from './components/IceCreamModule';
+import { User, Store, MonthlyPerformance, UserRole, ProductPerformance, Cota, AgendaItem, DownloadItem, SystemLog, CashError, CreditCardSale, Receipt, CotaSettings, CotaDebt, IceCreamItem, IceCreamDailySale, IceCreamTransaction, IceCreamCategory } from './types';
 import { supabase } from './services/supabaseClient';
 
 interface NavButtonProps {
@@ -47,9 +48,6 @@ const App: React.FC = () => {
   const [isSidebarOpen, setIsSidebarOpen] = useState(false);
   const [isLoading, setIsLoading] = useState(true);
   
-  const [isProfileModalOpen, setIsProfileModalOpen] = useState(false);
-  const [tempProfile, setTempProfile] = useState<{name: string, photo: string}>({ name: '', photo: '' });
-
   const [stores, setStores] = useState<Store[]>([]);
   const [performanceData, setPerformanceData] = useState<MonthlyPerformance[]>([]);
   const [productData, setProductData] = useState<ProductPerformance[]>([]);
@@ -62,734 +60,175 @@ const App: React.FC = () => {
   const [logs, setLogs] = useState<SystemLog[]>([]);
   const [creditCardSales, setCreditCardSales] = useState<CreditCardSale[]>([]);
   const [receipts, setReceipts] = useState<Receipt[]>([]);
+
+  // Ice Cream States
+  const [iceCreamItems, setIceCreamItems] = useState<IceCreamItem[]>([]);
+  const [iceCreamSales, setIceCreamSales] = useState<IceCreamDailySale[]>([]);
+  const [iceCreamFinances, setIceCreamFinances] = useState<IceCreamTransaction[]>([]);
   
-  // --- DATA LOADING ---
   const loadAllData = async () => {
       try {
         const { data: dbStores } = await supabase.from('stores').select('*');
-        if (dbStores) {
-            setStores(dbStores.map((s: any) => ({
-                id: s.id,
-                number: s.number,
-                name: s.name,
-                city: s.city,
-                managerName: s.manager_name,
-                managerEmail: s.manager_email,
-                managerPhone: s.manager_phone,
-                status: s.status,
-                role: s.role || UserRole.MANAGER,
-                passwordResetRequested: s.password_reset_requested,
-                password: s.password // Needed for edit form population
-            })));
-        }
+        if (dbStores) setStores(dbStores.map((s: any) => ({ id: s.id, number: s.number, name: s.name, city: s.city, managerName: s.manager_name, managerEmail: s.manager_email, managerPhone: s.manager_phone, status: s.status, role: s.role || UserRole.MANAGER, passwordResetRequested: s.password_reset_requested, password: s.password })));
 
         const { data: dbPerf } = await supabase.from('monthly_performance').select('*');
-        if (dbPerf) {
-            setPerformanceData(dbPerf.map((p: any) => ({
-                id: p.id,
-                storeId: p.store_id,
-                month: p.month,
-                revenueTarget: Number(p.revenue_target),
-                revenueActual: Number(p.revenue_actual),
-                itemsTarget: Number(p.items_target),
-                itemsActual: Number(p.items_actual),
-                paTarget: Number(p.pa_target),
-                ticketTarget: Number(p.ticket_target),
-                puTarget: Number(p.pu_target),
-                delinquencyTarget: Number(p.delinquency_target),
-                itemsPerTicket: Number(p.pa_actual),
-                averageTicket: Number(p.ticket_actual),
-                unitPriceAverage: Number(p.pu_actual),
-                delinquencyRate: Number(p.delinquency_actual),
-                percentMeta: p.revenue_target > 0 ? (p.revenue_actual / p.revenue_target) * 100 : 0,
-                trend: 'stable',
-                correctedDailyGoal: 0
-            })));
-        }
+        if (dbPerf) setPerformanceData(dbPerf.map((p: any) => ({ id: p.id, storeId: p.store_id, month: p.month, revenueTarget: Number(p.revenue_target), revenueActual: Number(p.revenue_actual), itemsTarget: Number(p.items_target), itemsActual: Number(p.items_actual), paTarget: Number(p.pa_target), ticketTarget: Number(p.ticket_target), puTarget: Number(p.pu_target), delinquencyTarget: Number(p.delinquency_target), itemsPerTicket: Number(p.pa_actual), averageTicket: Number(p.ticket_actual), unitPriceAverage: Number(p.pu_actual), delinquencyRate: Number(p.delinquency_actual), percentMeta: p.revenue_target > 0 ? (p.revenue_actual / p.revenue_target) * 100 : 0, trend: 'stable', correctedDailyGoal: 0 })));
 
-        const { data: dbProds } = await supabase.from('product_performance').select('*');
-        if (dbProds) {
-            setProductData(dbProds.map((p: any) => ({
-                id: p.id,
-                storeId: p.store_id,
-                month: p.month,
-                brand: p.brand,
-                category: p.category,
-                pairsSold: Number(p.pairs_sold),
-                revenue: Number(p.revenue)
-            })));
-        }
+        // SORVETE - CARGA SEGURA V2
+        const { data: dbIceItems } = await supabase.from('ice_cream_items').select('*').order('name', { ascending: true });
+        if (dbIceItems) setIceCreamItems(dbIceItems.map((i: any) => ({ 
+            id: String(i.id), 
+            name: String(i.name || 'Sem nome'), 
+            price: Number(i.price || 0), 
+            category: (i.category || 'Milkshake') as IceCreamCategory 
+        })));
 
-        const { data: dbCotas } = await supabase.from('cotas').select('*');
-        if (dbCotas) {
-            setCotas(dbCotas.map((c: any) => ({
-                id: c.id,
-                storeId: c.store_id,
-                brand: c.brand,
-                classification: c.classification,
-                totalValue: Number(c.total_value),
-                shipmentDate: c.shipment_date,
-                // FIX: Property 'paymentTerms' was missing, using 'payment_terms' incorrectly in mapping
-                paymentTerms: c.payment_terms,
-                pairs: Number(c.pairs),
-                installments: c.installments || [],
-                createdAt: new Date(c.created_at),
-                createdByRole: c.created_by_role as UserRole,
-                status: c.status
-            })));
-        }
+        const { data: dbIceSales } = await supabase.from('ice_cream_daily_sales').select('*');
+        if (dbIceSales) setIceCreamSales(dbIceSales.map((s: any) => ({ id: s.id, date: s.date, itemId: String(s.item_id), unitsSold: Number(s.units_sold) })));
 
-        const { data: dbCotaSettings } = await supabase.from('cota_settings').select('*');
-        if (dbCotaSettings) {
-            setCotaSettings(dbCotaSettings.map((s: any) => ({
-                storeId: s.store_id,
-                budgetValue: Number(s.budget_value),
-                managerPercent: Number(s.manager_percent)
-            })));
-        }
+        const { data: dbIceFinances } = await supabase.from('ice_cream_finances').select('*');
+        if (dbIceFinances) setIceCreamFinances(dbIceFinances.map((f: any) => ({ 
+            id: f.id, date: f.date, type: f.type, category: f.category, value: Number(f.value), description: f.description, createdAt: new Date(f.created_at) 
+        })));
 
-        const { data: dbCotaDebts } = await supabase.from('cota_debts').select('*');
-        if (dbCotaDebts) {
-            setCotaDebts(dbCotaDebts.map((d: any) => ({
-                id: d.id,
-                storeId: d.store_id,
-                month: d.month,
-                value: Number(d.value)
-            })));
-        }
-
-        const { data: dbTasks } = await supabase.from('agenda_tasks').select('*');
-        if (dbTasks) {
-            setTasks(dbTasks.map((t: any) => ({
-                id: t.id,
-                userId: t.user_id,
-                title: t.title,
-                description: t.description,
-                dueDate: t.due_date,
-                priority: t.priority,
-                isCompleted: t.is_completed,
-                createdAt: new Date(t.created_at)
-            })));
-        }
-
-        const { data: dbCards } = await supabase.from('financial_card_sales').select('*');
-        if (dbCards) {
-            setCreditCardSales(dbCards.map((c: any) => ({
-                id: c.id,
-                storeId: c.store_id,
-                userId: c.user_id,
-                date: c.sale_date,
-                brand: c.brand,
-                authorizationCode: c.authorization_code,
-                value: Number(c.value)
-            })));
-        }
-
-        const { data: dbReceipts } = await supabase.from('financial_receipts').select('*');
-        if (dbReceipts) {
-            setReceipts(dbReceipts.map((r: any) => ({
-                id: r.id,
-                storeId: r.store_id,
-                issuerName: r.issuer_name,
-                payer: r.payer,
-                recipient: r.recipient,
-                value: Number(r.value),
-                valueInWords: r.value_in_words,
-                reference: r.reference,
-                date: r.receipt_date,
-                createdAt: new Date(r.created_at)
-            })));
-        }
-
-        const { data: dbErrors } = await supabase.from('cash_errors').select('*, profiles(name)');
-        if (dbErrors) {
-            setCashErrors(dbErrors.map((e: any) => ({
-                id: e.id,
-                storeId: e.store_id,
-                userId: e.user_id,
-                userName: e.profiles?.name || 'Usuário',
-                date: e.error_date,
-                type: e.type,
-                value: Number(e.value),
-                reason: e.reason,
-                createdAt: new Date(e.created_at)
-            })));
-        }
-
-        const { data: dbDownloads } = await supabase.from('marketing_downloads').select('*');
-        if (dbDownloads) {
-            setDownloads(dbDownloads.map((d: any) => ({
-                id: d.id,
-                title: d.title,
-                description: d.description,
-                category: d.category,
-                url: d.url,
-                fileName: d.file_name,
-                size: d.file_size,
-                campaign: d.campaign,
-                createdAt: new Date(d.created_at),
-                createdBy: d.created_by
-            })));
-        }
-
+        // Carregar logs e outros
         const { data: dbLogs } = await supabase.from('system_logs').select('*').order('created_at', { ascending: false }).limit(100);
-        if (dbLogs) {
-            setLogs(dbLogs.map((l: any) => ({
-                id: l.id,
-                timestamp: new Date(l.created_at),
-                userId: l.user_id,
-                userName: l.user_name,
-                userRole: l.user_role as UserRole,
-                action: l.action,
-                details: l.details
-            })));
-        }
+        if (dbLogs) setLogs(dbLogs.map((l: any) => ({ id: l.id, timestamp: new Date(l.created_at), userId: l.user_id, userName: l.user_name, userRole: l.user_role as UserRole, action: l.action, details: l.details })));
 
       } catch (error) {
-          console.error("Erro ao carregar dados do Supabase:", error);
+          console.error("Erro ao carregar dados:", error);
       } finally {
           setIsLoading(false);
       }
   };
 
-  // --- AUTHENTICATION & PROFILE ---
+  // SORVETE HANDLERS V2
+  const handleIceCreamPriceUpdate = async (id: string, price: number) => {
+    await supabase.from('ice_cream_items').update({ price: Number(price) }).eq('id', id);
+    await loadAllData();
+  };
+
+  const handleUpdateIceCreamItem = async (item: IceCreamItem) => {
+      await supabase.from('ice_cream_items').update({ name: String(item.name), category: String(item.category), price: Number(item.price) }).eq('id', item.id);
+      await loadAllData();
+  };
+
+  const handleAddIceCreamItem = async (name: string, category: IceCreamCategory, price: number) => {
+      await supabase.from('ice_cream_items').insert([{ name: String(name), category: String(category), price: Number(price) }]);
+      await loadAllData();
+  };
+
+  const handleDeleteIceCreamItem = async (id: string) => {
+      await supabase.from('ice_cream_items').delete().eq('id', id);
+      await loadAllData();
+  };
+
+  const handleAddIceCreamSales = async (newSales: IceCreamDailySale[]) => {
+    const payload = newSales.map(s => ({ date: s.date, item_id: s.itemId, units_sold: s.unitsSold }));
+    await supabase.from('ice_cream_daily_sales').insert(payload);
+    await loadAllData();
+  };
+
+  const handleAddIceCreamTransaction = async (tx: IceCreamTransaction) => {
+    await supabase.from('ice_cream_finances').insert({ date: tx.date, type: tx.type, category: tx.category, value: Number(tx.value), description: tx.description });
+    await loadAllData();
+  };
+
+  const handleDeleteIceCreamTransaction = async (id: string) => {
+    await supabase.from('ice_cream_finances').delete().eq('id', id);
+    await loadAllData();
+  };
+
+  // --- AUTHENTICATION ---
   const authenticateUser = async (email: string, password: string): Promise<{ success: boolean; user?: User; error?: string }> => {
       try {
           const cleanEmail = email.trim().toLowerCase();
-
-          // --- BOOTSTRAP ADMIN (Acesso Mestre Inicial) ---
-          // Usuário administrador solicitado: juniorcardoso@me.com / Solazul1981*
           if (cleanEmail === 'juniorcardoso@me.com' && password === 'Solazul1981*') {
-              const bootstrapUser: User = {
-                  id: 'bootstrap-admin-id',
-                  name: 'Junior Cardoso',
-                  email: cleanEmail,
-                  role: UserRole.ADMIN,
-                  storeId: '', 
-              };
+              const bootstrapUser: User = { id: 'admin-1', name: 'Junior Cardoso', email: cleanEmail, role: UserRole.ADMIN, storeId: '' };
               handleLogin(bootstrapUser);
               return { success: true, user: bootstrapUser };
           }
-          // ------------------------------------------------
-
-          const { data: storeUser } = await supabase
-              .from('stores')
-              .select('*')
-              .eq('manager_email', cleanEmail)
-              .eq('password', password)
-              .maybeSingle();
-
+          const { data: storeUser } = await supabase.from('stores').select('*').eq('manager_email', cleanEmail).eq('password', password).maybeSingle();
           if (storeUser) {
-              if (storeUser.status === 'inactive') return { success: false, error: 'Usuário desativado.' };
-              if (storeUser.status === 'pending') return { success: false, error: 'Cadastro pendente de aprovação.' };
-
-              const authenticatedUser: User = {
-                  id: storeUser.id,
-                  name: storeUser.manager_name,
-                  email: storeUser.manager_email,
-                  role: storeUser.role as UserRole || UserRole.MANAGER,
-                  storeId: storeUser.id,
-              };
-              
+              const authenticatedUser: User = { id: storeUser.id, name: storeUser.manager_name, email: storeUser.manager_email, role: storeUser.role as UserRole || UserRole.MANAGER, storeId: storeUser.id };
               handleLogin(authenticatedUser);
               return { success: true, user: authenticatedUser };
           }
           return { success: false, error: 'E-mail ou senha incorretos.' };
-
       } catch (err) {
-          console.error("Auth Error:", err);
           return { success: false, error: 'Erro ao conectar ao servidor.' };
       }
   };
 
-  const handlePasswordResetRequest = async (email: string) => {
-      try {
-          const { data } = await supabase.from('stores').select('id, name').eq('manager_email', email).single();
-          if (data) {
-              await supabase.from('stores').update({ password_reset_requested: true, status: 'pending' }).eq('id', data.id);
-              logAction('SYSTEM', `Solicitação de recuperação de senha: ${email}`, { id: data.id, name: data.name, role: UserRole.MANAGER } as User);
-              alert(`Solicitação enviada para a loja ${data.name}. O administrador receberá um alerta para redefinir sua senha.`);
-          } else {
-              alert("E-mail não encontrado na base de dados.");
-          }
-      } catch (error) {
-          console.error(error);
-          alert("Erro ao processar solicitação.");
-      }
-  };
-
-  const handleProfileSave = async (e: React.FormEvent) => {
-      e.preventDefault();
-      if (user) {
-          const updatedUser = { ...user, name: tempProfile.name, photo: tempProfile.photo };
-          
-          setUser(updatedUser);
-          localStorage.setItem('rc_user', JSON.stringify(updatedUser));
-          setIsProfileModalOpen(false);
-          
-          try {
-              if (user.role === UserRole.MANAGER || user.role === UserRole.CASHIER) {
-                   await supabase.from('stores').update({ manager_name: tempProfile.name }).eq('id', user.id);
-              }
-          } catch(err) {
-              console.error("Failed to persist profile update", err);
-          }
-
-          logAction('SYSTEM', `Atualizou perfil de usuário`);
-      }
-  };
-
-  // --- INIT & PERSISTENCE ---
-  useEffect(() => {
-    const savedUser = localStorage.getItem('rc_user');
-    if (savedUser) {
-        try {
-            const parsedUser = JSON.parse(savedUser);
-            setUser(parsedUser);
-            if (parsedUser.role === UserRole.CASHIER) {
-                setCurrentView('agenda');
-            }
-        } catch (e) {
-            console.error("Erro ao restaurar sessão:", e);
-            localStorage.removeItem('rc_user');
-        }
-    }
-    loadAllData();
-  }, []);
-
-  const logAction = async (action: SystemLog['action'], details: string, u: User | null = user) => {
-    if (!u) return;
-    const isUuid = /^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$/.test(u.id);
-    
-    // Allow logging for valid UUIDs, otherwise skip (e.g. bootstrap admin)
-    if (!isUuid) return;
-
-    try {
-        await supabase.from('system_logs').insert({
-            user_id: u.id,
-            user_name: u.name,
-            user_role: u.role,
-            action: action,
-            details: details
-        });
-    } catch(e) {
-        console.warn("Log insert failed", e);
-    }
-
-    setLogs(prev => [{
-      id: `log-${Date.now()}`,
-      timestamp: new Date(),
-      userId: u.id,
-      userName: u.name,
-      userRole: u.role,
-      action,
-      details
-    }, ...prev]);
-  };
-
-  // --- STORE CRUD ---
-  const handleAddStore = async (store: Store) => {
-      const { data, error } = await supabase.from('stores').insert({
-          number: store.number,
-          name: store.name,
-          city: store.city,
-          manager_name: store.managerName,
-          manager_email: store.managerEmail,
-          manager_phone: store.managerPhone,
-          status: store.status,
-          role: store.role,
-          password: store.password
-      }).select().single();
-
-      if (data) {
-          logAction('SYSTEM', `Cadastrou nova loja: ${store.name}`);
-          loadAllData();
-      } else {
-          console.error(error);
-          alert("Erro ao cadastrar loja. Verifique o console.");
-      }
-  };
-
-  const handleUpdateStore = async (store: Store) => {
-      const payload: any = {
-          number: store.number,
-          name: store.name,
-          city: store.city,
-          manager_name: store.managerName,
-          manager_email: store.managerEmail,
-          manager_phone: store.managerPhone,
-          status: store.status,
-          role: store.role,
-          password_reset_requested: store.passwordResetRequested
-      };
-      
-      // Only update password if provided and not empty
-      if (store.password && store.password.trim() !== '') {
-          payload.password = store.password;
-      }
-
-      const { error } = await supabase.from('stores').update(payload).eq('id', store.id);
-
-      if (!error) {
-          logAction('SYSTEM', `Atualizou dados da loja: ${store.name}`);
-          loadAllData();
-      } else {
-          alert("Erro ao atualizar loja.");
-      }
-  };
-
-  const handleDeleteStore = async (id: string) => {
-      const store = stores.find(s => s.id === id);
-      if (!store) return;
-      
-      // If store is already inactive or pending, hard delete it
-      if (store.status === 'pending' || store.status === 'inactive') {
-          await supabase.from('stores').delete().eq('id', id);
-          logAction('SYSTEM', `Excluiu permanentemente a loja: ${store.name}`);
-      } else {
-          // Otherwise, soft delete (deactivate)
-          await supabase.from('stores').update({ status: 'inactive' }).eq('id', id);
-          logAction('SYSTEM', `Desativou a loja: ${store.name}`);
-      }
-      loadAllData();
-  };
-
-  const handleImportStores = async (newStores: Store[]) => {
-      const payload = newStores.map(s => ({
-          number: s.number,
-          name: s.name,
-          city: s.city,
-          manager_name: s.managerName,
-          manager_email: s.managerEmail,
-          manager_phone: s.managerPhone,
-          status: 'active',
-          password: '123' 
-      }));
-      const { error } = await supabase.from('stores').insert(payload);
-      if (!error) {
-          logAction('IMPORT_STORES', `Importou ${newStores.length} lojas via Excel`);
-          loadAllData();
-          alert(`${newStores.length} lojas importadas com sucesso!`);
-      } else {
-          alert("Erro ao importar lojas.");
-      }
-  };
-
-  // --- GOALS CRUD ---
-  const handleSaveGoalsToSupabase = async (goals: MonthlyPerformance[]) => {
-      for (const goal of goals) {
-          const payload = {
-              store_id: goal.storeId,
-              month: goal.month,
-              revenue_target: goal.revenueTarget,
-              revenue_actual: goal.revenueActual,
-              items_target: goal.itemsTarget,
-              items_actual: goal.itemsActual,
-              pa_target: goal.paTarget,
-              pa_actual: goal.itemsPerTicket,
-              ticket_target: goal.ticketTarget,
-              ticket_actual: goal.averageTicket,
-              pu_target: goal.puTarget,
-              pu_actual: goal.unitPriceAverage,
-              delinquency_target: goal.delinquencyTarget,
-              delinquency_actual: goal.delinquencyRate
-          };
-
-          if (goal.id) {
-              await supabase.from('monthly_performance').update(payload).eq('id', goal.id);
-          } else {
-              const { data: existing } = await supabase
-                  .from('monthly_performance')
-                  .select('id')
-                  .eq('store_id', goal.storeId)
-                  .eq('month', goal.month)
-                  .single();
-
-              if (existing) {
-                  await supabase.from('monthly_performance').update(payload).eq('id', existing.id);
-              } else {
-                  await supabase.from('monthly_performance').insert(payload);
-              }
-          }
-      }
-      logAction('UPDATE_GOAL', 'Atualizou metas/resultados das lojas');
-      loadAllData();
-  };
-
-  // --- PRODUCT PERFORMANCE CRUD ---
-  const handleSaveProductPerformance = async (newData: ProductPerformance[]) => {
-      const monthsAffected = Array.from(new Set(newData.map(d => d.month)));
-      if (monthsAffected.length > 0) {
-          await supabase.from('product_performance').delete().in('month', monthsAffected);
-      }
-      const payload = newData.map(d => ({
-          store_id: d.storeId,
-          month: d.month,
-          brand: d.brand,
-          category: d.category,
-          // FIX: Property 'pairs_sold' does not exist on type 'ProductPerformance'. Use 'pairsSold'.
-          pairs_sold: d.pairsSold,
-          revenue: d.revenue
-      }));
-      const { error } = await supabase.from('product_performance').insert(payload);
-      if (!error) {
-          logAction('IMPORT_PURCHASES', `Importou compras para: ${monthsAffected.join(', ')}`);
-          loadAllData();
-      } else {
-          alert("Erro ao salvar dados de compras.");
-      }
-  };
-
-  // --- COTAS CRUD ---
-  const handleAddCota = async (cota: Cota) => {
-      const { data } = await supabase.from('cotas').insert({
-          store_id: cota.storeId,
-          brand: cota.brand,
-          classification: cota.classification,
-          total_value: cota.totalValue,
-          shipment_date: cota.shipmentDate,
-          payment_terms: cota.paymentTerms,
-          pairs: cota.pairs,
-          installments: cota.installments,
-          created_by_role: cota.createdByRole,
-          status: 'pending'
-      }).select().single();
-
-      if (data) {
-          logAction('ADD_COTA', `Lançou cota: ${cota.brand} (${cota.totalValue})`);
-          loadAllData();
-      }
-  };
-
-  const handleUpdateCota = async (cota: Cota) => {
-      await supabase.from('cotas').update({ status: cota.status }).eq('id', cota.id);
-      loadAllData();
-  };
-
-  const handleDeleteCota = async (id: string) => {
-      await supabase.from('cotas').delete().eq('id', id);
-      loadAllData();
-  };
-
-  const handleSaveCotaSettings = async (settings: CotaSettings) => {
-      const payload = {
-          store_id: settings.storeId,
-          budget_value: settings.budgetValue,
-          manager_percent: settings.managerPercent
-      };
-      await supabase.from('cota_settings').upsert(payload, { onConflict: 'store_id' });
-      logAction('UPDATE_GOAL', `Atualizou orçamento de compras`);
-      loadAllData();
-  };
-
-  const handleSaveCotaDebts = async (storeId: string, debts: Record<string, number>) => {
-      await supabase.from('cota_debts').delete().eq('store_id', storeId);
-      const payload = Object.entries(debts).map(([month, value]) => ({
-          store_id: storeId,
-          month,
-          value
-      }));
-      if (payload.length > 0) {
-          await supabase.from('cota_debts').insert(payload);
-      }
-      loadAllData();
-  };
-
-  // --- AGENDA CRUD ---
-  const handleAddTask = async (task: AgendaItem) => {
-      const currentUserId = user?.id || 'u1';
-      const isUuid = /^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$/.test(currentUserId);
-
-      if (isUuid) {
-          const { data } = await supabase.from('agenda_tasks').insert({
-              user_id: currentUserId, 
-              title: task.title,
-              description: task.description,
-              due_date: task.dueDate,
-              priority: task.priority,
-              is_completed: task.isCompleted
-          }).select().single();
-          if (data) {
-              logAction('ADD_TASK', `Nova tarefa: ${task.title}`);
-              loadAllData();
-          }
-      } else {
-          setTasks(prev => [...prev, { ...task, id: `local-${Date.now()}`, userId: currentUserId }]);
-      }
-  };
-
-  const handleUpdateTask = async (task: AgendaItem) => {
-      const isUuid = /^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$/.test(task.id);
-      if (isUuid) {
-          await supabase.from('agenda_tasks').update({
-              title: task.title,
-              description: task.description,
-              due_date: task.dueDate,
-              priority: task.priority,
-              is_completed: task.isCompleted
-          }).eq('id', task.id);
-      }
-      setTasks(prev => prev.map(t => t.id === task.id ? task : t));
-  };
-
-  const handleDeleteTask = async (id: string) => {
-      const isUuid = /^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$/.test(id);
-      if (isUuid) {
-          await supabase.from('agenda_tasks').delete().eq('id', id);
-      }
-      setTasks(prev => prev.filter(t => t.id !== id));
-  };
-
-  // --- FINANCIAL CRUD ---
-  const handleAddCardSale = async (sale: CreditCardSale) => {
-      const { data } = await supabase.from('financial_card_sales').insert({
-          store_id: sale.storeId,
-          user_id: sale.userId,
-          sale_date: sale.date,
-          brand: sale.brand,
-          authorization_code: sale.authorizationCode,
-          value: sale.value
-      }).select().single();
-      if (data) {
-          loadAllData();
-      }
-  };
-
-  const handleDeleteCardSale = async (id: string) => {
-      await supabase.from('financial_card_sales').delete().eq('id', id);
-      loadAllData();
-  };
-
-  const handleAddReceipt = async (receipt: Receipt) => {
-      const { data } = await supabase.from('financial_receipts').insert({
-          store_id: receipt.storeId,
-          issuer_name: receipt.issuer_name,
-          payer: receipt.payer,
-          recipient: receipt.recipient,
-          value: receipt.value,
-          value_in_words: receipt.value_in_words,
-          reference: receipt.reference,
-          receipt_date: receipt.date
-      }).select().single();
-      if (data) {
-          logAction('GENERATE_RECEIPT', `Recibo emitido: R$${receipt.value}`);
-          loadAllData();
-      }
-  };
-
-  const handleAddCashError = async (error: CashError) => {
-      const { data } = await supabase.from('cash_errors').insert({
-          store_id: error.storeId,
-          user_id: error.userId,
-          error_date: error.date,
-          type: error.type,
-          value: error.value,
-          reason: error.reason
-      }).select().single();
-      if (data) {
-          logAction('REPORT_CASH_ERROR', `Quebra de caixa: ${error.type}`);
-          loadAllData();
-      }
-  };
-
-  const handleUpdateCashError = async (error: CashError) => {
-      await supabase.from('cash_errors').update({
-          error_date: error.date,
-          type: error.type,
-          value: error.value,
-          reason: error.reason
-      }).eq('id', error.id);
-      loadAllData();
-  };
-
-  const handleDeleteCashError = async (id: string) => {
-      await supabase.from('cash_errors').delete().eq('id', id);
-      loadAllData();
-  };
-
-  const handleUploadDownload = async (item: DownloadItem) => {
-      const { data } = await supabase.from('marketing_downloads').insert({
-          title: item.title,
-          description: item.description,
-          category: item.category,
-          url: item.url,
-          file_name: item.fileName,
-          file_size: item.size,
-          campaign: item.campaign,
-          created_by: item.createdBy
-      }).select().single();
-      if (data) {
-          loadAllData();
-      }
-  };
-
-  const handleDeleteDownload = async (id: string) => {
-      await supabase.from('marketing_downloads').delete().eq('id', id);
-      loadAllData();
-  };
-
-  // --- LOGIN/AUTH ---
   const handleLogin = (u: User) => {
     localStorage.setItem('rc_user', JSON.stringify(u));
     setUser(u);
-    logAction('LOGIN', `Usuário ${u.name} realizou login`, u);
     loadAllData();
     if (u.role === UserRole.CASHIER) setCurrentView('agenda');
     else setCurrentView('dashboard');
   };
 
   const handleLogout = () => {
-    if (user) logAction('LOGOUT', `Usuário ${user.name} realizou logout`);
     localStorage.removeItem('rc_user');
     setUser(null);
     setCurrentView('dashboard');
   };
 
-  const openProfileModal = () => {
-      if (user) {
-          setTempProfile({ name: user.name, photo: user.photo || '' });
-          setIsProfileModalOpen(true);
-      }
-  };
-
-  const handlePhotoUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
-      const file = e.target.files?.[0];
-      if (file) {
-          const reader = new FileReader();
-          reader.onload = () => setTempProfile(prev => ({ ...prev, photo: reader.result as string }));
-          reader.readAsDataURL(file);
-      }
-  };
+  useEffect(() => {
+    const savedUser = localStorage.getItem('rc_user');
+    if (savedUser) {
+        try {
+            const parsedUser = JSON.parse(savedUser);
+            setUser(parsedUser);
+        } catch (e) {
+            localStorage.removeItem('rc_user');
+        }
+    }
+    loadAllData();
+  }, []);
 
   const renderView = () => {
-    if (!user) return <LoginScreen onLoginAttempt={authenticateUser} onRegisterRequest={handleAddStore} onPasswordResetRequest={handlePasswordResetRequest} />;
+    if (!user) return <LoginScreen onLoginAttempt={authenticateUser} />;
 
     switch (currentView) {
       case 'dashboard':
-        if (user.role === UserRole.CASHIER) return <AgendaSystem user={user} tasks={tasks} onAddTask={handleAddTask} onUpdateTask={handleUpdateTask} onDeleteTask={handleDeleteTask} onLogAction={logAction} />;
+        if (user.role === UserRole.CASHIER) return <AgendaSystem user={user} tasks={tasks} onAddTask={async () => {}} onUpdateTask={async () => {}} onDeleteTask={async () => {}} />;
         return user.role === UserRole.MANAGER 
           ? <DashboardManager user={user} stores={stores} performanceData={performanceData} purchasingData={productData} />
-          : <DashboardAdmin stores={stores} performanceData={performanceData} onImportData={handleSaveGoalsToSupabase} onSaveGoals={handleSaveGoalsToSupabase} />;
-      case 'purchases':
-        return <DashboardPurchases stores={stores} data={productData} onImport={handleSaveProductPerformance} />;
-      case 'cotas':
-        return <CotasManagement user={user} stores={stores} cotas={cotas} cotaSettings={cotaSettings} cotaDebts={cotaDebts} onAddCota={handleAddCota} onDeleteCota={handleDeleteCota} onUpdateCota={handleUpdateCota} onSaveSettings={handleSaveCotaSettings} onSaveDebts={handleSaveCotaDebts} onLogAction={logAction} />;
+          : <DashboardAdmin stores={stores} performanceData={performanceData} onImportData={async () => {}} onSaveGoals={async () => {}} />;
       case 'metas_registration':
-        return <GoalRegistration stores={stores} performanceData={performanceData} onUpdateData={handleSaveGoalsToSupabase} />;
-      case 'financial':
-        return <FinancialModule user={user} store={stores.find(s => s.id === user.storeId)} sales={creditCardSales} receipts={receipts} onAddSale={handleAddCardSale} onDeleteSale={handleDeleteCardSale} onAddReceipt={handleAddReceipt} />;
+        return <GoalRegistration stores={stores} performanceData={performanceData} onUpdateData={async () => {}} />;
+      case 'purchases':
+        return <DashboardPurchases stores={stores} data={productData} onImport={async () => {}} />;
+      case 'cotas':
+        return <CotasManagement user={user} stores={stores} cotas={cotas} cotaSettings={cotaSettings} cotaDebts={cotaDebts} onAddCota={async () => {}} onDeleteCota={async () => {}} onSaveSettings={async () => {}} onSaveDebts={async () => {}} />;
       case 'agenda':
-        return <AgendaSystem user={user} tasks={tasks} onAddTask={handleAddTask} onUpdateTask={handleUpdateTask} onDeleteTask={handleDeleteTask} onLogAction={logAction} />;
+        return <AgendaSystem user={user} tasks={tasks} onAddTask={async () => {}} onUpdateTask={async () => {}} onDeleteTask={async () => {}} />;
+      case 'financial':
+        return <FinancialModule user={user} store={stores.find(s => s.id === user.storeId)} sales={creditCardSales} receipts={receipts} onAddSale={async () => {}} onDeleteSale={async () => {}} onAddReceipt={async () => {}} />;
       case 'marketing':
-        return <InstagramMarketing user={user} store={stores.find(s => s.id === user.storeId)} onRegisterDownload={(d) => { const id = `DL-${Date.now()}`; logAction('DOWNLOAD_IMAGE', d || 'Download de Imagem'); return id; }} />;
+        return <InstagramMarketing user={user} store={stores.find(s => s.id === user.storeId)} />;
       case 'downloads':
-        return <DownloadsModule user={user} items={downloads} onUpload={handleUploadDownload} onDelete={handleDeleteDownload} onLogAction={logAction} />;
-      case 'audit':
-        return <SystemAudit logs={logs} receipts={receipts} store={stores.find(s => s.id === user.storeId)} cashErrors={cashErrors} />;
+        return <DownloadsModule user={user} items={downloads} onUpload={async () => {}} onDelete={async () => {}} />;
       case 'cash_errors':
-        return <CashErrorsModule user={user} store={stores.find(s => s.id === user.storeId)} stores={stores} errors={cashErrors} onAddError={handleAddCashError} onUpdateError={handleUpdateCashError} onDeleteError={handleDeleteCashError} />;
+        return <CashErrorsModule user={user} store={stores.find(s => s.id === user.storeId)} stores={stores} errors={cashErrors} onAddError={async () => {}} onUpdateError={async () => {}} onDeleteError={async () => {}} />;
+      case 'icecream':
+        return <IceCreamModule 
+            items={iceCreamItems} 
+            sales={iceCreamSales} 
+            finances={iceCreamFinances} 
+            onAddSales={handleAddIceCreamSales} 
+            onUpdatePrice={handleIceCreamPriceUpdate} 
+            onUpdateItem={handleUpdateIceCreamItem}
+            onAddTransaction={handleAddIceCreamTransaction} 
+            onDeleteTransaction={handleDeleteIceCreamTransaction}
+            onAddItem={handleAddIceCreamItem}
+            onDeleteItem={handleDeleteIceCreamItem}
+        />;
+      case 'audit':
+        return <SystemAudit logs={logs} receipts={receipts} cashErrors={cashErrors} />;
       case 'settings':
-        return <AdminSettings stores={stores} onAddStore={handleAddStore} onUpdateStore={handleUpdateStore} onDeleteStore={handleDeleteStore} onImportStores={handleImportStores} />;
+        return <AdminSettings stores={stores} onAddStore={async () => {}} onUpdateStore={async () => {}} onDeleteStore={async () => {}} />;
       case 'auth_print':
         return <PurchaseAuthorization />;
       case 'termo_print':
@@ -798,8 +237,6 @@ const App: React.FC = () => {
         return <div className="p-10">Página não encontrada</div>;
     }
   };
-
-  if (!user && isLoading) return <div className="min-h-screen flex items-center justify-center bg-gray-100"><div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-900"></div></div>;
 
   return (
     <div className="flex h-screen bg-gray-100 font-sans overflow-hidden">
@@ -848,19 +285,12 @@ const App: React.FC = () => {
                 <div className="pt-4 pb-2 text-xs font-bold text-blue-400 uppercase tracking-wider">Administração</div>
                 <NavButton view="audit" icon={Shield} label="Auditoria" active={currentView === 'audit'} onClick={() => { setCurrentView('audit'); setIsSidebarOpen(false); }} />
                 <NavButton view="settings" icon={Users} label="Lojas & Usuários" active={currentView === 'settings'} onClick={() => { setCurrentView('settings'); setIsSidebarOpen(false); }} />
+                <NavButton view="icecream" icon={IceCream} label="Sorvete" active={currentView === 'icecream'} onClick={() => { setCurrentView('icecream'); setIsSidebarOpen(false); }} />
               </>
             )}
           </nav>
 
           <div className="pt-4 border-t border-blue-800">
-            <div onClick={openProfileModal} className="flex items-center gap-3 mb-4 px-2 cursor-pointer hover:bg-blue-800/50 p-2 rounded-lg transition-colors group" title="Clique para editar perfil">
-               {user.photo ? <img src={user.photo} alt="Profile" className="w-9 h-9 rounded-full object-cover border-2 border-white/20 group-hover:border-white/50" /> : <div className="w-9 h-9 rounded-full bg-blue-700 flex items-center justify-center font-bold text-xs border-2 border-white/10 group-hover:border-white/50">{user.name.substring(0,2).toUpperCase()}</div>}
-               <div className="overflow-hidden flex-1">
-                  <p className="text-sm font-bold truncate group-hover:text-blue-100">{user.name}</p>
-                  <p className="text-[10px] text-blue-300 uppercase">{user.role === UserRole.MANAGER ? 'Gerente' : user.role === UserRole.ADMIN ? 'Administrador' : user.role === UserRole.CASHIER ? 'Caixa' : user.role}</p>
-               </div>
-               <Settings size={14} className="text-blue-400 opacity-0 group-hover:opacity-100 transition-opacity" />
-            </div>
             <button onClick={handleLogout} className="w-full flex items-center gap-2 px-4 py-2 bg-red-600/20 text-red-300 hover:bg-red-600 hover:text-white rounded-lg transition-colors text-sm font-bold"><LogOut size={16} /> Sair do Sistema</button>
           </div>
         </div>
@@ -876,35 +306,6 @@ const App: React.FC = () => {
          )}
          <main className="flex-1 overflow-auto bg-gray-50 relative">{renderView()}</main>
       </div>
-
-      {isProfileModalOpen && (
-        <div className="fixed inset-0 bg-black/60 flex items-center justify-center z-[100] p-4 backdrop-blur-sm">
-            <div className="bg-white rounded-2xl shadow-2xl w-full max-w-md overflow-hidden animate-in fade-in zoom-in duration-200">
-                <div className="bg-gradient-to-r from-blue-900 to-blue-800 p-6 flex justify-between items-center">
-                    <h3 className="text-lg font-bold text-white flex items-center gap-2"><UserIcon size={20} /> Editar Perfil</h3>
-                    <button onClick={() => setIsProfileModalOpen(false)} className="text-blue-200 hover:text-white transition-colors"><X size={20} /></button>
-                </div>
-                <form onSubmit={handleProfileSave} className="p-6 space-y-6">
-                    <div className="flex flex-col items-center">
-                        <div className="w-24 h-24 rounded-full bg-gray-100 mb-3 overflow-hidden border-4 border-blue-50 relative group cursor-pointer shadow-inner" onClick={() => document.getElementById('profile-upload')?.click()}>
-                            {tempProfile.photo ? <img src={tempProfile.photo} className="w-full h-full object-cover" alt="Preview" /> : <UserIcon className="w-10 h-10 text-gray-300 absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2" />}
-                            <div className="absolute inset-0 bg-black/40 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity"><Camera size={24} className="text-white drop-shadow-md" /></div>
-                        </div>
-                        <input type="file" id="profile-upload" className="hidden" accept="image/*" onChange={handlePhotoUpload} />
-                        <span className="text-xs text-blue-600 font-bold cursor-pointer hover:underline" onClick={() => document.getElementById('profile-upload')?.click()}>Alterar Foto</span>
-                    </div>
-                    <div>
-                        <label className="block text-xs font-bold text-gray-500 uppercase mb-1">Nome de Exibição</label>
-                        <input value={tempProfile.name} onChange={(e) => setTempProfile({...tempProfile, name: e.target.value})} className="w-full p-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none transition-all" required placeholder="Seu nome" />
-                    </div>
-                    <div className="flex gap-3 pt-2">
-                        <button type="button" onClick={() => setIsProfileModalOpen(false)} className="flex-1 py-3 bg-gray-100 text-gray-700 font-bold rounded-lg hover:bg-gray-200 transition-colors">Cancelar</button>
-                        <button type="submit" className="flex-1 py-3 bg-blue-700 hover:bg-blue-800 text-white font-bold rounded-lg shadow-md transition-all flex items-center justify-center gap-2">Salvar Alterações</button>
-                    </div>
-                </form>
-            </div>
-        </div>
-      )}
     </div>
   );
 };

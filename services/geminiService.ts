@@ -2,10 +2,9 @@
 import { GoogleGenAI } from "@google/genai";
 import { MonthlyPerformance, Store } from "../types";
 
+// Fix: Initialization helper strictly following the rule: Always use const ai = new GoogleGenAI({apiKey: process.env.API_KEY});
 const getClient = () => {
-  const apiKey = process.env.API_KEY;
-  if (!apiKey) return null;
-  return new GoogleGenAI({ apiKey });
+  return new GoogleGenAI({ apiKey: process.env.API_KEY });
 };
 
 export const analyzePerformance = async (
@@ -14,8 +13,8 @@ export const analyzePerformance = async (
   userRole: string,
   targetStoreId?: string
 ): Promise<string> => {
-  const client = getClient();
-  if (!client) return "Chave da API não configurada. Configure process.env.API_KEY para insights de IA.";
+  // Fix: Instantiating right before call
+  const ai = getClient();
 
   // Prepare context based on role
   let dataContext = "";
@@ -49,11 +48,11 @@ export const analyzePerformance = async (
   `;
 
   try {
-    // FIX: Using gemini-3-flash-preview for Basic Text Tasks as per guidelines
-    const response = await client.models.generateContent({
+    const response = await ai.models.generateContent({
       model: 'gemini-3-flash-preview',
       contents: prompt,
     });
+    // Fix: Using the .text property directly
     return response.text || "Não foi possível gerar análise.";
   } catch (error) {
     console.error("Gemini Error:", error);
@@ -72,8 +71,8 @@ export interface ExtractedPDFData {
 }
 
 export const extractDataFromDocument = async (base64Data: string, mimeType: string): Promise<ExtractedPDFData[]> => {
-    const client = getClient();
-    if (!client) throw new Error("API Key missing");
+    // Fix: Instantiating right before call
+    const ai = getClient();
 
     const prompt = `
         Analise este documento (Relatório de Vendas). 
@@ -101,8 +100,7 @@ export const extractDataFromDocument = async (base64Data: string, mimeType: stri
     `;
 
     try {
-        // FIX: Using gemini-3-flash-preview for Document Data Extraction
-        const response = await client.models.generateContent({
+        const response = await ai.models.generateContent({
             model: 'gemini-3-flash-preview',
             contents: {
                 parts: [
@@ -112,6 +110,7 @@ export const extractDataFromDocument = async (base64Data: string, mimeType: stri
             }
         });
 
+        // Fix: Using the .text property directly
         const text = response.text || "[]";
         // Limpar markdown code blocks se a IA colocar
         const cleanJson = text.replace(/```json/g, '').replace(/```/g, '').trim();
@@ -128,11 +127,10 @@ export const generateMarketingImage = async (
     aspectRatio: '1:1' | '9:16', 
     style: 'promo' | 'lifestyle'
 ): Promise<string | undefined> => {
-    const client = getClient();
-    if (!client) return undefined;
+    // Fix: Instantiating right before call
+    const ai = getClient();
 
     // We use gemini-3-pro-image-preview for highest quality generation
-    // If not available, we might fallback, but prompt emphasizes quality.
     const modelName = 'gemini-3-pro-image-preview'; 
 
     let prompt = `
@@ -149,7 +147,7 @@ export const generateMarketingImage = async (
     `;
 
     try {
-        const response = await client.models.generateContent({
+        const response = await ai.models.generateContent({
             model: modelName,
             contents: {
                 parts: [
@@ -165,12 +163,12 @@ export const generateMarketingImage = async (
             config: {
                 imageConfig: {
                     aspectRatio: aspectRatio === '1:1' ? '1:1' : '9:16',
-                    imageSize: '2K' // Request high res
+                    imageSize: '2K' 
                 }
             }
         });
 
-        // Loop to find image part
+        // Fix: Finding image part in content parts as per response extraction guidelines
         for (const part of response.candidates?.[0]?.content?.parts || []) {
              if (part.inlineData) {
                  return part.inlineData.data;
@@ -180,7 +178,6 @@ export const generateMarketingImage = async (
 
     } catch (error) {
         console.error("Image Gen Error:", error);
-        // Fallback for quota issues or model unavailability could be handled here
         return undefined;
     }
 };

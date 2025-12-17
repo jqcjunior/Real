@@ -9,10 +9,10 @@ export interface User {
   id: string;
   name: string;
   role: UserRole;
-  storeId?: string; // Only for managers
+  storeId?: string;
   email: string;
-  password?: string; // Senha para validação (mock)
-  photo?: string; // Base64 string for profile picture
+  password?: string;
+  photo?: string;
 }
 
 export interface Store {
@@ -23,71 +23,49 @@ export interface Store {
   managerName: string;
   managerEmail: string;
   managerPhone: string;
-  password?: string; // Senha de acesso do gerente
-  status?: 'active' | 'pending' | 'inactive'; // Status da loja no sistema
-  role?: UserRole; // Define se este cadastro tem permissão de Admin ou Gerente
-  passwordResetRequested?: boolean; // Flag to indicate if the pending status is due to a forgotten password
+  password?: string;
+  status?: 'active' | 'pending' | 'inactive';
+  role?: UserRole;
+  passwordResetRequested?: boolean;
 }
 
 export interface MonthlyPerformance {
-  id?: string; // Database ID
+  id?: string;
   storeId: string;
-  month: string; // YYYY-MM
-  
-  // Financeiro
-  revenueTarget: number; // Meta (Valor)
-  revenueActual: number; // Realizado (Valor)
-  percentMeta: number; // % Atingido
-  
-  // Físico / Quantidade (NOVO)
-  itemsTarget?: number; // Meta de Peças/Pares
-  itemsActual?: number; // Realizado de Peças/Pares
-
-  // Operacional - Realizado
-  itemsPerTicket: number; // P.A.
-  unitPriceAverage: number; // P.U.
-  averageTicket: number; // Ticket Médio
-  delinquencyRate: number; // Inadimplência %
-
-  // Operacional - Metas (Novos campos)
+  month: string;
+  revenueTarget: number;
+  revenueActual: number;
+  percentMeta: number;
+  itemsTarget?: number;
+  itemsActual?: number;
+  itemsPerTicket: number;
+  unitPriceAverage: number;
+  averageTicket: number;
+  delinquencyRate: number;
   paTarget?: number;
   ticketTarget?: number;
   puTarget?: number;
   delinquencyTarget?: number;
-
   trend: 'up' | 'down' | 'stable';
   correctedDailyGoal: number;
 }
 
-// NOVA INTERFACE PARA GESTÃO DE COMPRAS
 export interface ProductPerformance {
   id?: string;
   storeId: string;
-  month: string; // YYYY-MM
-  brand: string; // Ex: Nike, Vizzano, Beira Rio
-  category: string; // Ex: Esportivo, Casual, Sandália
+  month: string;
+  brand: string;
+  category: string;
   pairsSold: number;
   revenue: number;
-  // Campos Detalhados Importação
-  reference?: string; // Referencia do produto
-  stockQuantity?: number; // Estoque Atual
-  purchaseQuantity?: number; // Compra
-  consumption?: number; // Consumo %
-  pendingOrder?: number; // Pedido Pendente
-  costPrice?: number; // Preço Custo
-  salePrice?: number; // Preço Venda
-  lastPurchaseDate?: string; // Data Ultima Compra
-}
-
-export interface GamificationStats {
-  rank: number;
-  points: number;
-  medals: {
-    gold: number;
-    silver: number;
-    bronze: number;
-  };
-  achievements: string[];
+  reference?: string;
+  stockQuantity?: number;
+  purchaseQuantity?: number;
+  consumption?: number;
+  pendingOrder?: number;
+  costPrice?: number;
+  salePrice?: number;
+  lastPurchaseDate?: string;
 }
 
 export interface SystemLog {
@@ -96,29 +74,26 @@ export interface SystemLog {
   userId: string;
   userName: string;
   userRole: UserRole;
-  action: 'LOGIN' | 'LOGOUT' | 'DOWNLOAD_IMAGE' | 'UPDATE_GOAL' | 'SYSTEM' | 'IMPORT_PURCHASES' | 'IMPORT_STORES' | 'OPEN_STUDIO' | 'ADD_COTA' | 'ADD_TASK' | 'GENERATE_RECEIPT' | 'CHECK_COTAS' | 'USE_AGENDA' | 'UPLOAD_FILE' | 'DELETE_FILE' | 'REPORT_CASH_ERROR' | 'VALIDATE_ORDER';
+  action: string;
   details: string;
 }
 
-// --- NEW TYPES FOR COTAS ---
-export interface CotaPayment {
-    month: string; // YYYY-MM (Data do vencimento da parcela)
-    value: number;
-}
+// Fix: Exporting CotaPayment type to resolve error in CotasManagement.tsx
+export type CotaPayment = { month: string; value: number };
 
 export interface Cota {
     id: string;
-    storeId: string; // Se for admin, pode ser null ou selecionado
+    storeId: string;
     brand: string;
-    classification?: string; // Ex: Feminino Casual
+    classification?: string;
     totalValue: number;
-    shipmentDate: string; // YYYY-MM (Data base embarque)
-    paymentTerms: string; // Ex: "30/60/90" ou "90/120/150"
+    shipmentDate: string;
+    paymentTerms: string;
     pairs?: number;
-    installments: CotaPayment[]; // Array calculado automaticamente
+    installments: CotaPayment[];
     createdAt: Date;
-    createdByRole?: UserRole; // Identifies if added by MANAGER or ADMIN
-    status?: 'pending' | 'validated'; // New field: pending (in list) vs validated (received/hidden)
+    createdByRole?: UserRole;
+    status?: 'pending' | 'validated';
 }
 
 export interface CotaSettings {
@@ -134,46 +109,44 @@ export interface CotaDebt {
   value: number;
 }
 
-// --- NEW TYPES FOR AGENDA (UPDATED TO 5 LEVELS) ---
+// Fix: Exporting TaskPriority type to resolve error in AgendaSystem.tsx
 export type TaskPriority = 'lowest' | 'low' | 'medium' | 'high' | 'highest';
 
 export interface AgendaItem {
     id: string;
-    userId: string; // Dono da tarefa
+    userId: string;
     title: string;
     description: string;
-    dueDate: string; // YYYY-MM-DD
+    dueDate: string;
     priority: TaskPriority;
     isCompleted: boolean;
     createdAt: Date;
 }
 
-// --- NEW TYPE FOR FINANCIAL MODULE ---
 export interface CreditCardSale {
     id: string;
-    storeId?: string; // Link to store
-    userId?: string;  // Link to cashier/manager
+    storeId?: string;
+    userId?: string;
     date: string;
-    brand: string; // Visa, Master, Elo, etc.
-    authorizationCode?: string; // New field
+    brand: string;
+    authorizationCode?: string;
     value: number;
 }
 
-// --- NEW TYPE FOR RECEIPTS ---
 export interface Receipt {
     id: string;
     storeId?: string;
-    issuerName: string; // Quem emitiu no sistema (usuário logado)
-    payer: string; // Quem pagou (A Empresa / Loja)
-    recipient: string; // Quem recebeu (O Beneficiário / Assinatura)
+    issuerName: string;
+    payer: string;
+    recipient: string;
     value: number;
     valueInWords: string;
     reference: string;
-    date: string; // YYYY-MM-DD
+    date: string;
     createdAt: Date;
 }
 
-// --- NEW TYPE FOR DOWNLOADS ---
+// Fix: Exporting DownloadCategory type to resolve error in DownloadsModule.tsx
 export type DownloadCategory = 'spreadsheet' | 'video' | 'image' | 'audio';
 
 export interface DownloadItem {
@@ -181,23 +154,52 @@ export interface DownloadItem {
     title: string;
     description: string;
     category: DownloadCategory;
-    url: string; // Base64 data or External URL
-    fileName?: string; // Original filename
-    size?: string; // File size string (e.g. "2MB")
-    campaign?: string; // Folder/Campaign name (e.g. "Natal")
+    url: string;
+    fileName?: string;
+    size?: string;
+    campaign?: string;
     createdAt: Date;
     createdBy: string;
 }
 
-// --- NEW TYPE FOR CASH ERRORS ---
 export interface CashError {
     id: string;
     storeId: string;
     userId: string;
     userName: string;
-    date: string; // YYYY-MM-DD (Locked to today in UI)
-    type: 'surplus' | 'shortage'; // Sobra (+) | Falta (-)
-    value: number; // Absolute value stored, sign logic applied in UI
+    date: string;
+    type: 'surplus' | 'shortage';
+    value: number;
     reason?: string;
     createdAt: Date;
+}
+
+// --- ICE CREAM MODULE TYPES (V2) ---
+export type IceCreamCategory = 'Milkshake' | 'Casquinha' | 'Cascão' | 'Sundae' | 'Adicionais' | 'Bebidas';
+
+export interface IceCreamItem {
+  id: string;
+  name: string;
+  price: number;
+  costPrice?: number; // Para cálculo de CMV na DRE
+  category: IceCreamCategory;
+}
+
+export interface IceCreamDailySale {
+  id: string;
+  date: string;
+  itemId: string;
+  unitsSold: number;
+}
+
+export type IceCreamExpenseCategory = 'CMV' | 'Aluguel' | 'Energia' | 'Pessoal' | 'Manutenção' | 'Impostos' | 'Outros';
+
+export interface IceCreamTransaction {
+  id: string;
+  date: string;
+  type: 'entry' | 'exit';
+  category: IceCreamExpenseCategory | 'Venda_Dinheiro' | 'Venda_Cartao';
+  value: number;
+  description?: string;
+  createdAt: Date;
 }
