@@ -531,25 +531,36 @@ const DashboardAdmin: React.FC<DashboardAdminProps> = ({ stores, performanceData
       return met ? 'text-green-600 font-bold' : 'text-red-600 font-bold';
   };
 
+  // --- UPDATED PROGRESS BAR WITH TEXT INSIDE ---
   const MiniProgressBar = ({ current, target, type }: { current: number, target: number, type: 'higher_better' | 'lower_better' }) => {
       if (!target || target === 0) return null;
       
       const met = isGoalMet(current, target, type);
-      const colorClass = met ? 'bg-green-500' : 'bg-red-500';
+      // For inverse logic (like P.U. where lower is better), if 'met' is true, green. If false, red.
+      const colorClass = met ? 'bg-gradient-to-r from-green-500 to-green-600' : 'bg-gradient-to-r from-red-500 to-red-600';
       
       let pct = 0;
       if (type === 'higher_better') {
           pct = (current / target) * 100;
       } else {
+          // For lower is better, we still visualize % of target usually, but semantics change
+          // Simplest viz: show raw % of target consumed
           pct = (current / target) * 100;
       }
 
+      const displayPct = pct.toFixed(1);
+
       return (
-          <div className="w-full bg-gray-200 rounded-full h-1.5 mt-1.5 overflow-hidden">
+          <div className="w-full bg-gray-100 rounded-full h-3 mt-1 overflow-hidden relative shadow-inner border border-gray-200">
               <div 
-                  className={`h-full rounded-full transition-all duration-500 ${colorClass}`} 
+                  className={`h-full rounded-full transition-all duration-700 ease-out ${colorClass}`} 
                   style={{ width: `${Math.min(pct, 100)}%` }}
               ></div>
+              <div className="absolute inset-0 flex items-center justify-center">
+                  <span className="text-[9px] font-black text-white drop-shadow-md tracking-wide z-10 leading-none">
+                      {displayPct}%
+                  </span>
+              </div>
           </div>
       );
   };
@@ -834,8 +845,8 @@ const DashboardAdmin: React.FC<DashboardAdminProps> = ({ stores, performanceData
                         
                         {!isEditingGoals && (
                             <>
-                                <th className="p-4 text-center min-w-[120px]">Venda Realizada</th>
-                                <th className="p-4 text-center">% Ating.</th>
+                                <th className="p-4 text-center min-w-[140px]">Venda Realizada</th>
+                                {/* Removed separate "% Ating." column */}
                             </>
                         )}
                         
@@ -919,19 +930,19 @@ const DashboardAdmin: React.FC<DashboardAdminProps> = ({ stores, performanceData
 
                                 {/* REALIZED & PERCENT (View Only) */}
                                 {!isEditingGoals && (
-                                    <>
-                                        <td className={`p-4 text-center font-bold align-top`}>
-                                            <span className={getComparisonClass(data.revenueActual || 0, data.revenueTarget || 0, 'higher_better')}>
-                                                {formatCurrency(data.revenueActual || 0)}
-                                            </span>
+                                    <td className={`p-4 text-center align-top`}>
+                                        <div className="flex flex-col w-full">
+                                            <div className="flex justify-between items-baseline mb-1">
+                                                <span className={`text-sm font-bold ${getComparisonClass(data.revenueActual || 0, data.revenueTarget || 0, 'higher_better')}`}>
+                                                    {formatCurrency(data.revenueActual || 0)}
+                                                </span>
+                                                <span className="text-[10px] text-gray-400">
+                                                    / {formatCurrency(data.revenueTarget || 0)}
+                                                </span>
+                                            </div>
                                             <MiniProgressBar current={data.revenueActual || 0} target={data.revenueTarget || 0} type="higher_better" />
-                                        </td>
-                                        <td className="p-4 text-center align-top">
-                                            <span className={`px-3 py-1 rounded-full text-xs font-bold border ${(data.percentMeta || 0) >= 100 ? 'bg-green-50 text-green-700 border-green-200' : 'bg-red-50 text-red-700 border-red-200'}`}>
-                                                {(data.percentMeta || 0).toFixed(1)}%
-                                            </span>
-                                        </td>
-                                    </>
+                                        </div>
+                                    </td>
                                 )}
 
                                 {/* PA - Higher is Better */}
@@ -953,12 +964,17 @@ const DashboardAdmin: React.FC<DashboardAdminProps> = ({ stores, performanceData
                                             </div>
                                         </div>
                                     ) : (
-                                        <>
-                                            <span className={getComparisonClass(data.itemsPerTicket || 0, data.paTarget || 0, 'higher_better')}>
-                                                {(data.itemsPerTicket || 0).toFixed(2)}
-                                            </span>
+                                        <div className="flex flex-col w-full">
+                                            <div className="flex justify-between items-baseline mb-1">
+                                                <span className={`text-sm font-bold ${getComparisonClass(data.itemsPerTicket || 0, data.paTarget || 0, 'higher_better')}`}>
+                                                    {(data.itemsPerTicket || 0).toFixed(2)}
+                                                </span>
+                                                <span className="text-[10px] text-gray-400">
+                                                    / {(data.paTarget || 0).toFixed(2)}
+                                                </span>
+                                            </div>
                                             <MiniProgressBar current={data.itemsPerTicket || 0} target={data.paTarget || 0} type="higher_better" />
-                                        </>
+                                        </div>
                                     )}
                                 </td>
 
@@ -981,12 +997,17 @@ const DashboardAdmin: React.FC<DashboardAdminProps> = ({ stores, performanceData
                                             </div>
                                         </div>
                                     ) : (
-                                        <>
-                                            <span className={getComparisonClass(data.unitPriceAverage || 0, data.puTarget || 0, 'lower_better')}>
-                                                {formatCurrency(data.unitPriceAverage || 0)}
-                                            </span>
+                                        <div className="flex flex-col w-full">
+                                            <div className="flex justify-between items-baseline mb-1">
+                                                <span className={`text-sm font-bold ${getComparisonClass(data.unitPriceAverage || 0, data.puTarget || 0, 'lower_better')}`}>
+                                                    {formatCurrency(data.unitPriceAverage || 0)}
+                                                </span>
+                                                <span className="text-[10px] text-gray-400">
+                                                    / {formatCurrency(data.puTarget || 0)}
+                                                </span>
+                                            </div>
                                             <MiniProgressBar current={data.unitPriceAverage || 0} target={data.puTarget || 0} type="lower_better" />
-                                        </>
+                                        </div>
                                     )}
                                 </td>
 
@@ -1009,12 +1030,17 @@ const DashboardAdmin: React.FC<DashboardAdminProps> = ({ stores, performanceData
                                             </div>
                                         </div>
                                     ) : (
-                                        <>
-                                            <span className={getComparisonClass(data.averageTicket || 0, data.ticketTarget || 0, 'higher_better')}>
-                                                {formatCurrency(data.averageTicket || 0)}
-                                            </span>
+                                        <div className="flex flex-col w-full">
+                                            <div className="flex justify-between items-baseline mb-1">
+                                                <span className={`text-sm font-bold ${getComparisonClass(data.averageTicket || 0, data.ticketTarget || 0, 'higher_better')}`}>
+                                                    {formatCurrency(data.averageTicket || 0)}
+                                                </span>
+                                                <span className="text-[10px] text-gray-400">
+                                                    / {formatCurrency(data.ticketTarget || 0)}
+                                                </span>
+                                            </div>
                                             <MiniProgressBar current={data.averageTicket || 0} target={data.ticketTarget || 0} type="higher_better" />
-                                        </>
+                                        </div>
                                     )}
                                 </td>
 
@@ -1037,12 +1063,17 @@ const DashboardAdmin: React.FC<DashboardAdminProps> = ({ stores, performanceData
                                             </div>
                                         </div>
                                     ) : (
-                                        <>
-                                            <span className={getComparisonClass(data.itemsActual || 0, data.itemsTarget || 0, 'higher_better')}>
-                                                {data.itemsActual || 0}
-                                            </span>
+                                        <div className="flex flex-col w-full">
+                                            <div className="flex justify-between items-baseline mb-1">
+                                                <span className={`text-sm font-bold ${getComparisonClass(data.itemsActual || 0, data.itemsTarget || 0, 'higher_better')}`}>
+                                                    {data.itemsActual || 0}
+                                                </span>
+                                                <span className="text-[10px] text-gray-400">
+                                                    / {data.itemsTarget || 0}
+                                                </span>
+                                            </div>
                                             <MiniProgressBar current={data.itemsActual || 0} target={data.itemsTarget || 0} type="higher_better" />
-                                        </>
+                                        </div>
                                     )}
                                 </td>
 
@@ -1065,12 +1096,17 @@ const DashboardAdmin: React.FC<DashboardAdminProps> = ({ stores, performanceData
                                             </div>
                                         </div>
                                     ) : (
-                                        <>
-                                            <span className={`font-bold ${getComparisonClass(data.delinquencyRate || 0, data.delinquencyTarget || 2, 'lower_better')}`}>
-                                                {data.delinquencyRate ? (data.delinquencyRate || 0).toFixed(2) + '%' : '-'}
-                                            </span>
+                                        <div className="flex flex-col w-full">
+                                            <div className="flex justify-between items-baseline mb-1">
+                                                <span className={`text-sm font-bold ${getComparisonClass(data.delinquencyRate || 0, data.delinquencyTarget || 2, 'lower_better')}`}>
+                                                    {data.delinquencyRate ? (data.delinquencyRate || 0).toFixed(2) + '%' : '-'}
+                                                </span>
+                                                <span className="text-[10px] text-gray-400">
+                                                    / {(data.delinquencyTarget || 2).toFixed(2)}%
+                                                </span>
+                                            </div>
                                             <MiniProgressBar current={data.delinquencyRate || 0} target={data.delinquencyTarget || 2} type="lower_better" />
-                                        </>
+                                        </div>
                                     )}
                                 </td>
                             </tr>
