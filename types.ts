@@ -30,6 +30,7 @@ export interface Store {
 }
 
 export interface MonthlyPerformance {
+  id?: string; // Database ID
   storeId: string;
   month: string; // YYYY-MM
   
@@ -60,7 +61,7 @@ export interface MonthlyPerformance {
 
 // NOVA INTERFACE PARA GESTÃO DE COMPRAS
 export interface ProductPerformance {
-  id: string;
+  id?: string;
   storeId: string;
   month: string; // YYYY-MM
   brand: string; // Ex: Nike, Vizzano, Beira Rio
@@ -118,6 +119,19 @@ export interface Cota {
     createdAt: Date;
     createdByRole?: UserRole; // Identifies if added by MANAGER or ADMIN
     status?: 'pending' | 'validated'; // New field: pending (in list) vs validated (received/hidden)
+}
+
+export interface CotaSettings {
+  storeId: string;
+  budgetValue: number;
+  managerPercent: number;
+}
+
+export interface CotaDebt {
+  id?: string;
+  storeId: string;
+  month: string;
+  value: number;
 }
 
 // --- NEW TYPES FOR AGENDA (UPDATED TO 5 LEVELS) ---
