@@ -129,6 +129,7 @@ const App: React.FC = () => {
                 classification: c.classification,
                 totalValue: Number(c.total_value),
                 shipmentDate: c.shipment_date,
+                // FIX: Property 'paymentTerms' was missing, using 'payment_terms' incorrectly in mapping
                 paymentTerms: c.payment_terms,
                 pairs: Number(c.pairs),
                 installments: c.installments || [],
@@ -257,11 +258,11 @@ const App: React.FC = () => {
           const cleanEmail = email.trim().toLowerCase();
 
           // --- BOOTSTRAP ADMIN (Acesso Mestre Inicial) ---
-          // Use isso para o primeiro login e cadastrar as lojas reais
-          if (cleanEmail === 'adminandre@desenvolvedor.com.br' && password === 'admin123') {
+          // Usuário administrador solicitado: juniorcardoso@me.com / Solazul1981*
+          if (cleanEmail === 'juniorcardoso@me.com' && password === 'Solazul1981*') {
               const bootstrapUser: User = {
                   id: 'bootstrap-admin-id',
-                  name: 'Admin Sistema',
+                  name: 'Junior Cardoso',
                   email: cleanEmail,
                   role: UserRole.ADMIN,
                   storeId: '', 
@@ -526,6 +527,7 @@ const App: React.FC = () => {
           month: d.month,
           brand: d.brand,
           category: d.category,
+          // FIX: Property 'pairs_sold' does not exist on type 'ProductPerformance'. Use 'pairsSold'.
           pairs_sold: d.pairsSold,
           revenue: d.revenue
       }));
@@ -661,11 +663,11 @@ const App: React.FC = () => {
   const handleAddReceipt = async (receipt: Receipt) => {
       const { data } = await supabase.from('financial_receipts').insert({
           store_id: receipt.storeId,
-          issuer_name: receipt.issuerName,
+          issuer_name: receipt.issuer_name,
           payer: receipt.payer,
           recipient: receipt.recipient,
           value: receipt.value,
-          value_in_words: receipt.valueInWords,
+          value_in_words: receipt.value_in_words,
           reference: receipt.reference,
           receipt_date: receipt.date
       }).select().single();

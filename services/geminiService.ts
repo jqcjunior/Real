@@ -1,3 +1,4 @@
+
 import { GoogleGenAI } from "@google/genai";
 import { MonthlyPerformance, Store } from "../types";
 
@@ -48,8 +49,9 @@ export const analyzePerformance = async (
   `;
 
   try {
+    // FIX: Using gemini-3-flash-preview for Basic Text Tasks as per guidelines
     const response = await client.models.generateContent({
-      model: 'gemini-2.5-flash',
+      model: 'gemini-3-flash-preview',
       contents: prompt,
     });
     return response.text || "Não foi possível gerar análise.";
@@ -99,8 +101,9 @@ export const extractDataFromDocument = async (base64Data: string, mimeType: stri
     `;
 
     try {
+        // FIX: Using gemini-3-flash-preview for Document Data Extraction
         const response = await client.models.generateContent({
-            model: 'gemini-2.5-flash',
+            model: 'gemini-3-flash-preview',
             contents: {
                 parts: [
                     { inlineData: { mimeType: mimeType, data: base64Data } },
