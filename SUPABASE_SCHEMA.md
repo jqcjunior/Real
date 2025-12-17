@@ -19,12 +19,12 @@ create table public.stores (
   manager_name text,
   manager_email text,
   manager_phone text,
+  password text default '123', -- Senha de acesso (adicionada manualmente)
   status text default 'active', -- active, inactive, pending
   created_at timestamp with time zone default timezone('utc'::text, now())
 );
 
--- Tabela de Perfis de Usuário (Vinculada ao Auth do Supabase)
--- Nota: O ID aqui deve ser o mesmo ID da tabela auth.users
+-- Tabela de Perfis de Usuário (Vinculada ao Auth do Supabase - Opcional se usar login direto na tabela stores)
 create table public.profiles (
   id uuid references auth.users on delete cascade primary key,
   email text,

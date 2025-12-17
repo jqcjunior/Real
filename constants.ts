@@ -13,6 +13,13 @@ export const MOCK_USERS: User[] = [
     password: 'admin' 
   },
   { 
+    id: 'u6', 
+    name: 'André Desenvolvedor', 
+    role: UserRole.ADMIN, 
+    email: 'adminandre@desenvolvedor.com.br',
+    password: 'admin123' 
+  },
+  { 
     id: 'u2', 
     name: 'Carlos Gerente (Loja 1)', 
     role: UserRole.MANAGER, 

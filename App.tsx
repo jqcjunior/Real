@@ -19,7 +19,6 @@ import { User, Store, MonthlyPerformance, UserRole, ProductPerformance, Cota, Ag
 import { MOCK_USERS } from './constants';
 import { supabase } from './services/supabaseClient';
 
-// NavButton Component
 interface NavButtonProps {
   view: string;
   icon: React.ElementType;
@@ -43,24 +42,21 @@ const NavButton: React.FC<NavButtonProps> = ({ view, icon: Icon, label, active, 
 );
 
 const App: React.FC = () => {
-  // State
   const [user, setUser] = useState<User | null>(null);
   const [currentView, setCurrentView] = useState('dashboard');
   const [isSidebarOpen, setIsSidebarOpen] = useState(false);
   const [isLoading, setIsLoading] = useState(true);
   
-  // Profile Edit State
   const [isProfileModalOpen, setIsProfileModalOpen] = useState(false);
   const [tempProfile, setTempProfile] = useState<{name: string, photo: string}>({ name: '', photo: '' });
 
-  // Data State
   const [users] = useState<User[]>(MOCK_USERS);
   const [stores, setStores] = useState<Store[]>([]);
   const [performanceData, setPerformanceData] = useState<MonthlyPerformance[]>([]);
   const [productData, setProductData] = useState<ProductPerformance[]>([]);
   const [cotas, setCotas] = useState<Cota[]>([]);
-  const [cotaSettings, setCotaSettings] = useState<CotaSettings[]>([]); // New State
-  const [cotaDebts, setCotaDebts] = useState<CotaDebt[]>([]); // New State
+  const [cotaSettings, setCotaSettings] = useState<CotaSettings[]>([]); 
+  const [cotaDebts, setCotaDebts] = useState<CotaDebt[]>([]); 
   const [tasks, setTasks] = useState<AgendaItem[]>([]);
   const [downloads, setDownloads] = useState<DownloadItem[]>([]);
   const [cashErrors, setCashErrors] = useState<CashError[]>([]);
@@ -68,7 +64,6 @@ const App: React.FC = () => {
   const [creditCardSales, setCreditCardSales] = useState<CreditCardSale[]>([]);
   const [receipts, setReceipts] = useState<Receipt[]>([]);
   
-  // --- SUPABASE DATA LOADING ---
   const loadAllData = async () => {
       setIsLoading(true);
       try {
@@ -84,7 +79,7 @@ const App: React.FC = () => {
                 managerPhone: s.manager_phone,
                 status: s.status,
                 role: UserRole.MANAGER,
-                password: s.password // Fetches password column (must exist in DB)
+                password: s.password 
             })));
         }
 
@@ -143,7 +138,6 @@ const App: React.FC = () => {
             })));
         }
 
-        // New Cota Tables
         const { data: dbCotaSettings } = await supabase.from('cota_settings').select('*');
         if (dbCotaSettings) {
             setCotaSettings(dbCotaSettings.map((s: any) => ({
@@ -257,11 +251,26 @@ const App: React.FC = () => {
       }
   };
 
+  // --- INIT & PERSISTENCE ---
   useEffect(() => {
+    // 1. Check local storage for existing session
+    const savedUser = localStorage.getItem('rc_user');
+    if (savedUser) {
+        try {
+            const parsedUser = JSON.parse(savedUser);
+            setUser(parsedUser);
+            if (parsedUser.role === UserRole.CASHIER) {
+                setCurrentView('agenda');
+            }
+        } catch (e) {
+            console.error("Erro ao restaurar sessão:", e);
+            localStorage.removeItem('rc_user');
+        }
+    }
+    
+    // 2. Load Data
     loadAllData();
   }, []);
-
-  // --- CRUD HANDLERS ---
 
   const logAction = async (action: SystemLog['action'], details: string, u: User | null = user) => {
     if (!u) return;
@@ -317,15 +326,10 @@ const App: React.FC = () => {
   };
 
   const handleSaveProductPerformance = async (newData: ProductPerformance[]) => {
-      // 1. Identify impacted months
       const monthsAffected = Array.from(new Set(newData.map(d => d.month)));
-      
-      // 2. Clean old data for impacted months
       if (monthsAffected.length > 0) {
           await supabase.from('product_performance').delete().in('month', monthsAffected);
       }
-
-      // 3. Insert new batch
       const payload = newData.map(d => ({
           store_id: d.storeId,
           month: d.month,
@@ -334,9 +338,7 @@ const App: React.FC = () => {
           pairs_sold: d.pairsSold,
           revenue: d.revenue
       }));
-
       const { error } = await supabase.from('product_performance').insert(payload);
-      
       if (!error) {
           loadAllData();
           logAction('IMPORT_PURCHASES', `Importou compras para: ${monthsAffected.join(', ')}`);
@@ -347,7 +349,7 @@ const App: React.FC = () => {
   };
 
   const handleAddCota = async (cota: Cota) => {
-      const { data } = await supabase.from('cotas').insert({
+      const { data, error } = await supabase.from('cotas').insert({
           store_id: cota.storeId,
           brand: cota.brand,
           classification: cota.classification,
@@ -363,6 +365,8 @@ const App: React.FC = () => {
       if (data) {
           setCotas(prev => [...prev, { ...cota, id: data.id, createdAt: new Date(data.created_at) }]);
           logAction('ADD_COTA', `Lançou cota: ${cota.brand} (${cota.totalValue})`);
+      } else {
+          console.error(error);
       }
   };
 
@@ -382,10 +386,8 @@ const App: React.FC = () => {
           budget_value: settings.budgetValue,
           manager_percent: settings.managerPercent
       };
-      // Upsert
       await supabase.from('cota_settings').upsert(payload, { onConflict: 'store_id' });
       
-      // Update local state
       setCotaSettings(prev => {
           const idx = prev.findIndex(s => s.storeId === settings.storeId);
           if (idx >= 0) {
@@ -399,21 +401,15 @@ const App: React.FC = () => {
   };
 
   const handleSaveCotaDebts = async (storeId: string, debts: Record<string, number>) => {
-      // 1. Delete existing for store
       await supabase.from('cota_debts').delete().eq('store_id', storeId);
-      
-      // 2. Insert new
       const payload = Object.entries(debts).map(([month, value]) => ({
           store_id: storeId,
           month,
           value
       }));
-      
       if (payload.length > 0) {
           await supabase.from('cota_debts').insert(payload);
       }
-
-      // Reload
       const { data: dbCotaDebts } = await supabase.from('cota_debts').select('*');
       if (dbCotaDebts) {
           setCotaDebts(dbCotaDebts.map((d: any) => ({
@@ -426,8 +422,9 @@ const App: React.FC = () => {
   };
 
   const handleAddTask = async (task: AgendaItem) => {
-      const { data } = await supabase.from('agenda_tasks').insert({
-          user_id: task.userId,
+      const currentUserId = user?.id || 'u1'; 
+      const { data, error } = await supabase.from('agenda_tasks').insert({
+          user_id: currentUserId, 
           title: task.title,
           description: task.description,
           due_date: task.dueDate,
@@ -436,8 +433,11 @@ const App: React.FC = () => {
       }).select().single();
 
       if (data) {
-          setTasks(prev => [...prev, { ...task, id: data.id }]);
+          const newTask = { ...task, id: data.id, userId: currentUserId };
+          setTasks(prev => [...prev, newTask]);
           logAction('ADD_TASK', `Nova tarefa: ${task.title}`);
+      } else {
+          console.error("Erro ao salvar tarefa:", error);
       }
   };
 
@@ -449,7 +449,6 @@ const App: React.FC = () => {
           priority: task.priority,
           is_completed: task.isCompleted
       }).eq('id', task.id);
-      
       setTasks(prev => prev.map(t => t.id === task.id ? task : t));
   };
 
@@ -562,8 +561,7 @@ const App: React.FC = () => {
                   status: s.status,
                   password: s.password
               };
-              
-              if (s.id.includes('-') && !s.id.startsWith('req')) {
+              if (s.id.includes('-') && !s.id.startsWith('req') && !s.id.startsWith('s')) {
                   await supabase.from('stores').update(payload).eq('id', s.id);
               } else {
                   await supabase.from('stores').insert(payload);
@@ -573,19 +571,42 @@ const App: React.FC = () => {
       loadAllData();
   };
 
+  const handleImportStores = async (newStores: Store[]) => {
+      const payload = newStores.map(s => ({
+          number: s.number,
+          name: s.name,
+          city: s.city,
+          manager_name: s.managerName,
+          manager_email: s.managerEmail,
+          manager_phone: s.managerPhone,
+          status: 'active',
+          password: '123' 
+      }));
+      const { error } = await supabase.from('stores').insert(payload);
+      if (!error) {
+          logAction('IMPORT_STORES', `Importou ${newStores.length} lojas via Excel`);
+          loadAllData();
+          alert(`${newStores.length} lojas importadas com sucesso!`);
+      } else {
+          console.error(error);
+          alert("Erro ao importar lojas. Verifique se os números das lojas são únicos.");
+      }
+  };
+
   const handleLogin = (u: User) => {
+    // Persist Login
+    localStorage.setItem('rc_user', JSON.stringify(u));
     setUser(u);
     logAction('LOGIN', `Usuário ${u.name} realizou login`, u);
     
-    if (u.role === UserRole.CASHIER) {
-        setCurrentView('agenda');
-    } else {
-        setCurrentView('dashboard');
-    }
+    if (u.role === UserRole.CASHIER) setCurrentView('agenda');
+    else setCurrentView('dashboard');
   };
 
   const handleLogout = () => {
     if (user) logAction('LOGOUT', `Usuário ${user.name} realizou logout`);
+    // Clear Login
+    localStorage.removeItem('rc_user');
     setUser(null);
     setCurrentView('dashboard');
   };
@@ -601,8 +622,9 @@ const App: React.FC = () => {
       e.preventDefault();
       if (user) {
           const updatedUser = { ...user, name: tempProfile.name, photo: tempProfile.photo };
-          await supabase.from('profiles').update({ name: tempProfile.name, photo_url: tempProfile.photo }).eq('id', user.id);
           setUser(updatedUser);
+          // Update Local Storage too so name change persists on refresh
+          localStorage.setItem('rc_user', JSON.stringify(updatedUser));
           setIsProfileModalOpen(false);
           logAction('SYSTEM', `Atualizou perfil de usuário: ${updatedUser.name}`);
       }
@@ -612,9 +634,7 @@ const App: React.FC = () => {
       const file = e.target.files?.[0];
       if (file) {
           const reader = new FileReader();
-          reader.onload = () => {
-              setTempProfile(prev => ({ ...prev, photo: reader.result as string }));
-          };
+          reader.onload = () => setTempProfile(prev => ({ ...prev, photo: reader.result as string }));
           reader.readAsDataURL(file);
       }
   };
@@ -645,7 +665,15 @@ const App: React.FC = () => {
                   onLogAction={logAction} 
                 />;
       case 'financial':
-        return <FinancialModule user={user} store={stores.find(s => s.id === user.storeId)} />;
+        return <FinancialModule 
+            user={user} 
+            store={stores.find(s => s.id === user.storeId)} 
+            sales={creditCardSales}
+            receipts={receipts}
+            onAddSale={handleAddCardSale}
+            onDeleteSale={handleDeleteCardSale}
+            onAddReceipt={handleAddReceipt}
+        />;
       case 'agenda':
         return <AgendaSystem user={user} tasks={tasks} onAddTask={handleAddTask} onUpdateTask={handleUpdateTask} onDeleteTask={handleDeleteTask} onLogAction={logAction} />;
       case 'marketing':
@@ -657,7 +685,7 @@ const App: React.FC = () => {
       case 'cash_errors':
         return <CashErrorsModule user={user} store={stores.find(s => s.id === user.storeId)} stores={stores} errors={cashErrors} onAddError={handleAddCashError} onUpdateError={handleUpdateCashError} onDeleteError={handleDeleteCashError} />;
       case 'settings':
-        return <AdminSettings stores={stores} onStoreUpdate={handleStoreUpdate} />;
+        return <AdminSettings stores={stores} onStoreUpdate={handleStoreUpdate} onImportStores={handleImportStores} />;
       case 'auth_print':
         return <PurchaseAuthorization />;
       case 'termo_print':
@@ -667,13 +695,13 @@ const App: React.FC = () => {
     }
   };
 
-  if (!user) {
-    if (isLoading) return <div className="min-h-screen flex items-center justify-center bg-gray-100"><div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-900"></div></div>;
-    return <LoginScreen onLogin={handleLogin} users={users} stores={stores} onRegisterRequest={(s) => setStores([...stores, s])} />;
-  }
+  // Only show loading if no user is present AND we are initially loading
+  // If we have a user (restored from localStorage), we show the app while data loads in background
+  if (!user && isLoading) return <div className="min-h-screen flex items-center justify-center bg-gray-100"><div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-900"></div></div>;
 
   return (
     <div className="flex h-screen bg-gray-100 font-sans overflow-hidden">
+      {user && (
       <div className={`fixed md:sticky top-0 left-0 h-screen w-64 bg-gradient-to-b from-blue-950 to-blue-900 text-white shadow-xl z-50 transition-transform duration-300 ${isSidebarOpen ? 'translate-x-0' : '-translate-x-full md:translate-x-0'}`}>
         <div className="p-6 flex flex-col h-full">
           <div className="flex items-center gap-3 mb-8">
@@ -732,13 +760,15 @@ const App: React.FC = () => {
           </div>
         </div>
       </div>
+      )}
 
-      {/* Main Content Area */}
       <div className="flex-1 flex flex-col h-screen overflow-hidden">
+         {user && (
          <div className="md:hidden bg-white shadow-sm p-4 flex justify-between items-center z-40">
             <h1 className="text-lg font-black italic text-blue-900">REAL <span className="text-red-500">CALÇADOS</span></h1>
             <button onClick={() => setIsSidebarOpen(true)} className="text-gray-600"><Menu size={24}/></button>
          </div>
+         )}
          <main className="flex-1 overflow-auto bg-gray-50 relative">{renderView()}</main>
       </div>
 

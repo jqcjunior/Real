@@ -24,7 +24,7 @@ export interface Store {
   managerEmail: string;
   managerPhone: string;
   password?: string; // Senha de acesso do gerente
-  status?: 'active' | 'pending' | 'inactive'; // Status da loja no sistema (inactive = soft delete/rejeitado)
+  status?: 'active' | 'pending' | 'inactive'; // Status da loja no sistema
   role?: UserRole; // Define se este cadastro tem permissão de Admin ou Gerente
   passwordResetRequested?: boolean; // Flag to indicate if the pending status is due to a forgotten password
 }
@@ -96,7 +96,7 @@ export interface SystemLog {
   userId: string;
   userName: string;
   userRole: UserRole;
-  action: 'LOGIN' | 'LOGOUT' | 'DOWNLOAD_IMAGE' | 'UPDATE_GOAL' | 'SYSTEM' | 'IMPORT_PURCHASES' | 'OPEN_STUDIO' | 'ADD_COTA' | 'ADD_TASK' | 'GENERATE_RECEIPT' | 'CHECK_COTAS' | 'USE_AGENDA' | 'UPLOAD_FILE' | 'DELETE_FILE' | 'REPORT_CASH_ERROR' | 'VALIDATE_ORDER';
+  action: 'LOGIN' | 'LOGOUT' | 'DOWNLOAD_IMAGE' | 'UPDATE_GOAL' | 'SYSTEM' | 'IMPORT_PURCHASES' | 'IMPORT_STORES' | 'OPEN_STUDIO' | 'ADD_COTA' | 'ADD_TASK' | 'GENERATE_RECEIPT' | 'CHECK_COTAS' | 'USE_AGENDA' | 'UPLOAD_FILE' | 'DELETE_FILE' | 'REPORT_CASH_ERROR' | 'VALIDATE_ORDER';
   details: string;
 }
 

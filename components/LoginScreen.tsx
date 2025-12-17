@@ -1,7 +1,7 @@
 
 import React, { useState } from 'react';
 import { User, Store, UserRole } from '../types';
-import { Mail, Lock, UserPlus, X, Store as StoreIcon, MapPin, Phone, User as UserIcon, Send, KeyRound, AlertTriangle } from 'lucide-react';
+import { Mail, Lock, UserPlus, X, Store as StoreIcon, MapPin, Phone, User as UserIcon, Send, KeyRound, AlertTriangle, Loader2 } from 'lucide-react';
 import { APP_NAME } from '../constants';
 
 interface LoginScreenProps {
@@ -21,6 +21,7 @@ const LoginScreen: React.FC<LoginScreenProps> = ({ onLogin, users, stores = [], 
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [error, setError] = useState('');
+  const [isLoading, setIsLoading] = useState(false);
   const [logoError, setLogoError] = useState(false);
   
   // Registration Modal State
@@ -38,39 +39,50 @@ const LoginScreen: React.FC<LoginScreenProps> = ({ onLogin, users, stores = [], 
   const [showForgotModal, setShowForgotModal] = useState(false);
   const [recoveryEmail, setRecoveryEmail] = useState('');
 
-  const handleSubmit = (e: React.FormEvent) => {
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setError('');
+    setIsLoading(true);
+
+    // Simulating a small network delay for UX
+    await new Promise(resolve => setTimeout(resolve, 500));
+
+    const cleanEmail = email.trim().toLowerCase();
+    const cleanPass = password.trim();
 
     // 1. First check against static/admin users (MOCK_USERS)
-    const adminUser = users.find(u => u.email.toLowerCase() === email.toLowerCase());
+    const adminUser = users.find(u => u.email.toLowerCase() === cleanEmail);
 
     if (adminUser) {
-      if (adminUser.password && adminUser.password !== password) {
-         setError('Senha incorreta. Verifique suas credenciais.');
+      if (adminUser.password && adminUser.password !== cleanPass) {
+         setError('Senha de administrador incorreta.');
+         setIsLoading(false);
          return;
       }
       onLogin(adminUser);
       return;
     } 
 
-    // 2. If not an admin, check against Stores (Managers)
+    // 2. If not an admin, check against Stores (Managers) loaded from Supabase
+    // Note: App.tsx loads stores with the 'password' column included
     const linkedStore = stores.find(s => 
-        s.managerEmail.toLowerCase() === email.toLowerCase() && 
-        s.password === password
+        s.managerEmail.toLowerCase() === cleanEmail && 
+        s.password === cleanPass
     );
 
     if (linkedStore) {
         if (linkedStore.status === 'pending') {
             if (linkedStore.passwordResetRequested) {
-                setError('Sua solicitação de nova senha está pendente de aprovação do administrador.');
+                setError('Sua solicitação de nova senha está em análise.');
             } else {
-                setError('Seu cadastro ainda está em análise pelo administrador.');
+                setError('Seu cadastro aguarda aprovação do administrador.');
             }
+            setIsLoading(false);
             return;
         }
         if (linkedStore.status === 'inactive') {
-            setError('Acesso desativado para esta loja.');
+            setError('O acesso desta loja foi desativado.');
+            setIsLoading(false);
             return;
         }
 
@@ -81,7 +93,8 @@ const LoginScreen: React.FC<LoginScreenProps> = ({ onLogin, users, stores = [], 
             name: linkedStore.managerName,
             email: linkedStore.managerEmail,
             role: assignedRole,
-            storeId: linkedStore.id
+            storeId: linkedStore.id,
+            photo: undefined // Optional: Add photo column later if needed
         };
 
         onLogin(managerUser);
@@ -89,7 +102,8 @@ const LoginScreen: React.FC<LoginScreenProps> = ({ onLogin, users, stores = [], 
     }
 
     // 3. If neither
-    setError('Usuário não encontrado ou senha incorreta.');
+    setError('E-mail ou senha inválidos.');
+    setIsLoading(false);
   };
 
   const handleSendRecovery = (e: React.FormEvent) => {
@@ -104,6 +118,7 @@ const LoginScreen: React.FC<LoginScreenProps> = ({ onLogin, users, stores = [], 
           onPasswordResetRequest(recoveryEmail);
           setShowForgotModal(false);
           setRecoveryEmail('');
+          alert("Solicitação enviada! Entre em contato com o suporte para agilizar.");
       } else {
           alert("Erro ao processar solicitação.");
       }
@@ -135,10 +150,10 @@ const LoginScreen: React.FC<LoginScreenProps> = ({ onLogin, users, stores = [], 
       }
 
       setShowRegisterModal(false);
+      // Clear form
       setRegStoreNumber('');
       setRegStoreName('');
       setRegCity('');
-      setRegUF('BA');
       setRegManagerName('');
       setRegEmail('');
       setRegPhone('');
@@ -149,7 +164,7 @@ const LoginScreen: React.FC<LoginScreenProps> = ({ onLogin, users, stores = [], 
     <div className="min-h-screen flex items-center justify-center bg-gray-50 font-sans">
       <div className="w-full max-w-md bg-white rounded-3xl shadow-xl overflow-hidden p-8 md:p-10 border border-gray-100 relative">
         
-        {/* Header Logo Section - Styled like Sidebar */}
+        {/* Header Logo Section */}
         <div className="flex flex-col items-center mb-8">
           {!logoError ? (
              <img 
@@ -157,7 +172,6 @@ const LoginScreen: React.FC<LoginScreenProps> = ({ onLogin, users, stores = [], 
                 alt="Real Calçados" 
                 className="max-w-[340px] w-full h-auto object-contain drop-shadow-2xl hover:scale-105 transition-transform duration-500 mb-2"
                 onError={(e) => {
-                    // Try JPG if PNG fails, otherwise switch to vector fallback
                     const target = e.target as HTMLImageElement;
                     if (target.src.includes('logo.png')) {
                         target.src = '/logo.jpg';
@@ -178,7 +192,6 @@ const LoginScreen: React.FC<LoginScreenProps> = ({ onLogin, users, stores = [], 
                 </div>
             </div>
           )}
-          {/* Even if image loads, we want the subtitle if user requested specific text */}
           {!logoError && (
               <div className="text-center mt-2">
                   <p className="text-xs text-blue-300 uppercase tracking-[0.3em] font-bold">Gestão Estratégica</p>
@@ -193,7 +206,7 @@ const LoginScreen: React.FC<LoginScreenProps> = ({ onLogin, users, stores = [], 
 
         <form onSubmit={handleSubmit} className="mt-6 space-y-5">
             {error && (
-                <div className="bg-red-50 text-red-600 text-sm p-3 rounded-lg text-center border border-red-200 animate-pulse">
+                <div className="bg-red-50 text-red-600 text-sm p-3 rounded-lg text-center border border-red-200 animate-pulse font-medium">
                     {error}
                 </div>
             )}
@@ -234,9 +247,10 @@ const LoginScreen: React.FC<LoginScreenProps> = ({ onLogin, users, stores = [], 
 
             <button 
                 type="submit"
-                className="w-full bg-gradient-to-r from-blue-700 to-blue-900 hover:from-blue-800 hover:to-blue-950 text-white font-bold py-3.5 rounded-lg shadow-lg hover:shadow-xl transition-all duration-200 mt-4 active:scale-[0.98]"
+                disabled={isLoading}
+                className="w-full bg-gradient-to-r from-blue-700 to-blue-900 hover:from-blue-800 hover:to-blue-950 text-white font-bold py-3.5 rounded-lg shadow-lg hover:shadow-xl transition-all duration-200 mt-4 active:scale-[0.98] flex items-center justify-center gap-2 disabled:opacity-70 disabled:cursor-not-allowed"
             >
-                Entrar
+                {isLoading ? <Loader2 className="animate-spin" size={20}/> : 'Entrar'}
             </button>
         </form>
 
@@ -283,7 +297,7 @@ const LoginScreen: React.FC<LoginScreenProps> = ({ onLogin, users, stores = [], 
                     <div className="bg-yellow-50 border border-yellow-200 rounded-lg p-3 mb-4 flex gap-3">
                         <AlertTriangle className="text-yellow-600 flex-shrink-0" size={20} />
                         <p className="text-xs text-yellow-800">
-                            Ao solicitar a recuperação, <strong>seu acesso será bloqueado (pendente)</strong> até que o administrador redefina sua senha.
+                            Ao solicitar a recuperação, o administrador será notificado para redefinir sua senha manualmente.
                         </p>
                     </div>
 
@@ -309,7 +323,7 @@ const LoginScreen: React.FC<LoginScreenProps> = ({ onLogin, users, stores = [], 
                             type="submit"
                             className="w-full py-3 rounded-lg text-white font-bold transition-all flex items-center justify-center gap-2 shadow-md bg-blue-700 hover:bg-blue-800"
                         >
-                            Solicitar Redefinição ao Admin
+                            Solicitar ao Admin
                         </button>
                     </div>
                 </form>
@@ -359,7 +373,7 @@ const LoginScreen: React.FC<LoginScreenProps> = ({ onLogin, users, stores = [], 
                                     value={regStoreName}
                                     onChange={(e) => setRegStoreName(e.target.value)}
                                     className="w-full px-3 py-2 bg-white border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none text-gray-600" 
-                                    placeholder="Ex: Loja Real Calçados Cruz das Almas"
+                                    placeholder="Ex: Loja Real Calçados Centro"
                                 />
                             </div>
                         </div>
@@ -374,7 +388,7 @@ const LoginScreen: React.FC<LoginScreenProps> = ({ onLogin, users, stores = [], 
                                         value={regCity}
                                         onChange={(e) => setRegCity(e.target.value)}
                                         className="w-full pl-9 pr-3 py-2 bg-white border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none text-gray-600" 
-                                        placeholder="Ex: Cruz das Almas"
+                                        placeholder="Cidade"
                                     />
                                 </div>
                             </div>
@@ -423,7 +437,7 @@ const LoginScreen: React.FC<LoginScreenProps> = ({ onLogin, users, stores = [], 
                                         value={regEmail}
                                         onChange={(e) => setRegEmail(e.target.value)}
                                         className="w-full pl-9 pr-3 py-2 bg-white border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none text-gray-600" 
-                                        placeholder="seuemail@seuemail.com.br"
+                                        placeholder="email@exemplo.com"
                                     />
                                 </div>
                             </div>
@@ -443,7 +457,7 @@ const LoginScreen: React.FC<LoginScreenProps> = ({ onLogin, users, stores = [], 
                         </div>
                     </div>
 
-                    {/* Password Data (Only for this specific flow) */}
+                    {/* Password Data */}
                     <div className="space-y-4 pt-2">
                         <h4 className="text-sm font-bold text-green-700 uppercase tracking-wider border-b border-green-200 pb-2">Segurança</h4>
                          <div>
@@ -459,7 +473,7 @@ const LoginScreen: React.FC<LoginScreenProps> = ({ onLogin, users, stores = [], 
                                     placeholder="Crie sua senha"
                                 />
                             </div>
-                            <p className="text-[10px] text-gray-400 mt-1">Esta senha será usada para acessar o sistema após aprovação.</p>
+                            <p className="text-[10px] text-gray-400 mt-1">Esta senha será usada para acessar o sistema após aprovação do admin.</p>
                         </div>
                     </div>
 
