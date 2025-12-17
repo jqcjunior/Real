@@ -509,13 +509,20 @@ const AdminSettings: React.FC<AdminSettingsProps> = ({ stores, onAddStore, onUpd
              <div className="bg-white rounded-2xl shadow-2xl w-full max-w-sm overflow-hidden animate-in fade-in zoom-in duration-200 border-t-4 border-red-500">
                 <div className="p-6 text-center">
                     <div className="w-16 h-16 bg-red-100 rounded-full flex items-center justify-center mx-auto mb-4"><AlertTriangle size={32} className="text-red-500" /></div>
-                    <h3 className="text-xl font-bold text-gray-900 mb-2">Desativar Cadastro?</h3>
-                    <p className="text-gray-600 mb-6">Você deseja desativar o cadastro de <span className="font-bold text-gray-900">{storeToDelete.name}</span>?<br/><span className="text-xs text-gray-400 mt-2 block">(O status será alterado para inativo, mas os dados históricos serão mantidos no banco)</span></p>
+                    <h3 className="text-xl font-bold text-gray-900 mb-2">
+                        {storeToDelete.status === 'inactive' || storeToDelete.status === 'pending' ? 'Excluir Permanentemente?' : 'Desativar Cadastro?'}
+                    </h3>
+                    <p className="text-gray-600 mb-6">
+                        {storeToDelete.status === 'inactive' || storeToDelete.status === 'pending' 
+                            ? <span>Esta ação <strong>não pode ser desfeita</strong>. Todos os dados desta loja serão removidos.</span>
+                            : <span>Você deseja desativar o cadastro de <span className="font-bold text-gray-900">{storeToDelete.name}</span>?<br/><span className="text-xs text-gray-400 mt-2 block">(O status será alterado para inativo)</span></span>
+                        }
+                    </p>
                     <div className="flex gap-3">
                          <button onClick={() => setStoreToDelete(null)} disabled={isProcessing} className="flex-1 px-4 py-2.5 text-gray-700 bg-gray-100 rounded-lg hover:bg-gray-200 font-medium transition-colors">Cancelar</button>
                         <button onClick={confirmDelete} disabled={isProcessing} className="flex-1 px-4 py-2.5 bg-red-600 text-white rounded-lg hover:bg-red-700 font-medium shadow-md transition-all flex items-center justify-center gap-2">
                             {isProcessing ? <Loader2 size={18} className="animate-spin" /> : <Trash2 size={18} />}
-                            Desativar
+                            {storeToDelete.status === 'inactive' || storeToDelete.status === 'pending' ? 'Excluir' : 'Desativar'}
                         </button>
                     </div>
                 </div>

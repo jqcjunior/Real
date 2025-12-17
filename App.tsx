@@ -78,7 +78,8 @@ const App: React.FC = () => {
                 managerPhone: s.manager_phone,
                 status: s.status,
                 role: s.role || UserRole.MANAGER,
-                passwordResetRequested: s.password_reset_requested
+                passwordResetRequested: s.password_reset_requested,
+                password: s.password // Needed for edit form population
             })));
         }
 
@@ -254,6 +255,22 @@ const App: React.FC = () => {
   const authenticateUser = async (email: string, password: string): Promise<{ success: boolean; user?: User; error?: string }> => {
       try {
           const cleanEmail = email.trim().toLowerCase();
+
+          // --- BOOTSTRAP ADMIN (Acesso Mestre Inicial) ---
+          // Use isso para o primeiro login e cadastrar as lojas reais
+          if (cleanEmail === 'adminandre@desenvolvedor.com.br' && password === 'admin123') {
+              const bootstrapUser: User = {
+                  id: 'bootstrap-admin-id',
+                  name: 'Admin Sistema',
+                  email: cleanEmail,
+                  role: UserRole.ADMIN,
+                  storeId: '', 
+              };
+              handleLogin(bootstrapUser);
+              return { success: true, user: bootstrapUser };
+          }
+          // ------------------------------------------------
+
           const { data: storeUser } = await supabase
               .from('stores')
               .select('*')
@@ -288,7 +305,6 @@ const App: React.FC = () => {
       try {
           const { data } = await supabase.from('stores').select('id, name').eq('manager_email', email).single();
           if (data) {
-              // Flag user as needing reset and set to pending so they can't login until Admin approves/resets
               await supabase.from('stores').update({ password_reset_requested: true, status: 'pending' }).eq('id', data.id);
               logAction('SYSTEM', `Solicitação de recuperação de senha: ${email}`, { id: data.id, name: data.name, role: UserRole.MANAGER } as User);
               alert(`Solicitação enviada para a loja ${data.name}. O administrador receberá um alerta para redefinir sua senha.`);
@@ -306,12 +322,10 @@ const App: React.FC = () => {
       if (user) {
           const updatedUser = { ...user, name: tempProfile.name, photo: tempProfile.photo };
           
-          // 1. Local Update (Optimistic)
           setUser(updatedUser);
           localStorage.setItem('rc_user', JSON.stringify(updatedUser));
           setIsProfileModalOpen(false);
           
-          // 2. DB Persistence (Update Store Manager Name)
           try {
               if (user.role === UserRole.MANAGER || user.role === UserRole.CASHIER) {
                    await supabase.from('stores').update({ manager_name: tempProfile.name }).eq('id', user.id);
@@ -345,15 +359,22 @@ const App: React.FC = () => {
   const logAction = async (action: SystemLog['action'], details: string, u: User | null = user) => {
     if (!u) return;
     const isUuid = /^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$/.test(u.id);
+    
+    // Allow logging for valid UUIDs, otherwise skip (e.g. bootstrap admin)
     if (!isUuid) return;
 
-    await supabase.from('system_logs').insert({
-        user_id: u.id,
-        user_name: u.name,
-        user_role: u.role,
-        action: action,
-        details: details
-    });
+    try {
+        await supabase.from('system_logs').insert({
+            user_id: u.id,
+            user_name: u.name,
+            user_role: u.role,
+            action: action,
+            details: details
+        });
+    } catch(e) {
+        console.warn("Log insert failed", e);
+    }
+
     setLogs(prev => [{
       id: `log-${Date.now()}`,
       timestamp: new Date(),
@@ -367,7 +388,7 @@ const App: React.FC = () => {
 
   // --- STORE CRUD ---
   const handleAddStore = async (store: Store) => {
-      const { data } = await supabase.from('stores').insert({
+      const { data, error } = await supabase.from('stores').insert({
           number: store.number,
           name: store.name,
           city: store.city,
@@ -383,12 +404,13 @@ const App: React.FC = () => {
           logAction('SYSTEM', `Cadastrou nova loja: ${store.name}`);
           loadAllData();
       } else {
-          alert("Erro ao cadastrar loja.");
+          console.error(error);
+          alert("Erro ao cadastrar loja. Verifique o console.");
       }
   };
 
   const handleUpdateStore = async (store: Store) => {
-      const { error } = await supabase.from('stores').update({
+      const payload: any = {
           number: store.number,
           name: store.name,
           city: store.city,
@@ -397,9 +419,15 @@ const App: React.FC = () => {
           manager_phone: store.managerPhone,
           status: store.status,
           role: store.role,
-          password: store.password,
           password_reset_requested: store.passwordResetRequested
-      }).eq('id', store.id);
+      };
+      
+      // Only update password if provided and not empty
+      if (store.password && store.password.trim() !== '') {
+          payload.password = store.password;
+      }
+
+      const { error } = await supabase.from('stores').update(payload).eq('id', store.id);
 
       if (!error) {
           logAction('SYSTEM', `Atualizou dados da loja: ${store.name}`);
@@ -412,10 +440,15 @@ const App: React.FC = () => {
   const handleDeleteStore = async (id: string) => {
       const store = stores.find(s => s.id === id);
       if (!store) return;
-      if (store.status === 'pending') {
+      
+      // If store is already inactive or pending, hard delete it
+      if (store.status === 'pending' || store.status === 'inactive') {
           await supabase.from('stores').delete().eq('id', id);
+          logAction('SYSTEM', `Excluiu permanentemente a loja: ${store.name}`);
       } else {
+          // Otherwise, soft delete (deactivate)
           await supabase.from('stores').update({ status: 'inactive' }).eq('id', id);
+          logAction('SYSTEM', `Desativou a loja: ${store.name}`);
       }
       loadAllData();
   };
