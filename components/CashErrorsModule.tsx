@@ -2,16 +2,16 @@
 import React, { useState, useMemo } from 'react';
 import { User, Store, CashError, UserRole } from '../types';
 import { formatCurrency } from '../constants';
-import { AlertOctagon, TrendingUp, TrendingDown, Plus, Trash2, Calendar, Edit, X, Filter, Search, Printer } from 'lucide-react';
+import { AlertOctagon, TrendingUp, TrendingDown, Plus, Trash2, Calendar, Edit, X, Filter, Search, Printer, Loader2 } from 'lucide-react';
 
 interface CashErrorsModuleProps {
   user: User;
   store?: Store;
   stores: Store[];
   errors: CashError[];
-  onAddError: (error: CashError) => void;
-  onUpdateError: (error: CashError) => void;
-  onDeleteError: (id: string) => void;
+  onAddError: (error: CashError) => Promise<void>;
+  onUpdateError: (error: CashError) => Promise<void>;
+  onDeleteError: (id: string) => Promise<void>;
 }
 
 const MONTHS = [
@@ -24,6 +24,7 @@ const MONTHS = [
 const CashErrorsModule: React.FC<CashErrorsModuleProps> = ({ user, store, stores, errors, onAddError, onUpdateError, onDeleteError }) => {
   const [activeTab, setActiveTab] = useState<'list' | 'new'>('list');
   const [editingId, setEditingId] = useState<string | null>(null);
+  const [isSubmitting, setIsSubmitting] = useState(false);
   
   // Filters State
   const currentDate = new Date();
@@ -89,7 +90,7 @@ const CashErrorsModule: React.FC<CashErrorsModuleProps> = ({ user, store, stores
       return { surplus, shortage, balance: surplus - shortage };
   }, [filteredErrors]);
 
-  const handleSave = (e: React.FormEvent) => {
+  const handleSave = async (e: React.FormEvent) => {
       e.preventDefault();
       const val = parseFloat(formData.value.replace(/\./g, '').replace(',', '.'));
       
@@ -103,37 +104,43 @@ const CashErrorsModule: React.FC<CashErrorsModuleProps> = ({ user, store, stores
           return;
       }
 
-      if (editingId) {
-          const original = errors.find(err => err.id === editingId);
-          if (original) {
-              onUpdateError({
-                  ...original,
+      setIsSubmitting(true);
+      try {
+          if (editingId) {
+              const original = errors.find(err => err.id === editingId);
+              if (original) {
+                  await onUpdateError({
+                      ...original,
+                      date: formData.date,
+                      type: formData.type,
+                      value: val,
+                      reason: formData.reason,
+                      storeId: formData.storeId
+                  });
+              }
+              setEditingId(null);
+          } else {
+              const newError: CashError = {
+                  id: `err-${Date.now()}-${Math.random()}`,
+                  storeId: formData.storeId,
+                  userId: user.id,
+                  userName: user.name,
                   date: formData.date,
                   type: formData.type,
                   value: val,
                   reason: formData.reason,
-                  storeId: formData.storeId
-              });
+                  createdAt: new Date()
+              };
+              await onAddError(newError);
           }
-          setEditingId(null);
-      } else {
-          const newError: CashError = {
-              id: `err-${Date.now()}-${Math.random()}`,
-              storeId: formData.storeId,
-              userId: user.id,
-              userName: user.name,
-              date: formData.date,
-              type: formData.type,
-              value: val,
-              reason: formData.reason,
-              createdAt: new Date()
-          };
-          onAddError(newError);
+          
+          setFormData(prev => ({ ...prev, value: '', reason: '' }));
+          setActiveTab('list');
+      } catch (error) {
+          alert("Erro ao salvar ocorrência.");
+      } finally {
+          setIsSubmitting(false);
       }
-      
-      // Reset form
-      setFormData(prev => ({ ...prev, value: '', reason: '' }));
-      setActiveTab('list');
   };
 
   const handleEdit = (err: CashError) => {
@@ -147,6 +154,14 @@ const CashErrorsModule: React.FC<CashErrorsModuleProps> = ({ user, store, stores
       });
       setActiveTab('new');
   };
+
+  const handleDelete = async (id: string) => {
+      if(window.confirm("Deseja excluir este registro?")) {
+          setIsSubmitting(true);
+          await onDeleteError(id);
+          setIsSubmitting(false);
+      }
+  }
 
   const handlePrintReport = () => {
       const printWindow = window.open('', '_blank', 'width=900,height=1200');
@@ -477,8 +492,10 @@ const CashErrorsModule: React.FC<CashErrorsModuleProps> = ({ user, store, stores
 
                     <button 
                         type="submit"
-                        className={`w-full py-3 rounded-lg font-bold text-white shadow-md transition-colors flex items-center justify-center gap-2 ${editingId ? 'bg-blue-600 hover:bg-blue-700' : 'bg-red-600 hover:bg-red-700'}`}
+                        disabled={isSubmitting}
+                        className={`w-full py-3 rounded-lg font-bold text-white shadow-md transition-colors flex items-center justify-center gap-2 disabled:opacity-50 ${editingId ? 'bg-blue-600 hover:bg-blue-700' : 'bg-red-600 hover:bg-red-700'}`}
                     >
+                        {isSubmitting ? <Loader2 size={20} className="animate-spin" /> : (editingId ? <Edit size={20} /> : <Plus size={20} />)}
                         {editingId ? 'Atualizar Registro' : 'Registrar Ocorrência'}
                     </button>
                 </form>
@@ -647,7 +664,7 @@ const CashErrorsModule: React.FC<CashErrorsModuleProps> = ({ user, store, stores
                                                         <Edit size={16} />
                                                     </button>
                                                     <button 
-                                                        onClick={() => onDeleteError(err.id)}
+                                                        onClick={() => handleDelete(err.id)}
                                                         className="p-1.5 text-red-400 hover:bg-red-100 rounded-md transition-colors"
                                                         title="Excluir"
                                                     >

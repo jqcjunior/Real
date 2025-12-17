@@ -2,16 +2,16 @@
 import React, { useState } from 'react';
 import { User, CreditCardSale, Store, Receipt } from '../types';
 import { formatCurrency } from '../constants';
-import { Printer, CreditCard, FileText, Plus, Trash2, Calendar, DollarSign, PenTool } from 'lucide-react';
+import { Printer, CreditCard, FileText, Plus, Trash2, Calendar, DollarSign, PenTool, Loader2, Save } from 'lucide-react';
 
 interface FinancialModuleProps {
   user: User;
   store?: Store;
   sales: CreditCardSale[];
   receipts: Receipt[];
-  onAddSale: (sale: CreditCardSale) => void;
-  onDeleteSale: (id: string) => void;
-  onAddReceipt: (receipt: Receipt) => void;
+  onAddSale: (sale: CreditCardSale) => Promise<void>;
+  onDeleteSale: (id: string) => Promise<void>;
+  onAddReceipt: (receipt: Receipt) => Promise<void>;
 }
 
 const CARD_BRANDS = ['Visa', 'Mastercard', 'Elo', 'Hipercard', 'Amex', 'Alelo', 'Sodexo', 'Outros'];
@@ -64,6 +64,7 @@ const numberToWords = (value: number): string => {
 
 const FinancialModule: React.FC<FinancialModuleProps> = ({ user, store, sales, receipts, onAddSale, onDeleteSale, onAddReceipt }) => {
   const [activeTab, setActiveTab] = useState<'receipt' | 'cards'>('receipt');
+  const [isSubmitting, setIsSubmitting] = useState(false);
 
   // Receipt State
   const [receiptData, setReceiptData] = useState({
@@ -88,49 +89,71 @@ const FinancialModule: React.FC<FinancialModuleProps> = ({ user, store, sales, r
       window.print();
   };
 
-  const handlePrintAndSave = () => {
+  const handlePrintAndSave = async () => {
       if (receiptValueNum <= 0 || !receiptData.payer) {
           alert("Preencha todos os campos obrigatórios (Valor e Pagador).");
           return;
       }
 
-      const newReceipt: Receipt = {
-          id: `rec-${Date.now()}`, 
-          storeId: store?.id,
-          issuerName: user.name,
-          payer: receiptData.payer, 
-          recipient: user.name, 
-          value: receiptValueNum,
-          valueInWords: valueInWords,
-          reference: receiptData.reference,
-          date: receiptData.date,
-          createdAt: new Date()
-      };
+      setIsSubmitting(true);
+      try {
+          const newReceipt: Receipt = {
+              id: `rec-${Date.now()}`, 
+              storeId: store?.id,
+              issuerName: user.name,
+              payer: receiptData.payer, 
+              recipient: user.name, 
+              value: receiptValueNum,
+              valueInWords: valueInWords,
+              reference: receiptData.reference,
+              date: receiptData.date,
+              createdAt: new Date()
+          };
 
-      onAddReceipt(newReceipt);
-      
-      // Trigger Print
-      handlePrint();
-      
-      setReceiptData(prev => ({ ...prev, value: '', reference: 'compra de mercadorias' }));
+          await onAddReceipt(newReceipt);
+          
+          // Trigger Print after saving
+          setTimeout(() => handlePrint(), 500);
+          
+          setReceiptData(prev => ({ ...prev, value: '', reference: 'compra de mercadorias' }));
+      } catch (error) {
+          alert("Erro ao salvar recibo.");
+      } finally {
+          setIsSubmitting(false);
+      }
   };
 
-  const handleAddSale = (e: React.FormEvent) => {
+  const handleAddSale = async (e: React.FormEvent) => {
       e.preventDefault();
       const val = parseFloat(newSale.value.replace(/\./g, '').replace(',', '.'));
       if (!isNaN(val) && val > 0) {
-          const sale: CreditCardSale = {
-              id: `card-${Date.now()}`,
-              storeId: store?.id,
-              userId: user.id,
-              date: newSale.date,
-              brand: newSale.brand,
-              value: val
-          };
-          onAddSale(sale);
-          setNewSale(prev => ({ ...prev, value: '' }));
+          setIsSubmitting(true);
+          try {
+              const sale: CreditCardSale = {
+                  id: `card-${Date.now()}`,
+                  storeId: store?.id,
+                  userId: user.id,
+                  date: newSale.date,
+                  brand: newSale.brand,
+                  value: val
+              };
+              await onAddSale(sale);
+              setNewSale(prev => ({ ...prev, value: '' }));
+          } catch (error) {
+              alert("Erro ao registrar venda.");
+          } finally {
+              setIsSubmitting(false);
+          }
       }
   };
+
+  const handleDeleteSale = async (id: string) => {
+      if (window.confirm("Deseja realmente excluir este lançamento?")) {
+          setIsSubmitting(true); // Global loader effect
+          await onDeleteSale(id);
+          setIsSubmitting(false);
+      }
+  }
 
   const filteredSales = sales.filter(s => {
       if (store?.id && s.storeId !== store.id) return false;
@@ -165,9 +188,16 @@ const FinancialModule: React.FC<FinancialModuleProps> = ({ user, store, sales, r
                     <div className="space-y-4">
                         <div><label className="block text-xs font-bold text-gray-500 uppercase mb-1">Valor (R$)</label><input value={receiptData.value} onChange={e => setReceiptData({...receiptData, value: e.target.value})} placeholder="0,00" className="w-full p-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none font-bold text-gray-800"/></div>
                         <div><label className="block text-xs font-bold text-gray-500 uppercase mb-1">Pagador</label><input value={receiptData.payer} onChange={e => setReceiptData({...receiptData, payer: e.target.value})} placeholder="Nome de quem pagou" className="w-full p-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none"/></div>
-                        <div><label className="block text-xs font-bold text-gray-500 uppercase mb-1">Referente a</label><input value={receiptData.reference} onChange={e => setReceiptData({...receiptData, reference: e.target.value})} placeholder="Ex: Compra de calçados" className="w-full p-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none"/></div>
+                        <div><label className="block text-xs font-bold text-gray-500 uppercase mb-1">Referente a</label><input value={receiptData.reference} onChange={e => setReceiptData({...receiptData, reference: e.target.value})} placeholder="Ex: Compra de mercadorias" className="w-full p-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none"/></div>
                         <div><label className="block text-xs font-bold text-gray-500 uppercase mb-1">Data</label><input type="date" value={receiptData.date} onChange={e => setReceiptData({...receiptData, date: e.target.value})} className="w-full p-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none"/></div>
-                        <button onClick={handlePrintAndSave} className="w-full mt-4 bg-gray-800 text-white py-3 rounded-lg font-bold hover:bg-black transition-colors flex items-center justify-center gap-2"><Printer size={18} /> Salvar e Imprimir</button>
+                        <button 
+                            onClick={handlePrintAndSave} 
+                            disabled={isSubmitting}
+                            className="w-full mt-4 bg-gray-800 text-white py-3 rounded-lg font-bold hover:bg-black transition-colors flex items-center justify-center gap-2 disabled:opacity-50"
+                        >
+                            {isSubmitting ? <Loader2 size={18} className="animate-spin" /> : <Printer size={18} />} 
+                            Salvar e Imprimir
+                        </button>
                     </div>
                 </div>
 
@@ -209,7 +239,14 @@ const FinancialModule: React.FC<FinancialModuleProps> = ({ user, store, sales, r
                         <div><label className="block text-xs font-bold text-gray-500 uppercase mb-1">Data</label><input type="date" required value={newSale.date} onChange={e => setNewSale({...newSale, date: e.target.value})} className="w-full p-3 border border-gray-300 rounded-lg outline-none"/></div>
                         <div><label className="block text-xs font-bold text-gray-500 uppercase mb-1">Bandeira</label><select value={newSale.brand} onChange={e => setNewSale({...newSale, brand: e.target.value})} className="w-full p-3 border border-gray-300 rounded-lg outline-none bg-white">{CARD_BRANDS.map(b => <option key={b} value={b}>{b}</option>)}</select></div>
                         <div><label className="block text-xs font-bold text-gray-500 uppercase mb-1">Valor (R$)</label><input required value={newSale.value} onChange={e => setNewSale({...newSale, value: e.target.value})} placeholder="0,00" className="w-full p-3 border border-gray-300 rounded-lg outline-none font-bold text-gray-800"/></div>
-                        <button type="submit" className="w-full mt-2 bg-green-600 text-white py-3 rounded-lg font-bold hover:bg-green-700 shadow-md">Adicionar Venda</button>
+                        <button 
+                            type="submit" 
+                            disabled={isSubmitting}
+                            className="w-full mt-2 bg-green-600 text-white py-3 rounded-lg font-bold hover:bg-green-700 shadow-md flex items-center justify-center gap-2 disabled:opacity-50"
+                        >
+                            {isSubmitting ? <Loader2 size={18} className="animate-spin" /> : <Save size={18} />} 
+                            Adicionar Venda
+                        </button>
                     </form>
                 </div>
 
@@ -232,7 +269,16 @@ const FinancialModule: React.FC<FinancialModuleProps> = ({ user, store, sales, r
                                             <td className="p-4 text-gray-600">{new Date(sale.date).toLocaleDateString('pt-BR')}</td>
                                             <td className="p-4 font-medium text-gray-800">{sale.brand}</td>
                                             <td className="p-4 text-right font-bold text-green-700">{formatCurrency(sale.value)}</td>
-                                            <td className="p-4 text-center"><button onClick={() => onDeleteSale(sale.id)} className="text-gray-300 hover:text-red-500 transition-colors p-1" title="Excluir"><Trash2 size={16} /></button></td>
+                                            <td className="p-4 text-center">
+                                                <button 
+                                                    onClick={() => handleDeleteSale(sale.id)} 
+                                                    className="text-gray-300 hover:text-red-500 transition-colors p-1" 
+                                                    title="Excluir"
+                                                    disabled={isSubmitting}
+                                                >
+                                                    <Trash2 size={16} />
+                                                </button>
+                                            </td>
                                         </tr>
                                     ))
                                 )}

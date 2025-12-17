@@ -6,10 +6,10 @@ import * as XLSX from 'xlsx';
 
 interface AdminSettingsProps {
   stores: Store[];
-  onAddStore: (store: Store) => void;
-  onUpdateStore: (store: Store) => void;
-  onDeleteStore: (id: string) => void;
-  onImportStores?: (stores: Store[]) => void;
+  onAddStore: (store: Store) => Promise<void>;
+  onUpdateStore: (store: Store) => Promise<void>;
+  onDeleteStore: (id: string) => Promise<void>;
+  onImportStores?: (stores: Store[]) => Promise<void>;
 }
 
 const BRAZIL_STATES = [
@@ -21,28 +21,22 @@ const AdminSettings: React.FC<AdminSettingsProps> = ({ stores, onAddStore, onUpd
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [editingStore, setEditingStore] = useState<Partial<Store>>({});
   const [isEditing, setIsEditing] = useState(false);
+  const [isProcessing, setIsProcessing] = useState(false);
   
   // State for Delete Confirmation Modal
   const [storeToDelete, setStoreToDelete] = useState<Store | null>(null);
   
-  // Separate states for City/UF handling
   const [cityInput, setCityInput] = useState('');
-  const [ufInput, setUfInput] = useState('BA'); // Default updated to BA
+  const [ufInput, setUfInput] = useState('BA'); 
 
-  // State to track selected roles for pending requests
   const [pendingRoles, setPendingRoles] = useState<Record<string, UserRole>>({});
-
-  // Group Expansion State
   const [expandedStores, setExpandedStores] = useState<Set<string>>(new Set());
 
-  // Import State
   const fileInputRef = useRef<HTMLInputElement>(null);
   const [isImporting, setIsImporting] = useState(false);
 
-  // Separation of Pending and Active stores
   const pendingStores = useMemo(() => stores.filter(s => s.status === 'pending'), [stores]);
   
-  // Group logic for Main List
   const groupedStores = useMemo(() => {
     const mainStores = stores.filter(s => s.status === 'active' || s.status === 'inactive' || (!s.status));
     const groups: Record<string, { manager?: Store, cashiers: Store[] }> = {};
@@ -95,9 +89,11 @@ const AdminSettings: React.FC<AdminSettingsProps> = ({ stores, onAddStore, onUpd
     setIsModalOpen(true);
   };
 
-  const confirmDelete = () => {
+  const confirmDelete = async () => {
     if (storeToDelete) {
-      onDeleteStore(storeToDelete.id);
+      setIsProcessing(true);
+      await onDeleteStore(storeToDelete.id);
+      setIsProcessing(false);
       setStoreToDelete(null); 
     }
   };
@@ -119,27 +115,34 @@ const AdminSettings: React.FC<AdminSettingsProps> = ({ stores, onAddStore, onUpd
     setIsModalOpen(true);
   };
 
-  const handleSave = (e: React.FormEvent) => {
+  const handleSave = async (e: React.FormEvent) => {
     e.preventDefault();
+    setIsProcessing(true);
     const fullCity = `${cityInput} - ${ufInput}`;
     const cleanNumber = editingStore.number ? String(parseInt(editingStore.number.replace(/\D/g, ''), 10)) : '';
     const storeData = { ...editingStore, city: fullCity, number: cleanNumber };
 
-    if (isEditing && editingStore.id) {
-      const updatedStoreData = { ...storeData, passwordResetRequested: false } as Store;
-      onUpdateStore(updatedStoreData);
-    } else {
-      const newStore = { ...storeData, id: `temp-${Date.now()}`, status: storeData.status || 'active' } as Store;
-      onAddStore(newStore);
+    try {
+        if (isEditing && editingStore.id) {
+          const updatedStoreData = { ...storeData, passwordResetRequested: false } as Store;
+          await onUpdateStore(updatedStoreData);
+        } else {
+          const newStore = { ...storeData, id: `temp-${Date.now()}`, status: storeData.status || 'active' } as Store;
+          await onAddStore(newStore);
+        }
+        setIsModalOpen(false);
+    } catch (err) {
+        console.error(err);
+    } finally {
+        setIsProcessing(false);
     }
-    setIsModalOpen(false);
   };
 
   const handleChange = (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement>) => {
     setEditingStore({ ...editingStore, [e.target.name]: e.target.value });
   };
 
-  const approveRequest = (store: Store) => {
+  const approveRequest = async (store: Store) => {
       const roleToAssign = pendingRoles[store.id] || UserRole.MANAGER;
       const updatedStore = { 
           ...store, 
@@ -147,26 +150,28 @@ const AdminSettings: React.FC<AdminSettingsProps> = ({ stores, onAddStore, onUpd
           role: roleToAssign, 
           passwordResetRequested: false 
       } as Store;
-      onUpdateStore(updatedStore);
-      alert(`Loja ${store.number} aprovada com acesso de ${roleToAssign === UserRole.ADMIN ? 'ADMINISTRADOR' : 'GERENTE'}.`);
+      await onUpdateStore(updatedStore);
+      alert(`Loja ${store.number} aprovada.`);
   };
 
-  const rejectRequest = (store: Store) => {
-      onDeleteStore(store.id);
+  const rejectRequest = async (store: Store) => {
+      if(window.confirm("Deseja realmente rejeitar esta solicitação?")) {
+          await onDeleteStore(store.id);
+      }
   };
 
-  const toggleStatus = (store: Store) => {
+  const toggleStatus = async (store: Store) => {
       const newStatus = store.status === 'active' ? 'inactive' : 'active';
-      onUpdateStore({ ...store, status: newStatus });
+      await onUpdateStore({ ...store, status: newStatus });
   };
 
-  const cycleRole = (store: Store) => {
+  const cycleRole = async (store: Store) => {
       const currentRole = store.role || UserRole.MANAGER;
       let newRole: UserRole;
       if (currentRole === UserRole.MANAGER) newRole = UserRole.ADMIN;
       else if (currentRole === UserRole.ADMIN) newRole = UserRole.CASHIER;
       else newRole = UserRole.MANAGER;
-      onUpdateStore({ ...store, role: newRole });
+      await onUpdateStore({ ...store, role: newRole });
   };
 
   // --- IMPORT LOGIC ---
@@ -175,7 +180,7 @@ const AdminSettings: React.FC<AdminSettingsProps> = ({ stores, onAddStore, onUpd
       if (file && onImportStores) {
           setIsImporting(true);
           const reader = new FileReader();
-          reader.onload = (evt) => {
+          reader.onload = async (evt) => {
               try {
                   const bstr = evt.target?.result;
                   const wb = XLSX.read(bstr, { type: 'binary' });
@@ -183,7 +188,6 @@ const AdminSettings: React.FC<AdminSettingsProps> = ({ stores, onAddStore, onUpd
                   const ws = wb.Sheets[wsname];
                   const data = XLSX.utils.sheet_to_json(ws, { header: 1 }) as any[][];
                   
-                  // Simple heuristic to find header
                   let headerIdx = 0;
                   for (let i = 0; i < Math.min(data.length, 10); i++) {
                       const rowStr = data[i].join(' ').toLowerCase();
@@ -226,7 +230,7 @@ const AdminSettings: React.FC<AdminSettingsProps> = ({ stores, onAddStore, onUpd
                   }
 
                   if (newStores.length > 0) {
-                      onImportStores(newStores);
+                      await onImportStores(newStores);
                   } else {
                       alert("Nenhuma loja válida encontrada na planilha. Verifique as colunas (Loja, Nome, Cidade, Gerente).");
                   }
@@ -406,6 +410,7 @@ const AdminSettings: React.FC<AdminSettingsProps> = ({ stores, onAddStore, onUpd
                 <button onClick={() => setIsModalOpen(false)} className="text-gray-400 hover:text-gray-600"><X size={20} /></button>
             </div>
             <form onSubmit={handleSave} className="p-6 space-y-4">
+                {/* ... existing form fields ... */}
                 <div className="grid grid-cols-4 gap-4">
                      <div className="col-span-1">
                         <label className="block text-xs font-semibold text-gray-600 mb-1">Status</label>
@@ -486,9 +491,13 @@ const AdminSettings: React.FC<AdminSettingsProps> = ({ stores, onAddStore, onUpd
                         </div>
                     </div>
                 </div>
+
                 <div className="flex gap-3 pt-4">
-                    <button type="button" onClick={() => setIsModalOpen(false)} className="flex-1 px-4 py-2 text-gray-700 bg-gray-100 rounded-lg hover:bg-gray-200 font-medium transition-colors">Cancelar</button>
-                    <button type="submit" className="flex-1 px-4 py-2 bg-blue-700 text-white rounded-lg hover:bg-blue-800 font-medium shadow-md transition-all flex items-center justify-center gap-2"><Save size={18} /> Salvar</button>
+                    <button type="button" onClick={() => setIsModalOpen(false)} disabled={isProcessing} className="flex-1 px-4 py-2 text-gray-700 bg-gray-100 rounded-lg hover:bg-gray-200 font-medium transition-colors disabled:opacity-50">Cancelar</button>
+                    <button type="submit" disabled={isProcessing} className="flex-1 px-4 py-2 bg-blue-700 text-white rounded-lg hover:bg-blue-800 font-medium shadow-md transition-all flex items-center justify-center gap-2 disabled:opacity-50">
+                        {isProcessing ? <Loader2 size={18} className="animate-spin" /> : <Save size={18} />}
+                        Salvar
+                    </button>
                 </div>
             </form>
           </div>
@@ -503,8 +512,11 @@ const AdminSettings: React.FC<AdminSettingsProps> = ({ stores, onAddStore, onUpd
                     <h3 className="text-xl font-bold text-gray-900 mb-2">Desativar Cadastro?</h3>
                     <p className="text-gray-600 mb-6">Você deseja desativar o cadastro de <span className="font-bold text-gray-900">{storeToDelete.name}</span>?<br/><span className="text-xs text-gray-400 mt-2 block">(O status será alterado para inativo, mas os dados históricos serão mantidos no banco)</span></p>
                     <div className="flex gap-3">
-                         <button onClick={() => setStoreToDelete(null)} className="flex-1 px-4 py-2.5 text-gray-700 bg-gray-100 rounded-lg hover:bg-gray-200 font-medium transition-colors">Cancelar</button>
-                        <button onClick={confirmDelete} className="flex-1 px-4 py-2.5 bg-red-600 text-white rounded-lg hover:bg-red-700 font-medium shadow-md transition-all flex items-center justify-center gap-2"><Trash2 size={18} /> Desativar</button>
+                         <button onClick={() => setStoreToDelete(null)} disabled={isProcessing} className="flex-1 px-4 py-2.5 text-gray-700 bg-gray-100 rounded-lg hover:bg-gray-200 font-medium transition-colors">Cancelar</button>
+                        <button onClick={confirmDelete} disabled={isProcessing} className="flex-1 px-4 py-2.5 bg-red-600 text-white rounded-lg hover:bg-red-700 font-medium shadow-md transition-all flex items-center justify-center gap-2">
+                            {isProcessing ? <Loader2 size={18} className="animate-spin" /> : <Trash2 size={18} />}
+                            Desativar
+                        </button>
                     </div>
                 </div>
              </div>

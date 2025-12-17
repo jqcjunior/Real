@@ -5,9 +5,7 @@ import { Mail, Lock, UserPlus, X, Store as StoreIcon, MapPin, Phone, User as Use
 import { APP_NAME } from '../constants';
 
 interface LoginScreenProps {
-  onLogin: (user: User) => void;
-  users: User[];
-  stores?: Store[];
+  onLoginAttempt: (email: string, password: string) => Promise<{ success: boolean; user?: User; error?: string }>;
   onRegisterRequest?: (store: Store) => void;
   onPasswordResetRequest?: (email: string) => void;
 }
@@ -17,7 +15,7 @@ const BRAZIL_STATES = [
     'PA', 'PB', 'PR', 'PE', 'PI', 'RJ', 'RN', 'RS', 'RO', 'RR', 'SC', 'SP', 'SE', 'TO'
   ];
 
-const LoginScreen: React.FC<LoginScreenProps> = ({ onLogin, users, stores = [], onRegisterRequest, onPasswordResetRequest }) => {
+const LoginScreen: React.FC<LoginScreenProps> = ({ onLoginAttempt, onRegisterRequest, onPasswordResetRequest }) => {
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [error, setError] = useState('');
@@ -44,66 +42,19 @@ const LoginScreen: React.FC<LoginScreenProps> = ({ onLogin, users, stores = [], 
     setError('');
     setIsLoading(true);
 
-    // Simulating a small network delay for UX
-    await new Promise(resolve => setTimeout(resolve, 500));
-
-    const cleanEmail = email.trim().toLowerCase();
-    const cleanPass = password.trim();
-
-    // 1. First check against static/admin users (MOCK_USERS)
-    const adminUser = users.find(u => u.email.toLowerCase() === cleanEmail);
-
-    if (adminUser) {
-      if (adminUser.password && adminUser.password !== cleanPass) {
-         setError('Senha de administrador incorreta.');
-         setIsLoading(false);
-         return;
-      }
-      onLogin(adminUser);
-      return;
-    } 
-
-    // 2. If not an admin, check against Stores (Managers) loaded from Supabase
-    // Note: App.tsx loads stores with the 'password' column included
-    const linkedStore = stores.find(s => 
-        s.managerEmail.toLowerCase() === cleanEmail && 
-        s.password === cleanPass
-    );
-
-    if (linkedStore) {
-        if (linkedStore.status === 'pending') {
-            if (linkedStore.passwordResetRequested) {
-                setError('Sua solicitação de nova senha está em análise.');
-            } else {
-                setError('Seu cadastro aguarda aprovação do administrador.');
-            }
+    try {
+        const result = await onLoginAttempt(email.trim(), password.trim());
+        
+        if (!result.success) {
+            setError(result.error || 'Credenciais inválidas.');
             setIsLoading(false);
-            return;
         }
-        if (linkedStore.status === 'inactive') {
-            setError('O acesso desta loja foi desativado.');
-            setIsLoading(false);
-            return;
-        }
-
-        const assignedRole = linkedStore.role || UserRole.MANAGER;
-
-        const managerUser: User = {
-            id: linkedStore.id,
-            name: linkedStore.managerName,
-            email: linkedStore.managerEmail,
-            role: assignedRole,
-            storeId: linkedStore.id,
-            photo: undefined // Optional: Add photo column later if needed
-        };
-
-        onLogin(managerUser);
-        return;
+        // If success, parent component handles state change, component unmounts
+    } catch (err) {
+        console.error(err);
+        setError('Erro de conexão. Tente novamente.');
+        setIsLoading(false);
     }
-
-    // 3. If neither
-    setError('E-mail ou senha inválidos.');
-    setIsLoading(false);
   };
 
   const handleSendRecovery = (e: React.FormEvent) => {

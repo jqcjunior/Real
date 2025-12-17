@@ -17,7 +17,6 @@ import AdminSettings from './components/AdminSettings';
 import PurchaseAuthorization from './components/PurchaseAuthorization';
 import TermoAutorizacao from './components/TermoAutorizacao';
 import { User, Store, MonthlyPerformance, UserRole, ProductPerformance, Cota, AgendaItem, DownloadItem, SystemLog, CashError, CreditCardSale, Receipt, CotaSettings, CotaDebt } from './types';
-import { MOCK_USERS } from './constants';
 import { supabase } from './services/supabaseClient';
 
 interface NavButtonProps {
@@ -51,7 +50,6 @@ const App: React.FC = () => {
   const [isProfileModalOpen, setIsProfileModalOpen] = useState(false);
   const [tempProfile, setTempProfile] = useState<{name: string, photo: string}>({ name: '', photo: '' });
 
-  const [users] = useState<User[]>(MOCK_USERS);
   const [stores, setStores] = useState<Store[]>([]);
   const [performanceData, setPerformanceData] = useState<MonthlyPerformance[]>([]);
   const [productData, setProductData] = useState<ProductPerformance[]>([]);
@@ -67,7 +65,6 @@ const App: React.FC = () => {
   
   // --- DATA LOADING ---
   const loadAllData = async () => {
-      // Don't set isLoading(true) here to avoid flickering if refreshing data in background
       try {
         const { data: dbStores } = await supabase.from('stores').select('*');
         if (dbStores) {
@@ -81,7 +78,6 @@ const App: React.FC = () => {
                 managerPhone: s.manager_phone,
                 status: s.status,
                 role: s.role || UserRole.MANAGER,
-                password: s.password,
                 passwordResetRequested: s.password_reset_requested
             })));
         }
@@ -254,6 +250,80 @@ const App: React.FC = () => {
       }
   };
 
+  // --- AUTHENTICATION & PROFILE ---
+  const authenticateUser = async (email: string, password: string): Promise<{ success: boolean; user?: User; error?: string }> => {
+      try {
+          const cleanEmail = email.trim().toLowerCase();
+          const { data: storeUser } = await supabase
+              .from('stores')
+              .select('*')
+              .eq('manager_email', cleanEmail)
+              .eq('password', password)
+              .maybeSingle();
+
+          if (storeUser) {
+              if (storeUser.status === 'inactive') return { success: false, error: 'Usuário desativado.' };
+              if (storeUser.status === 'pending') return { success: false, error: 'Cadastro pendente de aprovação.' };
+
+              const authenticatedUser: User = {
+                  id: storeUser.id,
+                  name: storeUser.manager_name,
+                  email: storeUser.manager_email,
+                  role: storeUser.role as UserRole || UserRole.MANAGER,
+                  storeId: storeUser.id,
+              };
+              
+              handleLogin(authenticatedUser);
+              return { success: true, user: authenticatedUser };
+          }
+          return { success: false, error: 'E-mail ou senha incorretos.' };
+
+      } catch (err) {
+          console.error("Auth Error:", err);
+          return { success: false, error: 'Erro ao conectar ao servidor.' };
+      }
+  };
+
+  const handlePasswordResetRequest = async (email: string) => {
+      try {
+          const { data } = await supabase.from('stores').select('id, name').eq('manager_email', email).single();
+          if (data) {
+              // Flag user as needing reset and set to pending so they can't login until Admin approves/resets
+              await supabase.from('stores').update({ password_reset_requested: true, status: 'pending' }).eq('id', data.id);
+              logAction('SYSTEM', `Solicitação de recuperação de senha: ${email}`, { id: data.id, name: data.name, role: UserRole.MANAGER } as User);
+              alert(`Solicitação enviada para a loja ${data.name}. O administrador receberá um alerta para redefinir sua senha.`);
+          } else {
+              alert("E-mail não encontrado na base de dados.");
+          }
+      } catch (error) {
+          console.error(error);
+          alert("Erro ao processar solicitação.");
+      }
+  };
+
+  const handleProfileSave = async (e: React.FormEvent) => {
+      e.preventDefault();
+      if (user) {
+          const updatedUser = { ...user, name: tempProfile.name, photo: tempProfile.photo };
+          
+          // 1. Local Update (Optimistic)
+          setUser(updatedUser);
+          localStorage.setItem('rc_user', JSON.stringify(updatedUser));
+          setIsProfileModalOpen(false);
+          
+          // 2. DB Persistence (Update Store Manager Name)
+          try {
+              if (user.role === UserRole.MANAGER || user.role === UserRole.CASHIER) {
+                   await supabase.from('stores').update({ manager_name: tempProfile.name }).eq('id', user.id);
+              }
+          } catch(err) {
+              console.error("Failed to persist profile update", err);
+          }
+
+          logAction('SYSTEM', `Atualizou perfil de usuário`);
+      }
+  };
+
   // --- INIT & PERSISTENCE ---
   useEffect(() => {
     const savedUser = localStorage.getItem('rc_user');
@@ -284,7 +354,6 @@ const App: React.FC = () => {
         action: action,
         details: details
     });
-    // Optimistic Update
     setLogs(prev => [{
       id: `log-${Date.now()}`,
       timestamp: new Date(),
@@ -298,7 +367,7 @@ const App: React.FC = () => {
 
   // --- STORE CRUD ---
   const handleAddStore = async (store: Store) => {
-      const { data, error } = await supabase.from('stores').insert({
+      const { data } = await supabase.from('stores').insert({
           number: store.number,
           name: store.name,
           city: store.city,
@@ -314,7 +383,6 @@ const App: React.FC = () => {
           logAction('SYSTEM', `Cadastrou nova loja: ${store.name}`);
           loadAllData();
       } else {
-          console.error(error);
           alert("Erro ao cadastrar loja.");
       }
   };
@@ -344,7 +412,6 @@ const App: React.FC = () => {
   const handleDeleteStore = async (id: string) => {
       const store = stores.find(s => s.id === id);
       if (!store) return;
-      // Hard delete for pending, soft delete (inactive) for others
       if (store.status === 'pending') {
           await supabase.from('stores').delete().eq('id', id);
       } else {
@@ -370,12 +437,11 @@ const App: React.FC = () => {
           loadAllData();
           alert(`${newStores.length} lojas importadas com sucesso!`);
       } else {
-          console.error(error);
           alert("Erro ao importar lojas.");
       }
   };
 
-  // --- GOALS CRUD (METAS) ---
+  // --- GOALS CRUD ---
   const handleSaveGoalsToSupabase = async (goals: MonthlyPerformance[]) => {
       for (const goal of goals) {
           const payload = {
@@ -395,11 +461,9 @@ const App: React.FC = () => {
               delinquency_actual: goal.delinquencyRate
           };
 
-          // 1. If it has an ID, it's an update
           if (goal.id) {
               await supabase.from('monthly_performance').update(payload).eq('id', goal.id);
           } else {
-              // 2. If no ID, check if record exists for this store+month
               const { data: existing } = await supabase
                   .from('monthly_performance')
                   .select('id')
@@ -418,16 +482,12 @@ const App: React.FC = () => {
       loadAllData();
   };
 
-  // --- PRODUCT PERFORMANCE CRUD (COMPRAS) ---
+  // --- PRODUCT PERFORMANCE CRUD ---
   const handleSaveProductPerformance = async (newData: ProductPerformance[]) => {
       const monthsAffected = Array.from(new Set(newData.map(d => d.month)));
-      
-      // Strategy: Delete existing records for these months to prevent duplicates, then insert new.
-      // This acts as a "Snapshot Replacement" for the month's report.
       if (monthsAffected.length > 0) {
           await supabase.from('product_performance').delete().in('month', monthsAffected);
       }
-
       const payload = newData.map(d => ({
           store_id: d.storeId,
           month: d.month,
@@ -436,20 +496,18 @@ const App: React.FC = () => {
           pairs_sold: d.pairsSold,
           revenue: d.revenue
       }));
-
       const { error } = await supabase.from('product_performance').insert(payload);
       if (!error) {
           logAction('IMPORT_PURCHASES', `Importou compras para: ${monthsAffected.join(', ')}`);
           loadAllData();
       } else {
-          console.error(error);
           alert("Erro ao salvar dados de compras.");
       }
   };
 
   // --- COTAS CRUD ---
   const handleAddCota = async (cota: Cota) => {
-      const { data, error } = await supabase.from('cotas').insert({
+      const { data } = await supabase.from('cotas').insert({
           store_id: cota.storeId,
           brand: cota.brand,
           classification: cota.classification,
@@ -457,7 +515,7 @@ const App: React.FC = () => {
           shipment_date: cota.shipmentDate,
           payment_terms: cota.paymentTerms,
           pairs: cota.pairs,
-          installments: cota.installments, // Supabase handles JSONB
+          installments: cota.installments,
           created_by_role: cota.createdByRole,
           status: 'pending'
       }).select().single();
@@ -465,16 +523,11 @@ const App: React.FC = () => {
       if (data) {
           logAction('ADD_COTA', `Lançou cota: ${cota.brand} (${cota.totalValue})`);
           loadAllData();
-      } else {
-          console.error(error);
       }
   };
 
   const handleUpdateCota = async (cota: Cota) => {
-      await supabase.from('cotas').update({ 
-          status: cota.status,
-          // Update other fields if necessary
-      }).eq('id', cota.id);
+      await supabase.from('cotas').update({ status: cota.status }).eq('id', cota.id);
       loadAllData();
   };
 
@@ -495,16 +548,12 @@ const App: React.FC = () => {
   };
 
   const handleSaveCotaDebts = async (storeId: string, debts: Record<string, number>) => {
-      // Clear existing debts for this store first or implement detailed diffing
-      // Strategy: Delete all for store and re-insert active ones
       await supabase.from('cota_debts').delete().eq('store_id', storeId);
-      
       const payload = Object.entries(debts).map(([month, value]) => ({
           store_id: storeId,
           month,
           value
       }));
-      
       if (payload.length > 0) {
           await supabase.from('cota_debts').insert(payload);
       }
@@ -530,7 +579,6 @@ const App: React.FC = () => {
               loadAllData();
           }
       } else {
-          // Fallback for mock users
           setTasks(prev => [...prev, { ...task, id: `local-${Date.now()}`, userId: currentUserId }]);
       }
   };
@@ -624,7 +672,6 @@ const App: React.FC = () => {
       loadAllData();
   };
 
-  // --- DOWNLOADS CRUD ---
   const handleUploadDownload = async (item: DownloadItem) => {
       const { data } = await supabase.from('marketing_downloads').insert({
           title: item.title,
@@ -651,6 +698,7 @@ const App: React.FC = () => {
     localStorage.setItem('rc_user', JSON.stringify(u));
     setUser(u);
     logAction('LOGIN', `Usuário ${u.name} realizou login`, u);
+    loadAllData();
     if (u.role === UserRole.CASHIER) setCurrentView('agenda');
     else setCurrentView('dashboard');
   };
@@ -669,19 +717,6 @@ const App: React.FC = () => {
       }
   };
 
-  const handleProfileSave = async (e: React.FormEvent) => {
-      e.preventDefault();
-      if (user) {
-          // If we had a profiles table update endpoint, we'd call it here
-          // For now, update local state
-          const updatedUser = { ...user, name: tempProfile.name, photo: tempProfile.photo };
-          setUser(updatedUser);
-          localStorage.setItem('rc_user', JSON.stringify(updatedUser));
-          setIsProfileModalOpen(false);
-          logAction('SYSTEM', `Atualizou perfil de usuário`);
-      }
-  };
-
   const handlePhotoUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
       const file = e.target.files?.[0];
       if (file) {
@@ -692,42 +727,22 @@ const App: React.FC = () => {
   };
 
   const renderView = () => {
-    if (!user) return <LoginScreen onLogin={handleLogin} users={users} stores={stores} onRegisterRequest={handleAddStore} />;
+    if (!user) return <LoginScreen onLoginAttempt={authenticateUser} onRegisterRequest={handleAddStore} onPasswordResetRequest={handlePasswordResetRequest} />;
 
     switch (currentView) {
       case 'dashboard':
         if (user.role === UserRole.CASHIER) return <AgendaSystem user={user} tasks={tasks} onAddTask={handleAddTask} onUpdateTask={handleUpdateTask} onDeleteTask={handleDeleteTask} onLogAction={logAction} />;
         return user.role === UserRole.MANAGER 
           ? <DashboardManager user={user} stores={stores} performanceData={performanceData} purchasingData={productData} />
-          : <DashboardAdmin stores={stores} performanceData={performanceData} onImportData={setPerformanceData} onSaveGoals={handleSaveGoalsToSupabase} />;
+          : <DashboardAdmin stores={stores} performanceData={performanceData} onImportData={handleSaveGoalsToSupabase} onSaveGoals={handleSaveGoalsToSupabase} />;
       case 'purchases':
         return <DashboardPurchases stores={stores} data={productData} onImport={handleSaveProductPerformance} />;
       case 'cotas':
-        return <CotasManagement 
-                  user={user} 
-                  stores={stores} 
-                  cotas={cotas} 
-                  cotaSettings={cotaSettings} 
-                  cotaDebts={cotaDebts} 
-                  onAddCota={handleAddCota} 
-                  onDeleteCota={handleDeleteCota} 
-                  onUpdateCota={handleUpdateCota} 
-                  onSaveSettings={handleSaveCotaSettings} 
-                  onSaveDebts={handleSaveCotaDebts}
-                  onLogAction={logAction} 
-                />;
-      case 'metas_registration': // New View for Goals
+        return <CotasManagement user={user} stores={stores} cotas={cotas} cotaSettings={cotaSettings} cotaDebts={cotaDebts} onAddCota={handleAddCota} onDeleteCota={handleDeleteCota} onUpdateCota={handleUpdateCota} onSaveSettings={handleSaveCotaSettings} onSaveDebts={handleSaveCotaDebts} onLogAction={logAction} />;
+      case 'metas_registration':
         return <GoalRegistration stores={stores} performanceData={performanceData} onUpdateData={handleSaveGoalsToSupabase} />;
       case 'financial':
-        return <FinancialModule 
-            user={user} 
-            store={stores.find(s => s.id === user.storeId)} 
-            sales={creditCardSales}
-            receipts={receipts}
-            onAddSale={handleAddCardSale}
-            onDeleteSale={handleDeleteCardSale}
-            onAddReceipt={handleAddReceipt}
-        />;
+        return <FinancialModule user={user} store={stores.find(s => s.id === user.storeId)} sales={creditCardSales} receipts={receipts} onAddSale={handleAddCardSale} onDeleteSale={handleDeleteCardSale} onAddReceipt={handleAddReceipt} />;
       case 'agenda':
         return <AgendaSystem user={user} tasks={tasks} onAddTask={handleAddTask} onUpdateTask={handleUpdateTask} onDeleteTask={handleDeleteTask} onLogAction={logAction} />;
       case 'marketing':
@@ -739,13 +754,7 @@ const App: React.FC = () => {
       case 'cash_errors':
         return <CashErrorsModule user={user} store={stores.find(s => s.id === user.storeId)} stores={stores} errors={cashErrors} onAddError={handleAddCashError} onUpdateError={handleUpdateCashError} onDeleteError={handleDeleteCashError} />;
       case 'settings':
-        return <AdminSettings 
-            stores={stores} 
-            onAddStore={handleAddStore}
-            onUpdateStore={handleUpdateStore}
-            onDeleteStore={handleDeleteStore}
-            onImportStores={handleImportStores} 
-        />;
+        return <AdminSettings stores={stores} onAddStore={handleAddStore} onUpdateStore={handleUpdateStore} onDeleteStore={handleDeleteStore} onImportStores={handleImportStores} />;
       case 'auth_print':
         return <PurchaseAuthorization />;
       case 'termo_print':
@@ -755,7 +764,6 @@ const App: React.FC = () => {
     }
   };
 
-  // Only show loading if no user is present AND we are initially loading
   if (!user && isLoading) return <div className="min-h-screen flex items-center justify-center bg-gray-100"><div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-900"></div></div>;
 
   return (
@@ -775,7 +783,6 @@ const App: React.FC = () => {
             {user.role !== UserRole.CASHIER && (
                 <NavButton view="dashboard" icon={LayoutDashboard} label="Visão Geral" active={currentView === 'dashboard'} onClick={() => { setCurrentView('dashboard'); setIsSidebarOpen(false); }} />
             )}
-            {/* Added Goals Registration Menu for Admin */}
             {user.role === UserRole.ADMIN && (
                 <NavButton view="metas_registration" icon={Target} label="Definir Metas" active={currentView === 'metas_registration'} onClick={() => { setCurrentView('metas_registration'); setIsSidebarOpen(false); }} />
             )}

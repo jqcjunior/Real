@@ -2,24 +2,23 @@
 import React, { useState, useMemo, useEffect } from 'react';
 import { Store, User, Cota, CotaPayment, UserRole, SystemLog, CotaSettings, CotaDebt } from '../types';
 import { formatCurrency } from '../constants';
-import { Calculator, Plus, Save, Trash2, Filter, Settings, CheckSquare, Square, X, AlertCircle, Wallet, TrendingDown, Store as StoreIcon, LayoutGrid, PieChart, UserCheck, Briefcase, Search, BarChart2, CheckCircle, RefreshCcw, PackageCheck } from 'lucide-react';
+import { Calculator, Plus, Save, Trash2, Filter, Settings, CheckSquare, Square, X, AlertCircle, Wallet, TrendingDown, Store as StoreIcon, LayoutGrid, PieChart, UserCheck, Briefcase, Search, BarChart2, CheckCircle, RefreshCcw, PackageCheck, Loader2 } from 'lucide-react';
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Cell, Legend, ComposedChart, Line, LabelList } from 'recharts';
 
 interface CotasManagementProps {
   user: User;
   stores: Store[];
   cotas: Cota[];
-  cotaSettings: CotaSettings[]; // New Prop
-  cotaDebts: CotaDebt[]; // New Prop
-  onAddCota: (cota: Cota) => void;
-  onDeleteCota: (id: string) => void;
-  onUpdateCota?: (cota: Cota) => void;
-  onSaveSettings: (settings: CotaSettings) => void; // New Prop
-  onSaveDebts: (storeId: string, debts: Record<string, number>) => void; // New Prop
+  cotaSettings: CotaSettings[]; 
+  cotaDebts: CotaDebt[]; 
+  onAddCota: (cota: Cota) => Promise<void>;
+  onDeleteCota: (id: string) => Promise<void>;
+  onUpdateCota?: (cota: Cota) => Promise<void>;
+  onSaveSettings: (settings: CotaSettings) => Promise<void>;
+  onSaveDebts: (storeId: string, debts: Record<string, number>) => Promise<void>; 
   onLogAction?: (action: SystemLog['action'], details: string) => void;
 }
 
-// Options sorted alphabetically within groups as requested
 const CLASSIFICATION_OPTIONS = {
   'Feminino': [
     'Birken', 'Bota', 'Casual', 'Chinelo', 'Conforto', 'Esportivo', 'Moda', 'Rasteira', 'Salto', 'Sandália', 'Sapatilha'
@@ -82,6 +81,8 @@ const CotasManagement: React.FC<CotasManagementProps> = ({ user, stores, cotas, 
       paymentTerms: '90/120/150',
       pairs: ''
   });
+
+  const [isSubmitting, setIsSubmitting] = useState(false);
 
   useEffect(() => {
       if (onLogAction) onLogAction('CHECK_COTAS', 'Acessou o painel de gerenciamento de cotas');
@@ -171,25 +172,25 @@ const CotasManagement: React.FC<CotasManagementProps> = ({ user, stores, cotas, 
       setSelectedStoreIds(prev => prev.includes(storeId) ? prev.filter(id => id !== storeId) : [...prev, storeId]);
   };
 
-  const handleValidateOrder = (e: React.MouseEvent, cota: Cota) => {
+  const handleValidateOrder = async (e: React.MouseEvent, cota: Cota) => {
       e.preventDefault();
       e.stopPropagation();
       if (onUpdateCota) {
           const updatedCota: Cota = { ...cota, status: 'validated' };
-          onUpdateCota(updatedCota);
+          await onUpdateCota(updatedCota);
           if (onLogAction) onLogAction('VALIDATE_ORDER', `Validou pedido: ${cota.brand} (${formatCurrency(cota.totalValue)})`);
       }
   };
 
-  const handleReactivateOrder = (cota: Cota) => {
+  const handleReactivateOrder = async (cota: Cota) => {
       if (onUpdateCota) {
           const updatedCota: Cota = { ...cota, status: 'pending' };
-          onUpdateCota(updatedCota);
+          await onUpdateCota(updatedCota);
           if (onLogAction) onLogAction('VALIDATE_ORDER', `Reativou pedido: ${cota.brand}`);
       }
   };
 
-  const handleAdd = (targetRole: UserRole) => {
+  const handleAdd = async (targetRole: UserRole) => {
       if (selectedStoreIds.length === 0) {
           alert("Selecione pelo menos uma loja.");
           return;
@@ -215,6 +216,7 @@ const CotasManagement: React.FC<CotasManagementProps> = ({ user, stores, cotas, 
       let warningMessages: string[] = [];
       let isBlocked = false;
 
+      // Validation Loop
       for (const storeId of selectedStoreIds) {
           const store = activeStores.find(s => s.id === storeId);
           const storeName = store ? `Loja ${store.number}` : storeId;
@@ -255,38 +257,46 @@ const CotasManagement: React.FC<CotasManagementProps> = ({ user, stores, cotas, 
           }
       }
 
-      selectedStoreIds.forEach(storeId => {
-          const installments = calculateInstallments(numValue, newCota.shipmentDate, newCota.paymentTerms);
-          const cota: Cota = {
-              id: `cota-${Date.now()}-${Math.random()}`,
-              storeId: storeId,
-              brand: newCota.brand,
-              classification: newCota.classification,
-              totalValue: numValue,
-              shipmentDate: newCota.shipmentDate,
-              paymentTerms: newCota.paymentTerms,
-              pairs: parseInt(newCota.pairs) || 0,
-              installments: installments,
-              createdAt: new Date(),
-              createdByRole: targetRole,
-              status: 'pending'
-          };
-          onAddCota(cota);
-      });
-      
-      setNewCota(prev => ({ ...prev, brand: '', classification: '', value: '', pairs: '', paymentTerms: '90/120/150' }));
-      setSelectedStoreIds([]); 
-      alert("Lançamento realizado com sucesso!");
+      setIsSubmitting(true);
+      try {
+          for (const storeId of selectedStoreIds) {
+              const installments = calculateInstallments(numValue, newCota.shipmentDate, newCota.paymentTerms);
+              const cota: Cota = {
+                  id: `cota-${Date.now()}-${Math.random()}`,
+                  storeId: storeId,
+                  brand: newCota.brand,
+                  classification: newCota.classification,
+                  totalValue: numValue,
+                  shipmentDate: newCota.shipmentDate,
+                  paymentTerms: newCota.paymentTerms,
+                  pairs: parseInt(newCota.pairs) || 0,
+                  installments: installments,
+                  createdAt: new Date(),
+                  createdByRole: targetRole,
+                  status: 'pending'
+              };
+              await onAddCota(cota);
+          }
+          setNewCota(prev => ({ ...prev, brand: '', classification: '', value: '', pairs: '', paymentTerms: '90/120/150' }));
+          setSelectedStoreIds([]); 
+          alert("Lançamento realizado com sucesso!");
+      } catch (err) {
+          alert("Erro ao lançar pedido.");
+      } finally {
+          setIsSubmitting(false);
+      }
   };
 
-  const handleSaveBudget = () => {
+  const handleSaveBudget = async () => {
       const val = parseFloat(budgetForm.value.replace(/\./g, '').replace(',', '.'));
       if (budgetForm.storeId && !isNaN(val)) {
-          onSaveSettings({
+          setIsSubmitting(true);
+          await onSaveSettings({
               storeId: budgetForm.storeId,
               budgetValue: val,
               managerPercent: budgetForm.managerPercent
           });
+          setIsSubmitting(false);
           setIsBudgetModalOpen(false);
       }
   };
@@ -315,7 +325,7 @@ const CotasManagement: React.FC<CotasManagementProps> = ({ user, stores, cotas, 
       setTempDebts(initialTemp);
   };
 
-  const handleSaveDebts = () => {
+  const handleSaveDebts = async () => {
       const cleanDebts: Record<string, number> = {};
       Object.entries(tempDebts).forEach(([month, valStr]) => {
           const val = parseFloat((valStr as string).replace(/\./g, '').replace(',', '.'));
@@ -323,7 +333,9 @@ const CotasManagement: React.FC<CotasManagementProps> = ({ user, stores, cotas, 
               cleanDebts[month] = val;
           }
       });
-      onSaveDebts(debtFormStoreId, cleanDebts);
+      setIsSubmitting(true);
+      await onSaveDebts(debtFormStoreId, cleanDebts);
+      setIsSubmitting(false);
       setIsDebtModalOpen(false);
   };
 
@@ -444,8 +456,12 @@ const CotasManagement: React.FC<CotasManagementProps> = ({ user, stores, cotas, 
                             <div className="col-span-1"><label className="block text-xs font-semibold text-gray-500 mb-1">Pares</label><input type="number" value={newCota.pairs} onChange={e => setNewCota({...newCota, pairs: e.target.value})} className="w-full p-2.5 border border-gray-300 rounded-lg text-sm outline-none"/></div>
                             <div className="col-span-1"><label className="block text-xs font-bold text-blue-900 mb-1">Valor (R$)</label><input value={newCota.value} onChange={e => setNewCota({...newCota, value: e.target.value})} className="w-full p-2.5 border-2 border-blue-300 bg-blue-50/50 rounded-lg text-xl font-bold outline-none"/></div>
                             <div className="col-span-2 flex gap-3 items-end">
-                                <button onClick={() => handleAdd(UserRole.ADMIN)} className="flex-1 bg-blue-700 text-white font-bold py-2.5 rounded-lg shadow-md text-xs">Cota Comprador</button>
-                                <button onClick={() => handleAdd(UserRole.MANAGER)} className="flex-1 bg-purple-600 text-white font-bold py-2.5 rounded-lg shadow-md text-xs">Cota Gerente</button>
+                                <button onClick={() => handleAdd(UserRole.ADMIN)} disabled={isSubmitting} className="flex-1 bg-blue-700 text-white font-bold py-2.5 rounded-lg shadow-md text-xs flex items-center justify-center gap-2">
+                                    {isSubmitting && <Loader2 size={12} className="animate-spin" />} Cota Comprador
+                                </button>
+                                <button onClick={() => handleAdd(UserRole.MANAGER)} disabled={isSubmitting} className="flex-1 bg-purple-600 text-white font-bold py-2.5 rounded-lg shadow-md text-xs flex items-center justify-center gap-2">
+                                    {isSubmitting && <Loader2 size={12} className="animate-spin" />} Cota Gerente
+                                </button>
                             </div>
                         </div>
                     </div>
@@ -558,23 +574,7 @@ const CotasManagement: React.FC<CotasManagementProps> = ({ user, stores, cotas, 
             </div>
         </div>
 
-        <div className="bg-white rounded-xl shadow-sm border border-gray-100 p-6">
-            <h3 className="text-lg font-bold text-gray-800 flex items-center gap-2 mb-4"><BarChart2 size={20} className="text-blue-600" /> Resumo por Categoria</h3>
-            <div className="h-80">
-                <ResponsiveContainer width="100%" height="100%">
-                    <ComposedChart data={chartData} margin={{ top: 20, right: 30, left: 20, bottom: 5 }} barSize={60}>
-                        <CartesianGrid strokeDasharray="3 3" vertical={false} />
-                        <XAxis dataKey="name" fontSize={12} fontWeight="bold" />
-                        <YAxis tickFormatter={(val) => `R$${val/1000}k`} fontSize={12} />
-                        <Tooltip formatter={(value: number) => formatCurrency(value)} />
-                        <Legend />
-                        {subCategoryKeys.map((key, index) => <Bar key={key} dataKey={key} stackId="a" fill={STACK_COLORS[index % STACK_COLORS.length]} />)}
-                        <Line type="monotone" dataKey="totalValue" stroke="none" isAnimationActive={false}><LabelList dataKey="totalValue" position="top" formatter={(value: number) => formatCurrency(value)} style={{ fontWeight: 'bold', fontSize: '12px', fill: '#374151' }} /></Line>
-                    </ComposedChart>
-                </ResponsiveContainer>
-            </div>
-        </div>
-
+        {/* ... Rest of modals ... */}
         {isBudgetModalOpen && (
             <div className="fixed inset-0 bg-black/60 flex items-center justify-center z-50 p-4 backdrop-blur-sm">
                 <div className="bg-white rounded-2xl shadow-xl w-full max-w-sm overflow-hidden animate-in zoom-in duration-200 p-6 space-y-5">
@@ -590,35 +590,16 @@ const CotasManagement: React.FC<CotasManagementProps> = ({ user, stores, cotas, 
                         <input type="range" min="0" max="100" step="5" value={budgetForm.managerPercent} onChange={e => setBudgetForm({...budgetForm, managerPercent: parseInt(e.target.value)})} className="w-full h-2 bg-gray-200 rounded-lg appearance-none cursor-pointer accent-yellow-500"/>
                     </div>
                     <div className="flex gap-2">
-                        <button onClick={() => setIsBudgetModalOpen(false)} className="flex-1 py-3 bg-gray-100 rounded-lg font-bold">Cancelar</button>
-                        <button onClick={handleSaveBudget} className="flex-1 py-3 bg-yellow-500 text-white rounded-lg font-bold">Salvar</button>
+                        <button onClick={() => setIsBudgetModalOpen(false)} disabled={isSubmitting} className="flex-1 py-3 bg-gray-100 rounded-lg font-bold disabled:opacity-50">Cancelar</button>
+                        <button onClick={handleSaveBudget} disabled={isSubmitting} className="flex-1 py-3 bg-yellow-500 text-white rounded-lg font-bold disabled:opacity-50 flex items-center justify-center gap-2">
+                            {isSubmitting && <Loader2 size={16} className="animate-spin"/>} Salvar
+                        </button>
                     </div>
                 </div>
             </div>
         )}
 
-        {isDebtModalOpen && (
-            <div className="fixed inset-0 bg-black/60 flex items-center justify-center z-50 p-4 backdrop-blur-sm">
-                <div className="bg-white rounded-2xl shadow-xl w-full max-w-2xl overflow-hidden animate-in zoom-in duration-200 flex flex-col max-h-[90vh]">
-                    <div className="bg-red-500 p-4 flex justify-between items-center"><h3 className="text-white font-bold text-lg">Previsão de Dívidas</h3><button onClick={() => setIsDebtModalOpen(false)} className="text-white"><X size={20}/></button></div>
-                    <div className="p-6 overflow-y-auto">
-                        <select value={debtFormStoreId} onChange={e => handleStoreChangeInDebtModal(e.target.value)} className="w-full p-3 border border-gray-300 rounded-lg mb-4">{activeStores.map(s => <option key={s.id} value={s.id}>{s.number} - {s.name}</option>)}</select>
-                        <div className="grid grid-cols-2 md:grid-cols-3 gap-4">
-                            {tableMonths.map(m => {
-                                const [y, mo] = m.split('-');
-                                const label = new Date(parseInt(y), parseInt(mo)-1).toLocaleDateString('pt-BR', { month: 'long', year: 'numeric' });
-                                return <div key={m}><label className="block text-xs font-bold text-gray-400 mb-1 capitalize">{label}</label><input value={tempDebts[m] || ''} onChange={e => setTempDebts({...tempDebts, [m]: e.target.value})} placeholder="0,00" className="w-full p-2 border border-gray-300 rounded text-sm"/></div>;
-                            })}
-                        </div>
-                    </div>
-                    <div className="p-4 border-t border-gray-100 bg-gray-50 flex justify-end gap-2">
-                        <button onClick={() => setIsDebtModalOpen(false)} className="px-4 py-2 bg-gray-200 rounded-lg font-bold">Cancelar</button>
-                        <button onClick={handleSaveDebts} className="px-6 py-2 bg-red-600 text-white rounded-lg font-bold">Salvar</button>
-                    </div>
-                </div>
-            </div>
-        )}
-
+        {/* ... Received Modal ... */}
         {isReceivedModalOpen && (
             <div className="fixed inset-0 bg-black/60 flex items-center justify-center z-50 p-4 backdrop-blur-sm">
                 <div className="bg-white rounded-2xl shadow-xl w-full max-w-4xl overflow-hidden animate-in zoom-in duration-200 flex flex-col max-h-[90vh]">
@@ -636,6 +617,30 @@ const CotasManagement: React.FC<CotasManagementProps> = ({ user, stores, cotas, 
                                 ))}
                             </tbody>
                         </table>
+                    </div>
+                </div>
+            </div>
+        )}
+        
+        {isDebtModalOpen && (
+            <div className="fixed inset-0 bg-black/60 flex items-center justify-center z-50 p-4 backdrop-blur-sm">
+                <div className="bg-white rounded-2xl shadow-xl w-full max-w-2xl overflow-hidden animate-in zoom-in duration-200 flex flex-col max-h-[90vh]">
+                    <div className="bg-red-500 p-4 flex justify-between items-center"><h3 className="text-white font-bold text-lg">Previsão de Dívidas</h3><button onClick={() => setIsDebtModalOpen(false)} className="text-white"><X size={20}/></button></div>
+                    <div className="p-6 overflow-y-auto">
+                        <select value={debtFormStoreId} onChange={e => handleStoreChangeInDebtModal(e.target.value)} className="w-full p-3 border border-gray-300 rounded-lg mb-4">{activeStores.map(s => <option key={s.id} value={s.id}>{s.number} - {s.name}</option>)}</select>
+                        <div className="grid grid-cols-2 md:grid-cols-3 gap-4">
+                            {tableMonths.map(m => {
+                                const [y, mo] = m.split('-');
+                                const label = new Date(parseInt(y), parseInt(mo)-1).toLocaleDateString('pt-BR', { month: 'long', year: 'numeric' });
+                                return <div key={m}><label className="block text-xs font-bold text-gray-400 mb-1 capitalize">{label}</label><input value={tempDebts[m] || ''} onChange={e => setTempDebts({...tempDebts, [m]: e.target.value})} placeholder="0,00" className="w-full p-2 border border-gray-300 rounded text-sm"/></div>;
+                            })}
+                        </div>
+                    </div>
+                    <div className="p-4 border-t border-gray-100 bg-gray-50 flex justify-end gap-2">
+                        <button onClick={() => setIsDebtModalOpen(false)} disabled={isSubmitting} className="px-4 py-2 bg-gray-200 rounded-lg font-bold disabled:opacity-50">Cancelar</button>
+                        <button onClick={handleSaveDebts} disabled={isSubmitting} className="px-6 py-2 bg-red-600 text-white rounded-lg font-bold disabled:opacity-50 flex items-center gap-2">
+                            {isSubmitting && <Loader2 size={16} className="animate-spin" />} Salvar
+                        </button>
                     </div>
                 </div>
             </div>

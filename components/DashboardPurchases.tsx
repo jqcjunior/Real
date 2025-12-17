@@ -1,3 +1,4 @@
+
 import React, { useState, useMemo, useRef } from 'react';
 import { Store, ProductPerformance } from '../types';
 import { formatCurrency } from '../constants';
@@ -8,7 +9,7 @@ import * as XLSX from 'xlsx';
 interface DashboardPurchasesProps {
   stores: Store[];
   data: ProductPerformance[];
-  onImport: (newData: ProductPerformance[]) => void;
+  onImport: (newData: ProductPerformance[]) => Promise<void>;
 }
 
 const COLORS = ['#0088FE', '#00C49F', '#FFBB28', '#FF8042', '#8884d8', '#82ca9d'];
@@ -23,7 +24,6 @@ const MONTHS = [
 const DashboardPurchases: React.FC<DashboardPurchasesProps> = ({ stores, data, onImport }) => {
   // State for Filters
   const [selectedMonth, setSelectedMonth] = useState<string>(() => {
-     // Default to last month in data or current
      const uniqueMonths = Array.from(new Set(data.map(d => d.month))).sort();
      return uniqueMonths.length > 0 ? uniqueMonths[uniqueMonths.length - 1] : new Date().toISOString().slice(0, 7);
   });
@@ -60,8 +60,6 @@ const DashboardPurchases: React.FC<DashboardPurchasesProps> = ({ stores, data, o
   }, [data, selectedMonth]);
 
   // --- ANALYSIS LOGIC ---
-
-  // 1. Brand Performance (Aggregated)
   const brandPerformance = useMemo(() => {
       const stats: Record<string, { revenue: number, pairs: number }> = {};
       currentData.forEach(item => {
@@ -72,10 +70,9 @@ const DashboardPurchases: React.FC<DashboardPurchasesProps> = ({ stores, data, o
       return Object.entries(stats)
         .map(([brand, val]) => ({ brand, ...val }))
         .sort((a, b) => b.revenue - a.revenue)
-        .slice(0, 10); // Top 10
+        .slice(0, 10); 
   }, [currentData]);
 
-  // 2. Category Distribution
   const categoryData = useMemo(() => {
       const stats: Record<string, number> = {};
       currentData.forEach(item => {
@@ -85,12 +82,10 @@ const DashboardPurchases: React.FC<DashboardPurchasesProps> = ({ stores, data, o
       return Object.entries(stats).map(([name, value]) => ({ name, value }));
   }, [currentData]);
 
-  // 3. Detailed Ranking per Store (Top Brands)
   const storeRankings = useMemo(() => {
       const activeStores = stores.filter(s => s.status === 'active');
       return activeStores.map(store => {
           const storeItems = currentData.filter(d => d.storeId === store.id);
-          // Group by Brand
           const brandStats: Record<string, { pairs: number, revenue: number }> = {};
           storeItems.forEach(item => {
               if(!brandStats[item.brand]) brandStats[item.brand] = { pairs: 0, revenue: 0 };
@@ -101,7 +96,7 @@ const DashboardPurchases: React.FC<DashboardPurchasesProps> = ({ stores, data, o
           const topBrands = Object.entries(brandStats)
               .map(([brand, val]) => ({ brand, ...val }))
               .sort((a,b) => b.revenue - a.revenue)
-              .slice(0, 5); // Top 5 per store
+              .slice(0, 5); 
 
           return {
               storeName: store.name,
@@ -111,9 +106,7 @@ const DashboardPurchases: React.FC<DashboardPurchasesProps> = ({ stores, data, o
       }).filter(s => s.topBrands.length > 0);
   }, [currentData, stores]);
 
-  // 4. Future Purchase Recommendations (Simple Heuristic: High Volume = Buy More)
   const purchaseRecommendations = useMemo(() => {
-      // Logic: If a brand sells more than 50 pairs in a month in a store, it's a "High Rotativity" item.
       const recommendations: { store: string, brand: string, reason: string, status: string }[] = [];
       
       currentData.forEach(item => {
@@ -142,7 +135,6 @@ const DashboardPurchases: React.FC<DashboardPurchasesProps> = ({ stores, data, o
   const parseNumber = (val: any): number => {
     if (typeof val === 'number') return val;
     if (typeof val === 'string') {
-        // Handle "1.200,00" -> 1200.00
         const clean = val.replace(/\./g, '').replace(',', '.');
         return parseFloat(clean) || 0;
     }
@@ -152,16 +144,13 @@ const DashboardPurchases: React.FC<DashboardPurchasesProps> = ({ stores, data, o
   const parseExcelDate = (val: any): string | null => {
       if (!val) return null;
       if (typeof val === 'number') {
-          // Excel Serial Date
           const date = new Date(Math.round((val - 25569) * 86400 * 1000));
           const y = date.getFullYear();
           const m = String(date.getMonth() + 1).padStart(2, '0');
           return `${y}-${m}`;
       }
       if (typeof val === 'string') {
-          // YYYY-MM
           if (/^\d{4}-\d{2}$/.test(val)) return val;
-          // MM/YYYY or MM-YYYY
           if (/^\d{2}[\/\-]\d{4}$/.test(val)) {
              const parts = val.split(/[\/\-]/);
              return `${parts[1]}-${parts[0]}`;
@@ -189,17 +178,13 @@ const DashboardPurchases: React.FC<DashboardPurchasesProps> = ({ stores, data, o
         const workbook = XLSX.read(arrayBuffer);
         const sheetName = workbook.SheetNames[0];
         const sheet = workbook.Sheets[sheetName];
-        
-        // Get Raw Data (Array of Arrays)
         const jsonData = XLSX.utils.sheet_to_json(sheet, { header: 1 }) as any[][];
 
         if (!jsonData || jsonData.length === 0) {
             throw new Error("Arquivo vazio ou formato inválido.");
         }
 
-        // 1. Dynamic Header Detection
         let headerRowIndex = -1;
-        // Scan first 20 rows for keywords
         for (let i = 0; i < 20 && i < jsonData.length; i++) {
             const rowStr = jsonData[i].join(' ').toLowerCase();
             if (rowStr.includes('loja') && (rowStr.includes('marca') || rowStr.includes('produto') || rowStr.includes('pares'))) {
@@ -213,9 +198,6 @@ const DashboardPurchases: React.FC<DashboardPurchasesProps> = ({ stores, data, o
         }
 
         const headerRow = jsonData[headerRowIndex].map(h => String(h).toLowerCase().trim());
-        console.log("Cabeçalho detectado:", headerRow);
-
-        // 2. Map Columns dynamically
         const findCol = (keywords: string[]) => headerRow.findIndex(h => keywords.some(k => h.includes(k)));
 
         const idxLoja = findCol(['loja', 'filial', 'unidade']);
@@ -225,50 +207,33 @@ const DashboardPurchases: React.FC<DashboardPurchasesProps> = ({ stores, data, o
         const idxValor = findCol(['valor', 'total', 'venda', 'faturamento', 'liquido']);
         const idxMes = findCol(['mes', 'data', 'periodo']);
 
-        // Check required columns
-        const missingCols = [];
-        if (idxLoja === -1) missingCols.push('Loja');
-        if (idxMarca === -1) missingCols.push('Marca');
-        if (idxPares === -1 && idxValor === -1) missingCols.push('Pares ou Valor');
-
-        if (missingCols.length > 0) {
-            throw new Error(`Colunas obrigatórias não encontradas: ${missingCols.join(', ')}.`);
-        }
-
         const newRecords: ProductPerformance[] = [];
         let successCount = 0;
         let unknownStoreCount = 0;
-        let processedRows = 0;
 
-        // 3. Process Data Rows
         for (let i = headerRowIndex + 1; i < jsonData.length; i++) {
             const row = jsonData[i];
-            if (!row || row.length === 0) continue; // Skip empty rows
+            if (!row || row.length === 0) continue; 
 
-            // Get Store Number
             const rawStore = row[idxLoja];
             if (!rawStore) continue;
             
-            // Normalize Store Number (remove zeros and non-digits)
             const storeNum = String(rawStore).replace(/\D/g, '').replace(/^0+/, ''); 
-            if (!storeNum) continue; // Invalid store number
+            if (!storeNum) continue;
 
             const store = stores.find(s => s.number === storeNum);
 
-            // Get Values
             const brand = idxMarca !== -1 ? String(row[idxMarca] || 'Outros').trim() : 'Outros';
             const category = idxCat !== -1 ? String(row[idxCat] || 'Geral').trim() : 'Geral';
             
             const pairs = idxPares !== -1 ? parseNumber(row[idxPares]) : 0;
             const revenue = idxValor !== -1 ? parseNumber(row[idxValor]) : 0;
 
-            // Determine Month (Row specific > Global Selected)
             let rowMonth = idxMes !== -1 ? parseExcelDate(row[idxMes]) : null;
             if (!rowMonth) rowMonth = selectedMonth;
 
             if (store && (pairs > 0 || revenue > 0)) {
                 newRecords.push({
-                    id: `prod-${Date.now()}-${i}`,
                     storeId: store.id,
                     month: rowMonth,
                     brand: brand || 'Não Informado',
@@ -280,21 +245,11 @@ const DashboardPurchases: React.FC<DashboardPurchasesProps> = ({ stores, data, o
             } else if (!store) {
                 unknownStoreCount++;
             }
-            processedRows++;
         }
 
         if (successCount > 0) {
-            // REPLACE LOGIC: Remove existing records for the same month/store to avoid duplicates, or just append?
-            // "O sistema informa se deu certo"
-            // Let's filter out old data for the impacted months to ensure "Snapshot" behavior
-            const importedMonths = new Set(newRecords.map(r => r.month));
-            
-            // Keep data that is NOT in the imported months (clean replace for those months)
-            // Or simplified: Just append and let user manage. 
-            // Prompt says: "Sempre que importar novos dados tornar este o ultimo dados... apagando os dados anteriores"
-            const keptData = data.filter(d => !importedMonths.has(d.month));
-            
-            onImport([...keptData, ...newRecords]);
+            setImportStatus(`Salvando ${successCount} registros...`);
+            await onImport(newRecords);
 
             let msg = `✅ Sucesso! ${successCount} registros importados.`;
             if (unknownStoreCount > 0) {
@@ -305,15 +260,10 @@ const DashboardPurchases: React.FC<DashboardPurchasesProps> = ({ stores, data, o
             setShowImportModal(false);
             setSelectedFile(null);
             
-            // Switch view to imported month
             if (newRecords[0]?.month) setSelectedMonth(newRecords[0].month);
 
         } else {
-            if (processedRows === 0) {
-                throw new Error("O arquivo parece estar vazio ou não contém dados abaixo do cabeçalho.");
-            } else {
-                throw new Error("Nenhum registro válido foi gerado. Verifique os números das lojas na planilha.");
-            }
+            throw new Error("Nenhum registro válido foi gerado. Verifique os números das lojas na planilha.");
         }
 
       } catch (err: any) {
@@ -630,12 +580,13 @@ const DashboardPurchases: React.FC<DashboardPurchasesProps> = ({ stores, data, o
                        <button 
                          onClick={handleProcessImport}
                          disabled={!selectedFile || isProcessing}
-                         className={`flex-1 px-4 py-2 rounded-lg font-medium shadow-md transition-all ${
+                         className={`flex-1 px-4 py-2 rounded-lg font-medium shadow-md transition-all flex items-center justify-center gap-2 ${
                              !selectedFile || isProcessing
                                 ? 'bg-gray-300 text-gray-500 cursor-not-allowed' 
                                 : 'bg-blue-700 text-white hover:bg-blue-800 hover:shadow-lg'
                          }`}
                        >
+                         {isProcessing && <Loader2 size={16} className="animate-spin"/>}
                          Processar
                        </button>
                   </div>

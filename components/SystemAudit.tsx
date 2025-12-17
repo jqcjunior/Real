@@ -1,3 +1,4 @@
+
 import React, { useState } from 'react';
 import { SystemLog, Receipt, Store, CashError } from '../types';
 import { formatCurrency } from '../constants';
@@ -110,9 +111,15 @@ const SystemAudit: React.FC<SystemAuditProps> = ({ logs, receipts, store, cashEr
                     {filteredReceipts.map(receipt => (
                         <tr key={receipt.id} className="hover:bg-gray-50">
                             <td className="p-4 text-gray-500 font-mono text-xs">
-                                {new Date(receipt.createdAt).toLocaleDateString('pt-BR')}
+                                {(() => {
+                                    if (receipt.date.includes('-')) {
+                                        const [y, m, d] = receipt.date.split('-').map(Number);
+                                        return new Date(y, m - 1, d).toLocaleDateString('pt-BR');
+                                    }
+                                    return new Date(receipt.createdAt).toLocaleDateString('pt-BR');
+                                })()}
                             </td>
-                            <td className="p-4 font-bold text-gray-800">#{receipt.id}</td>
+                            <td className="p-4 font-bold text-gray-800">#{receipt.id.substring(0, 8)}</td>
                             <td className="p-4 text-gray-600">{receipt.payer}</td>
                             <td className="p-4 text-gray-600">{receipt.recipient}</td>
                             <td className="p-4 text-right font-bold text-green-700">{formatCurrency(receipt.value)}</td>

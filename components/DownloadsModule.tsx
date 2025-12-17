@@ -1,13 +1,13 @@
 
 import React, { useState, useRef } from 'react';
 import { DownloadItem, DownloadCategory, User, UserRole, SystemLog } from '../types';
-import { Download, FileSpreadsheet, Image as ImageIcon, Video, Trash2, Plus, Upload, X, Search, FileText, ExternalLink, Music, FolderOpen, ChevronRight, Folder } from 'lucide-react';
+import { Download, FileSpreadsheet, Image as ImageIcon, Video, Trash2, Plus, Upload, X, Search, FileText, ExternalLink, Music, FolderOpen, ChevronRight, Folder, Loader2 } from 'lucide-react';
 
 interface DownloadsModuleProps {
   user: User;
   items: DownloadItem[];
-  onUpload: (item: DownloadItem) => void;
-  onDelete: (id: string) => void;
+  onUpload: (item: DownloadItem) => Promise<void>;
+  onDelete: (id: string) => Promise<void>;
   onLogAction?: (action: SystemLog['action'], details: string) => void;
 }
 
@@ -32,6 +32,7 @@ const DownloadsModule: React.FC<DownloadsModuleProps> = ({ user, items, onUpload
   
   const [searchTerm, setSearchTerm] = useState('');
   const [isModalOpen, setIsModalOpen] = useState(false);
+  const [isSubmitting, setIsSubmitting] = useState(false);
   
   // Upload Form State
   const [newItem, setNewItem] = useState<{
@@ -55,11 +56,6 @@ const DownloadsModule: React.FC<DownloadsModuleProps> = ({ user, items, onUpload
   const fileInputRef = useRef<HTMLInputElement>(null);
   const isAdmin = user.role === UserRole.ADMIN;
 
-  // Logic:
-  // If Category != Image: Show items normally
-  // If Category == Image:
-  //    If no folder selected: Show folders list
-  //    If folder selected: Show items in that folder
   const filteredItems = items.filter(item => {
       const matchesCategory = filterCategory === 'all' || item.category === filterCategory;
       const matchesSearch = item.title.toLowerCase().includes(searchTerm.toLowerCase()) || 
@@ -109,10 +105,9 @@ const DownloadsModule: React.FC<DownloadsModuleProps> = ({ user, items, onUpload
       }
   };
 
-  const handleSubmit = (e: React.FormEvent) => {
+  const handleSubmit = async (e: React.FormEvent) => {
       e.preventDefault();
       
-      // Basic validation
       if (!newItem.title || !newItem.url) {
           alert("Preencha o título e selecione um arquivo ou insira uma URL.");
           return;
@@ -123,30 +118,35 @@ const DownloadsModule: React.FC<DownloadsModuleProps> = ({ user, items, onUpload
           return;
       }
 
-      const downloadItem: DownloadItem = {
-          id: `dl-${Date.now()}`,
-          title: newItem.title,
-          description: newItem.description,
-          category: newItem.category,
-          url: newItem.url,
-          fileName: newItem.fileName || 'Link Externo',
-          size: newItem.size || 'N/A',
-          campaign: newItem.campaign,
-          createdAt: new Date(),
-          createdBy: user.name
-      };
+      setIsSubmitting(true);
+      try {
+          const downloadItem: DownloadItem = {
+              id: `dl-${Date.now()}`,
+              title: newItem.title,
+              description: newItem.description,
+              category: newItem.category,
+              url: newItem.url,
+              fileName: newItem.fileName || 'Link Externo',
+              size: newItem.size || 'N/A',
+              campaign: newItem.campaign,
+              createdAt: new Date(),
+              createdBy: user.name
+          };
 
-      onUpload(downloadItem);
-      if (onLogAction) onLogAction('UPLOAD_FILE', `Adicionou arquivo: ${downloadItem.title}`);
-      
-      // Reset
-      setIsModalOpen(false);
-      setNewItem({ title: '', description: '', category: 'spreadsheet', url: '', fileName: '', size: '', campaign: '' });
+          await onUpload(downloadItem);
+          if (onLogAction) onLogAction('UPLOAD_FILE', `Adicionou arquivo: ${downloadItem.title}`);
+          
+          setIsModalOpen(false);
+          setNewItem({ title: '', description: '', category: 'spreadsheet', url: '', fileName: '', size: '', campaign: '' });
+      } catch (error) {
+          alert("Erro ao enviar arquivo.");
+      } finally {
+          setIsSubmitting(false);
+      }
   };
 
   const handleDownload = (item: DownloadItem) => {
       if (item.url.startsWith('data:')) {
-          // It's a file (Base64)
           const link = document.createElement('a');
           link.href = item.url;
           link.download = item.fileName || 'download';
@@ -154,8 +154,16 @@ const DownloadsModule: React.FC<DownloadsModuleProps> = ({ user, items, onUpload
           link.click();
           document.body.removeChild(link);
       } else {
-          // It's a URL
           window.open(item.url, '_blank');
+      }
+  };
+
+  const handleDeleteItem = async (id: string, title: string) => {
+      if (window.confirm("Tem certeza que deseja excluir este arquivo?")) {
+          setIsSubmitting(true); // Assuming parent handles global loading, but local is good too if refined
+          await onDelete(id);
+          if (onLogAction) onLogAction('DELETE_FILE', `Excluiu arquivo: ${title}`);
+          setIsSubmitting(false);
       }
   };
 
@@ -168,7 +176,6 @@ const DownloadsModule: React.FC<DownloadsModuleProps> = ({ user, items, onUpload
       }
   };
 
-  // Helper to count items in a campaign
   const getCampaignCount = (campaign: string) => {
       return items.filter(i => i.category === 'image' && i.campaign === campaign).length;
   };
@@ -198,7 +205,6 @@ const DownloadsModule: React.FC<DownloadsModuleProps> = ({ user, items, onUpload
 
         {/* Filters & Search */}
         <div className="flex flex-col md:flex-row gap-4 justify-between items-center bg-white p-4 rounded-xl shadow-sm border border-gray-100">
-            {/* UPDATED: flex-wrap instead of overflow-x-auto to prevent scrollbars and allow adjustment */}
             <div className="flex flex-wrap gap-2 w-full md:w-auto justify-center md:justify-start">
                 <button onClick={() => { setFilterCategory('all'); setSelectedFolder(null); }} className={`px-4 py-2 rounded-lg text-sm font-bold transition-all whitespace-nowrap ${filterCategory === 'all' ? 'bg-gray-800 text-white' : 'bg-gray-100 text-gray-600 hover:bg-gray-200'}`}>Todos</button>
                 <button onClick={() => setFilterCategory('spreadsheet')} className={`flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-bold transition-all whitespace-nowrap ${filterCategory === 'spreadsheet' ? 'bg-green-600 text-white' : 'bg-green-50 text-green-700 hover:bg-green-100'}`}><FileSpreadsheet size={16}/> Planilhas</button>
@@ -255,7 +261,7 @@ const DownloadsModule: React.FC<DownloadsModuleProps> = ({ user, items, onUpload
             {(filterCategory === 'image' && !selectedFolder && !searchTerm) ? null : ( // Hide grid if showing folder list
                 filteredItems.map(item => (
                     <div key={item.id} className="bg-white rounded-xl shadow-sm border border-gray-200 hover:shadow-md transition-all group overflow-hidden flex flex-col h-full animate-in fade-in zoom-in duration-300">
-                        {/* Preview Area - UPDATED to allow Http links for images */}
+                        {/* Preview Area */}
                         <div className={`h-32 flex items-center justify-center relative ${getColor(item.category)} bg-opacity-20 overflow-hidden`}>
                             {item.category === 'image' && (item.url.startsWith('data:') || item.url.startsWith('http')) ? (
                                 <img src={item.url} alt={item.title} className="w-full h-full object-cover" />
@@ -276,14 +282,10 @@ const DownloadsModule: React.FC<DownloadsModuleProps> = ({ user, items, onUpload
                                 </button>
                                 {isAdmin && (
                                     <button 
-                                        onClick={() => {
-                                            if (window.confirm("Tem certeza que deseja excluir este arquivo?")) {
-                                                onDelete(item.id);
-                                                if (onLogAction) onLogAction('DELETE_FILE', `Excluiu arquivo: ${item.title}`);
-                                            }
-                                        }}
+                                        onClick={() => handleDeleteItem(item.id, item.title)}
                                         className="p-2 bg-red-500 text-white rounded-full hover:scale-110 transition-transform"
                                         title="Excluir"
+                                        disabled={isSubmitting}
                                     >
                                         <Trash2 size={20}/>
                                     </button>
@@ -323,18 +325,6 @@ const DownloadsModule: React.FC<DownloadsModuleProps> = ({ user, items, onUpload
                 ))
             )}
         </div>
-
-        {filteredItems.length === 0 && (selectedFolder || filterCategory !== 'image') && (
-            <div className="text-center py-20 bg-gray-50 rounded-xl border border-dashed border-gray-300">
-                <div className="inline-block p-4 bg-white rounded-full mb-3 shadow-sm text-gray-300">
-                    <Download size={32} />
-                </div>
-                <h3 className="text-lg font-bold text-gray-600">Nenhum arquivo encontrado</h3>
-                <p className="text-gray-400 text-sm">
-                    {filterCategory === 'image' && selectedFolder ? `A pasta "${selectedFolder}" está vazia.` : 'Tente mudar o filtro ou adicione novos conteúdos.'}
-                </p>
-            </div>
-        )}
 
         {/* Upload Modal */}
         {isModalOpen && (
@@ -445,8 +435,10 @@ const DownloadsModule: React.FC<DownloadsModuleProps> = ({ user, items, onUpload
 
                         <button 
                             type="submit"
-                            className="w-full bg-blue-600 hover:bg-blue-700 text-white font-bold py-3 rounded-xl shadow-md transition-colors mt-2"
+                            disabled={isSubmitting}
+                            className="w-full bg-blue-600 hover:bg-blue-700 text-white font-bold py-3 rounded-xl shadow-md transition-colors mt-2 flex items-center justify-center gap-2 disabled:opacity-50"
                         >
+                            {isSubmitting ? <Loader2 size={20} className="animate-spin" /> : null}
                             Salvar Arquivo
                         </button>
                     </form>

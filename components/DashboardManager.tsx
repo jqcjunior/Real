@@ -1,9 +1,10 @@
+
 import React, { useState, useMemo } from 'react';
 import { User, Store, MonthlyPerformance, ProductPerformance } from '../types';
 import { formatCurrency } from '../constants';
 import { 
   ShoppingBag, Target, Tag, CreditCard, TrendingUp, TrendingDown, 
-  Calendar, Award, AlertCircle, ArrowUpRight, ArrowDownRight, Package 
+  Calendar, Award, AlertCircle, ArrowUpRight, ArrowDownRight, Package, Loader2 
 } from 'lucide-react';
 import { 
   BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, 
@@ -257,14 +258,15 @@ const DashboardManager: React.FC<DashboardManagerProps> = ({ user, stores, perfo
                         <button 
                             onClick={handleGenerateInsight}
                             disabled={loadingAi}
-                            className="px-4 py-2 bg-white/10 hover:bg-white/20 rounded-lg text-sm font-bold transition-all disabled:opacity-50"
+                            className="px-4 py-2 bg-white/10 hover:bg-white/20 rounded-lg text-sm font-bold transition-all disabled:opacity-50 flex items-center gap-2"
                         >
+                            {loadingAi ? <Loader2 className="animate-spin" size={16} /> : null}
                             {loadingAi ? 'Analisando...' : 'Gerar Análise IA'}
                         </button>
                     </div>
                     
                     {aiAnalysis ? (
-                        <div className="prose prose-invert max-w-none text-sm bg-white/5 p-4 rounded-xl border border-white/10">
+                        <div className="prose prose-invert max-w-none text-sm bg-white/5 p-4 rounded-xl border border-white/10 animate-in fade-in">
                             <div dangerouslySetInnerHTML={{ __html: aiAnalysis.replace(/\n/g, '<br/>').replace(/\*\*(.*?)\*\*/g, '<strong>$1</strong>') }} />
                         </div>
                     ) : (
@@ -332,9 +334,10 @@ const DashboardManager: React.FC<DashboardManagerProps> = ({ user, stores, perfo
                 <div className="inline-block p-4 bg-gray-50 rounded-full mb-3 shadow-sm text-gray-400">
                     <Calendar size={32} />
                 </div>
-                <h3 className="text-lg font-bold text-gray-600">Nenhum dado encontrado</h3>
-                <p className="text-gray-400 text-sm">
-                    Não há registros de desempenho para <strong>{MONTHS.find(m => m.value === parseInt(selectedMonth.split('-')[1]))?.label}/{selectedMonth.split('-')[0]}</strong>.
+                <h3 className="text-lg font-bold text-gray-600">Dados Indisponíveis</h3>
+                <p className="text-gray-400 text-sm max-w-md mx-auto mt-2">
+                    Não encontramos registros de desempenho para <strong>{MONTHS.find(m => m.value === parseInt(selectedMonth.split('-')[1]))?.label}/{selectedMonth.split('-')[0]}</strong>. 
+                    <br/>Isso pode ocorrer se as metas ou vendas ainda não foram importadas pelo administrador.
                 </p>
             </div>
         )}
