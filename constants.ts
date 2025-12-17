@@ -1,7 +1,6 @@
-
 import { MonthlyPerformance, Store, User, UserRole, ProductPerformance, Cota, AgendaItem, DownloadItem, CashError } from './types';
 
-export const APP_NAME = "Real Calçados";
+export const APP_NAME = "REAL CALÇADOS";
 
 // Production Mode: Empty Initial Arrays
 // Data must be loaded from Supabase
