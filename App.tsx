@@ -5,7 +5,6 @@ import LoginScreen from './components/LoginScreen';
 import DashboardAdmin from './components/DashboardAdmin';
 import DashboardManager from './components/DashboardManager';
 import DashboardPurchases from './components/DashboardPurchases';
-import GoalRegistration from './components/GoalRegistration';
 import CotasManagement from './components/CotasManagement';
 import AgendaSystem from './components/AgendaSystem';
 import FinancialModule from './components/FinancialModule';
@@ -138,8 +137,6 @@ const App: React.FC = () => {
           : <DashboardAdmin stores={stores} performanceData={performanceData} onImportData={setPerformanceData} />;
       case 'purchases':
         return <DashboardPurchases stores={stores} data={productData} onImport={setProductData} />;
-      case 'goals':
-        return <GoalRegistration stores={stores} performanceData={performanceData} onUpdateData={setPerformanceData} />;
       case 'cotas':
         return <CotasManagement user={user} stores={stores} cotas={cotas} onAddCota={(c) => setCotas([...cotas, c])} onDeleteCota={(id) => setCotas(cotas.filter(c => c.id !== id))} onUpdateCota={(c) => setCotas(cotas.map(old => old.id === c.id ? c : old))} onLogAction={(a, d) => logAction(a, d)} />;
       case 'financial':
@@ -194,17 +191,12 @@ const App: React.FC = () => {
                 <NavButton view="purchases" icon={ShoppingBag} label="Compras & Marcas" active={currentView === 'purchases'} onClick={() => { setCurrentView('purchases'); setIsSidebarOpen(false); }} />
             )}
             
-            {/* 3. METAS (Admin Only) */}
-            {user.role === UserRole.ADMIN && (
-               <NavButton view="goals" icon={Target} label="Metas" active={currentView === 'goals'} onClick={() => { setCurrentView('goals'); setIsSidebarOpen(false); }} />
-            )}
-            
-            {/* 4. COTAS (Hidden for Cashiers) */}
+            {/* 3. COTAS (Hidden for Cashiers) */}
             {user.role !== UserRole.CASHIER && (
                 <NavButton view="cotas" icon={Calculator} label="Cotas & Pedidos" active={currentView === 'cotas'} onClick={() => { setCurrentView('cotas'); setIsSidebarOpen(false); }} />
             )}
             
-            {/* 5. AGENDA (Visible to All) */}
+            {/* 4. AGENDA (Visible to All) */}
             <NavButton view="agenda" icon={Calendar} label="Agenda" active={currentView === 'agenda'} onClick={() => { setCurrentView('agenda'); setIsSidebarOpen(false); }} />
             
             <div className="pt-4 pb-2 text-xs font-bold text-blue-400 uppercase tracking-wider">Caixas</div>
