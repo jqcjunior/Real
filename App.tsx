@@ -71,75 +71,97 @@ const App: React.FC = () => {
         const { data: dbStores } = await supabase.from('stores').select('*');
         if (dbStores) setStores(dbStores.map((s: any) => ({ id: s.id, number: s.number, name: s.name, city: s.city, managerName: s.manager_name, managerEmail: s.manager_email, managerPhone: s.manager_phone, status: s.status, role: s.role || UserRole.MANAGER, passwordResetRequested: s.password_reset_requested, password: s.password })));
 
-        const { data: dbPerf } = await supabase.from('monthly_performance').select('*');
-        if (dbPerf) setPerformanceData(dbPerf.map((p: any) => ({ id: p.id, storeId: p.store_id, month: p.month, revenueTarget: Number(p.revenue_target), revenueActual: Number(p.revenue_actual), itemsTarget: Number(p.items_target), itemsActual: Number(p.items_actual), paTarget: Number(p.pa_target), ticketTarget: Number(p.ticket_target), puTarget: Number(p.pu_target), delinquencyTarget: Number(p.delinquency_target), itemsPerTicket: Number(p.pa_actual), averageTicket: Number(p.ticket_actual), unitPriceAverage: Number(p.pu_actual), delinquencyRate: Number(p.delinquency_actual), percentMeta: p.revenue_target > 0 ? (p.revenue_actual / p.revenue_target) * 100 : 0, trend: 'stable', correctedDailyGoal: 0 })));
+        // CARGA DE METAS COM DEDUPLICAÇÃO RIGOROSA POR DATA E LOJA
+        const { data: dbPerf } = await supabase.from('monthly_performance').select('*').order('created_at', { ascending: false });
+        if (dbPerf) {
+            const uniquePerfMap = new Map();
+            dbPerf.forEach((p: any) => {
+                const key = `${p.store_id}_${p.month}`;
+                if (!uniquePerfMap.has(key)) {
+                    uniquePerfMap.set(key, { 
+                        id: p.id, 
+                        storeId: p.store_id, 
+                        month: p.month, 
+                        revenueTarget: Number(p.revenue_target), 
+                        revenueActual: Number(p.revenue_actual), 
+                        itemsTarget: Number(p.items_target), 
+                        itemsActual: Number(p.items_actual), 
+                        paTarget: Number(p.pa_target), 
+                        ticketTarget: Number(p.ticket_target), 
+                        puTarget: Number(p.pu_target), 
+                        delinquencyTarget: Number(p.delinquency_target), 
+                        itemsPerTicket: Number(p.pa_actual), 
+                        averageTicket: Number(p.ticket_actual), 
+                        unitPriceAverage: Number(p.pu_actual), 
+                        delinquencyRate: Number(p.delinquency_actual), 
+                        percentMeta: p.revenue_target > 0 ? (p.revenue_actual / p.revenue_target) * 100 : 0, 
+                        trend: 'stable', 
+                        correctedDailyGoal: 0 
+                    });
+                }
+            });
+            setPerformanceData(Array.from(uniquePerfMap.values()));
+        }
 
-        // SORVETE - CARGA SEGURA V2
-        const { data: dbIceItems } = await supabase.from('ice_cream_items').select('*').order('name', { ascending: true });
-        if (dbIceItems) setIceCreamItems(dbIceItems.map((i: any) => ({ 
+        // SORVETE - CARGA E MAPEAMENTO GARANTIDO
+        const { data: dbIceItems, error: iceError } = await supabase.from('ice_cream_items').select('*').order('name', { ascending: true });
+        if (iceError) console.error("Erro Supabase Sorvete:", iceError);
+        setIceCreamItems(dbIceItems ? dbIceItems.map((i: any) => ({ 
             id: String(i.id), 
             name: String(i.name || 'Sem nome'), 
             price: Number(i.price || 0), 
             category: (i.category || 'Milkshake') as IceCreamCategory 
-        })));
+        })) : []);
 
         const { data: dbIceSales } = await supabase.from('ice_cream_daily_sales').select('*');
-        if (dbIceSales) setIceCreamSales(dbIceSales.map((s: any) => ({ id: s.id, date: s.date, itemId: String(s.item_id), unitsSold: Number(s.units_sold) })));
+        setIceCreamSales(dbIceSales ? dbIceSales.map((s: any) => ({ 
+            id: String(s.id), 
+            date: String(s.date), 
+            itemId: String(s.item_id), 
+            unitsSold: Number(s.units_sold) 
+        })) : []);
 
         const { data: dbIceFinances } = await supabase.from('ice_cream_finances').select('*');
-        if (dbIceFinances) setIceCreamFinances(dbIceFinances.map((f: any) => ({ 
-            id: f.id, date: f.date, type: f.type, category: f.category, value: Number(f.value), description: f.description, createdAt: new Date(f.created_at) 
-        })));
-
-        // Carregar logs e outros
-        const { data: dbLogs } = await supabase.from('system_logs').select('*').order('created_at', { ascending: false }).limit(100);
-        if (dbLogs) setLogs(dbLogs.map((l: any) => ({ id: l.id, timestamp: new Date(l.created_at), userId: l.user_id, userName: l.user_name, userRole: l.user_role as UserRole, action: l.action, details: l.details })));
+        setIceCreamFinances(dbIceFinances ? dbIceFinances.map((f: any) => ({ 
+            id: String(f.id), 
+            date: String(f.date), 
+            type: f.type as 'entry' | 'exit', 
+            category: f.category as any, 
+            value: Number(f.value), 
+            description: String(f.description || ''), 
+            createdAt: new Date(f.created_at) 
+        })) : []);
 
       } catch (error) {
-          console.error("Erro ao carregar dados:", error);
+          console.error("Erro crítico ao carregar dados:", error);
       } finally {
           setIsLoading(false);
       }
   };
 
-  // SORVETE HANDLERS V2
-  const handleIceCreamPriceUpdate = async (id: string, price: number) => {
-    await supabase.from('ice_cream_items').update({ price: Number(price) }).eq('id', id);
-    await loadAllData();
+  // SORVETE HANDLERS
+  const handleAddIceCreamItem = async (name: string, category: IceCreamCategory, price: number) => {
+      const { error } = await supabase.from('ice_cream_items').insert([{ name: String(name), category: String(category), price: Number(price) }]);
+      if (!error) {
+          await loadAllData();
+      } else {
+          console.error("Erro ao inserir item:", error);
+          alert("Erro ao adicionar produto no banco.");
+      }
   };
 
   const handleUpdateIceCreamItem = async (item: IceCreamItem) => {
-      await supabase.from('ice_cream_items').update({ name: String(item.name), category: String(item.category), price: Number(item.price) }).eq('id', item.id);
-      await loadAllData();
-  };
-
-  const handleAddIceCreamItem = async (name: string, category: IceCreamCategory, price: number) => {
-      await supabase.from('ice_cream_items').insert([{ name: String(name), category: String(category), price: Number(price) }]);
-      await loadAllData();
-  };
-
-  const handleDeleteIceCreamItem = async (id: string) => {
-      await supabase.from('ice_cream_items').delete().eq('id', id);
-      await loadAllData();
+      const { error } = await supabase.from('ice_cream_items').update({ name: String(item.name), category: String(item.category), price: Number(item.price) }).eq('id', item.id);
+      if (!error) await loadAllData();
   };
 
   const handleAddIceCreamSales = async (newSales: IceCreamDailySale[]) => {
     const payload = newSales.map(s => ({ date: s.date, item_id: s.itemId, units_sold: s.unitsSold }));
-    await supabase.from('ice_cream_daily_sales').insert(payload);
-    await loadAllData();
+    const { error } = await supabase.from('ice_cream_daily_sales').insert(payload);
+    if (!error) await loadAllData();
   };
 
-  const handleAddIceCreamTransaction = async (tx: IceCreamTransaction) => {
-    await supabase.from('ice_cream_finances').insert({ date: tx.date, type: tx.type, category: tx.category, value: Number(tx.value), description: tx.description });
-    await loadAllData();
-  };
-
-  const handleDeleteIceCreamTransaction = async (id: string) => {
-    await supabase.from('ice_cream_finances').delete().eq('id', id);
-    await loadAllData();
-  };
-
-  // --- AUTHENTICATION ---
+  // AUTHENTICATION
   const authenticateUser = async (email: string, password: string): Promise<{ success: boolean; user?: User; error?: string }> => {
       try {
           const cleanEmail = email.trim().toLowerCase();
@@ -195,40 +217,82 @@ const App: React.FC = () => {
         if (user.role === UserRole.CASHIER) return <AgendaSystem user={user} tasks={tasks} onAddTask={async () => {}} onUpdateTask={async () => {}} onDeleteTask={async () => {}} />;
         return user.role === UserRole.MANAGER 
           ? <DashboardManager user={user} stores={stores} performanceData={performanceData} purchasingData={productData} />
-          : <DashboardAdmin stores={stores} performanceData={performanceData} onImportData={async () => {}} onSaveGoals={async () => {}} />;
+          : <DashboardAdmin stores={stores} performanceData={performanceData} 
+                onImportData={async (d) => { 
+                    await supabase.from('monthly_performance').upsert(d.map(item => ({ 
+                        store_id: item.storeId, 
+                        month: item.month, 
+                        revenue_target: item.revenueTarget, 
+                        revenue_actual: item.revenueActual, 
+                        items_target: item.itemsTarget, 
+                        items_actual: item.itemsActual, 
+                        pa_actual: item.itemsPerTicket, 
+                        ticket_actual: item.averageTicket, 
+                        pu_actual: item.unitPriceAverage, 
+                        delinquency_actual: item.delinquencyRate 
+                    })), { onConflict: 'store_id,month' }); 
+                    await loadAllData(); 
+                }} 
+                onSaveGoals={async (g) => { 
+                    await supabase.from('monthly_performance').upsert(g.map(item => ({ 
+                        store_id: item.storeId, 
+                        month: item.month, 
+                        revenue_target: item.revenueTarget, 
+                        pa_target: item.paTarget, 
+                        ticket_target: item.ticketTarget, 
+                        pu_target: item.puTarget, 
+                        items_target: item.itemsTarget, 
+                        delinquency_target: item.delinquencyTarget 
+                    })), { onConflict: 'store_id,month' }); 
+                    await loadAllData(); 
+                }} 
+            />;
       case 'metas_registration':
-        return <GoalRegistration stores={stores} performanceData={performanceData} onUpdateData={async () => {}} />;
+        return <GoalRegistration stores={stores} performanceData={performanceData} 
+            onUpdateData={async (d) => { 
+                await supabase.from('monthly_performance').upsert(d.map(item => ({ 
+                    store_id: item.storeId, 
+                    month: item.month, 
+                    revenue_target: item.revenueTarget, 
+                    pa_target: item.paTarget, 
+                    ticket_target: item.ticketTarget, 
+                    pu_target: item.puTarget, 
+                    items_target: item.itemsTarget, 
+                    delinquency_target: item.delinquencyTarget 
+                })), { onConflict: 'store_id,month' }); 
+                await loadAllData(); 
+            }} />;
       case 'purchases':
-        return <DashboardPurchases stores={stores} data={productData} onImport={async () => {}} />;
+        return <DashboardPurchases stores={stores} data={productData} onImport={async (d) => { await supabase.from('product_performance').upsert(d.map(item => ({ store_id: item.storeId, month: item.month, brand: item.brand, category: item.category, pairs_sold: item.pairsSold, revenue: item.revenue }))); await loadAllData(); }} />;
       case 'cotas':
-        return <CotasManagement user={user} stores={stores} cotas={cotas} cotaSettings={cotaSettings} cotaDebts={cotaDebts} onAddCota={async () => {}} onDeleteCota={async () => {}} onSaveSettings={async () => {}} onSaveDebts={async () => {}} />;
+        return <CotasManagement user={user} stores={stores} cotas={cotas} cotaSettings={cotaSettings} cotaDebts={cotaDebts} onAddCota={async (c) => { await supabase.from('cotas').insert({ store_id: c.storeId, brand: c.brand, classification: c.classification, total_value: c.totalValue, shipment_date: c.shipmentDate, payment_terms: c.paymentTerms, pairs: c.pairs, installments: c.installments, created_by_role: c.createdByRole }); await loadAllData(); }} onDeleteCota={async (id) => { await supabase.from('cotas').delete().eq('id', id); await loadAllData(); }} onSaveSettings={async (s) => { await supabase.from('cota_settings').upsert({ store_id: s.storeId, budget_value: s.budgetValue, manager_percent: s.managerPercent }); await loadAllData(); }} onSaveDebts={async (id, d) => { const payload = Object.entries(d).map(([month, value]) => ({ store_id: id, month, value })); await supabase.from('cota_debts').delete().eq('store_id', id); await supabase.from('cota_debts').insert(payload); await loadAllData(); }} />;
       case 'agenda':
-        return <AgendaSystem user={user} tasks={tasks} onAddTask={async () => {}} onUpdateTask={async () => {}} onDeleteTask={async () => {}} />;
+        return <AgendaSystem user={user} tasks={tasks} onAddTask={async (t) => { await supabase.from('agenda_tasks').insert({ user_id: t.userId, title: t.title, description: t.description, due_date: t.dueDate, priority: t.priority }); await loadAllData(); }} onUpdateTask={async (t) => { await supabase.from('agenda_tasks').update({ title: t.title, description: t.description, due_date: t.dueDate, priority: t.priority, is_completed: t.isCompleted }).eq('id', t.id); await loadAllData(); }} onDeleteTask={async (id) => { await supabase.from('agenda_tasks').delete().eq('id', id); await loadAllData(); }} />;
       case 'financial':
-        return <FinancialModule user={user} store={stores.find(s => s.id === user.storeId)} sales={creditCardSales} receipts={receipts} onAddSale={async () => {}} onDeleteSale={async () => {}} onAddReceipt={async () => {}} />;
+        return <FinancialModule user={user} store={stores.find(s => s.id === user.storeId)} sales={creditCardSales} receipts={receipts} onAddSale={async (s) => { await supabase.from('credit_card_sales').insert({ store_id: s.storeId, user_id: s.userId, date: s.date, brand: s.brand, value: s.value }); await loadAllData(); }} onDeleteSale={async (id) => { await supabase.from('credit_card_sales').delete().eq('id', id); await loadAllData(); }} onAddReceipt={async (r) => { await supabase.from('receipts').insert({ store_id: r.storeId, issuer_name: r.issuerName, payer: r.payer, recipient: r.recipient, value: r.value, value_in_words: r.valueInWords, reference: r.reference, date: r.date }); await loadAllData(); }} />;
       case 'marketing':
         return <InstagramMarketing user={user} store={stores.find(s => s.id === user.storeId)} />;
       case 'downloads':
-        return <DownloadsModule user={user} items={downloads} onUpload={async () => {}} onDelete={async () => {}} />;
+        return <DownloadsModule user={user} items={downloads} onUpload={async (i) => { await supabase.from('downloads').insert({ title: i.title, description: i.description, category: i.category, url: i.url, file_name: i.fileName, size: i.size, campaign: i.campaign, created_by: i.createdBy }); await loadAllData(); }} onDelete={async (id) => { await supabase.from('downloads').delete().eq('id', id); await loadAllData(); }} />;
       case 'cash_errors':
-        return <CashErrorsModule user={user} store={stores.find(s => s.id === user.storeId)} stores={stores} errors={cashErrors} onAddError={async () => {}} onUpdateError={async () => {}} onDeleteError={async () => {}} />;
+        return <CashErrorsModule user={user} store={stores.find(s => s.id === user.storeId)} stores={stores} errors={cashErrors} onAddError={async (e) => { await supabase.from('cash_errors').insert({ store_id: e.storeId, user_id: e.userId, user_name: e.userName, date: e.date, type: e.type, value: e.value, reason: e.reason }); await loadAllData(); }} onUpdateError={async (e) => { await supabase.from('cash_errors').update({ date: e.date, type: e.type, value: e.value, reason: e.reason }).eq('id', e.id); await loadAllData(); }} onDeleteError={async (id) => { await supabase.from('cash_errors').delete().eq('id', id); await loadAllData(); }} />;
       case 'icecream':
         return <IceCreamModule 
             items={iceCreamItems} 
             sales={iceCreamSales} 
             finances={iceCreamFinances} 
             onAddSales={handleAddIceCreamSales} 
-            onUpdatePrice={handleIceCreamPriceUpdate} 
+            onUpdatePrice={async (id, p) => { await supabase.from('ice_cream_items').update({ price: p }).eq('id', id); await loadAllData(); }} 
             onUpdateItem={handleUpdateIceCreamItem}
-            onAddTransaction={handleAddIceCreamTransaction} 
-            onDeleteTransaction={handleDeleteIceCreamTransaction}
+            onAddTransaction={async (tx) => { await supabase.from('ice_cream_finances').insert({ date: tx.date, type: tx.type, category: tx.category, value: tx.value, description: tx.description }); await loadAllData(); }} 
+            onDeleteTransaction={async (id) => { await supabase.from('ice_cream_finances').delete().eq('id', id); await loadAllData(); }}
             onAddItem={handleAddIceCreamItem}
-            onDeleteItem={handleDeleteIceCreamItem}
+            onDeleteItem={async (id) => { await supabase.from('ice_cream_items').delete().eq('id', id); await loadAllData(); }}
         />;
       case 'audit':
         return <SystemAudit logs={logs} receipts={receipts} cashErrors={cashErrors} />;
       case 'settings':
-        return <AdminSettings stores={stores} onAddStore={async () => {}} onUpdateStore={async () => {}} onDeleteStore={async () => {}} />;
+        return <AdminSettings stores={stores} onAddStore={async (s) => { await supabase.from('stores').insert({ number: s.number, name: s.name, city: s.city, manager_name: s.managerName, manager_email: s.managerEmail, manager_phone: s.managerPhone, password: s.password, status: s.status, role: s.role }); await loadAllData(); }} onUpdateStore={async (s) => { await supabase.from('stores').update({ number: s.number, name: s.name, city: s.city, manager_name: s.managerName, manager_email: s.managerEmail, manager_phone: s.managerPhone, password: s.password, status: s.status, role: s.role }).eq('id', s.id); await loadAllData(); }} onDeleteStore={async (id) => { await supabase.from('stores').delete().eq('id', id); await loadAllData(); }} />;
       case 'auth_print':
         return <PurchaseAuthorization />;
       case 'termo_print':
@@ -255,9 +319,7 @@ const App: React.FC = () => {
             {user.role !== UserRole.CASHIER && (
                 <NavButton view="dashboard" icon={LayoutDashboard} label="Visão Geral" active={currentView === 'dashboard'} onClick={() => { setCurrentView('dashboard'); setIsSidebarOpen(false); }} />
             )}
-            {user.role === UserRole.ADMIN && (
-                <NavButton view="metas_registration" icon={Target} label="Definir Metas" active={currentView === 'metas_registration'} onClick={() => { setCurrentView('metas_registration'); setIsSidebarOpen(false); }} />
-            )}
+            {/* O menu lateral 'Definir Metas' foi removido conforme solicitação do usuário, pois já está no Dashboard Admin */}
             {user.role !== UserRole.CASHIER && (
                 <NavButton view="purchases" icon={ShoppingBag} label="Compras & Marcas" active={currentView === 'purchases'} onClick={() => { setCurrentView('purchases'); setIsSidebarOpen(false); }} />
             )}
