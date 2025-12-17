@@ -8,7 +8,7 @@ import * as XLSX from 'xlsx';
 interface GoalRegistrationProps {
   stores: Store[];
   performanceData: MonthlyPerformance[];
-  onUpdateData: (data: MonthlyPerformance[]) => void;
+  onUpdateData: (data: MonthlyPerformance[]) => Promise<void>; // Updated to Promise
 }
 
 const GoalRegistration: React.FC<GoalRegistrationProps> = ({ stores, performanceData, onUpdateData }) => {
@@ -62,7 +62,7 @@ const GoalRegistration: React.FC<GoalRegistrationProps> = ({ stores, performance
         // Initialize with zeros if no data exists
         newFormData[store.id] = {
           revenueTarget: 0,
-          itemsTarget: 0, // NEW: Init Items Goal
+          itemsTarget: 0, 
           paTarget: 0,
           ticketTarget: 0,
           puTarget: 0,
@@ -102,65 +102,68 @@ const GoalRegistration: React.FC<GoalRegistrationProps> = ({ stores, performance
       }
   };
 
-  const executeSave = () => {
+  const executeSave = async () => {
     setSaveStatus('saving');
     setShowOverwriteModal(false);
     
-    // Clone the master data array
-    let updatedPerformanceData = [...performanceData];
+    // Prepare the data to save
+    const changesToSave: MonthlyPerformance[] = [];
 
     Object.entries(formData).forEach(([storeId, val]) => {
-      // Cast value to Partial<MonthlyPerformance> to avoid 'unknown' type errors
       const data = val as Partial<MonthlyPerformance>;
       
-      const existingIndex = updatedPerformanceData.findIndex(p => p.storeId === storeId && p.month === selectedMonthStr);
+      // Determine if we merge or create
+      // Note: We construct the object fully here, and App.tsx handles the Upsert logic
+      const existingRecord = performanceData.find(p => p.storeId === storeId && p.month === selectedMonthStr);
 
-      if (existingIndex >= 0) {
-        // MERGE: Update existing record with new targets
-        const currentRecord = updatedPerformanceData[existingIndex];
-        updatedPerformanceData[existingIndex] = {
-          ...currentRecord,
-          revenueTarget: data.revenueTarget || 0,
-          itemsTarget: data.itemsTarget || 0, // Save Items Goal
-          paTarget: data.paTarget || 0,
-          ticketTarget: data.ticketTarget || 0,
-          puTarget: data.puTarget || 0,
-          delinquencyTarget: data.delinquencyTarget || 0,
-          // Recalculate percentMeta based on new target if actual revenue exists
-          percentMeta: (data.revenueTarget || 0) > 0 
-            ? ((currentRecord.revenueActual || 0) / (data.revenueTarget || 1)) * 100 
-            : 0
-        };
+      if (existingRecord) {
+          changesToSave.push({
+              ...existingRecord,
+              revenueTarget: data.revenueTarget || 0,
+              itemsTarget: data.itemsTarget || 0,
+              paTarget: data.paTarget || 0,
+              ticketTarget: data.ticketTarget || 0,
+              puTarget: data.puTarget || 0,
+              delinquencyTarget: data.delinquencyTarget || 0,
+              percentMeta: (data.revenueTarget || 0) > 0 
+                ? ((existingRecord.revenueActual || 0) / (data.revenueTarget || 1)) * 100 
+                : 0
+          });
       } else {
-        // CREATE: New record for this month
-        updatedPerformanceData.push({
-          storeId,
-          month: selectedMonthStr,
-          revenueTarget: data.revenueTarget || 0,
-          revenueActual: 0,
-          itemsTarget: data.itemsTarget || 0, // Save Items Goal
-          itemsActual: 0,
-          percentMeta: 0,
-          itemsPerTicket: 0,
-          unitPriceAverage: 0,
-          averageTicket: 0,
-          delinquencyRate: 0,
-          paTarget: data.paTarget || 0,
-          ticketTarget: data.ticketTarget || 0,
-          puTarget: data.puTarget || 0,
-          delinquencyTarget: data.delinquencyTarget || 0,
-          trend: 'stable',
-          correctedDailyGoal: (data.revenueTarget || 0) / 30
-        });
+          changesToSave.push({
+              storeId,
+              month: selectedMonthStr,
+              revenueTarget: data.revenueTarget || 0,
+              revenueActual: 0,
+              itemsTarget: data.itemsTarget || 0,
+              itemsActual: 0,
+              percentMeta: 0,
+              itemsPerTicket: 0,
+              unitPriceAverage: 0,
+              averageTicket: 0,
+              delinquencyRate: 0,
+              paTarget: data.paTarget || 0,
+              ticketTarget: data.ticketTarget || 0,
+              puTarget: data.puTarget || 0,
+              delinquencyTarget: data.delinquencyTarget || 0,
+              trend: 'stable',
+              correctedDailyGoal: (data.revenueTarget || 0) / 30
+          } as MonthlyPerformance);
       }
     });
 
-    onUpdateData(updatedPerformanceData);
-    
-    setTimeout(() => {
+    try {
+        await onUpdateData(changesToSave);
         setSaveStatus('success');
-        alert("Metas salvas com sucesso!");
-    }, 500);
+        setTimeout(() => {
+            alert("Metas salvas com sucesso!");
+            setSaveStatus('idle');
+        }, 500);
+    } catch (e) {
+        console.error(e);
+        alert("Erro ao salvar metas.");
+        setSaveStatus('idle');
+    }
   };
 
   // --- IMPORT LOGIC ---
@@ -181,14 +184,10 @@ const GoalRegistration: React.FC<GoalRegistrationProps> = ({ stores, performance
           
           // Logic for PT-BR vs US formats
           if (clean.includes(',') && clean.includes('.')) {
-              // 1.200,50 -> 1200.50
               clean = clean.replace(/\./g, '').replace(',', '.');
           } else if (clean.includes(',')) {
-              // 1200,50 -> 1200.50
               clean = clean.replace(',', '.');
           }
-          // if just dots (2.5), parseFloat handles it as 2.5
-          
           return parseFloat(clean) || 0;
       }
       return 0;
@@ -206,7 +205,6 @@ const GoalRegistration: React.FC<GoalRegistrationProps> = ({ stores, performance
           const sheet = workbook.Sheets[sheetName];
           const jsonData = XLSX.utils.sheet_to_json(sheet, { header: 1 }) as any[][];
 
-          // 1. Locate Header Row (for reference only, we start reading after it)
           let startRowIndex = -1;
           for (let r = 0; r < 30 && r < jsonData.length; r++) {
               const rowStr = jsonData[r]?.join(' ').toLowerCase();
@@ -217,17 +215,6 @@ const GoalRegistration: React.FC<GoalRegistrationProps> = ({ stores, performance
           }
 
           if (startRowIndex === -1) throw new Error("Cabeçalho não encontrado. A planilha deve ter uma coluna 'Loja'.");
-
-          // 2. Process Data using Strict Column Indices
-          // Col 1 (A) = Index 0 = Loja
-          // Col 3 (C) = Index 2 = Itens
-          // Col 4 (D) = Index 3 = P.A
-          // Col 5 (E) = Index 4 = P.U
-          // Col 6 (F) = Index 5 = Ticket
-          // Col 7 (G) = Index 6 = Meta
-          // Col 8 (H) = Index 7 = Realizado (Assumed)
-          // Col 15 (O) = Index 14 = Inadimplência
-          // Col 16 (P) = Index 15 = Fallback Inadimplência
 
           const importedData: Partial<MonthlyPerformance>[] = [];
           let successCount = 0;
@@ -250,7 +237,6 @@ const GoalRegistration: React.FC<GoalRegistrationProps> = ({ stores, performance
                   const meta = parseRawNumber(row[6]);     // Col 7 (META)
                   const revenueActual = parseRawNumber(row[7]); // Col 8 (REALIZADO)
                   
-                  // Inadimplência: Check Col 15 (14), then fallback to Col 16 (15)
                   let delinquencyRate = parseRawNumber(row[14]); 
                   if (delinquencyRate === 0 && row[15] !== undefined) {
                       delinquencyRate = parseRawNumber(row[15]);
@@ -266,7 +252,7 @@ const GoalRegistration: React.FC<GoalRegistrationProps> = ({ stores, performance
                       itemsPerTicket: pa,
                       unitPriceAverage: pu,
                       averageTicket: ticket,
-                      revenueTarget: meta, // Importing Target as well
+                      revenueTarget: meta, 
                       revenueActual: Number(revenueActual.toFixed(2)),
                       itemsActual: salesQty, 
                       delinquencyRate: Number(delinquencyRate.toFixed(2))
@@ -276,33 +262,28 @@ const GoalRegistration: React.FC<GoalRegistrationProps> = ({ stores, performance
           }
 
           if (successCount > 0) {
-              // MERGE WITH EXISTING STATE
-              const updatedPerformanceData = [...performanceData];
+              const changesToSave: MonthlyPerformance[] = [];
               
               importedData.forEach(item => {
-                  const existingIndex = updatedPerformanceData.findIndex(p => p.storeId === item.storeId && p.month === selectedMonthStr);
-                  
-                  // Calc percent if missing
+                  const existingRecord = performanceData.find(p => p.storeId === item.storeId && p.month === selectedMonthStr);
                   const percent = (item.revenueTarget && item.revenueTarget > 0) 
                         ? ((item.revenueActual || 0) / item.revenueTarget) * 100 
                         : 0;
 
-                  if (existingIndex >= 0) {
-                      // Update existing record
-                      updatedPerformanceData[existingIndex] = {
-                          ...updatedPerformanceData[existingIndex],
+                  if (existingRecord) {
+                      changesToSave.push({
+                          ...existingRecord,
                           itemsPerTicket: item.itemsPerTicket!,
                           unitPriceAverage: item.unitPriceAverage!,
                           averageTicket: item.averageTicket!,
-                          revenueTarget: item.revenueTarget!, // Update target from file
+                          revenueTarget: item.revenueTarget!, 
                           revenueActual: item.revenueActual!,
                           itemsActual: item.itemsActual!,
                           delinquencyRate: item.delinquencyRate!,
                           percentMeta: percent
-                      };
+                      });
                   } else {
-                      // New Record
-                      updatedPerformanceData.push({
+                      changesToSave.push({
                           storeId: item.storeId!,
                           month: selectedMonthStr,
                           revenueTarget: item.revenueTarget || 0,
@@ -320,11 +301,11 @@ const GoalRegistration: React.FC<GoalRegistrationProps> = ({ stores, performance
                           percentMeta: percent,
                           trend: 'stable',
                           correctedDailyGoal: 0
-                      });
+                      } as MonthlyPerformance);
                   }
               });
 
-              onUpdateData(updatedPerformanceData);
+              await onUpdateData(changesToSave);
               alert(`${successCount} lojas atualizadas! Metas e Realizados importados.`);
               setShowImportModal(false);
               setSelectedFile(null);
@@ -351,7 +332,6 @@ const GoalRegistration: React.FC<GoalRegistrationProps> = ({ stores, performance
       return { totalTarget, totalActual, percent: totalTarget > 0 ? (totalActual/totalTarget)*100 : 0 };
   }, [formData]);
 
-  // Helper for performance comparison color
   const getPerfColor = (actual: number, target: number, inverse: boolean = false) => {
       if (!target || target === 0) return 'text-gray-400';
       if (!actual || actual === 0) return 'text-gray-400';
@@ -464,7 +444,7 @@ const GoalRegistration: React.FC<GoalRegistrationProps> = ({ stores, performance
                 disabled={saveStatus === 'saving'}
                 className="flex items-center gap-2 bg-blue-700 text-white px-6 py-2.5 rounded-lg hover:bg-blue-800 shadow-md transition-all font-bold disabled:opacity-70"
             >
-                <Save size={18} />
+                {saveStatus === 'saving' ? <Loader2 size={18} className="animate-spin" /> : <Save size={18} />}
                 {saveStatus === 'saving' ? 'Salvando...' : 'Salvar Todas as Metas'}
             </button>
         </div>

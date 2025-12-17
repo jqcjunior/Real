@@ -6,6 +6,7 @@ import DashboardAdmin from './components/DashboardAdmin';
 import DashboardManager from './components/DashboardManager';
 import DashboardPurchases from './components/DashboardPurchases';
 import CotasManagement from './components/CotasManagement';
+import GoalRegistration from './components/GoalRegistration';
 import AgendaSystem from './components/AgendaSystem';
 import FinancialModule from './components/FinancialModule';
 import InstagramMarketing from './components/InstagramMarketing';
@@ -64,8 +65,9 @@ const App: React.FC = () => {
   const [creditCardSales, setCreditCardSales] = useState<CreditCardSale[]>([]);
   const [receipts, setReceipts] = useState<Receipt[]>([]);
   
+  // --- DATA LOADING ---
   const loadAllData = async () => {
-      setIsLoading(true);
+      // Don't set isLoading(true) here to avoid flickering if refreshing data in background
       try {
         const { data: dbStores } = await supabase.from('stores').select('*');
         if (dbStores) {
@@ -78,8 +80,9 @@ const App: React.FC = () => {
                 managerEmail: s.manager_email,
                 managerPhone: s.manager_phone,
                 status: s.status,
-                role: UserRole.MANAGER,
-                password: s.password 
+                role: s.role || UserRole.MANAGER,
+                password: s.password,
+                passwordResetRequested: s.password_reset_requested
             })));
         }
 
@@ -89,18 +92,18 @@ const App: React.FC = () => {
                 id: p.id,
                 storeId: p.store_id,
                 month: p.month,
-                revenueTarget: p.revenue_target,
-                revenueActual: p.revenue_actual,
-                itemsTarget: p.items_target,
-                itemsActual: p.items_actual,
-                paTarget: p.pa_target,
-                ticketTarget: p.ticket_target,
-                puTarget: p.pu_target,
-                delinquencyTarget: p.delinquency_target,
-                itemsPerTicket: p.pa_actual,
-                averageTicket: p.ticket_actual,
-                unitPriceAverage: p.pu_actual,
-                delinquencyRate: p.delinquency_actual,
+                revenueTarget: Number(p.revenue_target),
+                revenueActual: Number(p.revenue_actual),
+                itemsTarget: Number(p.items_target),
+                itemsActual: Number(p.items_actual),
+                paTarget: Number(p.pa_target),
+                ticketTarget: Number(p.ticket_target),
+                puTarget: Number(p.pu_target),
+                delinquencyTarget: Number(p.delinquency_target),
+                itemsPerTicket: Number(p.pa_actual),
+                averageTicket: Number(p.ticket_actual),
+                unitPriceAverage: Number(p.pu_actual),
+                delinquencyRate: Number(p.delinquency_actual),
                 percentMeta: p.revenue_target > 0 ? (p.revenue_actual / p.revenue_target) * 100 : 0,
                 trend: 'stable',
                 correctedDailyGoal: 0
@@ -115,8 +118,8 @@ const App: React.FC = () => {
                 month: p.month,
                 brand: p.brand,
                 category: p.category,
-                pairsSold: p.pairs_sold,
-                revenue: p.revenue
+                pairsSold: Number(p.pairs_sold),
+                revenue: Number(p.revenue)
             })));
         }
 
@@ -127,10 +130,10 @@ const App: React.FC = () => {
                 storeId: c.store_id,
                 brand: c.brand,
                 classification: c.classification,
-                totalValue: c.total_value,
+                totalValue: Number(c.total_value),
                 shipmentDate: c.shipment_date,
                 paymentTerms: c.payment_terms,
-                pairs: c.pairs,
+                pairs: Number(c.pairs),
                 installments: c.installments || [],
                 createdAt: new Date(c.created_at),
                 createdByRole: c.created_by_role as UserRole,
@@ -142,8 +145,8 @@ const App: React.FC = () => {
         if (dbCotaSettings) {
             setCotaSettings(dbCotaSettings.map((s: any) => ({
                 storeId: s.store_id,
-                budgetValue: s.budget_value,
-                managerPercent: s.manager_percent
+                budgetValue: Number(s.budget_value),
+                managerPercent: Number(s.manager_percent)
             })));
         }
 
@@ -153,7 +156,7 @@ const App: React.FC = () => {
                 id: d.id,
                 storeId: d.store_id,
                 month: d.month,
-                value: d.value
+                value: Number(d.value)
             })));
         }
 
@@ -180,7 +183,7 @@ const App: React.FC = () => {
                 date: c.sale_date,
                 brand: c.brand,
                 authorizationCode: c.authorization_code,
-                value: c.value
+                value: Number(c.value)
             })));
         }
 
@@ -192,7 +195,7 @@ const App: React.FC = () => {
                 issuerName: r.issuer_name,
                 payer: r.payer,
                 recipient: r.recipient,
-                value: r.value,
+                value: Number(r.value),
                 valueInWords: r.value_in_words,
                 reference: r.reference,
                 date: r.receipt_date,
@@ -209,7 +212,7 @@ const App: React.FC = () => {
                 userName: e.profiles?.name || 'Usuário',
                 date: e.error_date,
                 type: e.type,
-                value: e.value,
+                value: Number(e.value),
                 reason: e.reason,
                 createdAt: new Date(e.created_at)
             })));
@@ -253,7 +256,6 @@ const App: React.FC = () => {
 
   // --- INIT & PERSISTENCE ---
   useEffect(() => {
-    // 1. Check local storage for existing session
     const savedUser = localStorage.getItem('rc_user');
     if (savedUser) {
         try {
@@ -267,15 +269,11 @@ const App: React.FC = () => {
             localStorage.removeItem('rc_user');
         }
     }
-    
-    // 2. Load Data
     loadAllData();
   }, []);
 
   const logAction = async (action: SystemLog['action'], details: string, u: User | null = user) => {
     if (!u) return;
-    
-    // Only verify UUID for database logging
     const isUuid = /^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$/.test(u.id);
     if (!isUuid) return;
 
@@ -286,6 +284,7 @@ const App: React.FC = () => {
         action: action,
         details: details
     });
+    // Optimistic Update
     setLogs(prev => [{
       id: `log-${Date.now()}`,
       timestamp: new Date(),
@@ -297,305 +296,59 @@ const App: React.FC = () => {
     }, ...prev]);
   };
 
-  // --- CRUD Handlers ---
+  // --- STORE CRUD ---
+  const handleAddStore = async (store: Store) => {
+      const { data, error } = await supabase.from('stores').insert({
+          number: store.number,
+          name: store.name,
+          city: store.city,
+          manager_name: store.managerName,
+          manager_email: store.managerEmail,
+          manager_phone: store.managerPhone,
+          status: store.status,
+          role: store.role,
+          password: store.password
+      }).select().single();
 
-  const handleAddTask = async (task: AgendaItem) => {
-      const currentUserId = user?.id || 'u1';
-      
-      // Check if user ID is a valid UUID (Real User) or simple ID (Mock/Admin)
-      const isUuid = /^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$/.test(currentUserId);
-
-      if (isUuid) {
-          // REAL BACKEND SAVE
-          const { data, error } = await supabase.from('agenda_tasks').insert({
-              user_id: currentUserId, 
-              title: task.title,
-              description: task.description,
-              due_date: task.dueDate,
-              priority: task.priority,
-              is_completed: task.isCompleted
-          }).select().single();
-
-          if (data) {
-              const newTask = { ...task, id: data.id, userId: currentUserId };
-              setTasks(prev => [...prev, newTask]);
-              logAction('ADD_TASK', `Nova tarefa: ${task.title}`);
-          } else {
-              console.error("Erro ao salvar tarefa no banco:", error);
-              alert("Erro ao conectar com o banco de dados.");
-          }
-      } else {
-          // LOCAL/MOCK SAVE
-          const newTask = { ...task, id: `local-${Date.now()}`, userId: currentUserId };
-          setTasks(prev => [...prev, newTask]);
-      }
-  };
-
-  const handleUpdateTask = async (task: AgendaItem) => {
-      // Check if user ID is a valid UUID
-      const isUuid = /^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$/.test(task.id); // Check TASK ID for UUID format implies it was saved in DB
-
-      if (isUuid) {
-          await supabase.from('agenda_tasks').update({
-              title: task.title,
-              description: task.description,
-              due_date: task.dueDate,
-              priority: task.priority,
-              is_completed: task.isCompleted
-          }).eq('id', task.id);
-      }
-      
-      setTasks(prev => prev.map(t => t.id === task.id ? task : t));
-  };
-
-  const handleDeleteTask = async (id: string) => {
-      const isUuid = /^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$/.test(id);
-      
-      if (isUuid) {
-          await supabase.from('agenda_tasks').delete().eq('id', id);
-      }
-      setTasks(prev => prev.filter(t => t.id !== id));
-  };
-
-  const handleSaveGoalsToSupabase = async (goals: MonthlyPerformance[]) => {
-      for (const goal of goals) {
-          const payload = {
-              store_id: goal.storeId,
-              month: goal.month,
-              revenue_target: goal.revenueTarget,
-              revenue_actual: goal.revenueActual,
-              items_target: goal.itemsTarget,
-              items_actual: goal.itemsActual,
-              pa_target: goal.paTarget,
-              pa_actual: goal.itemsPerTicket,
-              ticket_target: goal.ticketTarget,
-              ticket_actual: goal.averageTicket,
-              pu_target: goal.puTarget,
-              pu_actual: goal.unitPriceAverage,
-              delinquency_target: goal.delinquencyTarget,
-              delinquency_actual: goal.delinquencyRate
-          };
-
-          if (goal.id) {
-              await supabase.from('monthly_performance').update(payload).eq('id', goal.id);
-          } else {
-              const { data: existing } = await supabase.from('monthly_performance').select('id').eq('store_id', goal.storeId).eq('month', goal.month).single();
-              if (existing) {
-                  await supabase.from('monthly_performance').update(payload).eq('id', existing.id);
-              } else {
-                  await supabase.from('monthly_performance').insert(payload);
-              }
-          }
-      }
-      loadAllData();
-  };
-
-  const handleSaveProductPerformance = async (newData: ProductPerformance[]) => {
-      const monthsAffected = Array.from(new Set(newData.map(d => d.month)));
-      if (monthsAffected.length > 0) {
-          await supabase.from('product_performance').delete().in('month', monthsAffected);
-      }
-      const payload = newData.map(d => ({
-          store_id: d.storeId,
-          month: d.month,
-          brand: d.brand,
-          category: d.category,
-          pairs_sold: d.pairsSold,
-          revenue: d.revenue
-      }));
-      const { error } = await supabase.from('product_performance').insert(payload);
-      if (!error) {
+      if (data) {
+          logAction('SYSTEM', `Cadastrou nova loja: ${store.name}`);
           loadAllData();
-          logAction('IMPORT_PURCHASES', `Importou compras para: ${monthsAffected.join(', ')}`);
       } else {
           console.error(error);
-          alert("Erro ao salvar dados de compras no banco.");
+          alert("Erro ao cadastrar loja.");
       }
   };
 
-  const handleAddCota = async (cota: Cota) => {
-      const { data, error } = await supabase.from('cotas').insert({
-          store_id: cota.storeId,
-          brand: cota.brand,
-          classification: cota.classification,
-          total_value: cota.totalValue,
-          shipment_date: cota.shipmentDate,
-          payment_terms: cota.paymentTerms,
-          pairs: cota.pairs,
-          installments: cota.installments,
-          created_by_role: cota.createdByRole,
-          status: 'pending'
-      }).select().single();
+  const handleUpdateStore = async (store: Store) => {
+      const { error } = await supabase.from('stores').update({
+          number: store.number,
+          name: store.name,
+          city: store.city,
+          manager_name: store.managerName,
+          manager_email: store.managerEmail,
+          manager_phone: store.managerPhone,
+          status: store.status,
+          role: store.role,
+          password: store.password,
+          password_reset_requested: store.passwordResetRequested
+      }).eq('id', store.id);
 
-      if (data) {
-          setCotas(prev => [...prev, { ...cota, id: data.id, createdAt: new Date(data.created_at) }]);
-          logAction('ADD_COTA', `Lançou cota: ${cota.brand} (${cota.totalValue})`);
+      if (!error) {
+          logAction('SYSTEM', `Atualizou dados da loja: ${store.name}`);
+          loadAllData();
       } else {
-          console.error(error);
+          alert("Erro ao atualizar loja.");
       }
   };
 
-  const handleDeleteCota = async (id: string) => {
-      await supabase.from('cotas').delete().eq('id', id);
-      setCotas(prev => prev.filter(c => c.id !== id));
-  };
-
-  const handleUpdateCota = async (cota: Cota) => {
-      await supabase.from('cotas').update({ status: cota.status }).eq('id', cota.id);
-      setCotas(prev => prev.map(c => c.id === cota.id ? cota : c));
-  };
-
-  const handleSaveCotaSettings = async (settings: CotaSettings) => {
-      const payload = {
-          store_id: settings.storeId,
-          budget_value: settings.budgetValue,
-          manager_percent: settings.managerPercent
-      };
-      await supabase.from('cota_settings').upsert(payload, { onConflict: 'store_id' });
-      
-      setCotaSettings(prev => {
-          const idx = prev.findIndex(s => s.storeId === settings.storeId);
-          if (idx >= 0) {
-              const newArr = [...prev];
-              newArr[idx] = settings;
-              return newArr;
-          }
-          return [...prev, settings];
-      });
-      logAction('UPDATE_GOAL', `Atualizou cota da Loja ${stores.find(s => s.id === settings.storeId)?.number}`);
-  };
-
-  const handleSaveCotaDebts = async (storeId: string, debts: Record<string, number>) => {
-      await supabase.from('cota_debts').delete().eq('store_id', storeId);
-      const payload = Object.entries(debts).map(([month, value]) => ({
-          store_id: storeId,
-          month,
-          value
-      }));
-      if (payload.length > 0) {
-          await supabase.from('cota_debts').insert(payload);
-      }
-      const { data: dbCotaDebts } = await supabase.from('cota_debts').select('*');
-      if (dbCotaDebts) {
-          setCotaDebts(dbCotaDebts.map((d: any) => ({
-              id: d.id,
-              storeId: d.store_id,
-              month: d.month,
-              value: d.value
-          })));
-      }
-  };
-
-  const handleAddCardSale = async (sale: CreditCardSale) => {
-      const { data } = await supabase.from('financial_card_sales').insert({
-          store_id: sale.storeId,
-          user_id: sale.userId,
-          sale_date: sale.date,
-          brand: sale.brand,
-          authorization_code: sale.authorizationCode,
-          value: sale.value
-      }).select().single();
-
-      if (data) {
-          setCreditCardSales(prev => [...prev, { ...sale, id: data.id }]);
-      }
-  };
-
-  const handleDeleteCardSale = async (id: string) => {
-      await supabase.from('financial_card_sales').delete().eq('id', id);
-      setCreditCardSales(prev => prev.filter(s => s.id !== id));
-  };
-
-  const handleAddReceipt = async (receipt: Receipt) => {
-      const { data } = await supabase.from('financial_receipts').insert({
-          store_id: receipt.storeId,
-          issuer_name: receipt.issuerName,
-          payer: receipt.payer,
-          recipient: receipt.recipient,
-          value: receipt.value,
-          value_in_words: receipt.valueInWords,
-          reference: receipt.reference,
-          receipt_date: receipt.date
-      }).select().single();
-
-      if (data) {
-          setReceipts(prev => [...prev, { ...receipt, id: data.id, createdAt: new Date(data.created_at) }]);
-          logAction('GENERATE_RECEIPT', `Recibo emitido: R$${receipt.value} para ${receipt.recipient}`);
-      }
-  };
-
-  const handleAddCashError = async (error: CashError) => {
-      const { data } = await supabase.from('cash_errors').insert({
-          store_id: error.storeId,
-          user_id: error.userId,
-          error_date: error.date,
-          type: error.type,
-          value: error.value,
-          reason: error.reason
-      }).select().single();
-
-      if (data) {
-          setCashErrors(prev => [...prev, { ...error, id: data.id }]);
-          logAction('REPORT_CASH_ERROR', `Quebra de caixa: ${error.type} de R$${error.value}`);
-      }
-  };
-
-  const handleUpdateCashError = async (error: CashError) => {
-      await supabase.from('cash_errors').update({
-          error_date: error.date,
-          type: error.type,
-          value: error.value,
-          reason: error.reason
-      }).eq('id', error.id);
-      setCashErrors(prev => prev.map(e => e.id === error.id ? error : e));
-  };
-
-  const handleDeleteCashError = async (id: string) => {
-      await supabase.from('cash_errors').delete().eq('id', id);
-      setCashErrors(prev => prev.filter(e => e.id !== id));
-  };
-
-  const handleUploadDownload = async (item: DownloadItem) => {
-      const { data } = await supabase.from('marketing_downloads').insert({
-          title: item.title,
-          description: item.description,
-          category: item.category,
-          url: item.url,
-          file_name: item.fileName,
-          file_size: item.size,
-          campaign: item.campaign,
-          created_by: item.createdBy
-      }).select().single();
-
-      if (data) {
-          setDownloads(prev => [...prev, { ...item, id: data.id }]);
-      }
-  };
-
-  const handleDeleteDownload = async (id: string) => {
-      await supabase.from('marketing_downloads').delete().eq('id', id);
-      setDownloads(prev => prev.filter(d => d.id !== id));
-  };
-
-  const handleStoreUpdate = async (updatedStores: Store[]) => {
-      for (const s of updatedStores) {
-          if (s.id.startsWith('s') || s.id.startsWith('req')) {
-              const payload = {
-                  number: s.number,
-                  name: s.name,
-                  city: s.city,
-                  manager_name: s.managerName,
-                  manager_email: s.managerEmail,
-                  manager_phone: s.managerPhone,
-                  status: s.status,
-                  password: s.password
-              };
-              if (s.id.includes('-') && !s.id.startsWith('req') && !s.id.startsWith('s')) {
-                  await supabase.from('stores').update(payload).eq('id', s.id);
-              } else {
-                  await supabase.from('stores').insert(payload);
-              }
-          }
+  const handleDeleteStore = async (id: string) => {
+      const store = stores.find(s => s.id === id);
+      if (!store) return;
+      // Hard delete for pending, soft delete (inactive) for others
+      if (store.status === 'pending') {
+          await supabase.from('stores').delete().eq('id', id);
+      } else {
+          await supabase.from('stores').update({ status: 'inactive' }).eq('id', id);
       }
       loadAllData();
   };
@@ -618,23 +371,292 @@ const App: React.FC = () => {
           alert(`${newStores.length} lojas importadas com sucesso!`);
       } else {
           console.error(error);
-          alert("Erro ao importar lojas. Verifique se os números das lojas são únicos.");
+          alert("Erro ao importar lojas.");
       }
   };
 
+  // --- GOALS CRUD (METAS) ---
+  const handleSaveGoalsToSupabase = async (goals: MonthlyPerformance[]) => {
+      for (const goal of goals) {
+          const payload = {
+              store_id: goal.storeId,
+              month: goal.month,
+              revenue_target: goal.revenueTarget,
+              revenue_actual: goal.revenueActual,
+              items_target: goal.itemsTarget,
+              items_actual: goal.itemsActual,
+              pa_target: goal.paTarget,
+              pa_actual: goal.itemsPerTicket,
+              ticket_target: goal.ticketTarget,
+              ticket_actual: goal.averageTicket,
+              pu_target: goal.puTarget,
+              pu_actual: goal.unitPriceAverage,
+              delinquency_target: goal.delinquencyTarget,
+              delinquency_actual: goal.delinquencyRate
+          };
+
+          // 1. If it has an ID, it's an update
+          if (goal.id) {
+              await supabase.from('monthly_performance').update(payload).eq('id', goal.id);
+          } else {
+              // 2. If no ID, check if record exists for this store+month
+              const { data: existing } = await supabase
+                  .from('monthly_performance')
+                  .select('id')
+                  .eq('store_id', goal.storeId)
+                  .eq('month', goal.month)
+                  .single();
+
+              if (existing) {
+                  await supabase.from('monthly_performance').update(payload).eq('id', existing.id);
+              } else {
+                  await supabase.from('monthly_performance').insert(payload);
+              }
+          }
+      }
+      logAction('UPDATE_GOAL', 'Atualizou metas/resultados das lojas');
+      loadAllData();
+  };
+
+  // --- PRODUCT PERFORMANCE CRUD (COMPRAS) ---
+  const handleSaveProductPerformance = async (newData: ProductPerformance[]) => {
+      const monthsAffected = Array.from(new Set(newData.map(d => d.month)));
+      
+      // Strategy: Delete existing records for these months to prevent duplicates, then insert new.
+      // This acts as a "Snapshot Replacement" for the month's report.
+      if (monthsAffected.length > 0) {
+          await supabase.from('product_performance').delete().in('month', monthsAffected);
+      }
+
+      const payload = newData.map(d => ({
+          store_id: d.storeId,
+          month: d.month,
+          brand: d.brand,
+          category: d.category,
+          pairs_sold: d.pairsSold,
+          revenue: d.revenue
+      }));
+
+      const { error } = await supabase.from('product_performance').insert(payload);
+      if (!error) {
+          logAction('IMPORT_PURCHASES', `Importou compras para: ${monthsAffected.join(', ')}`);
+          loadAllData();
+      } else {
+          console.error(error);
+          alert("Erro ao salvar dados de compras.");
+      }
+  };
+
+  // --- COTAS CRUD ---
+  const handleAddCota = async (cota: Cota) => {
+      const { data, error } = await supabase.from('cotas').insert({
+          store_id: cota.storeId,
+          brand: cota.brand,
+          classification: cota.classification,
+          total_value: cota.totalValue,
+          shipment_date: cota.shipmentDate,
+          payment_terms: cota.paymentTerms,
+          pairs: cota.pairs,
+          installments: cota.installments, // Supabase handles JSONB
+          created_by_role: cota.createdByRole,
+          status: 'pending'
+      }).select().single();
+
+      if (data) {
+          logAction('ADD_COTA', `Lançou cota: ${cota.brand} (${cota.totalValue})`);
+          loadAllData();
+      } else {
+          console.error(error);
+      }
+  };
+
+  const handleUpdateCota = async (cota: Cota) => {
+      await supabase.from('cotas').update({ 
+          status: cota.status,
+          // Update other fields if necessary
+      }).eq('id', cota.id);
+      loadAllData();
+  };
+
+  const handleDeleteCota = async (id: string) => {
+      await supabase.from('cotas').delete().eq('id', id);
+      loadAllData();
+  };
+
+  const handleSaveCotaSettings = async (settings: CotaSettings) => {
+      const payload = {
+          store_id: settings.storeId,
+          budget_value: settings.budgetValue,
+          manager_percent: settings.managerPercent
+      };
+      await supabase.from('cota_settings').upsert(payload, { onConflict: 'store_id' });
+      logAction('UPDATE_GOAL', `Atualizou orçamento de compras`);
+      loadAllData();
+  };
+
+  const handleSaveCotaDebts = async (storeId: string, debts: Record<string, number>) => {
+      // Clear existing debts for this store first or implement detailed diffing
+      // Strategy: Delete all for store and re-insert active ones
+      await supabase.from('cota_debts').delete().eq('store_id', storeId);
+      
+      const payload = Object.entries(debts).map(([month, value]) => ({
+          store_id: storeId,
+          month,
+          value
+      }));
+      
+      if (payload.length > 0) {
+          await supabase.from('cota_debts').insert(payload);
+      }
+      loadAllData();
+  };
+
+  // --- AGENDA CRUD ---
+  const handleAddTask = async (task: AgendaItem) => {
+      const currentUserId = user?.id || 'u1';
+      const isUuid = /^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$/.test(currentUserId);
+
+      if (isUuid) {
+          const { data } = await supabase.from('agenda_tasks').insert({
+              user_id: currentUserId, 
+              title: task.title,
+              description: task.description,
+              due_date: task.dueDate,
+              priority: task.priority,
+              is_completed: task.isCompleted
+          }).select().single();
+          if (data) {
+              logAction('ADD_TASK', `Nova tarefa: ${task.title}`);
+              loadAllData();
+          }
+      } else {
+          // Fallback for mock users
+          setTasks(prev => [...prev, { ...task, id: `local-${Date.now()}`, userId: currentUserId }]);
+      }
+  };
+
+  const handleUpdateTask = async (task: AgendaItem) => {
+      const isUuid = /^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$/.test(task.id);
+      if (isUuid) {
+          await supabase.from('agenda_tasks').update({
+              title: task.title,
+              description: task.description,
+              due_date: task.dueDate,
+              priority: task.priority,
+              is_completed: task.isCompleted
+          }).eq('id', task.id);
+      }
+      setTasks(prev => prev.map(t => t.id === task.id ? task : t));
+  };
+
+  const handleDeleteTask = async (id: string) => {
+      const isUuid = /^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$/.test(id);
+      if (isUuid) {
+          await supabase.from('agenda_tasks').delete().eq('id', id);
+      }
+      setTasks(prev => prev.filter(t => t.id !== id));
+  };
+
+  // --- FINANCIAL CRUD ---
+  const handleAddCardSale = async (sale: CreditCardSale) => {
+      const { data } = await supabase.from('financial_card_sales').insert({
+          store_id: sale.storeId,
+          user_id: sale.userId,
+          sale_date: sale.date,
+          brand: sale.brand,
+          authorization_code: sale.authorizationCode,
+          value: sale.value
+      }).select().single();
+      if (data) {
+          loadAllData();
+      }
+  };
+
+  const handleDeleteCardSale = async (id: string) => {
+      await supabase.from('financial_card_sales').delete().eq('id', id);
+      loadAllData();
+  };
+
+  const handleAddReceipt = async (receipt: Receipt) => {
+      const { data } = await supabase.from('financial_receipts').insert({
+          store_id: receipt.storeId,
+          issuer_name: receipt.issuerName,
+          payer: receipt.payer,
+          recipient: receipt.recipient,
+          value: receipt.value,
+          value_in_words: receipt.valueInWords,
+          reference: receipt.reference,
+          receipt_date: receipt.date
+      }).select().single();
+      if (data) {
+          logAction('GENERATE_RECEIPT', `Recibo emitido: R$${receipt.value}`);
+          loadAllData();
+      }
+  };
+
+  const handleAddCashError = async (error: CashError) => {
+      const { data } = await supabase.from('cash_errors').insert({
+          store_id: error.storeId,
+          user_id: error.userId,
+          error_date: error.date,
+          type: error.type,
+          value: error.value,
+          reason: error.reason
+      }).select().single();
+      if (data) {
+          logAction('REPORT_CASH_ERROR', `Quebra de caixa: ${error.type}`);
+          loadAllData();
+      }
+  };
+
+  const handleUpdateCashError = async (error: CashError) => {
+      await supabase.from('cash_errors').update({
+          error_date: error.date,
+          type: error.type,
+          value: error.value,
+          reason: error.reason
+      }).eq('id', error.id);
+      loadAllData();
+  };
+
+  const handleDeleteCashError = async (id: string) => {
+      await supabase.from('cash_errors').delete().eq('id', id);
+      loadAllData();
+  };
+
+  // --- DOWNLOADS CRUD ---
+  const handleUploadDownload = async (item: DownloadItem) => {
+      const { data } = await supabase.from('marketing_downloads').insert({
+          title: item.title,
+          description: item.description,
+          category: item.category,
+          url: item.url,
+          file_name: item.fileName,
+          file_size: item.size,
+          campaign: item.campaign,
+          created_by: item.createdBy
+      }).select().single();
+      if (data) {
+          loadAllData();
+      }
+  };
+
+  const handleDeleteDownload = async (id: string) => {
+      await supabase.from('marketing_downloads').delete().eq('id', id);
+      loadAllData();
+  };
+
+  // --- LOGIN/AUTH ---
   const handleLogin = (u: User) => {
-    // Persist Login
     localStorage.setItem('rc_user', JSON.stringify(u));
     setUser(u);
     logAction('LOGIN', `Usuário ${u.name} realizou login`, u);
-    
     if (u.role === UserRole.CASHIER) setCurrentView('agenda');
     else setCurrentView('dashboard');
   };
 
   const handleLogout = () => {
     if (user) logAction('LOGOUT', `Usuário ${user.name} realizou logout`);
-    // Clear Login
     localStorage.removeItem('rc_user');
     setUser(null);
     setCurrentView('dashboard');
@@ -650,12 +672,13 @@ const App: React.FC = () => {
   const handleProfileSave = async (e: React.FormEvent) => {
       e.preventDefault();
       if (user) {
+          // If we had a profiles table update endpoint, we'd call it here
+          // For now, update local state
           const updatedUser = { ...user, name: tempProfile.name, photo: tempProfile.photo };
           setUser(updatedUser);
-          // Update Local Storage too so name change persists on refresh
           localStorage.setItem('rc_user', JSON.stringify(updatedUser));
           setIsProfileModalOpen(false);
-          logAction('SYSTEM', `Atualizou perfil de usuário: ${updatedUser.name}`);
+          logAction('SYSTEM', `Atualizou perfil de usuário`);
       }
   };
 
@@ -669,7 +692,7 @@ const App: React.FC = () => {
   };
 
   const renderView = () => {
-    if (!user) return <LoginScreen onLogin={handleLogin} users={users} stores={stores} onRegisterRequest={(s) => setStores(prev => [...prev, s])} />;
+    if (!user) return <LoginScreen onLogin={handleLogin} users={users} stores={stores} onRegisterRequest={handleAddStore} />;
 
     switch (currentView) {
       case 'dashboard':
@@ -693,6 +716,8 @@ const App: React.FC = () => {
                   onSaveDebts={handleSaveCotaDebts}
                   onLogAction={logAction} 
                 />;
+      case 'metas_registration': // New View for Goals
+        return <GoalRegistration stores={stores} performanceData={performanceData} onUpdateData={handleSaveGoalsToSupabase} />;
       case 'financial':
         return <FinancialModule 
             user={user} 
@@ -714,7 +739,13 @@ const App: React.FC = () => {
       case 'cash_errors':
         return <CashErrorsModule user={user} store={stores.find(s => s.id === user.storeId)} stores={stores} errors={cashErrors} onAddError={handleAddCashError} onUpdateError={handleUpdateCashError} onDeleteError={handleDeleteCashError} />;
       case 'settings':
-        return <AdminSettings stores={stores} onStoreUpdate={handleStoreUpdate} onImportStores={handleImportStores} />;
+        return <AdminSettings 
+            stores={stores} 
+            onAddStore={handleAddStore}
+            onUpdateStore={handleUpdateStore}
+            onDeleteStore={handleDeleteStore}
+            onImportStores={handleImportStores} 
+        />;
       case 'auth_print':
         return <PurchaseAuthorization />;
       case 'termo_print':
@@ -725,7 +756,6 @@ const App: React.FC = () => {
   };
 
   // Only show loading if no user is present AND we are initially loading
-  // If we have a user (restored from localStorage), we show the app while data loads in background
   if (!user && isLoading) return <div className="min-h-screen flex items-center justify-center bg-gray-100"><div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-900"></div></div>;
 
   return (
@@ -744,6 +774,10 @@ const App: React.FC = () => {
           <nav className="flex-1 space-y-1 overflow-y-auto no-scrollbar">
             {user.role !== UserRole.CASHIER && (
                 <NavButton view="dashboard" icon={LayoutDashboard} label="Visão Geral" active={currentView === 'dashboard'} onClick={() => { setCurrentView('dashboard'); setIsSidebarOpen(false); }} />
+            )}
+            {/* Added Goals Registration Menu for Admin */}
+            {user.role === UserRole.ADMIN && (
+                <NavButton view="metas_registration" icon={Target} label="Definir Metas" active={currentView === 'metas_registration'} onClick={() => { setCurrentView('metas_registration'); setIsSidebarOpen(false); }} />
             )}
             {user.role !== UserRole.CASHIER && (
                 <NavButton view="purchases" icon={ShoppingBag} label="Compras & Marcas" active={currentView === 'purchases'} onClick={() => { setCurrentView('purchases'); setIsSidebarOpen(false); }} />

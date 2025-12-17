@@ -6,7 +6,9 @@ import * as XLSX from 'xlsx';
 
 interface AdminSettingsProps {
   stores: Store[];
-  onStoreUpdate: (stores: Store[]) => void;
+  onAddStore: (store: Store) => void;
+  onUpdateStore: (store: Store) => void;
+  onDeleteStore: (id: string) => void;
   onImportStores?: (stores: Store[]) => void;
 }
 
@@ -15,7 +17,7 @@ const BRAZIL_STATES = [
   'PA', 'PB', 'PR', 'PE', 'PI', 'RJ', 'RN', 'RS', 'RO', 'RR', 'SC', 'SP', 'SE', 'TO'
 ];
 
-const AdminSettings: React.FC<AdminSettingsProps> = ({ stores, onStoreUpdate, onImportStores }) => {
+const AdminSettings: React.FC<AdminSettingsProps> = ({ stores, onAddStore, onUpdateStore, onDeleteStore, onImportStores }) => {
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [editingStore, setEditingStore] = useState<Partial<Store>>({});
   const [isEditing, setIsEditing] = useState(false);
@@ -95,7 +97,7 @@ const AdminSettings: React.FC<AdminSettingsProps> = ({ stores, onStoreUpdate, on
 
   const confirmDelete = () => {
     if (storeToDelete) {
-      onStoreUpdate(stores.map(s => s.id === storeToDelete.id ? { ...s, status: 'inactive' } : s));
+      onDeleteStore(storeToDelete.id);
       setStoreToDelete(null); 
     }
   };
@@ -125,10 +127,10 @@ const AdminSettings: React.FC<AdminSettingsProps> = ({ stores, onStoreUpdate, on
 
     if (isEditing && editingStore.id) {
       const updatedStoreData = { ...storeData, passwordResetRequested: false } as Store;
-      onStoreUpdate(stores.map(s => (s.id === editingStore.id ? updatedStoreData : s)));
+      onUpdateStore(updatedStoreData);
     } else {
-      const newStore = { ...storeData, id: `s${Date.now()}`, status: storeData.status || 'active' } as Store;
-      onStoreUpdate([...stores, newStore]);
+      const newStore = { ...storeData, id: `temp-${Date.now()}`, status: storeData.status || 'active' } as Store;
+      onAddStore(newStore);
     }
     setIsModalOpen(false);
   };
@@ -139,23 +141,23 @@ const AdminSettings: React.FC<AdminSettingsProps> = ({ stores, onStoreUpdate, on
 
   const approveRequest = (store: Store) => {
       const roleToAssign = pendingRoles[store.id] || UserRole.MANAGER;
-      const updatedStores = stores.map(s => 
-          s.id === store.id 
-            ? { ...s, status: 'active', role: roleToAssign, passwordResetRequested: false } as Store 
-            : s
-      );
-      onStoreUpdate(updatedStores);
+      const updatedStore = { 
+          ...store, 
+          status: 'active', 
+          role: roleToAssign, 
+          passwordResetRequested: false 
+      } as Store;
+      onUpdateStore(updatedStore);
       alert(`Loja ${store.number} aprovada com acesso de ${roleToAssign === UserRole.ADMIN ? 'ADMINISTRADOR' : 'GERENTE'}.`);
   };
 
   const rejectRequest = (store: Store) => {
-      const updatedStores = stores.map(s => s.id === store.id ? { ...s, status: 'inactive' } as Store : s);
-      onStoreUpdate(updatedStores);
+      onDeleteStore(store.id);
   };
 
   const toggleStatus = (store: Store) => {
       const newStatus = store.status === 'active' ? 'inactive' : 'active';
-      onStoreUpdate(stores.map(s => s.id === store.id ? { ...s, status: newStatus } : s));
+      onUpdateStore({ ...store, status: newStatus });
   };
 
   const cycleRole = (store: Store) => {
@@ -164,7 +166,7 @@ const AdminSettings: React.FC<AdminSettingsProps> = ({ stores, onStoreUpdate, on
       if (currentRole === UserRole.MANAGER) newRole = UserRole.ADMIN;
       else if (currentRole === UserRole.ADMIN) newRole = UserRole.CASHIER;
       else newRole = UserRole.MANAGER;
-      onStoreUpdate(stores.map(s => s.id === store.id ? { ...s, role: newRole } : s));
+      onUpdateStore({ ...store, role: newRole });
   };
 
   // --- IMPORT LOGIC ---
