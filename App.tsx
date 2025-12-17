@@ -274,6 +274,11 @@ const App: React.FC = () => {
 
   const logAction = async (action: SystemLog['action'], details: string, u: User | null = user) => {
     if (!u) return;
+    
+    // Only verify UUID for database logging
+    const isUuid = /^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$/.test(u.id);
+    if (!isUuid) return;
+
     await supabase.from('system_logs').insert({
         user_id: u.id,
         user_name: u.name,
@@ -290,6 +295,66 @@ const App: React.FC = () => {
       action,
       details
     }, ...prev]);
+  };
+
+  // --- CRUD Handlers ---
+
+  const handleAddTask = async (task: AgendaItem) => {
+      const currentUserId = user?.id || 'u1';
+      
+      // Check if user ID is a valid UUID (Real User) or simple ID (Mock/Admin)
+      const isUuid = /^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$/.test(currentUserId);
+
+      if (isUuid) {
+          // REAL BACKEND SAVE
+          const { data, error } = await supabase.from('agenda_tasks').insert({
+              user_id: currentUserId, 
+              title: task.title,
+              description: task.description,
+              due_date: task.dueDate,
+              priority: task.priority,
+              is_completed: task.isCompleted
+          }).select().single();
+
+          if (data) {
+              const newTask = { ...task, id: data.id, userId: currentUserId };
+              setTasks(prev => [...prev, newTask]);
+              logAction('ADD_TASK', `Nova tarefa: ${task.title}`);
+          } else {
+              console.error("Erro ao salvar tarefa no banco:", error);
+              alert("Erro ao conectar com o banco de dados.");
+          }
+      } else {
+          // LOCAL/MOCK SAVE
+          const newTask = { ...task, id: `local-${Date.now()}`, userId: currentUserId };
+          setTasks(prev => [...prev, newTask]);
+      }
+  };
+
+  const handleUpdateTask = async (task: AgendaItem) => {
+      // Check if user ID is a valid UUID
+      const isUuid = /^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$/.test(task.id); // Check TASK ID for UUID format implies it was saved in DB
+
+      if (isUuid) {
+          await supabase.from('agenda_tasks').update({
+              title: task.title,
+              description: task.description,
+              due_date: task.dueDate,
+              priority: task.priority,
+              is_completed: task.isCompleted
+          }).eq('id', task.id);
+      }
+      
+      setTasks(prev => prev.map(t => t.id === task.id ? task : t));
+  };
+
+  const handleDeleteTask = async (id: string) => {
+      const isUuid = /^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$/.test(id);
+      
+      if (isUuid) {
+          await supabase.from('agenda_tasks').delete().eq('id', id);
+      }
+      setTasks(prev => prev.filter(t => t.id !== id));
   };
 
   const handleSaveGoalsToSupabase = async (goals: MonthlyPerformance[]) => {
@@ -419,42 +484,6 @@ const App: React.FC = () => {
               value: d.value
           })));
       }
-  };
-
-  const handleAddTask = async (task: AgendaItem) => {
-      const currentUserId = user?.id || 'u1'; 
-      const { data, error } = await supabase.from('agenda_tasks').insert({
-          user_id: currentUserId, 
-          title: task.title,
-          description: task.description,
-          due_date: task.dueDate,
-          priority: task.priority,
-          is_completed: task.isCompleted
-      }).select().single();
-
-      if (data) {
-          const newTask = { ...task, id: data.id, userId: currentUserId };
-          setTasks(prev => [...prev, newTask]);
-          logAction('ADD_TASK', `Nova tarefa: ${task.title}`);
-      } else {
-          console.error("Erro ao salvar tarefa:", error);
-      }
-  };
-
-  const handleUpdateTask = async (task: AgendaItem) => {
-      await supabase.from('agenda_tasks').update({
-          title: task.title,
-          description: task.description,
-          due_date: task.dueDate,
-          priority: task.priority,
-          is_completed: task.isCompleted
-      }).eq('id', task.id);
-      setTasks(prev => prev.map(t => t.id === task.id ? task : t));
-  };
-
-  const handleDeleteTask = async (id: string) => {
-      await supabase.from('agenda_tasks').delete().eq('id', id);
-      setTasks(prev => prev.filter(t => t.id !== id));
   };
 
   const handleAddCardSale = async (sale: CreditCardSale) => {
