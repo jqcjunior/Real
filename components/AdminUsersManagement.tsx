@@ -1,8 +1,8 @@
 
 import React, { useState, useEffect } from 'react';
-import { AdminUser, AdminRoleLevel, User } from '../types';
-// Add missing 'Users' icon import from lucide-react.
-import { UserPlus, Search, Edit3, Trash2, ShieldCheck, Mail, Lock, X, Save, Loader2, Power, ShieldAlert, BadgeCheck, Eye, UserCog, History, Users } from 'lucide-react';
+import { AdminUser, AdminRoleLevel, User, UserRole } from '../types';
+// Fix: Added missing ChevronRight import from lucide-react
+import { UserPlus, Search, Edit3, Trash2, ShieldCheck, Mail, Lock, X, Save, Loader2, Power, ShieldAlert, BadgeCheck, Eye, UserCog, History, Users, Wallet, Briefcase, Shield, ChevronRight } from 'lucide-react';
 import { supabase } from '../services/supabaseClient';
 
 interface AdminUsersManagementProps {
@@ -65,7 +65,6 @@ const AdminUsersManagement: React.FC<AdminUsersManagementProps> = ({ currentUser
                 role_level: formData.role_level
             };
             
-            // Adiciona senha apenas se preenchida (útil no update)
             if (formData.password) {
                 Object.assign(payload, { password: formData.password });
             }
@@ -125,7 +124,7 @@ const AdminUsersManagement: React.FC<AdminUsersManagementProps> = ({ currentUser
         setFormData({ 
             name: user.name, 
             email: user.email, 
-            password: '', // Senha não é retornada por segurança
+            password: '', 
             status: user.status,
             role_level: user.role_level || 'admin'
         });
@@ -144,9 +143,10 @@ const AdminUsersManagement: React.FC<AdminUsersManagementProps> = ({ currentUser
 
     const getRoleBadge = (level: AdminRoleLevel) => {
         switch(level) {
-            case 'super_admin': return { label: 'Super Admin', class: 'bg-purple-100 text-purple-700 border-purple-200', icon: ShieldCheck };
-            case 'auditor': return { label: 'Auditor (Leitura)', class: 'bg-blue-100 text-blue-700 border-blue-200', icon: Eye };
-            default: return { label: 'Admin', class: 'bg-gray-100 text-gray-700 border-gray-200', icon: UserCog };
+            case 'super_admin': return { label: 'Administrador Global', class: 'bg-red-100 text-red-700 border-red-200', icon: Shield };
+            case 'admin': return { label: 'Gerente Administrativo', class: 'bg-blue-100 text-blue-700 border-blue-200', icon: Briefcase };
+            case 'auditor': return { label: 'Caixa / Operacional', class: 'bg-green-100 text-green-700 border-green-200', icon: Wallet };
+            default: return { label: 'Usuário', class: 'bg-gray-100 text-gray-700 border-gray-200', icon: UserCog };
         }
     };
 
@@ -154,54 +154,57 @@ const AdminUsersManagement: React.FC<AdminUsersManagementProps> = ({ currentUser
         <div className="p-6 md:p-10 space-y-8 max-w-7xl mx-auto animate-in fade-in duration-500">
             {/* Stats Header */}
             <div className="grid grid-cols-1 md:grid-cols-3 gap-6 mb-4">
-                <div className="bg-white p-6 rounded-[32px] shadow-sm border border-gray-100">
-                    <div className="flex items-center gap-4">
-                        <div className="p-3 bg-blue-50 text-blue-600 rounded-2xl"><Users size={24}/></div>
-                        <div><p className="text-[10px] font-black text-gray-400 uppercase tracking-widest">Total Gestores</p><p className="text-2xl font-black text-gray-900">{admins.length}</p></div>
+                <div className="bg-white p-8 rounded-[32px] shadow-sm border border-gray-100 flex items-center justify-between group hover:border-blue-200 transition-all">
+                    <div>
+                        <p className="text-[10px] font-black text-gray-400 uppercase tracking-widest mb-1">Acessos Ativos</p>
+                        <p className="text-4xl font-black text-gray-900 italic tracking-tighter">{admins.filter(a => a.status === 'active').length}</p>
                     </div>
+                    <div className="p-4 bg-blue-50 text-blue-600 rounded-3xl group-hover:scale-110 transition-transform"><Users size={32}/></div>
                 </div>
-                <div className="bg-white p-6 rounded-[32px] shadow-sm border border-gray-100">
-                    <div className="flex items-center gap-4">
-                        <div className="p-3 bg-green-50 text-green-600 rounded-2xl"><BadgeCheck size={24}/></div>
-                        <div><p className="text-[10px] font-black text-gray-400 uppercase tracking-widest">Ativos Agora</p><p className="text-2xl font-black text-gray-900">{admins.filter(a => a.status === 'active').length}</p></div>
+                <div className="bg-white p-8 rounded-[32px] shadow-sm border border-gray-100 flex items-center justify-between group hover:border-red-200 transition-all">
+                    <div>
+                        <p className="text-[10px] font-black text-gray-400 uppercase tracking-widest mb-1">Nível Admin</p>
+                        <p className="text-4xl font-black text-gray-900 italic tracking-tighter">{admins.filter(a => a.role_level === 'super_admin').length}</p>
                     </div>
+                    <div className="p-4 bg-red-50 text-red-600 rounded-3xl group-hover:scale-110 transition-transform"><Shield size={32}/></div>
                 </div>
-                <div className="bg-white p-6 rounded-[32px] shadow-sm border border-gray-100">
-                    <div className="flex items-center gap-4">
-                        <div className="p-3 bg-purple-50 text-purple-600 rounded-2xl"><History size={24}/></div>
-                        <div><p className="text-[10px] font-black text-gray-400 uppercase tracking-widest">Ações Auditadas</p><p className="text-2xl font-black text-gray-900">100%</p></div>
+                <div className="bg-white p-8 rounded-[32px] shadow-sm border border-gray-100 flex items-center justify-between group hover:border-green-200 transition-all">
+                    <div>
+                        <p className="text-[10px] font-black text-gray-400 uppercase tracking-widest mb-1">Auditado por IA</p>
+                        <p className="text-4xl font-black text-gray-900 italic tracking-tighter">Sinc</p>
                     </div>
+                    <div className="p-4 bg-green-50 text-green-600 rounded-3xl group-hover:scale-110 transition-transform"><History size={32}/></div>
                 </div>
             </div>
 
             {/* Header Main */}
             <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-6 bg-white p-8 rounded-[40px] shadow-sm border border-gray-100">
                 <div>
-                    <h2 className="text-3xl font-black text-gray-900 uppercase italic tracking-tighter leading-none flex items-center gap-3">
-                        <ShieldCheck className="text-blue-700" size={36} />
-                        Usuários <span className="text-red-600">Admin</span>
+                    <h2 className="text-4xl font-black text-gray-900 uppercase italic tracking-tighter leading-none flex items-center gap-3">
+                        <ShieldCheck className="text-blue-700" size={42} />
+                        Gestão de <span className="text-red-600">Papéis</span>
                     </h2>
-                    <p className="text-gray-400 font-bold text-[10px] uppercase tracking-widest mt-2">Gestão de acessos globais e níveis de permissão</p>
+                    <p className="text-gray-400 font-bold text-xs uppercase tracking-widest mt-3">Configuração de permissões e hierarquia de acesso</p>
                 </div>
                 <button 
                     onClick={() => { resetForm(); setIsModalOpen(true); }}
-                    className="bg-gray-900 text-white px-8 py-4 rounded-3xl font-black uppercase text-xs shadow-xl hover:bg-black transition-all active:scale-95 flex items-center gap-2"
+                    className="bg-gray-950 text-white px-10 py-5 rounded-[24px] font-black uppercase text-xs shadow-2xl hover:bg-black transition-all active:scale-95 flex items-center gap-3 border-b-4 border-red-700"
                 >
-                    <UserPlus size={18} /> Novo Administrador
+                    <UserPlus size={20} /> Novo Operador de Sistema
                 </button>
             </div>
 
             {/* Content Table */}
             <div className="bg-white rounded-[40px] shadow-sm border border-gray-100 overflow-hidden">
-                <div className="p-6 border-b border-gray-50 flex items-center px-8">
+                <div className="p-8 border-b border-gray-50 flex items-center px-10 bg-gray-50/30">
                     <div className="relative flex-1 max-w-md">
-                        <Search className="absolute left-4 top-1/2 -translate-y-1/2 text-gray-400" size={20} />
+                        <Search className="absolute left-5 top-1/2 -translate-y-1/2 text-gray-400" size={20} />
                         <input 
                             type="text" 
-                            placeholder="Buscar por nome ou e-mail..."
+                            placeholder="Pesquisar por nome ou e-mail corporativo..."
                             value={searchTerm}
                             onChange={(e) => setSearchTerm(e.target.value)}
-                            className="w-full pl-12 pr-4 py-3 bg-gray-50 border-none rounded-2xl text-sm font-bold text-gray-700 focus:ring-4 focus:ring-blue-100 transition-all outline-none"
+                            className="w-full pl-14 pr-6 py-4 bg-white border border-gray-200 rounded-2xl text-sm font-bold text-gray-700 focus:ring-4 focus:ring-blue-100 transition-all outline-none shadow-inner"
                         />
                     </div>
                 </div>
@@ -209,60 +212,60 @@ const AdminUsersManagement: React.FC<AdminUsersManagementProps> = ({ currentUser
                 <div className="overflow-x-auto">
                     <table className="w-full text-left">
                         <thead>
-                            <tr className="bg-gray-50 text-[10px] font-black text-gray-400 uppercase tracking-widest border-b">
-                                <th className="px-8 py-5">Status / Nível</th>
-                                <th className="px-8 py-5">Nome do Administrador</th>
-                                <th className="px-8 py-5">E-mail de Acesso</th>
-                                <th className="px-8 py-5">Última Atividade</th>
-                                <th className="px-8 py-5 text-right">Ações</th>
+                            <tr className="bg-white border-b border-gray-100 text-[11px] font-black text-gray-400 uppercase tracking-widest">
+                                <th className="px-10 py-6">Papel / Nível de Acesso</th>
+                                <th className="px-10 py-6">Identificação Profissional</th>
+                                <th className="px-10 py-6">Acesso (E-mail)</th>
+                                <th className="px-10 py-6">Último Login</th>
+                                <th className="px-10 py-6 text-right">Ações</th>
                             </tr>
                         </thead>
                         <tbody className="divide-y divide-gray-50">
                             {isLoading ? (
                                 <tr>
-                                    <td colSpan={5} className="py-20 text-center">
-                                        <Loader2 className="animate-spin mx-auto text-blue-600" size={40} />
-                                        <p className="mt-4 text-xs font-black text-gray-400 uppercase tracking-widest">Sincronizando com Supabase...</p>
+                                    <td colSpan={5} className="py-24 text-center">
+                                        <Loader2 className="animate-spin mx-auto text-red-600" size={48} />
+                                        <p className="mt-6 text-xs font-black text-gray-400 uppercase tracking-widest animate-pulse">Sincronizando permissões globais...</p>
                                     </td>
                                 </tr>
                             ) : filteredAdmins.map(admin => {
                                 const role = getRoleBadge(admin.role_level);
                                 return (
-                                    <tr key={admin.id} className={`hover:bg-gray-50 transition-colors group ${admin.status === 'inactive' ? 'opacity-60' : ''}`}>
-                                        <td className="px-8 py-5">
-                                            <div className="flex flex-col gap-2">
+                                    <tr key={admin.id} className={`hover:bg-gray-50 transition-colors group ${admin.status === 'inactive' ? 'opacity-40 grayscale' : ''}`}>
+                                        <td className="px-10 py-6">
+                                            <div className="flex flex-col gap-3">
+                                                <div className={`w-fit flex items-center gap-2 px-3 py-1.5 rounded-xl border-2 font-black uppercase text-[10px] ${role.class}`}>
+                                                    <role.icon size={14} />
+                                                    {role.label}
+                                                </div>
                                                 <button 
                                                     onClick={() => toggleStatus(admin)}
-                                                    className={`w-fit flex items-center gap-2 px-3 py-1 rounded-full text-[9px] font-black uppercase border transition-all ${admin.status === 'active' ? 'bg-green-50 text-green-700 border-green-200' : 'bg-gray-100 text-gray-400 border-gray-200'}`}
+                                                    className={`w-fit flex items-center gap-2 px-2 py-0.5 rounded-lg text-[9px] font-black uppercase border transition-all ${admin.status === 'active' ? 'bg-green-50 text-green-700 border-green-200' : 'bg-gray-100 text-gray-400 border-gray-200'}`}
                                                 >
                                                     <Power size={10} />
                                                     {admin.status === 'active' ? 'Ativo' : 'Inativo'}
                                                 </button>
-                                                <div className={`w-fit flex items-center gap-1.5 px-2 py-0.5 rounded border text-[8px] font-black uppercase ${role.class}`}>
-                                                    <role.icon size={10} />
-                                                    {role.label}
-                                                </div>
                                             </div>
                                         </td>
-                                        <td className="px-8 py-5">
-                                            <div className="font-black text-gray-900 uppercase italic text-sm">{admin.name}</div>
-                                            {admin.id === currentUser?.id && <span className="text-[8px] font-black text-blue-500 uppercase tracking-tighter">(Você)</span>}
+                                        <td className="px-10 py-6">
+                                            <div className="font-black text-gray-900 uppercase italic text-base tracking-tighter">{admin.name}</div>
+                                            {admin.id === currentUser?.id && <span className="bg-blue-100 text-blue-700 text-[8px] font-black px-1.5 py-0.5 rounded uppercase mt-1 inline-block">Sua Conta</span>}
                                         </td>
-                                        <td className="px-8 py-5 text-sm font-bold text-gray-500">
+                                        <td className="px-10 py-6 text-sm font-bold text-gray-500">
                                             {admin.email}
                                         </td>
-                                        <td className="px-8 py-5 text-xs text-gray-400 font-medium">
-                                            {admin.last_activity ? new Date(admin.last_activity).toLocaleString('pt-BR') : 'Sem registros'}
+                                        <td className="px-10 py-6 text-xs text-gray-400 font-black uppercase">
+                                            {admin.last_activity ? new Date(admin.last_activity).toLocaleString('pt-BR') : 'Aguardando Login'}
                                         </td>
-                                        <td className="px-8 py-5 text-right">
-                                            <div className="flex justify-end gap-2 opacity-0 group-hover:opacity-100 transition-opacity">
-                                                <button onClick={() => openEdit(admin)} className="p-2 text-blue-600 hover:bg-blue-50 rounded-xl transition-all"><Edit3 size={18} /></button>
+                                        <td className="px-10 py-6 text-right">
+                                            <div className="flex justify-end gap-3 opacity-0 group-hover:opacity-100 transition-opacity">
+                                                <button onClick={() => openEdit(admin)} className="p-3 bg-white text-blue-600 border-2 border-blue-50 hover:bg-blue-600 hover:text-white rounded-2xl shadow-sm transition-all"><Edit3 size={20} /></button>
                                                 <button 
                                                     onClick={() => handleDelete(admin.id, admin.name)} 
                                                     disabled={admin.id === currentUser?.id}
-                                                    className={`p-2 rounded-xl transition-all ${admin.id === currentUser?.id ? 'text-gray-200 cursor-not-allowed' : 'text-red-400 hover:bg-red-50'}`}
+                                                    className={`p-3 border-2 rounded-2xl shadow-sm transition-all ${admin.id === currentUser?.id ? 'bg-gray-50 text-gray-200 border-gray-100 cursor-not-allowed' : 'bg-white text-red-400 border-red-50 hover:bg-red-600 hover:text-white'}`}
                                                 >
-                                                    <Trash2 size={18} />
+                                                    <Trash2 size={20} />
                                                 </button>
                                             </div>
                                         </td>
@@ -276,80 +279,87 @@ const AdminUsersManagement: React.FC<AdminUsersManagementProps> = ({ currentUser
 
             {/* MODAL CRUD */}
             {isModalOpen && (
-                <div className="fixed inset-0 bg-black/80 backdrop-blur-md flex items-center justify-center z-[120] p-4">
-                    <div className="bg-white rounded-[48px] shadow-2xl w-full max-w-lg overflow-hidden animate-in zoom-in duration-200">
-                        <div className="p-8 bg-gray-50 border-b flex justify-between items-center">
-                            <h3 className="text-2xl font-black text-gray-900 uppercase italic tracking-tighter">
-                                {editingId ? 'Configurar' : 'Novo'} <span className="text-blue-700">Administrador</span>
-                            </h3>
-                            <button onClick={() => setIsModalOpen(false)} className="bg-white p-2 rounded-full text-gray-400 hover:text-gray-600 shadow-sm transition-colors"><X size={20} /></button>
+                <div className="fixed inset-0 bg-black/90 backdrop-blur-xl flex items-center justify-center z-[120] p-4">
+                    <div className="bg-white rounded-[60px] shadow-2xl w-full max-w-xl overflow-hidden animate-in zoom-in duration-300">
+                        <div className="p-10 bg-gray-50 border-b flex justify-between items-center">
+                            <div>
+                                <h3 className="text-3xl font-black text-gray-900 uppercase italic tracking-tighter leading-none">
+                                    {editingId ? 'Editar' : 'Novo'} <span className="text-red-600">Operador</span>
+                                </h3>
+                                <p className="text-[10px] font-black text-gray-400 uppercase tracking-widest mt-2">Defina o nível de acesso ao ecossistema</p>
+                            </div>
+                            <button onClick={() => setIsModalOpen(false)} className="bg-white p-3 rounded-full text-gray-400 hover:text-red-600 shadow-xl transition-all border border-gray-100"><X size={24} /></button>
                         </div>
                         
-                        <form onSubmit={handleSave} className="p-10 space-y-6">
-                            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                                <div className="space-y-1">
-                                    <label className="text-[10px] font-black text-gray-400 uppercase block ml-1">Nome Completo *</label>
+                        <form onSubmit={handleSave} className="p-12 space-y-8">
+                            <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                                <div className="space-y-2">
+                                    <label className="text-[10px] font-black text-gray-500 uppercase block ml-1 tracking-widest">Nome do Profissional *</label>
                                     <input 
                                         required
                                         value={formData.name}
                                         onChange={e => setFormData({...formData, name: e.target.value})}
-                                        className="w-full px-4 py-4 bg-gray-50 border-none rounded-3xl font-bold text-gray-800 focus:ring-4 focus:ring-blue-100 transition-all outline-none"
-                                        placeholder="Nome do gestor"
+                                        className="w-full px-6 py-5 bg-gray-50 border-none rounded-[24px] font-black text-gray-800 uppercase italic text-sm focus:ring-4 focus:ring-blue-100 transition-all outline-none"
+                                        placeholder="EX: JOÃO DA SILVA"
                                     />
                                 </div>
-                                <div className="space-y-1">
-                                    <label className="text-[10px] font-black text-gray-400 uppercase block ml-1">Nível de Acesso</label>
-                                    <select 
-                                        value={formData.role_level}
-                                        onChange={e => setFormData({...formData, role_level: e.target.value as AdminRoleLevel})}
-                                        className="w-full px-4 py-4 bg-gray-50 border-none rounded-3xl font-black text-gray-800 uppercase text-xs focus:ring-4 focus:ring-blue-100 transition-all outline-none appearance-none"
-                                    >
-                                        <option value="super_admin">Super Admin</option>
-                                        <option value="admin">Admin</option>
-                                        <option value="auditor">Auditor (Read Only)</option>
-                                    </select>
+                                <div className="space-y-2">
+                                    <label className="text-[10px] font-black text-gray-500 uppercase block ml-1 tracking-widest">Papel no Sistema (Role)</label>
+                                    <div className="relative">
+                                        <select 
+                                            value={formData.role_level}
+                                            onChange={e => setFormData({...formData, role_level: e.target.value as AdminRoleLevel})}
+                                            className="w-full px-6 py-5 bg-gray-50 border-none rounded-[24px] font-black text-gray-800 uppercase text-xs focus:ring-4 focus:ring-blue-100 transition-all outline-none appearance-none cursor-pointer shadow-inner"
+                                        >
+                                            <option value="super_admin">Administrador Global (Total)</option>
+                                            <option value="admin">Gerente de Sistema</option>
+                                            <option value="auditor">Operador / Caixa</option>
+                                        </select>
+                                        <ChevronRight className="absolute right-5 top-1/2 -translate-y-1/2 rotate-90 text-gray-400 pointer-events-none" size={18} />
+                                    </div>
                                 </div>
                             </div>
 
-                            <div className="space-y-1">
-                                <label className="text-[10px] font-black text-gray-400 uppercase block ml-1">E-mail Corporativo *</label>
+                            <div className="space-y-2">
+                                <label className="text-[10px] font-black text-gray-500 uppercase block ml-1 tracking-widest">E-mail Corporativo (Acesso) *</label>
                                 <div className="relative">
-                                    <Mail className="absolute left-4 top-1/2 -translate-y-1/2 text-gray-300" size={18} />
+                                    <Mail className="absolute left-6 top-1/2 -translate-y-1/2 text-gray-300" size={20} />
                                     <input 
                                         required
                                         type="email"
                                         value={formData.email}
                                         onChange={e => setFormData({...formData, email: e.target.value})}
-                                        className="w-full pl-12 pr-4 py-4 bg-gray-50 border-none rounded-3xl font-bold text-gray-800 focus:ring-4 focus:ring-blue-100 transition-all outline-none"
-                                        placeholder="exemplo@me.com"
+                                        className="w-full pl-16 pr-6 py-5 bg-gray-50 border-none rounded-[24px] font-bold text-gray-800 focus:ring-4 focus:ring-blue-100 transition-all outline-none"
+                                        placeholder="exemplo@realcalcados.com.br"
                                     />
                                 </div>
                             </div>
 
-                            <div className="space-y-1">
-                                <label className="text-[10px] font-black text-gray-400 uppercase block ml-1">Senha de Segurança</label>
+                            <div className="space-y-2">
+                                <label className="text-[10px] font-black text-gray-500 uppercase block ml-1 tracking-widest">Senha de Segurança Privada</label>
                                 <div className="relative">
-                                    <Lock className="absolute left-4 top-1/2 -translate-y-1/2 text-gray-300" size={18} />
+                                    <Lock className="absolute left-6 top-1/2 -translate-y-1/2 text-gray-300" size={20} />
                                     <input 
                                         required={!editingId}
                                         type="password"
                                         value={formData.password}
                                         onChange={e => setFormData({...formData, password: e.target.value})}
-                                        className="w-full pl-12 pr-4 py-4 bg-gray-50 border-none rounded-3xl font-bold text-gray-800 focus:ring-4 focus:ring-blue-100 transition-all outline-none"
-                                        placeholder={editingId ? "Deixe em branco para manter atual" : "••••••••"}
+                                        className="w-full pl-16 pr-6 py-5 bg-gray-50 border-none rounded-[24px] font-bold text-gray-800 focus:ring-4 focus:ring-blue-100 transition-all outline-none"
+                                        placeholder={editingId ? "DEIXE EM BRANCO PARA MANTER ATUAL" : "••••••••"}
                                     />
                                 </div>
+                                <p className="text-[9px] text-gray-400 font-bold uppercase tracking-tighter mt-1 ml-1">Utilize pelo menos 8 caracteres com letras e números.</p>
                             </div>
 
-                            <div className="p-8 bg-gray-50 -mx-10 -mb-10 flex gap-4 mt-8">
-                                <button type="button" onClick={() => setIsModalOpen(false)} className="flex-1 py-5 bg-white border border-gray-200 rounded-3xl font-black text-gray-400 uppercase text-xs hover:bg-gray-100 transition-colors">Cancelar</button>
+                            <div className="p-10 bg-gray-50 -mx-12 -mb-12 flex gap-5 mt-10">
+                                <button type="button" onClick={() => setIsModalOpen(false)} className="flex-1 py-5 bg-white border-2 border-gray-200 rounded-[28px] font-black text-gray-500 uppercase text-xs hover:bg-gray-100 transition-all active:scale-95">CANCELAR</button>
                                 <button 
                                     type="submit" 
                                     disabled={isSubmitting}
-                                    className="flex-1 py-5 bg-blue-700 text-white rounded-3xl font-black uppercase text-xs shadow-xl shadow-blue-200 flex items-center justify-center gap-2 hover:bg-blue-800 transition-all active:scale-95"
+                                    className="flex-1 py-5 bg-red-600 text-white rounded-[28px] font-black uppercase text-xs shadow-2xl shadow-red-200 flex items-center justify-center gap-3 hover:bg-red-700 transition-all active:scale-95"
                                 >
-                                    {isSubmitting ? <Loader2 className="animate-spin" size={16} /> : <Save size={18} />}
-                                    Salvar Credenciais
+                                    {isSubmitting ? <Loader2 className="animate-spin" size={20} /> : <Save size={20} />}
+                                    CONFIRMAR ACESSO
                                 </button>
                             </div>
                         </form>

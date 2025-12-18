@@ -18,6 +18,18 @@ export interface User {
   photo?: string;
 }
 
+export interface PagePermission {
+    id: string;
+    page_key: string;
+    label: string;
+    module_group: string;
+    icon_name?: string;
+    allow_admin: boolean;
+    allow_manager: boolean;
+    allow_cashier: boolean;
+    sort_order: number;
+}
+
 export interface AdminUser {
   id: string;
   name: string;

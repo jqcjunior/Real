@@ -4,7 +4,7 @@ import { User, Store, MonthlyPerformance, ProductPerformance } from '../types';
 import { formatCurrency } from '../constants';
 import { 
   ShoppingBag, Target, Tag, CreditCard, TrendingUp, TrendingDown, 
-  Calendar, Award, AlertCircle, ArrowUpRight, ArrowDownRight, Package, Loader2 
+  Calendar, Award, AlertCircle, ArrowUpRight, ArrowDownRight, Package, Loader2, Trophy, Medal, Crown
 } from 'lucide-react';
 import { 
   BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, 
@@ -30,15 +30,11 @@ const ComparisonBadge = ({ current, target, inverse = false }: { current: number
     if (!target) return null;
     const diff = current - target;
     const pct = (diff / target) * 100;
-    
-    // Normal: Higher is better (Green), Lower is worse (Red)
-    // Inverse (e.g. Delinquency): Lower is better (Green), Higher is worse (Red)
     const isPositive = inverse ? diff <= 0 : diff >= 0;
-    
     return (
         <span className={`text-xs font-bold flex items-center gap-1 ${isPositive ? 'text-green-600' : 'text-red-600'}`}>
             {isPositive ? <ArrowUpRight size={12}/> : <ArrowDownRight size={12}/>}
-            {Math.abs(pct).toFixed(1)}% {isPositive ? 'acima' : 'abaixo'} da meta
+            {Math.abs(pct).toFixed(1)}% {isPositive ? 'acima' : 'abaixo'}
         </span>
     );
 };
@@ -56,39 +52,32 @@ const DashboardManager: React.FC<DashboardManagerProps> = ({ user, stores, perfo
       const [currentY, currentM] = selectedMonth.split('-');
       let newY = parseInt(currentY);
       let newM = parseInt(currentM);
-
       if (type === 'month') newM = value;
       if (type === 'year') newY = value;
-
       const newStr = `${newY}-${String(newM).padStart(2, '0')}`;
       setSelectedMonth(newStr);
-      setAiAnalysis(''); // Clear old analysis
+      setAiAnalysis('');
   };
 
   const myStore = stores.find(s => s.id === user.storeId);
   const myData = performanceData.find(p => p.storeId === user.storeId && p.month === selectedMonth);
   
-  // Calculate Network Averages for Comparison
-  const networkData = performanceData.filter(p => p.month === selectedMonth);
-  const averages = useMemo(() => {
-      if (networkData.length === 0) return { revenue: 0, pa: 0, ticket: 0, pu: 0, delinquency: 0 };
-      const sum = networkData.reduce((acc, curr) => ({
-          revenue: acc.revenue + curr.revenueActual,
-          pa: acc.pa + curr.itemsPerTicket,
-          ticket: acc.ticket + curr.averageTicket,
-          pu: acc.pu + curr.unitPriceAverage,
-          delinquency: acc.delinquency + curr.delinquencyRate
-      }), { revenue: 0, pa: 0, ticket: 0, pu: 0, delinquency: 0 });
-      
-      const count = networkData.length;
-      return {
-          revenue: sum.revenue / count,
-          pa: sum.pa / count,
-          ticket: sum.ticket / count,
-          pu: sum.pu / count,
-          delinquency: sum.delinquency / count
-      };
-  }, [networkData]);
+  // RANKING GLOBAL (Requisito Especial)
+  const networkRanking = useMemo(() => {
+      const currentMonthItems = performanceData.filter(p => p.month === selectedMonth);
+      return currentMonthItems
+          .map(item => {
+              const s = stores.find(st => st.id === item.storeId);
+              return {
+                  storeId: item.storeId,
+                  name: s?.name || 'Unidade',
+                  number: s?.number || '00',
+                  percent: item.percentMeta || 0,
+                  isMine: item.storeId === user.storeId
+              };
+          })
+          .sort((a, b) => b.percent - a.percent);
+  }, [performanceData, selectedMonth, stores, user.storeId]);
 
   const handleGenerateInsight = async () => {
       if (!myData) return;
@@ -108,239 +97,95 @@ const DashboardManager: React.FC<DashboardManagerProps> = ({ user, stores, perfo
   if (!myStore) return <div className="p-8">Loja não vinculada ao usuário.</div>;
 
   return (
-    <div className="p-6 md:p-8 max-w-[1600px] mx-auto space-y-8">
+    <div className="p-6 md:p-8 max-w-[1600px] mx-auto space-y-8 animate-in fade-in duration-500">
         
         {/* Header */}
-        <div className="flex flex-col md:flex-row justify-between items-center gap-4">
+        <div className="flex flex-col md:flex-row justify-between items-center gap-4 bg-white p-6 rounded-3xl shadow-sm border border-gray-100">
             <div>
-                <h2 className="text-3xl font-bold text-gray-800 flex items-center gap-3">
+                <h2 className="text-3xl font-black text-gray-900 uppercase italic tracking-tighter leading-none flex items-center gap-3">
                     <ShoppingBag className="text-blue-600" size={32} />
                     {myStore.name}
                 </h2>
-                <p className="text-gray-500 mt-1">Visão detalhada de performance e metas.</p>
+                <p className="text-gray-500 font-bold text-[10px] uppercase tracking-widest mt-2 italic">Performance Individual & Ranking da Rede</p>
             </div>
 
-            <div className="flex items-center gap-2 bg-white p-2 rounded-lg border border-gray-200 shadow-sm">
+            <div className="flex items-center gap-2 bg-gray-50 p-2 rounded-xl border border-gray-200 shadow-inner">
                 <Calendar size={18} className="text-blue-600 ml-2" />
                 <div className="flex gap-2">
-                    <select 
-                        value={parseInt(selectedMonth.split('-')[1])}
-                        onChange={(e) => handleMonthYearChange('month', parseInt(e.target.value))}
-                        className="bg-transparent text-gray-700 font-medium outline-none cursor-pointer"
-                    >
+                    <select value={parseInt(selectedMonth.split('-')[1])} onChange={(e) => handleMonthYearChange('month', parseInt(e.target.value))} className="bg-transparent text-gray-700 font-black outline-none cursor-pointer text-xs uppercase">
                         {MONTHS.map(m => <option key={m.value} value={m.value}>{m.label}</option>)}
                     </select>
-                    <select 
-                        value={parseInt(selectedMonth.split('-')[0])}
-                        onChange={(e) => handleMonthYearChange('year', parseInt(e.target.value))}
-                        className="bg-transparent text-gray-700 font-medium outline-none cursor-pointer"
-                    >
+                    <select value={parseInt(selectedMonth.split('-')[0])} onChange={(e) => handleMonthYearChange('year', parseInt(e.target.value))} className="bg-transparent text-gray-700 font-black outline-none cursor-pointer text-xs">
                         {years.map(y => <option key={y} value={y}>{y}</option>)}
                     </select>
                 </div>
             </div>
         </div>
 
-        {myData ? (
-            <>
-                {/* KPI Cards Grid */}
-                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-5 gap-6">
-                    
-                    {/* Revenue */}
-                    <div className="bg-white p-6 rounded-xl shadow-sm border border-gray-100 hover:shadow-md transition-shadow group">
-                        <div className="flex items-center justify-between mb-4">
-                            <h3 className="text-sm font-bold text-gray-500 uppercase">Faturamento</h3>
-                            <div className="p-2 bg-green-50 text-green-600 rounded-lg group-hover:bg-green-100 transition-colors">
-                                <Target size={20}/>
+        <div className="grid grid-cols-1 xl:grid-cols-4 gap-8">
+            {/* PERFORMANCE AREA */}
+            <div className="xl:col-span-3 space-y-8">
+                {myData ? (
+                    <>
+                        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
+                            <div className="bg-white p-6 rounded-2xl shadow-sm border border-gray-100"><h3 className="text-[10px] font-black text-gray-400 uppercase tracking-widest mb-4">Faturamento</h3><p className="text-2xl font-black text-gray-900">{formatCurrency(myData.revenueActual)}</p><div className="mt-2 flex justify-between items-end"><ComparisonBadge current={myData.revenueActual} target={myData.revenueTarget} /></div><div className="w-full bg-gray-100 rounded-full h-2 mt-4 overflow-hidden"><div className={`h-full ${myData.percentMeta >= 100 ? 'bg-green-500' : 'bg-blue-600'}`} style={{ width: `${Math.min(myData.percentMeta, 100)}%` }}></div></div><p className="text-[10px] text-right mt-2 font-black text-blue-700">{myData.percentMeta.toFixed(1)}% DA META</p></div>
+                            <div className="bg-white p-6 rounded-2xl shadow-sm border border-gray-100"><h3 className="text-[10px] font-black text-gray-400 uppercase tracking-widest mb-4">Ticket Médio</h3><p className="text-2xl font-black text-gray-900">{formatCurrency(myData.averageTicket)}</p><div className="mt-2">{myData.ticketTarget && <ComparisonBadge current={myData.averageTicket} target={myData.ticketTarget} />}</div></div>
+                            <div className="bg-white p-6 rounded-2xl shadow-sm border border-gray-100"><h3 className="text-[10px] font-black text-gray-400 uppercase tracking-widest mb-4">P.A. (Peças/Atend.)</h3><p className="text-2xl font-black text-gray-900">{myData.itemsPerTicket.toFixed(2)}</p><div className="mt-2">{myData.paTarget && <ComparisonBadge current={myData.itemsPerTicket} target={myData.paTarget} />}</div></div>
+                            <div className="bg-white p-6 rounded-2xl shadow-sm border border-gray-100"><h3 className="text-[10px] font-black text-gray-400 uppercase tracking-widest mb-4">Inadimplência</h3><p className={`text-2xl font-black ${myData.delinquencyRate > (myData.delinquencyTarget || 2) ? 'text-red-600' : 'text-green-600'}`}>{myData.delinquencyRate.toFixed(2)}%</p></div>
+                        </div>
+
+                        <div className="bg-gradient-to-br from-gray-900 to-blue-950 rounded-3xl p-8 text-white shadow-xl relative overflow-hidden">
+                            <div className="absolute top-0 right-0 p-10 opacity-10"><Trophy size={120}/></div>
+                            <div className="relative z-10">
+                                <div className="flex justify-between items-start mb-6">
+                                    <h3 className="text-xl font-black uppercase italic tracking-tighter flex items-center gap-3">
+                                        <Award className="text-yellow-400" size={32} /> Inteligência de Varejo
+                                    </h3>
+                                    <button onClick={handleGenerateInsight} disabled={loadingAi} className="bg-white/10 hover:bg-white/20 text-white px-6 py-3 rounded-xl text-xs font-black uppercase tracking-widest transition-all disabled:opacity-50 flex items-center gap-2 border border-white/10">
+                                        {loadingAi ? <Loader2 className="animate-spin" size={16} /> : <Target size={16} />} Analisar Dados
+                                    </button>
+                                </div>
+                                {aiAnalysis ? (
+                                    <div className="prose prose-invert max-w-none text-sm bg-black/20 p-6 rounded-2xl border border-white/5 animate-in slide-in-from-bottom-2">
+                                        <div dangerouslySetInnerHTML={{ __html: aiAnalysis.replace(/\n/g, '<br/>') }} />
+                                    </div>
+                                ) : (
+                                    <p className="text-blue-300 font-medium italic">Clique no botão acima para uma análise estratégica via Inteligência Artificial.</p>
+                                )}
                             </div>
                         </div>
-                        <p className="text-2xl font-bold text-gray-900">{formatCurrency(myData.revenueActual)}</p>
-                        <div className="mt-2 flex justify-between items-end">
-                            <div className="text-xs text-gray-500">
-                                Meta: {formatCurrency(myData.revenueTarget)}
-                            </div>
-                            <ComparisonBadge current={myData.revenueActual} target={myData.revenueTarget} />
-                        </div>
-                        <div className="w-full bg-gray-100 rounded-full h-1.5 mt-3 overflow-hidden">
-                            <div 
-                                className={`h-full rounded-full ${myData.percentMeta >= 100 ? 'bg-green-500' : 'bg-blue-500'}`} 
-                                style={{ width: `${Math.min(myData.percentMeta, 100)}%` }}
-                            ></div>
-                        </div>
-                        <p className="text-xs text-right mt-1 font-bold text-gray-400">{myData.percentMeta.toFixed(1)}%</p>
+                    </>
+                ) : (
+                    <div className="bg-white rounded-3xl p-20 text-center border-2 border-dashed border-gray-200">
+                        <Calendar className="mx-auto text-gray-300 mb-4" size={48} />
+                        <h3 className="text-lg font-black text-gray-400 uppercase">Aguardando Importação de Dados</h3>
                     </div>
-
-                    {/* Ticket Medio */}
-                    <div className="bg-white p-6 rounded-xl shadow-sm border border-gray-100 hover:shadow-md transition-shadow group">
-                        <div className="flex items-center justify-between mb-4">
-                            <h3 className="text-sm font-bold text-gray-500 uppercase">Ticket Médio</h3>
-                            <div className="p-2 bg-purple-50 text-purple-600 rounded-lg group-hover:bg-purple-100 transition-colors">
-                                <CreditCard size={20}/>
-                            </div>
-                        </div>
-                        <p className="text-2xl font-bold text-gray-900">{formatCurrency(myData.averageTicket)}</p>
-                        <div className="mt-2 flex flex-col">
-                            {myData.ticketTarget ? (
-                                <ComparisonBadge current={myData.averageTicket} target={myData.ticketTarget} />
-                            ) : (
-                                <span className="text-xs text-gray-400">Sem meta definida</span>
-                            )}
-                            <span className="text-xs text-gray-400 mt-1">Média Rede: {formatCurrency(averages.ticket)}</span>
-                        </div>
-                    </div>
-
-                    {/* PA */}
-                    <div className="bg-white p-6 rounded-xl shadow-sm border border-gray-100 hover:shadow-md transition-shadow group">
-                        <div className="flex items-center justify-between mb-4">
-                            <h3 className="text-sm font-bold text-gray-500 uppercase">P.A. (Peças/Atend.)</h3>
-                            <div className="p-2 bg-orange-50 text-orange-600 rounded-lg group-hover:bg-orange-100 transition-colors">
-                                <ShoppingBag size={20}/>
-                            </div>
-                        </div>
-                        <p className="text-2xl font-bold text-gray-900">{myData.itemsPerTicket.toFixed(2)}</p>
-                        <div className="mt-2 flex flex-col">
-                            {myData.paTarget ? (
-                                <ComparisonBadge current={myData.itemsPerTicket} target={myData.paTarget} />
-                            ) : (
-                                <span className="text-xs text-gray-400">Sem meta definida</span>
-                            )}
-                            <span className="text-xs text-gray-400 mt-1">Média Rede: {averages.pa.toFixed(2)}</span>
-                        </div>
-                    </div>
-
-                    {/* PU */}
-                    <div className="bg-white p-6 rounded-xl shadow-sm border border-gray-100 hover:shadow-md transition-shadow group">
-                        <div className="flex items-center justify-between mb-4">
-                            <h3 className="text-sm font-bold text-gray-500 uppercase">Preço Médio (P.U.)</h3>
-                            <div className="p-2 bg-blue-50 text-blue-600 rounded-lg group-hover:bg-blue-100 transition-colors">
-                                <Tag size={20}/>
-                            </div>
-                        </div>
-                        <p className="text-2xl font-bold text-gray-900">{formatCurrency(myData.unitPriceAverage)}</p>
-                        <div className="mt-2 flex flex-col">
-                            {myData.puTarget ? (
-                                <ComparisonBadge current={myData.unitPriceAverage} target={myData.puTarget} />
-                            ) : (
-                                <span className="text-xs text-gray-400">Sem meta definida</span>
-                            )}
-                            <span className="text-xs text-gray-400 mt-1">Média Rede: {formatCurrency(averages.pu)}</span>
-                        </div>
-                    </div>
-
-                    {/* Inadimplencia (Inverse Logic) */}
-                    <div className="bg-white p-6 rounded-xl shadow-sm border border-gray-100 hover:shadow-md transition-shadow group">
-                        <div className="flex items-center justify-between mb-4">
-                            <h3 className="text-sm font-bold text-gray-500 uppercase">Inadimplência</h3>
-                            <div className="p-2 bg-red-50 text-red-600 rounded-lg group-hover:bg-red-100 transition-colors">
-                                <AlertCircle size={20}/>
-                            </div>
-                        </div>
-                        <p className={`text-2xl font-bold ${myData.delinquencyRate > (myData.delinquencyTarget || 2) ? 'text-red-600' : 'text-green-600'}`}>
-                            {myData.delinquencyRate.toFixed(2)}%
-                        </p>
-                        <div className="mt-2 flex flex-col">
-                            {myData.delinquencyTarget ? (
-                                <ComparisonBadge current={myData.delinquencyRate} target={myData.delinquencyTarget} inverse />
-                            ) : (
-                                <span className="text-xs text-gray-400">Meta Max: 2.00%</span>
-                            )}
-                            <span className="text-xs text-gray-400 mt-1">Média Rede: {averages.delinquency.toFixed(2)}%</span>
-                        </div>
-                    </div>
-                </div>
-
-                {/* AI Analysis Section */}
-                <div className="bg-gradient-to-r from-blue-900 to-indigo-900 rounded-2xl p-6 text-white shadow-lg">
-                    <div className="flex justify-between items-start mb-4">
-                        <h3 className="text-xl font-bold flex items-center gap-2">
-                            <Award className="text-yellow-400" /> Consultor Inteligente
-                        </h3>
-                        <button 
-                            onClick={handleGenerateInsight}
-                            disabled={loadingAi}
-                            className="px-4 py-2 bg-white/10 hover:bg-white/20 rounded-lg text-sm font-bold transition-all disabled:opacity-50 flex items-center gap-2"
-                        >
-                            {loadingAi ? <Loader2 className="animate-spin" size={16} /> : null}
-                            {loadingAi ? 'Analisando...' : 'Gerar Análise IA'}
-                        </button>
-                    </div>
-                    
-                    {aiAnalysis ? (
-                        <div className="prose prose-invert max-w-none text-sm bg-white/5 p-4 rounded-xl border border-white/10 animate-in fade-in">
-                            <div dangerouslySetInnerHTML={{ __html: aiAnalysis.replace(/\n/g, '<br/>').replace(/\*\*(.*?)\*\*/g, '<strong>$1</strong>') }} />
-                        </div>
-                    ) : (
-                        <p className="text-blue-200 text-sm">
-                            Clique em "Gerar Análise IA" para receber insights sobre o desempenho da sua loja, sugestões de melhoria e comparação com a rede.
-                        </p>
-                    )}
-                </div>
-
-                {/* Charts Area */}
-                <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
-                    <div className="bg-white p-6 rounded-xl shadow-sm border border-gray-100">
-                        <h3 className="font-bold text-gray-800 mb-6">Comparativo: Loja vs Rede</h3>
-                        <div className="h-72">
-                            <ResponsiveContainer width="100%" height="100%">
-                                <BarChart
-                                    data={[
-                                        { name: 'Ticket Médio', loja: myData.averageTicket, rede: averages.ticket },
-                                        { name: 'P.A.', loja: myData.itemsPerTicket * 10, rede: averages.pa * 10 }, // Scale PA for visibility
-                                        { name: 'P.U.', loja: myData.unitPriceAverage, rede: averages.pu }
-                                    ]}
-                                    layout="vertical"
-                                    margin={{ top: 5, right: 30, left: 40, bottom: 5 }}
-                                >
-                                    <CartesianGrid strokeDasharray="3 3" horizontal={false} />
-                                    <XAxis type="number" hide />
-                                    <YAxis dataKey="name" type="category" width={100} tick={{fontSize: 12}} />
-                                    <Tooltip />
-                                    <Legend />
-                                    <Bar dataKey="loja" name="Minha Loja" fill="#3b82f6" radius={[0, 4, 4, 0]} barSize={20} />
-                                    <Bar dataKey="rede" name="Média Rede" fill="#9ca3af" radius={[0, 4, 4, 0]} barSize={20} />
-                                </BarChart>
-                            </ResponsiveContainer>
-                        </div>
-                        <p className="text-[10px] text-gray-400 text-center mt-2">* P.A. multiplicado por 10 para visualização</p>
-                    </div>
-
-                    <div className="bg-white p-6 rounded-xl shadow-sm border border-gray-100">
-                        <h3 className="font-bold text-gray-800 mb-6">Evolução Mensal (Vendas)</h3>
-                        <div className="h-72">
-                            <ResponsiveContainer width="100%" height="100%">
-                                <LineChart data={performanceData.filter(p => p.storeId === user.storeId).slice(-6)}>
-                                    <CartesianGrid strokeDasharray="3 3" vertical={false} />
-                                    <XAxis 
-                                        dataKey="month" 
-                                        tickFormatter={(val) => {
-                                            const [y, m] = val.split('-');
-                                            return `${m}/${y.slice(2)}`;
-                                        }}
-                                        fontSize={12}
-                                    />
-                                    <YAxis fontSize={12} tickFormatter={(val) => `${val/1000}k`} />
-                                    <Tooltip formatter={(value: number) => formatCurrency(value)} />
-                                    <Legend />
-                                    <Line type="monotone" dataKey="revenueActual" name="Realizado" stroke="#3b82f6" strokeWidth={2} dot={{r: 4}} />
-                                    <Line type="monotone" dataKey="revenueTarget" name="Meta" stroke="#10b981" strokeWidth={2} strokeDasharray="5 5" dot={false} />
-                                </LineChart>
-                            </ResponsiveContainer>
-                        </div>
-                    </div>
-                </div>
-            </>
-        ) : (
-            <div className="text-center py-20 bg-white rounded-xl border border-dashed border-gray-300">
-                <div className="inline-block p-4 bg-gray-50 rounded-full mb-3 shadow-sm text-gray-400">
-                    <Calendar size={32} />
-                </div>
-                <h3 className="text-lg font-bold text-gray-600">Dados Indisponíveis</h3>
-                <p className="text-gray-400 text-sm max-w-md mx-auto mt-2">
-                    Não encontramos registros de desempenho para <strong>{MONTHS.find(m => m.value === parseInt(selectedMonth.split('-')[1]))?.label}/{selectedMonth.split('-')[0]}</strong>. 
-                    <br/>Isso pode ocorrer se as metas ou vendas ainda não foram importadas pelo administrador.
-                </p>
+                )}
             </div>
-        )}
+
+            {/* RANKING AREA (Gamificação) */}
+            <div className="bg-white rounded-3xl shadow-sm border border-gray-100 flex flex-col overflow-hidden">
+                <div className="p-6 bg-gray-900 text-white"><h3 className="text-lg font-black uppercase italic tracking-tighter flex items-center gap-2"><Trophy size={20} className="text-yellow-400"/> Ranking da Rede</h3><p className="text-[9px] text-gray-400 font-bold uppercase tracking-widest mt-1">Sua posição no ecossistema</p></div>
+                <div className="flex-1 overflow-y-auto no-scrollbar p-4 space-y-3">
+                    {networkRanking.map((item, idx) => (
+                        <div key={item.storeId} className={`flex items-center gap-4 p-4 rounded-2xl transition-all border ${item.isMine ? 'bg-blue-50 border-blue-200 ring-2 ring-blue-500/20' : 'bg-gray-50 border-gray-100 opacity-80'}`}>
+                            <div className="w-8 flex flex-col items-center">
+                                {idx === 0 ? <Crown className="text-yellow-500 mb-1" size={16}/> : idx === 1 ? <Medal className="text-gray-400 mb-1" size={16}/> : idx === 2 ? <Medal className="text-orange-400 mb-1" size={16}/> : null}
+                                <span className="font-black text-gray-400 text-xs">#{idx + 1}</span>
+                            </div>
+                            <div className="flex-1">
+                                <p className={`text-xs font-black uppercase tracking-tight ${item.isMine ? 'text-blue-900' : 'text-gray-600'}`}>{item.number} - {item.name}</p>
+                                <div className="w-full bg-gray-200 h-1.5 rounded-full mt-2 overflow-hidden"><div className={`h-full ${item.percent >= 100 ? 'bg-green-500' : 'bg-blue-500'}`} style={{ width: `${Math.min(item.percent, 100)}%` }}></div></div>
+                            </div>
+                            <div className="text-right">
+                                <span className={`text-sm font-black italic ${item.isMine ? 'text-blue-700' : 'text-gray-900'}`}>{item.percent.toFixed(1)}%</span>
+                            </div>
+                        </div>
+                    ))}
+                    {networkRanking.length === 0 && <p className="text-center py-10 text-xs font-bold text-gray-400 uppercase">Sem dados no período</p>}
+                </div>
+            </div>
+        </div>
     </div>
   );
 };
