@@ -193,11 +193,12 @@ export interface IceCreamDailySale {
   productName: string;
   category: string;
   flavor: string;
+  ml?: string; // NOVO: Tamanho em ml
   unitsSold: number;
   unitPrice: number; 
   totalValue: number;
   paymentMethod: IceCreamPaymentMethod;
-  createdAt?: string; // Gerado pelo servidor
+  createdAt?: string; 
 }
 
 export interface CashError {
@@ -212,7 +213,7 @@ export interface CashError {
     createdAt: Date;
 }
 
-export type IceCreamCategory = 'Adicionais' | 'Bebidas' | 'Cascão' | 'Casquinha' | 'Milkshake' | 'Sundae';
+export type IceCreamCategory = 'Sundae' | 'Milkshake' | 'Casquinha' | 'Cascão' | 'Bebidas' | 'Adicionais';
 
 export interface IceCreamItem {
   id: string;
