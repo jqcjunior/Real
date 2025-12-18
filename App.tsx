@@ -114,7 +114,8 @@ const App: React.FC = () => {
         if (dbIceSales) setIceCreamSales(dbIceSales.map((s: any) => ({ id: String(s.id), itemId: String(s.item_id), productName: String(s.product_name || ''), category: String(s.category || ''), flavor: String(s.flavor || ''), unitsSold: Number(s.units_sold), unitPrice: Number(s.unit_price || 0), totalValue: Number(s.total_value || 0), paymentMethod: s.payment_method, createdAt: s.created_at })));
 
         const { data: dbIceFinances } = await supabase.from('ice_cream_finances').select('*').order('date', { ascending: false });
-        if (dbIceFinances) setIceCreamFinances(dbIceFinances.map((f: any) => ({ id: String(f.id), date: f.date, type: f.type, category: f.category, value: Number(f.value), employee_name: f.employee_name || '', description: f.description, createdAt: new Date(f.created_at) })));
+        // Fix: Changed employee_name to employeeName to match IceCreamTransaction interface
+        if (dbIceFinances) setIceCreamFinances(dbIceFinances.map((f: any) => ({ id: String(f.id), date: f.date, type: f.type, category: f.category, value: Number(f.value), employeeName: f.employee_name || '', description: f.description, createdAt: new Date(f.created_at) })));
 
       } catch (error) {
           console.error("Erro ao carregar dados:", error);
