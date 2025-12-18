@@ -2,7 +2,7 @@
 import React, { useState } from 'react';
 import { User, Store, UserRole } from '../types';
 import { Mail, Lock, UserPlus, X, Store as StoreIcon, MapPin, Phone, User as UserIcon, Send, KeyRound, AlertTriangle, Loader2, CheckCircle2 } from 'lucide-react';
-import { APP_NAME } from '../constants';
+import { APP_NAME, LOGO_URL } from '../constants';
 
 interface LoginScreenProps {
   onLoginAttempt: (email: string, password: string, rememberMe: boolean) => Promise<{ success: boolean; user?: User; error?: string }>;
@@ -111,9 +111,9 @@ const LoginScreen: React.FC<LoginScreenProps> = ({ onLoginAttempt, onRegisterReq
         <div className="flex flex-col items-center mb-10">
              <div className="relative mb-6">
                 <img 
-                    src="/logo.jpg" 
+                    src={LOGO_URL} 
                     alt="Real Admin" 
-                    className="w-24 h-24 rounded-full object-cover shadow-2xl border-4 border-white ring-4 ring-blue-50 transition-transform duration-700 hover:rotate-6"
+                    className="w-24 h-24 rounded-full object-contain shadow-2xl border-4 border-white ring-4 ring-blue-50 transition-transform duration-700 hover:rotate-6 bg-white p-2"
                 />
                 <div className="absolute -bottom-1 -right-1 w-6 h-6 bg-green-500 border-4 border-white rounded-full shadow-lg"></div>
              </div>

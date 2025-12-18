@@ -3,6 +3,9 @@ import { MonthlyPerformance, Store, User, ProductPerformance, Cota, AgendaItem, 
 
 export const APP_NAME = "REAL ADMIN";
 
+// URL do Logo Profissional (SVG para alta fidelidade)
+export const LOGO_URL = "https://img.logoipsum.com/280.svg";
+
 // Em produção, as listas iniciam vazias e são populadas via Supabase
 export const MOCK_USERS: User[] = [];
 export const MOCK_STORES: Store[] = [];

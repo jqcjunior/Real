@@ -21,6 +21,7 @@ import AdminUsersManagement from './components/AdminUsersManagement';
 import AccessControlManagement from './components/AccessControlManagement';
 import { User, Store, MonthlyPerformance, UserRole, ProductPerformance, Cota, AgendaItem, DownloadItem, SystemLog, CashError, CreditCardSale, Receipt, CotaSettings, CotaDebt, IceCreamItem, IceCreamDailySale, IceCreamTransaction, IceCreamCategory, AdminUser, PagePermission } from './types';
 import { supabase } from './services/supabaseClient';
+import { LOGO_URL } from './constants';
 
 // Mapeamento de ícones para Escalabilidade
 const ICON_MAP: Record<string, React.ElementType> = {
@@ -114,7 +115,6 @@ const App: React.FC = () => {
         if (dbIceSales) setIceCreamSales(dbIceSales.map((s: any) => ({ id: String(s.id), itemId: String(s.item_id), productName: String(s.product_name || ''), category: String(s.category || ''), flavor: String(s.flavor || ''), unitsSold: Number(s.units_sold), unitPrice: Number(s.unit_price || 0), totalValue: Number(s.total_value || 0), paymentMethod: s.payment_method, createdAt: s.created_at })));
 
         const { data: dbIceFinances } = await supabase.from('ice_cream_finances').select('*').order('date', { ascending: false });
-        // Fix: Changed employee_name to employeeName to match IceCreamTransaction interface
         if (dbIceFinances) setIceCreamFinances(dbIceFinances.map((f: any) => ({ id: String(f.id), date: f.date, type: f.type, category: f.category, value: Number(f.value), employeeName: f.employee_name || '', description: f.description, createdAt: new Date(f.created_at) })));
 
       } catch (error) {
@@ -268,7 +268,7 @@ const App: React.FC = () => {
         <div className="p-6 flex flex-col h-full">
           <div className="flex items-center gap-4 mb-8 pb-6 border-b border-blue-800/50">
              <div className="relative shrink-0">
-                <img src="/logo.jpg" alt="Real Admin" className="w-16 h-16 rounded-full object-cover shadow-lg border-2 border-white/10" />
+                <img src={LOGO_URL} alt="Real Admin" className="w-16 h-16 rounded-full object-contain shadow-lg border-2 border-white/10 bg-white p-1" />
                 <div className="absolute bottom-0 right-0 w-4 h-4 bg-green-500 border-2 border-blue-950 rounded-full shadow-[0_0_8px_rgba(34,197,94,0.5)]"></div>
              </div>
              <div>
@@ -316,7 +316,7 @@ const App: React.FC = () => {
          {user && (
          <div className="md:hidden bg-white shadow-md p-4 flex justify-between items-center z-40 border-b border-gray-200">
             <div className="flex items-center gap-3">
-                <img src="/logo.jpg" alt="Real Admin" className="w-10 h-10 rounded-full object-cover" />
+                <img src={LOGO_URL} alt="Real Admin" className="w-10 h-10 rounded-full object-contain bg-white p-0.5" />
                 <div>
                    <h1 className="text-xs font-black italic text-blue-950 tracking-tighter uppercase leading-none">REAL <span className="text-red-600">ADMIN</span></h1>
                    <p className="text-[7px] text-gray-400 font-black uppercase tracking-widest">Gestão Estratégica</p>

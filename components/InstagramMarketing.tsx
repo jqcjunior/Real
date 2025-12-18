@@ -4,6 +4,7 @@ import { User, Store } from '../types';
 import { Upload, Instagram, Download, Type, Image as ImageIcon, DollarSign, LayoutTemplate, Layers, Palette, RefreshCw, Sliders, Move, Sun, Contrast, Droplet, MoveHorizontal, MoveVertical, MousePointer2, Stamp, Globe, Shuffle, ChevronLeft, ChevronRight, Copy, Hexagon, Circle, Square, Star, ZoomIn, Hand, MousePointerClick, PaintBucket, Wand2, History, Save, Check, Loader2 } from 'lucide-react';
 import { generateMarketingImage } from '../services/geminiService';
 import { supabase } from '../services/supabaseClient';
+import { LOGO_URL } from '../constants';
 
 interface InstagramMarketingProps {
   user: User;
@@ -159,7 +160,7 @@ const InstagramMarketing: React.FC<InstagramMarketingProps> = ({ user, store }) 
   }, [imagePreview]);
 
   useEffect(() => {
-      const src = watermarkPreview || '/logo.jpg';
+      const src = watermarkPreview || LOGO_URL;
       const img = new Image();
       img.crossOrigin = "anonymous";
       img.src = src;
