@@ -30,7 +30,7 @@ create table if not exists public.monthly_performance (
   unique(store_id, month)
 );
 
--- Habilitar RLS e acesso público (ajuste conforme necessidade de produção)
+-- Habilitar RLS e acesso público
 alter table public.monthly_performance enable row level security;
 create policy "Public Access Goals" on public.monthly_performance for all using (true) with check (true);
 ```
@@ -75,14 +75,25 @@ create table if not exists public.ice_cream_finances (
   description text,
   created_at timestamp with time zone default timezone('utc'::text, now())
 );
+```
 
--- Permissões Públicas Sorvete
-alter table public.products enable row level security;
-create policy "Public Access Products" on public.products for all using (true) with check (true);
+---
 
-alter table public.ice_cream_daily_sales enable row level security;
-create policy "Public Access Ice Cream Sales" on public.ice_cream_daily_sales for all using (true) with check (true);
+### 3. Materiais de Marketing (NOVO)
+```sql
+-- Galeria de artes e materiais de campanha
+create table if not exists public.marketing_materials (
+  id uuid default uuid_generate_v4() primary key,
+  title text not null,
+  description text,
+  image_url text not null,
+  category text default 'social_media', -- social_media, internal_comms, promo
+  created_by uuid references public.admin_users(id),
+  store_id uuid references public.stores(id),
+  metadata jsonb, -- detalhes da geração ou ajustes
+  created_at timestamp with time zone default now()
+);
 
-alter table public.ice_cream_finances enable row level security;
-create policy "Public Access Ice Cream Finances" on public.ice_cream_finances for all using (true) with check (true);
+alter table public.marketing_materials enable row level security;
+create policy "Public Access Marketing" on public.marketing_materials for all using (true) with check (true);
 ```
