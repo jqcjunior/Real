@@ -94,7 +94,6 @@ const App: React.FC = () => {
   
   const loadAllData = async () => {
       try {
-        // Carrega Permissões primeiro para escalabilidade do menu
         const { data: dbPerms } = await supabase.from('page_permissions').select('*').order('sort_order', { ascending: true });
         if (dbPerms) setPagePermissions(dbPerms as PagePermission[]);
 
@@ -115,7 +114,7 @@ const App: React.FC = () => {
         if (dbIceSales) setIceCreamSales(dbIceSales.map((s: any) => ({ id: String(s.id), itemId: String(s.item_id), productName: String(s.product_name || ''), category: String(s.category || ''), flavor: String(s.flavor || ''), unitsSold: Number(s.units_sold), unitPrice: Number(s.unit_price || 0), totalValue: Number(s.total_value || 0), paymentMethod: s.payment_method, createdAt: s.created_at })));
 
         const { data: dbIceFinances } = await supabase.from('ice_cream_finances').select('*').order('date', { ascending: false });
-        if (dbIceFinances) setIceCreamFinances(dbIceFinances.map((f: any) => ({ id: String(f.id), date: f.date, type: f.type, category: f.category, value: Number(f.value), employeeName: f.employee_name || '', description: f.description, createdAt: new Date(f.created_at) })));
+        if (dbIceFinances) setIceCreamFinances(dbIceFinances.map((f: any) => ({ id: String(f.id), date: f.date, type: f.type, category: f.category, value: Number(f.value), employee_name: f.employee_name || '', description: f.description, createdAt: new Date(f.created_at) })));
 
       } catch (error) {
           console.error("Erro ao carregar dados:", error);
@@ -155,20 +154,20 @@ const App: React.FC = () => {
       }
   };
 
-  const authenticateUser = async (email: string, password: string): Promise<{ success: boolean; user?: User; error?: string }> => {
+  const authenticateUser = async (email: string, password: string, rememberMe: boolean): Promise<{ success: boolean; user?: User; error?: string }> => {
       try {
           const cleanEmail = email.trim().toLowerCase();
           const { data: adminUser } = await supabase.from('admin_users').select('*').eq('email', cleanEmail).eq('password', password).eq('status', 'active').maybeSingle();
           if (adminUser) {
               await supabase.from('admin_users').update({ last_activity: new Date().toISOString() }).eq('id', adminUser.id);
               const u: User = { id: adminUser.id, name: adminUser.name, email: adminUser.email, role: UserRole.ADMIN, storeId: '' };
-              handleLogin(u);
+              handleLogin(u, rememberMe);
               return { success: true, user: u };
           }
           const { data: storeUser } = await supabase.from('stores').select('*').eq('manager_email', cleanEmail).eq('password', password).maybeSingle();
           if (storeUser) {
               const authenticatedUser: User = { id: storeUser.id, name: storeUser.manager_name, email: storeUser.manager_email, role: storeUser.role as UserRole || UserRole.MANAGER, storeId: storeUser.id };
-              handleLogin(authenticatedUser);
+              handleLogin(authenticatedUser, rememberMe);
               return { success: true, user: authenticatedUser };
           }
           return { success: false, error: 'E-mail ou senha incorretos.' };
@@ -177,8 +176,14 @@ const App: React.FC = () => {
       }
   };
 
-  const handleLogin = (u: User) => {
-    localStorage.setItem('rc_user', JSON.stringify(u));
+  const handleLogin = (u: User, rememberMe: boolean) => {
+    if (rememberMe) {
+        localStorage.setItem('rc_user', JSON.stringify(u));
+        sessionStorage.removeItem('rc_user');
+    } else {
+        sessionStorage.setItem('rc_user', JSON.stringify(u));
+        localStorage.removeItem('rc_user');
+    }
     setUser(u);
     loadAllData();
     if (u.role === UserRole.CASHIER) setCurrentView('agenda');
@@ -187,13 +192,25 @@ const App: React.FC = () => {
 
   const handleLogout = () => {
     localStorage.removeItem('rc_user');
+    sessionStorage.removeItem('rc_user');
     setUser(null);
     setCurrentView('dashboard');
   };
 
   useEffect(() => {
-    const savedUser = localStorage.getItem('rc_user');
-    if (savedUser) { try { const parsedUser = JSON.parse(savedUser); setUser(parsedUser); } catch (e) { localStorage.removeItem('rc_user'); } }
+    const savedLocal = localStorage.getItem('rc_user');
+    const savedSession = sessionStorage.getItem('rc_user');
+    const savedUser = savedLocal || savedSession;
+    
+    if (savedUser) { 
+        try { 
+            const parsedUser = JSON.parse(savedUser); 
+            setUser(parsedUser); 
+        } catch (e) { 
+            localStorage.removeItem('rc_user'); 
+            sessionStorage.removeItem('rc_user');
+        } 
+    }
     loadAllData();
     const handleViewChange = (e: any) => setCurrentView(e.detail);
     window.addEventListener('changeView', handleViewChange);
@@ -250,12 +267,12 @@ const App: React.FC = () => {
         <div className="p-6 flex flex-col h-full">
           <div className="flex items-center gap-3 mb-8 pb-6 border-b border-blue-800/50">
              <div className="relative">
-                <div className="w-10 h-10 bg-red-600 rounded-xl flex items-center justify-center font-black text-xl italic shadow-lg rotate-3 tracking-tighter">R</div>
-                <div className="absolute -bottom-1 -right-1 w-4 h-4 bg-green-500 border-2 border-blue-950 rounded-full"></div>
+                <div className="w-12 h-12 bg-red-600 rounded-full flex items-center justify-center font-black text-2xl italic shadow-lg tracking-tighter border-2 border-white/10">R</div>
+                <div className="absolute bottom-0 right-0 w-4 h-4 bg-green-500 border-2 border-blue-950 rounded-full shadow-[0_0_8px_rgba(34,197,94,0.5)]"></div>
              </div>
              <div>
-                <h1 className="text-xl font-black italic tracking-tighter leading-none uppercase">REAL <span className="text-red-600">ADMIN</span></h1>
-                <p className="text-[9px] text-blue-300 uppercase tracking-widest font-black mt-1">Ecosystem v2.0</p>
+                <h1 className="text-lg font-black italic tracking-tighter leading-none uppercase">REAL <span className="text-red-500">ADMIN</span></h1>
+                <p className="text-[10px] text-blue-300 uppercase tracking-widest font-bold mt-1.5 opacity-80">Ecosystem v2.0</p>
              </div>
              <button className="md:hidden ml-auto text-blue-300" onClick={() => setIsSidebarOpen(false)}><X size={20}/></button>
           </div>

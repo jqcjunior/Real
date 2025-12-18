@@ -1,11 +1,11 @@
 
 import React, { useState } from 'react';
 import { User, Store, UserRole } from '../types';
-import { Mail, Lock, UserPlus, X, Store as StoreIcon, MapPin, Phone, User as UserIcon, Send, KeyRound, AlertTriangle, Loader2 } from 'lucide-react';
+import { Mail, Lock, UserPlus, X, Store as StoreIcon, MapPin, Phone, User as UserIcon, Send, KeyRound, AlertTriangle, Loader2, CheckCircle2 } from 'lucide-react';
 import { APP_NAME } from '../constants';
 
 interface LoginScreenProps {
-  onLoginAttempt: (email: string, password: string) => Promise<{ success: boolean; user?: User; error?: string }>;
+  onLoginAttempt: (email: string, password: string, rememberMe: boolean) => Promise<{ success: boolean; user?: User; error?: string }>;
   onRegisterRequest?: (store: Store) => void;
   onPasswordResetRequest?: (email: string) => void;
 }
@@ -18,6 +18,7 @@ const BRAZIL_STATES = [
 const LoginScreen: React.FC<LoginScreenProps> = ({ onLoginAttempt, onRegisterRequest, onPasswordResetRequest }) => {
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
+  const [rememberMe, setRememberMe] = useState(true);
   const [error, setError] = useState('');
   const [isLoading, setIsLoading] = useState(false);
   const [logoError, setLogoError] = useState(false);
@@ -43,13 +44,12 @@ const LoginScreen: React.FC<LoginScreenProps> = ({ onLoginAttempt, onRegisterReq
     setIsLoading(true);
 
     try {
-        const result = await onLoginAttempt(email.trim(), password.trim());
+        const result = await onLoginAttempt(email.trim(), password.trim(), rememberMe);
         
         if (!result.success) {
             setError(result.error || 'Credenciais inválidas.');
             setIsLoading(false);
         }
-        // If success, parent component handles state change, component unmounts
     } catch (err) {
         console.error(err);
         setError('Erro de conexão. Tente novamente.');
@@ -59,12 +59,10 @@ const LoginScreen: React.FC<LoginScreenProps> = ({ onLoginAttempt, onRegisterReq
 
   const handleSendRecovery = (e: React.FormEvent) => {
       e.preventDefault();
-      
       if (!recoveryEmail) {
           alert("Por favor, preencha o e-mail.");
           return;
       }
-
       if (onPasswordResetRequest) {
           onPasswordResetRequest(recoveryEmail);
           setShowForgotModal(false);
@@ -77,10 +75,8 @@ const LoginScreen: React.FC<LoginScreenProps> = ({ onLoginAttempt, onRegisterReq
 
   const handleRegisterSubmit = (e: React.FormEvent) => {
       e.preventDefault();
-      
       if (onRegisterRequest) {
           const cleanNumber = regStoreNumber ? String(parseInt(regStoreNumber.replace(/\D/g, ''), 10)) : '';
-
           const newStoreRequest: Store = {
               id: `req-${Date.now()}`,
               number: cleanNumber,
@@ -93,15 +89,12 @@ const LoginScreen: React.FC<LoginScreenProps> = ({ onLoginAttempt, onRegisterReq
               status: 'pending',
               role: UserRole.MANAGER
           };
-
           onRegisterRequest(newStoreRequest);
           alert("Solicitação enviada com sucesso! Aguarde a aprovação do administrador.");
       } else {
           alert("Erro: Funcionalidade indisponível no momento.");
       }
-
       setShowRegisterModal(false);
-      // Clear form
       setRegStoreNumber('');
       setRegStoreName('');
       setRegCity('');
@@ -196,25 +189,43 @@ const LoginScreen: React.FC<LoginScreenProps> = ({ onLoginAttempt, onRegisterReq
                 </div>
             </div>
 
+            {/* Remember Me Checkbox */}
+            <div className="flex items-center justify-between px-1">
+                <label className="flex items-center gap-2 cursor-pointer group select-none">
+                    <div className="relative">
+                        <input 
+                            type="checkbox" 
+                            className="sr-only" 
+                            checked={rememberMe}
+                            onChange={(e) => setRememberMe(e.target.checked)}
+                        />
+                        <div className={`w-5 h-5 rounded border transition-all flex items-center justify-center ${rememberMe ? 'bg-blue-600 border-blue-600 shadow-sm' : 'bg-white border-gray-300 group-hover:border-blue-400'}`}>
+                            {rememberMe && <CheckCircle2 size={14} className="text-white" strokeWidth={3} />}
+                        </div>
+                    </div>
+                    <span className="text-sm font-semibold text-gray-600 group-hover:text-blue-700 transition-colors">Continuar conectado</span>
+                </label>
+                
+                <button 
+                    type="button"
+                    onClick={() => setShowForgotModal(true)}
+                    className="text-sm text-blue-600 hover:text-blue-800 font-bold transition-colors bg-transparent border-none cursor-pointer"
+                >
+                    Esqueceu a senha?
+                </button>
+            </div>
+
             <button 
                 type="submit"
                 disabled={isLoading}
                 className="w-full bg-gradient-to-r from-blue-700 to-blue-900 hover:from-blue-800 hover:to-blue-950 text-white font-bold py-3.5 rounded-lg shadow-lg hover:shadow-xl transition-all duration-200 mt-4 active:scale-[0.98] flex items-center justify-center gap-2 disabled:opacity-70 disabled:cursor-not-allowed"
             >
-                {isLoading ? <Loader2 className="animate-spin" size={20}/> : 'Entrar'}
+                {isLoading ? <Loader2 className="animate-spin" size={20}/> : 'Entrar no Sistema'}
             </button>
         </form>
 
         {/* Footer Actions */}
         <div className="mt-8 text-center space-y-4">
-            <button 
-                type="button"
-                onClick={() => setShowForgotModal(true)}
-                className="text-sm text-gray-500 hover:text-blue-700 transition-colors underline decoration-transparent hover:decoration-blue-700 underline-offset-4 bg-transparent border-none cursor-pointer"
-            >
-                Esqueceu a senha?
-            </button>
-            
             <div className="flex items-center justify-center gap-2 opacity-50">
                 <div className="h-px bg-gray-300 w-12"></div>
                 <span className="text-xs text-gray-400 uppercase font-medium">OU</span>
@@ -251,11 +262,7 @@ const LoginScreen: React.FC<LoginScreenProps> = ({ onLoginAttempt, onRegisterReq
                             Ao solicitar a recuperação, o administrador será notificado para redefinir sua senha manualmente.
                         </p>
                     </div>
-
-                    <p className="text-gray-600 text-sm mb-4">
-                        Informe o e-mail cadastrado na sua loja:
-                    </p>
-
+                    <p className="text-gray-600 text-sm mb-4">Informe o e-mail cadastrado na sua loja:</p>
                     <div className="space-y-4">
                         <div className="relative group">
                             <span className="absolute left-3 top-2.5 text-gray-400 group-focus-within:text-blue-600 transition-colors">
@@ -270,12 +277,7 @@ const LoginScreen: React.FC<LoginScreenProps> = ({ onLoginAttempt, onRegisterReq
                                 placeholder="seu@email.com"
                             />
                         </div>
-                        <button 
-                            type="submit"
-                            className="w-full py-3 rounded-lg text-white font-bold transition-all flex items-center justify-center gap-2 shadow-md bg-blue-700 hover:bg-blue-800"
-                        >
-                            Solicitar ao Admin
-                        </button>
+                        <button type="submit" className="w-full py-3 rounded-lg text-white font-bold transition-all flex items-center justify-center gap-2 shadow-md bg-blue-700 hover:bg-blue-800">Solicitar ao Admin</button>
                     </div>
                 </form>
              </div>
@@ -297,152 +299,78 @@ const LoginScreen: React.FC<LoginScreenProps> = ({ onLoginAttempt, onRegisterReq
                         <X size={24} />
                     </button>
                 </div>
-
                 <form onSubmit={handleRegisterSubmit} className="p-6 space-y-4 overflow-y-auto flex-1">
-                    {/* Store Data */}
                     <div className="space-y-4">
                         <h4 className="text-sm font-bold text-gray-800 uppercase tracking-wider border-b pb-2">Dados da Loja</h4>
-                        
                         <div className="grid grid-cols-4 gap-4">
                             <div className="col-span-1">
                                 <label className="block text-xs font-semibold text-gray-500 mb-1">Número</label>
                                 <div className="relative">
                                     <span className="absolute left-3 top-2.5 text-gray-400"><StoreIcon size={16}/></span>
-                                    <input 
-                                        required
-                                        value={regStoreNumber}
-                                        onChange={(e) => setRegStoreNumber(e.target.value)}
-                                        className="w-full pl-9 pr-3 py-2 bg-white border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none text-gray-600" 
-                                        placeholder="000"
-                                    />
+                                    <input required value={regStoreNumber} onChange={(e) => setRegStoreNumber(e.target.value)} className="w-full pl-9 pr-3 py-2 bg-white border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none text-gray-600" placeholder="000" />
                                 </div>
                             </div>
                             <div className="col-span-3">
                                 <label className="block text-xs font-semibold text-gray-500 mb-1">Nome da Loja</label>
-                                <input 
-                                    required
-                                    value={regStoreName}
-                                    onChange={(e) => setRegStoreName(e.target.value)}
-                                    className="w-full px-3 py-2 bg-white border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none text-gray-600" 
-                                    placeholder="Ex: Loja Real Calçados Centro"
-                                />
+                                <input required value={regStoreName} onChange={(e) => setRegStoreName(e.target.value)} className="w-full px-3 py-2 bg-white border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none text-gray-600" placeholder="Ex: Loja Real Calçados Centro" />
                             </div>
                         </div>
-
                         <div className="grid grid-cols-4 gap-4">
                             <div className="col-span-3">
                                 <label className="block text-xs font-semibold text-gray-500 mb-1">Cidade</label>
                                 <div className="relative">
                                     <span className="absolute left-3 top-2.5 text-gray-400"><MapPin size={16}/></span>
-                                    <input 
-                                        required
-                                        value={regCity}
-                                        onChange={(e) => setRegCity(e.target.value)}
-                                        className="w-full pl-9 pr-3 py-2 bg-white border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none text-gray-600" 
-                                        placeholder="Cidade"
-                                    />
+                                    <input required value={regCity} onChange={(e) => setRegCity(e.target.value)} className="w-full pl-9 pr-3 py-2 bg-white border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none text-gray-600" placeholder="Cidade" />
                                 </div>
                             </div>
                             <div className="col-span-1">
                                 <label className="block text-xs font-semibold text-gray-500 mb-1">Estado</label>
-                                <select 
-                                    required
-                                    value={regUF}
-                                    onChange={(e) => setRegUF(e.target.value)}
-                                    className="w-full px-2 py-2 bg-white border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none text-gray-600"
-                                >
-                                    {BRAZIL_STATES.map(uf => (
-                                        <option key={uf} value={uf}>{uf}</option>
-                                    ))}
+                                <select required value={regUF} onChange={(e) => setRegUF(e.target.value)} className="w-full px-2 py-2 bg-white border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none text-gray-600">
+                                    {BRAZIL_STATES.map(uf => <option key={uf} value={uf}>{uf}</option>)}
                                 </select>
                             </div>
                         </div>
                     </div>
-
-                    {/* Manager Data */}
                     <div className="space-y-4 pt-2">
                         <h4 className="text-sm font-bold text-gray-800 uppercase tracking-wider border-b pb-2">Dados do Gerente</h4>
-
                         <div>
                             <label className="block text-xs font-semibold text-gray-500 mb-1">Nome Completo</label>
                             <div className="relative">
                                 <span className="absolute left-3 top-2.5 text-gray-400"><UserIcon size={16}/></span>
-                                <input 
-                                    required
-                                    value={regManagerName}
-                                    onChange={(e) => setRegManagerName(e.target.value)}
-                                    className="w-full pl-9 pr-3 py-2 bg-white border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none text-gray-600" 
-                                    placeholder="Nome do Gerente"
-                                />
+                                <input required value={regManagerName} onChange={(e) => setRegManagerName(e.target.value)} className="w-full pl-9 pr-3 py-2 bg-white border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none text-gray-600" placeholder="Nome do Gerente" />
                             </div>
                         </div>
-
                         <div className="grid grid-cols-2 gap-4">
                             <div>
                                 <label className="block text-xs font-semibold text-gray-500 mb-1">Email</label>
                                 <div className="relative">
                                     <span className="absolute left-3 top-2.5 text-gray-400"><Mail size={16}/></span>
-                                    <input 
-                                        required
-                                        type="email"
-                                        value={regEmail}
-                                        onChange={(e) => setRegEmail(e.target.value)}
-                                        className="w-full pl-9 pr-3 py-2 bg-white border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none text-gray-600" 
-                                        placeholder="email@exemplo.com"
-                                    />
+                                    <input required type="email" value={regEmail} onChange={(e) => setRegEmail(e.target.value)} className="w-full pl-9 pr-3 py-2 bg-white border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none text-gray-600" placeholder="email@exemplo.com" />
                                 </div>
                             </div>
                             <div>
                                 <label className="block text-xs font-semibold text-gray-500 mb-1">Telefone</label>
                                 <div className="relative">
                                     <span className="absolute left-3 top-2.5 text-gray-400"><Phone size={16}/></span>
-                                    <input 
-                                        required
-                                        value={regPhone}
-                                        onChange={(e) => setRegPhone(e.target.value)}
-                                        className="w-full pl-9 pr-3 py-2 bg-white border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none text-gray-600" 
-                                        placeholder="(00) 00000-0000"
-                                    />
+                                    <input required value={regPhone} onChange={(e) => setRegPhone(e.target.value)} className="w-full pl-9 pr-3 py-2 bg-white border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none text-gray-600" placeholder="(00) 00000-0000" />
                                 </div>
                             </div>
                         </div>
                     </div>
-
-                    {/* Password Data */}
                     <div className="space-y-4 pt-2">
                         <h4 className="text-sm font-bold text-green-700 uppercase tracking-wider border-b border-green-200 pb-2">Segurança</h4>
                          <div>
                             <label className="block text-xs font-semibold text-gray-500 mb-1">Definir Senha de Acesso</label>
                             <div className="relative">
                                 <span className="absolute left-3 top-2.5 text-gray-400"><Lock size={16}/></span>
-                                <input 
-                                    required
-                                    type="password"
-                                    value={regPassword}
-                                    onChange={(e) => setRegPassword(e.target.value)}
-                                    className="w-full pl-9 pr-3 py-2 bg-white border border-gray-300 rounded-lg focus:ring-2 focus:ring-green-500 focus:border-green-500 outline-none transition-all text-gray-600" 
-                                    placeholder="Crie sua senha"
-                                />
+                                <input required type="password" value={regPassword} onChange={(e) => setRegPassword(e.target.value)} className="w-full pl-9 pr-3 py-2 bg-white border border-gray-300 rounded-lg focus:ring-2 focus:ring-green-500 focus:border-green-500 outline-none transition-all text-gray-600" placeholder="Crie sua senha" />
                             </div>
                             <p className="text-[10px] text-gray-400 mt-1">Esta senha será usada para acessar o sistema após aprovação do admin.</p>
                         </div>
                     </div>
-
                     <div className="pt-4 flex gap-3">
-                         <button 
-                            type="button"
-                            onClick={() => setShowRegisterModal(false)}
-                            className="flex-1 px-4 py-3 text-gray-700 bg-gray-100 rounded-lg hover:bg-gray-200 font-medium transition-colors"
-                        >
-                            Cancelar
-                        </button>
-                        <button 
-                            type="submit"
-                            className="flex-1 px-4 py-3 bg-green-600 text-white rounded-lg hover:bg-green-700 font-bold shadow-md hover:shadow-lg transition-all flex items-center justify-center gap-2"
-                        >
-                            <Send size={18} />
-                            Enviar Solicitação
-                        </button>
+                         <button type="button" onClick={() => setShowRegisterModal(false)} className="flex-1 px-4 py-3 text-gray-700 bg-gray-100 rounded-lg hover:bg-gray-200 font-medium transition-colors">Cancelar</button>
+                        <button type="submit" className="flex-1 px-4 py-3 bg-green-600 text-white rounded-lg hover:bg-green-700 font-bold shadow-md hover:shadow-lg transition-all flex items-center justify-center gap-2"><Send size={18} />Enviar Solicitação</button>
                     </div>
                 </form>
             </div>
