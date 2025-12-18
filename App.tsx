@@ -1,6 +1,6 @@
 
 import React, { useState, useEffect } from 'react';
-import { LayoutDashboard, ShoppingBag, Target, Calculator, DollarSign, Instagram, Download, Shield, AlertOctagon, FileSignature, LogOut, Menu, Users, Calendar, Settings, X, Camera, User as UserIcon, FileText, IceCream } from 'lucide-react';
+import { LayoutDashboard, ShoppingBag, Target, Calculator, DollarSign, Instagram, Download, Shield, AlertOctagon, FileSignature, LogOut, Menu, Users, Calendar, Settings, X, Camera, User as UserIcon, FileText, IceCream, UserCog } from 'lucide-react';
 import LoginScreen from './components/LoginScreen';
 import DashboardAdmin from './components/DashboardAdmin';
 import DashboardManager from './components/DashboardManager';
@@ -17,7 +17,8 @@ import AdminSettings from './components/AdminSettings';
 import PurchaseAuthorization from './components/PurchaseAuthorization';
 import TermoAutorizacao from './components/TermoAutorizacao';
 import IceCreamModule from './components/IceCreamModule';
-import { User, Store, MonthlyPerformance, UserRole, ProductPerformance, Cota, AgendaItem, DownloadItem, SystemLog, CashError, CreditCardSale, Receipt, CotaSettings, CotaDebt, IceCreamItem, IceCreamDailySale, IceCreamTransaction, IceCreamCategory } from './types';
+import AdminUsersManagement from './components/AdminUsersManagement';
+import { User, Store, MonthlyPerformance, UserRole, ProductPerformance, Cota, AgendaItem, DownloadItem, SystemLog, CashError, CreditCardSale, Receipt, CotaSettings, CotaDebt, IceCreamItem, IceCreamDailySale, IceCreamTransaction, IceCreamCategory, AdminUser } from './types';
 import { supabase } from './services/supabaseClient';
 
 interface NavButtonProps {
@@ -123,33 +124,50 @@ const App: React.FC = () => {
               store_id: item.storeId,
               month: item.month,
               revenue_target: item.revenueTarget,
+              revenue_actual: item.revenueActual,
               items_target: item.itemsTarget,
+              items_actual: item.itemsActual,
               pa_target: item.paTarget,
+              pa_actual: item.itemsPerTicket,
               ticket_target: item.ticketTarget,
+              ticket_actual: item.averageTicket,
               pu_target: item.puTarget,
-              delinquency_target: item.delinquencyTarget
+              pu_actual: item.unitPriceAverage,
+              delinquency_target: item.delinquencyTarget,
+              delinquency_actual: item.delinquencyRate
           }));
 
           const { error } = await supabase
               .from('monthly_performance')
               .upsert(payload, { onConflict: 'store_id,month' });
 
-          if (error) throw error;
+          if (error) {
+              console.error("Erro técnico do Supabase:", error);
+              throw new Error(error.message || "Erro desconhecido no Supabase.");
+          }
           await loadAllData();
-      } catch (err) {
-          console.error("Erro ao salvar metas:", err);
-          throw err;
+      } catch (err: any) {
+          const msg = err.message || (typeof err === 'string' ? err : JSON.stringify(err));
+          console.error("Erro ao salvar metas:", msg);
+          throw new Error(msg);
       }
   };
 
   const authenticateUser = async (email: string, password: string): Promise<{ success: boolean; user?: User; error?: string }> => {
       try {
           const cleanEmail = email.trim().toLowerCase();
-          if (cleanEmail === 'juniorcardoso@me.com' && password === 'Solazul1981*') {
-              const bootstrapUser: User = { id: 'admin-1', name: 'Junior Cardoso', email: cleanEmail, role: UserRole.ADMIN, storeId: '' };
-              handleLogin(bootstrapUser);
-              return { success: true, user: bootstrapUser };
+          
+          const { data: adminUser } = await supabase.from('admin_users').select('*').eq('email', cleanEmail).eq('password', password).eq('status', 'active').maybeSingle();
+          
+          if (adminUser) {
+              // Atualizar timestamp de atividade para escalabilidade
+              await supabase.from('admin_users').update({ last_activity: new Date().toISOString() }).eq('id', adminUser.id);
+              
+              const u: User = { id: adminUser.id, name: adminUser.name, email: adminUser.email, role: UserRole.ADMIN, storeId: '' };
+              handleLogin(u);
+              return { success: true, user: u };
           }
+
           const { data: storeUser } = await supabase.from('stores').select('*').eq('manager_email', cleanEmail).eq('password', password).maybeSingle();
           if (storeUser) {
               const authenticatedUser: User = { id: storeUser.id, name: storeUser.manager_name, email: storeUser.manager_email, role: storeUser.role as UserRole || UserRole.MANAGER, storeId: storeUser.id };
@@ -188,7 +206,6 @@ const App: React.FC = () => {
     }
     loadAllData();
     
-    // Escutador para mudança de visualização
     const handleViewChange = (e: any) => setCurrentView(e.detail);
     window.addEventListener('changeView', handleViewChange);
     return () => window.removeEventListener('changeView', handleViewChange);
@@ -226,6 +243,8 @@ const App: React.FC = () => {
             onAddTransaction={async (tx) => { await supabase.from('ice_cream_finances').insert({ date: tx.date, type: tx.type, category: tx.category, value: tx.value, employee_name: tx.employeeName, description: tx.description }); await loadAllData(); }} 
             onDeleteTransaction={async (id) => { await supabase.from('ice_cream_finances').delete().eq('id', id); await loadAllData(); }} onAddItem={async (n, c, p, f) => { await supabase.from('products').insert({ name: n, category: c, price: p, flavor: f }); await loadAllData(); }} onDeleteItem={async (id) => { await supabase.from('products').delete().eq('id', id); await loadAllData(); }}
         />;
+      case 'admin_users':
+          return <AdminUsersManagement currentUser={user} />;
       case 'audit':
         return <SystemAudit logs={logs} receipts={receipts} cashErrors={cashErrors} />;
       case 'settings':
@@ -277,6 +296,7 @@ const App: React.FC = () => {
             {user.role === UserRole.ADMIN && (
               <>
                 <div className="pt-4 pb-2 text-xs font-bold text-blue-400 uppercase tracking-wider">Administração</div>
+                <NavButton view="admin_users" icon={UserCog} label="Usuários Admin" active={currentView === 'admin_users'} onClick={() => { setCurrentView('admin_users'); setIsSidebarOpen(false); }} />
                 <NavButton view="audit" icon={Shield} label="Auditoria" active={currentView === 'audit'} onClick={() => { setCurrentView('audit'); setIsSidebarOpen(false); }} />
                 <NavButton view="settings" icon={Users} label="Lojas & Usuários" active={currentView === 'settings'} onClick={() => { setCurrentView('settings'); setIsSidebarOpen(false); }} />
                 <NavButton view="icecream" icon={IceCream} label="Sorvete" active={currentView === 'icecream'} onClick={() => { setCurrentView('icecream'); setIsSidebarOpen(false); }} />

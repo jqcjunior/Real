@@ -5,6 +5,9 @@ export enum UserRole {
   CASHIER = 'CASHIER'
 }
 
+// Níveis de privilégio para Administradores de Sistema
+export type AdminRoleLevel = 'super_admin' | 'admin' | 'auditor';
+
 export interface User {
   id: string;
   name: string;
@@ -13,6 +16,17 @@ export interface User {
   email: string;
   password?: string;
   photo?: string;
+}
+
+export interface AdminUser {
+  id: string;
+  name: string;
+  email: string;
+  password?: string;
+  status: 'active' | 'inactive';
+  role_level: AdminRoleLevel;
+  last_activity?: string;
+  created_at?: string;
 }
 
 export interface Store {
@@ -93,12 +107,6 @@ export interface Cota {
     createdAt: Date;
     createdByRole?: UserRole;
     status?: 'pending' | 'validated';
-}
-
-export interface CotaSettings {
-  storeId: string;
-  budgetValue: number;
-  managerPercent: number;
 }
 
 export interface CotaSettings {
@@ -192,7 +200,6 @@ export interface CashError {
     createdAt: Date;
 }
 
-// --- ICE CREAM MODULE TYPES (V2) ---
 export type IceCreamCategory = 'Adicionais' | 'Bebidas' | 'Cascão' | 'Casquinha' | 'Milkshake' | 'Sundae';
 
 export interface IceCreamItem {
@@ -202,7 +209,7 @@ export interface IceCreamItem {
   flavor?: string; 
   costPrice?: number; 
   category: IceCreamCategory;
-  active: boolean; // Novo campo
+  active: boolean;
 }
 
 export type IceCreamExpenseCategory = 'Vale Funcionário' | 'Pagamento Funcionário' | 'Fornecedor' | 'Material/Consumo' | 'Aluguel' | 'Energia' | 'Outros';
@@ -213,7 +220,7 @@ export interface IceCreamTransaction {
   type: 'entry' | 'exit';
   category: IceCreamExpenseCategory | 'Venda_Dinheiro' | 'Venda_Cartao';
   value: number;
-  employeeName?: string; // Nome do funcionário para vales e pagamentos
+  employeeName?: string;
   description?: string;
   createdAt: Date;
 }

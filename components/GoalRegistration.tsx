@@ -1,7 +1,6 @@
-
 import React, { useState, useEffect } from 'react';
 import { Store, MonthlyPerformance } from '../types';
-import { Save, Calendar, Target, Loader2, CheckCircle, Info, ArrowRight } from 'lucide-react';
+import { Save, Calendar, Target, Loader2, CheckCircle, Info } from 'lucide-react';
 
 interface GoalRegistrationProps {
   stores: Store[];
@@ -35,34 +34,34 @@ const GoalRegistration: React.FC<GoalRegistrationProps> = ({ stores, performance
     const newFormData: Record<string, Partial<MonthlyPerformance>> = {};
     activeStores.forEach(store => {
       const existing = performanceData.find(p => p.storeId === store.id && p.month === selectedMonthStr);
-      newFormData[store.id] = existing ? { 
-          ...existing 
-      } : { 
-          revenueTarget: 0, 
-          itemsTarget: 0, 
-          paTarget: 0, 
-          ticketTarget: 0, 
-          puTarget: 0, 
-          delinquencyTarget: 2.0 
-      };
+      if (existing) {
+          newFormData[store.id] = { ...existing };
+      } else {
+          newFormData[store.id] = { revenueTarget: 0, itemsTarget: 0, paTarget: 0, ticketTarget: 0, puTarget: 0, delinquencyTarget: 2.0 };
+      }
     });
     setFormData(newFormData);
     setSaveStatus('idle');
   }, [selectedMonthStr, performanceData, stores]); 
 
   const handleInputChange = (storeId: string, field: keyof MonthlyPerformance, value: string) => {
-    // Sanitização para aceitar vírgula como ponto decimal
-    const cleanValue = value.replace(',', '.');
-    const numValue = value === '' ? 0 : parseFloat(cleanValue);
-    
     setFormData(prev => ({ 
       ...prev, 
       [storeId]: { 
         ...prev[storeId], 
-        [field]: isNaN(numValue) ? prev[storeId]?.[field] : numValue 
+        [field]: value 
       } 
     }));
     setSaveStatus('idle');
+  };
+
+  const parseToNum = (val: any): number => {
+      if (typeof val === 'number') return val;
+      if (!val || typeof val !== 'string') return 0;
+      // Remove pontos de milhar e substitui vírgula por ponto
+      const clean = val.replace(/\./g, '').replace(',', '.');
+      const num = parseFloat(clean);
+      return isNaN(num) ? 0 : num;
   };
 
   const executeSave = async () => {
@@ -70,22 +69,24 @@ const GoalRegistration: React.FC<GoalRegistrationProps> = ({ stores, performance
     try {
         const dataToSave: MonthlyPerformance[] = activeStores.map(store => {
             const data = formData[store.id] || {};
+            const existing = performanceData.find(p => p.storeId === store.id && p.month === selectedMonthStr);
+            
             return {
                 storeId: store.id,
                 month: selectedMonthStr,
-                revenueTarget: Number(data.revenueTarget || 0),
-                revenueActual: Number(data.revenueActual || 0),
-                itemsTarget: Math.round(Number(data.itemsTarget || 0)),
-                itemsActual: Number(data.itemsActual || 0),
-                paTarget: Number(data.paTarget || 0),
-                ticketTarget: Number(data.ticketTarget || 0),
-                puTarget: Number(data.puTarget || 0),
-                delinquencyTarget: Number(data.delinquencyTarget || 0),
+                revenueTarget: parseToNum(data.revenueTarget ?? existing?.revenueTarget),
+                revenueActual: parseToNum(data.revenueActual ?? existing?.revenueActual),
+                itemsTarget: Math.round(parseToNum(data.itemsTarget ?? existing?.itemsTarget)),
+                itemsActual: parseToNum(data.itemsActual ?? existing?.itemsActual),
+                paTarget: parseToNum(data.paTarget ?? existing?.paTarget),
+                itemsPerTicket: parseToNum(data.itemsPerTicket ?? existing?.itemsPerTicket),
+                ticketTarget: parseToNum(data.ticketTarget ?? existing?.ticketTarget),
+                averageTicket: parseToNum(data.averageTicket ?? existing?.averageTicket),
+                puTarget: parseToNum(data.puTarget ?? existing?.puTarget),
+                unitPriceAverage: parseToNum(data.unitPriceAverage ?? existing?.unitPriceAverage),
+                delinquencyTarget: parseToNum(data.delinquencyTarget ?? existing?.delinquencyTarget),
+                delinquencyRate: parseToNum(data.delinquencyRate ?? existing?.delinquencyRate),
                 percentMeta: 0,
-                itemsPerTicket: 0,
-                unitPriceAverage: 0,
-                averageTicket: 0,
-                delinquencyRate: 0,
                 trend: 'stable' as const,
                 correctedDailyGoal: 0
             } as MonthlyPerformance;
@@ -94,15 +95,27 @@ const GoalRegistration: React.FC<GoalRegistrationProps> = ({ stores, performance
         await onUpdateData(dataToSave);
         setSaveStatus('success');
         setTimeout(() => setSaveStatus('idle'), 3000);
-    } catch (e) {
-        console.error("Erro ao salvar:", e);
+    } catch (e: any) {
+        // Lógica de extração de erro robusta para evitar [object Object]
+        let errorMsg = "Erro desconhecido ao salvar.";
+        
+        if (e instanceof Error) {
+            errorMsg = e.message;
+        } else if (typeof e === 'string') {
+            errorMsg = e;
+        } else if (e && typeof e === 'object') {
+            // Caso venha um objeto direto do Supabase sem passar pelo Error do App.tsx
+            errorMsg = e.message || e.details || e.hint || JSON.stringify(e);
+        }
+
+        console.error("Erro Final Capturado no UI:", errorMsg);
         setSaveStatus('error');
+        alert(`Não foi possível salvar as metas.\n\nMotivo: ${errorMsg}\n\nSugestão: Verifique se a regra de unicidade (UNIQUE) foi aplicada ao banco de dados e se não há duplicatas.`);
     }
   };
 
   return (
     <div className="p-0 md:p-6 lg:p-8 space-y-6 max-w-full bg-gray-50 min-h-full">
-      {/* CABEÇALHO E FILTROS */}
       <div className="flex flex-col lg:flex-row justify-between items-start lg:items-center gap-6 bg-white p-6 rounded-2xl shadow-sm border border-gray-200">
         <div className="flex items-center gap-4">
           <div className="p-3 bg-blue-100 text-blue-700 rounded-xl"><Target size={28} /></div>
@@ -111,7 +124,7 @@ const GoalRegistration: React.FC<GoalRegistrationProps> = ({ stores, performance
               Cadastro de <span className="text-red-600">Metas Mensais</span>
             </h2>
             <p className="text-gray-500 font-bold text-[10px] uppercase tracking-widest mt-1.5 flex items-center gap-1">
-              <Info size={12}/> Planejamento estratégico por unidade operativa
+              <Info size={12}/> Sincronização via Supabase (UPSERT)
             </p>
           </div>
         </div>
@@ -137,9 +150,9 @@ const GoalRegistration: React.FC<GoalRegistrationProps> = ({ stores, performance
                 }`}
             >
                 {saveStatus === 'saving' ? (
-                    <><Loader2 className="animate-spin" size={16} /> Sincronizando...</>
+                    <><Loader2 className="animate-spin" size={16} /> Salvando...</>
                 ) : saveStatus === 'success' ? (
-                    <><CheckCircle size={16} /> Metas Atualizadas!</>
+                    <><CheckCircle size={16} /> Concluído!</>
                 ) : (
                     <><Save size={16} /> Salvar Alterações</>
                 )}
@@ -147,7 +160,6 @@ const GoalRegistration: React.FC<GoalRegistrationProps> = ({ stores, performance
         </div>
       </div>
 
-      {/* TABELA DE CADASTRO MESTRA */}
       <div className="bg-white rounded-2xl shadow-xl border border-gray-200 overflow-hidden flex flex-col h-[calc(100vh-240px)]">
         <div className="overflow-auto flex-1 no-scrollbar">
             <table className="w-full text-left border-collapse table-fixed">
@@ -179,7 +191,7 @@ const GoalRegistration: React.FC<GoalRegistrationProps> = ({ stores, performance
                                 <td className="p-2 border-r border-gray-100 bg-blue-50/20 group-hover:bg-blue-100/30">
                                     <input 
                                         type="text" 
-                                        value={data.revenueTarget || ''} 
+                                        value={data.revenueTarget ?? ''} 
                                         onChange={(e) => handleInputChange(store.id, 'revenueTarget', e.target.value)} 
                                         className="w-full p-3 bg-transparent border-none rounded-lg outline-none text-right font-black text-blue-900 focus:bg-white focus:ring-2 focus:ring-blue-400 transition-all" 
                                         placeholder="0,00"
@@ -188,7 +200,7 @@ const GoalRegistration: React.FC<GoalRegistrationProps> = ({ stores, performance
                                 <td className="p-2 border-r border-gray-100">
                                     <input 
                                         type="text" 
-                                        value={data.paTarget || ''} 
+                                        value={data.paTarget ?? ''} 
                                         onChange={(e) => handleInputChange(store.id, 'paTarget', e.target.value)} 
                                         className="w-full p-3 bg-transparent border-none rounded-lg outline-none text-center font-bold text-gray-700 focus:bg-white focus:ring-2 focus:ring-blue-100 transition-all" 
                                         placeholder="0.00"
@@ -197,7 +209,7 @@ const GoalRegistration: React.FC<GoalRegistrationProps> = ({ stores, performance
                                 <td className="p-2 border-r border-gray-100">
                                     <input 
                                         type="text" 
-                                        value={data.puTarget || ''} 
+                                        value={data.puTarget ?? ''} 
                                         onChange={(e) => handleInputChange(store.id, 'puTarget', e.target.value)} 
                                         className="w-full p-3 bg-transparent border-none rounded-lg outline-none text-right font-bold text-gray-700 focus:bg-white focus:ring-2 focus:ring-blue-100 transition-all" 
                                         placeholder="0,00"
@@ -206,7 +218,7 @@ const GoalRegistration: React.FC<GoalRegistrationProps> = ({ stores, performance
                                 <td className="p-2 border-r border-gray-100">
                                     <input 
                                         type="text" 
-                                        value={data.ticketTarget || ''} 
+                                        value={data.ticketTarget ?? ''} 
                                         onChange={(e) => handleInputChange(store.id, 'ticketTarget', e.target.value)} 
                                         className="w-full p-3 bg-transparent border-none rounded-lg outline-none text-right font-bold text-gray-700 focus:bg-white focus:ring-2 focus:ring-blue-100 transition-all" 
                                         placeholder="0,00"
@@ -215,7 +227,7 @@ const GoalRegistration: React.FC<GoalRegistrationProps> = ({ stores, performance
                                 <td className="p-2 border-r border-gray-100">
                                     <input 
                                         type="text" 
-                                        value={data.itemsTarget || ''} 
+                                        value={data.itemsTarget ?? ''} 
                                         onChange={(e) => handleInputChange(store.id, 'itemsTarget', e.target.value)} 
                                         className="w-full p-3 bg-transparent border-none rounded-lg outline-none text-center font-bold text-gray-700 focus:bg-white focus:ring-2 focus:ring-blue-100 transition-all" 
                                         placeholder="0"
@@ -225,7 +237,7 @@ const GoalRegistration: React.FC<GoalRegistrationProps> = ({ stores, performance
                                     <div className="relative">
                                         <input 
                                             type="text" 
-                                            value={data.delinquencyTarget || ''} 
+                                            value={data.delinquencyTarget ?? ''} 
                                             onChange={(e) => handleInputChange(store.id, 'delinquencyTarget', e.target.value)} 
                                             className="w-full p-3 bg-transparent border-none rounded-lg outline-none text-right font-black text-red-600 focus:bg-white focus:ring-2 focus:ring-red-400 transition-all" 
                                             placeholder="0.0"
@@ -240,15 +252,12 @@ const GoalRegistration: React.FC<GoalRegistrationProps> = ({ stores, performance
             </table>
         </div>
         
-        {/* FOOTER INFO */}
         <div className="px-6 py-4 bg-gray-900 text-white flex justify-between items-center text-[10px] font-black uppercase tracking-widest">
             <div className="flex items-center gap-6">
-                <span className="flex items-center gap-2 text-blue-400"><Target size={14}/> Total de Lojas Ativas: {activeStores.length}</span>
-                <span className="flex items-center gap-2 text-green-400"><CheckCircle size={14}/> Sincronização HTTPS Ativa</span>
+                <span className="flex items-center gap-2 text-blue-400"><Target size={14}/> Sincronização HTTPS</span>
+                <span className="flex items-center gap-2 text-green-400">Canal de Dados Criptografado</span>
             </div>
-            <div className="flex items-center gap-2 opacity-60">
-                <Info size={14}/> Utilize vírgula (,) para centavos
-            </div>
+            <div className="flex items-center gap-2 opacity-60">Utilize vírgula para decimais (Ex: 10,50)</div>
         </div>
       </div>
     </div>
