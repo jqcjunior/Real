@@ -270,6 +270,10 @@ const App: React.FC = () => {
                 <img src="/logo.jpg" alt="Real Admin" className="w-16 h-16 rounded-full object-cover shadow-lg border-2 border-white/10" />
                 <div className="absolute bottom-0 right-0 w-4 h-4 bg-green-500 border-2 border-blue-950 rounded-full shadow-[0_0_8px_rgba(34,197,94,0.5)]"></div>
              </div>
+             <div>
+                <h1 className="text-sm font-black italic tracking-tighter leading-none uppercase">REAL <span className="text-red-500">ADMIN</span></h1>
+                <p className="text-[8px] text-blue-300 uppercase tracking-widest font-black mt-1 opacity-80">Gestão Estratégica</p>
+             </div>
              <button className="md:hidden ml-auto text-blue-300" onClick={() => setIsSidebarOpen(false)}><X size={20}/></button>
           </div>
 
@@ -310,8 +314,12 @@ const App: React.FC = () => {
       <div className="flex-1 flex flex-col h-screen overflow-hidden bg-gray-100">
          {user && (
          <div className="md:hidden bg-white shadow-md p-4 flex justify-between items-center z-40 border-b border-gray-200">
-            <div className="flex items-center gap-2">
+            <div className="flex items-center gap-3">
                 <img src="/logo.jpg" alt="Real Admin" className="w-10 h-10 rounded-full object-cover" />
+                <div>
+                   <h1 className="text-xs font-black italic text-blue-950 tracking-tighter uppercase leading-none">REAL <span className="text-red-600">ADMIN</span></h1>
+                   <p className="text-[7px] text-gray-400 font-black uppercase tracking-widest">Gestão Estratégica</p>
+                </div>
             </div>
             <button onClick={() => setIsSidebarOpen(true)} className="p-2 bg-gray-50 rounded-lg text-blue-900 shadow-sm border border-gray-100"><Menu size={20}/></button>
          </div>
