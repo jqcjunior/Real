@@ -78,7 +78,6 @@ export interface SystemLog {
   details: string;
 }
 
-// Fix: Exporting CotaPayment type to resolve error in CotasManagement.tsx
 export type CotaPayment = { month: string; value: number };
 
 export interface Cota {
@@ -102,6 +101,12 @@ export interface CotaSettings {
   managerPercent: number;
 }
 
+export interface CotaSettings {
+  storeId: string;
+  budgetValue: number;
+  managerPercent: number;
+}
+
 export interface CotaDebt {
   id?: string;
   storeId: string;
@@ -109,7 +114,6 @@ export interface CotaDebt {
   value: number;
 }
 
-// Fix: Exporting TaskPriority type to resolve error in AgendaSystem.tsx
 export type TaskPriority = 'lowest' | 'low' | 'medium' | 'high' | 'highest';
 
 export interface AgendaItem {
@@ -146,7 +150,6 @@ export interface Receipt {
     createdAt: Date;
 }
 
-// Fix: Exporting DownloadCategory type to resolve error in DownloadsModule.tsx
 export type DownloadCategory = 'spreadsheet' | 'video' | 'image' | 'audio';
 
 export interface DownloadItem {
@@ -162,6 +165,21 @@ export interface DownloadItem {
     createdBy: string;
 }
 
+export type IceCreamPaymentMethod = 'Pix' | 'Cartão' | 'Dinheiro';
+
+export interface IceCreamDailySale {
+  id: string;
+  itemId: string;
+  productName: string;
+  category: string;
+  flavor: string;
+  unitsSold: number;
+  unitPrice: number; 
+  totalValue: number;
+  paymentMethod: IceCreamPaymentMethod;
+  createdAt?: string; // Gerado pelo servidor
+}
+
 export interface CashError {
     id: string;
     storeId: string;
@@ -175,24 +193,19 @@ export interface CashError {
 }
 
 // --- ICE CREAM MODULE TYPES (V2) ---
-export type IceCreamCategory = 'Milkshake' | 'Casquinha' | 'Cascão' | 'Sundae' | 'Adicionais' | 'Bebidas';
+export type IceCreamCategory = 'Adicionais' | 'Bebidas' | 'Cascão' | 'Casquinha' | 'Milkshake' | 'Sundae';
 
 export interface IceCreamItem {
   id: string;
   name: string;
   price: number;
-  costPrice?: number; // Para cálculo de CMV na DRE
+  flavor?: string; 
+  costPrice?: number; 
   category: IceCreamCategory;
+  active: boolean; // Novo campo
 }
 
-export interface IceCreamDailySale {
-  id: string;
-  date: string;
-  itemId: string;
-  unitsSold: number;
-}
-
-export type IceCreamExpenseCategory = 'CMV' | 'Aluguel' | 'Energia' | 'Pessoal' | 'Manutenção' | 'Impostos' | 'Outros';
+export type IceCreamExpenseCategory = 'Vale Funcionário' | 'Pagamento Funcionário' | 'Fornecedor' | 'Material/Consumo' | 'Aluguel' | 'Energia' | 'Outros';
 
 export interface IceCreamTransaction {
   id: string;
@@ -200,6 +213,7 @@ export interface IceCreamTransaction {
   type: 'entry' | 'exit';
   category: IceCreamExpenseCategory | 'Venda_Dinheiro' | 'Venda_Cartao';
   value: number;
+  employeeName?: string; // Nome do funcionário para vales e pagamentos
   description?: string;
   createdAt: Date;
 }

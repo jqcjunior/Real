@@ -1,9 +1,7 @@
 
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect } from 'react';
 import { Store, MonthlyPerformance } from '../types';
-import { Save, Calendar, Target, AlertTriangle, Upload, FileSpreadsheet, Loader2, CheckCircle, X, ShoppingBag, Package, AlertCircle } from 'lucide-react';
-import { formatCurrency } from '../constants';
-import * as XLSX from 'xlsx';
+import { Save, Calendar, Target, Loader2, CheckCircle, Info, ArrowRight } from 'lucide-react';
 
 interface GoalRegistrationProps {
   stores: Store[];
@@ -17,8 +15,9 @@ const GoalRegistration: React.FC<GoalRegistrationProps> = ({ stores, performance
   const [selectedYear, setSelectedYear] = useState(currentYear);
   const [selectedMonthIndex, setSelectedMonthIndex] = useState(currentMonth);
   const selectedMonthStr = `${selectedYear}-${String(selectedMonthIndex).padStart(2, '0')}`;
+  
   const [formData, setFormData] = useState<Record<string, Partial<MonthlyPerformance>>>({});
-  const [saveStatus, setSaveStatus] = useState<'idle' | 'saving' | 'success'>('idle');
+  const [saveStatus, setSaveStatus] = useState<'idle' | 'saving' | 'success' | 'error'>('idle');
 
   const years = Array.from({ length: 5 }, (_, i) => currentYear - 1 + i);
   const months = [
@@ -36,113 +35,220 @@ const GoalRegistration: React.FC<GoalRegistrationProps> = ({ stores, performance
     const newFormData: Record<string, Partial<MonthlyPerformance>> = {};
     activeStores.forEach(store => {
       const existing = performanceData.find(p => p.storeId === store.id && p.month === selectedMonthStr);
-      newFormData[store.id] = existing ? { ...existing } : { revenueTarget: 0, itemsTarget: 0, paTarget: 0, ticketTarget: 0, puTarget: 0, delinquencyTarget: 2.0 };
+      newFormData[store.id] = existing ? { 
+          ...existing 
+      } : { 
+          revenueTarget: 0, 
+          itemsTarget: 0, 
+          paTarget: 0, 
+          ticketTarget: 0, 
+          puTarget: 0, 
+          delinquencyTarget: 2.0 
+      };
     });
     setFormData(newFormData);
     setSaveStatus('idle');
   }, [selectedMonthStr, performanceData, stores]); 
 
   const handleInputChange = (storeId: string, field: keyof MonthlyPerformance, value: string) => {
-    const numValue = parseFloat(value.replace(',', '.'));
-    setFormData(prev => ({ ...prev, [storeId]: { ...prev[storeId], [field]: isNaN(numValue) ? 0 : numValue } }));
+    // Sanitização para aceitar vírgula como ponto decimal
+    const cleanValue = value.replace(',', '.');
+    const numValue = value === '' ? 0 : parseFloat(cleanValue);
+    
+    setFormData(prev => ({ 
+      ...prev, 
+      [storeId]: { 
+        ...prev[storeId], 
+        [field]: isNaN(numValue) ? prev[storeId]?.[field] : numValue 
+      } 
+    }));
     setSaveStatus('idle');
   };
 
   const executeSave = async () => {
     setSaveStatus('saving');
-    const dataToSave: MonthlyPerformance[] = activeStores.map(store => {
-        const data = formData[store.id] || {};
-        return {
-            storeId: store.id,
-            month: selectedMonthStr,
-            revenueTarget: data.revenueTarget || 0,
-            revenueActual: data.revenueActual || 0,
-            itemsTarget: data.itemsTarget || 0,
-            itemsActual: data.itemsActual || 0,
-            paTarget: data.paTarget || 0,
-            ticketTarget: data.ticketTarget || 0,
-            puTarget: data.puTarget || 0,
-            delinquencyTarget: data.delinquencyTarget || 0,
-            percentMeta: (data.revenueTarget || 0) > 0 ? ((data.revenueActual || 0) / (data.revenueTarget || 1)) * 100 : 0,
-            itemsPerTicket: data.itemsPerTicket || 0,
-            unitPriceAverage: data.unitPriceAverage || 0,
-            averageTicket: data.averageTicket || 0,
-            delinquencyRate: data.delinquencyRate || 0,
-            trend: 'stable' as const,
-            correctedDailyGoal: (data.revenueTarget || 0) / 30
-        } as MonthlyPerformance;
-    });
     try {
+        const dataToSave: MonthlyPerformance[] = activeStores.map(store => {
+            const data = formData[store.id] || {};
+            return {
+                storeId: store.id,
+                month: selectedMonthStr,
+                revenueTarget: Number(data.revenueTarget || 0),
+                revenueActual: Number(data.revenueActual || 0),
+                itemsTarget: Math.round(Number(data.itemsTarget || 0)),
+                itemsActual: Number(data.itemsActual || 0),
+                paTarget: Number(data.paTarget || 0),
+                ticketTarget: Number(data.ticketTarget || 0),
+                puTarget: Number(data.puTarget || 0),
+                delinquencyTarget: Number(data.delinquencyTarget || 0),
+                percentMeta: 0,
+                itemsPerTicket: 0,
+                unitPriceAverage: 0,
+                averageTicket: 0,
+                delinquencyRate: 0,
+                trend: 'stable' as const,
+                correctedDailyGoal: 0
+            } as MonthlyPerformance;
+        });
+
         await onUpdateData(dataToSave);
         setSaveStatus('success');
-        alert("Metas sincronizadas com sucesso para todas as lojas!");
+        setTimeout(() => setSaveStatus('idle'), 3000);
     } catch (e) {
-        alert("Erro ao salvar metas.");
-    } finally { setSaveStatus('idle'); }
+        console.error("Erro ao salvar:", e);
+        setSaveStatus('error');
+    }
   };
 
   return (
-    <div className="p-4 md:p-8 space-y-6 max-w-full animate-in fade-in duration-500">
-      <div className="flex flex-col xl:flex-row justify-between items-start xl:items-center gap-6 bg-white p-6 rounded-3xl shadow-sm border border-gray-100">
-        <div>
-          <h2 className="text-3xl font-black text-gray-900 tracking-tighter flex items-center gap-3 uppercase italic">
-            <Target className="text-red-600" size={36} /> Cadastro Unificado de Metas
-          </h2>
-          <p className="text-gray-500 font-medium text-sm mt-1 uppercase tracking-widest">Edição global de todas as {activeStores.length} unidades em uma única página.</p>
+    <div className="p-0 md:p-6 lg:p-8 space-y-6 max-w-full bg-gray-50 min-h-full">
+      {/* CABEÇALHO E FILTROS */}
+      <div className="flex flex-col lg:flex-row justify-between items-start lg:items-center gap-6 bg-white p-6 rounded-2xl shadow-sm border border-gray-200">
+        <div className="flex items-center gap-4">
+          <div className="p-3 bg-blue-100 text-blue-700 rounded-xl"><Target size={28} /></div>
+          <div>
+            <h2 className="text-2xl font-black text-gray-900 tracking-tight uppercase italic leading-none">
+              Cadastro de <span className="text-red-600">Metas Mensais</span>
+            </h2>
+            <p className="text-gray-500 font-bold text-[10px] uppercase tracking-widest mt-1.5 flex items-center gap-1">
+              <Info size={12}/> Planejamento estratégico por unidade operativa
+            </p>
+          </div>
         </div>
-        <div className="flex flex-wrap items-center gap-4 w-full xl:w-auto">
-            <div className="flex items-center gap-3 bg-gray-50 p-2 rounded-2xl border border-gray-200">
-                <Calendar className="text-blue-600 ml-2" size={20} />
-                <select value={selectedMonthIndex} onChange={(e) => setSelectedMonthIndex(Number(e.target.value))} className="bg-transparent border-none font-black text-gray-800 outline-none cursor-pointer">
+
+        <div className="flex flex-wrap items-center gap-3 w-full lg:w-auto">
+            <div className="flex items-center gap-2 bg-gray-50 p-2 rounded-xl border border-gray-200 shadow-inner">
+                <Calendar className="text-blue-600 ml-1" size={16} />
+                <select value={selectedMonthIndex} onChange={(e) => setSelectedMonthIndex(Number(e.target.value))} className="bg-transparent border-none font-black text-gray-800 outline-none cursor-pointer uppercase text-xs">
                     {months.map(m => <option key={m.value} value={m.value}>{m.label}</option>)}
                 </select>
-                <select value={selectedYear} onChange={(e) => setSelectedYear(Number(e.target.value))} className="bg-transparent border-none font-black text-gray-800 outline-none cursor-pointer">
+                <div className="w-px h-4 bg-gray-300 mx-1"></div>
+                <select value={selectedYear} onChange={(e) => setSelectedYear(Number(e.target.value))} className="bg-transparent border-none font-black text-gray-800 outline-none cursor-pointer text-xs">
                     {years.map(y => <option key={y} value={y}>{y}</option>)}
                 </select>
             </div>
-            <button onClick={executeSave} disabled={saveStatus === 'saving'} className="flex-1 xl:flex-none bg-blue-700 text-white px-8 py-3.5 rounded-2xl font-black uppercase text-xs shadow-xl hover:bg-blue-800 transition-all flex items-center justify-center gap-2">
-                {saveStatus === 'saving' ? <Loader2 className="animate-spin" size={18} /> : <Save size={18} />} Salvar Todas as Lojas
+
+            <button 
+                onClick={executeSave} 
+                disabled={saveStatus === 'saving'} 
+                className={`flex-1 lg:flex-none px-8 py-3 rounded-xl font-black uppercase text-xs shadow-lg transition-all flex items-center justify-center gap-2 active:scale-95 disabled:opacity-50 ${
+                    saveStatus === 'success' ? 'bg-green-600 text-white' : 
+                    saveStatus === 'error' ? 'bg-red-600 text-white' : 'bg-gray-900 text-white hover:bg-black'
+                }`}
+            >
+                {saveStatus === 'saving' ? (
+                    <><Loader2 className="animate-spin" size={16} /> Sincronizando...</>
+                ) : saveStatus === 'success' ? (
+                    <><CheckCircle size={16} /> Metas Atualizadas!</>
+                ) : (
+                    <><Save size={16} /> Salvar Alterações</>
+                )}
             </button>
         </div>
       </div>
 
-      <div className="bg-white rounded-[32px] shadow-2xl border border-gray-200 overflow-hidden flex flex-col max-h-[calc(100vh-250px)]">
+      {/* TABELA DE CADASTRO MESTRA */}
+      <div className="bg-white rounded-2xl shadow-xl border border-gray-200 overflow-hidden flex flex-col h-[calc(100vh-240px)]">
         <div className="overflow-auto flex-1 no-scrollbar">
             <table className="w-full text-left border-collapse table-fixed">
-                <thead className="sticky top-0 z-20 shadow-sm">
+                <thead className="sticky top-0 z-20">
                     <tr className="bg-gray-900 text-white text-[10px] font-black uppercase tracking-widest">
-                        <th className="p-5 w-64 border-r border-white/10 bg-gray-950">Unidade / Loja</th>
-                        <th className="p-5 text-center border-r border-white/10">Meta Venda (R$)</th>
-                        <th className="p-5 text-center border-r border-white/10">Meta P.A.</th>
-                        <th className="p-5 text-center border-r border-white/10">Meta P.U.</th>
-                        <th className="p-5 text-center border-r border-white/10">Meta Ticket</th>
-                        <th className="p-5 text-center border-r border-white/10">Qtd Itens</th>
-                        <th className="p-5 text-center">Inadimp. %</th>
+                        <th className="p-4 w-64 border-r border-white/5 bg-gray-950 sticky left-0 z-30">Unidade Operacional</th>
+                        <th className="p-4 text-center border-r border-white/5 bg-blue-900">Meta Faturamento (R$)</th>
+                        <th className="p-4 text-center border-r border-white/5">Meta P.A. (Itens/Atend)</th>
+                        <th className="p-4 text-center border-r border-white/5">Meta P.U. (Médio)</th>
+                        <th className="p-4 text-center border-r border-white/5">Meta Ticket</th>
+                        <th className="p-4 text-center border-r border-white/5">Meta Volume (Itens)</th>
+                        <th className="p-4 text-center bg-red-950/20">Limite Inadimp. %</th>
                     </tr>
                 </thead>
                 <tbody className="divide-y divide-gray-100">
                     {activeStores.map(store => {
                         const data = formData[store.id] || {};
                         return (
-                            <tr key={store.id} className="hover:bg-blue-50/50 transition-colors group">
-                                <td className="p-5 border-r border-gray-100 bg-white group-hover:bg-blue-50/50">
-                                    <div className="font-black text-gray-900 text-base italic uppercase tracking-tighter">#{store.number} - {store.name}</div>
-                                    <div className="text-[10px] text-gray-400 font-bold uppercase">{store.city}</div>
+                            <tr key={store.id} className="hover:bg-blue-50 transition-all group">
+                                <td className="p-4 border-r border-gray-100 bg-white group-hover:bg-blue-50 sticky left-0 z-10 shadow-[2px_0_5px_rgba(0,0,0,0.02)]">
+                                    <div className="flex items-center gap-3">
+                                        <span className="w-8 h-8 rounded-lg bg-gray-100 flex items-center justify-center font-black text-gray-400 text-[10px]">#{store.number}</span>
+                                        <div>
+                                            <div className="font-black text-gray-900 text-sm uppercase italic tracking-tighter leading-none">{store.name}</div>
+                                            <div className="text-[9px] text-gray-400 font-bold uppercase mt-1">{store.city}</div>
+                                        </div>
+                                    </div>
                                 </td>
-                                <td className="p-3 border-r border-gray-100"><input type="number" step="0.01" value={data.revenueTarget || ''} onChange={(e) => handleInputChange(store.id, 'revenueTarget', e.target.value)} className="w-full p-3 bg-gray-50 border border-gray-200 rounded-xl outline-none text-right font-black text-gray-800" placeholder="0.00"/></td>
-                                <td className="p-3 border-r border-gray-100"><input type="number" step="0.01" value={data.paTarget || ''} onChange={(e) => handleInputChange(store.id, 'paTarget', e.target.value)} className="w-full p-3 bg-gray-50 border border-gray-200 rounded-xl outline-none text-center font-black text-gray-800" placeholder="0.00"/></td>
-                                <td className="p-3 border-r border-gray-100"><input type="number" step="0.01" value={data.puTarget || ''} onChange={(e) => handleInputChange(store.id, 'puTarget', e.target.value)} className="w-full p-3 bg-gray-50 border border-gray-200 rounded-xl outline-none text-right font-black text-gray-800" placeholder="0.00"/></td>
-                                <td className="p-3 border-r border-gray-100"><input type="number" step="0.01" value={data.ticketTarget || ''} onChange={(e) => handleInputChange(store.id, 'ticketTarget', e.target.value)} className="w-full p-3 bg-gray-50 border border-gray-200 rounded-xl outline-none text-right font-black text-gray-800" placeholder="0.00"/></td>
-                                <td className="p-3 border-r border-gray-100"><input type="number" value={data.itemsTarget || ''} onChange={(e) => handleInputChange(store.id, 'itemsTarget', e.target.value)} className="w-full p-3 bg-gray-50 border border-gray-200 rounded-xl outline-none text-center font-black text-gray-800" placeholder="0"/></td>
-                                <td className="p-3"><input type="number" step="0.1" value={data.delinquencyTarget || ''} onChange={(e) => handleInputChange(store.id, 'delinquencyTarget', e.target.value)} className="w-full p-3 bg-white border-2 border-red-50 rounded-xl outline-none text-right font-black text-red-600" placeholder="0.0"/></td>
+                                <td className="p-2 border-r border-gray-100 bg-blue-50/20 group-hover:bg-blue-100/30">
+                                    <input 
+                                        type="text" 
+                                        value={data.revenueTarget || ''} 
+                                        onChange={(e) => handleInputChange(store.id, 'revenueTarget', e.target.value)} 
+                                        className="w-full p-3 bg-transparent border-none rounded-lg outline-none text-right font-black text-blue-900 focus:bg-white focus:ring-2 focus:ring-blue-400 transition-all" 
+                                        placeholder="0,00"
+                                    />
+                                </td>
+                                <td className="p-2 border-r border-gray-100">
+                                    <input 
+                                        type="text" 
+                                        value={data.paTarget || ''} 
+                                        onChange={(e) => handleInputChange(store.id, 'paTarget', e.target.value)} 
+                                        className="w-full p-3 bg-transparent border-none rounded-lg outline-none text-center font-bold text-gray-700 focus:bg-white focus:ring-2 focus:ring-blue-100 transition-all" 
+                                        placeholder="0.00"
+                                    />
+                                </td>
+                                <td className="p-2 border-r border-gray-100">
+                                    <input 
+                                        type="text" 
+                                        value={data.puTarget || ''} 
+                                        onChange={(e) => handleInputChange(store.id, 'puTarget', e.target.value)} 
+                                        className="w-full p-3 bg-transparent border-none rounded-lg outline-none text-right font-bold text-gray-700 focus:bg-white focus:ring-2 focus:ring-blue-100 transition-all" 
+                                        placeholder="0,00"
+                                    />
+                                </td>
+                                <td className="p-2 border-r border-gray-100">
+                                    <input 
+                                        type="text" 
+                                        value={data.ticketTarget || ''} 
+                                        onChange={(e) => handleInputChange(store.id, 'ticketTarget', e.target.value)} 
+                                        className="w-full p-3 bg-transparent border-none rounded-lg outline-none text-right font-bold text-gray-700 focus:bg-white focus:ring-2 focus:ring-blue-100 transition-all" 
+                                        placeholder="0,00"
+                                    />
+                                </td>
+                                <td className="p-2 border-r border-gray-100">
+                                    <input 
+                                        type="text" 
+                                        value={data.itemsTarget || ''} 
+                                        onChange={(e) => handleInputChange(store.id, 'itemsTarget', e.target.value)} 
+                                        className="w-full p-3 bg-transparent border-none rounded-lg outline-none text-center font-bold text-gray-700 focus:bg-white focus:ring-2 focus:ring-blue-100 transition-all" 
+                                        placeholder="0"
+                                    />
+                                </td>
+                                <td className="p-2 bg-red-50/30 group-hover:bg-red-100/50">
+                                    <div className="relative">
+                                        <input 
+                                            type="text" 
+                                            value={data.delinquencyTarget || ''} 
+                                            onChange={(e) => handleInputChange(store.id, 'delinquencyTarget', e.target.value)} 
+                                            className="w-full p-3 bg-transparent border-none rounded-lg outline-none text-right font-black text-red-600 focus:bg-white focus:ring-2 focus:ring-red-400 transition-all" 
+                                            placeholder="0.0"
+                                        />
+                                        <span className="absolute right-3 top-1/2 -translate-y-1/2 text-[10px] text-red-300 font-black pointer-events-none">%</span>
+                                    </div>
+                                </td>
                             </tr>
                         );
                     })}
                 </tbody>
             </table>
         </div>
-        <div className="p-4 bg-gray-50 border-t border-gray-200 text-center text-[10px] font-black text-gray-400 uppercase tracking-widest">
-            Listando {activeStores.length} lojas ativas para o período selecionado.
+        
+        {/* FOOTER INFO */}
+        <div className="px-6 py-4 bg-gray-900 text-white flex justify-between items-center text-[10px] font-black uppercase tracking-widest">
+            <div className="flex items-center gap-6">
+                <span className="flex items-center gap-2 text-blue-400"><Target size={14}/> Total de Lojas Ativas: {activeStores.length}</span>
+                <span className="flex items-center gap-2 text-green-400"><CheckCircle size={14}/> Sincronização HTTPS Ativa</span>
+            </div>
+            <div className="flex items-center gap-2 opacity-60">
+                <Info size={14}/> Utilize vírgula (,) para centavos
+            </div>
         </div>
       </div>
     </div>
