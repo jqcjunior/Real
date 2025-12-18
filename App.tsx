@@ -265,14 +265,10 @@ const App: React.FC = () => {
       {user && (
       <div className={`fixed md:sticky top-0 left-0 h-screen w-64 bg-gradient-to-b from-blue-950 to-blue-900 text-white shadow-2xl z-50 transition-transform duration-300 border-r border-blue-800 ${isSidebarOpen ? 'translate-x-0' : '-translate-x-full md:translate-x-0'}`}>
         <div className="p-6 flex flex-col h-full">
-          <div className="flex items-center gap-3 mb-8 pb-6 border-b border-blue-800/50">
-             <div className="relative">
-                <div className="w-12 h-12 bg-red-600 rounded-full flex items-center justify-center font-black text-2xl italic shadow-lg tracking-tighter border-2 border-white/10">R</div>
+          <div className="flex items-center gap-4 mb-8 pb-6 border-b border-blue-800/50">
+             <div className="relative shrink-0">
+                <img src="/logo.jpg" alt="Real Admin" className="w-16 h-16 rounded-full object-cover shadow-lg border-2 border-white/10" />
                 <div className="absolute bottom-0 right-0 w-4 h-4 bg-green-500 border-2 border-blue-950 rounded-full shadow-[0_0_8px_rgba(34,197,94,0.5)]"></div>
-             </div>
-             <div>
-                <h1 className="text-lg font-black italic tracking-tighter leading-none uppercase">REAL <span className="text-red-500">ADMIN</span></h1>
-                <p className="text-[10px] text-blue-300 uppercase tracking-widest font-bold mt-1.5 opacity-80">Ecosystem v2.0</p>
              </div>
              <button className="md:hidden ml-auto text-blue-300" onClick={() => setIsSidebarOpen(false)}><X size={20}/></button>
           </div>
@@ -315,8 +311,7 @@ const App: React.FC = () => {
          {user && (
          <div className="md:hidden bg-white shadow-md p-4 flex justify-between items-center z-40 border-b border-gray-200">
             <div className="flex items-center gap-2">
-                <div className="w-8 h-8 bg-red-600 rounded-lg flex items-center justify-center font-black text-white italic">R</div>
-                <h1 className="text-lg font-black italic text-blue-900 tracking-tighter uppercase">REAL <span className="text-red-600 font-black">ADMIN</span></h1>
+                <img src="/logo.jpg" alt="Real Admin" className="w-10 h-10 rounded-full object-cover" />
             </div>
             <button onClick={() => setIsSidebarOpen(true)} className="p-2 bg-gray-50 rounded-lg text-blue-900 shadow-sm border border-gray-100"><Menu size={20}/></button>
          </div>

@@ -21,7 +21,6 @@ const LoginScreen: React.FC<LoginScreenProps> = ({ onLoginAttempt, onRegisterReq
   const [rememberMe, setRememberMe] = useState(true);
   const [error, setError] = useState('');
   const [isLoading, setIsLoading] = useState(false);
-  const [logoError, setLogoError] = useState(false);
   
   // Registration Modal State
   const [showRegisterModal, setShowRegisterModal] = useState(false);
@@ -106,59 +105,38 @@ const LoginScreen: React.FC<LoginScreenProps> = ({ onLoginAttempt, onRegisterReq
 
   return (
     <div className="min-h-screen flex items-center justify-center bg-gray-50 font-sans">
-      <div className="w-full max-w-md bg-white rounded-3xl shadow-xl overflow-hidden p-8 md:p-10 border border-gray-100 relative">
+      <div className="w-full max-w-md bg-white rounded-[40px] shadow-2xl overflow-hidden p-8 md:p-12 border border-gray-100 relative">
         
         {/* Header Logo Section */}
-        <div className="flex flex-col items-center mb-8">
-          {!logoError ? (
-             <img 
-                src="/logo.png" 
-                alt="Real Calçados" 
-                className="max-w-[340px] w-full h-auto object-contain drop-shadow-2xl hover:scale-105 transition-transform duration-500 mb-2"
-                onError={(e) => {
-                    const target = e.target as HTMLImageElement;
-                    if (target.src.includes('logo.png')) {
-                        target.src = '/logo.jpg';
-                    } else {
-                        setLogoError(true);
-                    }
-                }}
-             />
-          ) : (
-            <div className="w-full flex justify-center items-center py-4">
-                <div className="flex flex-col items-center relative">
-                    <div className="text-center">
-                        <h1 className="text-4xl font-black bg-gradient-to-r from-blue-600 via-blue-400 to-red-500 bg-clip-text text-transparent italic tracking-tight mb-1">
-                            {APP_NAME}
-                        </h1>
-                        <p className="text-xs text-blue-400 uppercase tracking-[0.2em] font-bold">Gestão Estratégica</p>
-                    </div>
-                </div>
-            </div>
-          )}
-          {!logoError && (
-              <div className="text-center mt-2">
-                  <p className="text-xs text-blue-300 uppercase tracking-[0.3em] font-bold">Gestão Estratégica</p>
-              </div>
-          )}
+        <div className="flex flex-col items-center mb-10">
+             <div className="relative mb-6">
+                <img 
+                    src="/logo.jpg" 
+                    alt="Real Admin" 
+                    className="w-24 h-24 rounded-full object-cover shadow-2xl border-4 border-white ring-4 ring-blue-50 transition-transform duration-700 hover:rotate-6"
+                />
+                <div className="absolute -bottom-1 -right-1 w-6 h-6 bg-green-500 border-4 border-white rounded-full shadow-lg"></div>
+             </div>
+             
+             <div className="text-center">
+                <h1 className="text-3xl font-black text-blue-950 uppercase italic tracking-tighter leading-none">
+                    REAL <span className="text-red-600">ADMIN</span>
+                </h1>
+                <p className="text-[10px] text-blue-400 uppercase tracking-[0.4em] font-black mt-2 opacity-80">Gestão Estratégica</p>
+             </div>
         </div>
 
-        {/* Form Section */}
-        <div className="mb-4 text-center">
-            <h2 className="text-lg font-semibold text-gray-500 uppercase tracking-wide text-xs">Acesso ao Sistema</h2>
-        </div>
-
-        <form onSubmit={handleSubmit} className="mt-6 space-y-5">
+        <form onSubmit={handleSubmit} className="space-y-5">
             {error && (
-                <div className="bg-red-50 text-red-600 text-sm p-3 rounded-lg text-center border border-red-200 animate-pulse font-medium">
+                <div className="bg-red-50 text-red-600 text-[11px] p-4 rounded-2xl text-center border border-red-100 animate-in fade-in slide-in-from-top-1 font-black uppercase tracking-wider">
                     {error}
                 </div>
             )}
 
             <div className="space-y-1.5">
-                <label className="block text-sm font-medium text-gray-700 ml-1">E-mail</label>
+                <label className="block text-[10px] font-black text-gray-400 uppercase tracking-widest ml-1">E-mail de Acesso</label>
                 <div className="relative group">
-                    <span className="absolute left-3 top-3 text-gray-400 group-focus-within:text-blue-600 transition-colors">
+                    <span className="absolute left-4 top-1/2 -translate-y-1/2 text-gray-300 group-focus-within:text-blue-600 transition-colors">
                         <Mail size={18} />
                     </span>
                     <input 
@@ -166,16 +144,16 @@ const LoginScreen: React.FC<LoginScreenProps> = ({ onLoginAttempt, onRegisterReq
                         required
                         value={email}
                         onChange={(e) => setEmail(e.target.value)}
-                        className="w-full pl-10 pr-4 py-3 bg-white border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-600 focus:border-blue-600 outline-none transition-all text-gray-700 placeholder-gray-400"
-                        placeholder="seu@email.com"
+                        className="w-full pl-12 pr-4 py-4 bg-gray-50 border-none rounded-2xl focus:ring-4 focus:ring-blue-100 outline-none transition-all text-gray-700 font-bold text-sm placeholder-gray-300 shadow-inner"
+                        placeholder="exemplo@realcalcados.com.br"
                     />
                 </div>
             </div>
 
             <div className="space-y-1.5">
-                <label className="block text-sm font-medium text-gray-700 ml-1">Senha</label>
+                <label className="block text-[10px] font-black text-gray-400 uppercase tracking-widest ml-1">Chave de Segurança</label>
                 <div className="relative group">
-                    <span className="absolute left-3 top-3 text-gray-400 group-focus-within:text-blue-600 transition-colors">
+                    <span className="absolute left-4 top-1/2 -translate-y-1/2 text-gray-300 group-focus-within:text-blue-600 transition-colors">
                         <Lock size={18} />
                     </span>
                     <input 
@@ -183,14 +161,14 @@ const LoginScreen: React.FC<LoginScreenProps> = ({ onLoginAttempt, onRegisterReq
                         required
                         value={password}
                         onChange={(e) => setPassword(e.target.value)}
-                        className="w-full pl-10 pr-4 py-3 bg-white border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-600 focus:border-blue-600 outline-none transition-all text-gray-700 placeholder-gray-400"
-                        placeholder="........"
+                        className="w-full pl-12 pr-4 py-4 bg-gray-50 border-none rounded-2xl focus:ring-4 focus:ring-blue-100 outline-none transition-all text-gray-700 font-bold text-sm placeholder-gray-300 shadow-inner"
+                        placeholder="••••••••"
                     />
                 </div>
             </div>
 
             {/* Remember Me Checkbox */}
-            <div className="flex items-center justify-between px-1">
+            <div className="flex items-center justify-between px-1 pt-1">
                 <label className="flex items-center gap-2 cursor-pointer group select-none">
                     <div className="relative">
                         <input 
@@ -199,85 +177,87 @@ const LoginScreen: React.FC<LoginScreenProps> = ({ onLoginAttempt, onRegisterReq
                             checked={rememberMe}
                             onChange={(e) => setRememberMe(e.target.checked)}
                         />
-                        <div className={`w-5 h-5 rounded border transition-all flex items-center justify-center ${rememberMe ? 'bg-blue-600 border-blue-600 shadow-sm' : 'bg-white border-gray-300 group-hover:border-blue-400'}`}>
-                            {rememberMe && <CheckCircle2 size={14} className="text-white" strokeWidth={3} />}
+                        <div className={`w-5 h-5 rounded-lg border-2 transition-all flex items-center justify-center ${rememberMe ? 'bg-blue-600 border-blue-600 shadow-md shadow-blue-100' : 'bg-white border-gray-200 group-hover:border-blue-400'}`}>
+                            {rememberMe && <CheckCircle2 size={12} className="text-white" strokeWidth={4} />}
                         </div>
                     </div>
-                    <span className="text-sm font-semibold text-gray-600 group-hover:text-blue-700 transition-colors">Continuar conectado</span>
+                    <span className="text-[11px] font-black text-gray-400 uppercase tracking-wider group-hover:text-blue-600 transition-colors">Manter Conectado</span>
                 </label>
                 
                 <button 
                     type="button"
                     onClick={() => setShowForgotModal(true)}
-                    className="text-sm text-blue-600 hover:text-blue-800 font-bold transition-colors bg-transparent border-none cursor-pointer"
+                    className="text-[10px] text-blue-600 hover:text-blue-800 font-black uppercase tracking-wider transition-colors"
                 >
-                    Esqueceu a senha?
+                    Esqueci minha senha
                 </button>
             </div>
 
             <button 
                 type="submit"
                 disabled={isLoading}
-                className="w-full bg-gradient-to-r from-blue-700 to-blue-900 hover:from-blue-800 hover:to-blue-950 text-white font-bold py-3.5 rounded-lg shadow-lg hover:shadow-xl transition-all duration-200 mt-4 active:scale-[0.98] flex items-center justify-center gap-2 disabled:opacity-70 disabled:cursor-not-allowed"
+                className="w-full bg-blue-900 hover:bg-black text-white font-black uppercase text-xs tracking-[0.2em] py-5 rounded-2xl shadow-xl shadow-blue-100 hover:shadow-2xl transition-all duration-300 mt-4 active:scale-[0.98] flex items-center justify-center gap-3 disabled:opacity-70 disabled:cursor-not-allowed border-b-4 border-red-700"
             >
-                {isLoading ? <Loader2 className="animate-spin" size={20}/> : 'Entrar no Sistema'}
+                {isLoading ? <Loader2 className="animate-spin" size={18}/> : 'Acessar Ecossistema'}
             </button>
         </form>
 
         {/* Footer Actions */}
-        <div className="mt-8 text-center space-y-4">
-            <div className="flex items-center justify-center gap-2 opacity-50">
-                <div className="h-px bg-gray-300 w-12"></div>
-                <span className="text-xs text-gray-400 uppercase font-medium">OU</span>
-                <div className="h-px bg-gray-300 w-12"></div>
+        <div className="mt-12 text-center space-y-4">
+            <div className="flex items-center justify-center gap-4 opacity-20">
+                <div className="h-px bg-gray-400 flex-1"></div>
+                <span className="text-[9px] text-gray-500 font-black uppercase tracking-widest">Acesso Restrito</span>
+                <div className="h-px bg-gray-400 flex-1"></div>
             </div>
 
             <button 
                 onClick={() => setShowRegisterModal(true)}
-                className="flex items-center justify-center gap-2 w-full py-2.5 text-blue-800 font-semibold hover:bg-green-600 hover:text-white rounded-lg transition-all border border-transparent hover:border-green-700 group"
+                className="flex items-center justify-center gap-2 w-full py-4 text-blue-900 font-black uppercase text-[10px] tracking-widest hover:bg-blue-50 rounded-2xl transition-all border-2 border-transparent hover:border-blue-100"
             >
-                <UserPlus size={18} className="text-blue-600 group-hover:text-white transition-colors" />
-                Solicitar Cadastro
+                <UserPlus size={16} />
+                Solicitar Credenciamento
             </button>
         </div>
       </div>
 
       {/* Forgot Password Modal */}
       {showForgotModal && (
-          <div className="fixed inset-0 bg-black/60 flex items-center justify-center z-[110] p-4 backdrop-blur-sm">
-             <div className="bg-white rounded-2xl shadow-2xl w-full max-w-sm overflow-hidden animate-in fade-in zoom-in duration-200">
-                <div className="bg-blue-900 p-6 flex justify-between items-center">
-                    <h3 className="text-lg font-bold text-white flex items-center gap-2">
-                        <KeyRound size={20} className="text-blue-300"/> Recuperar Acesso
+          <div className="fixed inset-0 bg-black/80 flex items-center justify-center z-[110] p-4 backdrop-blur-md">
+             <div className="bg-white rounded-[40px] shadow-2xl w-full max-w-sm overflow-hidden animate-in fade-in zoom-in duration-200">
+                <div className="bg-blue-950 p-8 flex justify-between items-center">
+                    <h3 className="text-sm font-black text-white uppercase tracking-widest flex items-center gap-2">
+                        <KeyRound size={20} className="text-red-500"/> Recuperar Acesso
                     </h3>
-                    <button onClick={() => setShowForgotModal(false)} className="text-blue-200 hover:text-white transition-colors">
+                    <button onClick={() => setShowForgotModal(false)} className="text-blue-300 hover:text-white transition-colors bg-white/5 p-2 rounded-full">
                         <X size={20} />
                     </button>
                 </div>
                 
-                <form onSubmit={handleSendRecovery} className="p-6">
-                    <div className="bg-yellow-50 border border-yellow-200 rounded-lg p-3 mb-4 flex gap-3">
-                        <AlertTriangle className="text-yellow-600 flex-shrink-0" size={20} />
-                        <p className="text-xs text-yellow-800">
-                            Ao solicitar a recuperação, o administrador será notificado para redefinir sua senha manualmente.
+                <form onSubmit={handleSendRecovery} className="p-8">
+                    <div className="bg-orange-50 border border-orange-100 rounded-2xl p-4 mb-6 flex gap-3">
+                        <AlertTriangle className="text-orange-600 flex-shrink-0" size={20} />
+                        <p className="text-[10px] text-orange-800 font-bold leading-relaxed uppercase tracking-tight">
+                            Uma notificação de redefinição será enviada à diretoria administrativa para validação manual.
                         </p>
                     </div>
-                    <p className="text-gray-600 text-sm mb-4">Informe o e-mail cadastrado na sua loja:</p>
-                    <div className="space-y-4">
-                        <div className="relative group">
-                            <span className="absolute left-3 top-2.5 text-gray-400 group-focus-within:text-blue-600 transition-colors">
-                                <Mail size={18} />
-                            </span>
-                            <input 
-                                type="email"
-                                required
-                                value={recoveryEmail}
-                                onChange={(e) => setRecoveryEmail(e.target.value)}
-                                className="w-full pl-10 pr-4 py-3 bg-gray-50 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-600 outline-none text-gray-700"
-                                placeholder="seu@email.com"
-                            />
+                    <div className="space-y-5">
+                        <div>
+                            <label className="block text-[10px] font-black text-gray-400 uppercase tracking-widest mb-1 ml-1">E-mail Cadastrado</label>
+                            <div className="relative group">
+                                <span className="absolute left-4 top-1/2 -translate-y-1/2 text-gray-300 group-focus-within:text-blue-600 transition-colors">
+                                    <Mail size={18} />
+                                </span>
+                                <input 
+                                    type="email"
+                                    required
+                                    value={recoveryEmail}
+                                    onChange={(e) => setRecoveryEmail(e.target.value)}
+                                    className="w-full pl-12 pr-4 py-4 bg-gray-50 border-none rounded-2xl focus:ring-4 focus:ring-blue-100 outline-none text-gray-700 font-bold"
+                                    placeholder="seu@email.com"
+                                />
+                            </div>
                         </div>
-                        <button type="submit" className="w-full py-3 rounded-lg text-white font-bold transition-all flex items-center justify-center gap-2 shadow-md bg-blue-700 hover:bg-blue-800">Solicitar ao Admin</button>
+                        <button type="submit" className="w-full py-5 rounded-2xl text-white font-black uppercase text-[10px] tracking-widest transition-all flex items-center justify-center gap-2 shadow-xl bg-blue-700 hover:bg-blue-800 border-b-4 border-blue-900">Solicitar Redefinição</button>
                     </div>
                 </form>
              </div>
@@ -286,91 +266,76 @@ const LoginScreen: React.FC<LoginScreenProps> = ({ onLoginAttempt, onRegisterReq
 
       {/* Registration Modal */}
       {showRegisterModal && (
-        <div className="fixed inset-0 bg-black/60 flex items-center justify-center z-[100] p-4 backdrop-blur-sm">
-            <div className="bg-white rounded-2xl shadow-2xl w-full max-w-lg overflow-hidden animate-in fade-in zoom-in duration-200 h-[90vh] flex flex-col">
-                <div className="bg-gradient-to-r from-blue-800 to-blue-900 p-6 flex justify-between items-center flex-shrink-0">
+        <div className="fixed inset-0 bg-black/80 flex items-center justify-center z-[100] p-4 backdrop-blur-md">
+            <div className="bg-white rounded-[40px] shadow-2xl w-full max-w-lg overflow-hidden animate-in fade-in zoom-in duration-200 h-[90vh] flex flex-col">
+                <div className="bg-gradient-to-r from-blue-900 to-blue-950 p-8 flex justify-between items-center flex-shrink-0">
                     <div>
-                        <h3 className="text-xl font-bold text-white flex items-center gap-2">
-                           <UserPlus size={24} className="text-green-400" /> Solicitar Acesso
+                        <h3 className="text-xl font-black text-white uppercase italic tracking-tighter flex items-center gap-3">
+                           <UserPlus size={28} className="text-red-600" /> Solicitar <span className="text-blue-400 ml-1">Credenciamento</span>
                         </h3>
-                        <p className="text-blue-200 text-xs mt-1">Preencha os dados da loja e gerente</p>
+                        <p className="text-blue-300 text-[10px] font-black uppercase tracking-widest mt-1 opacity-70">Acesso à infraestrutura de gestão corporativa</p>
                     </div>
-                    <button onClick={() => setShowRegisterModal(false)} className="text-blue-200 hover:text-white transition-colors">
+                    <button onClick={() => setShowRegisterModal(false)} className="text-blue-200 hover:text-white transition-colors bg-white/5 p-2 rounded-full">
                         <X size={24} />
                     </button>
                 </div>
-                <form onSubmit={handleRegisterSubmit} className="p-6 space-y-4 overflow-y-auto flex-1">
-                    <div className="space-y-4">
-                        <h4 className="text-sm font-bold text-gray-800 uppercase tracking-wider border-b pb-2">Dados da Loja</h4>
+                <form onSubmit={handleRegisterSubmit} className="p-8 space-y-6 overflow-y-auto flex-1 no-scrollbar">
+                    <div className="space-y-5">
+                        <h4 className="text-[10px] font-black text-gray-400 uppercase tracking-[0.2em] border-b border-gray-100 pb-3 flex items-center gap-2"><StoreIcon size={14} /> Unidade Operacional</h4>
                         <div className="grid grid-cols-4 gap-4">
                             <div className="col-span-1">
-                                <label className="block text-xs font-semibold text-gray-500 mb-1">Número</label>
-                                <div className="relative">
-                                    <span className="absolute left-3 top-2.5 text-gray-400"><StoreIcon size={16}/></span>
-                                    <input required value={regStoreNumber} onChange={(e) => setRegStoreNumber(e.target.value)} className="w-full pl-9 pr-3 py-2 bg-white border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none text-gray-600" placeholder="000" />
-                                </div>
+                                <label className="block text-[9px] font-black text-gray-400 uppercase tracking-widest mb-1.5 ml-1">Número</label>
+                                <input required value={regStoreNumber} onChange={(e) => setRegStoreNumber(e.target.value)} className="w-full px-4 py-3 bg-gray-50 border-none rounded-xl focus:ring-4 focus:ring-blue-100 outline-none text-gray-700 font-bold" placeholder="000" />
                             </div>
                             <div className="col-span-3">
-                                <label className="block text-xs font-semibold text-gray-500 mb-1">Nome da Loja</label>
-                                <input required value={regStoreName} onChange={(e) => setRegStoreName(e.target.value)} className="w-full px-3 py-2 bg-white border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none text-gray-600" placeholder="Ex: Loja Real Calçados Centro" />
+                                <label className="block text-[9px] font-black text-gray-400 uppercase tracking-widest mb-1.5 ml-1">Nome da Loja</label>
+                                <input required value={regStoreName} onChange={(e) => setRegStoreName(e.target.value)} className="w-full px-4 py-3 bg-gray-50 border-none rounded-xl focus:ring-4 focus:ring-blue-100 outline-none text-gray-700 font-bold uppercase italic" placeholder="EX: REAL CALÇADOS CENTRO" />
                             </div>
                         </div>
                         <div className="grid grid-cols-4 gap-4">
                             <div className="col-span-3">
-                                <label className="block text-xs font-semibold text-gray-500 mb-1">Cidade</label>
-                                <div className="relative">
-                                    <span className="absolute left-3 top-2.5 text-gray-400"><MapPin size={16}/></span>
-                                    <input required value={regCity} onChange={(e) => setRegCity(e.target.value)} className="w-full pl-9 pr-3 py-2 bg-white border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none text-gray-600" placeholder="Cidade" />
-                                </div>
+                                <label className="block text-[9px] font-black text-gray-400 uppercase tracking-widest mb-1.5 ml-1">Cidade</label>
+                                <input required value={regCity} onChange={(e) => setRegCity(e.target.value)} className="w-full px-4 py-3 bg-gray-50 border-none rounded-xl focus:ring-4 focus:ring-blue-100 outline-none text-gray-700 font-bold" placeholder="Cidade" />
                             </div>
                             <div className="col-span-1">
-                                <label className="block text-xs font-semibold text-gray-500 mb-1">Estado</label>
-                                <select required value={regUF} onChange={(e) => setRegUF(e.target.value)} className="w-full px-2 py-2 bg-white border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none text-gray-600">
+                                <label className="block text-[9px] font-black text-gray-400 uppercase tracking-widest mb-1.5 ml-1">UF</label>
+                                <select required value={regUF} onChange={(e) => setRegUF(e.target.value)} className="w-full px-3 py-3 bg-gray-50 border-none rounded-xl focus:ring-4 focus:ring-blue-100 outline-none text-gray-700 font-bold">
                                     {BRAZIL_STATES.map(uf => <option key={uf} value={uf}>{uf}</option>)}
                                 </select>
                             </div>
                         </div>
                     </div>
-                    <div className="space-y-4 pt-2">
-                        <h4 className="text-sm font-bold text-gray-800 uppercase tracking-wider border-b pb-2">Dados do Gerente</h4>
+                    
+                    <div className="space-y-5 pt-4">
+                        <h4 className="text-[10px] font-black text-gray-400 uppercase tracking-[0.2em] border-b border-gray-100 pb-3 flex items-center gap-2"><UserIcon size={14} /> Gestor Responsável</h4>
                         <div>
-                            <label className="block text-xs font-semibold text-gray-500 mb-1">Nome Completo</label>
-                            <div className="relative">
-                                <span className="absolute left-3 top-2.5 text-gray-400"><UserIcon size={16}/></span>
-                                <input required value={regManagerName} onChange={(e) => setRegManagerName(e.target.value)} className="w-full pl-9 pr-3 py-2 bg-white border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none text-gray-600" placeholder="Nome do Gerente" />
-                            </div>
+                            <label className="block text-[9px] font-black text-gray-400 uppercase tracking-widest mb-1.5 ml-1">Nome Completo</label>
+                            <input required value={regManagerName} onChange={(e) => setRegManagerName(e.target.value)} className="w-full px-4 py-3 bg-gray-50 border-none rounded-xl focus:ring-4 focus:ring-blue-100 outline-none text-gray-700 font-bold uppercase" placeholder="Nome do Gerente" />
                         </div>
                         <div className="grid grid-cols-2 gap-4">
                             <div>
-                                <label className="block text-xs font-semibold text-gray-500 mb-1">Email</label>
-                                <div className="relative">
-                                    <span className="absolute left-3 top-2.5 text-gray-400"><Mail size={16}/></span>
-                                    <input required type="email" value={regEmail} onChange={(e) => setRegEmail(e.target.value)} className="w-full pl-9 pr-3 py-2 bg-white border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none text-gray-600" placeholder="email@exemplo.com" />
-                                </div>
+                                <label className="block text-[9px] font-black text-gray-400 uppercase tracking-widest mb-1.5 ml-1">Email Profissional</label>
+                                <input required type="email" value={regEmail} onChange={(e) => setRegEmail(e.target.value)} className="w-full px-4 py-3 bg-gray-50 border-none rounded-xl focus:ring-4 focus:ring-blue-100 outline-none text-gray-700 font-bold" placeholder="email@realcalcados.com.br" />
                             </div>
                             <div>
-                                <label className="block text-xs font-semibold text-gray-500 mb-1">Telefone</label>
-                                <div className="relative">
-                                    <span className="absolute left-3 top-2.5 text-gray-400"><Phone size={16}/></span>
-                                    <input required value={regPhone} onChange={(e) => setRegPhone(e.target.value)} className="w-full pl-9 pr-3 py-2 bg-white border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none text-gray-600" placeholder="(00) 00000-0000" />
-                                </div>
+                                <label className="block text-[9px] font-black text-gray-400 uppercase tracking-widest mb-1.5 ml-1">WhatsApp</label>
+                                <input required value={regPhone} onChange={(e) => setRegPhone(e.target.value)} className="w-full px-4 py-3 bg-gray-50 border-none rounded-xl focus:ring-4 focus:ring-blue-100 outline-none text-gray-700 font-bold" placeholder="(00) 00000-0000" />
                             </div>
                         </div>
                     </div>
-                    <div className="space-y-4 pt-2">
-                        <h4 className="text-sm font-bold text-green-700 uppercase tracking-wider border-b border-green-200 pb-2">Segurança</h4>
+
+                    <div className="space-y-5 pt-4">
+                        <h4 className="text-[10px] font-black text-red-500 uppercase tracking-[0.2em] border-b border-red-50 pb-3 flex items-center gap-2"><Lock size={14} /> Credenciais Provisórias</h4>
                          <div>
-                            <label className="block text-xs font-semibold text-gray-500 mb-1">Definir Senha de Acesso</label>
-                            <div className="relative">
-                                <span className="absolute left-3 top-2.5 text-gray-400"><Lock size={16}/></span>
-                                <input required type="password" value={regPassword} onChange={(e) => setRegPassword(e.target.value)} className="w-full pl-9 pr-3 py-2 bg-white border border-gray-300 rounded-lg focus:ring-2 focus:ring-green-500 focus:border-green-500 outline-none transition-all text-gray-600" placeholder="Crie sua senha" />
-                            </div>
-                            <p className="text-[10px] text-gray-400 mt-1">Esta senha será usada para acessar o sistema após aprovação do admin.</p>
+                            <label className="block text-[9px] font-black text-gray-400 uppercase tracking-widest mb-1.5 ml-1">Senha de Acesso</label>
+                            <input required type="password" value={regPassword} onChange={(e) => setRegPassword(e.target.value)} className="w-full px-4 py-3 bg-gray-50 border-none rounded-xl focus:ring-4 focus:ring-red-100 outline-none transition-all text-gray-700 font-bold" placeholder="Crie sua senha" />
+                            <p className="text-[8px] text-gray-400 font-bold uppercase mt-2 tracking-tighter opacity-70">A senha será validada após autorização da diretoria.</p>
                         </div>
                     </div>
-                    <div className="pt-4 flex gap-3">
-                         <button type="button" onClick={() => setShowRegisterModal(false)} className="flex-1 px-4 py-3 text-gray-700 bg-gray-100 rounded-lg hover:bg-gray-200 font-medium transition-colors">Cancelar</button>
-                        <button type="submit" className="flex-1 px-4 py-3 bg-green-600 text-white rounded-lg hover:bg-green-700 font-bold shadow-md hover:shadow-lg transition-all flex items-center justify-center gap-2"><Send size={18} />Enviar Solicitação</button>
+
+                    <div className="pt-8 flex gap-4">
+                        <button type="button" onClick={() => setShowRegisterModal(false)} className="flex-1 px-4 py-4 text-gray-400 bg-gray-50 rounded-2xl hover:bg-gray-100 font-black uppercase text-[10px] tracking-widest transition-all">Cancelar</button>
+                        <button type="submit" className="flex-1 px-4 py-4 bg-blue-700 text-white rounded-2xl hover:bg-blue-800 font-black uppercase text-[10px] tracking-widest shadow-xl shadow-blue-100 transition-all flex items-center justify-center gap-2 border-b-4 border-blue-900"><Send size={16} />Enviar Requisição</button>
                     </div>
                 </form>
             </div>
