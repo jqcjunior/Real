@@ -5,8 +5,12 @@ import { formatCurrency } from '../constants';
 import { 
     TrendingUp, Target, ShoppingBag, Upload, FileSpreadsheet, Loader2, 
     CheckCircle, X, Trophy, Medal, Crown, DollarSign, ArrowUpRight, 
-    BrainCircuit, Sparkles, Zap, Box, Percent, Hash, Tag 
+    BrainCircuit, Sparkles, Zap, Box, Percent, Hash, Tag, BarChart3
 } from 'lucide-react';
+import { 
+    BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, 
+    Legend, ComposedChart, Line, Area, AreaChart 
+} from 'recharts';
 import * as XLSX from 'xlsx';
 import { analyzePerformance } from '../services/geminiService';
 
@@ -103,6 +107,16 @@ const DashboardAdmin: React.FC<DashboardAdminProps> = ({ stores, performanceData
       return { totalRevenue, totalTarget, percentMeta };
   }, [currentMonthData]);
 
+  // Gráfico de Performance Meta vs Real
+  const chartData = useMemo(() => {
+      return rankedStores.slice(0, 10).map(s => ({
+          name: s.storeNumber,
+          Meta: s.revenueTarget,
+          Real: s.revenueActual,
+          XP: s.percentMeta
+      }));
+  }, [rankedStores]);
+
   const handleProcessImport = async () => {
       if (!selectedFile) return;
       setIsProcessing(true);
@@ -161,7 +175,7 @@ const DashboardAdmin: React.FC<DashboardAdminProps> = ({ stores, performanceData
                 <BrainCircuit className="text-blue-700" size={40} />
                 Inteligência <span className="text-red-600">Corporativa</span>
             </h2>
-            <p className="text-gray-500 font-bold uppercase text-[10px] tracking-[0.3em] mt-3 ml-1">Painel Real Admin v4.2</p>
+            <p className="text-gray-500 font-bold uppercase text-[10px] tracking-[0.3em] mt-3 ml-1">Painel Real Admin v4.5</p>
           </div>
 
           <div className="flex flex-wrap items-center gap-3">
@@ -215,6 +229,67 @@ const DashboardAdmin: React.FC<DashboardAdminProps> = ({ stores, performanceData
                    </>
                )}
            </div>
+       </div>
+
+       {/* Visual de Performance Meta vs Real */}
+       <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
+            <div className="lg:col-span-2 bg-white p-8 rounded-[48px] shadow-sm border border-gray-100">
+                <div className="flex justify-between items-center mb-8">
+                    <h3 className="text-lg font-black text-gray-900 uppercase italic tracking-tighter flex items-center gap-3">
+                        <BarChart3 className="text-blue-600" size={24} /> Desempenho <span className="text-blue-600">Top 10 Lojas</span>
+                    </h3>
+                    <div className="flex items-center gap-4 text-[9px] font-black uppercase tracking-widest text-gray-400">
+                        <div className="flex items-center gap-1"><div className="w-2 h-2 bg-blue-600 rounded-full"></div> Real</div>
+                        <div className="flex items-center gap-1"><div className="w-2 h-2 bg-gray-200 rounded-full"></div> Meta</div>
+                    </div>
+                </div>
+                <div className="h-[400px]">
+                    <ResponsiveContainer width="100%" height="100%">
+                        <ComposedChart data={chartData}>
+                            <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#f0f0f0" />
+                            <XAxis dataKey="name" axisLine={false} tickLine={false} fontSize={10} fontStyle="bold" dy={10} />
+                            <YAxis axisLine={false} tickLine={false} fontSize={10} tickFormatter={(v) => `R$${v/1000}k`} />
+                            <Tooltip 
+                                contentStyle={{ borderRadius: '20px', border: 'none', boxShadow: '0 20px 40px rgba(0,0,0,0.1)', fontWeight: 'bold' }}
+                                formatter={(v: number) => formatCurrency(v)}
+                            />
+                            <Bar dataKey="Real" fill="#3b82f6" radius={[10, 10, 0, 0]} barSize={40} />
+                            <Bar dataKey="Meta" fill="#e5e7eb" radius={[10, 10, 0, 0]} barSize={40} />
+                            <Line type="monotone" dataKey="XP" stroke="#ef4444" strokeWidth={3} dot={{ fill: '#ef4444', r: 4 }} yAxisId={0} />
+                        </ComposedChart>
+                    </ResponsiveContainer>
+                </div>
+            </div>
+
+            <div className="bg-gradient-to-br from-gray-900 to-black p-8 rounded-[48px] shadow-2xl text-white">
+                <h3 className="text-lg font-black uppercase italic tracking-tighter mb-8 flex items-center gap-3">
+                    <Trophy className="text-yellow-500" size={24} /> Hall da <span className="text-yellow-500">Fama</span>
+                </h3>
+                <div className="space-y-6">
+                    {rankedStores.slice(0, 3).map((s, i) => (
+                        <div key={s.storeId} className={`p-6 rounded-[32px] border-2 flex items-center gap-6 transition-all hover:scale-105 ${i === 0 ? 'bg-yellow-500/10 border-yellow-500/30' : i === 1 ? 'bg-gray-400/10 border-gray-400/30' : 'bg-orange-500/10 border-orange-500/30'}`}>
+                            <div className="relative">
+                                {i === 0 ? <Crown size={40} className="text-yellow-500" /> : <Medal size={40} className={i === 1 ? 'text-gray-400' : 'text-orange-500'} />}
+                                <div className="absolute -top-2 -right-2 bg-white text-black w-6 h-6 rounded-full flex items-center justify-center font-black text-xs">#{i+1}</div>
+                            </div>
+                            <div className="flex-1">
+                                <p className="text-[10px] font-black uppercase text-gray-400 tracking-widest">Loja {s.storeNumber}</p>
+                                <p className="text-lg font-black uppercase italic truncate">{s.storeName}</p>
+                                <div className="mt-2 flex items-center gap-2">
+                                    <div className="flex-1 h-1 bg-white/10 rounded-full overflow-hidden">
+                                        <div className="h-full bg-yellow-500" style={{ width: `${Math.min(s.percentMeta, 100)}%` }}></div>
+                                    </div>
+                                    <span className="text-[10px] font-black text-yellow-500">{s.percentMeta.toFixed(1)}%</span>
+                                </div>
+                            </div>
+                        </div>
+                    ))}
+                </div>
+                <div className="mt-10 p-6 bg-white/5 rounded-[32px] border border-white/10 text-center">
+                    <p className="text-[10px] font-black text-gray-500 uppercase tracking-widest mb-1">Média da Rede</p>
+                    <p className="text-3xl font-black italic">{networkStats.percentMeta.toFixed(1)}%</p>
+                </div>
+            </div>
        </div>
 
        {aiInsight && (
@@ -309,7 +384,7 @@ const DashboardAdmin: React.FC<DashboardAdminProps> = ({ stores, performanceData
                                 {item.percentMeta >= 100 ? (
                                     <span className="px-3 py-1 bg-green-50 text-green-700 rounded-full text-[8px] font-black uppercase border border-green-200">Meta Batida</span>
                                 ) : (
-                                    <span className="px-3 py-1 bg-gray-50 text-gray-400 rounded-full text-[8px] font-black uppercase border border-gray-100">Curso</span>
+                                    <span className="px-3 py-1 bg-gray-50 text-gray-400 rounded-full text-[8px] font-black uppercase border border-gray-100">Em Curso</span>
                                 )}
                             </td>
                         </tr>

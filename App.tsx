@@ -23,7 +23,7 @@ import { User, Store, MonthlyPerformance, UserRole, ProductPerformance, Cota, Ag
 import { supabase } from './services/supabaseClient';
 import { LOGO_URL } from './constants';
 
-// Mapeamento de ícones para Escalabilidade
+// Mapeamento de ícones
 const ICON_MAP: Record<string, React.ElementType> = {
     dashboard: LayoutDashboard,
     purchases: ShoppingBag,
@@ -95,12 +95,15 @@ const App: React.FC = () => {
   
   const loadAllData = async () => {
       try {
+        // Permissões
         const { data: dbPerms } = await supabase.from('page_permissions').select('*').order('sort_order', { ascending: true });
         if (dbPerms) setPagePermissions(dbPerms as PagePermission[]);
 
+        // Lojas
         const { data: dbStores } = await supabase.from('stores').select('*');
         if (dbStores) setStores(dbStores.map((s: any) => ({ id: s.id, number: s.number, name: s.name, city: s.city, managerName: s.manager_name, managerEmail: s.manager_email, managerPhone: s.manager_phone, status: s.status, role: s.role || UserRole.MANAGER, passwordResetRequested: s.password_reset_requested, password: s.password })));
 
+        // Metas Performance
         const { data: dbPerf } = await supabase.from('monthly_performance').select('*').order('month', { ascending: false });
         if (dbPerf) {
             setPerformanceData(dbPerf.map((p: any) => ({ 
@@ -108,6 +111,20 @@ const App: React.FC = () => {
             })));
         }
 
+        // --- CARREGAMENTO DE COTAS (CORREÇÃO) ---
+        const { data: dbCotas } = await supabase.from('cotas').select('*');
+        if (dbCotas) setCotas(dbCotas.map((c: any) => ({
+            id: c.id, storeId: c.store_id, brand: c.brand, classification: c.classification, totalValue: Number(c.total_value), shipmentDate: c.shipment_date, paymentTerms: c.payment_terms, pairs: c.pairs, installments: c.installments, createdAt: new Date(c.created_at), createdByRole: c.created_by_role as UserRole, status: c.status
+        })));
+
+        const { data: dbCotaSet } = await supabase.from('cota_settings').select('*');
+        if (dbCotaSet) setCotaSettings(dbCotaSet.map((s: any) => ({ storeId: s.store_id, budgetValue: Number(s.budget_value), managerPercent: Number(s.manager_percent) })));
+
+        const { data: dbCotaDebts } = await supabase.from('cota_debts').select('*');
+        if (dbCotaDebts) setCotaDebts(dbCotaDebts.map((d: any) => ({ id: d.id, storeId: d.store_id, month: d.month, value: Number(d.value) })));
+        // ----------------------------------------
+
+        // Gelateria
         const { data: dbIceItems } = await supabase.from('products').select('*').order('name', { ascending: true });
         if (dbIceItems) setIceCreamItems(dbIceItems.map((i: any) => ({ id: String(i.id), name: String(i.name || 'Sem nome'), price: Number(i.price || 0), flavor: String(i.flavor || ''), category: (i.category || 'Milkshake') as IceCreamCategory, active: i.active ?? true })));
 
@@ -229,9 +246,51 @@ const App: React.FC = () => {
       case 'metas_registration':
         return <GoalRegistration stores={stores} performanceData={performanceData} onUpdateData={handleUpdateGoals} />;
       case 'purchases':
-        return <DashboardPurchases stores={stores} data={productData} onImport={async (d) => { await supabase.from('product_performance').upsert(d.map(item => ({ store_id: item.storeId, month: item.month, brand: item.brand, category: item.category, pairs_sold: item.pairsSold, revenue: item.revenue }))); await loadAllData(); }} />;
+        return <DashboardPurchases stores={stores} data={productData} onImport={async (d: any) => { await supabase.from('product_performance').upsert((d as ProductPerformance[]).map(item => ({ store_id: item.storeId, month: item.month, brand: item.brand, category: item.category, pairs_sold: item.pairsSold, revenue: item.revenue }))); await loadAllData(); }} />;
       case 'cotas':
-        return <CotasManagement user={user} stores={stores} cotas={cotas} cotaSettings={cotaSettings} cotaDebts={cotaDebts} onAddCota={async (c) => { await supabase.from('cotas').insert({ store_id: c.storeId, brand: c.brand, classification: c.classification, total_value: c.totalValue, shipment_date: c.shipmentDate, payment_terms: c.paymentTerms, pairs: c.pairs, installments: c.installments, created_by_role: c.createdByRole }); await loadAllData(); }} onDeleteCota={async (id) => { await supabase.from('cotas').delete().eq('id', id); await loadAllData(); }} onSaveSettings={async (s) => { await supabase.from('cota_settings').upsert({ store_id: s.storeId, budget_value: s.budgetValue, manager_percent: s.managerPercent }); await loadAllData(); }} onSaveDebts={async (id, d) => { const payload = Object.entries(d).map(([month, value]) => ({ store_id: id, month, value })); await supabase.from('cota_debts').delete().eq('store_id', id); await supabase.from('cota_debts').insert(payload); await loadAllData(); }} />;
+        return <CotasManagement 
+            user={user} 
+            stores={stores} 
+            cotas={cotas} 
+            cotaSettings={cotaSettings} 
+            cotaDebts={cotaDebts} 
+            onAddCota={async (c) => { 
+                await supabase.from('cotas').insert({ 
+                    store_id: c.storeId, 
+                    brand: c.brand, 
+                    classification: c.classification, 
+                    total_value: c.totalValue, 
+                    shipment_date: c.shipmentDate, 
+                    payment_terms: c.paymentTerms, 
+                    pairs: c.pairs, 
+                    installments: c.installments, 
+                    created_by_role: c.createdByRole 
+                }); 
+                await loadAllData(); 
+            }} 
+            onDeleteCota={async (id) => { 
+                await supabase.from('cotas').delete().eq('id', id); 
+                await loadAllData(); 
+            }} 
+            onUpdateCota={async (c) => {
+                await supabase.from('cotas').update({ status: c.status }).eq('id', c.id);
+                await loadAllData();
+            }}
+            onSaveSettings={async (s) => { 
+                await supabase.from('cota_settings').upsert({ 
+                    store_id: s.storeId, 
+                    budget_value: s.budgetValue, 
+                    manager_percent: s.managerPercent 
+                }, { onConflict: 'store_id' }); 
+                await loadAllData(); 
+            }} 
+            onSaveDebts={async (id, d) => { 
+                const payload = Object.entries(d).map(([month, value]) => ({ store_id: id, month, value })); 
+                await supabase.from('cota_debts').delete().eq('store_id', id); 
+                if (payload.length > 0) await supabase.from('cota_debts').insert(payload); 
+                await loadAllData(); 
+            }} 
+        />;
       case 'agenda':
         return <AgendaSystem user={user} tasks={tasks} onAddTask={async (t) => { await supabase.from('agenda_tasks').insert({ user_id: t.userId, title: t.title, description: t.description, due_date: t.dueDate, priority: t.priority }); await loadAllData(); }} onUpdateTask={async (t) => { await supabase.from('agenda_tasks').update({ title: t.title, description: t.description, due_date: t.dueDate, priority: t.priority, is_completed: t.isCompleted }).eq('id', t.id); await loadAllData(); }} onDeleteTask={async (id) => { await supabase.from('agenda_tasks').delete().eq('id', id); await loadAllData(); }} />;
       case 'financial':

@@ -1,17 +1,61 @@
 
-# Estrutura do Banco de Dados - Real Calçados
+# Estrutura de Banco de Dados Idempotente - Real Calçados
 
-Para garantir o funcionamento do sistema de metas e do módulo de sorvete, execute os comandos SQL abaixo no seu painel do Supabase.
+Copie e cole os blocos abaixo no SQL Editor do Supabase. Esta versão utiliza `ON CONFLICT` para evitar erros caso você execute o script novamente.
 
 ---
 
-### 1. Tabela de Performance e Metas
+### 1. Tabelas Base e Extensões
 ```sql
--- Tabela principal de faturamento e metas mensais
+create extension if not exists "uuid-ossp";
+
+create table if not exists public.stores (
+  id uuid default uuid_generate_v4() primary key,
+  number text unique not null,
+  name text not null,
+  city text not null,
+  manager_name text,
+  manager_email text unique,
+  manager_phone text,
+  password text,
+  status text default 'active',
+  role text default 'MANAGER',
+  password_reset_requested boolean default false,
+  created_at timestamp with time zone default now()
+);
+
+create table if not exists public.admin_users (
+  id uuid default uuid_generate_v4() primary key,
+  name text not null,
+  email text unique not null,
+  password text not null,
+  status text default 'active',
+  role_level text default 'admin',
+  last_activity timestamp with time zone,
+  created_at timestamp with time zone default now()
+);
+
+create table if not exists public.page_permissions (
+  id uuid default uuid_generate_v4() primary key,
+  page_key text unique not null,
+  label text not null,
+  module_group text not null,
+  icon_name text,
+  allow_admin boolean default true,
+  allow_manager boolean default false,
+  allow_cashier boolean default false,
+  sort_order integer default 0
+);
+```
+
+---
+
+### 2. Módulos de Operação (Metas, Cotas, Sorvete)
+```sql
 create table if not exists public.monthly_performance (
   id uuid default uuid_generate_v4() primary key,
   store_id uuid references public.stores(id) on delete cascade,
-  month text not null, -- Formato YYYY-MM
+  month text not null,
   revenue_target numeric default 0,
   revenue_actual numeric default 0,
   items_target integer default 0,
@@ -25,75 +69,56 @@ create table if not exists public.monthly_performance (
   delinquency_target numeric default 0,
   delinquency_actual numeric default 0,
   created_at timestamp with time zone default now(),
-  
-  -- Garante que não haja duplicidade de mês para a mesma loja
   unique(store_id, month)
 );
 
--- Habilitar RLS e acesso público
-alter table public.monthly_performance enable row level security;
-create policy "Public Access Goals" on public.monthly_performance for all using (true) with check (true);
-```
-
----
-
-### 2. Módulo Sorvete
-```sql
--- Cadastro de Produtos
-create table if not exists public.products (
-  id uuid default uuid_generate_v4() primary key,
-  name text not null,
-  category text not null,
-  flavor text,
-  price numeric not null,
-  active boolean default true,
-  created_at timestamp with time zone default now()
+create table if not exists public.cota_settings (
+  store_id uuid primary key references public.stores(id) on delete cascade,
+  budget_value numeric not null default 0,
+  manager_percent numeric not null default 30,
+  updated_at timestamp with time zone default now()
 );
 
--- Vendas Diárias
-create table if not exists public.ice_cream_daily_sales (
+create table if not exists public.cota_debts (
   id uuid default uuid_generate_v4() primary key,
-  item_id uuid references public.products(id),
-  product_name text not null,
-  category text,
-  flavor text,
-  units_sold integer not null default 0,
-  unit_price numeric not null,
-  total_value numeric not null,
-  payment_method text not null,
-  created_at timestamp with time zone default timezone('utc'::text, now())
-);
-
--- Finanças
-create table if not exists public.ice_cream_finances (
-  id uuid default uuid_generate_v4() primary key,
-  date date not null,
-  type text not null, -- entry, exit
-  category text not null,
+  store_id uuid references public.stores(id) on delete cascade,
+  month text not null,
   value numeric not null default 0,
-  employee_name text,
-  description text,
-  created_at timestamp with time zone default timezone('utc'::text, now())
+  created_at timestamp with time zone default now(),
+  unique(store_id, month)
+);
+
+create table if not exists public.cotas (
+  id uuid default uuid_generate_v4() primary key,
+  store_id uuid references public.stores(id) on delete cascade,
+  brand text not null,
+  classification text,
+  total_value numeric not null,
+  shipment_date text not null,
+  payment_terms text,
+  pairs integer default 0,
+  installments jsonb not null,
+  created_by_role text,
+  status text default 'pending',
+  created_at timestamp with time zone default now()
 );
 ```
 
 ---
 
-### 3. Materiais de Marketing (NOVO)
+### 3. Dados Iniciais (Seguro contra Duplicidade)
 ```sql
--- Galeria de artes e materiais de campanha
-create table if not exists public.marketing_materials (
-  id uuid default uuid_generate_v4() primary key,
-  title text not null,
-  description text,
-  image_url text not null,
-  category text default 'social_media', -- social_media, internal_comms, promo
-  created_by uuid references public.admin_users(id),
-  store_id uuid references public.stores(id),
-  metadata jsonb, -- detalhes da geração ou ajustes
-  created_at timestamp with time zone default now()
-);
+-- Inserir permissões apenas se não existirem
+insert into public.page_permissions (page_key, label, module_group, allow_admin, allow_manager, allow_cashier, sort_order)
+values 
+('dashboard', 'Dashboard Principal', 'Inteligência', true, true, false, 1),
+('metas_registration', 'Definição de Metas', 'Inteligência', true, false, false, 2),
+('cotas', 'Gestão de Cotas', 'Operação', true, true, false, 3),
+('icecream', 'Gelateria', 'Operação', true, true, true, 4)
+on conflict (page_key) do nothing;
 
-alter table public.marketing_materials enable row level security;
-create policy "Public Access Marketing" on public.marketing_materials for all using (true) with check (true);
+-- Inserir administrador padrão apenas se não existir
+insert into public.admin_users (name, email, password, role_level)
+values ('Administrador', 'admin@real.com', 'admin123', 'super_admin')
+on conflict (email) do nothing;
 ```
