@@ -81,7 +81,7 @@ const App: React.FC = () => {
   const [cotas, setCotas] = useState<Cota[]>([]);
   const [cotaSettings, setCotaSettings] = useState<CotaSettings[]>([]); 
   const [cotaDebts, setCotaDebts] = useState<CotaDebt[]>([]); 
-  const [tasks, setTasks] = useState<AgendaItem[]>([]);
+  const [tasks, setTask] = useState<AgendaItem[]>([]);
   const [downloads, setDownloadItems] = useState<DownloadItem[]>([]);
   const [cashErrors, setCashErrors] = useState<CashError[]>([]);
   const [logs, setLogs] = useState<SystemLog[]>([]);
@@ -95,15 +95,12 @@ const App: React.FC = () => {
   
   const loadAllData = async () => {
       try {
-        // Permissões
         const { data: dbPerms } = await supabase.from('page_permissions').select('*').order('sort_order', { ascending: true });
         if (dbPerms) setPagePermissions(dbPerms as PagePermission[]);
 
-        // Lojas
         const { data: dbStores } = await supabase.from('stores').select('*');
         if (dbStores) setStores(dbStores.map((s: any) => ({ id: s.id, number: s.number, name: s.name, city: s.city, managerName: s.manager_name, managerEmail: s.manager_email, managerPhone: s.manager_phone, status: s.status, role: s.role || UserRole.MANAGER, passwordResetRequested: s.password_reset_requested, password: s.password })));
 
-        // Metas Performance
         const { data: dbPerf } = await supabase.from('monthly_performance').select('*').order('month', { ascending: false });
         if (dbPerf) {
             setPerformanceData(dbPerf.map((p: any) => ({ 
@@ -111,10 +108,20 @@ const App: React.FC = () => {
             })));
         }
 
-        // --- CARREGAMENTO DE COTAS (CORREÇÃO) ---
-        const { data: dbCotas } = await supabase.from('cotas').select('*');
+        const { data: dbCotas } = await supabase.from('cotas').select('*').order('created_at', { ascending: false });
         if (dbCotas) setCotas(dbCotas.map((c: any) => ({
-            id: c.id, storeId: c.store_id, brand: c.brand, classification: c.classification, totalValue: Number(c.total_value), shipmentDate: c.shipment_date, paymentTerms: c.payment_terms, pairs: c.pairs, installments: c.installments, createdAt: new Date(c.created_at), createdByRole: c.created_by_role as UserRole, status: c.status
+            id: c.id, 
+            storeId: c.store_id, 
+            brand: c.brand, 
+            classification: c.classification, 
+            totalValue: Number(c.total_value), 
+            shipmentDate: c.shipment_date, 
+            paymentTerms: c.payment_terms, 
+            pairs: c.pairs, 
+            installments: c.installments, 
+            createdAt: new Date(c.created_at), 
+            createdByRole: c.created_by_role as UserRole, 
+            status: c.status
         })));
 
         const { data: dbCotaSet } = await supabase.from('cota_settings').select('*');
@@ -122,9 +129,7 @@ const App: React.FC = () => {
 
         const { data: dbCotaDebts } = await supabase.from('cota_debts').select('*');
         if (dbCotaDebts) setCotaDebts(dbCotaDebts.map((d: any) => ({ id: d.id, storeId: d.store_id, month: d.month, value: Number(d.value) })));
-        // ----------------------------------------
 
-        // Gelateria
         const { data: dbIceItems } = await supabase.from('products').select('*').order('name', { ascending: true });
         if (dbIceItems) setIceCreamItems(dbIceItems.map((i: any) => ({ id: String(i.id), name: String(i.name || 'Sem nome'), price: Number(i.price || 0), flavor: String(i.flavor || ''), category: (i.category || 'Milkshake') as IceCreamCategory, active: i.active ?? true })));
 
@@ -255,7 +260,8 @@ const App: React.FC = () => {
             cotaSettings={cotaSettings} 
             cotaDebts={cotaDebts} 
             onAddCota={async (c) => { 
-                await supabase.from('cotas').insert({ 
+                // CRITICAL: UUID column in Supabase cannot be an empty string. Omit 'id' to let Supabase generate it.
+                const { error } = await supabase.from('cotas').insert({ 
                     store_id: c.storeId, 
                     brand: c.brand, 
                     classification: c.classification, 
@@ -264,8 +270,13 @@ const App: React.FC = () => {
                     payment_terms: c.paymentTerms, 
                     pairs: c.pairs, 
                     installments: c.installments, 
-                    created_by_role: c.createdByRole 
+                    created_by_role: c.createdByRole,
+                    status: c.status || 'pending'
                 }); 
+                if (error) {
+                    console.error("Supabase insert error:", error);
+                    throw new Error(error.message);
+                }
                 await loadAllData(); 
             }} 
             onDeleteCota={async (id) => { 
@@ -343,7 +354,7 @@ const App: React.FC = () => {
                     <div className={`px-4 py-2 text-[10px] font-black uppercase tracking-widest opacity-50 ${groupName === 'Administração' ? 'text-red-400 opacity-80' : 'text-blue-400'}`}>
                         {groupName}
                     </div>
-                    {items.map(item => (
+                    {(items as PagePermission[]).map(item => (
                         <NavButton 
                             key={item.page_key}
                             view={item.page_key} 
