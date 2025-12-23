@@ -1,7 +1,7 @@
 
 import React, { useState, useMemo, useRef } from 'react';
 import { Store, MonthlyPerformance } from '../types';
-import { formatCurrency } from '../constants';
+import { formatCurrency, formatDecimal } from '../constants';
 import { 
     TrendingUp, Target, ShoppingBag, Upload, FileSpreadsheet, Loader2, 
     CheckCircle, X, Trophy, Medal, Crown, DollarSign, ArrowUpRight, 
@@ -374,7 +374,7 @@ const DashboardAdmin: React.FC<DashboardAdminProps> = ({ stores, performanceData
                             <td className="px-6 py-6 text-center">
                                 <div className="flex flex-col items-center">
                                     <Percent size={14} className="text-gray-300 mb-1" />
-                                    <span className={`text-xs font-bold ${item.delinquencyRate > 3 ? 'text-red-500' : 'text-green-600'}`}>{item.delinquencyRate?.toFixed(2) || '0.00'}%</span>
+                                    <span className={`text-xs font-bold ${item.delinquencyRate > 3 ? 'text-red-500' : 'text-green-600'}`}>{formatDecimal(item.delinquencyRate)}%</span>
                                 </div>
                             </td>
                             <td className="px-6 py-6 text-right">

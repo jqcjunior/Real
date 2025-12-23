@@ -72,6 +72,19 @@ create table if not exists public.monthly_performance (
   unique(store_id, month)
 );
 
+create table if not exists public.seller_goals (
+  id uuid default uuid_generate_v4() primary key,
+  store_id uuid references public.stores(id) on delete cascade,
+  seller_name text not null,
+  month text not null,
+  revenue_target numeric default 0,
+  revenue_actual numeric default 0,
+  items_actual integer default 0,
+  pa_actual numeric default 0,
+  created_at timestamp with time zone default now(),
+  unique(store_id, seller_name, month)
+);
+
 create table if not exists public.cota_settings (
   store_id uuid primary key references public.stores(id) on delete cascade,
   budget_value numeric not null default 0,

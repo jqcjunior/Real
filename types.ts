@@ -74,6 +74,19 @@ export interface MonthlyPerformance {
   delinquencyTarget?: number;
   trend: 'up' | 'down' | 'stable';
   correctedDailyGoal: number;
+  businessDays?: number; // NOVO: Dias de operação no mês
+}
+
+export interface SellerGoal {
+  id?: string;
+  storeId: string;
+  sellerName: string;
+  month: string;
+  revenueTarget: number;
+  revenueActual: number;
+  itemsActual?: number;
+  paActual?: number;
+  commissionRate?: number; // NOVO: % de comissão
 }
 
 export interface ProductPerformance {
@@ -104,8 +117,6 @@ export interface SystemLog {
   details: string;
 }
 
-export type CotaPayment = { month: string; value: number };
-
 export interface Cota {
     id: string;
     storeId: string;
@@ -115,7 +126,7 @@ export interface Cota {
     shipmentDate: string;
     paymentTerms: string;
     pairs?: number;
-    installments: CotaPayment[];
+    installments: Record<string, number>;
     createdAt: Date;
     createdByRole?: UserRole;
     status?: 'pending' | 'validated';

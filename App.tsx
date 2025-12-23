@@ -23,7 +23,6 @@ import { User, Store, MonthlyPerformance, UserRole, ProductPerformance, Cota, Ag
 import { supabase } from './services/supabaseClient';
 import { LOGO_URL } from './constants';
 
-// Mapeamento de ícones
 const ICON_MAP: Record<string, React.ElementType> = {
     dashboard: LayoutDashboard,
     purchases: ShoppingBag,
@@ -88,7 +87,6 @@ const App: React.FC = () => {
   const [creditCardSales, setCreditCardSales] = useState<CreditCardSale[]>([]);
   const [receipts, setReceipts] = useState<Receipt[]>([]);
 
-  // Ice Cream States
   const [iceCreamItems, setIceCreamItems] = useState<IceCreamItem[]>([]);
   const [iceCreamSales, setIceCreamSales] = useState<IceCreamDailySale[]>([]);
   const [iceCreamFinances, setIceCreamFinances] = useState<IceCreamTransaction[]>([]);
@@ -104,25 +102,28 @@ const App: React.FC = () => {
         const { data: dbPerf } = await supabase.from('monthly_performance').select('*').order('month', { ascending: false });
         if (dbPerf) {
             setPerformanceData(dbPerf.map((p: any) => ({ 
-                id: p.id, storeId: p.store_id, month: p.month, revenueTarget: Number(p.revenue_target || 0), revenueActual: Number(p.revenue_actual || 0), itemsTarget: Number(p.items_target || 0), itemsActual: Number(p.items_actual || 0), paTarget: Number(p.pa_target || 0), ticketTarget: Number(p.ticket_target || 0), puTarget: Number(p.pu_target || 0), delinquencyTarget: Number(p.delinquency_target || 0), itemsPerTicket: Number(p.pa_actual || 0), averageTicket: Number(p.ticket_actual || 0), unitPriceAverage: Number(p.pu_actual || 0), delinquencyRate: Number(p.delinquency_actual || 0), percentMeta: p.revenue_target > 0 ? (p.revenue_actual / p.revenue_target) * 100 : 0, trend: 'stable', correctedDailyGoal: 0 
+                id: p.id, storeId: p.store_id, month: p.month, revenue_target: Number(p.revenue_target || 0), revenue_actual: Number(p.revenue_actual || 0), items_target: Number(p.items_target || 0), items_actual: Number(p.items_actual || 0), pa_target: Number(p.pa_target || 0), ticket_target: Number(p.ticket_target || 0), pu_target: Number(p.pu_target || 0), delinquency_target: Number(p.delinquency_target || 0), itemsPerTicket: Number(p.pa_actual || 0), averageTicket: Number(p.ticket_actual || 0), unitPriceAverage: Number(p.pu_actual || 0), delinquencyRate: Number(p.delinquency_actual || 0), percentMeta: p.revenue_target > 0 ? (p.revenue_actual / p.revenue_target) * 100 : 0, trend: 'stable', correctedDailyGoal: 0 
             })));
         }
 
+        // AUDIT: Garantir seleção explícita e mapeamento robusto para exibir o nome da marca
         const { data: dbCotas } = await supabase.from('cotas').select('*').order('created_at', { ascending: false });
-        if (dbCotas) setCotas(dbCotas.map((c: any) => ({
-            id: c.id, 
-            storeId: c.store_id, 
-            brand: c.brand, 
-            classification: c.classification, 
-            totalValue: Number(c.total_value), 
-            shipmentDate: c.shipment_date, 
-            paymentTerms: c.payment_terms, 
-            pairs: c.pairs, 
-            installments: c.installments, 
-            createdAt: new Date(c.created_at), 
-            createdByRole: c.created_by_role as UserRole, 
-            status: c.status
-        })));
+        if (dbCotas) {
+            setCotas(dbCotas.map((c: any) => ({
+                id: c.id, 
+                storeId: c.store_id, 
+                brand: c.brand || '', // Explicit mapping
+                classification: c.classification || '', 
+                totalValue: Number(c.total_value || 0), 
+                shipmentDate: c.shipment_date, 
+                paymentTerms: c.payment_terms || '', 
+                pairs: Number(c.pairs || 0), 
+                installments: c.installments || {}, 
+                createdAt: new Date(c.created_at), 
+                createdByRole: c.created_by_role as UserRole, 
+                status: c.status
+            })));
+        }
 
         const { data: dbCotaSet } = await supabase.from('cota_settings').select('*');
         if (dbCotaSet) setCotaSettings(dbCotaSet.map((s: any) => ({ storeId: s.store_id, budgetValue: Number(s.budget_value), managerPercent: Number(s.manager_percent) })));
@@ -137,7 +138,7 @@ const App: React.FC = () => {
         if (dbIceSales) setIceCreamSales(dbIceSales.map((s: any) => ({ id: String(s.id), itemId: String(s.item_id), productName: String(s.product_name || ''), category: String(s.category || ''), flavor: String(s.flavor || ''), unitsSold: Number(s.units_sold), unitPrice: Number(s.unit_price || 0), totalValue: Number(s.total_value || 0), paymentMethod: s.payment_method, createdAt: s.created_at })));
 
         const { data: dbIceFinances } = await supabase.from('ice_cream_finances').select('*').order('date', { ascending: false });
-        if (dbIceFinances) setIceCreamFinances(dbIceFinances.map((f: any) => ({ id: String(f.id), date: f.date, type: f.type, category: f.category, value: Number(f.value), employeeName: f.employee_name || '', description: f.description, createdAt: new Date(f.created_at) })));
+        if (dbIceFinances) setIceCreamFinances(dbIceFinances.map((f: any) => ({ id: String(f.id), date: f.date, type: f.type, category: f.category, value: Number(f.value), employee_name: f.employee_name || '', description: f.description, createdAt: new Date(f.created_at) })));
 
       } catch (error) {
           console.error("Erro ao carregar dados:", error);
@@ -164,18 +165,6 @@ const App: React.FC = () => {
     });
     return grps;
   }, [allowedPages]);
-
-  const handleUpdateGoals = async (data: MonthlyPerformance[]) => {
-      try {
-          const payload = data.map(item => ({ store_id: item.storeId, month: item.month, revenue_target: item.revenueTarget, revenue_actual: item.revenueActual, items_target: item.itemsTarget, items_actual: item.itemsActual, pa_target: item.paTarget, pa_actual: item.itemsPerTicket, ticket_target: item.ticketTarget, ticket_actual: item.averageTicket, pu_target: item.puTarget, pu_actual: item.unitPriceAverage, delinquency_target: item.delinquencyTarget, delinquency_actual: item.delinquencyRate }));
-          const { error } = await supabase.from('monthly_performance').upsert(payload, { onConflict: 'store_id,month' });
-          if (error) throw new Error(error.message);
-          await loadAllData();
-      } catch (err: any) {
-          console.error("Erro ao salvar metas:", err.message);
-          throw err;
-      }
-  };
 
   const authenticateUser = async (email: string, password: string, rememberMe: boolean): Promise<{ success: boolean; user?: User; error?: string }> => {
       try {
@@ -224,7 +213,6 @@ const App: React.FC = () => {
     const savedLocal = localStorage.getItem('rc_user');
     const savedSession = sessionStorage.getItem('rc_user');
     const savedUser = savedLocal || savedSession;
-    
     if (savedUser) { 
         try { 
             const parsedUser = JSON.parse(savedUser); 
@@ -247,11 +235,19 @@ const App: React.FC = () => {
       case 'dashboard':
         return user.role === UserRole.MANAGER 
           ? <DashboardManager user={user} stores={stores} performanceData={performanceData} purchasingData={productData} />
-          : <DashboardAdmin stores={stores} performanceData={performanceData} onImportData={async (d) => { await handleUpdateGoals(d); }} onSaveGoals={handleUpdateGoals} />;
+          : <DashboardAdmin stores={stores} performanceData={performanceData} onImportData={async (d) => { 
+              const payload = d.map(item => ({ store_id: item.storeId, month: item.month, revenue_target: item.revenueTarget, revenue_actual: item.revenueActual, items_target: item.itemsTarget, items_actual: item.itemsActual, pa_target: item.paTarget, pa_actual: item.itemsPerTicket, ticket_target: item.ticketTarget, ticket_actual: item.averageTicket, pu_target: item.puTarget, pu_actual: item.unitPriceAverage, delinquency_target: item.delinquencyTarget, delinquency_actual: item.delinquencyRate }));
+              const { error } = await supabase.from('monthly_performance').upsert(payload, { onConflict: 'store_id,month' });
+              if (error) throw error;
+              await loadAllData();
+          }} />;
       case 'metas_registration':
-        return <GoalRegistration stores={stores} performanceData={performanceData} onUpdateData={handleUpdateGoals} />;
-      case 'purchases':
-        return <DashboardPurchases stores={stores} data={productData} onImport={async (d: any) => { await supabase.from('product_performance').upsert((d as ProductPerformance[]).map(item => ({ store_id: item.storeId, month: item.month, brand: item.brand, category: item.category, pairs_sold: item.pairsSold, revenue: item.revenue }))); await loadAllData(); }} />;
+        return <GoalRegistration stores={stores} performanceData={performanceData} onUpdateData={async (d) => {
+              const payload = d.map(item => ({ store_id: item.storeId, month: item.month, revenue_target: item.revenueTarget, revenue_actual: item.revenueActual, items_target: item.itemsTarget, items_actual: item.itemsActual, pa_target: item.paTarget, pa_actual: item.itemsPerTicket, ticket_target: item.ticketTarget, ticket_actual: item.averageTicket, pu_target: item.puTarget, pu_actual: item.unitPriceAverage, delinquency_target: item.delinquencyTarget, delinquency_actual: item.delinquencyRate }));
+              const { error } = await supabase.from('monthly_performance').upsert(payload, { onConflict: 'store_id,month' });
+              if (error) throw error;
+              await loadAllData();
+        }} />;
       case 'cotas':
         return <CotasManagement 
             user={user} 
@@ -260,45 +256,70 @@ const App: React.FC = () => {
             cotaSettings={cotaSettings} 
             cotaDebts={cotaDebts} 
             onAddCota={async (c) => { 
-                // CRITICAL: UUID column in Supabase cannot be an empty string. Omit 'id' to let Supabase generate it.
-                const { error } = await supabase.from('cotas').insert({ 
-                    store_id: c.storeId, 
-                    brand: c.brand, 
+                // REGRA 1: Bloqueio de IDs inválidos
+                if (!c.storeId || String(c.storeId).startsWith('temp')) {
+                    throw new Error("Persistência Bloqueada: ID de Unidade Operacional Inválido.");
+                }
+                
+                // REGRA 3: Conversão OBRIGATÓRIA de YYYY-MM para YYYY-MM-DD
+                const shipmentDateDB = `${c.shipmentDate}-01`;
+
+                // REGRA 4: Mapeamento de Payload Final (jsonb + tipagem numérica)
+                const payload = { 
+                    store_id: c.storeId,
+                    brand: c.brand.trim().toUpperCase(), 
                     classification: c.classification, 
-                    total_value: c.totalValue, 
-                    shipment_date: c.shipmentDate, 
+                    total_value: Number(c.totalValue), 
+                    shipment_date: shipmentDateDB, 
                     payment_terms: c.paymentTerms, 
-                    pairs: c.pairs, 
-                    installments: c.installments, 
+                    pairs: Number(c.pairs || 0), 
+                    installments: c.installments, // Objeto JSONB puro
                     created_by_role: c.createdByRole,
                     status: c.status || 'pending'
-                }); 
+                };
+
+                console.log("AUDIT [onAddCota] PRE-INSERT PAYLOAD:", payload);
+
+                // REGRA EXECUÇÃO: Insert real com select
+                const { data, error } = await supabase
+                    .from('cotas')
+                    .insert([payload])
+                    .select(); 
+                
+                // REGRA EXECUÇÃO: Se error existir -> throw error
                 if (error) {
-                    console.error("Supabase insert error:", error);
-                    throw new Error(error.message);
+                    console.error("AUDIT [onAddCota] SUPABASE_ERROR:", error);
+                    throw new Error(`Falha crítica na gravação do pedido: ${error.message}`);
                 }
+                
+                console.log("AUDIT [onAddCota] POST-INSERT SUCCESS:", data);
+
+                // Sincronização de estado
                 await loadAllData(); 
             }} 
             onDeleteCota={async (id) => { 
-                await supabase.from('cotas').delete().eq('id', id); 
+                const { error } = await supabase.from('cotas').delete().eq('id', id); 
+                if (error) throw error;
                 await loadAllData(); 
             }} 
             onUpdateCota={async (c) => {
-                await supabase.from('cotas').update({ status: c.status }).eq('id', c.id);
+                const { error } = await supabase.from('cotas').update({ status: c.status }).eq('id', c.id);
+                if (error) throw error;
                 await loadAllData();
             }}
             onSaveSettings={async (s) => { 
-                await supabase.from('cota_settings').upsert({ 
-                    store_id: s.storeId, 
-                    budget_value: s.budgetValue, 
-                    manager_percent: s.managerPercent 
-                }, { onConflict: 'store_id' }); 
+                const { error } = await supabase.from('cota_settings').upsert({ store_id: s.storeId, budget_value: s.budgetValue, manager_percent: s.managerPercent }, { onConflict: 'store_id' }); 
+                if (error) throw error;
                 await loadAllData(); 
             }} 
             onSaveDebts={async (id, d) => { 
                 const payload = Object.entries(d).map(([month, value]) => ({ store_id: id, month, value })); 
-                await supabase.from('cota_debts').delete().eq('store_id', id); 
-                if (payload.length > 0) await supabase.from('cota_debts').insert(payload); 
+                const { error: delError } = await supabase.from('cota_debts').delete().eq('store_id', id); 
+                if (delError) throw delError;
+                if (payload.length > 0) {
+                  const { error: insError } = await supabase.from('cota_debts').insert(payload); 
+                  if (insError) throw insError;
+                }
                 await loadAllData(); 
             }} 
         />;
@@ -316,6 +337,8 @@ const App: React.FC = () => {
         return <IceCreamModule items={iceCreamItems} sales={iceCreamSales} finances={iceCreamFinances} onAddSales={async (s) => { await supabase.from('ice_cream_daily_sales').insert(s); await loadAllData(); }} onUpdatePrice={async (id, p) => { await supabase.from('products').update({ price: p }).eq('id', id); await loadAllData(); }} onUpdateItem={async (i) => { await supabase.from('products').update(i).eq('id', i.id); await loadAllData(); }} onAddTransaction={async (tx) => { await supabase.from('ice_cream_finances').insert({ date: tx.date, type: tx.type, category: tx.category, value: tx.value, employee_name: tx.employeeName, description: tx.description }); await loadAllData(); }} onDeleteTransaction={async (id) => { await supabase.from('ice_cream_finances').delete().eq('id', id); await loadAllData(); }} onAddItem={async (n, c, p, f) => { await supabase.from('products').insert({ name: n, category: c, price: p, flavor: f }); await loadAllData(); }} onDeleteItem={async (id) => { await supabase.from('products').delete().eq('id', id); await loadAllData(); }} />;
       case 'admin_users':
           return <AdminUsersManagement currentUser={user} />;
+      case 'access_control':
+        return <AccessControlManagement />;
       case 'audit':
         return <SystemAudit logs={logs} receipts={receipts} cashErrors={cashErrors} />;
       case 'auth_print':
@@ -324,10 +347,8 @@ const App: React.FC = () => {
         return <TermoAutorizacao user={user} store={stores.find(s => s.id === user.storeId)} />;
       case 'settings':
         return <AdminSettings stores={stores} onAddStore={async (s) => { await supabase.from('stores').insert({ number: s.number, name: s.name, city: s.city, manager_name: s.managerName, manager_email: s.managerEmail, manager_phone: s.managerPhone, password: s.password, status: s.status, role: s.role }); await loadAllData(); }} onUpdateStore={async (s) => { await supabase.from('stores').update({ number: s.number, name: s.name, city: s.city, manager_name: s.managerName, manager_email: s.managerEmail, manager_phone: s.managerPhone, password: s.password, status: s.status, role: s.role }).eq('id', s.id); await loadAllData(); }} onDeleteStore={async (id) => { await supabase.from('stores').delete().eq('id', id); await loadAllData(); }} />;
-      case 'access_control':
-        return <AccessControlManagement />;
       default:
-        return <div className="p-10">Página não encontrada</div>;
+        return <div className="p-10">Selecione uma opção no menu lateral.</div>;
     }
   };
 
@@ -347,7 +368,6 @@ const App: React.FC = () => {
              </div>
              <button className="md:hidden ml-auto text-blue-300" onClick={() => setIsSidebarOpen(false)}><X size={20}/></button>
           </div>
-
           <nav className="flex-1 space-y-1 overflow-y-auto no-scrollbar pr-1">
             {Object.entries(menuGroups).map(([groupName, items]) => (
                 <div key={groupName} className="mb-4">
@@ -367,7 +387,6 @@ const App: React.FC = () => {
                 </div>
             ))}
           </nav>
-
           <div className="pt-4 mt-4 border-t border-blue-800">
             <div className="flex items-center gap-3 px-4 py-4 bg-black/20 rounded-2xl mb-4">
                 <div className="w-8 h-8 rounded-full bg-blue-600 flex items-center justify-center font-bold text-xs uppercase shadow-inner border border-blue-400">{user.name.charAt(0)}</div>
@@ -381,7 +400,6 @@ const App: React.FC = () => {
         </div>
       </div>
       )}
-
       <div className="flex-1 flex flex-col h-screen overflow-hidden bg-gray-100">
          {user && (
          <div className="md:hidden bg-white shadow-md p-4 flex justify-between items-center z-40 border-b border-gray-200">
