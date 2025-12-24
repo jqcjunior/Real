@@ -106,13 +106,12 @@ const App: React.FC = () => {
             })));
         }
 
-        // AUDIT: Garantir seleção explícita e mapeamento robusto para exibir o nome da marca
         const { data: dbCotas } = await supabase.from('cotas').select('*').order('created_at', { ascending: false });
         if (dbCotas) {
             setCotas(dbCotas.map((c: any) => ({
                 id: c.id, 
                 storeId: c.store_id, 
-                brand: c.brand || '', // Explicit mapping
+                brand: c.brand || '', 
                 classification: c.classification || '', 
                 totalValue: Number(c.total_value || 0), 
                 shipmentDate: c.shipment_date, 
@@ -256,15 +255,10 @@ const App: React.FC = () => {
             cotaSettings={cotaSettings} 
             cotaDebts={cotaDebts} 
             onAddCota={async (c) => { 
-                // REGRA 1: Bloqueio de IDs inválidos
                 if (!c.storeId || String(c.storeId).startsWith('temp')) {
                     throw new Error("Persistência Bloqueada: ID de Unidade Operacional Inválido.");
                 }
-                
-                // REGRA 3: Conversão OBRIGATÓRIA de YYYY-MM para YYYY-MM-DD
                 const shipmentDateDB = `${c.shipmentDate}-01`;
-
-                // REGRA 4: Mapeamento de Payload Final (jsonb + tipagem numérica)
                 const payload = { 
                     store_id: c.storeId,
                     brand: c.brand.trim().toUpperCase(), 
@@ -273,28 +267,12 @@ const App: React.FC = () => {
                     shipment_date: shipmentDateDB, 
                     payment_terms: c.paymentTerms, 
                     pairs: Number(c.pairs || 0), 
-                    installments: c.installments, // Objeto JSONB puro
+                    installments: c.installments, 
                     created_by_role: c.createdByRole,
                     status: c.status || 'pending'
                 };
-
-                console.log("AUDIT [onAddCota] PRE-INSERT PAYLOAD:", payload);
-
-                // REGRA EXECUÇÃO: Insert real com select
-                const { data, error } = await supabase
-                    .from('cotas')
-                    .insert([payload])
-                    .select(); 
-                
-                // REGRA EXECUÇÃO: Se error existir -> throw error
-                if (error) {
-                    console.error("AUDIT [onAddCota] SUPABASE_ERROR:", error);
-                    throw new Error(`Falha crítica na gravação do pedido: ${error.message}`);
-                }
-                
-                console.log("AUDIT [onAddCota] POST-INSERT SUCCESS:", data);
-
-                // Sincronização de estado
+                const { data, error } = await supabase.from('cotas').insert([payload]).select(); 
+                if (error) throw new Error(`Falha crítica na gravação do pedido: ${error.message}`);
                 await loadAllData(); 
             }} 
             onDeleteCota={async (id) => { 
@@ -357,16 +335,16 @@ const App: React.FC = () => {
       {user && (
       <div className={`fixed md:sticky top-0 left-0 h-screen w-64 bg-gradient-to-b from-blue-950 to-blue-900 text-white shadow-2xl z-50 transition-transform duration-300 border-r border-blue-800 ${isSidebarOpen ? 'translate-x-0' : '-translate-x-full md:translate-x-0'}`}>
         <div className="p-6 flex flex-col h-full">
-          <div className="flex items-center gap-4 mb-8 pb-6 border-b border-blue-800/50">
-             <div className="relative shrink-0">
-                <img src={LOGO_URL} alt="Real Admin" className="w-16 h-16 rounded-full object-contain shadow-lg border-2 border-white/10 bg-white p-1" />
-                <div className="absolute bottom-0 right-0 w-4 h-4 bg-green-500 border-2 border-blue-950 rounded-full shadow-[0_0_8px_rgba(34,197,94,0.5)]"></div>
+          <div className="flex flex-col items-center mb-8 pb-6 border-b border-blue-800/50">
+             <div className="relative mb-3">
+                <img src={LOGO_URL} alt="Real Calçados" className="w-32 h-auto drop-shadow-xl" />
+                <div className="absolute bottom-1 right-2 w-4 h-4 bg-green-500 border-2 border-blue-950 rounded-full shadow-[0_0_8px_rgba(34,197,94,0.5)]"></div>
              </div>
-             <div>
+             <div className="text-center">
                 <h1 className="text-sm font-black italic tracking-tighter leading-none uppercase">REAL <span className="text-red-500">ADMIN</span></h1>
                 <p className="text-[8px] text-blue-300 uppercase tracking-widest font-black mt-1 opacity-80">Gestão Estratégica</p>
              </div>
-             <button className="md:hidden ml-auto text-blue-300" onClick={() => setIsSidebarOpen(false)}><X size={20}/></button>
+             <button className="md:hidden absolute top-4 right-4 text-blue-300" onClick={() => setIsSidebarOpen(false)}><X size={20}/></button>
           </div>
           <nav className="flex-1 space-y-1 overflow-y-auto no-scrollbar pr-1">
             {Object.entries(menuGroups).map(([groupName, items]) => (
@@ -404,7 +382,7 @@ const App: React.FC = () => {
          {user && (
          <div className="md:hidden bg-white shadow-md p-4 flex justify-between items-center z-40 border-b border-gray-200">
             <div className="flex items-center gap-3">
-                <img src={LOGO_URL} alt="Real Admin" className="w-10 h-10 rounded-full object-contain bg-white p-0.5" />
+                <img src={LOGO_URL} alt="Real Admin" className="h-10 w-auto" />
                 <div>
                    <h1 className="text-xs font-black italic text-blue-950 tracking-tighter uppercase leading-none">REAL <span className="text-red-600">ADMIN</span></h1>
                    <p className="text-[7px] text-gray-400 font-black uppercase tracking-widest">Gestão Estratégica</p>

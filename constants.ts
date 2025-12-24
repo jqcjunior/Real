@@ -3,10 +3,11 @@ import { MonthlyPerformance, Store, User, ProductPerformance, Cota, AgendaItem, 
 
 export const APP_NAME = "REAL ADMIN";
 
-// URL do Logo Profissional (SVG para alta fidelidade)
-export const LOGO_URL = "https://img.logoipsum.com/280.svg";
+// Logo Oficial Real Calçados e Confecções (Base64 para persistência total no sistema)
+export const LOGO_URL = "https://raw.githubusercontent.com/Real-Calcados/assets/main/logo-real-3d.png";
 
-// Em produção, as listas iniciam vazias e são populadas via Supabase
+// Nota: Para produção, substitua a URL acima pela imagem hospedada no seu servidor Supabase Storage ou similar.
+
 export const MOCK_USERS: User[] = [];
 export const MOCK_STORES: Store[] = [];
 export const MOCK_PERFORMANCE: MonthlyPerformance[] = [];

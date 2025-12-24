@@ -463,11 +463,13 @@ const CotasManagement: React.FC<CotasManagementProps> = ({ user, stores, cotas, 
         {/* MAIN TABLE */}
         <div className="bg-white rounded-b-[32px] rounded-tr-[32px] shadow-2xl border border-gray-200 overflow-hidden flex flex-col">
             <div className="overflow-x-auto scrollbar-thin scrollbar-thumb-gray-300">
-                <table className="w-full border-collapse text-sm min-w-[1500px] table-fixed">
+                <table className="w-full border-collapse text-sm min-w-[1700px] table-fixed">
                     <thead>
                         <tr className="bg-gray-950 text-white uppercase text-[10px] font-black tracking-widest">
-                            <th className="p-3 border-r border-gray-800 text-left w-[280px] sticky left-0 bg-gray-950 z-20 italic">Identificação / Projeção de Uso</th>
-                            <th className="p-3 border-r border-gray-800 text-center w-[120px]">Total Pedido</th>
+                            <th className="p-3 border-r border-gray-800 text-left w-[250px] sticky left-0 bg-gray-950 z-20 italic">Identificação / Projeção</th>
+                            <th className="p-3 border-r border-gray-800 text-center w-[80px]">Pares</th>
+                            <th className="p-3 border-r border-gray-800 text-center w-[120px]">Valor Total</th>
+                            <th className="p-3 border-r border-gray-800 text-center w-[120px]">Prazos</th>
                             <th className="p-3 border-r border-gray-800 text-center w-[80px]">Emb.</th>
                             {tableMonths.map(month => <th key={month} className="p-3 border-r border-gray-800 text-center w-[100px]">{formatMonthHeader(month)}</th>)}
                             <th className="p-3 w-16 text-center">Ações</th>
@@ -475,23 +477,10 @@ const CotasManagement: React.FC<CotasManagementProps> = ({ user, stores, cotas, 
                     </thead>
                     <tbody key={`body-${activeTab}`} className="divide-y divide-gray-100 bg-white">
                         
-                        {/* LINHA DE DÍVIDA PROJETADA (ABATE DO TOTAL) */}
-                        <tr className="bg-red-50 text-red-950 border-b border-red-200 font-black relative z-10">
-                            <td className="p-2.5 border-r border-red-200 font-black sticky left-0 bg-red-50 z-10 text-[11px] uppercase tracking-tighter pl-6 flex items-center gap-2"><Wallet size={14} className="text-red-600"/> DÍVIDA PROJETADA NO MÊS</td>
-                            <td className="p-2.5 border-r border-red-200"></td>
-                            <td className="p-2.5 border-r border-red-200"></td>
-                            {tableMonths.map(m => {
-                                const d = getDebtValue(effectiveStoreId, m);
-                                return <td key={`d-${m}`} className="p-2.5 text-center border-r border-red-200 font-black text-red-700 text-xs">{d > 0 ? `(${formatCurrency(d).replace('R$', '')})` : '-'}</td>;
-                            })}
-                            <td></td>
-                        </tr>
-
-                        {/* PROJEÇÃO LÍQUIDA COMPRADOR */}
+                        {/* 1. PROJEÇÃO LÍQUIDA COMPRADOR */}
                         <tr className="bg-blue-50/70 text-blue-950 border-b border-blue-100 font-black italic">
                             <td className="p-2.5 border-r border-blue-100 sticky left-0 bg-[#f0f9ff] z-10 text-[11px] uppercase tracking-tighter pl-6">COTA DISPONÍVEL COMPRADOR</td>
-                            <td className="p-2.5 border-r border-blue-100 text-center text-[9px] text-blue-700 italic">AJUSTADA</td>
-                            <td className="p-2.5 border-r border-blue-100"></td>
+                            <td className="p-2.5 border-r border-blue-100 text-center text-[9px] text-blue-700 italic" colSpan={4}>AJUSTADA</td>
                             {tableMonths.map(m => {
                                 const info = getBudgetInfo(effectiveStoreId);
                                 const debt = getDebtValue(effectiveStoreId, m);
@@ -504,11 +493,10 @@ const CotasManagement: React.FC<CotasManagementProps> = ({ user, stores, cotas, 
                             <td></td>
                         </tr>
 
-                        {/* PROJEÇÃO LÍQUIDA GERENTE */}
+                        {/* 2. PROJEÇÃO LÍQUIDA GERENTE */}
                         <tr className="bg-purple-50/70 text-purple-950 border-b border-purple-100 font-black italic">
                             <td className="p-2.5 border-r border-purple-100 sticky left-0 bg-[#faf5ff] z-10 text-[11px] uppercase tracking-tighter pl-6">COTA DISPONÍVEL GERENTE</td>
-                            <td className="p-2.5 border-r border-purple-100 text-center text-[9px] text-purple-700 italic">AJUSTADA</td>
-                            <td className="p-2.5 border-r border-purple-100"></td>
+                            <td className="p-2.5 border-r border-purple-100 text-center text-[9px] text-purple-700 italic" colSpan={4}>AJUSTADA</td>
                             {tableMonths.map(m => {
                                 const info = getBudgetInfo(effectiveStoreId);
                                 const debt = getDebtValue(effectiveStoreId, m);
@@ -521,16 +509,49 @@ const CotasManagement: React.FC<CotasManagementProps> = ({ user, stores, cotas, 
                             <td></td>
                         </tr>
 
+                        {/* 3. LINHA DE DÍVIDA PROJETADA (ABATE DO TOTAL) */}
+                        <tr className="bg-red-50 text-red-950 border-b border-red-200 font-black relative z-10">
+                            <td className="p-2.5 border-r border-red-200 font-black sticky left-0 bg-red-50 z-10 text-[11px] uppercase tracking-tighter pl-6 flex items-center gap-2"><Wallet size={14} className="text-red-600"/> DÍVIDA PROJETADA NO MÊS</td>
+                            <td className="p-2.5 border-r border-red-200" colSpan={4}></td>
+                            {tableMonths.map(m => {
+                                const d = getDebtValue(effectiveStoreId, m);
+                                return <td key={`d-${m}`} className="p-2.5 text-center border-r border-red-200 font-black text-red-700 text-xs">{d > 0 ? `(${formatCurrency(d).replace('R$', '')})` : '-'}</td>;
+                            })}
+                            <td></td>
+                        </tr>
+
+                        {/* 4. VALIDADO COMPRADOR (CONSOLIDADO) */}
+                        <tr className="bg-blue-100/40 text-blue-900 border-b border-blue-200 font-black italic">
+                            <td className="p-2.5 border-r border-blue-200 sticky left-0 bg-[#e0f2fe] z-10 text-[11px] uppercase tracking-tighter pl-6">VALIDADO COMPRADOR (CONSOLIDADO)</td>
+                            <td className="p-2.5 border-r border-blue-200" colSpan={4}></td>
+                            {tableMonths.map(m => {
+                                const val = getMonthTotalValidatedByRole(m, UserRole.ADMIN);
+                                return <td key={`vadmin-${m}`} className="p-2.5 text-center border-r border-blue-200 font-black text-xs text-blue-700">{val > 0 ? formatCurrency(val) : '-'}</td>;
+                            })}
+                            <td></td>
+                        </tr>
+
+                        {/* 5. VALIDADO GERENTE (CONSOLIDADO) */}
+                        <tr className="bg-purple-100/40 text-purple-900 border-b border-purple-200 font-black italic">
+                            <td className="p-2.5 border-r border-purple-200 sticky left-0 bg-[#f3e8ff] z-10 text-[11px] uppercase tracking-tighter pl-6">VALIDADO GERENTE (CONSOLIDADO)</td>
+                            <td className="p-2.5 border-r border-purple-200" colSpan={4}></td>
+                            {tableMonths.map(m => {
+                                const val = getMonthTotalValidatedByRole(m, UserRole.MANAGER);
+                                return <td key={`vmgr-${m}`} className="p-2.5 text-center border-r border-purple-200 font-black text-xs text-purple-700">{val > 0 ? formatCurrency(val) : '-'}</td>;
+                            })}
+                            <td></td>
+                        </tr>
+
+                        {/* TOTAL LÍQUIDO */}
                         <tr className="bg-gray-900 text-white border-b border-gray-800 font-black italic">
                             <td className="p-3 border-r border-gray-800 sticky left-0 bg-gray-900 z-10 text-[12px] uppercase tracking-widest pl-6">DISPONIBILIDADE LÍQUIDA (TOTAL)</td>
-                            <td className="p-3 border-r border-gray-800"></td>
-                            <td className="p-3 border-r border-gray-800"></td>
+                            <td className="p-3 border-r border-gray-800" colSpan={4}></td>
                             {tableMonths.map(m => {
                                 const info = getBudgetInfo(effectiveStoreId);
                                 const debt = getDebtValue(effectiveStoreId, m);
                                 const used = getMonthTotalPendingByRole(m, UserRole.ADMIN) + getMonthTotalValidatedByRole(m, UserRole.ADMIN) + getMonthTotalPendingByRole(m, UserRole.MANAGER) + getMonthTotalValidatedByRole(m, UserRole.MANAGER);
                                 const bal = info.value - debt - used;
-                                return <td key={`b-${m}`} className={`p-3 text-center border-r border-gray-800 font-black text-xs ${bal < 0 ? 'text-red-500' : 'text-green-400'}`}>{formatCurrency(bal)}</td>;
+                                return <td key={`btotal-${m}`} className={`p-3 text-center border-r border-gray-800 font-black text-xs ${bal < 0 ? 'text-red-500' : 'text-green-400'}`}>{formatCurrency(bal)}</td>;
                             })}
                             <td></td>
                         </tr>
@@ -545,11 +566,13 @@ const CotasManagement: React.FC<CotasManagementProps> = ({ user, stores, cotas, 
                                             <span className="font-black uppercase italic text-[13px] text-gray-900 tracking-tight truncate">{c.brand}</span>
                                         </div>
                                         <span className="text-[10px] text-gray-400 font-black uppercase italic truncate opacity-90 pl-4.5">
-                                            {c.classification} • <span className="text-gray-600 font-black">{c.pairs || 0} PARES</span>
+                                            {c.classification}
                                         </span>
                                     </div>
                                 </td>
+                                <td className="p-3 text-center border-r border-gray-100 text-xs font-black text-gray-600">{c.pairs || 0}</td>
                                 <td className="p-3 text-center font-black border-r border-gray-100 text-xs text-gray-800 italic">{formatCurrency(c.totalValue)}</td>
+                                <td className="p-3 text-center text-gray-400 border-r border-gray-100 text-[10px] font-black uppercase italic truncate" title={c.paymentTerms}>{c.paymentTerms}</td>
                                 <td className="p-3 text-center text-gray-400 border-r border-gray-100 text-[10px] font-black uppercase">{formatMonthHeader(c.shipmentDate)}</td>
                                 {tableMonths.map(m => {
                                     const val = getCotaInstallmentForMonth(c, m);
