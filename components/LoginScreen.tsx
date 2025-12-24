@@ -40,13 +40,13 @@ const LoginScreen: React.FC<LoginScreenProps> = ({ onLoginAttempt, onRegisterReq
     <div className="min-h-screen flex items-center justify-center bg-gray-100 font-sans p-4">
       <div className="w-full max-w-md bg-white rounded-[40px] shadow-2xl overflow-hidden p-8 md:p-12 border border-gray-100 relative">
         
-        {/* LOGO INTEGRADA AO PAINEL - CIRCULAR E LOCAL */}
-        <div className="flex justify-center mb-6">
-          <div className="w-28 h-28 rounded-full bg-white shadow-lg flex items-center justify-center border border-gray-50 overflow-hidden">
-            <img
-              src={BRAND_LOGO}
-              alt="Real Calçados"
-              className="w-24 h-24 object-contain rounded-full"
+        {/* LOGO INTEGRADA AO PAINEL - CONFORME REQUISITOS OBRIGATÓRIOS */}
+        <div className="flex justify-center mb-8">
+          <div className="w-28 h-28 rounded-full overflow-hidden shadow-xl border-4 border-white bg-white">
+            <img 
+              src="/branding/logo-real.png" 
+              alt="Real Admin"
+              className="w-full h-full object-cover"
             />
           </div>
         </div>

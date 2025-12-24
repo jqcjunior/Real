@@ -231,12 +231,12 @@ const App: React.FC = () => {
       <>
         {/* HEADER SUPERIOR FIXO - IDENTIDADE CORPORATIVA REFORÇADA */}
         <header className="fixed top-0 left-0 right-0 h-16 bg-white border-b border-gray-200 z-[60] flex items-center justify-between px-6 shadow-sm">
-            <div className="flex items-center">
-                <div className="w-10 h-10 rounded-full overflow-hidden border border-gray-100 shadow-sm flex items-center justify-center bg-white mr-4">
+            <div className="flex items-center gap-3">
+                <div className="w-10 h-10 rounded-full overflow-hidden shadow-md border border-gray-200 bg-white">
                     <img 
-                        src={BRAND_LOGO} 
-                        className="w-full h-full object-contain" 
-                        alt="Logo"
+                      src="/branding/logo-real.png" 
+                      alt="Real Admin"
+                      className="w-full h-full object-cover"
                     />
                 </div>
                 <div className="hidden md:block">
