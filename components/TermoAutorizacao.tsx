@@ -1,6 +1,8 @@
+
 import React, { useRef } from 'react';
 import { Printer, FileText } from 'lucide-react';
 import { Store, User } from '../types';
+import { BRAND_LOGO } from '../constants';
 
 interface TermoAutorizacaoProps {
   user: User;
@@ -16,10 +18,12 @@ const SingleTerm: React.FC<SingleTermProps> = ({ storeName, city }) => {
   return (
     <div className="border border-black p-2 flex flex-col justify-between h-full bg-white text-black relative overflow-hidden">
       <div>
-        <div className="flex justify-between items-center mb-3">
-             <h3 className="text-center font-extrabold text-[12px] uppercase w-full leading-none mt-2">TERMO AUTORIZAÇÃO</h3>
-             {/* Small Crown Icon Placeholder text if needed */}
-             <span className="text-[8px] font-serif font-bold absolute top-2 right-2">Real</span>
+        <div className="flex items-center justify-center gap-2 mb-3 border-b border-black pb-1">
+             <img src={BRAND_LOGO} alt="Logo" className="h-6 w-6 object-contain rounded-full" />
+             <div className="text-center">
+                 <h1 className="text-[10px] font-black leading-none uppercase italic">Real <span className="text-red-600">Calçados</span></h1>
+                 <h3 className="font-extrabold text-[9px] uppercase leading-none mt-0.5">TERMO AUTORIZAÇÃO</h3>
+             </div>
         </div>
         
         <p className="text-[10px] text-justify leading-snug mb-2 font-semibold">

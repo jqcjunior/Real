@@ -1,8 +1,11 @@
 
 import React, { useState } from 'react';
 import { User, CreditCardSale, Store, Receipt } from '../types';
-import { formatCurrency } from '../constants';
+import { formatCurrency, BRAND_LOGO } from '../constants';
 import { Printer, CreditCard, FileText, Plus, Trash2, Calendar, DollarSign, PenTool, Loader2, Save } from 'lucide-react';
+
+// Fix: Defined missing constant CARD_BRANDS to resolve the compilation error on line 239
+const CARD_BRANDS = ['Visa', 'Mastercard', 'Elo', 'Hipercard', 'Amex', 'Alelo', 'Sodexo', 'Outros'];
 
 interface FinancialModuleProps {
   user: User;
@@ -13,8 +16,6 @@ interface FinancialModuleProps {
   onDeleteSale: (id: string) => Promise<void>;
   onAddReceipt: (receipt: Receipt) => Promise<void>;
 }
-
-const CARD_BRANDS = ['Visa', 'Mastercard', 'Elo', 'Hipercard', 'Amex', 'Alelo', 'Sodexo', 'Outros'];
 
 // Helper: Number to Words (PT-BR)
 const numberToWords = (value: number): string => {
@@ -206,6 +207,7 @@ const FinancialModule: React.FC<FinancialModuleProps> = ({ user, store, sales, r
                     <div className="w-full max-w-[800px] bg-white p-10 border-2 border-dashed border-gray-300 shadow-sm print:border-2 print:border-black print:shadow-none print:w-full print:max-w-none print:absolute print:top-0 print:left-0 print:m-0 print:h-auto">
                         <div className="flex justify-between items-start mb-8 border-b-2 border-gray-800 pb-6">
                             <div className="flex items-center gap-4">
+                                <img src={BRAND_LOGO} alt="Logo" className="h-14 w-14 object-contain rounded-full shadow-sm print:h-16 print:w-16" />
                                 <div className="text-2xl font-black text-gray-900 tracking-tighter uppercase italic">Real <span className="text-red-600 print:text-black">Calçados</span></div>
                             </div>
                             <div className="text-right">

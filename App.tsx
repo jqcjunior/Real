@@ -100,11 +100,86 @@ const App: React.FC = () => {
                 id: p.id, storeId: p.store_id, month: p.month, revenueTarget: Number(p.revenue_target || 0), revenueActual: Number(p.revenue_actual || 0), itemsTarget: Number(p.items_target || 0), itemsActual: Number(p.items_actual || 0), paTarget: Number(p.pa_target || 0), itemsPerTicket: Number(p.pa_actual || 0), ticketTarget: Number(p.ticket_target || 0), averageTicket: Number(p.ticket_actual || 0), puTarget: Number(p.pu_target || 0), unitPriceAverage: Number(p.pu_actual || 0), delinquencyTarget: Number(p.delinquency_target || 0), delinquencyRate: Number(p.delinquency_actual || 0), percentMeta: p.revenue_target > 0 ? (p.revenue_actual / p.revenue_target) * 100 : 0, trend: 'stable', correctedDailyGoal: 0 
             })));
         }
+
+        // CARREGAMENTO DE COTAS E CONFIGURAÇÕES
+        const { data: dbCotas } = await supabase.from('cotas').select('*').order('created_at', { ascending: false });
+        if (dbCotas) setCotas(dbCotas.map((c: any) => ({
+            id: c.id, storeId: c.store_id, brand: c.brand, classification: c.classification, totalValue: Number(c.total_value), shipmentDate: c.shipment_date, paymentTerms: c.payment_terms, pairs: c.pairs, installments: c.installments, createdAt: new Date(c.created_at), createdByRole: c.created_by_role as UserRole, status: c.status
+        })));
+
+        const { data: dbSettings } = await supabase.from('cota_settings').select('*');
+        if (dbSettings) setCotaSettings(dbSettings.map((s: any) => ({ storeId: s.store_id, budgetValue: Number(s.budget_value), managerPercent: Number(s.manager_percent) })));
+
+        const { data: dbDebts } = await supabase.from('cota_debts').select('*');
+        if (dbDebts) setCotaDebts(dbDebts.map((d: any) => ({ id: d.id, storeId: d.store_id, month: d.month, value: Number(d.value) })));
+
       } catch (error) {
           console.error("Erro ao carregar dados:", error);
       } finally {
           setIsLoading(false);
       }
+  };
+
+  const handleAddCota = async (cota: Cota) => {
+      const { error } = await supabase.from('cotas').insert([{
+          store_id: cota.storeId,
+          brand: cota.brand,
+          classification: cota.classification,
+          total_value: cota.totalValue,
+          shipment_date: cota.shipmentDate,
+          payment_terms: cota.paymentTerms,
+          pairs: cota.pairs,
+          installments: cota.installments,
+          created_by_role: cota.createdByRole,
+          status: cota.status || 'pending'
+      }]);
+      
+      if (error) throw new Error(error.message);
+      await loadAllData();
+  };
+
+  const handleUpdateCota = async (cota: Cota) => {
+      const { error } = await supabase.from('cotas').update({
+          status: cota.status,
+          brand: cota.brand,
+          classification: cota.classification,
+          total_value: cota.totalValue,
+          pairs: cota.pairs,
+          payment_terms: cota.paymentTerms
+      }).eq('id', cota.id);
+      
+      if (error) throw new Error(error.message);
+      await loadAllData();
+  };
+
+  const handleDeleteCota = async (id: string) => {
+      const { error } = await supabase.from('cotas').delete().eq('id', id);
+      if (error) throw new Error(error.message);
+      await loadAllData();
+  };
+
+  const handleSaveCotaSettings = async (settings: CotaSettings) => {
+      const { error } = await supabase.from('cota_settings').upsert({
+          store_id: settings.storeId,
+          budget_value: settings.budgetValue,
+          manager_percent: settings.managerPercent,
+          updated_at: new Date().toISOString()
+      }, { onConflict: 'store_id' });
+      
+      if (error) throw new Error(error.message);
+      await loadAllData();
+  };
+
+  const handleSaveCotaDebts = async (storeId: string, debts: Record<string, number>) => {
+      for (const [month, value] of Object.entries(debts)) {
+          await supabase.from('cota_debts').upsert({
+              store_id: storeId,
+              month: month,
+              value: value,
+              created_at: new Date().toISOString()
+          }, { onConflict: 'store_id,month' });
+      }
+      await loadAllData();
   };
 
   const allowedPages = useMemo(() => {
@@ -195,7 +270,18 @@ const App: React.FC = () => {
       case 'metas_registration':
         return <GoalRegistration stores={stores} performanceData={performanceData} onUpdateData={async () => {}} />;
       case 'cotas':
-        return <CotasManagement user={user} stores={stores} cotas={cotas} cotaSettings={cotaSettings} cotaDebts={cotaDebts} onAddCota={async () => {}} onDeleteCota={async () => {}} onSaveSettings={async () => {}} onSaveDebts={async () => {}} />;
+        return <CotasManagement 
+            user={user} 
+            stores={stores} 
+            cotas={cotas} 
+            cotaSettings={cotaSettings} 
+            cotaDebts={cotaDebts} 
+            onAddCota={handleAddCota} 
+            onDeleteCota={handleDeleteCota} 
+            onUpdateCota={handleUpdateCota}
+            onSaveSettings={handleSaveCotaSettings} 
+            onSaveDebts={handleSaveCotaDebts} 
+        />;
       case 'agenda':
         return <AgendaSystem user={user} tasks={tasks} onAddTask={async () => {}} onUpdateTask={async () => {}} onDeleteTask={async () => {}} />;
       case 'financial':

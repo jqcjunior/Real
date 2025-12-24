@@ -1,13 +1,20 @@
 
 import React, { useRef } from 'react';
 import { Printer, FileSignature } from 'lucide-react';
+import { BRAND_LOGO } from '../constants';
 
 const AuthorizationForm = () => {
   return (
     <div className="border-2 border-black p-4 bg-white text-black font-sans relative box-border h-[32%] flex flex-col justify-between form-instance">
-      {/* Header */}
-      <div className="bg-black text-white text-center font-bold uppercase py-1 text-base mb-2 border-2 border-black">
-        AUTORIZAÇÃO DE COMPRA
+      {/* Header with Logo */}
+      <div className="flex items-center justify-between mb-2 gap-4">
+        <div className="flex items-center gap-2">
+            <img src={BRAND_LOGO} alt="Logo" className="h-10 w-10 object-contain rounded-full border border-black shadow-sm" />
+            <div className="text-xl font-black uppercase italic tracking-tighter">Real <span className="text-red-600">Calçados</span></div>
+        </div>
+        <div className="bg-black text-white flex-1 text-center font-bold uppercase py-1.5 text-sm border-2 border-black">
+          AUTORIZAÇÃO DE COMPRA
+        </div>
       </div>
 
       {/* Content */}

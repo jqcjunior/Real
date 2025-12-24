@@ -1,7 +1,7 @@
 
 import React, { useState } from 'react';
 import { User, Store, Receipt } from '../types';
-import { formatCurrency } from '../constants';
+import { formatCurrency, BRAND_LOGO } from '../constants';
 import { Printer, FileText, PenTool } from 'lucide-react';
 
 interface ReceiptsModuleProps {
@@ -94,8 +94,8 @@ const ReceiptsModule: React.FC<ReceiptsModuleProps> = ({ user, store, receipts, 
           return;
       }
 
-      // Use root path which works in most development environments
-      const logoUrl = window.location.origin + '/logo.png';
+      // Use the global constant for branding
+      const logoUrl = window.location.origin + BRAND_LOGO;
       const cityPrint = store?.city.split(' - ')[0] || 'Cidade';
       
       // FIX: Date parsing to avoid timezone shift. Treat as YYYY-MM-DD literal.
@@ -155,7 +155,7 @@ const ReceiptsModule: React.FC<ReceiptsModuleProps> = ({ user, store, receipts, 
                         <!-- HEADER -->
                         <div class="w-full flex justify-between items-center mb-2 border-b border-gray-800 pb-2">
                             <div class="flex items-center gap-3">
-                                <img src="${logoUrl}" alt="Real Calçados" style="height: 80px; width: auto; object-fit: contain;" />
+                                <img src="${logoUrl}" alt="Real Calçados" style="height: 60px; width: auto; border-radius: 9999px; object-fit: contain;" />
                                 <div>
                                     <h1 class="text-xl font-black text-gray-900 tracking-tighter uppercase italic leading-none">Real <span class="text-red-600">Calçados</span></h1>
                                     <p class="text-[9px] text-gray-600 mt-0.5 font-bold">Comprovante de Pagamento</p>
@@ -211,7 +211,7 @@ const ReceiptsModule: React.FC<ReceiptsModuleProps> = ({ user, store, receipts, 
                 window.onload = function() {
                     setTimeout(function() {
                         window.print();
-                    }, 800); // Increased delay slightly for logo load
+                    }, 800); 
                 }
             </script>
         </body>
@@ -348,8 +348,8 @@ const ReceiptsModule: React.FC<ReceiptsModuleProps> = ({ user, store, receipts, 
                     <div className="relative z-10">
                         <div className="flex justify-between items-center mb-8 border-b-2 border-gray-800 pb-4">
                             <div className="flex items-center gap-3">
-                                {/* Preview Logo Size Adjusted */}
-                                <img src="/logo.png" alt="Logo" className="h-16 object-contain" />
+                                {/* Preview Logo Using BRAND_LOGO */}
+                                <img src={BRAND_LOGO} alt="Logo" className="h-16 w-16 rounded-full object-contain shadow-sm border border-gray-200" />
                                 <div>
                                     <div className="text-2xl font-black text-gray-900 uppercase italic tracking-tighter">Real <span className="text-red-600">Calçados</span></div>
                                     <p className="text-[10px] text-gray-500 font-bold uppercase tracking-wider">Comprovante de Pagamento</p>
