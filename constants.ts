@@ -3,10 +3,19 @@ import { MonthlyPerformance, Store, User, ProductPerformance, Cota, AgendaItem, 
 
 export const APP_NAME = "REAL ADMIN";
 
-// Logo Oficial Real Calçados e Confecções (Base64 para persistência total no sistema)
-export const LOGO_URL = "https://raw.githubusercontent.com/Real-Calcados/assets/main/logo-real-3d.png";
+/**
+ * BRANDING DEFINITIVO
+ * Configurações de identidade visual persistente via assets locais.
+ */
+export const BRAND_LOGO = "/branding/logo-real.png";
 
-// Nota: Para produção, substitua a URL acima pela imagem hospedada no seu servidor Supabase Storage ou similar.
+export const BRANDING = {
+  logo: BRAND_LOGO,
+  appName: "Real Admin"
+};
+
+// Mantido para compatibilidade de módulos legados
+export const LOGO_URL = BRAND_LOGO; 
 
 export const MOCK_USERS: User[] = [];
 export const MOCK_STORES: Store[] = [];

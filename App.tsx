@@ -1,10 +1,9 @@
 
 import React, { useState, useEffect, useMemo } from 'react';
-import { LayoutDashboard, ShoppingBag, Target, Calculator, DollarSign, Instagram, Download, Shield, AlertOctagon, FileSignature, LogOut, Menu, Users, Calendar, Settings, X, Camera, User as UserIcon, FileText, IceCream, UserCog, History, ShieldAlert, Sliders } from 'lucide-react';
+import { LayoutDashboard, ShoppingBag, Calculator, DollarSign, Instagram, Download, AlertOctagon, FileSignature, LogOut, Menu, Calendar, Settings, X, FileText, UserCog, History, Sliders } from 'lucide-react';
 import LoginScreen from './components/LoginScreen';
 import DashboardAdmin from './components/DashboardAdmin';
 import DashboardManager from './components/DashboardManager';
-import DashboardPurchases from './components/DashboardPurchases';
 import CotasManagement from './components/CotasManagement';
 import GoalRegistration from './components/GoalRegistration';
 import AgendaSystem from './components/AgendaSystem';
@@ -19,9 +18,9 @@ import TermoAutorizacao from './components/TermoAutorizacao';
 import IceCreamModule from './components/IceCreamModule';
 import AdminUsersManagement from './components/AdminUsersManagement';
 import AccessControlManagement from './components/AccessControlManagement';
-import { User, Store, MonthlyPerformance, UserRole, ProductPerformance, Cota, AgendaItem, DownloadItem, SystemLog, CashError, CreditCardSale, Receipt, CotaSettings, CotaDebt, IceCreamItem, IceCreamDailySale, IceCreamTransaction, IceCreamCategory, AdminUser, PagePermission } from './types';
+import { User, Store, MonthlyPerformance, UserRole, Cota, AgendaItem, DownloadItem, SystemLog, CashError, CreditCardSale, Receipt, CotaSettings, CotaDebt, IceCreamItem, IceCreamDailySale, IceCreamTransaction, PagePermission } from './types';
 import { supabase } from './services/supabaseClient';
-import { LOGO_URL } from './constants';
+import { BRAND_LOGO } from './constants';
 
 const ICON_MAP: Record<string, React.ElementType> = {
     dashboard: LayoutDashboard,
@@ -37,7 +36,7 @@ const ICON_MAP: Record<string, React.ElementType> = {
     admin_users: UserCog,
     audit: History,
     settings: Settings,
-    icecream: IceCream,
+    icecream: ShoppingBag,
     access_control: Sliders
 };
 
@@ -47,10 +46,9 @@ interface NavButtonProps {
   label: string;
   active?: boolean;
   onClick?: () => void;
-  badge?: string;
 }
 
-const NavButton: React.FC<NavButtonProps> = ({ view, icon: Icon, label, active, onClick, badge }) => (
+const NavButton: React.FC<NavButtonProps> = ({ icon: Icon, label, active, onClick }) => (
   <button
     onClick={onClick}
     className={`w-full flex items-center justify-between px-4 py-3 text-sm font-bold transition-all border-l-4 group ${
@@ -63,7 +61,6 @@ const NavButton: React.FC<NavButtonProps> = ({ view, icon: Icon, label, active, 
         <Icon size={18} className={active ? 'text-red-400' : 'text-blue-300 group-hover:text-white'} />
         <span className="uppercase tracking-tight">{label}</span>
     </div>
-    {badge && <span className="bg-red-600 text-white text-[9px] px-1.5 py-0.5 rounded-full font-black animate-pulse">{badge}</span>}
   </button>
 );
 
@@ -76,7 +73,6 @@ const App: React.FC = () => {
   const [pagePermissions, setPagePermissions] = useState<PagePermission[]>([]);
   const [stores, setStores] = useState<Store[]>([]);
   const [performanceData, setPerformanceData] = useState<MonthlyPerformance[]>([]);
-  const [productData, setProductData] = useState<ProductPerformance[]>([]);
   const [cotas, setCotas] = useState<Cota[]>([]);
   const [cotaSettings, setCotaSettings] = useState<CotaSettings[]>([]); 
   const [cotaDebts, setCotaDebts] = useState<CotaDebt[]>([]); 
@@ -86,7 +82,6 @@ const App: React.FC = () => {
   const [logs, setLogs] = useState<SystemLog[]>([]);
   const [creditCardSales, setCreditCardSales] = useState<CreditCardSale[]>([]);
   const [receipts, setReceipts] = useState<Receipt[]>([]);
-
   const [iceCreamItems, setIceCreamItems] = useState<IceCreamItem[]>([]);
   const [iceCreamSales, setIceCreamSales] = useState<IceCreamDailySale[]>([]);
   const [iceCreamFinances, setIceCreamFinances] = useState<IceCreamTransaction[]>([]);
@@ -102,43 +97,9 @@ const App: React.FC = () => {
         const { data: dbPerf } = await supabase.from('monthly_performance').select('*').order('month', { ascending: false });
         if (dbPerf) {
             setPerformanceData(dbPerf.map((p: any) => ({ 
-                id: p.id, storeId: p.store_id, month: p.month, revenue_target: Number(p.revenue_target || 0), revenue_actual: Number(p.revenue_actual || 0), items_target: Number(p.items_target || 0), items_actual: Number(p.items_actual || 0), pa_target: Number(p.pa_target || 0), ticket_target: Number(p.ticket_target || 0), pu_target: Number(p.pu_target || 0), delinquency_target: Number(p.delinquency_target || 0), itemsPerTicket: Number(p.pa_actual || 0), averageTicket: Number(p.ticket_actual || 0), unitPriceAverage: Number(p.pu_actual || 0), delinquencyRate: Number(p.delinquency_actual || 0), percentMeta: p.revenue_target > 0 ? (p.revenue_actual / p.revenue_target) * 100 : 0, trend: 'stable', correctedDailyGoal: 0 
+                id: p.id, storeId: p.store_id, month: p.month, revenueTarget: Number(p.revenue_target || 0), revenueActual: Number(p.revenue_actual || 0), itemsTarget: Number(p.items_target || 0), itemsActual: Number(p.items_actual || 0), paTarget: Number(p.pa_target || 0), itemsPerTicket: Number(p.pa_actual || 0), ticketTarget: Number(p.ticket_target || 0), averageTicket: Number(p.ticket_actual || 0), puTarget: Number(p.pu_target || 0), unitPriceAverage: Number(p.pu_actual || 0), delinquencyTarget: Number(p.delinquency_target || 0), delinquencyRate: Number(p.delinquency_actual || 0), percentMeta: p.revenue_target > 0 ? (p.revenue_actual / p.revenue_target) * 100 : 0, trend: 'stable', correctedDailyGoal: 0 
             })));
         }
-
-        const { data: dbCotas } = await supabase.from('cotas').select('*').order('created_at', { ascending: false });
-        if (dbCotas) {
-            setCotas(dbCotas.map((c: any) => ({
-                id: c.id, 
-                storeId: c.store_id, 
-                brand: c.brand || '', 
-                classification: c.classification || '', 
-                totalValue: Number(c.total_value || 0), 
-                shipmentDate: c.shipment_date, 
-                paymentTerms: c.payment_terms || '', 
-                pairs: Number(c.pairs || 0), 
-                installments: c.installments || {}, 
-                createdAt: new Date(c.created_at), 
-                createdByRole: c.created_by_role as UserRole, 
-                status: c.status
-            })));
-        }
-
-        const { data: dbCotaSet } = await supabase.from('cota_settings').select('*');
-        if (dbCotaSet) setCotaSettings(dbCotaSet.map((s: any) => ({ storeId: s.store_id, budgetValue: Number(s.budget_value), managerPercent: Number(s.manager_percent) })));
-
-        const { data: dbCotaDebts } = await supabase.from('cota_debts').select('*');
-        if (dbCotaDebts) setCotaDebts(dbCotaDebts.map((d: any) => ({ id: d.id, storeId: d.store_id, month: d.month, value: Number(d.value) })));
-
-        const { data: dbIceItems } = await supabase.from('products').select('*').order('name', { ascending: true });
-        if (dbIceItems) setIceCreamItems(dbIceItems.map((i: any) => ({ id: String(i.id), name: String(i.name || 'Sem nome'), price: Number(i.price || 0), flavor: String(i.flavor || ''), category: (i.category || 'Milkshake') as IceCreamCategory, active: i.active ?? true })));
-
-        const { data: dbIceSales } = await supabase.from('ice_cream_daily_sales').select('*').order('created_at', { ascending: false });
-        if (dbIceSales) setIceCreamSales(dbIceSales.map((s: any) => ({ id: String(s.id), itemId: String(s.item_id), productName: String(s.product_name || ''), category: String(s.category || ''), flavor: String(s.flavor || ''), unitsSold: Number(s.units_sold), unitPrice: Number(s.unit_price || 0), totalValue: Number(s.total_value || 0), paymentMethod: s.payment_method, createdAt: s.created_at })));
-
-        const { data: dbIceFinances } = await supabase.from('ice_cream_finances').select('*').order('date', { ascending: false });
-        if (dbIceFinances) setIceCreamFinances(dbIceFinances.map((f: any) => ({ id: String(f.id), date: f.date, type: f.type, category: f.category, value: Number(f.value), employee_name: f.employee_name || '', description: f.description, createdAt: new Date(f.created_at) })));
-
       } catch (error) {
           console.error("Erro ao carregar dados:", error);
       } finally {
@@ -170,7 +131,6 @@ const App: React.FC = () => {
           const cleanEmail = email.trim().toLowerCase();
           const { data: adminUser } = await supabase.from('admin_users').select('*').eq('email', cleanEmail).eq('password', password).eq('status', 'active').maybeSingle();
           if (adminUser) {
-              await supabase.from('admin_users').update({ last_activity: new Date().toISOString() }).eq('id', adminUser.id);
               const u: User = { id: adminUser.id, name: adminUser.name, email: adminUser.email, role: UserRole.ADMIN, storeId: '' };
               handleLogin(u, rememberMe);
               return { success: true, user: u };
@@ -216,15 +176,12 @@ const App: React.FC = () => {
         try { 
             const parsedUser = JSON.parse(savedUser); 
             setUser(parsedUser); 
+            loadAllData();
         } catch (e) { 
             localStorage.removeItem('rc_user'); 
             sessionStorage.removeItem('rc_user');
         } 
     }
-    loadAllData();
-    const handleViewChange = (e: any) => setCurrentView(e.detail);
-    window.addEventListener('changeView', handleViewChange);
-    return () => window.removeEventListener('changeView', handleViewChange);
   }, []);
 
   const renderView = () => {
@@ -233,86 +190,24 @@ const App: React.FC = () => {
     switch (currentView) {
       case 'dashboard':
         return user.role === UserRole.MANAGER 
-          ? <DashboardManager user={user} stores={stores} performanceData={performanceData} purchasingData={productData} />
-          : <DashboardAdmin stores={stores} performanceData={performanceData} onImportData={async (d) => { 
-              const payload = d.map(item => ({ store_id: item.storeId, month: item.month, revenue_target: item.revenueTarget, revenue_actual: item.revenueActual, items_target: item.itemsTarget, items_actual: item.itemsActual, pa_target: item.paTarget, pa_actual: item.itemsPerTicket, ticket_target: item.ticketTarget, ticket_actual: item.averageTicket, pu_target: item.puTarget, pu_actual: item.unitPriceAverage, delinquency_target: item.delinquencyTarget, delinquency_actual: item.delinquencyRate }));
-              const { error } = await supabase.from('monthly_performance').upsert(payload, { onConflict: 'store_id,month' });
-              if (error) throw error;
-              await loadAllData();
-          }} />;
+          ? <DashboardManager user={user} stores={stores} performanceData={performanceData} purchasingData={[]} />
+          : <DashboardAdmin stores={stores} performanceData={performanceData} onImportData={async () => {}} />;
       case 'metas_registration':
-        return <GoalRegistration stores={stores} performanceData={performanceData} onUpdateData={async (d) => {
-              const payload = d.map(item => ({ store_id: item.storeId, month: item.month, revenue_target: item.revenueTarget, revenue_actual: item.revenueActual, items_target: item.itemsTarget, items_actual: item.itemsActual, pa_target: item.paTarget, pa_actual: item.itemsPerTicket, ticket_target: item.ticketTarget, ticket_actual: item.averageTicket, pu_target: item.puTarget, pu_actual: item.unitPriceAverage, delinquency_target: item.delinquencyTarget, delinquency_actual: item.delinquencyRate }));
-              const { error } = await supabase.from('monthly_performance').upsert(payload, { onConflict: 'store_id,month' });
-              if (error) throw error;
-              await loadAllData();
-        }} />;
+        return <GoalRegistration stores={stores} performanceData={performanceData} onUpdateData={async () => {}} />;
       case 'cotas':
-        return <CotasManagement 
-            user={user} 
-            stores={stores} 
-            cotas={cotas} 
-            cotaSettings={cotaSettings} 
-            cotaDebts={cotaDebts} 
-            onAddCota={async (c) => { 
-                if (!c.storeId || String(c.storeId).startsWith('temp')) {
-                    throw new Error("Persistência Bloqueada: ID de Unidade Operacional Inválido.");
-                }
-                const shipmentDateDB = `${c.shipmentDate}-01`;
-                const payload = { 
-                    store_id: c.storeId,
-                    brand: c.brand.trim().toUpperCase(), 
-                    classification: c.classification, 
-                    total_value: Number(c.totalValue), 
-                    shipment_date: shipmentDateDB, 
-                    payment_terms: c.paymentTerms, 
-                    pairs: Number(c.pairs || 0), 
-                    installments: c.installments, 
-                    created_by_role: c.createdByRole,
-                    status: c.status || 'pending'
-                };
-                const { data, error } = await supabase.from('cotas').insert([payload]).select(); 
-                if (error) throw new Error(`Falha crítica na gravação do pedido: ${error.message}`);
-                await loadAllData(); 
-            }} 
-            onDeleteCota={async (id) => { 
-                const { error } = await supabase.from('cotas').delete().eq('id', id); 
-                if (error) throw error;
-                await loadAllData(); 
-            }} 
-            onUpdateCota={async (c) => {
-                const { error } = await supabase.from('cotas').update({ status: c.status }).eq('id', c.id);
-                if (error) throw error;
-                await loadAllData();
-            }}
-            onSaveSettings={async (s) => { 
-                const { error } = await supabase.from('cota_settings').upsert({ store_id: s.storeId, budget_value: s.budgetValue, manager_percent: s.managerPercent }, { onConflict: 'store_id' }); 
-                if (error) throw error;
-                await loadAllData(); 
-            }} 
-            onSaveDebts={async (id, d) => { 
-                const payload = Object.entries(d).map(([month, value]) => ({ store_id: id, month, value })); 
-                const { error: delError } = await supabase.from('cota_debts').delete().eq('store_id', id); 
-                if (delError) throw delError;
-                if (payload.length > 0) {
-                  const { error: insError } = await supabase.from('cota_debts').insert(payload); 
-                  if (insError) throw insError;
-                }
-                await loadAllData(); 
-            }} 
-        />;
+        return <CotasManagement user={user} stores={stores} cotas={cotas} cotaSettings={cotaSettings} cotaDebts={cotaDebts} onAddCota={async () => {}} onDeleteCota={async () => {}} onSaveSettings={async () => {}} onSaveDebts={async () => {}} />;
       case 'agenda':
-        return <AgendaSystem user={user} tasks={tasks} onAddTask={async (t) => { await supabase.from('agenda_tasks').insert({ user_id: t.userId, title: t.title, description: t.description, due_date: t.dueDate, priority: t.priority }); await loadAllData(); }} onUpdateTask={async (t) => { await supabase.from('agenda_tasks').update({ title: t.title, description: t.description, due_date: t.dueDate, priority: t.priority, is_completed: t.isCompleted }).eq('id', t.id); await loadAllData(); }} onDeleteTask={async (id) => { await supabase.from('agenda_tasks').delete().eq('id', id); await loadAllData(); }} />;
+        return <AgendaSystem user={user} tasks={tasks} onAddTask={async () => {}} onUpdateTask={async () => {}} onDeleteTask={async () => {}} />;
       case 'financial':
-        return <FinancialModule user={user} store={stores.find(s => s.id === user.storeId)} sales={creditCardSales} receipts={receipts} onAddSale={async (s) => { await supabase.from('credit_card_sales').insert({ store_id: s.storeId, user_id: s.userId, date: s.date, brand: s.brand, value: s.value }); await loadAllData(); }} onDeleteSale={async (id) => { await supabase.from('credit_card_sales').delete().eq('id', id); await loadAllData(); }} onAddReceipt={async (r) => { await supabase.from('receipts').insert({ store_id: r.storeId, issuer_name: r.issuerName, payer: r.payer, recipient: r.recipient, value: r.value, value_in_words: r.valueInWords, reference: r.reference, date: r.date }); await loadAllData(); }} />;
+        return <FinancialModule user={user} store={stores.find(s => s.id === user.storeId)} sales={creditCardSales} receipts={receipts} onAddSale={async () => {}} onDeleteSale={async () => {}} onAddReceipt={async () => {}} />;
       case 'marketing':
         return <InstagramMarketing user={user} store={stores.find(s => s.id === user.storeId)} />;
       case 'downloads':
-        return <DownloadsModule user={user} items={downloads} onUpload={async (i) => { await supabase.from('downloads').insert({ title: i.title, description: i.description, category: i.category, url: i.url, file_name: i.fileName, size: i.size, campaign: i.campaign, created_by: i.createdBy }); await loadAllData(); }} onDelete={async (id) => { await supabase.from('downloads').delete().eq('id', id); await loadAllData(); }} />;
+        return <DownloadsModule user={user} items={downloads} onUpload={async () => {}} onDelete={async () => {}} />;
       case 'cash_errors':
-        return <CashErrorsModule user={user} store={stores.find(s => s.id === user.storeId)} stores={stores} errors={cashErrors} onAddError={async (e) => { await supabase.from('cash_errors').insert({ store_id: e.storeId, user_id: e.userId, user_name: e.userName, date: e.date, type: e.type, value: e.value, reason: e.reason }); await loadAllData(); }} onUpdateError={async (e) => { await supabase.from('cash_errors').update({ date: e.date, type: e.type, value: e.value, reason: e.reason }).eq('id', e.id); await loadAllData(); }} onDeleteError={async (id) => { await supabase.from('cash_errors').delete().eq('id', id); await loadAllData(); }} />;
+        return <CashErrorsModule user={user} store={stores.find(s => s.id === user.storeId)} stores={stores} errors={cashErrors} onAddError={async () => {}} onUpdateError={async () => {}} onDeleteError={async () => {}} />;
       case 'icecream':
-        return <IceCreamModule items={iceCreamItems} sales={iceCreamSales} finances={iceCreamFinances} onAddSales={async (s) => { await supabase.from('ice_cream_daily_sales').insert(s); await loadAllData(); }} onUpdatePrice={async (id, p) => { await supabase.from('products').update({ price: p }).eq('id', id); await loadAllData(); }} onUpdateItem={async (i) => { await supabase.from('products').update(i).eq('id', i.id); await loadAllData(); }} onAddTransaction={async (tx) => { await supabase.from('ice_cream_finances').insert({ date: tx.date, type: tx.type, category: tx.category, value: tx.value, employee_name: tx.employeeName, description: tx.description }); await loadAllData(); }} onDeleteTransaction={async (id) => { await supabase.from('ice_cream_finances').delete().eq('id', id); await loadAllData(); }} onAddItem={async (n, c, p, f) => { await supabase.from('products').insert({ name: n, category: c, price: p, flavor: f }); await loadAllData(); }} onDeleteItem={async (id) => { await supabase.from('products').delete().eq('id', id); await loadAllData(); }} />;
+        return <IceCreamModule items={iceCreamItems} sales={iceCreamSales} finances={iceCreamFinances} onAddSales={async () => {}} onUpdatePrice={async () => {}} onUpdateItem={async () => {}} onAddTransaction={async () => {}} onDeleteTransaction={async () => {}} onAddItem={async () => {}} onDeleteItem={async () => {}} />;
       case 'admin_users':
           return <AdminUsersManagement currentUser={user} />;
       case 'access_control':
@@ -324,75 +219,92 @@ const App: React.FC = () => {
       case 'termo_print':
         return <TermoAutorizacao user={user} store={stores.find(s => s.id === user.storeId)} />;
       case 'settings':
-        return <AdminSettings stores={stores} onAddStore={async (s) => { await supabase.from('stores').insert({ number: s.number, name: s.name, city: s.city, manager_name: s.managerName, manager_email: s.managerEmail, manager_phone: s.managerPhone, password: s.password, status: s.status, role: s.role }); await loadAllData(); }} onUpdateStore={async (s) => { await supabase.from('stores').update({ number: s.number, name: s.name, city: s.city, manager_name: s.managerName, manager_email: s.managerEmail, manager_phone: s.managerPhone, password: s.password, status: s.status, role: s.role }).eq('id', s.id); await loadAllData(); }} onDeleteStore={async (id) => { await supabase.from('stores').delete().eq('id', id); await loadAllData(); }} />;
+        return <AdminSettings stores={stores} onAddStore={async () => {}} onUpdateStore={async () => {}} onDeleteStore={async () => {}} />;
       default:
-        return <div className="p-10">Selecione uma opção no menu lateral.</div>;
+        return <div className="p-10 text-gray-500 font-bold uppercase tracking-widest">Funcionalidade em desenvolvimento...</div>;
     }
   };
 
   return (
     <div className="flex h-screen bg-gray-100 font-sans overflow-hidden">
       {user && (
-      <div className={`fixed md:sticky top-0 left-0 h-screen w-64 bg-gradient-to-b from-blue-950 to-blue-900 text-white shadow-2xl z-50 transition-transform duration-300 border-r border-blue-800 ${isSidebarOpen ? 'translate-x-0' : '-translate-x-full md:translate-x-0'}`}>
-        <div className="p-6 flex flex-col h-full">
-          <div className="flex flex-col items-center mb-8 pb-6 border-b border-blue-800/50">
-             <div className="relative mb-3">
-                <img src={LOGO_URL} alt="Real Calçados" className="w-32 h-auto drop-shadow-xl" />
-                <div className="absolute bottom-1 right-2 w-4 h-4 bg-green-500 border-2 border-blue-950 rounded-full shadow-[0_0_8px_rgba(34,197,94,0.5)]"></div>
-             </div>
-             <div className="text-center">
-                <h1 className="text-sm font-black italic tracking-tighter leading-none uppercase">REAL <span className="text-red-500">ADMIN</span></h1>
-                <p className="text-[8px] text-blue-300 uppercase tracking-widest font-black mt-1 opacity-80">Gestão Estratégica</p>
-             </div>
-             <button className="md:hidden absolute top-4 right-4 text-blue-300" onClick={() => setIsSidebarOpen(false)}><X size={20}/></button>
-          </div>
-          <nav className="flex-1 space-y-1 overflow-y-auto no-scrollbar pr-1">
-            {Object.entries(menuGroups).map(([groupName, items]) => (
-                <div key={groupName} className="mb-4">
-                    <div className={`px-4 py-2 text-[10px] font-black uppercase tracking-widest opacity-50 ${groupName === 'Administração' ? 'text-red-400 opacity-80' : 'text-blue-400'}`}>
-                        {groupName}
+      <>
+        {/* HEADER SUPERIOR FIXO - IDENTIDADE CORPORATIVA REFORÇADA */}
+        <header className="fixed top-0 left-0 right-0 h-16 bg-white border-b border-gray-200 z-[60] flex items-center justify-between px-6 shadow-sm">
+            <div className="flex items-center">
+                <div className="w-10 h-10 rounded-full overflow-hidden border border-gray-100 shadow-sm flex items-center justify-center bg-white mr-4">
+                    <img 
+                        src={BRAND_LOGO} 
+                        className="w-full h-full object-contain" 
+                        alt="Logo"
+                    />
+                </div>
+                <div className="hidden md:block">
+                   <span className="font-black italic text-blue-950 tracking-tighter uppercase leading-none text-xl">REAL <span className="text-red-600">ADMIN</span></span>
+                   <p className="text-[7px] text-gray-400 font-black uppercase tracking-widest mt-0.5">SISTEMA DE GESTÃO ESTRATÉGICA</p>
+                </div>
+            </div>
+            
+            <div className="flex items-center gap-4">
+                <div className="flex items-center gap-3 px-4 py-1.5 bg-gray-50 rounded-full border border-gray-100">
+                    <div className="w-7 h-7 rounded-full bg-blue-600 flex items-center justify-center font-bold text-xs text-white uppercase shadow-inner">{user.name.charAt(0)}</div>
+                    <div className="text-left hidden sm:block">
+                        <p className="text-[10px] font-black uppercase text-gray-900 leading-none">{user.name}</p>
+                        <p className="text-[8px] font-bold text-blue-400 uppercase tracking-tighter italic">{user.role}</p>
                     </div>
-                    {(items as PagePermission[]).map(item => (
-                        <NavButton 
-                            key={item.page_key}
-                            view={item.page_key} 
-                            icon={ICON_MAP[item.page_key] || LayoutDashboard} 
-                            label={item.label.split('(')[0]} 
-                            active={currentView === item.page_key} 
-                            onClick={() => { setCurrentView(item.page_key); setIsSidebarOpen(false); }} 
-                        />
-                    ))}
                 </div>
-            ))}
-          </nav>
-          <div className="pt-4 mt-4 border-t border-blue-800">
-            <div className="flex items-center gap-3 px-4 py-4 bg-black/20 rounded-2xl mb-4">
-                <div className="w-8 h-8 rounded-full bg-blue-600 flex items-center justify-center font-bold text-xs uppercase shadow-inner border border-blue-400">{user.name.charAt(0)}</div>
-                <div className="flex-1 overflow-hidden">
-                    <p className="text-[10px] font-black uppercase truncate leading-none">{user.name}</p>
-                    <p className="text-[8px] font-bold text-blue-400 uppercase mt-1 tracking-tighter italic">{user.role}</p>
-                </div>
+                <button onClick={handleLogout} className="p-2.5 text-gray-400 hover:text-red-600 hover:bg-red-50 rounded-xl transition-all border border-transparent hover:border-red-100" title="Sair do Sistema">
+                    <LogOut size={20}/>
+                </button>
             </div>
-            <button onClick={handleLogout} className="w-full flex items-center justify-center gap-2 py-3 bg-red-600/10 text-red-500 hover:bg-red-600 hover:text-white rounded-xl transition-all text-[10px] font-black uppercase tracking-widest border border-red-600/20"><LogOut size={14} /> Sair do Sistema</button>
-          </div>
+        </header>
+
+        {/* Sidebar com margem superior para o cabeçalho */}
+        <div className={`fixed md:sticky top-16 left-0 h-[calc(100vh-64px)] w-64 bg-gradient-to-b from-blue-950 to-blue-900 text-white shadow-2xl z-50 transition-transform duration-300 border-r border-blue-800 ${isSidebarOpen ? 'translate-x-0' : '-translate-x-full md:translate-x-0'}`}>
+            <div className="p-6 flex flex-col h-full">
+            <nav className="flex-1 space-y-1 overflow-y-auto no-scrollbar pr-1 pt-4">
+                {Object.entries(menuGroups).map(([groupName, items]) => (
+                    <div key={groupName} className="mb-4">
+                        <div className={`px-4 py-2 text-[10px] font-black uppercase tracking-widest opacity-50 ${groupName === 'Administração' ? 'text-red-400 opacity-80' : 'text-blue-400'}`}>
+                            {groupName}
+                        </div>
+                        {(items as PagePermission[]).map(item => (
+                            <NavButton 
+                                key={item.page_key}
+                                view={item.page_key} 
+                                icon={ICON_MAP[item.page_key] || LayoutDashboard} 
+                                label={item.label.split('(')[0]} 
+                                active={currentView === item.page_key} 
+                                onClick={() => { setCurrentView(item.page_key); setIsSidebarOpen(false); }} 
+                            />
+                        ))}
+                    </div>
+                ))}
+            </nav>
+            <div className="pt-4 border-t border-blue-800">
+                <p className="text-center text-[8px] font-black text-blue-400 uppercase tracking-widest opacity-50">Enterprise Edition v5.2</p>
+            </div>
+            </div>
         </div>
-      </div>
+      </>
       )}
-      <div className="flex-1 flex flex-col h-screen overflow-hidden bg-gray-100">
-         {user && (
-         <div className="md:hidden bg-white shadow-md p-4 flex justify-between items-center z-40 border-b border-gray-200">
-            <div className="flex items-center gap-3">
-                <img src={LOGO_URL} alt="Real Admin" className="h-10 w-auto" />
-                <div>
-                   <h1 className="text-xs font-black italic text-blue-950 tracking-tighter uppercase leading-none">REAL <span className="text-red-600">ADMIN</span></h1>
-                   <p className="text-[7px] text-gray-400 font-black uppercase tracking-widest">Gestão Estratégica</p>
-                </div>
-            </div>
-            <button onClick={() => setIsSidebarOpen(true)} className="p-2 bg-gray-50 rounded-lg text-blue-900 shadow-sm border border-gray-100"><Menu size={20}/></button>
-         </div>
-         )}
-         <main className="flex-1 overflow-auto relative scroll-smooth no-scrollbar">{renderView()}</main>
+
+      {/* Main Content Area */}
+      <div className="flex-1 flex flex-col h-screen overflow-hidden">
+         <main className={`flex-1 overflow-auto relative scroll-smooth no-scrollbar ${user ? 'pt-16' : ''}`}>
+            {renderView()}
+         </main>
       </div>
+      
+      {/* Botão flutuante menu Mobile */}
+      {user && (
+          <button 
+            onClick={() => setIsSidebarOpen(!isSidebarOpen)}
+            className="md:hidden fixed bottom-6 right-6 w-14 h-14 bg-blue-950 text-white rounded-full shadow-2xl flex items-center justify-center z-[70] border-4 border-white transition-transform active:scale-90"
+          >
+              {isSidebarOpen ? <X size={24}/> : <Menu size={24}/>}
+          </button>
+      )}
     </div>
   );
 };
