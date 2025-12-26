@@ -2,19 +2,14 @@
 import { GoogleGenAI } from "@google/genai";
 import { MonthlyPerformance, Store } from "../types";
 
-// Fix: Initialization helper strictly following the rule: Always use const ai = new GoogleGenAI({apiKey: process.env.API_KEY});
-const getClient = () => {
-  return new GoogleGenAI({ apiKey: process.env.API_KEY });
-};
-
 export const analyzePerformance = async (
   performanceData: MonthlyPerformance[],
   stores: Store[],
   userRole: string,
   targetStoreId?: string
 ): Promise<string> => {
-  // Fix: Instantiating right before call
-  const ai = getClient();
+  // Fix: Direct initialization strictly following the rule: Always use const ai = new GoogleGenAI({apiKey: process.env.API_KEY});
+  const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
 
   // Prepare context based on role
   let dataContext = "";
@@ -71,8 +66,8 @@ export interface ExtractedPDFData {
 }
 
 export const extractDataFromDocument = async (base64Data: string, mimeType: string): Promise<ExtractedPDFData[]> => {
-    // Fix: Instantiating right before call
-    const ai = getClient();
+    // Fix: Direct initialization strictly following the rule: Always use const ai = new GoogleGenAI({apiKey: process.env.API_KEY});
+    const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
 
     const prompt = `
         Analise este documento (Relatório de Vendas). 
@@ -127,8 +122,8 @@ export const generateMarketingImage = async (
     aspectRatio: '1:1' | '9:16', 
     style: 'promo' | 'lifestyle'
 ): Promise<string | undefined> => {
-    // Fix: Instantiating right before call
-    const ai = getClient();
+    // Fix: Direct initialization strictly following the rule: Always use const ai = new GoogleGenAI({apiKey: process.env.API_KEY});
+    const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
 
     // We use gemini-3-pro-image-preview for highest quality generation
     const modelName = 'gemini-3-pro-image-preview'; 

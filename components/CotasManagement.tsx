@@ -194,64 +194,68 @@ const CotasManagement: React.FC<CotasManagementProps> = ({ user, stores, cotas, 
   };
 
   const handleAdd = async (e: React.FormEvent<HTMLFormElement>) => {
-      e.preventDefault();
-      const submitter = (e.nativeEvent as SubmitEvent).submitter as HTMLButtonElement;
-      const targetRole = submitter?.getAttribute('data-role') as UserRole || UserRole.ADMIN;
+    e.preventDefault();
 
-      if (selectedStoreIds.length === 0) {
-          alert("Nenhuma loja selecionada.");
-          return;
+    if (selectedStoreIds.length === 0) {
+      alert("Nenhuma loja selecionada.");
+      return;
+    }
+
+    const cleanValueStr = newCota.value.replace(/\./g, '').replace(',', '.');
+    const numValue = parseFloat(cleanValueStr);
+    const numPairs = parseInt(newCota.pairs) || 0;
+
+    if (!newCota.brand || isNaN(numValue) || numValue <= 0) {
+      alert("Preencha marca e valor corretamente.");
+      return;
+    }
+
+    setIsSubmitting(true);
+
+    try {
+      const termsArray = newCota.paymentTerms
+        .split(/[\/,\-\s]+/)
+        .map(t => parseInt(t.trim()))
+        .filter(n => !isNaN(n));
+
+      if (termsArray.length === 0) {
+        alert("Defina corretamente os prazos (ex: 90/120/150)");
+        setIsSubmitting(false);
+        return;
       }
 
-      const cleanValueStr = newCota.value.replace(/\./g, '').replace(',', '.');
-      const numValue = parseFloat(cleanValueStr);
-      const numPairs = parseInt(newCota.pairs) || 0;
+      const calculatedInstallments = calculateInstallments({
+        totalValue: numValue,
+        paymentTerms: termsArray
+      });
 
-      if (!newCota.brand || isNaN(numValue) || numValue <= 0) {
-          alert("Preencha marca e valor corretamente.");
-          return;
+      const targetRole = (e.nativeEvent as any).submitter?.getAttribute('data-role') as UserRole || UserRole.ADMIN;
+
+      for (const storeId of selectedStoreIds) {
+        await onAddCota({
+          id: '',
+          storeId,
+          brand: newCota.brand.toUpperCase(),
+          classification: newCota.classification,
+          totalValue: numValue,
+          shipmentDate: newCota.shipmentDate,
+          paymentTerms: termsArray.join('/'),
+          pairs: numPairs,
+          installments: { ...calculatedInstallments },
+          createdAt: new Date(),
+          createdByRole: targetRole,
+          status: 'pending'
+        });
       }
 
-      setIsSubmitting(true);
-      try {
-          const termsArray = newCota.paymentTerms.split(/[\/\,\-\s]+/).map(t => parseInt(t.trim())).filter(p => !isNaN(p));
-          if (termsArray.length === 0) {
-             alert("Defina os prazos do pedido (Ex: 90/120/150).");
-             setIsSubmitting(false);
-             return;
-          }
+      resetForm();
+      alert("Pedido(s) registrado(s) com sucesso.");
 
-          const calculatedInstallments = calculateInstallments({
-              totalValue: numValue,
-              paymentTerms: termsArray
-          });
-          
-          const safeInstallments = Object.freeze({...calculatedInstallments});
-
-          for (const storeId of selectedStoreIds) {
-              await onAddCota({
-                  id: '', 
-                  storeId: storeId,
-                  brand: newCota.brand.toUpperCase(),
-                  classification: newCota.classification,
-                  totalValue: numValue,
-                  shipmentDate: newCota.shipmentDate,
-                  paymentTerms: termsArray.join('/'),
-                  pairs: numPairs,
-                  installments: safeInstallments as Record<string, number>,
-                  createdAt: new Date(),
-                  createdByRole: targetRole,
-                  status: 'pending'
-              });
-          }
-          
-          alert("PEDIDO(S) REGISTRADO(S) COM SUCESSO");
-          resetForm();
-      } catch (err: any) {
-          alert(`Erro: ${err.message}`);
-      } finally {
-          setIsSubmitting(false);
-      }
+    } catch (err: any) {
+      alert("Erro ao salvar pedido: " + err.message);
+    } finally {
+      setIsSubmitting(false);
+    }
   };
 
   const effectiveStoreId = activeTab;
@@ -496,7 +500,7 @@ const CotasManagement: React.FC<CotasManagementProps> = ({ user, stores, cotas, 
                         {/* 2. PROJEÇÃO LÍQUIDA GERENTE */}
                         <tr className="bg-purple-50/70 text-purple-950 border-b border-purple-100 font-black italic">
                             <td className="p-2.5 border-r border-purple-100 sticky left-0 bg-[#faf5ff] z-10 text-[11px] uppercase tracking-tighter pl-6">COTA DISPONÍVEL GERENTE</td>
-                            <td className="p-2.5 border-r border-purple-100 text-center text-[9px] text-purple-700 italic" colSpan={4}>AJUSTADA</td>
+                            <td className="p-2.5 border-r border-purple-100 text-center text-[9px] text-blue-700 italic" colSpan={4}>AJUSTADA</td>
                             {tableMonths.map(m => {
                                 const info = getBudgetInfo(effectiveStoreId);
                                 const debt = getDebtValue(effectiveStoreId, m);
@@ -504,7 +508,7 @@ const CotasManagement: React.FC<CotasManagementProps> = ({ user, stores, cotas, 
                                 const managerShare = netTotal * (info.managerPercent / 100);
                                 const used = getMonthTotalPendingByRole(m, UserRole.MANAGER) + getMonthTotalValidatedByRole(m, UserRole.MANAGER);
                                 const bal = Math.max(0, managerShare - used);
-                                return <td key={`bm-${m}`} className={`p-2.5 text-center border-r border-purple-100 font-black text-xs ${bal <= 0 ? 'text-red-400 opacity-40' : 'text-purple-800'}`}>{formatCurrency(bal)}</td>;
+                                return <td key={`bm-${m}`} className={`p-2.5 text-center border-r border-purple-100 font-black text-xs ${bal <= 0 ? 'text-red-400 opacity-40' : 'text-blue-800'}`}>{formatCurrency(bal)}</td>;
                             })}
                             <td></td>
                         </tr>
@@ -526,7 +530,7 @@ const CotasManagement: React.FC<CotasManagementProps> = ({ user, stores, cotas, 
                             <td className="p-2.5 border-r border-blue-200" colSpan={4}></td>
                             {tableMonths.map(m => {
                                 const val = getMonthTotalValidatedByRole(m, UserRole.ADMIN);
-                                return <td key={`vadmin-${m}`} className="p-2.5 text-center border-r border-blue-200 font-black text-xs text-blue-700">{val > 0 ? formatCurrency(val) : '-'}</td>;
+                                return <td key={`vadmin-${m}`} className="p-2.5 text-center border-r border-blue-100 font-black text-xs text-blue-700">{val > 0 ? formatCurrency(val) : '-'}</td>;
                             })}
                             <td></td>
                         </tr>
@@ -537,7 +541,7 @@ const CotasManagement: React.FC<CotasManagementProps> = ({ user, stores, cotas, 
                             <td className="p-2.5 border-r border-purple-200" colSpan={4}></td>
                             {tableMonths.map(m => {
                                 const val = getMonthTotalValidatedByRole(m, UserRole.MANAGER);
-                                return <td key={`vmgr-${m}`} className="p-2.5 text-center border-r border-purple-200 font-black text-xs text-purple-700">{val > 0 ? formatCurrency(val) : '-'}</td>;
+                                return <td key={`vmgr-${m}`} className="p-2.5 text-center border-r border-purple-100 font-black text-xs text-purple-700">{val > 0 ? formatCurrency(val) : '-'}</td>;
                             })}
                             <td></td>
                         </tr>
@@ -556,8 +560,8 @@ const CotasManagement: React.FC<CotasManagementProps> = ({ user, stores, cotas, 
                             <td></td>
                         </tr>
 
-                        {/* LIST OF ORDERS */}
-                        {filteredCotas.map(c => (
+                        {/* LIST OF ORDERS — FILTRO PARA MOSTRAR APENAS PENDENTES */}
+                        {filteredCotas.filter(c => c.status !== 'validated').map(c => (
                             <tr key={c.id} className={`hover:bg-gray-50 border-b border-gray-100 group transition-colors ${c.status === 'validated' ? 'bg-green-50/30' : ''}`}>
                                 <td className={`p-3 border-r border-gray-100 sticky left-0 z-10 leading-tight ${c.status === 'validated' ? 'bg-[#f0fdf4]' : 'bg-white'}`}>
                                     <div className="flex flex-col gap-1 pl-3">

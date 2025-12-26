@@ -101,14 +101,28 @@ const App: React.FC = () => {
             })));
         }
 
-        // CARREGAMENTO DE COTAS E CONFIGURAÇÕES
         const { data: dbCotas } = await supabase.from('cotas').select('*').order('created_at', { ascending: false });
         if (dbCotas) setCotas(dbCotas.map((c: any) => ({
-            id: c.id, storeId: c.store_id, brand: c.brand, classification: c.classification, totalValue: Number(c.total_value), shipmentDate: c.shipment_date, paymentTerms: c.payment_terms, pairs: c.pairs, installments: c.installments, createdAt: new Date(c.created_at), createdByRole: c.created_by_role as UserRole, status: c.status
+          id: c.id,
+          storeId: c.store_id,
+          brand: c.brand,
+          classification: c.classification,
+          totalValue: Number(c.total_value),
+          shipmentDate: c.shipment_date,
+          paymentTerms: c.payment_terms,
+          pairs: c.pairs,
+          installments: c.installments,
+          createdAt: new Date(c.created_at),
+          createdByRole: c.created_by_role,
+          status: c.status
         })));
 
         const { data: dbSettings } = await supabase.from('cota_settings').select('*');
-        if (dbSettings) setCotaSettings(dbSettings.map((s: any) => ({ storeId: s.store_id, budgetValue: Number(s.budget_value), managerPercent: Number(s.manager_percent) })));
+        if (dbSettings) setCotaSettings(dbSettings.map((s: any) => ({
+          storeId: s.store_id,
+          budgetValue: Number(s.budget_value),
+          managerPercent: Number(s.manager_percent)
+        })));
 
         const { data: dbDebts } = await supabase.from('cota_debts').select('*');
         if (dbDebts) setCotaDebts(dbDebts.map((d: any) => ({ id: d.id, storeId: d.store_id, month: d.month, value: Number(d.value) })));
@@ -120,36 +134,39 @@ const App: React.FC = () => {
       }
   };
 
-  const handleAddCota = async (cota: Cota) => {
-      const { error } = await supabase.from('cotas').insert([{
-          store_id: cota.storeId,
-          brand: cota.brand,
-          classification: cota.classification,
-          total_value: cota.totalValue,
-          shipment_date: cota.shipmentDate,
-          payment_terms: cota.paymentTerms,
-          pairs: cota.pairs,
-          installments: cota.installments,
-          created_by_role: cota.createdByRole,
-          status: cota.status || 'pending'
-      }]);
-      
-      if (error) throw new Error(error.message);
-      await loadAllData();
+  const handleAddCota = async (cota: Cota): Promise<void> => {
+    const { error } = await supabase.from('cotas').insert([{
+      store_id: cota.storeId,
+      brand: cota.brand,
+      classification: cota.classification,
+      total_value: cota.totalValue,
+      shipment_date: cota.shipmentDate,
+      payment_terms: cota.paymentTerms,
+      pairs: cota.pairs,
+      installments: cota.installments,
+      created_by_role: cota.createdByRole,
+      status: cota.status || 'pending'
+    }]);
+
+    if (error) {
+      throw new Error(error.message);
+    }
+
+    await loadAllData();
   };
 
   const handleUpdateCota = async (cota: Cota) => {
-      const { error } = await supabase.from('cotas').update({
-          status: cota.status,
-          brand: cota.brand,
-          classification: cota.classification,
-          total_value: cota.totalValue,
-          pairs: cota.pairs,
-          payment_terms: cota.paymentTerms
-      }).eq('id', cota.id);
-      
-      if (error) throw new Error(error.message);
-      await loadAllData();
+    const { error } = await supabase.from('cotas').update({
+      status: cota.status,
+      brand: cota.brand,
+      classification: cota.classification,
+      total_value: cota.totalValue,
+      pairs: cota.pairs,
+      payment_terms: cota.paymentTerms
+    }).eq('id', cota.id);
+
+    if (error) throw new Error(error.message);
+    await loadAllData();
   };
 
   const handleDeleteCota = async (id: string) => {
@@ -159,27 +176,27 @@ const App: React.FC = () => {
   };
 
   const handleSaveCotaSettings = async (settings: CotaSettings) => {
-      const { error } = await supabase.from('cota_settings').upsert({
-          store_id: settings.storeId,
-          budget_value: settings.budgetValue,
-          manager_percent: settings.managerPercent,
-          updated_at: new Date().toISOString()
-      }, { onConflict: 'store_id' });
-      
-      if (error) throw new Error(error.message);
-      await loadAllData();
+    const { error } = await supabase.from('cota_settings').upsert({
+      store_id: settings.storeId,
+      budget_value: settings.budgetValue,
+      manager_percent: settings.managerPercent,
+      updated_at: new Date().toISOString()
+    }, { onConflict: 'store_id' });
+
+    if (error) throw new Error(error.message);
+    await loadAllData();
   };
 
   const handleSaveCotaDebts = async (storeId: string, debts: Record<string, number>) => {
-      for (const [month, value] of Object.entries(debts)) {
-          await supabase.from('cota_debts').upsert({
-              store_id: storeId,
-              month: month,
-              value: value,
-              created_at: new Date().toISOString()
-          }, { onConflict: 'store_id,month' });
-      }
-      await loadAllData();
+    for (const [month, value] of Object.entries(debts)) {
+      const { error } = await supabase.from('cota_debts').upsert({
+        store_id: storeId,
+        month: month,
+        value: value
+      }, { onConflict: 'store_id,month' });
+      if (error) console.error(error);
+    }
+    await loadAllData();
   };
 
   const allowedPages = useMemo(() => {
@@ -316,7 +333,7 @@ const App: React.FC = () => {
       {user && (
       <>
         {/* HEADER SUPERIOR FIXO - IDENTIDADE CORPORATIVA REFORÇADA */}
-        <header className="fixed top-0 left-0 right-0 h-16 bg-white border-b border-gray-200 z-[60] flex items-center justify-between px-6 shadow-sm">
+        <header className="fixed top-0 border-gray-200 left-0 right-0 h-16 bg-white border-b z-[60] flex items-center justify-between px-6 shadow-sm">
             <div className="flex items-center gap-3">
                 <div className="w-10 h-10 rounded-full overflow-hidden shadow-md border border-gray-200 bg-white">
                     <img 
@@ -386,7 +403,7 @@ const App: React.FC = () => {
       {user && (
           <button 
             onClick={() => setIsSidebarOpen(!isSidebarOpen)}
-            className="md:hidden fixed bottom-6 right-6 w-14 h-14 bg-blue-950 text-white rounded-full shadow-2xl flex items-center justify-center z-[70] border-4 border-white transition-transform active:scale-90"
+            className="md:hidden fixed bottom-6 right-6 w-14 h-14 bg-blue-950 text-white rounded-full shadow-2xl flex items-center justify-center z-[70] border-4 border-white transition-transform active:scale-95"
           >
               {isSidebarOpen ? <X size={24}/> : <Menu size={24}/>}
           </button>
