@@ -183,7 +183,8 @@ const GoalRegistration: React.FC<GoalRegistrationProps> = ({ stores, performance
   // Totais para Dashboard de Registro
   const registrationSummary = useMemo(() => {
     let totalGoal = 0;
-    Object.values(formData).forEach(val => {
+    // Fix: Cast Object.values(formData) to Partial<MonthlyPerformance>[] to resolve 'unknown' type errors on property access
+    (Object.values(formData) as Partial<MonthlyPerformance>[]).forEach(val => {
         totalGoal += parseToNum(val.revenueTarget);
     });
     return { totalGoal };
@@ -368,7 +369,8 @@ const GoalRegistration: React.FC<GoalRegistrationProps> = ({ stores, performance
                     <Zap size={60} className="absolute -right-4 -bottom-4 opacity-10" />
                     <h4 className="text-[10px] font-black text-blue-300 uppercase tracking-widest mb-4">Meta da Unidade</h4>
                     <p className="text-2xl font-black italic tracking-tighter">
-                        {formatCurrency(Object.values(formData).find((_, idx) => activeStores[idx]?.id === selectedStoreId)?.revenueTarget || 0)}
+                        {/* Fix: Cast Object.values(formData) to Partial<MonthlyPerformance>[] to resolve 'unknown' type errors on find and property access */}
+                        {formatCurrency((Object.values(formData) as Partial<MonthlyPerformance>[]).find((_, idx) => activeStores[idx]?.id === selectedStoreId)?.revenueTarget || 0)}
                     </p>
                     <p className="text-[9px] font-bold text-blue-400 mt-2 uppercase">Definida pelo Administrador</p>
                 </div>

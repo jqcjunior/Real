@@ -403,7 +403,7 @@ const App: React.FC = () => {
       {user && (
           <button 
             onClick={() => setIsSidebarOpen(!isSidebarOpen)}
-            className="md:hidden fixed bottom-6 right-6 w-14 h-14 bg-blue-950 text-white rounded-full shadow-2xl flex items-center justify-center z-[70] border-4 border-white transition-transform active:scale-95"
+            className="md:hidden fixed bottom-6 right-6 w-14 h-14 bg-blue-950 text-white rounded-full shadow-2xl flex items-center justify-center z-[70] border-4 border-white transition-transform active:scale-90"
           >
               {isSidebarOpen ? <X size={24}/> : <Menu size={24}/>}
           </button>

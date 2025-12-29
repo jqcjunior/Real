@@ -4,13 +4,6 @@ import { Store, User, Cota, UserRole, SystemLog, CotaSettings, CotaDebt } from '
 import { formatCurrency } from '../constants';
 import { Calculator, Plus, Save, Trash2, Filter, Settings, CheckSquare, Square, X, AlertCircle, Wallet, TrendingDown, Store as StoreIcon, LayoutGrid, PieChart, UserCheck, Briefcase, Search, BarChart2, CheckCircle, RefreshCcw, PackageCheck, Loader2, Info, Target, Shield, Calendar } from 'lucide-react';
 
-function normalizeMonthDate(value: string) {
-  if (!value) return value;
-  if (value.length === 7) return value + "-01";
-  return value;
-}
-
-
 interface CotasManagementProps {
   user: User;
   stores: Store[];
@@ -175,26 +168,18 @@ const CotasManagement: React.FC<CotasManagementProps> = ({ user, stores, cotas, 
       setSelectedStoreIds(prev => prev.includes(storeId) ? prev.filter(id => id !== storeId) : [...prev, storeId]);
   };
 
-const handleValidateOrder = async (e: React.MouseEvent, cota: Cota) => {
-    e.preventDefault();
-    if (onUpdateCota) {
-        await onUpdateCota({ 
-            ...cota,
-            shipmentDate: normalizeMonthDate(cota.shipmentDate),
-            status: 'validated'
-        });
-    }
-};
+  const handleValidateOrder = async (e: React.MouseEvent, cota: Cota) => {
+      e.preventDefault();
+      if (onUpdateCota) {
+          await onUpdateCota({ ...cota, status: 'validated' });
+      }
+  };
 
- const handleReactivateOrder = async (cota: Cota) => {
-    if (onUpdateCota) {
-        await onUpdateCota({ 
-            ...cota,
-            shipmentDate: normalizeMonthDate(cota.shipmentDate),
-            status: 'pending'
-        });
-    }
-};
+  const handleReactivateOrder = async (cota: Cota) => {
+      if (onUpdateCota) {
+          await onUpdateCota({ ...cota, status: 'pending' });
+      }
+  };
 
   const resetForm = () => {
     setNewCota({
@@ -246,8 +231,6 @@ const handleValidateOrder = async (e: React.MouseEvent, cota: Cota) => {
 
       const targetRole = (e.nativeEvent as any).submitter?.getAttribute('data-role') as UserRole || UserRole.ADMIN;
 
-const shipmentForDatabase = normalizeMonthDate(newCota.shipmentDate);
-
       for (const storeId of selectedStoreIds) {
         await onAddCota({
           id: '',
@@ -255,7 +238,7 @@ const shipmentForDatabase = normalizeMonthDate(newCota.shipmentDate);
           brand: newCota.brand.toUpperCase(),
           classification: newCota.classification,
           totalValue: numValue,
-          shipmentDate: shipmentForDatabase,
+          shipmentDate: newCota.shipmentDate,
           paymentTerms: termsArray.join('/'),
           pairs: numPairs,
           installments: { ...calculatedInstallments },
@@ -637,7 +620,6 @@ const shipmentForDatabase = normalizeMonthDate(newCota.shipmentDate);
                         
                         <div className="bg-gray-50 p-6 rounded-3xl border border-gray-200 shadow-inner">
                             <div className="flex justify-between text-[10px] font-black mb-4 uppercase tracking-tighter text-gray-500"><span>COMPRADOR</span><span>GERENTE</span></div>
-                            {/* AJUSTE Unidade a Unidade (Step 1) */}
                             <input type="range" min="0" max="100" step="1" value={budgetForm.managerPercent} onChange={e => setBudgetForm({...budgetForm, managerPercent: parseInt(e.target.value)})} className="w-full h-2 bg-gray-200 rounded-lg appearance-none cursor-pointer accent-yellow-500"/>
                             <div className="flex justify-between mt-4">
                                 <p className="text-[10px] font-black text-blue-600 uppercase">{100 - budgetForm.managerPercent}%</p>
@@ -690,7 +672,8 @@ const shipmentForDatabase = normalizeMonthDate(newCota.shipmentDate);
                             <div className="bg-red-50 px-8 py-4 rounded-2xl border border-red-100 text-right">
                                 <span className="text-[9px] font-black text-red-400 uppercase tracking-widest block mb-1">Total Lançado no Período</span>
                                 <span className="text-2xl font-black text-red-600 italic">
-                                    {formatCurrency(Object.values(tempDebts).reduce((acc, val) => acc + (parseFloat(val.replace(/\./g, '').replace(',', '.')) || 0), 0))}
+                                    {/* Fix: Explicitly type reduce callback parameters to resolve unknown type errors */}
+                                    {formatCurrency(Object.values(tempDebts).reduce((acc: number, val: string) => acc + (parseFloat(val.replace(/\./g, '').replace(',', '.')) || 0), 0))}
                                 </span>
                             </div>
                         </div>
