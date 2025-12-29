@@ -1,8 +1,13 @@
-
 import React, { useState, useMemo, useEffect } from 'react';
 import { Store, User, Cota, UserRole, SystemLog, CotaSettings, CotaDebt } from '../types';
 import { formatCurrency } from '../constants';
 import { Calculator, Plus, Save, Trash2, Filter, Settings, CheckSquare, Square, X, AlertCircle, Wallet, TrendingDown, Store as StoreIcon, LayoutGrid, PieChart, UserCheck, Briefcase, Search, BarChart2, CheckCircle, RefreshCcw, PackageCheck, Loader2, Info, Target, Shield, Calendar } from 'lucide-react';
+
+function normalizeMonthDate(value: string) {
+  if (!value) return value;
+  if (value.length === 7) return value + "-01"; // "2025-12" → "2025-12-01"
+  return value;
+}
 
 interface CotasManagementProps {
   user: User;
@@ -218,18 +223,13 @@ const CotasManagement: React.FC<CotasManagementProps> = ({ user, stores, cotas, 
         .map(t => parseInt(t.trim()))
         .filter(n => !isNaN(n));
 
-      if (termsArray.length === 0) {
-        alert("Defina corretamente os prazos (ex: 90/120/150)");
-        setIsSubmitting(false);
-        return;
-      }
-
       const calculatedInstallments = calculateInstallments({
         totalValue: numValue,
         paymentTerms: termsArray
       });
 
-      const targetRole = (e.nativeEvent as any).submitter?.getAttribute('data-role') as UserRole || UserRole.ADMIN;
+      const targetRole =
+        (e.nativeEvent as any).submitter?.getAttribute('data-role') as UserRole || UserRole.ADMIN;
 
       for (const storeId of selectedStoreIds) {
         await onAddCota({
@@ -238,7 +238,7 @@ const CotasManagement: React.FC<CotasManagementProps> = ({ user, stores, cotas, 
           brand: newCota.brand.toUpperCase(),
           classification: newCota.classification,
           totalValue: numValue,
-          shipmentDate: newCota.shipmentDate,
+          shipmentDate: normalizeMonthDate(newCota.shipmentDate), // ✅ CORREÇÃO DEFINITIVA
           paymentTerms: termsArray.join('/'),
           pairs: numPairs,
           installments: { ...calculatedInstallments },
