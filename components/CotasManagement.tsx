@@ -4,6 +4,13 @@ import { Store, User, Cota, UserRole, SystemLog, CotaSettings, CotaDebt } from '
 import { formatCurrency } from '../constants';
 import { Calculator, Plus, Save, Trash2, Filter, Settings, CheckSquare, Square, X, AlertCircle, Wallet, TrendingDown, Store as StoreIcon, LayoutGrid, PieChart, UserCheck, Briefcase, Search, BarChart2, CheckCircle, RefreshCcw, PackageCheck, Loader2, Info, Target, Shield, Calendar } from 'lucide-react';
 
+function normalizeMonthDate(value: string) {
+  if (!value) return value;
+  if (value.length === 7) return value + "-01";
+  return value;
+}
+
+
 interface CotasManagementProps {
   user: User;
   stores: Store[];
@@ -168,18 +175,26 @@ const CotasManagement: React.FC<CotasManagementProps> = ({ user, stores, cotas, 
       setSelectedStoreIds(prev => prev.includes(storeId) ? prev.filter(id => id !== storeId) : [...prev, storeId]);
   };
 
-  const handleValidateOrder = async (e: React.MouseEvent, cota: Cota) => {
-      e.preventDefault();
-      if (onUpdateCota) {
-          await onUpdateCota({ ...cota, status: 'validated' });
-      }
-  };
+const handleValidateOrder = async (e: React.MouseEvent, cota: Cota) => {
+    e.preventDefault();
+    if (onUpdateCota) {
+        await onUpdateCota({ 
+            ...cota,
+            shipmentDate: normalizeMonthDate(cota.shipmentDate),
+            status: 'validated'
+        });
+    }
+};
 
-  const handleReactivateOrder = async (cota: Cota) => {
-      if (onUpdateCota) {
-          await onUpdateCota({ ...cota, status: 'pending' });
-      }
-  };
+ const handleReactivateOrder = async (cota: Cota) => {
+    if (onUpdateCota) {
+        await onUpdateCota({ 
+            ...cota,
+            shipmentDate: normalizeMonthDate(cota.shipmentDate),
+            status: 'pending'
+        });
+    }
+};
 
   const resetForm = () => {
     setNewCota({
@@ -231,7 +246,7 @@ const CotasManagement: React.FC<CotasManagementProps> = ({ user, stores, cotas, 
 
       const targetRole = (e.nativeEvent as any).submitter?.getAttribute('data-role') as UserRole || UserRole.ADMIN;
 
-const shipmentForDatabase = newCota.shipmentDate + "-01";
+const shipmentForDatabase = normalizeMonthDate(newCota.shipmentDate);
 
       for (const storeId of selectedStoreIds) {
         await onAddCota({
