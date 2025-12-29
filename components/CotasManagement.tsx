@@ -231,6 +231,8 @@ const CotasManagement: React.FC<CotasManagementProps> = ({ user, stores, cotas, 
 
       const targetRole = (e.nativeEvent as any).submitter?.getAttribute('data-role') as UserRole || UserRole.ADMIN;
 
+const shipmentForDatabase = newCota.shipmentDate + "-01";
+
       for (const storeId of selectedStoreIds) {
         await onAddCota({
           id: '',
@@ -238,7 +240,7 @@ const CotasManagement: React.FC<CotasManagementProps> = ({ user, stores, cotas, 
           brand: newCota.brand.toUpperCase(),
           classification: newCota.classification,
           totalValue: numValue,
-          shipmentDate: newCota.shipmentDate,
+          shipmentDate: shipmentForDatabase,
           paymentTerms: termsArray.join('/'),
           pairs: numPairs,
           installments: { ...calculatedInstallments },
