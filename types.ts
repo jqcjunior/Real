@@ -74,7 +74,17 @@ export interface MonthlyPerformance {
   delinquencyTarget?: number;
   trend: 'up' | 'down' | 'stable';
   correctedDailyGoal: number;
-  businessDays?: number; // NOVO: Dias de operação no mês
+  businessDays?: number;
+}
+
+// Add: ProductPerformance interface for brand and category analysis
+export interface ProductPerformance {
+  storeId: string;
+  month: string;
+  brand: string;
+  category: string;
+  pairsSold: number;
+  revenue: number;
 }
 
 export interface SellerGoal {
@@ -86,25 +96,7 @@ export interface SellerGoal {
   revenueActual: number;
   itemsActual?: number;
   paActual?: number;
-  commissionRate?: number; // NOVO: % de comissão
-}
-
-export interface ProductPerformance {
-  id?: string;
-  storeId: string;
-  month: string;
-  brand: string;
-  category: string;
-  pairsSold: number;
-  revenue: number;
-  reference?: string;
-  stockQuantity?: number;
-  purchaseQuantity?: number;
-  consumption?: number;
-  pendingOrder?: number;
-  costPrice?: number;
-  salePrice?: number;
-  lastPurchaseDate?: string;
+  commissionRate?: number;
 }
 
 export interface SystemLog {
@@ -145,66 +137,13 @@ export interface CotaDebt {
   value: number;
 }
 
-export type TaskPriority = 'lowest' | 'low' | 'medium' | 'high' | 'highest';
-
-export interface AgendaItem {
-    id: string;
-    userId: string;
-    title: string;
-    description: string;
-    dueDate: string;
-    priority: TaskPriority;
-    isCompleted: boolean;
-    createdAt: Date;
-}
-
-export interface CreditCardSale {
-    id: string;
-    storeId?: string;
-    userId?: string;
-    date: string;
-    brand: string;
-    authorizationCode?: string;
-    value: number;
-}
-
-export interface Receipt {
-    id: string;
-    storeId?: string;
-    issuerName: string;
-    payer: string;
-    recipient: string;
-    value: number;
-    valueInWords: string;
-    reference: string;
-    date: string;
-    createdAt: Date;
-}
-
-export type DownloadCategory = 'spreadsheet' | 'video' | 'image' | 'audio';
-
-export interface DownloadItem {
-    id: string;
-    title: string;
-    description: string;
-    category: DownloadCategory;
-    url: string;
-    fileName?: string;
-    size?: string;
-    campaign?: string;
-    createdAt: Date;
-    createdBy: string;
-}
-
-export type IceCreamPaymentMethod = 'Pix' | 'Cartão' | 'Dinheiro';
-
 export interface IceCreamDailySale {
   id: string;
   itemId: string;
   productName: string;
   category: string;
   flavor: string;
-  ml?: string; // NOVO: Tamanho em ml
+  ml?: string;
   unitsSold: number;
   unitPrice: number; 
   totalValue: number;
@@ -212,18 +151,7 @@ export interface IceCreamDailySale {
   createdAt?: string; 
 }
 
-export interface CashError {
-    id: string;
-    storeId: string;
-    userId: string;
-    userName: string;
-    date: string;
-    type: 'surplus' | 'shortage';
-    value: number;
-    reason?: string;
-    createdAt: Date;
-}
-
+export type IceCreamPaymentMethod = 'Pix' | 'Cartão' | 'Dinheiro';
 export type IceCreamCategory = 'Sundae' | 'Milkshake' | 'Casquinha' | 'Cascão' | 'Bebidas' | 'Adicionais';
 
 export interface IceCreamItem {
@@ -247,4 +175,83 @@ export interface IceCreamTransaction {
   employeeName?: string;
   description?: string;
   createdAt: Date;
+}
+
+export interface CashRegisterClosure {
+    id: string;
+    storeId: string;
+    userId: string;
+    userName: string;
+    totalSales: number;
+    totalExpenses: number;
+    balance: number;
+    notes?: string;
+    createdAt: string;
+}
+
+// Add: TaskPriority type for Agenda System
+export type TaskPriority = 'lowest' | 'low' | 'medium' | 'high' | 'highest';
+
+export interface AgendaItem {
+    id: string;
+    userId: string;
+    title: string;
+    description: string;
+    dueDate: string;
+    priority: TaskPriority;
+    isCompleted: boolean;
+    createdAt: Date;
+}
+
+// Add: DownloadCategory type for Downloads Module
+export type DownloadCategory = 'spreadsheet' | 'video' | 'image' | 'audio';
+
+export interface DownloadItem {
+    id: string;
+    title: string;
+    description: string;
+    category: DownloadCategory;
+    url: string;
+    fileName?: string;
+    size?: string;
+    campaign?: string;
+    createdAt: Date;
+    createdBy: string;
+}
+
+export interface CashError {
+    id: string;
+    storeId: string;
+    userId: string;
+    userName: string;
+    date: string;
+    type: 'surplus' | 'shortage';
+    value: number;
+    reason?: string;
+    createdAt: Date;
+}
+
+// Add: Receipt interface for Financial and Audit Modules
+export interface Receipt {
+  id: string;
+  storeId?: string;
+  issuerName: string;
+  payer: string;
+  recipient: string;
+  value: number;
+  valueInWords: string;
+  reference: string;
+  date: string;
+  createdAt: Date;
+}
+
+// Add: CreditCardSale interface for Financial Module
+export interface CreditCardSale {
+  id: string;
+  storeId?: string;
+  userId: string;
+  date: string;
+  brand: string;
+  value: number;
+  authorizationCode?: string;
 }
