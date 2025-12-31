@@ -19,7 +19,8 @@ import IceCreamModule from './components/IceCreamModule';
 import CashRegisterModule from './components/CashRegisterModule';
 import AdminUsersManagement from './components/AdminUsersManagement';
 import AccessControlManagement from './components/AccessControlManagement';
-import { User, Store, MonthlyPerformance, UserRole, Cota, AgendaItem, DownloadItem, SystemLog, CashError, CotaSettings, CotaDebt, IceCreamItem, IceCreamDailySale, IceCreamTransaction, PagePermission, CashRegisterClosure } from './types';
+import DashboardPurchases from './components/DashboardPurchases';
+import { User, Store, MonthlyPerformance, UserRole, Cota, AgendaItem, DownloadItem, SystemLog, CashError, CotaSettings, CotaDebt, IceCreamItem, IceCreamDailySale, IceCreamTransaction, PagePermission, CashRegisterClosure, ProductPerformance, CreditCardSale, Receipt } from './types';
 import { supabase } from './services/supabaseClient';
 
 const ICON_MAP: Record<string, React.ElementType> = {
@@ -38,8 +39,11 @@ const ICON_MAP: Record<string, React.ElementType> = {
     settings: Settings,
     icecream: ShoppingBag,
     access_control: Sliders,
-    cash_register: Banknote
+    cash_register: Banknote,
+    metas_registration: Target
 };
+
+import { Target } from 'lucide-react';
 
 interface NavButtonProps {
   view: string;
@@ -74,6 +78,7 @@ const App: React.FC = () => {
   const [pagePermissions, setPagePermissions] = useState<PagePermission[]>([]);
   const [stores, setStores] = useState<Store[]>([]);
   const [performanceData, setPerformanceData] = useState<MonthlyPerformance[]>([]);
+  const [purchasingData, setPurchasingData] = useState<ProductPerformance[]>([]);
   const [cotas, setCotas] = useState<Cota[]>([]);
   const [cotaSettings, setCotaSettings] = useState<CotaSettings[]>([]); 
   const [cotaDebts, setCotaDebts] = useState<CotaDebt[]>([]); 
@@ -81,6 +86,12 @@ const App: React.FC = () => {
   const [iceCreamSales, setIceCreamSales] = useState<IceCreamDailySale[]>([]);
   const [iceCreamFinances, setIceCreamFinances] = useState<IceCreamTransaction[]>([]);
   const [cashClosures, setCashClosures] = useState<CashRegisterClosure[]>([]);
+  const [tasks, setTasks] = useState<AgendaItem[]>([]);
+  const [downloads, setDownloads] = useState<DownloadItem[]>([]);
+  const [logs, setLogs] = useState<SystemLog[]>([]);
+  const [receipts, setReceipts] = useState<Receipt[]>([]);
+  const [cardSales, setCardSales] = useState<CreditCardSale[]>([]);
+  const [cashErrors, setCashErrors] = useState<CashError[]>([]);
   
   const loadAllData = async () => {
       try {
@@ -109,7 +120,7 @@ const App: React.FC = () => {
             id: c.id, storeId: c.store_id, closedBy: c.closed_by, date: c.date, totalSales: Number(c.total_sales), totalExpenses: Number(c.total_expenses), balance: Number(c.balance), notes: c.notes, createdAt: c.created_at
         })));
 
-        // Performance & Cotas (Garantido intocado)
+        // Performance & Cotas
         const { data: dbPerf } = await supabase.from('monthly_performance').select('*');
         if (dbPerf) setPerformanceData(dbPerf.map((p: any) => ({ id: p.id, storeId: p.store_id, month: p.month, revenueTarget: Number(p.revenue_target), revenueActual: Number(p.revenue_actual), itemsTarget: p.items_target, itemsActual: p.items_actual, paTarget: Number(p.pa_target), itemsPerTicket: Number(p.pa_actual), ticketTarget: Number(p.ticket_target), averageTicket: Number(p.ticket_actual), puTarget: Number(p.pu_target), unitPriceAverage: Number(p.pu_actual), delinquencyTarget: Number(p.delinquency_target), delinquencyRate: Number(p.delinquency_actual), percentMeta: p.revenue_target > 0 ? (p.revenue_actual / p.revenue_target) * 100 : 0, trend: 'stable', correctedDailyGoal: 0 })));
 
@@ -123,97 +134,25 @@ const App: React.FC = () => {
       }
   };
 
-  // --- ICE CREAM HANDLERS (COM REGRAS DE SEGURANÇA) ---
+  // --- HANDLERS (RESUMIDOS PARA O COMPACTO) ---
   const handleAddIcSales = async (newSales: IceCreamDailySale[]) => {
-      let payload: any[] = [];
-      try {
-          payload = newSales.map(s => ({
-              item_id: s.itemId,
-              product_name: s.productName,
-              category: s.category,
-              flavor: s.flavor,
-              ml: parseInt(s.ml?.replace(/\D/g, '') || '0'),
-              units_sold: Number(s.unitsSold),
-              unit_price: Number(s.unitPrice),
-              total_value: Number(s.totalValue),
-              payment_method: s.paymentMethod,
-              created_at: new Date().toISOString()
-          }));
-          
-          const { error } = await supabase.from('ice_cream_daily_sales').insert(payload);
-          if (error) throw error;
-          await loadAllData();
-      } catch (err) {
-          console.error("Erro ao registrar venda Ice Cream:", err, payload);
-          throw err;
-      }
+      const payload = newSales.map(s => ({
+          item_id: s.itemId, product_name: s.productName, category: s.category, flavor: s.flavor,
+          ml: parseInt(s.ml?.replace(/\D/g, '') || '0'), units_sold: Number(s.unitsSold),
+          unit_price: Number(s.unitPrice), total_value: Number(s.totalValue),
+          payment_method: s.paymentMethod, created_at: new Date().toISOString()
+      }));
+      const { error } = await supabase.from('ice_cream_daily_sales').insert(payload);
+      if (!error) await loadAllData();
   };
 
-  const handleAddIcTransaction = async (tx: IceCreamTransaction) => {
-      const { error } = await supabase.from('ice_cream_finances').insert([{
-          date: tx.date,
-          type: tx.type,
-          category: tx.category,
-          value: Number(tx.value),
-          employee_name: tx.employeeName,
-          description: tx.description
-      }]);
-      if (error) throw error;
-      await loadAllData();
-  };
-
-  const handleAddIcItem = async (name: string, category: string, price: number, flavor?: string) => {
-      if (user?.role === UserRole.CASHIER) {
-          alert("Operação Bloqueada: Apenas Administradores podem gerenciar o catálogo.");
-          return;
-      }
-      const { error } = await supabase.from('ice_cream_items').insert([{
-          name, category, price: Number(price), flavor, active: true
-      }]);
-      if (error) throw error;
-      await loadAllData();
-  };
-
-  const handleUpdateIcItem = async (item: IceCreamItem) => {
-      if (user?.role === UserRole.CASHIER) {
-          alert("Operação Bloqueada: Apenas Administradores podem gerenciar o catálogo.");
-          return;
-      }
-      const { error } = await supabase.from('ice_cream_items').update({
-          name: item.name, category: item.category, price: Number(item.price), flavor: item.flavor, active: item.active
-      }).eq('id', item.id);
-      if (error) throw error;
-      await loadAllData();
-  };
-
-  const handleDeleteIcItem = async (id: string) => {
-      if (user?.role === UserRole.CASHIER) {
-          alert("Operação Bloqueada: Apenas Administradores podem excluir itens.");
-          return;
-      }
-      const { error } = await supabase.from('ice_cream_items').delete().eq('id', id);
-      if (error) throw error;
-      await loadAllData();
-  };
-
-  // --- CASH REGISTER HANDLERS ---
   const handleAddCashClosure = async (closure: Partial<CashRegisterClosure>) => {
-      try {
-          const { error } = await supabase.from('cash_register_closure').insert([{
-              store_id: user?.storeId,
-              closed_by: user?.name,
-              date: closure.date,
-              total_sales: Number(closure.totalSales),
-              total_expenses: Number(closure.totalExpenses),
-              balance: Number(closure.balance),
-              notes: closure.notes
-          }]);
-          if (error) throw error;
-          await loadAllData();
-      } catch (err) {
-          console.error("Erro ao registrar fechamento de caixa:", err);
-          throw err;
-      }
+      const { error } = await supabase.from('cash_register_closure').insert([{
+          store_id: user?.storeId, closed_by: user?.name, date: closure.date,
+          total_sales: Number(closure.totalSales), total_expenses: Number(closure.totalExpenses),
+          balance: Number(closure.balance), notes: closure.notes
+      }]);
+      if (!error) await loadAllData();
   };
 
   const allowedPages = useMemo(() => {
@@ -246,15 +185,7 @@ const App: React.FC = () => {
 
   useEffect(() => {
     const saved = localStorage.getItem('rc_user') || sessionStorage.getItem('rc_user');
-    if (saved) { 
-        try {
-            setUser(JSON.parse(saved)); 
-            loadAllData();
-        } catch(e) {
-            localStorage.clear();
-            sessionStorage.clear();
-        }
-    }
+    if (saved) { try { setUser(JSON.parse(saved)); loadAllData(); } catch(e) { localStorage.clear(); } }
   }, []);
 
   const renderView = () => {
@@ -266,37 +197,65 @@ const App: React.FC = () => {
         return { success: false, error: 'Credenciais inválidas' };
     }} />;
 
+    const currentStore = stores.find(s => s.id === user.storeId);
+
+    // MAPEAMENTO EXAUSTIVO DE ROTAS CONFORME PAGE_PERMISSIONS
     switch (currentView) {
       case 'dashboard':
         return user.role === UserRole.MANAGER 
-          ? <DashboardManager user={user} stores={stores} performanceData={performanceData} purchasingData={[]} />
-          : <DashboardAdmin stores={stores} performanceData={performanceData} onImportData={async () => {}} />;
-      case 'icecream':
-        return <IceCreamModule 
-            user={user}
-            items={iceCreamItems} 
-            sales={iceCreamSales} 
-            finances={iceCreamFinances} 
-            onAddSales={handleAddIcSales} 
-            onUpdatePrice={async (id, p) => {}} 
-            onUpdateItem={handleUpdateIcItem} 
-            onAddTransaction={handleAddIcTransaction} 
-            onDeleteTransaction={async (id) => {}} 
-            onAddItem={handleAddIcItem} 
-            onDeleteItem={handleDeleteIcItem} 
-        />;
-      case 'cash_register':
-        return <CashRegisterModule 
-            user={user} 
-            sales={iceCreamSales} 
-            finances={iceCreamFinances} 
-            closures={cashClosures}
-            onAddClosure={handleAddCashClosure} 
-        />;
+          ? <DashboardManager user={user} stores={stores} performanceData={performanceData} purchasingData={purchasingData} />
+          : <DashboardAdmin stores={stores} performanceData={performanceData} onImportData={async (d) => { await supabase.from('monthly_performance').upsert(d.map(item => ({ store_id: item.storeId, month: item.month, revenue_target: item.revenueTarget, revenue_actual: item.revenueActual, items_actual: item.itemsActual, pa_actual: item.itemsPerTicket, ticket_actual: item.averageTicket, pu_actual: item.unitPriceAverage, delinquency_actual: item.delinquencyRate }))); await loadAllData(); }} />;
+      
+      case 'metas_registration':
+        return <GoalRegistration stores={stores} performanceData={performanceData} onUpdateData={async (d) => { await supabase.from('monthly_performance').upsert(d.map(i => ({ store_id: i.storeId, month: i.month, revenue_target: i.revenueTarget, revenue_actual: i.revenueActual, items_target: i.itemsTarget, items_actual: i.itemsActual, pa_target: i.paTarget, pa_actual: i.itemsPerTicket, ticket_target: i.ticketTarget, ticket_actual: i.averageTicket, pu_target: i.puTarget, pu_actual: i.unitPriceAverage, delinquency_target: i.delinquencyTarget, delinquency_actual: i.delinquencyRate, business_days: i.businessDays }))); await loadAllData(); }} />;
+      
+      case 'purchases':
+        return <DashboardPurchases stores={stores} data={purchasingData} onImport={async (d) => { await loadAllData(); }} />;
+      
       case 'cotas':
-        return <CotasManagement user={user} stores={stores} cotas={cotas} cotaSettings={[]} cotaDebts={[]} onAddCota={async () => {}} onDeleteCota={async () => {}} onSaveSettings={async () => {}} onSaveDebts={async () => {}} />;
+        return <CotasManagement user={user} stores={stores} cotas={cotas} cotaSettings={cotaSettings} cotaDebts={cotaDebts} onAddCota={async (c) => { await supabase.from('cotas').insert([{ store_id: c.storeId, brand: c.brand, classification: c.classification, total_value: c.totalValue, shipment_date: c.shipmentDate, payment_terms: c.paymentTerms, pairs: c.pairs, installments: c.installments, created_by_role: c.createdByRole, status: c.status }]); await loadAllData(); }} onDeleteCota={async (id) => { await supabase.from('cotas').delete().eq('id', id); await loadAllData(); }} onSaveSettings={async (s) => { await supabase.from('cota_settings').upsert({ store_id: s.storeId, budget_value: s.budgetValue, manager_percent: s.managerPercent }); await loadAllData(); }} onSaveDebts={async (sid, d) => { for(const [m, v] of Object.entries(d)) { await supabase.from('cota_debts').upsert({ store_id: sid, month: m, value: v }, { onConflict: 'store_id,month' }); } await loadAllData(); }} />;
+      
+      case 'icecream':
+        return <IceCreamModule user={user} items={iceCreamItems} sales={iceCreamSales} finances={iceCreamFinances} onAddSales={handleAddIcSales} onUpdatePrice={async () => {}} onUpdateItem={async (i) => { await supabase.from('ice_cream_items').update({ name: i.name, category: i.category, price: i.price, flavor: i.flavor, active: i.active }).eq('id', i.id); await loadAllData(); }} onAddTransaction={async (t) => { await supabase.from('ice_cream_finances').insert([{ date: t.date, type: t.type, category: t.category, value: t.value, employee_name: t.employeeName, description: t.description }]); await loadAllData(); }} onDeleteTransaction={async (id) => { await supabase.from('ice_cream_finances').delete().eq('id', id); await loadAllData(); }} onAddItem={async (n, c, p, f) => { await supabase.from('ice_cream_items').insert([{ name: n, category: c, price: p, flavor: f, active: true }]); await loadAllData(); }} onDeleteItem={async (id) => { await supabase.from('ice_cream_items').delete().eq('id', id); await loadAllData(); }} />;
+      
+      case 'cash_register':
+        return <CashRegisterModule user={user} sales={iceCreamSales} finances={iceCreamFinances} closures={cashClosures} onAddClosure={handleAddCashClosure} />;
+      
+      case 'agenda':
+        return <AgendaSystem user={user} tasks={tasks} onAddTask={async (t) => { await supabase.from('agenda_items').insert([{ user_id: t.userId, title: t.title, description: t.description, due_date: t.dueDate, priority: t.priority, is_completed: false }]); await loadAllData(); }} onUpdateTask={async (t) => { await supabase.from('agenda_items').update({ title: t.title, description: t.description, due_date: t.dueDate, priority: t.priority, is_completed: t.isCompleted }).eq('id', t.id); await loadAllData(); }} onDeleteTask={async (id) => { await supabase.from('agenda_items').delete().eq('id', id); await loadAllData(); }} />;
+      
+      case 'financial':
+        return <FinancialModule user={user} store={currentStore} sales={cardSales} receipts={receipts} onAddSale={async (s) => { await supabase.from('card_sales').insert([{ store_id: s.storeId, user_id: s.userId, date: s.date, brand: s.brand, value: s.value }]); await loadAllData(); }} onDeleteSale={async (id) => { await supabase.from('card_sales').delete().eq('id', id); await loadAllData(); }} onAddReceipt={async (r) => { await supabase.from('receipts').insert([{ store_id: r.storeId, issuer_name: r.issuerName, payer: r.payer, recipient: r.recipient, value: r.value, reference: r.reference, date: r.date }]); await loadAllData(); }} />;
+      
+      case 'cash_errors':
+        return <CashErrorsModule user={user} store={currentStore} stores={stores} errors={cashErrors} onAddError={async (e) => { await supabase.from('cash_errors').insert([{ store_id: e.storeId, user_id: e.userId, user_name: e.userName, date: e.date, type: e.type, value: e.value, reason: e.reason }]); await loadAllData(); }} onUpdateError={async (e) => { await supabase.from('cash_errors').update({ date: e.date, type: e.type, value: e.value, reason: e.reason }).eq('id', e.id); await loadAllData(); }} onDeleteError={async (id) => { await supabase.from('cash_errors').delete().eq('id', id); await loadAllData(); }} />;
+      
+      case 'marketing':
+        return <InstagramMarketing user={user} store={currentStore} />;
+      
+      case 'downloads':
+        return <DownloadsModule user={user} items={downloads} onUpload={async (i) => { await supabase.from('downloads').insert([{ title: i.title, description: i.description, category: i.category, url: i.url, file_name: i.fileName, size: i.size, campaign: i.campaign, created_by: i.createdBy }]); await loadAllData(); }} onDelete={async (id) => { await supabase.from('downloads').delete().eq('id', id); await loadAllData(); }} />;
+      
+      case 'auth_print':
+        return <PurchaseAuthorization />;
+      
+      case 'termo_print':
+        return <TermoAutorizacao user={user} store={currentStore} />;
+      
+      case 'admin_users':
+        return <AdminUsersManagement currentUser={user} />;
+      
+      case 'audit':
+        return <SystemAudit logs={logs} receipts={receipts} store={currentStore} cashErrors={cashErrors} />;
+      
+      case 'settings':
+        return <AdminSettings stores={stores} onAddStore={async (s) => { await supabase.from('stores').insert([{ number: s.number, name: s.name, city: s.city, manager_name: s.managerName, manager_email: s.managerEmail, manager_phone: s.managerPhone, password: s.password, status: s.status, role: s.role }]); await loadAllData(); }} onUpdateStore={async (s) => { await supabase.from('stores').update({ number: s.number, name: s.name, city: s.city, manager_name: s.managerName, manager_email: s.managerEmail, manager_phone: s.managerPhone, status: s.status, role: s.role }).eq('id', s.id); await loadAllData(); }} onDeleteStore={async (id) => { await supabase.from('stores').delete().eq('id', id); await loadAllData(); }} onImportStores={async (ss) => { await supabase.from('stores').upsert(ss.map(s => ({ number: s.number, name: s.name, city: s.city, manager_name: s.managerName, manager_email: s.managerEmail, manager_phone: s.managerPhone, status: 'active', role: UserRole.MANAGER })), { onConflict: 'number' }); await loadAllData(); }} />;
+      
+      case 'access_control':
+        return <AccessControlManagement />;
+
       default:
-        return <div className="p-10 text-gray-500 font-bold uppercase tracking-widest text-center">Acesso Restrito</div>;
+        return <div className="p-10 text-gray-500 font-bold uppercase tracking-widest text-center">Acesso restrito ou funcionalidade em desenvolvimento.</div>;
     }
   };
 
@@ -313,6 +272,7 @@ const App: React.FC = () => {
                    <span className="font-black italic text-blue-950 tracking-tighter uppercase leading-none text-xl">REAL <span className="text-red-600">ADMIN</span></span>
                    <p className="text-[7px] text-gray-400 font-black uppercase tracking-widest mt-0.5">ESTRATÉGIA & OPERAÇÃO</p>
                 </div>
+                <button onClick={() => setIsSidebarOpen(!isSidebarOpen)} className="md:hidden p-2 text-gray-600"><Menu size={24} /></button>
             </div>
             <div className="flex items-center gap-4">
                 <div className="px-4 py-1.5 bg-gray-50 rounded-full border border-gray-100 flex items-center gap-2">

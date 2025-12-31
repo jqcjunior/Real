@@ -37,6 +37,7 @@ const IceCreamModule: React.FC<IceCreamModuleProps> = ({
     user, items, sales, finances, onAddSales, onUpdateItem, onAddTransaction, onDeleteTransaction, onAddItem, onDeleteItem 
 }) => {
   const isCashier = user.role === UserRole.CASHIER;
+  // Perfil Cashier não vê DRE nem Catálogo por padrão
   const [activeTab, setActiveTab] = useState<'dre' | 'vendas' | 'financeiro' | 'products'>(isCashier ? 'vendas' : 'dre');
   const [isSubmitting, setIsSubmitting] = useState(false);
   
@@ -82,7 +83,7 @@ const IceCreamModule: React.FC<IceCreamModuleProps> = ({
     return items.filter(i => i.name === selectedProductName && i.category === selectedCategory && i.active);
   }, [items, selectedProductName, selectedCategory]);
 
-  // CÁLCULO DRE COM FILTRO DE PERÍODO REAL
+  // CÁLCULO DRE COM FILTRO DE PERÍODO E DISTRIBUIÇÃO EXATA
   const dreData = useMemo(() => {
     const monthSales = sales.filter(s => s.createdAt && s.createdAt.startsWith(periodKey));
     const monthFinances = finances.filter(f => f.date.startsWith(periodKey));
@@ -94,18 +95,18 @@ const IceCreamModule: React.FC<IceCreamModuleProps> = ({
     const totalExits = monthFinances.filter(f => f.type === 'exit').reduce((acc, f) => acc + f.value, 0);
     const netProfit = totalEntries - totalExits;
     
-    // Distribuição de lucros
-    const totalDistributedBlock = netProfit > 0 ? netProfit : 0;
+    // Distribuição de lucros (Regra Real)
+    const block63 = netProfit > 0 ? netProfit * 0.6333 : 0;
     
     return { 
         totalEntries, 
         totalExits, 
         netProfit,
         dist: {
-            luciene: totalDistributedBlock * 0.6333 / 2, // 63.33% dividido entre Luciene e Regis
-            regis: totalDistributedBlock * 0.6333 / 2,
-            ademir: totalDistributedBlock * 0.2667,
-            junior: totalDistributedBlock * 0.10
+            luciene: block63 / 2, // Luciene e Regis dividem o bloco de 63.33%
+            regis: block63 / 2,
+            ademir: netProfit > 0 ? netProfit * 0.2667 : 0,
+            junior: netProfit > 0 ? netProfit * 0.10 : 0
         }
     };
   }, [sales, finances, periodKey]);
@@ -141,7 +142,7 @@ const IceCreamModule: React.FC<IceCreamModuleProps> = ({
           alert("Venda registrada com sucesso!");
       } catch (e) {
           console.error("PDV Error:", e);
-          alert("Erro ao registrar venda.");
+          alert("Erro técnico ao processar venda.");
       } finally {
           setIsSubmitting(false);
       }
@@ -150,10 +151,7 @@ const IceCreamModule: React.FC<IceCreamModuleProps> = ({
   const handleSaveTransaction = async (e: React.FormEvent) => {
       e.preventDefault();
       const val = parseFloat(financeForm.value.replace(/\./g, '').replace(',', '.'));
-      if (isNaN(val) || val <= 0) {
-          alert("Valor inválido.");
-          return;
-      }
+      if (isNaN(val) || val <= 0) { alert("Valor inválido."); return; }
       setIsSubmitting(true);
       try {
           await onAddTransaction({
@@ -168,14 +166,11 @@ const IceCreamModule: React.FC<IceCreamModuleProps> = ({
           });
           setFinanceForm(prev => ({ ...prev, value: '', description: '' }));
           alert("Lançamento efetuado!");
-      } catch (e) {
-          alert("Erro ao salvar transação.");
-      } finally {
-          setIsSubmitting(false);
-      }
+      } catch (e) { alert("Erro ao salvar lançamento."); } finally { setIsSubmitting(false); }
   };
 
   const handleEditClick = (item: IceCreamItem) => {
+      if (isCashier) return;
       setEditingItem(item);
       setProductForm({
           name: item.name,
@@ -197,7 +192,7 @@ const IceCreamModule: React.FC<IceCreamModuleProps> = ({
         else await onAddItem(productForm.name, productForm.category, priceVal, productForm.flavor);
         setIsProductModalOpen(false);
         setEditingItem(null);
-    } catch (e) { alert("Erro ao salvar."); } finally { setIsSubmitting(false); }
+    } catch (e) { alert("Erro ao salvar produto."); } finally { setIsSubmitting(false); }
   };
 
   return (
@@ -208,7 +203,7 @@ const IceCreamModule: React.FC<IceCreamModuleProps> = ({
           <div className="p-5 bg-gradient-to-br from-blue-700 to-blue-900 rounded-3xl text-white shadow-xl"><IceCream size={32} /></div>
           <div>
             <h2 className="text-3xl font-black text-gray-900 uppercase italic tracking-tighter leading-none">Módulo <span className="text-red-600">Gelateria</span></h2>
-            <p className="text-gray-400 text-[10px] font-black uppercase tracking-widest mt-2 ml-1">Terminal Operacional de Vendas</p>
+            <p className="text-gray-400 text-[10px] font-black uppercase tracking-widest mt-2 ml-1">Terminal de Operação e Performance</p>
           </div>
         </div>
         
@@ -231,11 +226,11 @@ const IceCreamModule: React.FC<IceCreamModuleProps> = ({
               <div className="lg:col-span-3 space-y-6">
                   <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
                       <div className="bg-white p-8 rounded-[48px] shadow-sm border border-gray-100">
-                          <p className="text-[10px] font-black text-gray-400 uppercase tracking-widest mb-2">Faturamento Bruto</p>
+                          <p className="text-[10px] font-black text-gray-400 uppercase tracking-widest mb-2">Entradas Brutas</p>
                           <p className="text-3xl font-black text-gray-900">{formatCurrency(dreData.totalEntries)}</p>
                       </div>
                       <div className="bg-white p-8 rounded-[48px] shadow-sm border border-gray-100">
-                          <p className="text-[10px] font-black text-gray-400 uppercase tracking-widest mb-2">Despesas Totais</p>
+                          <p className="text-[10px] font-black text-gray-400 uppercase tracking-widest mb-2">Saídas Operacionais</p>
                           <p className="text-3xl font-black text-red-600">{formatCurrency(dreData.totalExits)}</p>
                       </div>
                       <div className={`p-8 rounded-[48px] shadow-2xl text-white bg-gradient-to-br ${dreData.netProfit >= 0 ? 'from-blue-900 to-blue-950' : 'from-red-900 to-red-950'}`}>
@@ -244,42 +239,40 @@ const IceCreamModule: React.FC<IceCreamModuleProps> = ({
                       </div>
                   </div>
 
-                  {/* DISTRIBUIÇÃO DE LUCROS AUTOMÁTICA */}
                   {dreData.netProfit > 0 && (
-                    <div className="bg-white p-10 rounded-[56px] shadow-xl border border-gray-100">
+                    <div className="bg-white p-10 rounded-[56px] shadow-xl border border-gray-100 border-t-8 border-t-blue-600">
                         <h3 className="font-black text-gray-900 text-2xl uppercase italic tracking-tighter mb-8 flex items-center gap-3">
-                            <TrendingUp className="text-blue-700" size={32} /> Distribuição de Lucros
+                            <TrendingUp className="text-blue-700" size={32} /> Rateio de Lucros
                         </h3>
-                        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
+                        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-6 text-center">
                             <div className="p-6 bg-gray-50 rounded-[40px] border border-gray-100">
                                 <span className="text-[9px] font-black text-gray-400 uppercase block mb-2 tracking-widest">Luciene (31.66%)</span>
-                                <p className="text-xl font-black text-gray-900 italic">{formatCurrency(dreData.dist.luciene)}</p>
+                                <p className="text-xl font-black text-gray-900">{formatCurrency(dreData.dist.luciene)}</p>
                             </div>
                             <div className="p-6 bg-gray-50 rounded-[40px] border border-gray-100">
                                 <span className="text-[9px] font-black text-gray-400 uppercase block mb-2 tracking-widest">Regis (31.66%)</span>
-                                <p className="text-xl font-black text-gray-900 italic">{formatCurrency(dreData.dist.regis)}</p>
+                                <p className="text-xl font-black text-gray-900">{formatCurrency(dreData.dist.regis)}</p>
                             </div>
                             <div className="p-6 bg-gray-50 rounded-[40px] border border-gray-100">
                                 <span className="text-[9px] font-black text-gray-400 uppercase block mb-2 tracking-widest">Ademir (26.67%)</span>
-                                <p className="text-xl font-black text-gray-900 italic">{formatCurrency(dreData.dist.ademir)}</p>
+                                <p className="text-xl font-black text-gray-900">{formatCurrency(dreData.dist.ademir)}</p>
                             </div>
                             <div className="p-6 bg-gray-50 rounded-[40px] border border-gray-100">
                                 <span className="text-[9px] font-black text-gray-400 uppercase block mb-2 tracking-widest">Junior (10%)</span>
-                                <p className="text-xl font-black text-gray-900 italic">{formatCurrency(dreData.dist.junior)}</p>
+                                <p className="text-xl font-black text-gray-900">{formatCurrency(dreData.dist.junior)}</p>
                             </div>
                         </div>
                     </div>
                   )}
               </div>
 
-              {/* FILTROS DE PERÍODO */}
               <div className="space-y-6">
                   <div className="bg-white p-8 rounded-[40px] border border-gray-100 shadow-sm">
                       <h4 className="text-[10px] font-black text-gray-900 uppercase tracking-[0.2em] mb-6 flex items-center gap-2"><Filter size={14}/> Filtrar Período</h4>
                       <div className="space-y-4">
                           <div>
-                              <label className="text-[9px] font-black text-gray-400 uppercase mb-2 block">Mês de Referência</label>
-                              <select value={selectedMonth} onChange={e => setSelectedMonth(e.target.value)} className="w-full p-4 bg-gray-50 border-none rounded-2xl font-black text-gray-800 outline-none focus:ring-4 focus:ring-blue-100">
+                              <label className="text-[9px] font-black text-gray-400 uppercase mb-2 block">Mês</label>
+                              <select value={selectedMonth} onChange={e => setSelectedMonth(e.target.value)} className="w-full p-4 bg-gray-50 border-none rounded-2xl font-black text-gray-800 outline-none focus:ring-4 focus:ring-blue-100 uppercase text-xs">
                                   {MONTHS.map(m => <option key={m.v} value={m.v}>{m.l}</option>)}
                               </select>
                           </div>
@@ -321,7 +314,7 @@ const IceCreamModule: React.FC<IceCreamModuleProps> = ({
                       <div className="bg-white p-10 rounded-[56px] shadow-xl border border-gray-100">
                           <div className="grid grid-cols-1 md:grid-cols-2 gap-10">
                               <div>
-                                  <h4 className="text-[10px] font-black text-gray-400 uppercase tracking-widest mb-4">Escolha o Sabor</h4>
+                                  <h4 className="text-[10px] font-black text-gray-400 uppercase tracking-widest mb-4">Sabor</h4>
                                   <div className="grid grid-cols-2 gap-3">
                                       {itemFlavors.map(item => (
                                           <button key={item.id} onClick={() => setSelectedItem(item)} className={`p-5 rounded-[24px] border-2 text-left transition-all ${selectedItem?.id === item.id ? 'bg-red-50 border-red-600 shadow-md' : 'bg-gray-50 border-transparent hover:border-red-200'}`}>
@@ -332,7 +325,7 @@ const IceCreamModule: React.FC<IceCreamModuleProps> = ({
                                   </div>
                               </div>
                               <div>
-                                  <h4 className="text-[10px] font-black text-gray-400 uppercase tracking-widest mb-4">Tamanho (ml)</h4>
+                                  <h4 className="text-[10px] font-black text-gray-400 uppercase tracking-widest mb-4">Tamanho</h4>
                                   <div className="grid grid-cols-3 gap-2">
                                       {ML_OPTIONS.map(ml => (
                                           <button key={ml} onClick={() => setSelectedMl(ml)} className={`py-3 rounded-xl text-[10px] font-bold border-2 transition-all ${selectedMl === ml ? 'bg-gray-900 border-gray-900 text-white' : 'bg-white border-gray-100 text-gray-400 hover:border-gray-300'}`}>{ml}</button>
@@ -364,10 +357,10 @@ const IceCreamModule: React.FC<IceCreamModuleProps> = ({
               </div>
 
               <div className="bg-gray-900 rounded-[56px] p-10 text-white shadow-2xl flex flex-col h-fit sticky top-8">
-                  <h3 className="text-2xl font-black uppercase italic tracking-tighter leading-none mb-10">Carrinho de <span className="text-red-500">Vendas</span></h3>
+                  <h3 className="text-2xl font-black uppercase italic tracking-tighter leading-none mb-10 text-center">Carrinho</h3>
                   <div className="space-y-4 mb-10 max-h-[400px] overflow-y-auto no-scrollbar">
                       {cart.map((item, idx) => (
-                          <div key={item.id} className="flex items-center justify-between bg-white/5 p-5 rounded-[32px] border border-white/5 group">
+                          <div key={item.id} className="flex items-center justify-between bg-white/5 p-5 rounded-[32px] border border-white/5">
                               <div className="flex-1">
                                   <p className="text-[10px] font-black text-red-500 uppercase">{item.category} • {item.ml}</p>
                                   <p className="font-black uppercase italic my-1 text-sm">{item.productName} - {item.flavor}</p>
@@ -394,32 +387,32 @@ const IceCreamModule: React.FC<IceCreamModuleProps> = ({
       {activeTab === 'financeiro' && (
           <div className="grid grid-cols-1 xl:grid-cols-2 gap-10 animate-in fade-in duration-300">
               <div className="bg-white p-12 rounded-[64px] shadow-2xl border border-gray-100">
-                  <h3 className="font-black text-gray-900 text-3xl uppercase italic tracking-tighter mb-10 flex items-center gap-4"><Banknote className="text-blue-700" size={40} /> Lançamento de <span className="text-red-600">Despesa</span></h3>
+                  <h3 className="font-black text-gray-900 text-3xl uppercase italic tracking-tighter mb-10 flex items-center gap-4"><Banknote className="text-blue-700" size={40} /> Lançamento</h3>
                   <form onSubmit={handleSaveTransaction} className="space-y-8">
                       <div className="grid grid-cols-2 gap-8">
-                          <div className="space-y-2">
-                              <label className="text-[10px] font-black text-gray-400 uppercase tracking-widest block ml-1">Data</label>
-                              <input type="date" value={financeForm.date} onChange={e => setFinanceForm({...financeForm, date: e.target.value})} className="w-full p-5 bg-gray-50 border-none rounded-[24px] font-black text-sm outline-none focus:ring-4 focus:ring-blue-100" />
+                          <div>
+                              <label className="text-[10px] font-black text-gray-400 uppercase block ml-1 mb-2">Data</label>
+                              <input type="date" value={financeForm.date} onChange={e => setFinanceForm({...financeForm, date: e.target.value})} className="w-full p-5 bg-gray-50 border-none rounded-[24px] font-black text-sm" />
                           </div>
-                          <div className="space-y-2">
-                              <label className="text-[10px] font-black text-gray-400 uppercase tracking-widest block ml-1">Valor (R$)</label>
-                              <input value={financeForm.value} onChange={e => setFinanceForm({...financeForm, value: e.target.value})} placeholder="0,00" className="w-full p-6 bg-gray-50 border-none rounded-[28px] font-black text-4xl text-gray-900 focus:ring-4 focus:ring-blue-100 outline-none" />
+                          <div>
+                              <label className="text-[10px] font-black text-gray-400 uppercase block ml-1 mb-2">Valor (R$)</label>
+                              <input value={financeForm.value} onChange={e => setFinanceForm({...financeForm, value: e.target.value})} placeholder="0,00" className="w-full p-5 bg-gray-50 border-none rounded-[24px] font-black text-3xl text-gray-900 focus:ring-4 focus:ring-blue-100 outline-none" />
                           </div>
                       </div>
                       <div className="grid grid-cols-2 gap-8">
-                          <div className="space-y-2">
-                              <label className="text-[10px] font-black text-gray-400 uppercase tracking-widest block ml-1">Categoria</label>
+                          <div>
+                              <label className="text-[10px] font-black text-gray-400 uppercase block ml-1 mb-2">Categoria</label>
                               <select value={financeForm.category} onChange={e => setFinanceForm({...financeForm, category: e.target.value as IceCreamExpenseCategory})} className="w-full p-5 bg-gray-50 border-none rounded-[24px] font-black uppercase text-xs">
                                   {EXPENSE_CATEGORIES.map(cat => <option key={cat} value={cat}>{cat}</option>)}
                               </select>
                           </div>
-                          <div className="space-y-2">
-                              <label className="text-[10px] font-black text-gray-400 uppercase tracking-widest block ml-1">Quem recebeu?</label>
-                              <input value={financeForm.employeeName} onChange={e => setFinanceForm({...financeForm, employeeName: e.target.value})} placeholder="Nome do beneficiário" className="w-full p-5 bg-gray-50 border-none rounded-[24px] font-black text-gray-800 uppercase italic text-sm outline-none focus:ring-4 focus:ring-blue-100" />
+                          <div>
+                              <label className="text-[10px] font-black text-gray-400 uppercase block ml-1 mb-2">Responsável</label>
+                              <input value={financeForm.employeeName} onChange={e => setFinanceForm({...financeForm, employeeName: e.target.value})} placeholder="Quem efetuou?" className="w-full p-5 bg-gray-50 border-none rounded-[24px] font-black text-gray-800 uppercase italic text-sm outline-none focus:ring-4 focus:ring-blue-100" />
                           </div>
                       </div>
                       <button type="submit" disabled={isSubmitting} className="w-full py-6 bg-red-600 hover:bg-red-700 disabled:bg-gray-400 text-white rounded-[32px] font-black uppercase text-sm shadow-2xl flex items-center justify-center gap-4 transition-all">
-                          {isSubmitting ? <Loader2 className="animate-spin" size={24}/> : <Save size={24}/>} Efetivar Lançamento
+                          {isSubmitting ? <Loader2 className="animate-spin" size={24}/> : <Save size={24}/>} Efetivar
                       </button>
                   </form>
               </div>
@@ -429,14 +422,12 @@ const IceCreamModule: React.FC<IceCreamModuleProps> = ({
       {activeTab === 'products' && !isCashier && (
         <div className="space-y-6 animate-in fade-in duration-300">
             <div className="flex justify-between items-center bg-white p-10 rounded-[48px] shadow-sm border border-gray-100">
-                <div>
-                    <h3 className="font-black text-gray-900 text-2xl uppercase italic tracking-tighter">Catálogo de <span className="text-red-600">Itens</span></h3>
-                </div>
-                <button onClick={() => { setEditingItem(null); setProductForm({ name: '', category: 'Sundae', flavor: '', price: '', active: true }); setIsProductModalOpen(true); }} className="bg-gray-950 text-white px-10 py-5 rounded-[24px] font-black uppercase text-xs shadow-2xl hover:bg-black transition-all border-b-4 border-red-700">Adicionar Produto</button>
+                <h3 className="font-black text-gray-900 text-2xl uppercase italic tracking-tighter">Gerenciar Itens</h3>
+                <button onClick={() => { setEditingItem(null); setProductForm({ name: '', category: 'Sundae', flavor: '', price: '', active: true }); setIsProductModalOpen(true); }} className="bg-gray-950 text-white px-10 py-5 rounded-[24px] font-black uppercase text-xs shadow-2xl hover:bg-black transition-all border-b-4 border-red-700">Adicionar Novo</button>
             </div>
             <div className="bg-white rounded-[48px] shadow-xl border border-gray-100 overflow-hidden">
                 <table className="w-full text-left">
-                    <thead><tr className="bg-gray-50 text-[10px] font-black text-gray-400 uppercase tracking-widest border-b border-gray-100"><th className="px-10 py-6">Identificação</th><th className="px-10 py-6">Categoria</th><th className="px-10 py-6">Valor</th><th className="px-10 py-6 text-right">Ações</th></tr></thead>
+                    <thead><tr className="bg-gray-50 text-[10px] font-black text-gray-400 uppercase tracking-widest border-b border-gray-100"><th className="px-10 py-6">Produto</th><th className="px-10 py-6">Categoria</th><th className="px-10 py-6">Preço</th><th className="px-10 py-6 text-right">Ações</th></tr></thead>
                     <tbody className="divide-y divide-gray-50">
                         {items.map(item => (
                             <tr key={item.id} className={`hover:bg-blue-50/20 transition-all ${!item.active ? 'opacity-40 grayscale' : ''}`}>
@@ -461,34 +452,32 @@ const IceCreamModule: React.FC<IceCreamModuleProps> = ({
         <div className="fixed inset-0 bg-black/90 backdrop-blur-xl flex items-center justify-center z-[150] p-4">
             <div className="bg-white rounded-[60px] shadow-2xl w-full max-w-xl overflow-hidden animate-in zoom-in duration-300">
                 <div className="p-10 bg-gray-50 border-b flex justify-between items-center">
-                    <h3 className="text-3xl font-black text-gray-900 uppercase italic tracking-tighter leading-none">{editingItem ? 'Editar' : 'Novo'} <span className="text-blue-700">Produto</span></h3>
+                    {/* Fix: Replaced undefined 'editingId' with 'editingItem' */}
+                    <h3 className="text-3xl font-black text-gray-900 uppercase italic tracking-tighter leading-none">{editingItem ? 'Editar' : 'Novo'} Produto</h3>
                     <button onClick={() => setIsProductModalOpen(false)} className="text-gray-400 hover:text-red-600 transition-all"><X size={24} /></button>
                 </div>
                 <div className="p-12 space-y-8">
                     <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
-                        <div className="space-y-2">
-                            <label className="text-[10px] font-black text-gray-500 uppercase block tracking-widest">Nome *</label>
-                            <input value={productForm.name} onChange={e => setProductForm({...productForm, name: e.target.value})} className="w-full px-6 py-5 bg-gray-50 border-none rounded-[24px] font-black text-gray-800 uppercase italic focus:ring-4 focus:ring-blue-100 outline-none" />
+                        <div>
+                            <label className="text-[10px] font-black text-gray-500 uppercase block tracking-widest mb-2">Nome</label>
+                            <input value={productForm.name} onChange={e => setProductForm({...productForm, name: e.target.value})} className="w-full px-6 py-5 bg-gray-50 border-none rounded-[24px] font-black text-gray-800 uppercase italic outline-none" />
                         </div>
-                        <div className="space-y-2">
-                            <label className="text-[10px] font-black text-gray-500 uppercase block tracking-widest">Categoria</label>
+                        <div>
+                            <label className="text-[10px] font-black text-gray-500 uppercase block tracking-widest mb-2">Categoria</label>
                             <select value={productForm.category} onChange={e => setProductForm({...productForm, category: e.target.value as IceCreamCategory})} className="w-full px-6 py-5 bg-gray-50 border-none rounded-[24px] font-black text-blue-700 uppercase outline-none">
                                 {PRODUCT_CATEGORIES.map(cat => (<option key={cat} value={cat}>{cat}</option>))}
                             </select>
                         </div>
                     </div>
                     <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
-                        <div className="space-y-2">
-                            <label className="text-[10px] font-black text-gray-500 uppercase block tracking-widest">Sabor</label>
+                        <div>
+                            <label className="text-[10px] font-black text-gray-500 uppercase block tracking-widest mb-2">Sabor</label>
                             <input value={productForm.flavor} onChange={e => setProductForm({...productForm, flavor: e.target.value})} className="w-full px-6 py-5 bg-gray-50 border-none rounded-[24px] font-black text-gray-800 uppercase italic outline-none" />
                         </div>
-                        <div className="space-y-2">
-                            <label className="text-[10px] font-black text-gray-500 uppercase block tracking-widest">Valor (R$)</label>
-                            <input value={productForm.price} onChange={e => setProductForm({...productForm, price: e.target.value})} placeholder="0,00" className="w-full px-6 py-5 bg-blue-50/50 border-4 border-blue-100 rounded-[28px] font-black text-3xl text-blue-900 outline-none focus:border-blue-600 transition-all" />
+                        <div>
+                            <label className="text-[10px] font-black text-gray-500 uppercase block tracking-widest mb-2">Valor (R$)</label>
+                            <input value={productForm.price} onChange={e => setProductForm({...productForm, price: e.target.value})} placeholder="0,00" className="w-full px-6 py-5 bg-blue-50 border-4 border-blue-100 rounded-[28px] font-black text-3xl text-blue-900 outline-none" />
                         </div>
-                    </div>
-                    <div className="flex items-center gap-4 bg-gray-50 p-6 rounded-[30px] border border-gray-100">
-                        <input type="checkbox" id="active-check" checked={productForm.active} onChange={e => setProductForm({...productForm, active: e.target.checked})} className="w-6 h-6 accent-blue-600 rounded-lg cursor-pointer"/><label htmlFor="active-check" className="text-xs font-black text-gray-600 uppercase tracking-widest cursor-pointer select-none">Ativo no PDV</label>
                     </div>
                 </div>
                 <div className="p-10 bg-gray-50 flex gap-5 border-t border-gray-100">

@@ -1,6 +1,6 @@
 
 import React, { useState, useMemo } from 'react';
-import { User, CashRegisterClosure, IceCreamDailySale, IceCreamTransaction } from '../types';
+import { User, CashRegisterClosure, IceCreamDailySale, IceCreamTransaction, UserRole } from '../types';
 import { formatCurrency } from '../constants';
 import { Banknote, Save, Loader2, History, Calculator, ClipboardCheck, Info } from 'lucide-react';
 
@@ -15,28 +15,30 @@ interface CashRegisterModuleProps {
 const CashRegisterModule: React.FC<CashRegisterModuleProps> = ({ 
     user, sales, finances, closures, onAddClosure 
 }) => {
+  const isCashier = user.role === UserRole.CASHIER;
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [notes, setNotes] = useState('');
   
-  // Resumo do Dia Atual
-  const today = new Date().toISOString().split('T')[0];
+  // Apuração do Dia Atual
+  const todayKey = new Date().toISOString().split('T')[0];
   
   const dailySummary = useMemo(() => {
-      // Filtrar apenas o dia atual e converter campos para garantir precisão numérica
-      const todaySales = sales.filter(s => s.createdAt?.startsWith(today));
-      const todayFinances = finances.filter(f => f.date === today);
+      // Filtrar vendas ocorridas hoje
+      const todaySales = sales.filter(s => s.createdAt?.startsWith(todayKey));
+      // Filtrar despesas ocorridas hoje
+      const todayFinances = finances.filter(f => f.date === todayKey);
       
       const totalSales = todaySales.reduce((a, b) => a + Number(b.totalValue), 0);
       const totalExpenses = todayFinances.filter(f => f.type === 'exit').reduce((a, b) => a + Number(b.value), 0);
       const balance = totalSales - totalExpenses;
       
       return { totalSales, totalExpenses, balance };
-  }, [sales, finances, today]);
+  }, [sales, finances, todayKey]);
 
   const handleCloseRegister = async () => {
-      const confirmMsg = `Confirma o fechamento do caixa?\n\n` +
-                         `Vendas do dia: ${formatCurrency(dailySummary.totalSales)}\n` +
-                         `Despesas do dia: ${formatCurrency(dailySummary.totalExpenses)}\n` +
+      const confirmMsg = `Confirmar fechamento do dia ${new Date().toLocaleDateString('pt-BR')}?\n\n` +
+                         `Vendas: ${formatCurrency(dailySummary.totalSales)}\n` +
+                         `Despesas: ${formatCurrency(dailySummary.totalExpenses)}\n` +
                          `Saldo Final: ${formatCurrency(dailySummary.balance)}`;
 
       if (window.confirm(confirmMsg)) {
@@ -47,13 +49,13 @@ const CashRegisterModule: React.FC<CashRegisterModuleProps> = ({
                   totalExpenses: dailySummary.totalExpenses,
                   balance: dailySummary.balance,
                   notes: notes,
-                  date: today
+                  date: todayKey
               });
               setNotes('');
-              alert("Fechamento de caixa gravado com sucesso!");
+              alert("Fechamento realizado com sucesso!");
           } catch (e) {
               console.error("Closure Error:", e);
-              alert("Erro ao gravar fechamento de caixa no banco.");
+              alert("Erro ao gravar fechamento no servidor.");
           } finally {
               setIsSubmitting(false);
           }
@@ -64,47 +66,46 @@ const CashRegisterModule: React.FC<CashRegisterModuleProps> = ({
     <div className="p-4 md:p-8 space-y-8 max-w-5xl mx-auto animate-in fade-in duration-500">
         <div className="flex flex-col md:flex-row justify-between items-center gap-6 bg-white p-8 rounded-[40px] shadow-sm border border-gray-100">
             <div className="flex items-center gap-4">
-                <div className="p-5 bg-gray-900 rounded-3xl text-white shadow-xl"><Banknote size={32} /></div>
+                <div className="p-5 bg-blue-900 rounded-3xl text-white shadow-xl"><Banknote size={32} /></div>
                 <div>
-                    <h2 className="text-2xl font-black text-gray-900 uppercase italic tracking-tighter leading-none">Fechamento <span className="text-red-600">de Caixa</span></h2>
-                    <p className="text-gray-400 text-[10px] font-black uppercase tracking-widest mt-2">Apuração Diária Automatizada</p>
+                    <h2 className="text-2xl font-black text-gray-900 uppercase italic tracking-tighter leading-none">Fechamento de <span className="text-red-600">Caixa Diário</span></h2>
+                    <p className="text-gray-400 text-[10px] font-black uppercase tracking-widest mt-2">Apuração Automatizada de Entradas e Saídas</p>
                 </div>
             </div>
             <div className="bg-blue-50 px-6 py-3 rounded-2xl border border-blue-100 text-center">
-                <p className="text-[9px] font-black text-blue-400 uppercase tracking-widest mb-1">Data de Referência</p>
+                <p className="text-[9px] font-black text-blue-400 uppercase tracking-widest mb-1">Hoje</p>
                 <p className="text-lg font-black text-blue-900">{new Date().toLocaleDateString('pt-BR')}</p>
             </div>
         </div>
 
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
-            {/* Form de Fechamento */}
-            <div className="bg-white p-10 rounded-[48px] shadow-xl border border-gray-100 space-y-8 h-fit">
+            <div className="bg-white p-10 rounded-[48px] shadow-xl border border-gray-100 space-y-8">
                 <h3 className="text-xl font-black uppercase italic tracking-tighter flex items-center gap-3">
-                    <Calculator className="text-blue-700" size={24}/> Resumo <span className="text-red-600">Financeiro</span>
+                    <Calculator className="text-blue-700" size={24}/> Resumo Financeiro do Dia
                 </h3>
                 
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
                     <div className="p-6 bg-green-50 rounded-[32px] border border-green-100">
-                        <span className="text-[9px] font-black text-green-600 uppercase tracking-widest block mb-2">Total Vendas (+)</span>
+                        <span className="text-[9px] font-black text-green-600 uppercase tracking-widest block mb-2">Vendas Brutas (+)</span>
                         <p className="text-2xl font-black text-green-700">{formatCurrency(dailySummary.totalSales)}</p>
                     </div>
                     <div className="p-6 bg-red-50 rounded-[32px] border border-red-100">
-                        <span className="text-[9px] font-black text-red-600 uppercase tracking-widest block mb-2">Total Despesas (-)</span>
+                        <span className="text-[9px] font-black text-red-600 uppercase tracking-widest block mb-2">Despesas (-)</span>
                         <p className="text-2xl font-black text-red-700">{formatCurrency(dailySummary.totalExpenses)}</p>
                     </div>
                 </div>
 
                 <div className="p-8 bg-gray-900 rounded-[40px] text-white shadow-inner">
-                    <span className="text-[10px] font-black text-gray-400 uppercase tracking-widest block mb-2">Saldo Final para Depósito</span>
+                    <span className="text-[10px] font-black text-gray-400 uppercase tracking-widest block mb-2">Saldo Final Esperado</span>
                     <p className="text-4xl font-black italic tracking-tighter">{formatCurrency(dailySummary.balance)}</p>
                 </div>
 
                 <div className="space-y-2">
-                    <label className="text-[10px] font-black text-gray-400 uppercase tracking-widest block ml-2">Observações Adicionais</label>
+                    <label className="text-[10px] font-black text-gray-400 uppercase tracking-widest block ml-2">Observações / Ocorrências</label>
                     <textarea 
                         value={notes} 
                         onChange={e => setNotes(e.target.value)}
-                        placeholder="Alguma ocorrência ou detalhe relevante?"
+                        placeholder="Algum detalhe relevante sobre o caixa de hoje?"
                         className="w-full p-6 bg-gray-50 border-none rounded-[28px] font-medium text-sm h-32 resize-none outline-none focus:ring-4 focus:ring-blue-100 shadow-inner"
                     />
                 </div>
@@ -115,15 +116,14 @@ const CashRegisterModule: React.FC<CashRegisterModuleProps> = ({
                     className="w-full py-6 bg-red-600 hover:bg-red-700 disabled:bg-gray-300 text-white rounded-[32px] font-black uppercase text-sm shadow-2xl flex items-center justify-center gap-4 transition-all active:scale-95 border-b-4 border-red-900"
                 >
                     {isSubmitting ? <Loader2 className="animate-spin" size={24}/> : <ClipboardCheck size={24}/>}
-                    {dailySummary.totalSales === 0 ? 'Sem Movimentação para Fechar' : 'Efetivar Fechamento Diário'}
+                    {dailySummary.totalSales === 0 ? 'Sem Vendas para Fechar' : 'Efetivar Fechamento Diário'}
                 </button>
             </div>
 
-            {/* Histórico Recente */}
             <div className="space-y-6">
                 <div className="bg-white p-8 rounded-[48px] shadow-sm border border-gray-100 flex flex-col min-h-[500px]">
                     <h3 className="text-lg font-black uppercase italic tracking-tighter flex items-center gap-3 mb-6">
-                        <History className="text-blue-700" size={24}/> Últimos <span className="text-blue-700">Registros</span>
+                        <History className="text-blue-700" size={24}/> Últimos Fechamentos
                     </h3>
                     
                     <div className="space-y-4 overflow-y-auto max-h-[700px] pr-2 no-scrollbar flex-1">
@@ -143,7 +143,7 @@ const CashRegisterModule: React.FC<CashRegisterModuleProps> = ({
                                 </div>
                                 {c.notes && (
                                     <div className="pt-3 border-t border-gray-200 mt-3">
-                                        <p className="text-[10px] italic text-gray-500 leading-relaxed truncate group-hover:whitespace-normal">"{c.notes}"</p>
+                                        <p className="text-[10px] italic text-gray-500 leading-relaxed">"{c.notes}"</p>
                                     </div>
                                 )}
                             </div>
