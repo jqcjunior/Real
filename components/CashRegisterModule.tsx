@@ -22,30 +22,38 @@ const CashRegisterModule: React.FC<CashRegisterModuleProps> = ({
   const today = new Date().toISOString().split('T')[0];
   
   const dailySummary = useMemo(() => {
+      // Filtrar apenas o dia atual e converter campos para garantir precisão numérica
       const todaySales = sales.filter(s => s.createdAt?.startsWith(today));
       const todayFinances = finances.filter(f => f.date === today);
       
-      const totalSales = todaySales.reduce((a, b) => a + b.totalValue, 0);
-      const totalExpenses = todayFinances.filter(f => f.type === 'exit').reduce((a, b) => a + b.value, 0);
+      const totalSales = todaySales.reduce((a, b) => a + Number(b.totalValue), 0);
+      const totalExpenses = todayFinances.filter(f => f.type === 'exit').reduce((a, b) => a + Number(b.value), 0);
       const balance = totalSales - totalExpenses;
       
       return { totalSales, totalExpenses, balance };
   }, [sales, finances, today]);
 
   const handleCloseRegister = async () => {
-      if (window.confirm(`Confirma o fechamento do caixa com saldo de ${formatCurrency(dailySummary.balance)}?`)) {
+      const confirmMsg = `Confirma o fechamento do caixa?\n\n` +
+                         `Vendas do dia: ${formatCurrency(dailySummary.totalSales)}\n` +
+                         `Despesas do dia: ${formatCurrency(dailySummary.totalExpenses)}\n` +
+                         `Saldo Final: ${formatCurrency(dailySummary.balance)}`;
+
+      if (window.confirm(confirmMsg)) {
           setIsSubmitting(true);
           try {
               await onAddClosure({
                   totalSales: dailySummary.totalSales,
                   totalExpenses: dailySummary.totalExpenses,
                   balance: dailySummary.balance,
-                  notes: notes
+                  notes: notes,
+                  date: today
               });
               setNotes('');
-              alert("Caixa fechado com sucesso!");
+              alert("Fechamento de caixa gravado com sucesso!");
           } catch (e) {
-              alert("Erro ao fechar caixa.");
+              console.error("Closure Error:", e);
+              alert("Erro ao gravar fechamento de caixa no banco.");
           } finally {
               setIsSubmitting(false);
           }
@@ -59,18 +67,18 @@ const CashRegisterModule: React.FC<CashRegisterModuleProps> = ({
                 <div className="p-5 bg-gray-900 rounded-3xl text-white shadow-xl"><Banknote size={32} /></div>
                 <div>
                     <h2 className="text-2xl font-black text-gray-900 uppercase italic tracking-tighter leading-none">Fechamento <span className="text-red-600">de Caixa</span></h2>
-                    <p className="text-gray-400 text-[10px] font-black uppercase tracking-widest mt-2">Apuração Diária de Entradas e Saídas</p>
+                    <p className="text-gray-400 text-[10px] font-black uppercase tracking-widest mt-2">Apuração Diária Automatizada</p>
                 </div>
             </div>
             <div className="bg-blue-50 px-6 py-3 rounded-2xl border border-blue-100 text-center">
-                <p className="text-[9px] font-black text-blue-400 uppercase tracking-widest mb-1">Data da Operação</p>
+                <p className="text-[9px] font-black text-blue-400 uppercase tracking-widest mb-1">Data de Referência</p>
                 <p className="text-lg font-black text-blue-900">{new Date().toLocaleDateString('pt-BR')}</p>
             </div>
         </div>
 
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
             {/* Form de Fechamento */}
-            <div className="bg-white p-10 rounded-[48px] shadow-xl border border-gray-100 space-y-8">
+            <div className="bg-white p-10 rounded-[48px] shadow-xl border border-gray-100 space-y-8 h-fit">
                 <h3 className="text-xl font-black uppercase italic tracking-tighter flex items-center gap-3">
                     <Calculator className="text-blue-700" size={24}/> Resumo <span className="text-red-600">Financeiro</span>
                 </h3>
@@ -86,51 +94,56 @@ const CashRegisterModule: React.FC<CashRegisterModuleProps> = ({
                     </div>
                 </div>
 
-                <div className="p-8 bg-gray-900 rounded-[40px] text-white">
-                    <span className="text-[10px] font-black text-gray-400 uppercase tracking-widest block mb-2">Saldo Final para Sangria/Depósito</span>
+                <div className="p-8 bg-gray-900 rounded-[40px] text-white shadow-inner">
+                    <span className="text-[10px] font-black text-gray-400 uppercase tracking-widest block mb-2">Saldo Final para Depósito</span>
                     <p className="text-4xl font-black italic tracking-tighter">{formatCurrency(dailySummary.balance)}</p>
                 </div>
 
                 <div className="space-y-2">
-                    <label className="text-[10px] font-black text-gray-400 uppercase tracking-widest block ml-2">Observações do Turno</label>
+                    <label className="text-[10px] font-black text-gray-400 uppercase tracking-widest block ml-2">Observações Adicionais</label>
                     <textarea 
                         value={notes} 
                         onChange={e => setNotes(e.target.value)}
-                        placeholder="Alguma ocorrência ou detalhe sobre o caixa de hoje?"
-                        className="w-full p-6 bg-gray-50 border-none rounded-[28px] font-medium text-sm h-32 resize-none outline-none focus:ring-4 focus:ring-blue-100"
+                        placeholder="Alguma ocorrência ou detalhe relevante?"
+                        className="w-full p-6 bg-gray-50 border-none rounded-[28px] font-medium text-sm h-32 resize-none outline-none focus:ring-4 focus:ring-blue-100 shadow-inner"
                     />
                 </div>
 
                 <button 
                     onClick={handleCloseRegister}
-                    disabled={isSubmitting}
-                    className="w-full py-6 bg-red-600 hover:bg-red-700 disabled:bg-gray-400 text-white rounded-[32px] font-black uppercase text-sm shadow-2xl flex items-center justify-center gap-4 transition-all"
+                    disabled={isSubmitting || dailySummary.totalSales === 0}
+                    className="w-full py-6 bg-red-600 hover:bg-red-700 disabled:bg-gray-300 text-white rounded-[32px] font-black uppercase text-sm shadow-2xl flex items-center justify-center gap-4 transition-all active:scale-95 border-b-4 border-red-900"
                 >
                     {isSubmitting ? <Loader2 className="animate-spin" size={24}/> : <ClipboardCheck size={24}/>}
-                    Finalizar e Gravar Fechamento
+                    {dailySummary.totalSales === 0 ? 'Sem Movimentação para Fechar' : 'Efetivar Fechamento Diário'}
                 </button>
             </div>
 
             {/* Histórico Recente */}
             <div className="space-y-6">
-                <div className="bg-white p-8 rounded-[48px] shadow-sm border border-gray-100 flex flex-col h-full">
+                <div className="bg-white p-8 rounded-[48px] shadow-sm border border-gray-100 flex flex-col min-h-[500px]">
                     <h3 className="text-lg font-black uppercase italic tracking-tighter flex items-center gap-3 mb-6">
-                        <History className="text-blue-700" size={24}/> Últimos <span className="text-blue-700">Fechamentos</span>
+                        <History className="text-blue-700" size={24}/> Últimos <span className="text-blue-700">Registros</span>
                     </h3>
                     
-                    <div className="space-y-4 overflow-y-auto max-h-[600px] pr-2 no-scrollbar">
+                    <div className="space-y-4 overflow-y-auto max-h-[700px] pr-2 no-scrollbar flex-1">
                         {closures.map(c => (
-                            <div key={c.id} className="p-6 bg-gray-50 rounded-[32px] border border-gray-100 hover:border-blue-200 transition-all group">
+                            <div key={c.id} className="p-6 bg-gray-50 rounded-[32px] border border-gray-100 hover:border-blue-200 transition-all group shadow-sm">
                                 <div className="flex justify-between items-start mb-3">
                                     <div>
-                                        <p className="text-[10px] font-black text-blue-600 uppercase">{new Date(c.createdAt).toLocaleDateString('pt-BR')} {new Date(c.createdAt).toLocaleTimeString('pt-BR', {hour:'2-digit', minute:'2-digit'})}</p>
-                                        <p className="text-xs font-black uppercase text-gray-900 mt-1">{c.userName}</p>
+                                        <p className="text-[10px] font-black text-blue-600 uppercase">
+                                            {c.date ? new Date(c.date + 'T00:00:00').toLocaleDateString('pt-BR') : new Date(c.createdAt).toLocaleDateString('pt-BR')}
+                                        </p>
+                                        <p className="text-xs font-black uppercase text-gray-900 mt-1">{c.closedBy || 'Operador'}</p>
                                     </div>
-                                    <p className="text-lg font-black text-gray-900 italic">{formatCurrency(c.balance)}</p>
+                                    <div className="text-right">
+                                        <p className="text-lg font-black text-gray-900 italic">{formatCurrency(c.balance)}</p>
+                                        <p className="text-[8px] font-bold text-gray-400 uppercase tracking-tighter">Saldo Líquido</p>
+                                    </div>
                                 </div>
                                 {c.notes && (
                                     <div className="pt-3 border-t border-gray-200 mt-3">
-                                        <p className="text-[10px] italic text-gray-500 leading-relaxed">"{c.notes}"</p>
+                                        <p className="text-[10px] italic text-gray-500 leading-relaxed truncate group-hover:whitespace-normal">"{c.notes}"</p>
                                     </div>
                                 )}
                             </div>
@@ -138,7 +151,7 @@ const CashRegisterModule: React.FC<CashRegisterModuleProps> = ({
                         {closures.length === 0 && (
                             <div className="text-center py-20 text-gray-300">
                                 <Info size={40} className="mx-auto mb-4 opacity-20" />
-                                <p className="text-[10px] font-black uppercase tracking-widest">Nenhum registro encontrado</p>
+                                <p className="text-[10px] font-black uppercase tracking-widest">Nenhum fechamento registrado</p>
                             </div>
                         )}
                     </div>

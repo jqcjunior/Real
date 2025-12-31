@@ -106,10 +106,10 @@ const App: React.FC = () => {
 
         const { data: dbClosures } = await supabase.from('cash_register_closure').select('*').order('created_at', { ascending: false });
         if (dbClosures) setCashClosures(dbClosures.map((c: any) => ({
-            id: c.id, storeId: c.store_id, userId: c.user_id, userName: c.user_name, totalSales: Number(c.total_sales), totalExpenses: Number(c.total_expenses), balance: Number(c.balance), notes: c.notes, createdAt: c.created_at
+            id: c.id, storeId: c.store_id, closedBy: c.closed_by, date: c.date, totalSales: Number(c.total_sales), totalExpenses: Number(c.total_expenses), balance: Number(c.balance), notes: c.notes, createdAt: c.created_at
         })));
 
-        // Performance & Cotas (Garantido intocado na lógica interna)
+        // Performance & Cotas (Garantido intocado)
         const { data: dbPerf } = await supabase.from('monthly_performance').select('*');
         if (dbPerf) setPerformanceData(dbPerf.map((p: any) => ({ id: p.id, storeId: p.store_id, month: p.month, revenueTarget: Number(p.revenue_target), revenueActual: Number(p.revenue_actual), itemsTarget: p.items_target, itemsActual: p.items_actual, paTarget: Number(p.pa_target), itemsPerTicket: Number(p.pa_actual), ticketTarget: Number(p.ticket_target), averageTicket: Number(p.ticket_actual), puTarget: Number(p.pu_target), unitPriceAverage: Number(p.pu_actual), delinquencyTarget: Number(p.delinquency_target), delinquencyRate: Number(p.delinquency_actual), percentMeta: p.revenue_target > 0 ? (p.revenue_actual / p.revenue_target) * 100 : 0, trend: 'stable', correctedDailyGoal: 0 })));
 
@@ -125,20 +125,28 @@ const App: React.FC = () => {
 
   // --- ICE CREAM HANDLERS ---
   const handleAddIcSales = async (newSales: IceCreamDailySale[]) => {
-      const payload = newSales.map(s => ({
-          item_id: s.itemId,
-          product_name: s.productName,
-          category: s.category,
-          flavor: s.flavor,
-          ml: s.ml,
-          units_sold: s.unitsSold,
-          unit_price: s.unitPrice,
-          total_value: s.totalValue,
-          payment_method: s.paymentMethod
-      }));
-      const { error } = await supabase.from('ice_cream_daily_sales').insert(payload);
-      if (error) throw error;
-      await loadAllData();
+      let payload: any[] = [];
+      try {
+          payload = newSales.map(s => ({
+              item_id: s.itemId,
+              product_name: s.productName,
+              category: s.category,
+              flavor: s.flavor,
+              ml: parseInt(s.ml?.replace(/\D/g, '') || '0'), // Converte "300ml" para 300
+              units_sold: Number(s.unitsSold),
+              unit_price: Number(s.unitPrice),
+              total_value: Number(s.totalValue),
+              payment_method: s.paymentMethod,
+              created_at: new Date().toISOString()
+          }));
+          
+          const { error } = await supabase.from('ice_cream_daily_sales').insert(payload);
+          if (error) throw error;
+          await loadAllData();
+      } catch (err) {
+          console.error("Erro ao registrar venda Ice Cream:", err, payload);
+          throw err;
+      }
   };
 
   const handleAddIcTransaction = async (tx: IceCreamTransaction) => {
@@ -146,7 +154,7 @@ const App: React.FC = () => {
           date: tx.date,
           type: tx.type,
           category: tx.category,
-          value: tx.value,
+          value: Number(tx.value),
           employee_name: tx.employeeName,
           description: tx.description
       }]);
@@ -156,7 +164,7 @@ const App: React.FC = () => {
 
   const handleAddIcItem = async (name: string, category: string, price: number, flavor?: string) => {
       const { error } = await supabase.from('ice_cream_items').insert([{
-          name, category, price, flavor, active: true
+          name, category, price: Number(price), flavor, active: true
       }]);
       if (error) throw error;
       await loadAllData();
@@ -164,7 +172,7 @@ const App: React.FC = () => {
 
   const handleUpdateIcItem = async (item: IceCreamItem) => {
       const { error } = await supabase.from('ice_cream_items').update({
-          name: item.name, category: item.category, price: item.price, flavor: item.flavor, active: item.active
+          name: item.name, category: item.category, price: Number(item.price), flavor: item.flavor, active: item.active
       }).eq('id', item.id);
       if (error) throw error;
       await loadAllData();
@@ -178,17 +186,22 @@ const App: React.FC = () => {
 
   // --- CASH REGISTER HANDLERS ---
   const handleAddCashClosure = async (closure: Partial<CashRegisterClosure>) => {
-      const { error } = await supabase.from('cash_register_closure').insert([{
-          store_id: user?.storeId,
-          user_id: user?.id,
-          user_name: user?.name,
-          total_sales: closure.totalSales,
-          total_expenses: closure.totalExpenses,
-          balance: closure.balance,
-          notes: closure.notes
-      }]);
-      if (error) throw error;
-      await loadAllData();
+      try {
+          const { error } = await supabase.from('cash_register_closure').insert([{
+              store_id: user?.storeId,
+              closed_by: user?.name,
+              date: closure.date,
+              total_sales: Number(closure.totalSales),
+              total_expenses: Number(closure.totalExpenses),
+              balance: Number(closure.balance),
+              notes: closure.notes
+          }]);
+          if (error) throw error;
+          await loadAllData();
+      } catch (err) {
+          console.error("Erro ao registrar fechamento de caixa:", err);
+          throw err;
+      }
   };
 
   const allowedPages = useMemo(() => {
@@ -221,7 +234,15 @@ const App: React.FC = () => {
 
   useEffect(() => {
     const saved = localStorage.getItem('rc_user') || sessionStorage.getItem('rc_user');
-    if (saved) { setUser(JSON.parse(saved)); loadAllData(); }
+    if (saved) { 
+        try {
+            setUser(JSON.parse(saved)); 
+            loadAllData();
+        } catch(e) {
+            localStorage.clear();
+            sessionStorage.clear();
+        }
+    }
   }, []);
 
   const renderView = () => {
@@ -263,7 +284,7 @@ const App: React.FC = () => {
       case 'cotas':
         return <CotasManagement user={user} stores={stores} cotas={cotas} cotaSettings={[]} cotaDebts={[]} onAddCota={async () => {}} onDeleteCota={async () => {}} onSaveSettings={async () => {}} onSaveDebts={async () => {}} />;
       default:
-        return <div className="p-10 text-gray-500 font-bold uppercase tracking-widest text-center">Acesso Restrito ou Em Desenvolvimento</div>;
+        return <div className="p-10 text-gray-500 font-bold uppercase tracking-widest text-center">Acesso Restrito</div>;
     }
   };
 

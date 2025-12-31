@@ -24,7 +24,7 @@ interface IceCreamModuleProps {
 
 const EXPENSE_CATEGORIES: IceCreamExpenseCategory[] = ['Vale Funcionário', 'Pagamento Funcionário', 'Fornecedor', 'Material/Consumo', 'Aluguel', 'Energia', 'Outros'];
 const PRODUCT_CATEGORIES: IceCreamCategory[] = ['Sundae', 'Milkshake', 'Casquinha', 'Cascão', 'Bebidas', 'Adicionais'].sort() as IceCreamCategory[];
-const ML_OPTIONS = ['100ml', '200ml', '300ml', '400ml', '500ml', '700ml', 'Padrão'];
+const ML_OPTIONS = ['180ml', '300ml', '400ml', '500ml', '700ml'];
 
 const IceCreamModule: React.FC<IceCreamModuleProps> = ({ 
     user, items, sales, finances, onAddSales, onUpdateItem, onAddTransaction, onDeleteTransaction, onAddItem, onDeleteItem 
@@ -42,7 +42,7 @@ const IceCreamModule: React.FC<IceCreamModuleProps> = ({
   const [selectedCategory, setSelectedCategory] = useState<IceCreamCategory | null>(null);
   const [selectedProductName, setSelectedProductName] = useState<string | null>(null);
   const [selectedItem, setSelectedItem] = useState<IceCreamItem | null>(null);
-  const [selectedMl, setSelectedMl] = useState<string>('Padrão');
+  const [selectedMl, setSelectedMl] = useState<string>('300ml');
   const [quantity, setQuantity] = useState(1);
   const [paymentMethod, setPaymentMethod] = useState<IceCreamPaymentMethod | null>(null);
   const [cart, setCart] = useState<IceCreamDailySale[]>([]);
@@ -106,13 +106,12 @@ const IceCreamModule: React.FC<IceCreamModuleProps> = ({
           ml: selectedMl,
           unitsSold: quantity,
           unitPrice: selectedItem.price,
-          totalValue: selectedItem.price * quantity,
+          totalValue: Number((selectedItem.price * quantity).toFixed(2)),
           paymentMethod: paymentMethod
       };
       setCart([...cart, newItem]);
       setSelectedItem(null);
       setQuantity(1);
-      setSelectedMl('Padrão');
   };
 
   const handleFinalizeSale = async () => {
@@ -123,7 +122,8 @@ const IceCreamModule: React.FC<IceCreamModuleProps> = ({
           setCart([]);
           alert("Venda registrada com sucesso!");
       } catch (e) {
-          alert("Erro ao registrar venda.");
+          console.error("PDV Error:", e);
+          alert("Erro ao registrar venda. Verifique os dados e tente novamente.");
       } finally {
           setIsSubmitting(false);
       }
@@ -198,7 +198,7 @@ const IceCreamModule: React.FC<IceCreamModuleProps> = ({
           {[
               {id:'dre',label:'DRE Mensal',icon:Calculator, adminOnly: true},
               {id:'vendas',label:'PDV Vendas',icon:ShoppingCart, adminOnly: false},
-              {id:'financeiro',label:'Lançamentos',icon:Banknote, adminOnly: false},
+              {id:'financeiro',label:'Despesas',icon:Banknote, adminOnly: false},
               {id:'products',label:'Catálogo',icon:Package, adminOnly: true}
           ].filter(tab => !tab.adminOnly || !isCashier).map(tab => (
             <button key={tab.id} onClick={() => setActiveTab(tab.id as any)} className={`flex items-center gap-2 px-6 py-3 rounded-2xl text-[10px] font-black uppercase tracking-widest transition-all ${activeTab === tab.id ? 'bg-white text-blue-700 shadow-xl scale-105' : 'text-gray-500 hover:text-gray-700'}`}>
@@ -223,23 +223,6 @@ const IceCreamModule: React.FC<IceCreamModuleProps> = ({
                       <div className="bg-gradient-to-br from-blue-900 to-blue-950 p-8 rounded-[48px] shadow-2xl text-white">
                           <p className="text-[10px] font-black text-blue-300 uppercase tracking-widest mb-2">Resultado Líquido</p>
                           <p className="text-4xl font-black italic tracking-tighter">{formatCurrency(dreData.netProfit)}</p>
-                      </div>
-                  </div>
-                  <div className="bg-white p-10 rounded-[56px] shadow-xl border border-gray-100">
-                      <h3 className="font-black text-gray-900 text-2xl uppercase italic tracking-tighter mb-8 flex items-center gap-3"><Users className="text-blue-700" size={32} /> Distribuição de Lucros</h3>
-                      <div className="grid grid-cols-1 md:grid-cols-3 gap-8 text-center">
-                          <div className="p-6 bg-gray-50 rounded-[40px]">
-                              <span className="text-[9px] font-black text-gray-400 uppercase block mb-4">Regis & Luciene (63,33%)</span>
-                              <p className="text-2xl font-black text-gray-900">{formatCurrency(dreData.regisLuciene)}</p>
-                          </div>
-                          <div className="p-6 bg-gray-50 rounded-[40px]">
-                              <span className="text-[9px] font-black text-gray-400 uppercase block mb-4">Ademir (26,67%)</span>
-                              <p className="text-2xl font-black text-gray-900">{formatCurrency(dreData.ademir)}</p>
-                          </div>
-                          <div className="p-6 bg-gray-50 rounded-[40px]">
-                              <span className="text-[9px] font-black text-gray-400 uppercase block mb-4">Junior (10%)</span>
-                              <p className="text-2xl font-black text-gray-900">{formatCurrency(dreData.junior)}</p>
-                          </div>
                       </div>
                   </div>
               </div>
@@ -369,8 +352,8 @@ const IceCreamModule: React.FC<IceCreamModuleProps> = ({
                               </select>
                           </div>
                           <div className="space-y-2">
-                              <label className="text-[10px] font-black text-gray-400 uppercase tracking-widest block ml-1">Beneficiário / Nome</label>
-                              <input value={financeForm.employeeName} onChange={e => setFinanceForm({...financeForm, employeeName: e.target.value})} placeholder="Quem recebeu?" className="w-full p-5 bg-gray-50 border-none rounded-[24px] font-black text-gray-800 uppercase italic text-sm outline-none focus:ring-4 focus:ring-blue-100" />
+                              <label className="text-[10px] font-black text-gray-400 uppercase tracking-widest block ml-1">Quem recebeu?</label>
+                              <input value={financeForm.employeeName} onChange={e => setFinanceForm({...financeForm, employeeName: e.target.value})} placeholder="Nome do beneficiário" className="w-full p-5 bg-gray-50 border-none rounded-[24px] font-black text-gray-800 uppercase italic text-sm outline-none focus:ring-4 focus:ring-blue-100" />
                           </div>
                       </div>
                       <button type="submit" disabled={isSubmitting} className="w-full py-6 bg-red-600 hover:bg-red-700 disabled:bg-gray-400 text-white rounded-[32px] font-black uppercase text-sm shadow-2xl flex items-center justify-center gap-4 transition-all">
@@ -386,9 +369,8 @@ const IceCreamModule: React.FC<IceCreamModuleProps> = ({
             <div className="flex justify-between items-center bg-white p-10 rounded-[48px] shadow-sm border border-gray-100">
                 <div>
                     <h3 className="font-black text-gray-900 text-2xl uppercase italic tracking-tighter">Catálogo de <span className="text-red-600">Itens</span></h3>
-                    <p className="text-[10px] text-gray-400 font-bold uppercase tracking-widest mt-2">Configurações de Preços e Disponibilidade</p>
                 </div>
-                <button onClick={() => { setEditingItem(null); setProductForm({ name: '', category: 'Sundae', flavor: '', price: '', active: true }); setIsProductModalOpen(true); }} className="bg-gray-950 text-white px-10 py-5 rounded-[24px] font-black uppercase text-xs shadow-2xl hover:bg-black transition-all border-b-4 border-red-700">Adicionar Novo Produto</button>
+                <button onClick={() => { setEditingItem(null); setProductForm({ name: '', category: 'Sundae', flavor: '', price: '', active: true }); setIsProductModalOpen(true); }} className="bg-gray-950 text-white px-10 py-5 rounded-[24px] font-black uppercase text-xs shadow-2xl hover:bg-black transition-all border-b-4 border-red-700">Adicionar Produto</button>
             </div>
             <div className="bg-white rounded-[48px] shadow-xl border border-gray-100 overflow-hidden">
                 <table className="w-full text-left">
@@ -450,7 +432,7 @@ const IceCreamModule: React.FC<IceCreamModuleProps> = ({
                 <div className="p-10 bg-gray-50 flex gap-5 border-t border-gray-100">
                     <button onClick={() => setIsProductModalOpen(false)} className="flex-1 py-6 bg-white border-2 border-gray-200 rounded-[28px] font-black text-gray-400 uppercase text-xs">Cancelar</button>
                     <button onClick={handleSaveProduct} disabled={isSubmitting} className="flex-1 py-6 bg-blue-700 text-white rounded-[28px] font-black uppercase text-xs shadow-2xl flex items-center justify-center gap-3 transition-all">
-                        {isSubmitting ? <Loader2 className="animate-spin" size={20}/> : <Save size={20}/>} Confirmar Cadastro
+                        {isSubmitting ? <Loader2 className="animate-spin" size={20}/> : <Save size={20}/>} Confirmar
                     </button>
                 </div>
             </div>

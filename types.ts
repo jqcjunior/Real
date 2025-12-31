@@ -180,8 +180,8 @@ export interface IceCreamTransaction {
 export interface CashRegisterClosure {
     id: string;
     storeId: string;
-    userId: string;
-    userName: string;
+    closedBy: string;
+    date: string;
     totalSales: number;
     totalExpenses: number;
     balance: number;
