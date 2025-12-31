@@ -5,7 +5,7 @@ import { formatCurrency } from '../constants';
 import { 
     IceCream, Plus, DollarSign, Save, Trash2, X, Calculator, Edit3, Package, 
     Loader2, ShoppingCart, CheckCircle2, Hash, CreditCard, 
-    Banknote, Users, Search
+    Banknote, Users, Search, Filter, Calendar, TrendingUp, ChevronRight
 } from 'lucide-react';
 
 interface IceCreamModuleProps {
@@ -26,17 +26,25 @@ const EXPENSE_CATEGORIES: IceCreamExpenseCategory[] = ['Vale Funcionário', 'Pag
 const PRODUCT_CATEGORIES: IceCreamCategory[] = ['Sundae', 'Milkshake', 'Casquinha', 'Cascão', 'Bebidas', 'Adicionais'].sort() as IceCreamCategory[];
 const ML_OPTIONS = ['180ml', '300ml', '400ml', '500ml', '700ml'];
 
+const MONTHS = [
+  { v: '01', l: 'Janeiro' }, { v: '02', l: 'Fevereiro' }, { v: '03', l: 'Março' },
+  { v: '04', l: 'Abril' }, { v: '05', l: 'Maio' }, { v: '06', l: 'Junho' },
+  { v: '07', l: 'Julho' }, { v: '08', l: 'Agosto' }, { v: '09', l: 'Setembro' },
+  { v: '10', l: 'Outubro' }, { v: '11', l: 'Novembro' }, { v: '12', l: 'Dezembro' }
+];
+
 const IceCreamModule: React.FC<IceCreamModuleProps> = ({ 
     user, items, sales, finances, onAddSales, onUpdateItem, onAddTransaction, onDeleteTransaction, onAddItem, onDeleteItem 
 }) => {
   const isCashier = user.role === UserRole.CASHIER;
-  // Perfil Cashier só acessa 'vendas' por padrão
   const [activeTab, setActiveTab] = useState<'dre' | 'vendas' | 'financeiro' | 'products'>(isCashier ? 'vendas' : 'dre');
   const [isSubmitting, setIsSubmitting] = useState(false);
-  const [selectedMonth, setSelectedMonth] = useState<string>(() => {
-      const now = new Date();
-      return `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`;
-  });
+  
+  // Período de análise DRE
+  const now = new Date();
+  const [selectedMonth, setSelectedMonth] = useState(String(now.getMonth() + 1).padStart(2, '0'));
+  const [selectedYear, setSelectedYear] = useState(String(now.getFullYear()));
+  const periodKey = `${selectedYear}-${selectedMonth}`;
 
   // PDV States
   const [selectedCategory, setSelectedCategory] = useState<IceCreamCategory | null>(null);
@@ -74,23 +82,33 @@ const IceCreamModule: React.FC<IceCreamModuleProps> = ({
     return items.filter(i => i.name === selectedProductName && i.category === selectedCategory && i.active);
   }, [items, selectedProductName, selectedCategory]);
 
+  // CÁLCULO DRE COM FILTRO DE PERÍODO REAL
   const dreData = useMemo(() => {
-    const monthSales = sales.filter(s => s.createdAt && s.createdAt.startsWith(selectedMonth));
-    const monthFinances = finances.filter(f => f.date.startsWith(selectedMonth));
+    const monthSales = sales.filter(s => s.createdAt && s.createdAt.startsWith(periodKey));
+    const monthFinances = finances.filter(f => f.date.startsWith(periodKey));
+    
     const salesRevenue = monthSales.reduce((acc, sale) => acc + (sale.totalValue || 0), 0);
     const manualEntries = monthFinances.filter(f => f.type === 'entry').reduce((acc, f) => acc + f.value, 0);
     const totalEntries = salesRevenue + manualEntries;
+    
     const totalExits = monthFinances.filter(f => f.type === 'exit').reduce((acc, f) => acc + f.value, 0);
     const netProfit = totalEntries - totalExits;
-    const margin = totalEntries > 0 ? (netProfit / totalEntries) * 100 : 0;
+    
+    // Distribuição de lucros
+    const totalDistributedBlock = netProfit > 0 ? netProfit : 0;
     
     return { 
-        totalEntries, totalExits, netProfit, margin, 
-        regisLuciene: netProfit > 0 ? netProfit * 0.6333 : 0, 
-        ademir: netProfit > 0 ? netProfit * 0.2667 : 0, 
-        junior: netProfit > 0 ? netProfit * 0.10 : 0
+        totalEntries, 
+        totalExits, 
+        netProfit,
+        dist: {
+            luciene: totalDistributedBlock * 0.6333 / 2, // 63.33% dividido entre Luciene e Regis
+            regis: totalDistributedBlock * 0.6333 / 2,
+            ademir: totalDistributedBlock * 0.2667,
+            junior: totalDistributedBlock * 0.10
+        }
     };
-  }, [sales, finances, selectedMonth]);
+  }, [sales, finances, periodKey]);
 
   const handleAddToCart = () => {
       if (!selectedItem || !paymentMethod) {
@@ -123,7 +141,7 @@ const IceCreamModule: React.FC<IceCreamModuleProps> = ({
           alert("Venda registrada com sucesso!");
       } catch (e) {
           console.error("PDV Error:", e);
-          alert("Erro ao registrar venda. Verifique os dados e tente novamente.");
+          alert("Erro ao registrar venda.");
       } finally {
           setIsSubmitting(false);
       }
@@ -217,18 +235,62 @@ const IceCreamModule: React.FC<IceCreamModuleProps> = ({
                           <p className="text-3xl font-black text-gray-900">{formatCurrency(dreData.totalEntries)}</p>
                       </div>
                       <div className="bg-white p-8 rounded-[48px] shadow-sm border border-gray-100">
-                          <p className="text-[10px] font-black text-gray-400 uppercase tracking-widest mb-2">Despesas Operacionais</p>
+                          <p className="text-[10px] font-black text-gray-400 uppercase tracking-widest mb-2">Despesas Totais</p>
                           <p className="text-3xl font-black text-red-600">{formatCurrency(dreData.totalExits)}</p>
                       </div>
-                      <div className="bg-gradient-to-br from-blue-900 to-blue-950 p-8 rounded-[48px] shadow-2xl text-white">
+                      <div className={`p-8 rounded-[48px] shadow-2xl text-white bg-gradient-to-br ${dreData.netProfit >= 0 ? 'from-blue-900 to-blue-950' : 'from-red-900 to-red-950'}`}>
                           <p className="text-[10px] font-black text-blue-300 uppercase tracking-widest mb-2">Resultado Líquido</p>
                           <p className="text-4xl font-black italic tracking-tighter">{formatCurrency(dreData.netProfit)}</p>
                       </div>
                   </div>
+
+                  {/* DISTRIBUIÇÃO DE LUCROS AUTOMÁTICA */}
+                  {dreData.netProfit > 0 && (
+                    <div className="bg-white p-10 rounded-[56px] shadow-xl border border-gray-100">
+                        <h3 className="font-black text-gray-900 text-2xl uppercase italic tracking-tighter mb-8 flex items-center gap-3">
+                            <TrendingUp className="text-blue-700" size={32} /> Distribuição de Lucros
+                        </h3>
+                        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
+                            <div className="p-6 bg-gray-50 rounded-[40px] border border-gray-100">
+                                <span className="text-[9px] font-black text-gray-400 uppercase block mb-2 tracking-widest">Luciene (31.66%)</span>
+                                <p className="text-xl font-black text-gray-900 italic">{formatCurrency(dreData.dist.luciene)}</p>
+                            </div>
+                            <div className="p-6 bg-gray-50 rounded-[40px] border border-gray-100">
+                                <span className="text-[9px] font-black text-gray-400 uppercase block mb-2 tracking-widest">Regis (31.66%)</span>
+                                <p className="text-xl font-black text-gray-900 italic">{formatCurrency(dreData.dist.regis)}</p>
+                            </div>
+                            <div className="p-6 bg-gray-50 rounded-[40px] border border-gray-100">
+                                <span className="text-[9px] font-black text-gray-400 uppercase block mb-2 tracking-widest">Ademir (26.67%)</span>
+                                <p className="text-xl font-black text-gray-900 italic">{formatCurrency(dreData.dist.ademir)}</p>
+                            </div>
+                            <div className="p-6 bg-gray-50 rounded-[40px] border border-gray-100">
+                                <span className="text-[9px] font-black text-gray-400 uppercase block mb-2 tracking-widest">Junior (10%)</span>
+                                <p className="text-xl font-black text-gray-900 italic">{formatCurrency(dreData.dist.junior)}</p>
+                            </div>
+                        </div>
+                    </div>
+                  )}
               </div>
-              <div className="bg-white p-8 rounded-[40px] border border-gray-100">
-                  <p className="text-[10px] font-black text-gray-400 uppercase tracking-widest mb-4">Filtro de Período</p>
-                  <input type="month" value={selectedMonth} onChange={e => setSelectedMonth(e.target.value)} className="w-full p-4 bg-gray-50 rounded-2xl font-black text-sm outline-none" />
+
+              {/* FILTROS DE PERÍODO */}
+              <div className="space-y-6">
+                  <div className="bg-white p-8 rounded-[40px] border border-gray-100 shadow-sm">
+                      <h4 className="text-[10px] font-black text-gray-900 uppercase tracking-[0.2em] mb-6 flex items-center gap-2"><Filter size={14}/> Filtrar Período</h4>
+                      <div className="space-y-4">
+                          <div>
+                              <label className="text-[9px] font-black text-gray-400 uppercase mb-2 block">Mês de Referência</label>
+                              <select value={selectedMonth} onChange={e => setSelectedMonth(e.target.value)} className="w-full p-4 bg-gray-50 border-none rounded-2xl font-black text-gray-800 outline-none focus:ring-4 focus:ring-blue-100">
+                                  {MONTHS.map(m => <option key={m.v} value={m.v}>{m.l}</option>)}
+                              </select>
+                          </div>
+                          <div>
+                              <label className="text-[9px] font-black text-gray-400 uppercase mb-2 block">Ano</label>
+                              <select value={selectedYear} onChange={e => setSelectedYear(e.target.value)} className="w-full p-4 bg-gray-50 border-none rounded-2xl font-black text-gray-800 outline-none focus:ring-4 focus:ring-blue-100">
+                                  {['2024', '2025', '2026'].map(y => <option key={y} value={y}>{y}</option>)}
+                              </select>
+                          </div>
+                      </div>
+                  </div>
               </div>
           </div>
       )}

@@ -123,7 +123,7 @@ const App: React.FC = () => {
       }
   };
 
-  // --- ICE CREAM HANDLERS ---
+  // --- ICE CREAM HANDLERS (COM REGRAS DE SEGURANÇA) ---
   const handleAddIcSales = async (newSales: IceCreamDailySale[]) => {
       let payload: any[] = [];
       try {
@@ -132,7 +132,7 @@ const App: React.FC = () => {
               product_name: s.productName,
               category: s.category,
               flavor: s.flavor,
-              ml: parseInt(s.ml?.replace(/\D/g, '') || '0'), // Converte "300ml" para 300
+              ml: parseInt(s.ml?.replace(/\D/g, '') || '0'),
               units_sold: Number(s.unitsSold),
               unit_price: Number(s.unitPrice),
               total_value: Number(s.totalValue),
@@ -163,6 +163,10 @@ const App: React.FC = () => {
   };
 
   const handleAddIcItem = async (name: string, category: string, price: number, flavor?: string) => {
+      if (user?.role === UserRole.CASHIER) {
+          alert("Operação Bloqueada: Apenas Administradores podem gerenciar o catálogo.");
+          return;
+      }
       const { error } = await supabase.from('ice_cream_items').insert([{
           name, category, price: Number(price), flavor, active: true
       }]);
@@ -171,6 +175,10 @@ const App: React.FC = () => {
   };
 
   const handleUpdateIcItem = async (item: IceCreamItem) => {
+      if (user?.role === UserRole.CASHIER) {
+          alert("Operação Bloqueada: Apenas Administradores podem gerenciar o catálogo.");
+          return;
+      }
       const { error } = await supabase.from('ice_cream_items').update({
           name: item.name, category: item.category, price: Number(item.price), flavor: item.flavor, active: item.active
       }).eq('id', item.id);
@@ -179,6 +187,10 @@ const App: React.FC = () => {
   };
 
   const handleDeleteIcItem = async (id: string) => {
+      if (user?.role === UserRole.CASHIER) {
+          alert("Operação Bloqueada: Apenas Administradores podem excluir itens.");
+          return;
+      }
       const { error } = await supabase.from('ice_cream_items').delete().eq('id', id);
       if (error) throw error;
       await loadAllData();
