@@ -100,8 +100,8 @@ export interface SellerGoal {
 }
 
 export interface SystemLog {
-  id: string;
-  timestamp: Date;
+  id?: string;
+  timestamp: string | Date;
   userId: string;
   userName: string;
   userRole: UserRole;
@@ -148,7 +148,11 @@ export interface IceCreamDailySale {
   unitPrice: number; 
   totalValue: number;
   paymentMethod: IceCreamPaymentMethod;
-  createdAt?: string; 
+  createdAt?: string;
+  saleCode?: string;
+  status?: 'active' | 'canceled';
+  cancelReason?: string;
+  canceledBy?: string;
 }
 
 export type IceCreamPaymentMethod = 'Pix' | 'Cartão' | 'Dinheiro';
