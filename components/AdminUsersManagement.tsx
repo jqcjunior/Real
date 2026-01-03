@@ -44,8 +44,9 @@ const AdminUsersManagement: React.FC<AdminUsersManagementProps> = ({ currentUser
 
     const logAction = async (action: string, details: string) => {
         if (!currentUser) return;
+        // FIX: Alterada a coluna 'timestamp' para 'created_at' conforme schema atual.
         await supabase.from('system_logs').insert([{
-            timestamp: new Date().toISOString(),
+            created_at: new Date().toISOString(),
             userId: currentUser.id,
             userName: currentUser.name,
             userRole: currentUser.role,

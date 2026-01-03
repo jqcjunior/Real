@@ -77,7 +77,6 @@ export interface MonthlyPerformance {
   businessDays?: number;
 }
 
-// Add: ProductPerformance interface for brand and category analysis
 export interface ProductPerformance {
   storeId: string;
   month: string;
@@ -166,6 +165,20 @@ export interface IceCreamItem {
   costPrice?: number; 
   category: IceCreamCategory;
   active: boolean;
+  stockInitial?: number;
+  stockCurrent?: number;
+  unit?: string;
+  consumptionPerSale?: number;
+}
+
+export interface IceCreamStockMovement {
+  id: string;
+  itemId: string;
+  type: 'sale' | 'adjustment' | 'restock';
+  quantity: number;
+  reason?: string;
+  createdAt: string;
+  userName: string;
 }
 
 export type IceCreamExpenseCategory = 'Vale Funcionário' | 'Pagamento Funcionário' | 'Fornecedor' | 'Material/Consumo' | 'Aluguel' | 'Energia' | 'Outros';
@@ -193,7 +206,6 @@ export interface CashRegisterClosure {
     createdAt: string;
 }
 
-// Add: TaskPriority type for Agenda System
 export type TaskPriority = 'lowest' | 'low' | 'medium' | 'high' | 'highest';
 
 export interface AgendaItem {
@@ -207,7 +219,6 @@ export interface AgendaItem {
     createdAt: Date;
 }
 
-// Add: DownloadCategory type for Downloads Module
 export type DownloadCategory = 'spreadsheet' | 'video' | 'image' | 'audio';
 
 export interface DownloadItem {
@@ -235,7 +246,6 @@ export interface CashError {
     createdAt: Date;
 }
 
-// Add: Receipt interface for Financial and Audit Modules
 export interface Receipt {
   id: string;
   storeId?: string;
@@ -249,7 +259,6 @@ export interface Receipt {
   createdAt: Date;
 }
 
-// Add: CreditCardSale interface for Financial Module
 export interface CreditCardSale {
   id: string;
   storeId?: string;
