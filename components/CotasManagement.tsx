@@ -672,8 +672,8 @@ const CotasManagement: React.FC<CotasManagementProps> = ({ user, stores, cotas, 
                             <div className="bg-red-50 px-8 py-4 rounded-2xl border border-red-100 text-right">
                                 <span className="text-[9px] font-black text-red-400 uppercase tracking-widest block mb-1">Total Lançado no Período</span>
                                 <span className="text-2xl font-black text-red-600 italic">
-                                    {/* Fix: Explicitly type reduce callback parameters to resolve unknown type errors */}
-                                    {formatCurrency(Object.values(tempDebts).reduce((acc: number, val: string) => acc + (parseFloat(val.replace(/\./g, '').replace(',', '.')) || 0), 0))}
+                                    {/* Fix: Explicitly type reduce callback parameters and cast Object.values to resolve unknown type errors */}
+                                    {formatCurrency((Object.values(tempDebts) as string[]).reduce((acc: number, val: string) => acc + (parseFloat(val.replace(/\./g, '').replace(',', '.')) || 0), 0))}
                                 </span>
                             </div>
                         </div>
