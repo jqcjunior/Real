@@ -79,7 +79,6 @@ const DashboardManager: React.FC<DashboardManagerProps> = ({ user, stores, perfo
   const myStore = stores.find(s => s.id === user.storeId);
   const myData = performanceData.find(p => p.storeId === user.storeId && p.month === selectedMonth);
   
-  // Cálculo de Necessidade Diária
   const salesPulse = useMemo(() => {
     if (!myData) return null;
     const now = new Date();
@@ -88,10 +87,9 @@ const DashboardManager: React.FC<DashboardManagerProps> = ({ user, stores, perfo
     if (!isCurrentMonth) return null;
 
     const lastDayOfMonth = new Date(now.getFullYear(), now.getMonth() + 1, 0).getDate();
-    const remainingDays = lastDayOfMonth - now.getDate() + 1; // Incluindo hoje
+    const remainingDays = lastDayOfMonth - now.getDate() + 1; 
     const remainingGoal = Math.max(0, myData.revenueTarget - myData.revenueActual);
     const dailyTarget = remainingGoal / Math.max(1, remainingDays);
-    const businessDays = myData.businessDays || 26;
     const currentRitmo = myData.revenueActual / (now.getDate() || 1);
 
     return { 
@@ -167,7 +165,6 @@ const DashboardManager: React.FC<DashboardManagerProps> = ({ user, stores, perfo
             </div>
         </div>
 
-        {/* Ritmo de Venda / Pulse Section */}
         {salesPulse && (
             <div className="grid grid-cols-1 md:grid-cols-3 gap-6 bg-gradient-to-r from-blue-900 to-black p-8 rounded-[40px] shadow-2xl text-white relative overflow-hidden">
                 <div className="absolute top-0 right-0 p-10 opacity-10"><Zap size={100} /></div>
@@ -202,7 +199,6 @@ const DashboardManager: React.FC<DashboardManagerProps> = ({ user, stores, perfo
                             <div className="bg-white p-6 rounded-2xl shadow-sm border border-gray-100"><h3 className="text-[10px] font-black text-gray-400 uppercase tracking-widest mb-4">Inadimplência</h3><p className={`text-2xl font-black ${myData.delinquencyRate > (myData.delinquencyTarget || 2) ? 'text-red-600' : 'text-green-600'}`}>{formatDecimal(myData.delinquencyRate)}%</p></div>
                         </div>
 
-                        {/* RANKING VENDEDORES */}
                         <div className="bg-white rounded-[40px] p-8 shadow-sm border border-gray-100 overflow-hidden">
                             <h3 className="text-xl font-black uppercase italic tracking-tighter mb-8 flex items-center gap-3">
                                 <Users className="text-blue-600" size={28} /> Performance <span className="text-red-600">Equipe de Vendas</span>
@@ -280,7 +276,10 @@ const DashboardManager: React.FC<DashboardManagerProps> = ({ user, stores, perfo
                                 <span className="font-black text-gray-400 text-xs">#{idx + 1}</span>
                             </div>
                             <div className="flex-1">
-                                <p className={`text-xs font-black uppercase tracking-tight ${item.isMine ? 'text-blue-900' : 'text-gray-600'}`}>{item.number} - {item.name}</p>
+                                {/* Regra de Acesso: Gerente vê apenas o nome da própria loja, competidoras ficam ocultas */}
+                                <p className={`text-xs font-black uppercase tracking-tight ${item.isMine ? 'text-blue-900' : 'text-gray-600'}`}>
+                                    {item.isMine ? `${item.number} - ${item.name}` : `Unidade Competidora`}
+                                </p>
                                 <div className="w-full bg-gray-200 h-1.5 rounded-full mt-2 overflow-hidden"><div className={`h-full ${item.percent >= 100 ? 'bg-green-500' : 'bg-blue-500'}`} style={{ width: `${Math.min(item.percent, 100)}%` }}></div></div>
                             </div>
                             <div className="text-right">

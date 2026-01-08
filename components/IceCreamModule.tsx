@@ -1,4 +1,3 @@
-
 import React, { useState, useMemo, useEffect } from 'react';
 import { IceCreamItem, IceCreamDailySale, IceCreamTransaction, IceCreamCategory, IceCreamExpenseCategory, IceCreamPaymentMethod, User, UserRole } from '../types';
 import { formatCurrency } from '../constants';
@@ -60,27 +59,21 @@ const IceCreamModule: React.FC<IceCreamModuleProps> = ({
 
   const todayKey = new Date().toISOString().split('T')[0];
   
-  // Filtros Independentes para DRE Mensal
   const [monthlyFilterMonth, setMonthlyFilterMonth] = useState(String(new Date().getMonth() + 1).padStart(2, '0'));
   const [monthlyFilterYear, setMonthlyFilterYear] = useState(String(new Date().getFullYear()));
+  const [expenseFilterMonth, setExpenseFilterMonth] = useState(String(new Date().getMonth() + 1).padStart(2, '0'));
+  const [expenseFilterYear, setExpenseFilterYear] = useState(String(new Date().getFullYear()));
 
-  const availableYearsForMonthly = useMemo(() => {
+  const availableYears = useMemo(() => {
     const yearsSet = new Set<number>();
     const now = new Date();
     yearsSet.add(now.getFullYear());
     yearsSet.add(now.getFullYear() + 1);
-    
-    sales.forEach(s => {
-      if (s.createdAt) yearsSet.add(new Date(s.createdAt).getFullYear());
-    });
-    finances.forEach(f => {
-      if (f.date) yearsSet.add(new Date(f.date).getFullYear());
-    });
-
+    sales.forEach(s => { if (s.createdAt) yearsSet.add(new Date(s.createdAt).getFullYear()); });
+    finances.forEach(f => { if (f.date) yearsSet.add(new Date(f.date).getFullYear()); });
     return Array.from(yearsSet).sort((a, b) => b - a);
   }, [sales, finances]);
 
-  // PDV States
   const [selectedCategory, setSelectedCategory] = useState<IceCreamCategory | null>(null);
   const [selectedProductName, setSelectedProductName] = useState<string | null>(null);
   const [selectedItem, setSelectedItem] = useState<IceCreamItem | null>(null);
@@ -89,133 +82,223 @@ const IceCreamModule: React.FC<IceCreamModuleProps> = ({
   const [paymentMethod, setPaymentMethod] = useState<IceCreamPaymentMethod | null>(null);
   const [cart, setCart] = useState<IceCreamDailySale[]>([]);
 
-  // Modals
   const [showTicketModal, setShowTicketModal] = useState(false);
   const [lastSoldItems, setLastSoldItems] = useState<IceCreamDailySale[]>([]);
   const [lastSaleTime, setLastSaleTime] = useState('');
-  const [isStockAdjustmentModalOpen, setIsStockAdjustmentModalOpen] = useState(false);
   const [isProductModalOpen, setIsProductModalOpen] = useState(false);
-
-  // Forms
-  const [stockForm, setStockForm] = useState({ itemId: '', qty: '', type: 'restock' as 'adjustment' | 'restock', reason: '' });
-  const [financeForm, setFinanceForm] = useState({ category: 'Vale Funcionário' as IceCreamExpenseCategory, value: '', employeeName: '', description: '', date: todayKey });
+  const [isStockAdjustmentModalOpen, setIsStockAdjustmentModalOpen] = useState(false);
   const [editingItem, setEditingItem] = useState<IceCreamItem | null>(null);
-  const [productForm, setProductForm] = useState({ name: '', category: 'Sundae' as IceCreamCategory, flavor: '', price: '', active: true, stockInitial: '', unit: 'un', consumptionPerSale: '1' });
+
+  const [financeForm, setFinanceForm] = useState({
+    date: todayKey,
+    category: 'Vale Funcionário' as IceCreamExpenseCategory,
+    value: '',
+    employeeName: '',
+    description: ''
+  });
+
+  const [productForm, setProductForm] = useState({
+    name: '',
+    category: PRODUCT_CATEGORIES[0] || 'Sundae',
+    price: '',
+    flavor: '',
+    active: true,
+    stockInitial: '0',
+    unit: 'un',
+    consumptionPerSale: '1'
+  });
+
+  const [stockForm, setStockForm] = useState({
+      itemId: '',
+      qty: '',
+      type: 'restock' as 'adjustment' | 'restock',
+      reason: ''
+  });
 
   const categoryItems = useMemo(() => {
-    return selectedCategory 
-      ? Array.from(new Set(items.filter(i => i.category === selectedCategory && i.active).map(i => i.name))).sort()
-      : [];
+    if (!selectedCategory) return [];
+    const names = new Set<string>();
+    items.filter(i => i.category === selectedCategory && i.active).forEach(i => names.add(i.name));
+    return Array.from(names).sort();
   }, [items, selectedCategory]);
 
   const itemFlavors = useMemo(() => {
-    return selectedProductName && selectedCategory
-      ? items.filter(i => i.name === selectedProductName && i.category === selectedCategory && i.active)
-      : [];
-  }, [items, selectedProductName, selectedCategory]);
+    if (!selectedProductName || !selectedCategory) return [];
+    return items.filter(i => i.category === selectedCategory && i.name === selectedProductName && i.active);
+  }, [items, selectedCategory, selectedProductName]);
 
-  // Cálculos DRE Diário
   const dailySummaryData = useMemo(() => {
     const daySales = sales.filter(s => s.createdAt?.startsWith(todayKey) && s.status !== 'canceled');
     const dayExits = finances.filter(f => f.date === todayKey && f.type === 'exit');
-    
     const totalEntries = daySales.reduce((acc, s) => acc + s.totalValue, 0);
     const totalExits = dayExits.reduce((acc, f) => acc + f.value, 0);
     const result = totalEntries - totalExits;
-
-    return { 
-        totalEntries, 
-        totalExits, 
-        result,
-        allDaySales: sales.filter(s => s.createdAt?.startsWith(todayKey)),
-        allDayExits: dayExits
-    };
+    return { totalEntries, totalExits, result, allDaySales: sales.filter(s => s.createdAt?.startsWith(todayKey)), allDayExits: dayExits };
   }, [sales, finances, todayKey]);
 
-  // Cálculos DRE Mensal (Independente)
   const monthlySummaryData = useMemo(() => {
     const monthKey = `${monthlyFilterYear}-${monthlyFilterMonth}`;
     const mSales = sales.filter(s => s.createdAt?.startsWith(monthKey) && s.status !== 'canceled');
     const mExits = finances.filter(f => f.date.startsWith(monthKey) && f.type === 'exit');
-    
     const totalEntries = mSales.reduce((acc, s) => acc + s.totalValue, 0);
     const totalExits = mExits.reduce((acc, f) => acc + f.value, 0);
     const result = totalEntries - totalExits;
-
-    return { totalEntries, totalExits, result };
+    return { totalEntries, totalExits, result, filteredSales: mSales, filteredExits: mExits };
   }, [sales, finances, monthlyFilterMonth, monthlyFilterYear]);
 
-  const handlePrintDailyDRE = (type: 'detailed' | 'summary') => {
-    const printWindow = window.open('', '_blank', 'width=300,height=600');
+  const filteredFinances = useMemo(() => {
+    const filterKey = `${expenseFilterYear}-${expenseFilterMonth}`;
+    return finances.filter(f => f.date.startsWith(filterKey) && f.type === 'exit');
+  }, [finances, expenseFilterMonth, expenseFilterYear]);
+
+  const handlePrintDRE_A4 = (period: 'daily' | 'monthly', type: 'summary' | 'detailed' = 'detailed') => {
+    const printWindow = window.open('', '_blank', 'width=900,height=1200');
     if (!printWindow) return;
 
-    const { totalEntries, totalExits, result, allDaySales, allDayExits } = dailySummaryData;
-    const activeSales = allDaySales.filter(s => s.status !== 'canceled');
+    const data = period === 'daily' ? dailySummaryData : monthlySummaryData;
+    const entries = period === 'daily' ? dailySummaryData.allDaySales : monthlySummaryData.filteredSales;
+    const exits = period === 'daily' ? dailySummaryData.allDayExits : monthlySummaryData.filteredExits;
+
+    const title = period === 'daily' 
+        ? `DRE DIÁRIO - ${new Date().toLocaleDateString('pt-BR')}` 
+        : `DRE MENSAL - ${MONTHS.find(m => m.value === monthlyFilterMonth)?.label} / ${monthlyFilterYear}`;
+
+    const profitShare = period === 'monthly' ? {
+        lure: data.result * 0.6333,
+        ademir: data.result * 0.2667,
+        junior: data.result * 0.10
+    } : null;
+
+    const categoryTotals: Record<string, number> = {};
+    if (type === 'detailed') {
+        entries.forEach(s => {
+            categoryTotals[s.category] = (categoryTotals[s.category] || 0) + s.totalValue;
+        });
+    }
 
     const html = `
       <html>
         <head>
-          <title>DRE Diário - Gelateria</title>
+          <title>${title}</title>
           <style>
-            body { font-family: 'Courier New', monospace; width: 58mm; padding: 5px; font-size: 11px; line-height: 1.2; }
-            .center { text-align: center; }
-            .bold { font-weight: bold; }
-            .border-b { border-bottom: 1px dashed #000; padding-bottom: 5px; margin-bottom: 5px; }
-            .flex-between { display: flex; justify-content: space-between; }
-            .mt-10 { margin-top: 10px; }
-            .result-box { border: 1px solid #000; padding: 5px; margin-top: 10px; }
-            table { width: 100%; border-collapse: collapse; }
-            td { vertical-align: top; }
+            @page { size: A4 portrait; margin: 2cm; }
+            body { font-family: 'Inter', 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; color: #1a202c; line-height: 1.4; margin: 0; padding: 0; background: #fff; }
+            .header { text-align: center; margin-bottom: 30px; border-bottom: 2px solid #2d3748; padding-bottom: 20px; }
+            .header h1 { margin: 0; font-size: 26px; text-transform: uppercase; color: #1a202c; font-weight: 900; letter-spacing: -0.025em; }
+            .header p { margin: 5px 0 0; font-size: 14px; color: #4a5568; font-weight: 700; text-transform: uppercase; }
+            .section-title { font-size: 13px; font-weight: 900; text-transform: uppercase; background: #2d3748; color: white; padding: 8px 12px; margin: 25px 0 10px; border-radius: 4px; }
+            table { width: 100%; border-collapse: collapse; margin-bottom: 20px; font-size: 11px; }
+            th { text-align: left; padding: 10px 8px; border-bottom: 2px solid #cbd5e0; color: #2d3748; text-transform: uppercase; font-weight: 800; }
+            td { padding: 8px; border-bottom: 1px solid #e2e8f0; }
+            .text-right { text-align: right; }
+            .bold { font-weight: 800; }
+            .summary-box { border: 2px solid #1a202c; border-radius: 8px; padding: 20px; margin-top: 30px; background: #f8fafc; }
+            .summary-row { display: flex; justify-content: space-between; font-size: 14px; margin-bottom: 8px; font-weight: 600; }
+            .summary-row.total { border-top: 2px solid #1a202c; padding-top: 12px; margin-top: 12px; font-size: 18px; font-weight: 900; color: #1a202c; }
+            .distribution-box { margin-top: 30px; border: 1px solid #cbd5e0; border-radius: 8px; padding: 15px; background: #fff; }
+            .distribution-title { font-size: 14px; font-weight: 900; margin-bottom: 12px; border-bottom: 1px solid #e2e8f0; padding-bottom: 6px; text-transform: uppercase; color: #2d3748; }
+            .footer-info { margin-top: 40px; text-align: center; font-size: 9px; color: #a0aec0; border-top: 1px solid #e2e8f0; padding-top: 10px; text-transform: uppercase; letter-spacing: 0.05em; }
+            .negative { color: #c53030; }
+            .positive { color: #2f855a; }
           </style>
         </head>
         <body>
-          <div class="center bold border-b">
-            REAL GELATERIA<br/>
-            DRE DIÁRIO - ${new Date().toLocaleDateString('pt-BR')}<br/>
-            ${type === 'detailed' ? 'RELATÓRIO DETALHADO' : 'RESUMO OPERACIONAL'}
+          <div class="header">
+            <h1>REAL GELATERIA</h1>
+            <p>${title}</p>
+            <p style="font-size: 9px; font-weight: normal; margin-top: 8px; color: #718096;">Data de Emissão: ${new Date().toLocaleString('pt-BR')}</p>
           </div>
-          
-          <div class="bold mt-10">ENTRADAS (VENDAS)</div>
-          <div class="flex-between"><span>Total Bruto:</span><span>${formatCurrency(totalEntries)}</span></div>
-          
-          ${type === 'detailed' ? `
-            <table class="mt-10">
-              ${activeSales.map(s => `
-                <tr>
-                  <td>${s.unitsSold}x ${s.productName.substring(0,10)}</td>
-                  <td style="text-align: right;">${formatCurrency(s.totalValue)}</td>
-                </tr>
-              `).join('')}
-            </table>
-          ` : ''}
 
-          <div class="bold mt-10">SAÍDAS (DESPESAS)</div>
-          <div class="flex-between"><span>Total Saídas:</span><span>${formatCurrency(totalExits)}</span></div>
-          
           ${type === 'detailed' ? `
-            <table class="mt-10">
-              ${allDayExits.map(f => `
+            <div class="section-title">Detalhamento de Entradas (Vendas)</div>
+            <table>
+              <thead>
                 <tr>
-                  <td>${f.category.substring(0,15)}</td>
-                  <td style="text-align: right;">${formatCurrency(f.value)}</td>
+                  <th>Data/Hora ${period === 'daily' ? '' : 'Dia'}</th>
+                  <th>Produto / Variação</th>
+                  <th class="text-right">Qtd</th>
+                  <th class="text-right">Unitário</th>
+                  <th class="text-right">Total</th>
                 </tr>
-              `).join('')}
+              </thead>
+              <tbody>
+                ${entries.map((s: any) => `
+                  <tr style="${s.status === 'canceled' ? 'text-decoration: line-through; opacity: 0.5;' : ''}">
+                    <td>${period === 'daily' ? new Date(s.createdAt).toLocaleTimeString('pt-BR') : new Date(s.createdAt).toLocaleDateString('pt-BR')}</td>
+                    <td class="bold uppercase">${s.productName} ${s.ml || ''}</td>
+                    <td class="text-right">${s.unitsSold}</td>
+                    <td class="text-right">${formatCurrency(s.unitPrice)}</td>
+                    <td class="text-right bold">${formatCurrency(s.totalValue)}</td>
+                  </tr>
+                `).join('')}
+              </tbody>
             </table>
-          ` : ''}
 
-          <div class="result-box">
-            <div class="flex-between bold">
-              <span>RESULTADO:</span>
-              <span>${formatCurrency(result)}</span>
+            <div class="section-title">Totais por Categoria</div>
+            <table style="width: 50%; margin-bottom: 30px;">
+                <thead><tr><th>Categoria</th><th class="text-right">Valor Acumulado</th></tr></thead>
+                <tbody>
+                    ${Object.entries(categoryTotals).map(([cat, val]) => `
+                        <tr><td class="bold">${cat}</td><td class="text-right bold">${formatCurrency(val)}</td></tr>
+                    `).join('')}
+                </tbody>
+            </table>
+
+            <div class="section-title">Detalhamento de Saídas (Despesas)</div>
+            <table>
+              <thead>
+                <tr>
+                  <th>Data</th>
+                  <th>Categoria</th>
+                  <th>Descrição / Observação</th>
+                  <th class="text-right">Valor</th>
+                </tr>
+              </thead>
+              <tbody>
+                ${exits.map((f: any) => `
+                  <tr>
+                    <td>${new Date(f.date + 'T12:00:00').toLocaleDateString('pt-BR')}</td>
+                    <td class="bold uppercase">${f.category}</td>
+                    <td>${f.description || '-'}</td>
+                    <td class="text-right bold negative">${formatCurrency(f.value)}</td>
+                  </tr>
+                `).join('')}
+              </tbody>
+            </table>
+          ` : `
+            <div style="padding: 40px 0; text-align: center; border: 1px dashed #cbd5e0; border-radius: 8px; margin-bottom: 20px;">
+                <p style="font-weight: 800; color: #4a5568; margin: 0;">RELATÓRIO RESUMIDO OPERACIONAL</p>
+                <p style="font-size: 11px; color: #718096; margin-top: 5px;">Visualização consolidada de indicadores financeiros do período.</p>
             </div>
+          `}
+
+          <div class="summary-box">
+            <div class="summary-row"><span>Total Bruto de Entradas (Faturamento):</span><span class="positive">${formatCurrency(data.totalEntries)}</span></div>
+            <div class="summary-row"><span>Total de Saídas (Despesas/Custos):</span><span class="negative">${formatCurrency(data.totalExits)}</span></div>
+            <div class="summary-row total"><span>RESULTADO LÍQUIDO DO PERÍODO:</span><span>${formatCurrency(data.result)}</span></div>
           </div>
 
-          <div class="center mt-10" style="font-size: 8px;">
-            EMITIDO EM: ${new Date().toLocaleString('pt-BR')}<br/>
-            POR: ${user.name}
+          ${profitShare ? `
+            <div class="distribution-box">
+              <div class="distribution-title">DISTRIBUIÇÃO DE LUCROS (SOCIETÁRIO)</div>
+              <div class="summary-row"><span>Luciene + Regis (63,33%):</span><span class="bold">${formatCurrency(profitShare.lure)}</span></div>
+              <div class="summary-row"><span>Ademir (26,67%):</span><span class="bold">${formatCurrency(profitShare.ademir)}</span></div>
+              <div class="summary-row"><span>Junior (10,00%):</span><span class="bold">${formatCurrency(profitShare.junior)}</span></div>
+            </div>
+          ` : ''}
+
+          <div class="footer-info">
+            Este relatório é um documento interno de controle administrativo. Real Calçados & Estratégia Corporativa.
           </div>
 
-          <script>window.onload = () => { window.print(); window.close(); };</script>
+          <script>
+            window.onload = () => {
+                setTimeout(() => {
+                    window.print();
+                    window.close();
+                }, 500);
+            };
+          </script>
         </body>
       </html>
     `;
@@ -226,9 +309,7 @@ const IceCreamModule: React.FC<IceCreamModuleProps> = ({
 
   const handleCancelSaleConfirmed = async (saleCode: string) => {
     const reason = prompt("Motivo do cancelamento:");
-    if (reason) {
-        await onCancelSale(saleCode, reason);
-    }
+    if (reason) await onCancelSale(saleCode, reason);
   };
 
   const handlePrintTicket = (items: IceCreamDailySale[], time: string) => {
@@ -241,70 +322,9 @@ const IceCreamModule: React.FC<IceCreamModuleProps> = ({
     printWindow.document.close();
   };
 
-  const handleAddToCart = () => {
-      if (!selectedItem) { alert("Selecione o produto."); return; }
-      const newItem: IceCreamDailySale = {
-          id: `cart-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`, 
-          itemId: selectedItem.id, 
-          productName: selectedItem.name, 
-          category: selectedCategory!, 
-          flavor: selectedItem.flavor || 'Padrão', 
-          ml: selectedMl, 
-          unitsSold: quantity, 
-          unitPrice: selectedItem.price, 
-          totalValue: Number((selectedItem.price * quantity).toFixed(2)), 
-          paymentMethod: 'Pix', 
-          createdAt: new Date().toISOString(), 
-          status: 'active'
-      };
-      setCart(prev => [...prev, newItem]);
-      setSelectedItem(null);
-      setQuantity(1);
-  };
-
-  const handleFinalizeSale = async () => {
-      if (cart.length === 0) { alert("Carrinho vazio."); return; }
-      if (!paymentMethod) { alert("Selecione a forma de pagamento."); return; }
-
-      setIsSubmitting(true);
-      const currentTime = new Date().toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' });
-      const finalCart = cart.map(item => ({ ...item, paymentMethod }));
-
-      try {
-          await onAddSales(finalCart);
-          setLastSoldItems([...finalCart]); 
-          setLastSaleTime(currentTime);
-          setCart([]); 
-          setShowTicketModal(true);
-      } catch (e: any) { 
-          alert(`ERRO AO FINALIZAR: ${e.message}`);
-      } finally { 
-          setIsSubmitting(false); 
-      }
-  };
-
-  const handleAddTx = async (e: React.FormEvent) => {
-    e.preventDefault();
-    const val = parseFloat(financeForm.value.replace(/\./g, '').replace(',', '.'));
-    if (!val || isNaN(val)) return;
-    setIsSubmitting(true);
-    try {
-        await onAddTransaction({
-            id: '',
-            date: financeForm.date,
-            type: 'exit',
-            category: financeForm.category,
-            value: val,
-            employeeName: financeForm.employeeName,
-            description: financeForm.description,
-            createdAt: new Date()
-        });
-        setFinanceForm({ ...financeForm, value: '', employeeName: '', description: '' });
-    } finally { setIsSubmitting(false); }
-  };
-
   if (isMobile) {
-    return <PDVMobileView user={user} items={items} cart={cart} setCart={setCart} selectedCategory={selectedCategory} setSelectedCategory={setSelectedCategory} selectedProductName={selectedProductName} setSelectedProductName={setSelectedProductName} selectedItem={selectedItem} setSelectedItem={setSelectedItem} selectedMl={selectedMl} setSelectedMl={setSelectedMl} quantity={quantity} setQuantity={setQuantity} paymentMethod={paymentMethod} setPaymentMethod={setPaymentMethod} onAddSales={onAddSales} onCancelSale={onCancelSale} onAddTransaction={onAddTransaction} dailyData={dailySummaryData} handlePrintDailyDRE={handlePrintDailyDRE} handlePrintTicket={handlePrintTicket} financeForm={financeForm} setFinanceForm={setFinanceForm} isSubmitting={isSubmitting} setIsSubmitting={setIsSubmitting} setShowTicketModal={setShowTicketModal} setLastSoldItems={setLastSoldItems} setLastSaleTime={setLastSaleTime} />;
+    // Fix: Passing selectedItem state instead of setSelectedItem dispatcher to the selectedItem prop
+    return <PDVMobileView user={user} items={items} cart={cart} setCart={setCart} selectedCategory={selectedCategory} setSelectedCategory={setSelectedCategory} selectedProductName={selectedProductName} setSelectedProductName={setSelectedProductName} selectedItem={selectedItem} setSelectedItem={setSelectedItem} selectedMl={selectedMl} setSelectedMl={setSelectedMl} quantity={quantity} setQuantity={setQuantity} paymentMethod={paymentMethod} setPaymentMethod={setPaymentMethod} onAddSales={onAddSales} onCancelSale={onCancelSale} onAddTransaction={onAddTransaction} dailyData={dailySummaryData} handlePrintDailyDRE={() => handlePrintDRE_A4('daily', 'detailed')} handlePrintTicket={handlePrintTicket} financeForm={financeForm} setFinanceForm={setFinanceForm} isSubmitting={isSubmitting} setIsSubmitting={setIsSubmitting} setShowTicketModal={setShowTicketModal} setLastSoldItems={setLastSoldItems} setLastSaleTime={setLastSaleTime} />;
   }
 
   return (
@@ -387,7 +407,13 @@ const IceCreamModule: React.FC<IceCreamModuleProps> = ({
                                       <button onClick={() => setQuantity(quantity + 1)} className="w-12 h-12 rounded-xl bg-white flex items-center justify-center font-black text-xl shadow-sm">+</button>
                                   </div>
                                   <div className="flex-1"></div>
-                                  <button onClick={handleAddToCart} className="w-full lg:w-auto bg-red-600 text-white px-10 py-5 rounded-2xl font-black uppercase text-xs shadow-2xl hover:bg-red-700 flex items-center justify-center gap-3 transition-transform active:scale-95"><Plus size={20}/> Adicionar ao Carrinho</button>
+                                  <button onClick={() => {
+                                      if (!selectedItem) { alert("Selecione o produto."); return; }
+                                      const newItem: IceCreamDailySale = { id: `cart-${Date.now()}`, itemId: selectedItem.id, productName: selectedItem.name, category: selectedCategory!, flavor: selectedItem.flavor || 'Padrão', ml: selectedMl, unitsSold: quantity, unitPrice: selectedItem.price, totalValue: Number((selectedItem.price * quantity).toFixed(2)), paymentMethod: 'Pix', createdAt: new Date().toISOString(), status: 'active' };
+                                      setCart(prev => [...prev, newItem]);
+                                      setSelectedItem(null);
+                                      setQuantity(1);
+                                  }} className="w-full lg:w-auto bg-red-600 text-white px-10 py-5 rounded-2xl font-black uppercase text-xs shadow-2xl hover:bg-red-700 flex items-center justify-center gap-3 transition-transform active:scale-95"><Plus size={20}/> Adicionar ao Carrinho</button>
                               </div>
                           )}
                       </div>
@@ -436,12 +462,22 @@ const IceCreamModule: React.FC<IceCreamModuleProps> = ({
                         </div>
 
                         <button 
-                            onClick={handleFinalizeSale} 
+                            onClick={async () => {
+                                if (cart.length === 0) return;
+                                if (!paymentMethod) { alert("Selecione a forma de pagamento."); return; }
+                                setIsSubmitting(true);
+                                try {
+                                    const finalCart = cart.map(item => ({ ...item, paymentMethod }));
+                                    await onAddSales(finalCart);
+                                    setCart([]); 
+                                    alert("Venda realizada!");
+                                } finally { setIsSubmitting(false); }
+                            }} 
                             disabled={cart.length === 0 || isSubmitting || !paymentMethod} 
                             className="w-full py-5 bg-red-600 hover:bg-red-700 disabled:bg-gray-800 disabled:opacity-50 rounded-2xl font-black uppercase text-xs shadow-2xl flex items-center justify-center gap-3 transition-all active:scale-95 border-b-4 border-red-900"
                         >
                             {isSubmitting ? (
-                                <><Loader2 className="animate-spin" size={18}/> Processando venda...</>
+                                <><Loader2 className="animate-spin" size={18}/> Processando...</>
                             ) : (
                                 <><CheckCircle2 size={18}/> Finalizar Venda</>
                             )}
@@ -454,7 +490,6 @@ const IceCreamModule: React.FC<IceCreamModuleProps> = ({
 
       {activeTab === 'dre_diario' && (
           <div className="space-y-6 animate-in fade-in duration-500">
-              {/* Resumo Financeiro Hoje */}
               <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
                   <div className="bg-white p-8 rounded-[40px] shadow-sm border border-gray-100 flex items-center justify-between">
                       <div>
@@ -479,13 +514,11 @@ const IceCreamModule: React.FC<IceCreamModuleProps> = ({
                   </div>
               </div>
 
-              {/* Tabela e Controles de Impressão */}
               <div className="bg-white rounded-[40px] shadow-sm border border-gray-100 overflow-hidden">
                   <div className="p-8 border-b flex justify-between items-center bg-gray-50/50">
                       <h3 className="text-xl font-black text-gray-900 uppercase italic tracking-tighter">Movimentação Diária <span className="text-blue-700">Auditada</span></h3>
                       <div className="flex items-center gap-3">
-                          <button onClick={() => handlePrintDailyDRE('summary')} className="flex items-center gap-2 bg-gray-100 text-gray-700 px-4 py-2 rounded-xl text-[10px] font-black uppercase hover:bg-gray-200 transition-all"><Printer size={16}/> Resumo Térmico</button>
-                          <button onClick={() => handlePrintDailyDRE('detailed')} className="flex items-center gap-2 bg-gray-950 text-white px-4 py-2 rounded-xl text-[10px] font-black uppercase hover:bg-black transition-all shadow-md"><Printer size={16}/> Detalhado Térmico</button>
+                          <button onClick={() => handlePrintDRE_A4('daily', 'detailed')} className="flex items-center gap-2 bg-gray-950 text-white px-4 py-2 rounded-xl text-[10px] font-black uppercase hover:bg-black transition-all shadow-md"><Printer size={16}/> Relatório A4</button>
                       </div>
                   </div>
                   <div className="overflow-x-auto">
@@ -533,7 +566,7 @@ const IceCreamModule: React.FC<IceCreamModuleProps> = ({
                                       <td className="px-8 py-5"><span className="text-[10px] font-black text-blue-600 bg-blue-50 px-3 py-1 rounded-full uppercase">Lançada</span></td>
                                       <td className="px-8 py-5 text-right">
                                           {isAdminOrManager && (
-                                              <button onClick={() => onDeleteTransaction(f.id)} className="p-2 text-gray-300 hover:text-red-500 transition-all"><Trash2 size={16}/></button>
+                                              <button onClick={() => onDeleteTransaction(f.id)} className="p-2 text-gray-200 hover:text-red-500 transition-all"><Trash2 size={16}/></button>
                                           )}
                                       </td>
                                   </tr>
@@ -550,18 +583,23 @@ const IceCreamModule: React.FC<IceCreamModuleProps> = ({
 
       {activeTab === 'dre_mensal' && isAdminOrManager && (
           <div className="space-y-6 animate-in fade-in duration-500">
-              {/* Filtros Mensais Independentes */}
-              <div className="flex flex-wrap items-center gap-4 bg-white p-6 rounded-[32px] shadow-sm border border-gray-100">
-                <div className="flex items-center gap-2">
-                    <CalendarDays className="text-blue-600" size={20}/>
-                    <span className="text-[10px] font-black uppercase text-gray-400 tracking-widest">Período de Referência</span>
+              <div className="flex flex-wrap items-center justify-between gap-4 bg-white p-6 rounded-[32px] shadow-sm border border-gray-100">
+                <div className="flex flex-wrap items-center gap-4">
+                    <div className="flex items-center gap-2">
+                        <CalendarDays className="text-blue-600" size={20}/>
+                        <span className="text-[10px] font-black uppercase text-gray-400 tracking-widest">Período de Referência</span>
+                    </div>
+                    <select value={monthlyFilterMonth} onChange={e => setMonthlyFilterMonth(e.target.value)} className="bg-gray-50 border-none rounded-xl px-4 py-2 font-black text-xs uppercase focus:ring-2 focus:ring-blue-100 outline-none cursor-pointer">
+                        {MONTHS.map(m => <option key={m.value} value={m.value}>{m.label}</option>)}
+                    </select>
+                    <select value={monthlyFilterYear} onChange={e => setMonthlyFilterYear(e.target.value)} className="bg-gray-50 border-none rounded-xl px-4 py-2 font-black text-xs uppercase focus:ring-2 focus:ring-blue-100 outline-none cursor-pointer">
+                        {availableYears.map(y => <option key={y} value={y.toString()}>{y}</option>)}
+                    </select>
                 </div>
-                <select value={monthlyFilterMonth} onChange={e => setMonthlyFilterMonth(e.target.value)} className="bg-gray-50 border-none rounded-xl px-4 py-2 font-black text-xs uppercase focus:ring-2 focus:ring-blue-100 outline-none cursor-pointer">
-                    {MONTHS.map(m => <option key={m.value} value={m.value}>{m.label}</option>)}
-                </select>
-                <select value={monthlyFilterYear} onChange={e => setMonthlyFilterYear(e.target.value)} className="bg-gray-50 border-none rounded-xl px-4 py-2 font-black text-xs uppercase focus:ring-2 focus:ring-blue-100 outline-none cursor-pointer">
-                    {availableYearsForMonthly.map(y => <option key={y} value={y.toString()}>{y}</option>)}
-                </select>
+                <div className="flex gap-2">
+                    <button onClick={() => handlePrintDRE_A4('monthly', 'summary')} className="flex items-center gap-2 bg-blue-700 text-white px-6 py-3 rounded-xl text-[10px] font-black uppercase hover:bg-blue-800 transition-all shadow-md"><Printer size={16}/> Resumo A4</button>
+                    <button onClick={() => handlePrintDRE_A4('monthly', 'detailed')} className="flex items-center gap-2 bg-gray-950 text-white px-6 py-3 rounded-xl text-[10px] font-black uppercase hover:bg-black transition-all shadow-md"><Printer size={16}/> Detalhado A4</button>
+                </div>
               </div>
 
               <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
@@ -587,6 +625,24 @@ const IceCreamModule: React.FC<IceCreamModuleProps> = ({
                       <div className="p-4 bg-white/10 text-white rounded-3xl shadow-inner"><DollarSign size={32}/></div>
                   </div>
               </div>
+
+              <div className="bg-white p-8 rounded-[40px] shadow-sm border border-gray-100">
+                  <h4 className="text-sm font-black text-gray-400 uppercase tracking-widest mb-6 flex items-center gap-2"><PieChart size={18}/> Distribuição de Lucros do Período</h4>
+                  <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+                      <div className="p-6 bg-blue-50 rounded-3xl border border-blue-100">
+                          <p className="text-[9px] font-black text-blue-400 uppercase mb-1">Luciene + Regis (63,33%)</p>
+                          <p className="text-2xl font-black text-blue-900">{formatCurrency(monthlySummaryData.result * 0.6333)}</p>
+                      </div>
+                      <div className="p-6 bg-purple-50 rounded-3xl border border-purple-100">
+                          <p className="text-[9px] font-black text-purple-400 uppercase mb-1">Ademir (26,67%)</p>
+                          <p className="text-2xl font-black text-purple-900">{formatCurrency(monthlySummaryData.result * 0.2667)}</p>
+                      </div>
+                      <div className="p-6 bg-orange-50 rounded-3xl border border-orange-100">
+                          <p className="text-[9px] font-black text-orange-400 uppercase mb-1">Junior (10,00%)</p>
+                          <p className="text-2xl font-black text-orange-900">{formatCurrency(monthlySummaryData.result * 0.10)}</p>
+                      </div>
+                  </div>
+              </div>
           </div>
       )}
 
@@ -594,18 +650,39 @@ const IceCreamModule: React.FC<IceCreamModuleProps> = ({
           <div className="grid grid-cols-1 xl:grid-cols-3 gap-6 animate-in fade-in duration-500">
               <div className="xl:col-span-1 bg-white p-8 rounded-[40px] shadow-xl border border-gray-100 h-fit">
                   <h3 className="text-xl font-black text-gray-900 uppercase italic tracking-tighter mb-8 flex items-center gap-3"><ArrowDownCircle className="text-red-600" size={24}/> Registrar Saída</h3>
-                  <form onSubmit={handleAddTx} className="space-y-5">
+                  <form onSubmit={async (e) => {
+                    e.preventDefault();
+                    const val = parseFloat(financeForm.value.replace(/\./g, '').replace(',', '.'));
+                    if (!val || isNaN(val)) return;
+                    setIsSubmitting(true);
+                    try {
+                        await onAddTransaction({ id: '', date: financeForm.date, type: 'exit', category: financeForm.category, value: val, employeeName: financeForm.employeeName, description: financeForm.description, createdAt: new Date() });
+                        setFinanceForm({ ...financeForm, value: '', employeeName: '', description: '' });
+                    } finally { setIsSubmitting(false); }
+                  }} className="space-y-5">
                       <div><label className="text-[9px] font-black uppercase text-gray-400 block mb-2">Categoria de Despesa</label><select value={financeForm.category} onChange={e => setFinanceForm({...financeForm, category: e.target.value as any})} className="w-full p-4 bg-gray-50 border-none rounded-2xl font-black text-xs uppercase focus:ring-4 focus:ring-red-100 transition-all shadow-inner">{EXPENSE_CATEGORIES.map(c => <option key={c} value={c}>{c}</option>)}</select></div>
                       <div><label className="text-[9px] font-black uppercase text-gray-400 block mb-2">Valor (R$)</label><input value={financeForm.value} onChange={e => setFinanceForm({...financeForm, value: e.target.value})} placeholder="0,00" className="w-full p-4 bg-gray-50 border-none rounded-2xl font-black text-2xl text-red-600 focus:ring-4 focus:ring-red-100 transition-all shadow-inner" /></div>
                       <div><label className="text-[9px] font-black uppercase text-gray-400 block mb-2">Nome do Colaborador</label><input value={financeForm.employeeName} onChange={e => setFinanceForm({...financeForm, employeeName: e.target.value})} placeholder="Para quem?" className="w-full p-4 bg-gray-50 border-none rounded-2xl font-bold text-xs uppercase focus:ring-4 focus:ring-red-100 transition-all shadow-inner" /></div>
                       <div><label className="text-[9px] font-black uppercase text-gray-400 block mb-2">Descrição / Observação</label><textarea value={financeForm.description} onChange={e => setFinanceForm({...financeForm, description: e.target.value})} placeholder="Ex: Adiantamento mensal" className="w-full p-4 bg-gray-50 border-none rounded-2xl font-medium text-xs focus:ring-4 focus:ring-red-100 transition-all shadow-inner resize-none h-24" /></div>
-                      <button type="submit" disabled={isSubmitting} className="w-full py-5 bg-red-600 hover:bg-red-700 text-white rounded-2xl font-black uppercase text-xs shadow-xl flex items-center justify-center gap-3 transition-all active:scale-95 border-b-4 border-red-900">{isSubmitting ? <Loader2 className="animate-spin" size={20}/> : <Save size={20}/>} Confirmar Lançamento</button>
+                      <button type="submit" disabled={isSubmitting} className="w-full py-5 bg-red-600 hover:bg-red-700 text-white rounded-2xl font-black uppercase text-xs shadow-xl flex items-center justify-center gap-3 transition-all active:scale-95 border-b-4 border-red-900">{isSubmitting ? <Loader2 className="animate-spin" size={20}/> : <Save size={20}/>}</button>
                   </form>
               </div>
               <div className="xl:col-span-2 bg-white rounded-[40px] shadow-sm border border-gray-100 overflow-hidden flex flex-col h-[700px]">
-                  <div className="p-8 border-b bg-gray-50/50 flex justify-between items-center">
-                      <h3 className="text-xl font-black text-gray-900 uppercase italic tracking-tighter">Histórico de <span className="text-red-600">Saídas</span></h3>
-                      <div className="bg-red-50 text-red-700 px-4 py-2 rounded-xl text-xs font-black uppercase italic">Total: {formatCurrency(finances.filter(f => f.type === 'exit').reduce((acc,f)=>acc+f.value,0))}</div>
+                  <div className="p-8 border-b bg-gray-50/50 flex flex-col gap-4">
+                      <div className="flex justify-between items-center">
+                        <h3 className="text-xl font-black text-gray-900 uppercase italic tracking-tighter">Histórico de <span className="text-red-600">Saídas</span></h3>
+                        <div className="bg-red-50 text-red-700 px-4 py-2 rounded-xl text-xs font-black uppercase italic">Total: {formatCurrency(filteredFinances.reduce((acc,f)=>acc+f.value,0))}</div>
+                      </div>
+                      
+                      <div className="flex items-center gap-3 bg-white p-2 rounded-2xl border border-gray-200 shadow-inner w-fit">
+                        <CalendarDays size={18} className="text-gray-400 ml-2" />
+                        <select value={expenseFilterMonth} onChange={e => setExpenseFilterMonth(e.target.value)} className="bg-transparent border-none text-[10px] font-black uppercase outline-none cursor-pointer">
+                            {MONTHS.map(m => <option key={m.value} value={m.value}>{m.label}</option>)}
+                        </select>
+                        <select value={expenseFilterYear} onChange={e => setExpenseFilterYear(e.target.value)} className="bg-transparent border-none text-[10px] font-black uppercase outline-none cursor-pointer">
+                            {availableYears.map(y => <option key={y} value={y.toString()}>{y}</option>)}
+                        </select>
+                      </div>
                   </div>
                   <div className="overflow-y-auto no-scrollbar flex-1">
                       <table className="w-full text-left">
@@ -619,7 +696,7 @@ const IceCreamModule: React.FC<IceCreamModuleProps> = ({
                               </tr>
                           </thead>
                           <tbody className="divide-y divide-gray-50">
-                              {finances.filter(f => f.type === 'exit').map(f => (
+                              {filteredFinances.map(f => (
                                   <tr key={f.id} className="hover:bg-red-50/30 transition-colors group">
                                       <td className="px-8 py-5 text-xs text-gray-500 font-mono">{new Date(f.date + 'T12:00:00').toLocaleDateString('pt-BR')}</td>
                                       <td className="px-8 py-5 font-black uppercase text-[10px] text-red-600">{f.category}</td>
@@ -630,9 +707,6 @@ const IceCreamModule: React.FC<IceCreamModuleProps> = ({
                                       </td>
                                   </tr>
                               ))}
-                              {finances.filter(f => f.type === 'exit').length === 0 && (
-                                  <tr><td colSpan={5} className="px-8 py-20 text-center text-gray-400 font-black uppercase italic tracking-widest">Nenhuma saída lançada</td></tr>
-                              )}
                           </tbody>
                       </table>
                   </div>
@@ -647,7 +721,7 @@ const IceCreamModule: React.FC<IceCreamModuleProps> = ({
                       <h3 className="text-xl font-black text-gray-900 uppercase italic tracking-tighter">Catálogo de <span className="text-blue-700">Produtos</span></h3>
                       <p className="text-gray-400 text-[9px] font-black uppercase tracking-widest mt-1">Configuração de Itens e Preços</p>
                   </div>
-                  <button onClick={() => { setEditingItem(null); setProductForm({ name: '', category: 'Sundae', flavor: '', price: '', active: true, stockInitial: '', unit: 'un', consumptionPerSale: '1' }); setIsProductModalOpen(true); }} className="px-8 py-4 bg-gray-950 text-white rounded-xl font-black uppercase text-[10px] flex items-center gap-2 hover:bg-black shadow-lg shadow-gray-200 transition-all">
+                  <button onClick={() => { setEditingItem(null); setProductForm({ name: '', category: 'Sundae', flavor: '', price: '', active: true, stockInitial: '0', unit: 'un', consumptionPerSale: '1' }); setIsProductModalOpen(true); }} className="px-8 py-4 bg-gray-950 text-white rounded-xl font-black uppercase text-[10px] flex items-center gap-2 hover:bg-black shadow-lg shadow-gray-200 transition-all">
                       <Plus size={16}/> Novo Produto
                   </button>
               </div>
@@ -667,9 +741,7 @@ const IceCreamModule: React.FC<IceCreamModuleProps> = ({
                       <tbody className="divide-y divide-gray-50">
                           {items.map(item => (
                               <tr key={item.id} className={`hover:bg-gray-50 transition-colors ${!item.active ? 'opacity-40 grayscale' : ''}`}>
-                                  <td className="px-8 py-5">
-                                      <div className={`w-3 h-3 rounded-full ${item.active ? 'bg-green-500 shadow-[0_0_8px_rgba(34,197,94,0.4)]' : 'bg-gray-300'}`}></div>
-                                  </td>
+                                  <td className="px-8 py-5"><div className={`w-3 h-3 rounded-full ${item.active ? 'bg-green-500 shadow-[0_0_8px_rgba(34,197,94,0.4)]' : 'bg-gray-300'}`}></div></td>
                                   <td className="px-8 py-5 font-black uppercase text-[10px] text-blue-700">{item.category}</td>
                                   <td className="px-8 py-5 font-black uppercase text-xs italic">{item.name}</td>
                                   <td className="px-8 py-5 font-bold text-xs text-gray-400 uppercase">{item.flavor || '-'}</td>
@@ -677,17 +749,7 @@ const IceCreamModule: React.FC<IceCreamModuleProps> = ({
                                   <td className="px-8 py-5 text-center font-bold text-xs">{item.stockCurrent?.toFixed(2)} {item.unit}</td>
                                   <td className="px-8 py-5 text-right">
                                       <div className="flex justify-end gap-2">
-                                          <button onClick={() => { 
-                                              setEditingItem(item); 
-                                              setProductForm({ 
-                                                  name: item.name, category: item.category, flavor: item.flavor || '', 
-                                                  price: item.price.toString(), active: item.active, 
-                                                  stockInitial: item.stockInitial?.toString() || '', 
-                                                  unit: item.unit || 'un', 
-                                                  consumptionPerSale: item.consumptionPerSale?.toString() || '1' 
-                                              }); 
-                                              setIsProductModalOpen(true); 
-                                          }} className="p-2 text-blue-600 hover:bg-blue-50 rounded-xl transition-all"><Edit3 size={18}/></button>
+                                          <button onClick={() => { setEditingItem(item); setProductForm({ name: item.name, category: item.category, flavor: item.flavor || '', price: item.price.toString(), active: item.active, stockInitial: item.stockInitial?.toString() || '0', unit: item.unit || 'un', consumptionPerSale: item.consumptionPerSale?.toString() || '1' }); setIsProductModalOpen(true); }} className="p-2 text-blue-600 hover:bg-blue-50 rounded-xl transition-all"><Edit3 size={18}/></button>
                                           <button onClick={() => onDeleteItem(item.id)} className="p-2 text-red-400 hover:bg-red-50 rounded-xl transition-all"><Trash2 size={18}/></button>
                                       </div>
                                   </td>
@@ -770,105 +832,73 @@ const IceCreamModule: React.FC<IceCreamModuleProps> = ({
           </div>
       )}
 
-      {/* MODAL PRODUTOS ADICIONAR/EDITAR */}
+      {/* MODAL PRODUTO */}
       {isProductModalOpen && (
           <div className="fixed inset-0 bg-black/80 flex items-center justify-center z-[150] p-4 backdrop-blur-md">
-              <div className="bg-white rounded-[48px] shadow-2xl w-full max-w-md overflow-hidden animate-in zoom-in duration-200">
-                  <div className="p-8 bg-gray-50 border-b flex justify-between items-center">
+              <div className="bg-white rounded-[48px] shadow-2xl w-full max-w-md p-8 animate-in zoom-in duration-200">
+                  <div className="flex justify-between items-center mb-6">
                       <h3 className="text-xl font-black text-gray-900 uppercase italic tracking-tighter">{editingItem ? 'Editar' : 'Novo'} <span className="text-blue-700">Produto</span></h3>
-                      <button onClick={() => setIsProductModalOpen(false)} className="text-gray-400 hover:text-red-600 bg-white p-2 rounded-full shadow-sm"><X size={24}/></button>
+                      <button onClick={() => setIsProductModalOpen(false)} className="text-gray-400 hover:text-red-600 transition-colors"><X size={24}/></button>
                   </div>
-                  <form className="p-8 space-y-4" onSubmit={async (e) => {
+                  <form onSubmit={async (e) => {
                       e.preventDefault();
                       setIsSubmitting(true);
                       try {
                           if (editingItem) {
-                              await onUpdateItem({ 
-                                ...editingItem, 
-                                name: productForm.name,
-                                category: productForm.category,
-                                flavor: productForm.flavor,
-                                price: parseFloat(productForm.price.replace(',','.')),
-                                active: productForm.active,
-                                stockInitial: parseFloat(productForm.stockInitial) || 0,
-                                unit: productForm.unit,
-                                consumptionPerSale: parseFloat(productForm.consumptionPerSale) || 1
-                              });
+                              await onUpdateItem({ ...editingItem, name: productForm.name, category: productForm.category, flavor: productForm.flavor, price: parseFloat(productForm.price.replace(',','.')), active: productForm.active, stockInitial: parseFloat(productForm.stockInitial), unit: productForm.unit, consumptionPerSale: parseFloat(productForm.consumptionPerSale) });
                           } else {
                               await onAddItem(productForm.name, productForm.category, parseFloat(productForm.price.replace(',','.')), productForm.flavor, parseFloat(productForm.stockInitial), productForm.unit, parseFloat(productForm.consumptionPerSale));
                           }
                           setIsProductModalOpen(false);
                       } finally { setIsSubmitting(false); }
-                  }}>
+                  }} className="space-y-4">
+                      <input required value={productForm.name} onChange={e => setProductForm({...productForm, name: e.target.value})} className="w-full px-4 py-3 bg-gray-50 rounded-xl font-black text-xs uppercase" placeholder="Nome do Produto" />
                       <div className="grid grid-cols-2 gap-4">
-                        <div className="col-span-2">
-                            <label className="text-[9px] font-black uppercase text-gray-400 block mb-1.5 ml-1">Nome do Produto</label>
-                            <input required value={productForm.name} onChange={e => setProductForm({...productForm, name: e.target.value})} className="w-full px-4 py-3 bg-gray-50 border-none rounded-xl font-black text-xs focus:ring-4 focus:ring-blue-100 outline-none uppercase shadow-inner" placeholder="Ex: Sundae Chocolate" />
-                        </div>
-                        <div>
-                            <label className="text-[9px] font-black uppercase text-gray-400 block mb-1.5 ml-1">Categoria</label>
-                            <select value={productForm.category} onChange={e => setProductForm({...productForm, category: e.target.value as any})} className="w-full px-4 py-3 bg-gray-50 border-none rounded-xl font-black text-[10px] focus:ring-4 focus:ring-blue-100 outline-none uppercase shadow-inner">
-                                {PRODUCT_CATEGORIES.map(c => <option key={c} value={c}>{c}</option>)}
-                            </select>
-                        </div>
-                        <div>
-                            <label className="text-[9px] font-black uppercase text-gray-400 block mb-1.5 ml-1">Preço Venda</label>
-                            <input required value={productForm.price} onChange={e => setProductForm({...productForm, price: e.target.value})} className="w-full px-4 py-3 bg-gray-50 border-none rounded-xl font-black text-xs focus:ring-4 focus:ring-blue-100 outline-none shadow-inner" placeholder="0,00" />
-                        </div>
+                          <select value={productForm.category} onChange={e => setProductForm({...productForm, category: e.target.value as any})} className="w-full px-4 py-3 bg-gray-50 rounded-xl font-black text-[10px] uppercase">
+                              {PRODUCT_CATEGORIES.map(c => <option key={c} value={c}>{c}</option>)}
+                          </select>
+                          <input required value={productForm.price} onChange={e => setProductForm({...productForm, price: e.target.value})} className="w-full px-4 py-3 bg-gray-50 rounded-xl font-black text-xs" placeholder="Preço 0,00" />
                       </div>
-                      <div className="pt-4 flex gap-3">
-                          <button type="button" onClick={() => setIsProductModalOpen(false)} className="flex-1 py-4 bg-gray-100 text-gray-500 rounded-2xl font-black uppercase text-[10px]">Cancelar</button>
-                          <button type="submit" disabled={isSubmitting} className="flex-1 py-4 bg-blue-700 text-white rounded-2xl font-black uppercase text-[10px] shadow-lg flex items-center justify-center gap-2">{isSubmitting ? <Loader2 className="animate-spin" size={14}/> : <Save size={14}/>} Salvar</button>
+                      <div className="grid grid-cols-2 gap-4">
+                        <input value={productForm.unit} onChange={e => setProductForm({...productForm, unit: e.target.value})} className="w-full px-4 py-3 bg-gray-50 rounded-xl font-black text-xs uppercase" placeholder="Unidade (Ex: un, kg)" />
+                        <input value={productForm.stockInitial} onChange={e => setProductForm({...productForm, stockInitial: e.target.value})} className="w-full px-4 py-3 bg-gray-50 rounded-xl font-black text-xs" placeholder="Estoque Inicial" />
                       </div>
+                      <button type="submit" disabled={isSubmitting} className="w-full py-4 bg-blue-700 text-white rounded-2xl font-black uppercase text-xs shadow-lg flex items-center justify-center gap-2">{isSubmitting ? <Loader2 className="animate-spin" size={14}/> : <Save size={14}/>} {editingItem ? 'Atualizar' : 'Salvar'} Produto</button>
                   </form>
               </div>
           </div>
       )}
 
-      {/* MODAL AJUSTE DE ESTOQUE */}
+      {/* MODAL AJUSTE ESTOQUE */}
       {isStockAdjustmentModalOpen && (
           <div className="fixed inset-0 bg-black/80 flex items-center justify-center z-[150] p-4 backdrop-blur-md">
-              <div className="bg-white rounded-[48px] shadow-2xl w-full max-w-md overflow-hidden animate-in zoom-in duration-200">
-                  <div className="p-8 bg-gray-50 border-b flex justify-between items-center">
+              <div className="bg-white rounded-[48px] shadow-2xl w-full max-w-md p-8 animate-in zoom-in duration-200">
+                  <div className="flex justify-between items-center mb-6">
                       <h3 className="text-xl font-black text-gray-900 uppercase italic tracking-tighter">Ajuste de <span className="text-blue-700">Inventário</span></h3>
-                      <button onClick={() => setIsStockAdjustmentModalOpen(false)} className="text-gray-400 hover:text-red-600 bg-white p-2 rounded-full shadow-sm"><X size={24}/></button>
+                      <button onClick={() => setIsStockAdjustmentModalOpen(false)} className="text-gray-400 hover:text-red-600 transition-colors"><X size={24}/></button>
                   </div>
-                  <form className="p-8 space-y-4" onSubmit={async (e) => {
+                  <form onSubmit={async (e) => {
                       e.preventDefault();
                       setIsSubmitting(true);
                       try {
                           await onUpdateStock(stockForm.itemId, parseFloat(stockForm.qty.replace(',','.')), stockForm.type, stockForm.reason);
                           setIsStockAdjustmentModalOpen(false);
+                          setStockForm({ itemId: '', qty: '', type: 'restock', reason: '' });
                       } finally { setIsSubmitting(false); }
-                  }}>
-                      <div>
-                          <label className="text-[9px] font-black uppercase text-gray-400 block mb-1.5 ml-1">Selecione o Insumo</label>
-                          <select required value={stockForm.itemId} onChange={e => setStockForm({...stockForm, itemId: e.target.value})} className="w-full px-4 py-3 bg-gray-50 border-none rounded-xl font-black text-xs focus:ring-4 focus:ring-blue-100 outline-none uppercase shadow-inner">
-                              <option value="">Escolher...</option>
-                              {items.map(i => <option key={i.id} value={i.id}>{i.name} ({i.unit})</option>)}
-                          </select>
-                      </div>
+                  }} className="space-y-4">
+                      <select required value={stockForm.itemId} onChange={e => setStockForm({...stockForm, itemId: e.target.value})} className="w-full px-4 py-3 bg-gray-50 rounded-xl font-black text-xs uppercase">
+                          <option value="">Selecione o Item...</option>
+                          {items.map(i => <option key={i.id} value={i.id}>{i.name}</option>)}
+                      </select>
                       <div className="grid grid-cols-2 gap-4">
-                          <div>
-                              <label className="text-[9px] font-black uppercase text-gray-400 block mb-1.5 ml-1">Quantidade</label>
-                              <input required value={stockForm.qty} onChange={e => setStockForm({...stockForm, qty: e.target.value})} className="w-full px-4 py-3 bg-gray-50 border-none rounded-xl font-black text-xs focus:ring-4 focus:ring-blue-100 outline-none shadow-inner" placeholder="0.00" />
-                          </div>
-                          <div>
-                              <label className="text-[9px] font-black uppercase text-gray-400 block mb-1.5 ml-1">Tipo Mov.</label>
-                              <select value={stockForm.type} onChange={e => setStockForm({...stockForm, type: e.target.value as any})} className="w-full px-4 py-3 bg-gray-50 border-none rounded-xl font-black text-[10px] focus:ring-4 focus:ring-blue-100 outline-none uppercase shadow-inner">
-                                  <option value="restock">Entrada (+)</option>
-                                  <option value="adjustment">Saldo Real (=)</option>
-                              </select>
-                          </div>
+                        <input required value={stockForm.qty} onChange={e => setStockForm({...stockForm, qty: e.target.value})} className="w-full px-4 py-3 bg-gray-50 rounded-xl font-black text-xs" placeholder="Quantidade" />
+                        <select value={stockForm.type} onChange={e => setStockForm({...stockForm, type: e.target.value as any})} className="w-full px-4 py-3 bg-gray-50 rounded-xl font-black text-[10px] uppercase">
+                            <option value="restock">Entrada (+)</option>
+                            <option value="adjustment">Saldo Real (=)</option>
+                        </select>
                       </div>
-                      <div>
-                          <label className="text-[9px] font-black uppercase text-gray-400 block mb-1.5 ml-1">Justificativa</label>
-                          <input required value={stockForm.reason} onChange={e => setStockForm({...stockForm, reason: e.target.value})} className="w-full px-4 py-3 bg-gray-50 border-none rounded-xl font-bold text-xs focus:ring-4 focus:ring-blue-100 outline-none shadow-inner" placeholder="Ex: Compra de mercadoria" />
-                      </div>
-                      <div className="pt-4 flex gap-3">
-                          <button type="button" onClick={() => setIsStockAdjustmentModalOpen(false)} className="flex-1 py-4 bg-gray-100 text-gray-500 rounded-2xl font-black uppercase text-[10px]">Cancelar</button>
-                          <button type="submit" disabled={isSubmitting} className="flex-1 py-4 bg-gray-950 text-white rounded-2xl font-black uppercase text-[10px] shadow-lg flex items-center justify-center gap-2">{isSubmitting ? <Loader2 className="animate-spin" size={14}/> : <Save size={14}/>} Confirmar</button>
-                      </div>
+                      <input required value={stockForm.reason} onChange={e => setStockForm({...stockForm, reason: e.target.value})} className="w-full px-4 py-3 bg-gray-50 rounded-xl font-black text-xs uppercase" placeholder="Motivo / Referência" />
+                      <button type="submit" disabled={isSubmitting} className="w-full py-4 bg-gray-900 text-white rounded-2xl font-black uppercase text-xs shadow-lg flex items-center justify-center gap-2">{isSubmitting ? <Loader2 className="animate-spin" size={14}/> : <RefreshCw size={14}/>} Confirmar Ajuste</button>
                   </form>
               </div>
           </div>
