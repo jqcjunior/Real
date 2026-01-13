@@ -1,4 +1,5 @@
 
+
 import React, { useState } from 'react';
 import { 
     IceCreamItem, IceCreamDailySale, IceCreamTransaction, IceCreamCategory, 
@@ -49,8 +50,10 @@ const PDVMobileView: React.FC<PDVMobileViewProps> = (props) => {
 
   const handleMobileAddToCart = () => {
     if(!props.selectedItem) { alert("Selecione um item."); return; }
+    // Fixed: Added missing required property 'storeId' to fix compilation error.
     const newItem: IceCreamDailySale = { 
         id: `cart-mob-${Date.now()}-${Math.random().toString(36).substr(2, 5)}`, 
+        storeId: props.user.storeId || '',
         itemId: props.selectedItem.id, 
         productName: props.selectedItem.name, 
         category: props.selectedItem.category, 
@@ -121,6 +124,40 @@ const PDVMobileView: React.FC<PDVMobileViewProps> = (props) => {
               </div>
             )}
 
+            {step === 'details' && props.selectedProductName && (
+                <div className="space-y-6 animate-in slide-in-from-right duration-300">
+                    <button onClick={() => setStep('products')} className="text-[10px] font-black text-gray-400 uppercase flex items-center gap-1 mb-2">← Produtos</button>
+                    <div className="bg-white p-6 rounded-[32px] border-2 border-gray-100 shadow-sm space-y-6">
+                        <div className="text-center">
+                            <h2 className="text-xl font-black uppercase italic tracking-tighter text-blue-900">{props.selectedProductName}</h2>
+                            <p className="text-[10px] font-bold text-gray-400 uppercase tracking-widest mt-1">Configure o item</p>
+                        </div>
+
+                        <div className="space-y-3">
+                            <label className="text-[9px] font-black text-gray-400 uppercase tracking-widest block text-center">Tamanho / Volume</label>
+                            <div className="grid grid-cols-3 gap-2">
+                                {['Padrão', '300ml', '500ml', '700ml'].map(ml => (
+                                    <button key={ml} onClick={() => props.setSelectedMl(ml)} className={`py-3 rounded-2xl font-black text-[10px] border-2 transition-all ${props.selectedMl === ml ? 'bg-blue-600 border-blue-600 text-white shadow-lg' : 'bg-gray-50 border-gray-100 text-gray-400'}`}>{ml}</button>
+                                ))}
+                            </div>
+                        </div>
+
+                        <div className="flex items-center justify-between bg-gray-50 p-4 rounded-3xl border border-gray-100">
+                             <span className="text-[10px] font-black text-gray-400 uppercase tracking-widest">Quantidade</span>
+                             <div className="flex items-center gap-6">
+                                 <button onClick={() => props.setQuantity(Math.max(1, props.quantity - 1))} className="w-10 h-10 bg-white rounded-xl shadow-sm flex items-center justify-center font-black text-lg border border-gray-200">-</button>
+                                 <span className="text-xl font-black text-blue-900 w-6 text-center">{props.quantity}</span>
+                                 <button onClick={() => props.setQuantity(props.quantity + 1)} className="w-10 h-10 bg-white rounded-xl shadow-sm flex items-center justify-center font-black text-lg border border-gray-200">+</button>
+                             </div>
+                        </div>
+
+                        <button onClick={handleMobileAddToCart} className="w-full py-5 bg-blue-700 text-white rounded-[24px] font-black uppercase text-xs shadow-xl flex items-center justify-center gap-3 active:scale-95 transition-all">
+                            <Plus size={18}/> Adicionar ao Carrinho
+                        </button>
+                    </div>
+                </div>
+            )}
+
             {step === 'cart' && (
               <div className="space-y-6 animate-in slide-in-from-bottom duration-300">
                 <div className="flex justify-between items-center"><button onClick={() => setStep('categories')} className="text-[10px] font-black text-blue-600 uppercase tracking-widest">+ ADICIONAR ITEM</button><button onClick={() => props.setCart([])} className="text-[10px] font-black text-red-400 uppercase tracking-widest">ESVAZIAR</button></div>
@@ -161,7 +198,6 @@ const PDVMobileView: React.FC<PDVMobileViewProps> = (props) => {
           </div>
         )}
       </main>
-      {/* ...restante do componente... */}
     </div>
   );
 };

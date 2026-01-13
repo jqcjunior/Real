@@ -1,4 +1,5 @@
 
+
 import React, { useState, useMemo, useRef } from 'react';
 import { Store, UserRole } from '../types';
 import { Plus, Edit, Trash2, Save, X, Store as StoreIcon, User, MapPin, Phone, Mail, AlertTriangle, Lock, CheckCircle, XCircle, Power, Shield, User as UserIcon, Wallet, ChevronDown, ChevronRight, Upload, FileSpreadsheet, Loader2 } from 'lucide-react';
@@ -99,6 +100,7 @@ const AdminSettings: React.FC<AdminSettingsProps> = ({ stores, onAddStore, onUpd
   };
 
   const handleAdd = () => {
+    // Fixed: 'password' is now a known property of Partial<Store>
     setEditingStore({
       number: '',
       name: '',
@@ -124,6 +126,7 @@ const AdminSettings: React.FC<AdminSettingsProps> = ({ stores, onAddStore, onUpd
 
     try {
         if (isEditing && editingStore.id) {
+          // Fixed: passwordResetRequested now exists on Store type
           const updatedStoreData = { ...storeData, passwordResetRequested: false } as Store;
           await onUpdateStore(updatedStoreData);
         } else {
@@ -144,6 +147,7 @@ const AdminSettings: React.FC<AdminSettingsProps> = ({ stores, onAddStore, onUpd
 
   const approveRequest = async (store: Store) => {
       const roleToAssign = pendingRoles[store.id] || UserRole.MANAGER;
+      // Fixed: passwordResetRequested now exists on Store type
       const updatedStore = { 
           ...store, 
           status: 'active', 
@@ -322,12 +326,14 @@ const AdminSettings: React.FC<AdminSettingsProps> = ({ stores, onAddStore, onUpd
                           {pendingStores.map(store => (
                               <tr key={store.id} className="hover:bg-yellow-100/30 transition-colors">
                                   <td className="py-3 pl-2">
+                                      {/* Fixed: passwordResetRequested now valid on Store type */}
                                       {store.passwordResetRequested ? <span className="inline-flex items-center gap-1 bg-red-100 text-red-700 px-2 py-1 rounded text-[10px] font-bold border border-red-200">RECUPERAÇÃO</span> : <span className="inline-flex items-center gap-1 bg-green-100 text-green-700 px-2 py-1 rounded text-[10px] font-bold border border-green-200">NOVO CADASTRO</span>}
                                   </td>
                                   <td className="py-3"><div className="font-bold text-gray-800">{store.number} - {store.name}</div><div className="text-xs text-gray-500">{store.city}</div></td>
                                   <td className="py-3"><div className="font-medium text-gray-800">{store.managerName}</div><div className="text-xs text-gray-500">{store.managerEmail}</div></td>
                                   <td className="py-3 text-right">
                                       <div className="flex justify-end items-center gap-2">
+                                          {/* Fixed: passwordResetRequested now valid on Store type */}
                                           {store.passwordResetRequested && <button onClick={() => handleEdit(store)} className="flex items-center gap-1 bg-blue-100 text-blue-700 px-3 py-1.5 rounded-lg hover:bg-blue-200 border border-blue-200 text-xs font-bold transition-colors mr-2"><Edit size={14} /> Editar Senha</button>}
                                           <div className="relative">
                                               <select value={pendingRoles[store.id] || UserRole.MANAGER} onChange={(e) => setPendingRoles({ ...pendingRoles, [store.id]: e.target.value as UserRole })} className={`appearance-none pl-8 pr-8 py-1.5 rounded-lg border text-xs font-bold focus:ring-2 outline-none cursor-pointer ${pendingRoles[store.id] === UserRole.ADMIN ? 'bg-blue-100 border-blue-300 text-blue-800' : 'bg-white border-yellow-300 text-gray-700'}`}>
@@ -485,6 +491,7 @@ const AdminSettings: React.FC<AdminSettingsProps> = ({ stores, onAddStore, onUpd
                             <label className="block text-xs font-semibold text-gray-600 mb-1">Senha de Acesso</label>
                             <div className="relative">
                                 <span className="absolute left-3 top-2.5 text-gray-400"><Lock size={16}/></span>
+                                {/* Fixed: 'password' is now a known property of Partial<Store> */}
                                 <input type="text" name="password" value={editingStore.password || ''} onChange={handleChange} className="w-full pl-9 pr-3 py-2 bg-white border border-gray-300 rounded-lg focus:ring-2 focus:ring-red-500 focus:border-red-500 outline-none transition-all text-gray-600 placeholder-gray-400" placeholder="Definir senha" />
                             </div>
                             <p className="text-[10px] text-gray-400 mt-1">Deixe em branco para manter a senha atual (se houver).</p>

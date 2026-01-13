@@ -1,4 +1,5 @@
 
+
 import React, { useState } from 'react';
 import { SystemLog, Receipt, Store, CashError } from '../types';
 import { formatCurrency } from '../constants';
@@ -77,8 +78,9 @@ const SystemAudit: React.FC<SystemAuditProps> = ({ logs, receipts, store, cashEr
                 <tbody className="divide-y divide-gray-100">
                     {filteredLogs.map(log => (
                         <tr key={log.id} className="hover:bg-gray-50">
+                            {/* Fixed: Use log.created_at instead of log.timestamp to match SystemLog interface */}
                             <td className="p-4 text-gray-500 font-mono text-xs">
-                                {new Date(log.timestamp).toLocaleString('pt-BR')}
+                                {new Date(log.created_at).toLocaleString('pt-BR')}
                             </td>
                             <td className="p-4 font-medium text-gray-900">{log.userName}</td>
                             <td className="p-4">
