@@ -116,14 +116,28 @@ const DashboardManager: React.FC<DashboardManagerProps> = ({ user, stores, perfo
      return `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`;
   });
   
-  const [aiAnalysis, setAiAnalysis] = useState<string>('');
-  const [loadingAi, setLoadingAi] = useState(false);
   const [sellerGoals, setSellerGoals] = useState<SellerGoal[]>([]);
+
+  const myStore = useMemo(() => (stores || []).find(s => s.id === user.storeId), [stores, user.storeId]);
+  
+  // LOGICA DE COMPARTILHAMENTO: Busca dados pela unidade (número) e não apenas pelo ID do usuário logado
+  const myData = useMemo(() => {
+    if (!myStore) return null;
+    return (performanceData || []).find(p => {
+        const pStore = stores.find(s => s.id === p.storeId);
+        return pStore?.number === myStore.number && p.month === selectedMonth;
+    });
+  }, [performanceData, selectedMonth, myStore, stores]);
 
   useEffect(() => {
     const fetchSellers = async () => {
-        if (!user.storeId) return;
-        const { data } = await supabase.from('seller_goals').select('*').eq('month', selectedMonth).eq('store_id', user.storeId);
+        if (!myStore) return;
+        // Para vendedores, buscamos também pelo número da loja para consolidar equipe
+        // Nota: Assumindo que store_id no banco é o ID usado no cadastro de metas
+        // Se houver múltiplos IDs para a mesma loja, Admin salvou em um deles.
+        if (!myData?.storeId) return;
+
+        const { data } = await supabase.from('seller_goals').select('*').eq('month', selectedMonth).eq('store_id', myData.storeId);
         if (data) setSellerGoals(data.map(d => ({
             storeId: d.store_id,
             sellerName: d.seller_name,
@@ -134,11 +148,8 @@ const DashboardManager: React.FC<DashboardManagerProps> = ({ user, stores, perfo
         })));
     };
     fetchSellers();
-  }, [selectedMonth, user.storeId]);
+  }, [selectedMonth, myStore, myData]);
 
-  const myStore = (stores || []).find(s => s.id === user.storeId);
-  const myData = (performanceData || []).find(p => p.storeId === user.storeId && p.month === selectedMonth);
-  
   const salesPulse = useMemo(() => {
     if (!myData) return null;
     const now = new Date();
@@ -157,19 +168,25 @@ const DashboardManager: React.FC<DashboardManagerProps> = ({ user, stores, perfo
   }, [myData, selectedMonth]);
 
   const networkRanking = useMemo(() => {
-      return (performanceData || []).filter(p => p.month === selectedMonth)
-          .map(item => {
-              const s = (stores || []).find(st => st.id === item.storeId);
-              return {
-                  storeId: item.storeId,
-                  name: s?.name || 'Unidade',
-                  number: s?.number || '00',
+      // Consolidar ranking por número de loja para evitar duplicatas de gerentes no ranking
+      const rankingMap = new Map();
+      
+      (performanceData || []).filter(p => p.month === selectedMonth).forEach(item => {
+          const s = (stores || []).find(st => st.id === item.storeId);
+          if (!s) return;
+          
+          if (!rankingMap.has(s.number)) {
+              rankingMap.set(s.number, {
+                  number: s.number,
+                  name: s.name,
                   percent: Number(item.percentMeta) || 0,
-                  isMine: item.storeId === user.storeId
-              };
-          })
-          .sort((a, b) => b.percent - a.percent);
-  }, [performanceData, selectedMonth, stores, user.storeId]);
+                  isMine: s.number === myStore?.number
+              });
+          }
+      });
+
+      return Array.from(rankingMap.values()).sort((a, b) => b.percent - a.percent);
+  }, [performanceData, selectedMonth, stores, myStore]);
 
   const sellerRanking = useMemo(() => {
       return (sellerGoals || [])
@@ -181,17 +198,16 @@ const DashboardManager: React.FC<DashboardManagerProps> = ({ user, stores, perfo
         .sort((a, b) => b.percent - a.percent);
   }, [sellerGoals]);
 
-  if (!myStore) return <div className="p-8">Dados da loja indisponíveis.</div>;
+  if (!myStore) return <div className="p-20 text-center font-black uppercase text-gray-400">Dados da loja indisponíveis.</div>;
 
   return (
     <div className="p-4 md:p-8 space-y-8 animate-in fade-in duration-500">
         <div className="bg-white p-8 rounded-[40px] shadow-sm border border-gray-100 flex justify-between items-center">
             <h2 className="text-3xl font-black text-gray-900 uppercase italic leading-none flex items-center gap-3">
-                <ShoppingBag size={28} className="text-blue-600" /> {myStore.name}
+                <ShoppingBag size={28} className="text-blue-600" /> {myStore.name} <span className="text-gray-300 ml-2">#{myStore.number}</span>
             </h2>
             <div className="flex gap-2">
                 <select value={selectedMonth} onChange={(e) => setSelectedMonth(e.target.value)} className="bg-gray-50 p-2 rounded-xl text-xs font-black">
-                   {/* Fallback meses */}
                    {MONTHS.map(m => <option key={m.value} value={`${new Date().getFullYear()}-${String(m.value).padStart(2, '0')}`}>{m.label}</option>)}
                 </select>
             </div>
@@ -221,32 +237,41 @@ const DashboardManager: React.FC<DashboardManagerProps> = ({ user, stores, perfo
                 <GoalMetricCard label="Ticket Médio" target={myData.ticketTarget || 0} actual={myData.averageTicket} icon={Tag} isCurrency />
             </div>
         ) : (
-            <div className="p-20 text-center bg-white rounded-3xl">Aguardando dados de performance do mês.</div>
+            <div className="p-20 text-center bg-white rounded-[40px] shadow-sm border-2 border-dashed border-gray-100">
+                <AlertCircle className="mx-auto text-gray-200 mb-4" size={48} />
+                <p className="text-gray-400 font-black uppercase text-xs tracking-widest">Aguardando definição de metas pelo Admin</p>
+            </div>
         )}
         
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
-            <div className="bg-white p-8 rounded-[40px]">
-                <h3 className="text-xl font-black uppercase mb-6 flex items-center gap-2"><Users className="text-blue-600"/> Equipe</h3>
+            <div className="bg-white p-8 rounded-[40px] shadow-sm border border-gray-100">
+                <h3 className="text-xl font-black uppercase mb-6 flex items-center gap-2 italic"><Users className="text-blue-600"/> Equipe de Vendas</h3>
                 {(sellerRanking || []).map((sg, idx) => (
-                    <div key={idx} className="mb-4 p-4 bg-gray-50 rounded-2xl">
-                        <div className="flex justify-between font-black uppercase text-xs mb-1">
-                           <span>{sg.sellerName}</span>
-                           <span>{sg.percent.toFixed(1)}%</span>
+                    <div key={idx} className="mb-4 p-4 bg-gray-50 rounded-2xl border border-gray-100">
+                        <div className="flex justify-between font-black uppercase text-[10px] mb-2 tracking-widest">
+                           <span className="text-gray-900">{sg.sellerName}</span>
+                           <span className="text-blue-600">{sg.percent.toFixed(1)}%</span>
                         </div>
                         <div className="w-full h-2 bg-gray-200 rounded-full overflow-hidden">
-                           <div className="h-full bg-blue-600" style={{ width: `${Math.min(sg.percent, 100)}%` }} />
+                           <div className="h-full bg-blue-600 transition-all duration-700" style={{ width: `${Math.min(sg.percent, 100)}%` }} />
                         </div>
                     </div>
                 ))}
+                {sellerRanking.length === 0 && <p className="text-center text-gray-300 font-bold uppercase text-[9px] py-10">Nenhum vendedor registrado para este mês</p>}
             </div>
-            <div className="bg-white p-8 rounded-[40px]">
-                <h3 className="text-xl font-black uppercase mb-6 flex items-center gap-2"><Trophy className="text-yellow-500"/> Ranking</h3>
-                {(networkRanking || []).map((item, idx) => (
-                    <div key={idx} className={`p-4 rounded-2xl mb-2 flex justify-between items-center ${item.isMine ? 'bg-blue-50' : 'bg-gray-50'}`}>
-                        <span className="font-black text-xs">#{idx+1} {item.isMine ? 'SUA LOJA' : `UNIDADE ${item.number}`}</span>
-                        <span className="font-black text-blue-600">{item.percent.toFixed(1)}%</span>
-                    </div>
-                ))}
+            <div className="bg-white p-8 rounded-[40px] shadow-sm border border-gray-100">
+                <h3 className="text-xl font-black uppercase mb-6 flex items-center gap-2 italic"><Trophy className="text-yellow-500"/> Ranking Rede</h3>
+                <div className="space-y-2 overflow-y-auto max-h-[400px] no-scrollbar">
+                    {(networkRanking || []).map((item, idx) => (
+                        <div key={item.number} className={`p-4 rounded-2xl flex justify-between items-center transition-all ${item.isMine ? 'bg-blue-600 text-white shadow-lg scale-[1.02]' : 'bg-gray-50 text-gray-900 border border-gray-100 hover:bg-gray-100'}`}>
+                            <span className="font-black text-[10px] uppercase tracking-tighter">
+                                <span className="opacity-50 mr-2">#{idx+1}</span>
+                                {item.isMine ? 'SUA UNIDADE' : `UNIDADE ${item.number}`}
+                            </span>
+                            <span className={`font-black italic ${item.isMine ? 'text-white' : 'text-blue-600'}`}>{item.percent.toFixed(1)}%</span>
+                        </div>
+                    ))}
+                </div>
             </div>
         </div>
     </div>
