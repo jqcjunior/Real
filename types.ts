@@ -51,8 +51,8 @@ export interface IceCreamDailySale {
   createdAt?: string;
   saleCode?: string;
   status?: 'active' | 'canceled';
-  cancelReason?: string;
-  canceledBy?: string;
+  cancel_reason?: string;
+  canceled_by?: string;
   ml?: string;
 }
 
@@ -100,7 +100,20 @@ export interface CotaSettings { storeId: string; budgetValue: number; managerPer
 export interface CotaDebt { id?: string; storeId: string; month: string; value: number; description?: string; }
 
 export type TaskPriority = 'highest' | 'high' | 'medium' | 'low' | 'lowest';
-export interface AgendaItem { id: string; userId: string; title: string; description: string; dueDate: string; priority: TaskPriority; isCompleted: boolean; createdAt: Date; }
+
+export interface AgendaItem { 
+  id: string; 
+  userId: string; 
+  title: string; 
+  description: string; 
+  dueDate: string; 
+  priority: TaskPriority; 
+  isCompleted: boolean; 
+  createdAt: Date;
+  reminder_level: 1 | 2 | 3;
+  reminded_at?: string | null;
+  completed_note?: string;
+}
 
 export type DownloadCategory = 'spreadsheet' | 'video' | 'image' | 'audio' | 'other';
 export interface DownloadItem { id: string; title: string; description: string; category: DownloadCategory; url: string; fileName?: string; size?: string; campaign?: string; createdAt: Date; createdBy: string; }

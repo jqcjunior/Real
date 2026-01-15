@@ -9,9 +9,10 @@ interface SystemAuditProps {
   receipts: Receipt[];
   store?: Store;
   cashErrors: CashError[];
+  onLogAction?: (action: string, details: string) => Promise<void>;
 }
 
-const SystemAudit: React.FC<SystemAuditProps> = ({ logs, receipts, store, cashErrors }) => {
+const SystemAudit: React.FC<SystemAuditProps> = ({ logs, receipts, store, cashErrors, onLogAction }) => {
   const [activeTab, setActiveTab] = useState<'logs' | 'receipts' | 'cash_errors'>('logs');
   const [searchTerm, setSearchTerm] = useState('');
 
@@ -32,9 +33,14 @@ const SystemAudit: React.FC<SystemAuditProps> = ({ logs, receipts, store, cashEr
   ).sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
 
   // --- FUNÇÃO DE REIMPRESSÃO COM TARJA DE AUDITORIA ---
-  const handleReprint = (receipt: Receipt) => {
+  const handleReprint = async (receipt: Receipt) => {
     const printWindow = window.open('', '_blank', 'width=800,height=600');
     if (!printWindow) return;
+
+    // Log the reprint action for auditing
+    if (onLogAction) {
+        await onLogAction('REPRINT_RECEIPT', `Reimpressão de segurança solicitada para Recibo #${receipt.id}`);
+    }
 
     const logoUrl = window.location.origin + BRAND_LOGO;
     const [y, m, d] = receipt.date.split('-').map(Number);
@@ -64,7 +70,7 @@ const SystemAudit: React.FC<SystemAuditProps> = ({ logs, receipts, store, cashEr
                   
                   <!-- Tarja de Auditoria -->
                   <div class="absolute -top-1 right-10 bg-black text-white px-4 py-1 text-[8px] font-black uppercase tracking-widest rounded-b-lg">
-                      Documento Reimpresso via Auditoria em ${reprintTime}
+                      REIMPRESSÃO - VIA AUDITORIA EM ${reprintTime}
                   </div>
 
                   <div class="relative z-10 flex flex-col h-full">
@@ -72,7 +78,7 @@ const SystemAudit: React.FC<SystemAuditProps> = ({ logs, receipts, store, cashEr
                           <div class="flex items-center gap-3">
                               <img src="${logoUrl}" style="height: 50px; border-radius: 99px;" />
                               <div>
-                                  <h1 class="text-xl font-black text-gray-900 uppercase italic leading-none">Real <span class="text-red-600">Calçados</span></h1>
+                                  <h1 class="text-xl font-black text-gray-900 uppercase italic leading-none">Real <span className="text-red-600">Calçados</span></h1>
                                   <p class="text-[9px] text-gray-600 font-bold">Comprovante de Pagamento (Auditado)</p>
                               </div>
                           </div>
@@ -104,7 +110,7 @@ const SystemAudit: React.FC<SystemAuditProps> = ({ logs, receipts, store, cashEr
                   </div>
               </div>
           </div>
-          <script>window.onload = () => setTimeout(() => window.print(), 500);</script>
+          <script>window.onload = () => setTimeout(() => window.print(), 800);</script>
       </body>
       </html>
     `;
