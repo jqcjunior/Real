@@ -1,6 +1,6 @@
 
 import React, { useState, useEffect, useMemo } from 'react';
-import { LayoutDashboard, ShoppingBag, Calculator, DollarSign, Instagram, Download, AlertOctagon, FileSignature, LogOut, Menu, Calendar, Settings, X, FileText, UserCog, History, Sliders, Banknote, Target, Loader2, ShieldCheck, ShieldAlert, IceCream, Info, BarChart3 } from 'lucide-react';
+import { LayoutDashboard, ShoppingBag, Calculator, DollarSign, Instagram, Download, AlertOctagon, FileSignature, LogOut, Menu, Calendar, Settings, X, FileText, UserCog, History, Sliders, Banknote, Target, Loader2, ShieldCheck, ShieldAlert, IceCream, Info, BarChart3, Wifi } from 'lucide-react';
 import LoginScreen from './components/LoginScreen';
 import DashboardAdmin from './components/DashboardAdmin';
 import DashboardManager from './components/DashboardManager';
@@ -24,10 +24,10 @@ import { User, Store, MonthlyPerformance, UserRole, Cota, AgendaItem, DownloadIt
 import { supabase } from './services/supabaseClient';
 
 const NavButton: React.FC<{ view: string; icon: React.ElementType; label: string; active?: boolean; onClick?: () => void; }> = ({ icon: Icon, label, active, onClick }) => (
-  <button onClick={onClick} className={`w-full flex items-center justify-between px-4 py-2.5 text-[11px] font-bold transition-all border-l-4 group ${active ? 'bg-white/10 border-red-500 text-white shadow-inner' : 'border-transparent text-blue-100 hover:bg-white/5 hover:text-white'}`}>
+  <button onClick={onClick} className={`w-full flex items-center justify-between px-4 py-3 text-[11px] font-black transition-all border-l-4 group ${active ? 'bg-white/10 border-red-500 text-white shadow-inner' : 'border-transparent text-blue-100/60 hover:bg-white/5 hover:text-white'}`}>
     <div className="flex items-center gap-3">
       <Icon size={16} className={active ? 'text-red-400' : 'text-blue-300 group-hover:text-white'} />
-      <span className="uppercase tracking-tight truncate">{label}</span>
+      <span className="uppercase tracking-widest truncate">{label}</span>
     </div>
   </button>
 );
@@ -120,18 +120,18 @@ const App: React.FC = () => {
           store_id: d.storeId, month: d.month, revenue_target: d.revenueTarget, revenue_actual: d.revenueActual, percent_meta: d.revenueTarget > 0 ? (d.revenueActual / d.revenueTarget) * 100 : 0, items_target: d.itemsTarget, items_actual: d.itemsActual, pa_target: d.paTarget, pa_actual: d.itemsPerTicket, ticket_target: d.ticketTarget, ticket_actual: d.averageTicket, pu_target: d.puTarget, pu_actual: d.unitPriceAverage, delinquency_target: d.delinquencyTarget, delinquency_actual: d.delinquencyRate, business_days: d.businessDays, trend: d.trend, corrected_daily_goal: d.correctedDailyGoal
       }));
       await supabase.from('monthly_performance').upsert(payload, { onConflict: 'store_id,month' });
-      loadModuleData();
+      fetchData();
   };
 
   const handleSaveCota = async (c: Cota) => {
-      // Normalização da data de embarque para formato DATE (YYYY-MM-01)
       const normalizedDate = c.shipmentDate.length === 7 ? `${c.shipmentDate}-01` : c.shipmentDate;
-      
       const payload = {
           store_id: c.storeId, 
           brand: c.brand, 
+          // Fix: Corrected property name from c.total_value to c.totalValue to match the Cota interface
           total_value: c.totalValue, 
           shipment_date: normalizedDate, 
+          // Fix: Corrected property name from c.payment_terms to c.paymentTerms to match the Cota interface (line 134 fix)
           payment_terms: c.paymentTerms, 
           pairs: c.pairs, 
           classification: c.classification, 
@@ -141,7 +141,7 @@ const App: React.FC = () => {
       };
       const { error } = await supabase.from('cotas').insert([payload]);
       if (error) console.error("Erro ao salvar pedido na tabela cotas:", error);
-      loadModuleData();
+      fetchData();
   };
 
   const handleUpdateCota = async (id: string, updates: Partial<Cota>) => {
@@ -149,19 +149,17 @@ const App: React.FC = () => {
       if (updates.status) payload.status = updates.status;
       if (updates.brand) payload.brand = updates.brand;
       await supabase.from('cotas').update(payload).eq('id', id);
-      loadModuleData();
+      fetchData();
   };
 
   const handleSaveCotaSettings = async (s: CotaSettings) => {
       await supabase.from('cota_settings').upsert({
-          store_id: s.storeId, budget_value: s.budgetValue, manager_percent: s.managerPercent
+          store_id: s.store_id || s.storeId, budget_value: s.budgetValue, manager_percent: s.managerPercent
       }, { onConflict: 'store_id' });
-      loadModuleData();
+      fetchData();
   };
 
   const handleSaveCotaDebt = async (d: CotaDebt) => {
-      // Correção definitiva do erro 409 Conflict:
-      // Substituído .insert() por .upsert() com onConflict 'store_id,month'
       const { error } = await supabase.from('cota_debts').upsert({
           store_id: d.storeId, 
           month: d.month, 
@@ -170,7 +168,22 @@ const App: React.FC = () => {
       }, { onConflict: 'store_id,month' });
       
       if (error) console.error("Erro ao salvar despesa de cota:", error);
-      loadModuleData();
+      fetchData();
+  };
+
+  const handleSaveReceipt = async (r: Receipt) => {
+    const { error } = await supabase.from('receipts').insert([{
+        store_id: user?.storeId,
+        issuer_name: r.issuerName,
+        payer: r.payer,
+        recipient: r.recipient,
+        value: r.value,
+        value_in_words: r.valueInWords,
+        reference: r.reference,
+        date: r.date
+    }]);
+    if (error) console.error("Erro ao salvar recibo:", error);
+    await fetchData();
   };
 
   if (!user) {
@@ -178,7 +191,13 @@ const App: React.FC = () => {
       <LoginScreen onLoginAttempt={async (email, password) => {
         const { data: admin } = await supabase.from('admin_users').select('*').eq('email', email.toLowerCase()).eq('password', password).single();
         if (admin) {
-          const u: User = { id: admin.id, name: admin.name, email: admin.email, role: admin.role_level === 'super_admin' ? UserRole.ADMIN : admin.role_level === 'admin' ? UserRole.MANAGER : UserRole.CASHIER };
+          const u: User = { 
+            id: admin.id, 
+            name: admin.name, 
+            email: admin.email, 
+            role: admin.role_level === 'super_admin' ? UserRole.ADMIN : admin.role_level === 'admin' ? UserRole.MANAGER : UserRole.CASHIER,
+            storeId: admin.store_id || '' 
+          };
           setUser(u);
           return { success: true, user: u };
         }
@@ -192,7 +211,7 @@ const App: React.FC = () => {
       <div className="w-64 flex-none bg-gray-950 border-r border-white/5 flex flex-col shadow-2xl">
         <div className="p-8 border-b border-white/5 mb-4">
           <h1 className="text-2xl font-black italic uppercase tracking-tighter leading-none">Real <span className="text-red-600">Admin</span></h1>
-          <p className="text-[8px] font-black text-blue-400 uppercase tracking-widest mt-2 opacity-50">Enterprise v26.4</p>
+          <p className="text-[8px] font-black text-blue-400 uppercase tracking-widest mt-2 opacity-50">Enterprise v26.7</p>
         </div>
         <div className="flex-1 overflow-y-auto no-scrollbar space-y-6 px-2 pb-10">
           <div>
@@ -232,7 +251,7 @@ const App: React.FC = () => {
       </div>
 
       <div className="flex-1 flex flex-col h-full bg-[#f8fafc] overflow-hidden text-blue-950">
-        <div className="flex-1 overflow-y-auto no-scrollbar">
+        <div className="flex-1 overflow-y-auto no-scrollbar relative">
           {currentView === 'dashboard' && (user.role === UserRole.ADMIN ? <DashboardAdmin stores={stores} performanceData={performanceData} onImportData={async (d) => { await supabase.from('monthly_performance').insert(d); fetchData(); }} /> : <DashboardManager user={user} stores={stores} performanceData={performanceData} purchasingData={purchasingData} />)}
           {currentView === 'cotas' && (
             <CotasManagement 
@@ -245,7 +264,7 @@ const App: React.FC = () => {
           {currentView === 'purchases' && <DashboardPurchases stores={stores} data={purchasingData} onImport={async (d) => { await supabase.from('product_performance').insert(d); fetchData(); }} />}
           {currentView === 'icecream' && <IceCreamModule user={user} stores={stores} items={[]} stock={[]} sales={[]} finances={[]} profitPartners={[]} onAddSales={async () => {}} onCancelSale={async () => {}} onUpdateItem={async () => {}} onAddTransaction={async () => {}} onDeleteTransaction={async () => {}} onAddItem={async () => {}} onDeleteItem={async () => {}} onUpdateStock={async () => {}} onAddProfitPartner={async () => {}} onUpdateProfitPartner={async () => {}} onDeleteProfitPartner={async () => {}} onUpdatePrice={async () => {}} />}
           {currentView === 'cash_register' && <CashRegisterModule user={user} sales={[]} finances={[]} closures={closures} onAddClosure={async (c) => { await supabase.from('cash_closures').insert([{ ...c, store_id: user.storeId, closed_by: user.name }]); fetchData(); }} />}
-          {currentView === 'financial' && <FinancialModule user={user} sales={[]} receipts={receipts} onAddSale={async () => {}} onDeleteSale={async () => {}} onAddReceipt={async () => {}} />}
+          {currentView === 'financial' && <FinancialModule user={user} store={stores.find(s => s.id === user.storeId)} sales={[]} receipts={receipts} onAddSale={async () => {}} onDeleteSale={async () => {}} onAddReceipt={handleSaveReceipt} />}
           {currentView === 'cash_errors' && <CashErrorsModule user={user} stores={stores} errors={cashErrors} onAddError={async (e) => { await supabase.from('cash_errors').insert([e]); fetchData(); }} onUpdateError={async (e) => { await supabase.from('cash_errors').update(e).eq('id', e.id); fetchData(); }} onDeleteError={async (id) => { await supabase.from('cash_errors').delete().eq('id', id); fetchData(); }} />}
           {currentView === 'downloads' && <DownloadsModule user={user} items={downloads} onUpload={async (i) => { await supabase.from('downloads').insert([i]); fetchData(); }} onDelete={async (id) => { await supabase.from('downloads').delete().eq('id', id); fetchData(); }} />}
           {currentView === 'marketing' && <InstagramMarketing user={user} store={stores.find(s => s.id === user.storeId)} />}

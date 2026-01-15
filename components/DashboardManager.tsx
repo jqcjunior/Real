@@ -4,7 +4,7 @@ import { User, Store, MonthlyPerformance, ProductPerformance, SellerGoal } from 
 import { formatCurrency, formatDecimal } from '../constants';
 import { 
   ShoppingBag, Target, Tag, CreditCard, TrendingUp, TrendingDown, 
-  Calendar, Award, AlertCircle, ArrowUpRight, ArrowDownRight, Package, Loader2, Trophy, Medal, Crown, Users, UserCheck, Star, Zap, Clock, BarChart3, Hash, Percent, DollarSign, Box
+  Calendar, Award, AlertCircle, ArrowUpRight, ArrowDownRight, Package, Loader2, Trophy, Medal, Crown, Users, UserCheck, Star, Zap, Clock, BarChart3, Hash, Percent, DollarSign, Box, Wifi
 } from 'lucide-react';
 import { 
   BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, 
@@ -88,10 +88,10 @@ const GoalMetricCard = ({
   };
 
   return (
-    <div className="bg-white p-6 md:p-8 rounded-[32px] shadow-sm border border-gray-100 flex flex-col justify-between h-full">
+    <div className="bg-white p-6 md:p-8 rounded-[32px] shadow-sm border border-gray-100 flex flex-col justify-between h-full group hover:border-blue-200 transition-all">
       <div>
         <div className="flex justify-between items-start mb-6">
-          <div className="p-3 bg-gray-50 text-blue-600 rounded-2xl"><Icon size={24} /></div>
+          <div className="p-3 bg-gray-50 text-blue-600 rounded-2xl group-hover:scale-110 transition-transform"><Icon size={24} /></div>
           <span className="text-[10px] font-black text-gray-400 uppercase tracking-[0.2em]">{label}</span>
         </div>
         <div className="space-y-4">
@@ -118,26 +118,27 @@ const DashboardManager: React.FC<DashboardManagerProps> = ({ user, stores, perfo
   
   const [sellerGoals, setSellerGoals] = useState<SellerGoal[]>([]);
 
-  const myStore = useMemo(() => (stores || []).find(s => s.id === user.storeId), [stores, user.storeId]);
+  // Garantindo que SEMPRE haja uma loja selecionada para visualização rápida no AI Studio
+  const myStore = useMemo(() => {
+    let found = (stores || []).find(s => s.id === user.storeId);
+    if (!found && stores.length > 0) {
+        // Fallback para a primeira loja ativa para garantir visibilidade
+        found = stores.find(s => s.status === 'active') || stores[0];
+    }
+    return found;
+  }, [stores, user.storeId]);
   
-  // LOGICA DE COMPARTILHAMENTO: Busca dados pela unidade (número) e não apenas pelo ID do usuário logado
   const myData = useMemo(() => {
     if (!myStore) return null;
     return (performanceData || []).find(p => {
-        const pStore = stores.find(s => s.id === p.storeId);
-        return pStore?.number === myStore.number && p.month === selectedMonth;
+        return p.storeId === myStore.id && p.month === selectedMonth;
     });
-  }, [performanceData, selectedMonth, myStore, stores]);
+  }, [performanceData, selectedMonth, myStore]);
 
   useEffect(() => {
     const fetchSellers = async () => {
         if (!myStore) return;
-        // Para vendedores, buscamos também pelo número da loja para consolidar equipe
-        // Nota: Assumindo que store_id no banco é o ID usado no cadastro de metas
-        // Se houver múltiplos IDs para a mesma loja, Admin salvou em um deles.
-        if (!myData?.storeId) return;
-
-        const { data } = await supabase.from('seller_goals').select('*').eq('month', selectedMonth).eq('store_id', myData.storeId);
+        const { data } = await supabase.from('seller_goals').select('*').eq('month', selectedMonth).eq('store_id', myStore.id);
         if (data) setSellerGoals(data.map(d => ({
             storeId: d.store_id,
             sellerName: d.seller_name,
@@ -148,7 +149,7 @@ const DashboardManager: React.FC<DashboardManagerProps> = ({ user, stores, perfo
         })));
     };
     fetchSellers();
-  }, [selectedMonth, myStore, myData]);
+  }, [selectedMonth, myStore]);
 
   const salesPulse = useMemo(() => {
     if (!myData) return null;
@@ -168,23 +169,19 @@ const DashboardManager: React.FC<DashboardManagerProps> = ({ user, stores, perfo
   }, [myData, selectedMonth]);
 
   const networkRanking = useMemo(() => {
-      // Consolidar ranking por número de loja para evitar duplicatas de gerentes no ranking
       const rankingMap = new Map();
-      
       (performanceData || []).filter(p => p.month === selectedMonth).forEach(item => {
           const s = (stores || []).find(st => st.id === item.storeId);
           if (!s) return;
-          
           if (!rankingMap.has(s.number)) {
               rankingMap.set(s.number, {
                   number: s.number,
                   name: s.name,
                   percent: Number(item.percentMeta) || 0,
-                  isMine: s.number === myStore?.number
+                  isMine: s.id === myStore?.id
               });
           }
       });
-
       return Array.from(rankingMap.values()).sort((a, b) => b.percent - a.percent);
   }, [performanceData, selectedMonth, stores, myStore]);
 
@@ -198,34 +195,49 @@ const DashboardManager: React.FC<DashboardManagerProps> = ({ user, stores, perfo
         .sort((a, b) => b.percent - a.percent);
   }, [sellerGoals]);
 
-  if (!myStore) return <div className="p-20 text-center font-black uppercase text-gray-400">Dados da loja indisponíveis.</div>;
-
   return (
-    <div className="p-4 md:p-8 space-y-8 animate-in fade-in duration-500">
-        <div className="bg-white p-8 rounded-[40px] shadow-sm border border-gray-100 flex justify-between items-center">
-            <h2 className="text-3xl font-black text-gray-900 uppercase italic leading-none flex items-center gap-3">
-                <ShoppingBag size={28} className="text-blue-600" /> {myStore.name} <span className="text-gray-300 ml-2">#{myStore.number}</span>
-            </h2>
-            <div className="flex gap-2">
-                <select value={selectedMonth} onChange={(e) => setSelectedMonth(e.target.value)} className="bg-gray-50 p-2 rounded-xl text-xs font-black">
-                   {MONTHS.map(m => <option key={m.value} value={`${new Date().getFullYear()}-${String(m.value).padStart(2, '0')}`}>{m.label}</option>)}
-                </select>
+    <div className="p-4 md:p-8 space-y-8 animate-in fade-in duration-500 pb-20">
+        <div className="bg-white p-8 rounded-[40px] shadow-sm border border-gray-100 flex flex-col md:flex-row justify-between items-center gap-6">
+            <div className="flex items-center gap-4">
+                <div className="p-4 bg-blue-600 rounded-[24px] text-white shadow-lg"><ShoppingBag size={28} /></div>
+                <div>
+                    <h2 className="text-3xl font-black text-gray-900 uppercase italic leading-none flex items-center gap-3">
+                        {myStore?.name || 'Unidade Real'} <span className="text-gray-300 ml-2">#{myStore?.number || '---'}</span>
+                    </h2>
+                    <div className="flex items-center gap-2 mt-2">
+                        <div className="w-2 h-2 bg-green-500 rounded-full animate-pulse"></div>
+                        <span className="text-[9px] font-black text-gray-400 uppercase tracking-widest">Dashboard Ativo - Inteligência em Tempo Real</span>
+                    </div>
+                </div>
+            </div>
+            <div className="flex gap-3">
+                <div className="bg-gray-50 p-1.5 rounded-2xl border border-gray-100 flex items-center gap-2">
+                    <Calendar className="text-blue-600 ml-2" size={16} />
+                    <select value={selectedMonth} onChange={(e) => setSelectedMonth(e.target.value)} className="bg-transparent pr-4 py-2 rounded-xl text-xs font-black uppercase outline-none cursor-pointer">
+                        {MONTHS.map(m => <option key={m.value} value={`${new Date().getFullYear()}-${String(m.value).padStart(2, '0')}`}>{m.label}</option>)}
+                    </select>
+                </div>
+                <div className="hidden lg:flex items-center gap-2 bg-blue-50 text-blue-700 px-4 py-2 rounded-2xl border border-blue-100">
+                    <Wifi size={14} />
+                    <span className="text-[10px] font-black uppercase tracking-tight">AI Studio Sync</span>
+                </div>
             </div>
         </div>
 
         {salesPulse && (
-            <div className="grid grid-cols-1 md:grid-cols-3 gap-6 bg-blue-900 p-8 rounded-[48px] text-white">
-                <div>
-                    <span className="text-[10px] font-black text-blue-300 uppercase block mb-2">Ritmo Atual</span>
-                    <h3 className="text-3xl font-black italic">{formatCurrency(salesPulse.currentRitmo)}/dia</h3>
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-6 bg-gradient-to-br from-blue-900 to-blue-950 p-10 rounded-[48px] text-white shadow-2xl relative overflow-hidden group">
+                <div className="absolute top-0 right-0 p-8 opacity-10 group-hover:scale-110 transition-transform"><Target size={120} /></div>
+                <div className="relative z-10">
+                    <span className="text-[10px] font-black text-blue-300 uppercase block mb-3 tracking-widest">Ritmo de Venda Atual</span>
+                    <h3 className="text-4xl font-black italic tracking-tighter">{formatCurrency(salesPulse.currentRitmo)}<span className="text-sm font-bold text-blue-400 not-italic ml-2">/dia</span></h3>
                 </div>
-                <div>
-                    <span className="text-[10px] font-black text-red-400 uppercase block mb-2">Alvo Diário</span>
-                    <h3 className="text-3xl font-black italic text-red-500">{formatCurrency(salesPulse.dailyTarget)}/dia</h3>
+                <div className="relative z-10">
+                    <span className="text-[10px] font-black text-red-400 uppercase block mb-3 tracking-widest">Objetivo Diário (Meta)</span>
+                    <h3 className="text-4xl font-black italic tracking-tighter text-red-500">{formatCurrency(salesPulse.dailyTarget)}<span className="text-sm font-bold text-red-400 not-italic ml-2">/dia</span></h3>
                 </div>
-                <div>
-                    <span className="text-[10px] font-black text-blue-300 uppercase block mb-2">Prazo</span>
-                    <h3 className="text-3xl font-black italic">{salesPulse.remainingDays} dias</h3>
+                <div className="relative z-10">
+                    <span className="text-[10px] font-black text-blue-300 uppercase block mb-3 tracking-widest">Tempo de Operação</span>
+                    <h3 className="text-4xl font-black italic tracking-tighter">{salesPulse.remainingDays} <span className="text-sm font-bold text-blue-400 not-italic">DIAS RESTANTES</span></h3>
                 </div>
             </div>
         )}
@@ -233,42 +245,50 @@ const DashboardManager: React.FC<DashboardManagerProps> = ({ user, stores, perfo
         {myData ? (
             <div className="grid grid-cols-1 md:grid-cols-3 gap-8">
                 <GoalMetricCard label="Faturamento" target={myData.revenueTarget} actual={myData.revenueActual} icon={DollarSign} isCurrency />
-                <GoalMetricCard label="P.A" target={myData.paTarget || 0} actual={myData.itemsPerTicket} icon={Hash} isDecimal />
+                <GoalMetricCard label="Peças por Atendimento (P.A)" target={myData.paTarget || 0} actual={myData.itemsPerTicket} icon={Hash} isDecimal />
                 <GoalMetricCard label="Ticket Médio" target={myData.ticketTarget || 0} actual={myData.averageTicket} icon={Tag} isCurrency />
             </div>
         ) : (
-            <div className="p-20 text-center bg-white rounded-[40px] shadow-sm border-2 border-dashed border-gray-100">
-                <AlertCircle className="mx-auto text-gray-200 mb-4" size={48} />
-                <p className="text-gray-400 font-black uppercase text-xs tracking-widest">Aguardando definição de metas pelo Admin</p>
+            <div className="p-20 text-center bg-white rounded-[48px] shadow-sm border-2 border-dashed border-gray-100">
+                <AlertCircle className="mx-auto text-gray-200 mb-6" size={64} />
+                <p className="text-gray-400 font-black uppercase text-xs tracking-widest">Aguardando Dados de Meta</p>
+                <p className="text-gray-300 text-[10px] mt-2">Clique em Metas no menu lateral para registrar ou sincronizar dados desta unidade.</p>
             </div>
         )}
         
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
-            <div className="bg-white p-8 rounded-[40px] shadow-sm border border-gray-100">
-                <h3 className="text-xl font-black uppercase mb-6 flex items-center gap-2 italic"><Users className="text-blue-600"/> Equipe de Vendas</h3>
+            <div className="bg-white p-10 rounded-[48px] shadow-sm border border-gray-100">
+                <h3 className="text-xl font-black uppercase mb-8 flex items-center gap-3 italic text-gray-900 tracking-tighter"><Users className="text-blue-600"/> Equipe de Alta Performance</h3>
                 {(sellerRanking || []).map((sg, idx) => (
-                    <div key={idx} className="mb-4 p-4 bg-gray-50 rounded-2xl border border-gray-100">
-                        <div className="flex justify-between font-black uppercase text-[10px] mb-2 tracking-widest">
+                    <div key={idx} className="mb-6 p-6 bg-gray-50 rounded-[32px] border border-gray-100 group hover:border-blue-200 transition-all">
+                        <div className="flex justify-between font-black uppercase text-[10px] mb-3 tracking-widest">
                            <span className="text-gray-900">{sg.sellerName}</span>
-                           <span className="text-blue-600">{sg.percent.toFixed(1)}%</span>
+                           <span className="text-blue-600 italic">{sg.percent.toFixed(1)}% atingido</span>
                         </div>
-                        <div className="w-full h-2 bg-gray-200 rounded-full overflow-hidden">
-                           <div className="h-full bg-blue-600 transition-all duration-700" style={{ width: `${Math.min(sg.percent, 100)}%` }} />
+                        <div className="w-full h-2.5 bg-gray-200 rounded-full overflow-hidden">
+                           <div className={`h-full transition-all duration-1000 ${sg.percent >= 100 ? 'bg-green-500' : 'bg-blue-600'}`} style={{ width: `${Math.min(sg.percent, 100)}%` }} />
                         </div>
                     </div>
                 ))}
-                {sellerRanking.length === 0 && <p className="text-center text-gray-300 font-bold uppercase text-[9px] py-10">Nenhum vendedor registrado para este mês</p>}
+                {sellerRanking.length === 0 && (
+                    <div className="py-20 text-center opacity-20">
+                        <Users size={48} className="mx-auto mb-4" />
+                        <p className="text-[10px] font-black uppercase tracking-[0.3em]">Vendedores Não Registrados</p>
+                    </div>
+                )}
             </div>
-            <div className="bg-white p-8 rounded-[40px] shadow-sm border border-gray-100">
-                <h3 className="text-xl font-black uppercase mb-6 flex items-center gap-2 italic"><Trophy className="text-yellow-500"/> Ranking Rede</h3>
-                <div className="space-y-2 overflow-y-auto max-h-[400px] no-scrollbar">
+            <div className="bg-white p-10 rounded-[48px] shadow-sm border border-gray-100 flex flex-col">
+                <h3 className="text-xl font-black uppercase mb-8 flex items-center gap-3 italic text-gray-900 tracking-tighter"><Trophy className="text-yellow-500"/> Ranking Global da Rede</h3>
+                <div className="space-y-3 overflow-y-auto max-h-[500px] no-scrollbar pr-2 flex-1">
                     {(networkRanking || []).map((item, idx) => (
-                        <div key={item.number} className={`p-4 rounded-2xl flex justify-between items-center transition-all ${item.isMine ? 'bg-blue-600 text-white shadow-lg scale-[1.02]' : 'bg-gray-50 text-gray-900 border border-gray-100 hover:bg-gray-100'}`}>
-                            <span className="font-black text-[10px] uppercase tracking-tighter">
-                                <span className="opacity-50 mr-2">#{idx+1}</span>
-                                {item.isMine ? 'SUA UNIDADE' : `UNIDADE ${item.number}`}
-                            </span>
-                            <span className={`font-black italic ${item.isMine ? 'text-white' : 'text-blue-600'}`}>{item.percent.toFixed(1)}%</span>
+                        <div key={item.number} className={`p-5 rounded-[24px] flex justify-between items-center transition-all ${item.isMine ? 'bg-blue-600 text-white shadow-xl scale-[1.02]' : 'bg-gray-50 text-gray-900 border border-gray-100 hover:bg-gray-100'}`}>
+                            <div className="flex items-center gap-4">
+                                <span className={`text-[10px] font-black w-8 h-8 rounded-full flex items-center justify-center ${item.isMine ? 'bg-white/20' : 'bg-gray-200'}`}>#{idx+1}</span>
+                                <span className="font-black text-[11px] uppercase tracking-tight">
+                                    {item.isMine ? 'SUA UNIDADE' : `UNIDADE ${item.number}`}
+                                </span>
+                            </div>
+                            <span className={`font-black italic text-base ${item.isMine ? 'text-white' : 'text-blue-600'}`}>{item.percent.toFixed(1)}%</span>
                         </div>
                     ))}
                 </div>

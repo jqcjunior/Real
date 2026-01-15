@@ -57,21 +57,33 @@ const DashboardAdmin: React.FC<DashboardAdminProps> = ({ stores, performanceData
       return Array.from(years).sort((a,b) => b - a);
   }, [performanceData]);
 
+  // Lógica de Rede Total: Mapeia todas as lojas ativas para garantir exibição total no dashboard
   const currentMonthData = useMemo(() => {
-      const data = (performanceData || []).filter(p => p.month === selectedMonth);
-      const consolidatedMap = new Map();
-      data.forEach(p => {
-          const store = (stores || []).find(s => s.id === p.storeId);
-          if (!store) return;
-          if (!consolidatedMap.has(store.number)) {
-              consolidatedMap.set(store.number, { ...p, storeName: store.name, storeNumber: store.number });
-          }
+      const activeStores = (stores || []).filter(s => s.status === 'active');
+      const monthlyPerf = (performanceData || []).filter(p => p.month === selectedMonth);
+      
+      return activeStores.map(store => {
+          const perf = monthlyPerf.find(p => p.storeId === store.id);
+          return {
+              id: perf?.id || store.id,
+              storeId: store.id,
+              storeName: store.name,
+              storeNumber: store.number,
+              revenueTarget: Number(perf?.revenueTarget || 0),
+              revenueActual: Number(perf?.revenueActual || 0),
+              percentMeta: Number(perf?.percentMeta || 0),
+              itemsActual: Number(perf?.itemsActual || 0),
+              itemsPerTicket: Number(perf?.itemsPerTicket || 0),
+              unitPriceAverage: Number(perf?.unitPriceAverage || 0),
+              averageTicket: Number(perf?.averageTicket || 0),
+              delinquencyRate: Number(perf?.delinquencyRate || 0),
+              month: selectedMonth
+          };
       });
-      return Array.from(consolidatedMap.values());
   }, [performanceData, selectedMonth, stores]);
 
   const rankedStores = useMemo(() => {
-      return currentMonthData
+      return [...currentMonthData]
         .sort((a, b) => (Number(b.percentMeta) || 0) - (Number(a.percentMeta) || 0))
         .map((item, index) => ({ ...item, rank: index + 1 }));
   }, [currentMonthData]);
@@ -106,9 +118,9 @@ const DashboardAdmin: React.FC<DashboardAdminProps> = ({ stores, performanceData
           <div>
             <h2 className="text-4xl font-black text-gray-900 tracking-tighter uppercase italic leading-none flex items-center gap-3">
                 <BrainCircuit className="text-blue-700" size={40} />
-                Inteligência <span className="text-red-600">Corporativa</span>
+                Rede <span className="text-red-600">Completa</span>
             </h2>
-            <p className="text-gray-500 font-bold uppercase text-[10px] tracking-[0.3em] mt-3 ml-1">Painel Real Admin v4.5</p>
+            <p className="text-gray-500 font-bold uppercase text-[10px] tracking-[0.3em] mt-3 ml-1">Monitoramento Administrativo de Todas as Unidades</p>
           </div>
 
           <div className="flex flex-wrap items-center gap-3">
@@ -149,8 +161,8 @@ const DashboardAdmin: React.FC<DashboardAdminProps> = ({ stores, performanceData
            </div>
            <div className="bg-gradient-to-br from-blue-900 to-blue-950 p-8 rounded-[40px] shadow-2xl text-white relative group overflow-hidden">
                <div className="absolute top-0 right-0 p-6 opacity-10"><Zap size={80}/></div>
-               <p className="text-[10px] font-black text-blue-300 uppercase tracking-widest mb-2">Unidades</p>
-               <h3 className="text-4xl font-black italic tracking-tighter">{rankedStores.length} <span className="text-sm not-italic font-bold text-blue-400">ATIVAS</span></h3>
+               <p className="text-[10px] font-black text-blue-300 uppercase tracking-widest mb-2">Unidades Ativas</p>
+               <h3 className="text-4xl font-black italic tracking-tighter">{currentMonthData.length} <span className="text-sm not-italic font-bold text-blue-400">LOJAS</span></h3>
            </div>
            <div className="bg-white p-4 rounded-[40px] shadow-sm border border-gray-100 flex flex-col justify-center items-center text-center group cursor-pointer hover:border-blue-200 transition-all" onClick={handleGenerateNetworkInsight}>
                {isLoadingAi ? <Loader2 className="animate-spin text-blue-600" size={32} /> : (
@@ -253,18 +265,18 @@ const DashboardAdmin: React.FC<DashboardAdminProps> = ({ stores, performanceData
                     {rankedStores.map((item, idx) => (
                         <tr key={item.storeNumber} className="hover:bg-blue-50/40 transition-all group">
                             <td className="px-6 py-6 text-center">
-                                <span className={`text-base font-black ${idx < 3 ? 'text-gray-900' : 'text-gray-300'}`}>#{item.rank}</span>
+                                <span className={`text-base font-black ${idx < 3 && item.revenueActual > 0 ? 'text-gray-900' : 'text-gray-300'}`}>#{item.rank}</span>
                             </td>
                             <td className="px-6 py-6">
                                 <span className="text-sm font-black text-gray-900 uppercase italic tracking-tight">{item.storeNumber} - {item.storeName}</span>
                             </td>
                             <td className="px-6 py-6 text-right font-black text-gray-900">{formatCurrency(item.revenueActual)}</td>
-                            <td className="px-6 py-6 text-center font-black italic">{item.percentMeta.toFixed(1)}%</td>
-                            <td className="px-6 py-6 text-center">{item.itemsActual?.toLocaleString()}</td>
-                            <td className="px-6 py-6 text-center">{item.itemsPerTicket?.toFixed(2)}</td>
-                            <td className="px-6 py-6 text-center">{formatCurrency(item.unitPriceAverage)}</td>
-                            <td className="px-6 py-6 text-center">{formatCurrency(item.averageTicket)}</td>
-                            <td className="px-6 py-6 text-center">{item.delinquencyRate?.toFixed(2)}%</td>
+                            <td className={`px-6 py-6 text-center font-black italic ${item.percentMeta === 0 ? 'text-gray-300' : ''}`}>{item.percentMeta.toFixed(1)}%</td>
+                            <td className="px-6 py-6 text-center">{item.itemsActual?.toLocaleString() || '-'}</td>
+                            <td className="px-6 py-6 text-center">{item.itemsPerTicket?.toFixed(2) || '-'}</td>
+                            <td className="px-6 py-6 text-center">{item.unitPriceAverage > 0 ? formatCurrency(item.unitPriceAverage) : '-'}</td>
+                            <td className="px-6 py-6 text-center">{item.averageTicket > 0 ? formatCurrency(item.averageTicket) : '-'}</td>
+                            <td className="px-6 py-6 text-center">{item.delinquencyRate > 0 ? `${item.delinquencyRate.toFixed(2)}%` : '-'}</td>
                         </tr>
                     ))}
                 </tbody>

@@ -114,7 +114,7 @@ const CotasManagement: React.FC<CotasManagementProps> = ({
     }> = {};
 
     timeline.forEach(m => {
-        // Uniformidade absoluta Jan/2026: Usar budget_value de cota_settings
+        // Uniformidade absoluta Jan/2026: Usar budget_value de cota_settings para uniformidade total
         const otb = Number(storeSettings?.budgetValue || 0);
         const managerPct = Number(storeSettings?.managerPercent || 30);
         const compradorLimit = otb * ((100 - managerPct) / 100);
@@ -183,7 +183,7 @@ const CotasManagement: React.FC<CotasManagementProps> = ({
         const valNum = Number(totalValue.replace(/\./g, '').replace(',', '.'));
         const installments = calculateInstallments(shipmentDate, paymentTerms, valNum);
         
-        // Normalização de data conforme instrução técnica
+        // Normalização de data solicitada: YYYY-MM para YYYY-MM-01
         const normalizedShipmentDate = `${shipmentDate}-01`;
 
         for (const storeId of selectedStoresForOrder) {
@@ -515,7 +515,7 @@ const CotasManagement: React.FC<CotasManagementProps> = ({
             </div>
         )}
         
-        {/* MODAL: NOVO PEDIDO - RESTAURADO COM SELETOR DE RESPONSÁVEL */}
+        {/* MODAL: NOVO PEDIDO - RESTAURADO COM SELETOR DE RESPONSÁVEL E NORMALIZAÇÃO DE DATA */}
         {activeForm === 'order' && (
             <div className="fixed inset-0 bg-black/80 backdrop-blur-md flex items-center justify-center z-[100] p-4">
                 <div className="bg-white rounded-[40px] w-full max-w-5xl shadow-2xl animate-in zoom-in duration-200 overflow-hidden border-t-8 border-blue-900 max-h-[90vh] flex flex-col">
