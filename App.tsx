@@ -51,7 +51,6 @@ const App: React.FC = () => {
 
   // Agenda Reminders States
   const [showLevel1Popup, setShowLevel1Popup] = useState(false);
-  const [level1Task, setLevel1Task] = useState<AgendaItem | null>(null);
   const [justification, setJustification] = useState('');
   const [isProcessingTask, setIsProcessingTask] = useState(false);
 
@@ -110,38 +109,54 @@ const App: React.FC = () => {
     if (rData) setReceipts(rData);
     if (clData) setClosures(clData);
     if (agData) {
-        const mappedTasks = agData.map(t => ({
+        setAgendaTasks(agData.map(t => ({
             id: t.id,
             userId: t.user_id,
             title: t.title,
             description: t.description,
             dueDate: t.due_date,
+            dueTime: t.due_time || '00:00:00',
             priority: t.priority,
             isCompleted: t.is_completed,
             createdAt: new Date(t.created_at),
             reminder_level: t.reminder_level || 1,
             reminded_at: t.reminded_at,
             completed_note: t.completed_note
-        }));
-        setAgendaTasks(mappedTasks);
-        
-        // Logic for Level 1 Popup (only if user logged in and not seen in session)
-        if (user) {
-            const pendingLevel1 = mappedTasks.find(t => 
-                !t.isCompleted && 
-                t.reminder_level === 1 && 
-                t.userId === user.id &&
-                (!t.reminded_at || new Date(t.reminded_at) <= new Date())
-            );
-            if (pendingLevel1 && !showLevel1Popup) {
-                setLevel1Task(pendingLevel1);
-                setShowLevel1Popup(true);
-            }
-        }
+        })));
     }
   };
 
   useEffect(() => { fetchData(); }, [user?.id]);
+
+  // Agenda logic helper to check if task should be shown based on due date/time and postergation
+  const isTaskTime = (task: AgendaItem) => {
+    const now = new Date();
+    
+    // Check if postponed
+    if (task.reminded_at) {
+        return now >= new Date(task.reminded_at);
+    }
+
+    // Check original due time: combined date + time
+    const dueTimestamp = new Date(`${task.dueDate}T${task.dueTime}`);
+    return now >= dueTimestamp;
+  };
+
+  const activeAlertTasks = useMemo(() => {
+    if (!user) return [];
+    return agendaTasks.filter(t => !t.isCompleted && t.userId === user.id && isTaskTime(t));
+  }, [agendaTasks, user]);
+
+  const level1Task = useMemo(() => activeAlertTasks.find(t => t.reminder_level === 1), [activeAlertTasks]);
+  const level2Task = useMemo(() => activeAlertTasks.find(t => t.reminder_level === 2), [activeAlertTasks]);
+  const level3Task = useMemo(() => activeAlertTasks.find(t => t.reminder_level === 3), [activeAlertTasks]);
+
+  // Effect to trigger level 1 popup only once when tasks become available
+  useEffect(() => {
+    if (level1Task && !showLevel1Popup) {
+        setShowLevel1Popup(true);
+    }
+  }, [level1Task]);
 
   const handleTaskAction = async (taskId: string, action: 'complete' | 'postpone', note?: string) => {
     setIsProcessingTask(true);
@@ -151,6 +166,7 @@ const App: React.FC = () => {
                 is_completed: true,
                 completed_note: note || ''
             }).eq('id', taskId);
+            setJustification('');
         } else {
             const nextReminder = new Date();
             nextReminder.setHours(nextReminder.getHours() + 1);
@@ -158,8 +174,7 @@ const App: React.FC = () => {
                 reminded_at: nextReminder.toISOString()
             }).eq('id', taskId);
         }
-        setJustification('');
-        setShowLevel1Popup(false);
+        if (taskId === level1Task?.id) setShowLevel1Popup(false);
         fetchData();
     } catch (e) {
         alert("Erro ao processar tarefa.");
@@ -167,26 +182,6 @@ const App: React.FC = () => {
         setIsProcessingTask(false);
     }
   };
-
-  const level2Task = useMemo(() => {
-      if (!user) return null;
-      return agendaTasks.find(t => 
-        !t.isCompleted && 
-        t.reminder_level === 2 && 
-        t.userId === user.id &&
-        (!t.reminded_at || new Date(t.reminded_at) <= new Date())
-      );
-  }, [agendaTasks, user]);
-
-  const level3Task = useMemo(() => {
-    if (!user) return null;
-    return agendaTasks.find(t => 
-      !t.isCompleted && 
-      t.reminder_level === 3 && 
-      t.userId === user.id &&
-      (!t.reminded_at || new Date(t.reminded_at) <= new Date())
-    );
-}, [agendaTasks, user]);
 
   const logSystemAction = async (action: string, details: string) => {
     if (!user) return;
@@ -241,20 +236,20 @@ const App: React.FC = () => {
   return (
     <div className="flex h-screen bg-gray-900 text-white overflow-hidden font-sans relative">
       
-      {/* LEVEL 3 BLOCKING MODAL */}
+      {/* LEVEL 3 BLOCKING MODAL (RED) */}
       {level3Task && (
           <div className="fixed inset-0 z-[9999] bg-[#FFD1D1] flex items-center justify-center p-4">
               <div className="bg-white p-10 rounded-[48px] shadow-2xl max-w-xl w-full border-t-8 border-red-600 text-center space-y-6">
                   <AlertTriangle className="text-red-600 mx-auto" size={80} />
-                  <h2 className="text-3xl font-black uppercase italic text-gray-900">Bloqueio de Auditoria</h2>
-                  <p className="text-gray-600 font-bold uppercase text-xs tracking-widest">Ação Obrigatória Pendente</p>
+                  <h2 className="text-3xl font-black uppercase italic text-gray-900">Ação Crítica</h2>
+                  <p className="text-gray-600 font-bold uppercase text-xs tracking-widest">BLOQUEIO DE AUDITORIA</p>
                   <div className="p-6 bg-red-50 rounded-3xl border border-red-100">
                       <p className="font-black text-red-900 text-lg uppercase italic">{level3Task.title}</p>
                       <p className="text-red-700 text-xs mt-2 font-medium">{level3Task.description}</p>
                   </div>
                   <div className="space-y-2">
                       <label className="text-[10px] font-black text-gray-400 uppercase text-left block ml-4">Justificativa de Execução</label>
-                      <textarea value={justification} onChange={e => setJustification(e.target.value)} className="w-full p-4 bg-gray-50 rounded-2xl border-2 border-red-100 outline-none text-gray-900 font-bold" placeholder="Digite a justificativa para liberação..." />
+                      <textarea value={justification} onChange={e => setJustification(e.target.value)} className="w-full p-4 bg-gray-50 rounded-2xl border-2 border-red-100 outline-none text-gray-900 font-bold" placeholder="Digite a justificativa para liberação do sistema..." />
                   </div>
                   <button 
                     disabled={!justification || isProcessingTask} 
@@ -267,20 +262,28 @@ const App: React.FC = () => {
           </div>
       )}
 
-      {/* LEVEL 1 POPUP */}
+      {/* LEVEL 1 POPUP (YELLOW LIGHT) */}
       {showLevel1Popup && level1Task && (
           <div className="fixed inset-0 z-[5000] bg-black/60 backdrop-blur-sm flex items-center justify-center p-4">
               <div className="bg-[#FFF6BF] p-8 rounded-[40px] shadow-2xl max-w-md w-full border-b-8 border-yellow-600 animate-in zoom-in duration-300">
                   <div className="flex justify-between items-start mb-6">
                       <div className="p-3 bg-white/50 rounded-2xl text-yellow-800"><Calendar size={24}/></div>
-                      <button onClick={() => setShowLevel1Popup(false)} className="text-yellow-900/40 hover:text-red-600"><X size={24}/></button>
+                      <button onClick={() => setShowLevel1Popup(false)} className="text-yellow-900/40 hover:text-red-600 transition-colors"><X size={24}/></button>
                   </div>
                   <h3 className="text-xl font-black text-yellow-950 uppercase italic tracking-tighter mb-2">{level1Task.title}</h3>
                   <p className="text-yellow-900/70 text-sm font-medium leading-relaxed mb-6">{level1Task.description}</p>
-                  <input value={justification} onChange={e => setJustification(e.target.value)} placeholder="Nota de conclusão..." className="w-full p-3 bg-white/60 rounded-xl mb-4 text-sm font-bold border-none outline-none focus:ring-2 focus:ring-yellow-500" />
-                  <div className="flex gap-3">
-                      <button onClick={() => handleTaskAction(level1Task.id, 'postpone')} className="flex-1 py-3 bg-white/40 hover:bg-white/60 text-yellow-900 font-black uppercase text-[10px] rounded-xl transition-all">Lembrar em 1h</button>
-                      <button onClick={() => handleTaskAction(level1Task.id, 'complete', justification)} className="flex-1 py-3 bg-yellow-900 text-white font-black uppercase text-[10px] rounded-xl shadow-lg transition-all">OK / Concluído</button>
+                  
+                  <div className="space-y-4">
+                    <input 
+                      value={justification} 
+                      onChange={e => setJustification(e.target.value)} 
+                      placeholder="Nota de conclusão (opcional)..." 
+                      className="w-full p-3 bg-white/60 rounded-xl text-sm font-bold border-none outline-none focus:ring-2 focus:ring-yellow-500" 
+                    />
+                    <div className="flex gap-3">
+                        <button onClick={() => handleTaskAction(level1Task.id, 'postpone')} className="flex-1 py-3 bg-white/40 hover:bg-white/60 text-yellow-900 font-black uppercase text-[10px] rounded-xl transition-all">Lembrar em 1h</button>
+                        <button onClick={() => handleTaskAction(level1Task.id, 'complete', justification)} className="flex-1 py-3 bg-yellow-900 text-white font-black uppercase text-[10px] rounded-xl shadow-lg transition-all">Concluir</button>
+                    </div>
                   </div>
               </div>
           </div>
@@ -331,20 +334,25 @@ const App: React.FC = () => {
 
       <div className="flex-1 flex flex-col h-full bg-[#f8fafc] overflow-hidden text-blue-950">
         
-        {/* LEVEL 2 STICKY BANNER */}
+        {/* LEVEL 2 STICKY BANNER (ORANGE) */}
         {level2Task && (
-            <div className="bg-[#FFE1A8] px-8 py-3 flex justify-between items-center shadow-md animate-in slide-in-from-top duration-500 border-b-2 border-orange-200">
+            <div className="bg-[#FFE1A8] px-8 py-3 flex justify-between items-center shadow-md animate-in slide-in-from-top duration-500 border-b-2 border-orange-300">
                 <div className="flex items-center gap-4">
-                    <Clock className="text-orange-900" size={18} />
+                    <Clock className="text-orange-900" size={20} />
                     <div>
                         <span className="text-[10px] font-black uppercase tracking-widest text-orange-900/60">Aviso Nível 2:</span>
-                        <p className="font-black text-orange-950 text-xs uppercase italic">{level2Task.title}</p>
+                        <p className="font-black text-orange-950 text-xs uppercase italic leading-none mt-1">{level2Task.title}</p>
                     </div>
                 </div>
                 <div className="flex items-center gap-3">
-                    <input value={justification} onChange={e => setJustification(e.target.value)} placeholder="Nota rápida..." className="bg-white/50 border-none rounded-lg px-4 py-1.5 text-xs font-bold outline-none focus:ring-2 focus:ring-orange-500 w-48" />
-                    <button onClick={() => handleTaskAction(level2Task.id, 'postpone')} className="px-4 py-2 bg-orange-900/10 hover:bg-orange-900/20 text-orange-900 font-black uppercase text-[9px] rounded-lg transition-all">Lembrar em 1h</button>
-                    <button onClick={() => handleTaskAction(level2Task.id, 'complete', justification)} className="px-4 py-2 bg-orange-900 text-white font-black uppercase text-[9px] rounded-lg shadow-lg transition-all">Concluir Agora</button>
+                    <input 
+                      value={justification} 
+                      onChange={e => setJustification(e.target.value)} 
+                      placeholder="Nota rápida..." 
+                      className="bg-white/50 border-none rounded-lg px-4 py-2 text-xs font-bold outline-none focus:ring-2 focus:ring-orange-500 w-48 shadow-inner" 
+                    />
+                    <button onClick={() => handleTaskAction(level2Task.id, 'postpone')} className="px-4 py-2 bg-orange-900/10 hover:bg-orange-900/20 text-orange-900 font-black uppercase text-[9px] rounded-lg transition-all">Lembrar 1h</button>
+                    <button onClick={() => handleTaskAction(level2Task.id, 'complete', justification)} className="px-5 py-2 bg-orange-900 text-white font-black uppercase text-[9px] rounded-lg shadow-lg transition-all active:scale-95">Concluir</button>
                 </div>
             </div>
         )}
@@ -364,7 +372,7 @@ const App: React.FC = () => {
           {currentView === 'cash_register' && <CashRegisterModule user={user} sales={[]} finances={[]} closures={closures} onAddClosure={async (c) => { await supabase.from('cash_register_closures').insert([{ ...c, store_id: user.storeId, closed_by: user.name }]); fetchData(); }} />}
           {currentView === 'financial' && <FinancialModule user={user} store={stores.find(s => s.id === user.storeId)} sales={[]} receipts={receipts} onAddSale={async () => {}} onDeleteSale={async () => {}} onAddReceipt={handleSaveReceipt} />}
           {currentView === 'cash_errors' && <CashErrorsModule user={user} stores={stores} errors={cashErrors} onAddError={async (e) => { await supabase.from('cash_errors').insert([e]); await logSystemAction('CASH_ERROR', `Quebra: ${e.value}`); fetchData(); }} onUpdateError={async (e) => { await supabase.from('cash_errors').update(e).eq('id', e.id); fetchData(); }} onDeleteError={async (id) => { await supabase.from('cash_errors').delete().eq('id', id); fetchData(); }} />}
-          {currentView === 'agenda' && <AgendaSystem user={user} tasks={agendaTasks} onAddTask={async (t) => { await supabase.from('agenda_tasks').insert([{ user_id: t.userId, title: t.title, description: t.description, due_date: t.dueDate, priority: t.priority, reminder_level: t.reminder_level }]); fetchData(); }} onUpdateTask={async (t) => { await supabase.from('agenda_tasks').update({ title: t.title, description: t.description, due_date: t.dueDate, priority: t.priority, is_completed: t.isCompleted, completed_note: t.completed_note, reminder_level: t.reminder_level }).eq('id', t.id); fetchData(); }} onDeleteTask={async (id) => { await supabase.from('agenda_tasks').delete().eq('id', id); fetchData(); }} />}
+          {currentView === 'agenda' && <AgendaSystem user={user} tasks={agendaTasks} onAddTask={async (t) => { await supabase.from('agenda_tasks').insert([{ user_id: t.userId, title: t.title, description: t.description, due_date: t.dueDate, due_time: t.dueTime, priority: t.priority, reminder_level: t.reminder_level }]); fetchData(); }} onUpdateTask={async (t) => { await supabase.from('agenda_tasks').update({ title: t.title, description: t.description, due_date: t.dueDate, due_time: t.dueTime, priority: t.priority, is_completed: t.isCompleted, completed_note: t.completed_note, reminder_level: t.reminder_level }).eq('id', t.id); fetchData(); }} onDeleteTask={async (id) => { await supabase.from('agenda_tasks').delete().eq('id', id); fetchData(); }} />}
           {currentView === 'downloads' && <DownloadsModule user={user} items={downloads} onUpload={async (i) => { await supabase.from('downloads').insert([i]); fetchData(); }} onDelete={async (id) => { await supabase.from('downloads').delete().eq('id', id); fetchData(); }} />}
           {currentView === 'marketing' && <InstagramMarketing user={user} store={stores.find(s => s.id === user.storeId)} />}
           {currentView === 'auth_print' && <PurchaseAuthorization />}

@@ -107,6 +107,7 @@ export interface AgendaItem {
   title: string; 
   description: string; 
   dueDate: string; 
+  dueTime: string;
   priority: TaskPriority; 
   isCompleted: boolean; 
   createdAt: Date;
