@@ -2,7 +2,8 @@
 export enum UserRole {
   ADMIN = 'ADMIN',
   MANAGER = 'MANAGER',
-  CASHIER = 'CASHIER'
+  CASHIER = 'CASHIER',
+  ICE_CREAM = 'ICE_CREAM'
 }
 
 export interface User {
@@ -34,6 +35,7 @@ export interface IceCreamItem {
   flavor?: string;
   active: boolean;
   consumptionPerSale: number;
+  image_url?: string;
   created_at?: string;
 }
 
@@ -48,6 +50,7 @@ export interface IceCreamDailySale {
   unitPrice: number; 
   totalValue: number;
   paymentMethod: IceCreamPaymentMethod;
+  buyer_name?: string;
   createdAt?: string;
   saleCode?: string;
   status?: 'active' | 'canceled';
@@ -56,24 +59,31 @@ export interface IceCreamDailySale {
   ml?: string;
 }
 
-export type IceCreamPaymentMethod = 'Pix' | 'Cartão' | 'Dinheiro';
-export type IceCreamCategory = 'Sundae' | 'Milkshake' | 'Casquinha' | 'Cascão' | 'Bebidas' | 'Adicionais';
+export type IceCreamPaymentMethod = 'Pix' | 'Cartão' | 'Dinheiro' | 'Fiado';
+export type IceCreamCategory = 'Sundae' | 'Milkshake' | 'Casquinha' | 'Cascão' | 'Copinho' | 'Bebidas' | 'Adicionais';
 
 export interface IceCreamTransaction {
   id: string;
   storeId: string;
   date: string;
   type: 'entry' | 'exit';
-  category: IceCreamExpenseCategory | string;
+  category: string;
   value: number;
-  employeeName?: string;
   description?: string;
   createdAt: Date;
 }
 
-export type IceCreamExpenseCategory = 'Vale Funcionário' | 'Pagamento Funcionário' | 'Fornecedor' | 'Material/Consumo' | 'Aluguel' | 'Energia' | 'Outros';
+export interface IceCreamPromissoryNote {
+    id: string;
+    store_id: string;
+    sale_id: string;
+    buyer_name: string;
+    value: number;
+    status: 'pending' | 'paid';
+    created_at: string;
+}
 
-export interface PagePermission { id: string; page_key: string; label: string; module_group: string; allow_admin: boolean; allow_manager: boolean; allow_cashier: boolean; sort_order: number; }
+export interface PagePermission { id: string; page_key: string; label: string; module_group: string; allow_admin: boolean; allow_manager: boolean; allow_cashier: boolean; allow_sorvete: boolean; sort_order: number; }
 export interface Store { id: string; number: string; name: string; city: string; managerName: string; managerEmail: string; managerPhone: string; status?: 'active' | 'pending' | 'inactive'; role?: UserRole; password?: string; passwordResetRequested?: boolean; }
 export interface MonthlyPerformance { id?: string; storeId: string; month: string; revenueTarget: number; revenueActual: number; percentMeta: number; itemsTarget?: number; itemsActual?: number; itemsPerTicket: number; unitPriceAverage: number; averageTicket: number; delinquencyRate: number; paTarget?: number; ticketTarget?: number; puTarget?: number; delinquencyTarget?: number; trend: 'up' | 'down' | 'stable'; correctedDailyGoal: number; businessDays?: number; }
 export interface ProductPerformance { storeId: string; month: string; brand: string; category: string; pairsSold: number; revenue: number; }
@@ -97,7 +107,7 @@ export interface Cota {
 }
 
 export interface CotaSettings { storeId: string; budgetValue: number; managerPercent: number; }
-export interface CotaDebt { id?: string; storeId: string; month: string; value: number; description?: string; }
+export interface CotaDebts { id?: string; storeId: string; month: string; value: number; description?: string; }
 
 export type TaskPriority = 'highest' | 'high' | 'medium' | 'low' | 'lowest';
 
@@ -116,15 +126,26 @@ export interface AgendaItem {
   completed_note?: string;
 }
 
-export type DownloadCategory = 'spreadsheet' | 'video' | 'image' | 'audio' | 'other';
-export interface DownloadItem { id: string; title: string; description: string; category: DownloadCategory; url: string; fileName?: string; size?: string; campaign?: string; createdAt: Date; createdBy: string; }
+export type DownloadCategory = 'spreadsheet' | 'media' | 'video' | 'image' | 'audio' | 'other';
+export interface DownloadItem { 
+  id: string; 
+  title: string; 
+  description: string | null; 
+  category: DownloadCategory; 
+  url: string; 
+  fileName: string | null; 
+  size: string | null; 
+  campaign: string | null; 
+  createdAt: Date; 
+  createdBy: string; 
+}
 
 export interface CashError { id: string; storeId: string; userId: string; userName: string; date: string; type: 'surplus' | 'shortage'; value: number; reason?: string; createdAt: Date; }
 export interface Receipt { id: string; storeId?: string; issuerName: string; payer: string; recipient: string; value: number; valueInWords: string; reference: string; date: string; createdAt: Date; }
 export interface CreditCardSale { id: string; storeId?: string; userId: string; date: string; brand: string; value: number; authorizationCode?: string; }
 export interface SellerGoal { storeId: string; sellerName: string; month: string; revenueTarget: number; revenueActual: number; commissionRate?: number; itemsActual?: number; paActual?: number; }
 
-export type AdminRoleLevel = 'super_admin' | 'admin' | 'auditor';
+export type AdminRoleLevel = 'admin' | 'manager' | 'cashier' | 'sorvete';
 export interface AdminUser {
   id: string;
   name: string;

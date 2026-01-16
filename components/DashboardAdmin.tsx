@@ -5,7 +5,7 @@ import { formatCurrency, formatDecimal } from '../constants';
 import { 
     TrendingUp, Target, ShoppingBag, Upload, FileSpreadsheet, Loader2, 
     CheckCircle, X, Trophy, Medal, Crown, DollarSign, ArrowUpRight, 
-    BrainCircuit, Sparkles, Zap, Box, Percent, Hash, Tag, BarChart3, AlertCircle, Info
+    BrainCircuit, Sparkles, Zap, Box, Percent, Hash, Tag, BarChart3, AlertCircle, Info, Calendar
 } from 'lucide-react';
 import { 
     BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, 
@@ -52,12 +52,90 @@ const DashboardAdmin: React.FC<DashboardAdminProps> = ({ stores, performanceData
 
   const availableYears = useMemo(() => {
       const years = new Set<number>();
-      years.add(new Date().getFullYear());
-      performanceData.forEach(d => years.add(Number(d.month.split('-')[0])));
+      const currentYear = new Date().getFullYear();
+      years.add(currentYear);
+      years.add(currentYear - 1);
+      performanceData.forEach(d => {
+          const y = Number(d.month.split('-')[0]);
+          if (!isNaN(y)) years.add(y);
+      });
       return Array.from(years).sort((a,b) => b - a);
   }, [performanceData]);
 
-  // Lógica de Rede Total: Mapeia todas as lojas ativas para garantir exibição total no dashboard
+  // Lógica de Importação de Excel conforme Imagem
+  const handleProcessExcel = async () => {
+    if (!selectedFile) return;
+    setIsProcessing(true);
+    try {
+        const data = await selectedFile.arrayBuffer();
+        const workbook = XLSX.read(data);
+        const sheetName = workbook.SheetNames[0];
+        const sheet = workbook.Sheets[sheetName];
+        const rows = XLSX.utils.sheet_to_json(sheet) as any[];
+
+        const performanceRecords: MonthlyPerformance[] = [];
+
+        rows.forEach((row: any) => {
+            // Mapeamento baseado nos cabeçalhos da imagem enviada
+            const storeNum = String(row['Loja'] || '').trim();
+            if (!storeNum) return;
+
+            const store = stores.find(s => String(s.number) === storeNum);
+            if (!store) return;
+
+            // Tratamento de Data (Excel serial ou string DD/MM/YYYY)
+            let monthStr = selectedMonth;
+            if (row['Mês']) {
+                if (typeof row['Mês'] === 'number') {
+                    const date = new Date(Math.round((row['Mês'] - 25569) * 86400 * 1000));
+                    monthStr = `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}`;
+                } else {
+                    const parts = String(row['Mês']).split('/');
+                    if (parts.length === 3) monthStr = `${parts[2]}-${parts[1]}`;
+                }
+            }
+
+            // Conversão de números com limpeza de formatação monetária (remover R$, pontos e trocar vírgulas)
+            const cleanNum = (val: any) => {
+                if (!val) return 0;
+                if (typeof val === 'number') return val;
+                return parseFloat(String(val).replace('R$', '').replace(/\./g, '').replace(',', '.').replace('%', '').trim()) || 0;
+            };
+
+            performanceRecords.push({
+                storeId: store.id,
+                month: monthStr,
+                revenueTarget: cleanNum(row['Meta']),
+                revenueActual: cleanNum(row['Valor Vendido']),
+                percentMeta: cleanNum(row['Percentual da Meta']),
+                itemsActual: cleanNum(row['Qtde Itens']),
+                paTarget: cleanNum(row['P.A.']), // Usando valor atual como base se não houver meta separada
+                itemsPerTicket: cleanNum(row['P.A.']),
+                unitPriceAverage: cleanNum(row['P.U.']),
+                averageTicket: cleanNum(row['Ticket Médio']),
+                delinquencyRate: cleanNum(row['Inadimplência']),
+                correctedDailyGoal: cleanNum(row['Meta Diária Corrigida']),
+                trend: 'stable'
+            } as any);
+        });
+
+        if (performanceRecords.length > 0) {
+            await onImportData(performanceRecords);
+            alert(`Sucesso! ${performanceRecords.length} registros de performance importados.`);
+            setShowImportModal(false);
+            setSelectedFile(null);
+        } else {
+            alert("Nenhum dado válido encontrado na planilha. Verifique os nomes das colunas (Loja, Meta, Valor Vendido, etc).");
+        }
+    } catch (e) {
+        console.error(e);
+        alert("Erro ao processar arquivo. Verifique se o formato está correto.");
+    } finally {
+        setIsProcessing(false);
+    }
+  };
+
+  // Lógica de Rede Total para Exibição
   const currentMonthData = useMemo(() => {
       const activeStores = (stores || []).filter(s => s.status === 'active');
       const monthlyPerf = (performanceData || []).filter(p => p.month === selectedMonth);
@@ -114,22 +192,31 @@ const DashboardAdmin: React.FC<DashboardAdminProps> = ({ stores, performanceData
 
   return (
     <div className="p-8 max-w-full mx-auto space-y-8 animate-in fade-in duration-700">
-       <div className="flex flex-col xl:flex-row justify-between items-start xl:items-center gap-6">
+       <div className="flex flex-col xl:flex-row justify-between items-start xl:items-center gap-6 bg-white p-6 rounded-[40px] shadow-sm border border-gray-100">
           <div>
             <h2 className="text-4xl font-black text-gray-900 tracking-tighter uppercase italic leading-none flex items-center gap-3">
                 <BrainCircuit className="text-blue-700" size={40} />
-                Rede <span className="text-red-600">Completa</span>
+                Dashboard <span className="text-red-600">Rede</span>
             </h2>
-            <p className="text-gray-500 font-bold uppercase text-[10px] tracking-[0.3em] mt-3 ml-1">Monitoramento Administrativo de Todas as Unidades</p>
+            <p className="text-gray-500 font-bold uppercase text-[10px] tracking-[0.3em] mt-3 ml-1">Monitoramento Estratégico de Unidades</p>
           </div>
 
           <div className="flex flex-wrap items-center gap-3">
-             <div className="flex items-center gap-2 bg-white p-2 rounded-2xl border border-gray-100 shadow-sm">
-                <select value={parseInt(selectedMonth.split('-')[1])} onChange={(e) => handleMonthYearChange('month', parseInt(e.target.value))} className="bg-transparent text-gray-700 font-black outline-none cursor-pointer px-2 uppercase text-xs">
+             <div className="flex items-center gap-2 bg-gray-50 p-2 rounded-2xl border border-gray-200 shadow-inner">
+                <Calendar className="text-blue-600 ml-2" size={18} />
+                <select 
+                    value={parseInt(selectedMonth.split('-')[1])} 
+                    onChange={(e) => handleMonthYearChange('month', parseInt(e.target.value))} 
+                    className="bg-transparent text-gray-700 font-black outline-none cursor-pointer px-2 uppercase text-xs"
+                >
                     {MONTHS.map(m => <option key={m.value} value={m.value}>{m.label}</option>)}
                 </select>
-                <div className="w-px h-4 bg-gray-200"></div>
-                <select value={parseInt(selectedMonth.split('-')[0])} onChange={(e) => handleMonthYearChange('year', parseInt(e.target.value))} className="bg-transparent text-gray-700 font-black outline-none cursor-pointer px-2 text-xs">
+                <div className="w-px h-6 bg-gray-300"></div>
+                <select 
+                    value={parseInt(selectedMonth.split('-')[0])} 
+                    onChange={(e) => handleMonthYearChange('year', parseInt(e.target.value))} 
+                    className="bg-transparent text-gray-700 font-black outline-none cursor-pointer px-2 text-xs"
+                >
                     {availableYears.map(y => <option key={y} value={y}>{y}</option>)}
                 </select>
              </div>
@@ -137,7 +224,7 @@ const DashboardAdmin: React.FC<DashboardAdminProps> = ({ stores, performanceData
                 <Target size={16} /> Definir Metas
              </button>
              <button onClick={() => setShowImportModal(true)} className="flex items-center gap-2 bg-green-600 text-white px-6 py-3 rounded-2xl hover:bg-green-700 transition-all shadow-xl font-black uppercase text-[10px] tracking-widest border-b-4 border-green-800">
-                <Upload size={16} /> Importar Excel
+                <Upload size={16} /> Importar Performance
              </button>
           </div>
        </div>
@@ -162,7 +249,7 @@ const DashboardAdmin: React.FC<DashboardAdminProps> = ({ stores, performanceData
            <div className="bg-gradient-to-br from-blue-900 to-blue-950 p-8 rounded-[40px] shadow-2xl text-white relative group overflow-hidden">
                <div className="absolute top-0 right-0 p-6 opacity-10"><Zap size={80}/></div>
                <p className="text-[10px] font-black text-blue-300 uppercase tracking-widest mb-2">Unidades Ativas</p>
-               <h3 className="text-4xl font-black italic tracking-tighter">{currentMonthData.length} <span className="text-sm not-italic font-bold text-blue-400">LOJAS</span></h3>
+               <h3 className="text-4xl font-black italic tracking-tighter">{currentMonthData.length} <span className="text-sm not-italic font-bold text-blue-400 ml-1">LOJAS</span></h3>
            </div>
            <div className="bg-white p-4 rounded-[40px] shadow-sm border border-gray-100 flex flex-col justify-center items-center text-center group cursor-pointer hover:border-blue-200 transition-all" onClick={handleGenerateNetworkInsight}>
                {isLoadingAi ? <Loader2 className="animate-spin text-blue-600" size={32} /> : (
@@ -289,19 +376,22 @@ const DashboardAdmin: React.FC<DashboardAdminProps> = ({ stores, performanceData
               <div className="bg-white rounded-[40px] w-full max-w-md shadow-2xl animate-in zoom-in duration-200 overflow-hidden">
                   <div className="p-8 border-b flex justify-between items-center bg-gray-50">
                       <h3 className="text-xl font-black uppercase italic text-blue-950 flex items-center gap-3"><Upload className="text-green-600" size={28}/> Importar Dados</h3>
-                      <button onClick={() => setShowImportModal(false)} className="text-gray-400 hover:text-red-600"><X size={32}/></button>
+                      <button onClick={() => {setShowImportModal(false); setSelectedFile(null);}} className="text-gray-400 hover:text-red-600"><X size={32}/></button>
                   </div>
                   <div className="p-10 space-y-6">
                       <div className="bg-blue-50 p-4 rounded-2xl border border-blue-100 flex gap-3">
                           <Info className="text-blue-600 flex-none" size={20}/>
-                          <p className="text-[10px] font-bold text-blue-800 leading-tight uppercase">Utilize o arquivo padrão de exportação do sistema de retaguarda (Pares, PA, PU, Ticket, Faturamento, Inadimp).</p>
+                          <p className="text-[10px] font-bold text-blue-800 leading-tight uppercase">Sincronize os dados de faturamento real conforme o relatório de rede (Loja, Meta, Valor Vendido, P.A, P.U, Ticket, Mês, Inadimplência).</p>
                       </div>
                       <input type="file" ref={fileInputRef} onChange={e => setSelectedFile(e.target.files?.[0] || null)} className="hidden" accept=".xlsx, .xls" />
-                      <div onClick={() => fileInputRef.current?.click()} className={`p-10 border-4 border-dashed rounded-[32px] flex flex-col items-center justify-center cursor-pointer transition-all ${selectedFile ? 'border-green-500 bg-green-50' : 'border-gray-200 hover:border-blue-400 hover:bg-blue-50'}`}>
+                      <div onClick={() => !isProcessing && fileInputRef.current?.click()} className={`p-10 border-4 border-dashed rounded-[32px] flex flex-col items-center justify-center cursor-pointer transition-all ${selectedFile ? 'border-green-500 bg-green-50' : 'border-gray-200 hover:border-blue-400 hover:bg-blue-50'}`}>
                           {selectedFile ? <CheckCircle className="text-green-500 mb-2" size={48} /> : <FileSpreadsheet className="text-gray-300 mb-2" size={48} />}
-                          <span className="text-xs font-black uppercase text-gray-500 text-center">{selectedFile ? selectedFile.name : 'Selecione a Planilha'}</span>
+                          <span className="text-xs font-black uppercase text-gray-500 text-center truncate max-w-full px-4">{selectedFile ? selectedFile.name : 'Selecione a Planilha de Rede'}</span>
                       </div>
-                      <button onClick={() => setShowImportModal(false)} disabled={!selectedFile} className="w-full py-5 bg-gray-900 text-white rounded-[24px] font-black uppercase text-xs shadow-xl active:scale-95 transition-all disabled:opacity-50">Iniciar Sincronização Inteligente</button>
+                      <button onClick={handleProcessExcel} disabled={!selectedFile || isProcessing} className="w-full py-5 bg-gray-900 text-white rounded-[24px] font-black uppercase text-xs shadow-xl active:scale-95 transition-all disabled:opacity-50 flex items-center justify-center gap-2">
+                          {isProcessing ? <Loader2 className="animate-spin" size={18}/> : <CheckCircle size={18}/>}
+                          Iniciar Importação
+                      </button>
                   </div>
               </div>
           </div>

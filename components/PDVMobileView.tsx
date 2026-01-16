@@ -1,9 +1,8 @@
 
-
 import React, { useState } from 'react';
 import { 
     IceCreamItem, IceCreamDailySale, IceCreamTransaction, IceCreamCategory, 
-    IceCreamExpenseCategory, IceCreamPaymentMethod, User, UserRole 
+    IceCreamPaymentMethod, User, UserRole 
 } from '../types';
 import { formatCurrency } from '../constants';
 import { 
@@ -29,41 +28,32 @@ interface PDVMobileViewProps {
   setQuantity: (q: number) => void;
   paymentMethod: IceCreamPaymentMethod | null;
   setPaymentMethod: (pm: IceCreamPaymentMethod | null) => void;
+  buyerName: string;
+  setBuyerName: (name: string) => void;
   onAddSales: (sale: IceCreamDailySale[]) => Promise<void>;
   onCancelSale: (saleCode: string, reason: string) => Promise<void>;
   onAddTransaction: (tx: IceCreamTransaction) => Promise<void>;
   dailyData: any;
-  handlePrintDailyDRE: (type: 'detailed' | 'summary') => void;
-  handlePrintTicket: (items: IceCreamDailySale[], time: string) => void;
-  financeForm: any;
-  setFinanceForm: any;
+  handlePrintTicket: (items: IceCreamDailySale[], buyer?: string) => void;
   isSubmitting: boolean;
   setIsSubmitting: (s: boolean) => void;
-  setShowTicketModal: (s: boolean) => void;
-  setLastSoldItems: (items: IceCreamDailySale[]) => void;
-  setLastSaleTime: (time: string) => void;
 }
 
 const PDVMobileView: React.FC<PDVMobileViewProps> = (props) => {
-  const [mobileTab, setMobileTab] = useState<'vender' | 'dre' | 'estoque' | 'saida'>('vender');
-  const [step, setStep] = useState<'categories' | 'products' | 'details' | 'cart'>('categories');
+  const [step, setStep] = useState<'categories' | 'products' | 'cart'>('categories');
 
-  const handleMobileAddToCart = () => {
-    if(!props.selectedItem) { alert("Selecione um item."); return; }
-    // Fixed: Added missing required property 'storeId' to fix compilation error.
+  const handleMobileAddToCart = (item: IceCreamItem) => {
     const newItem: IceCreamDailySale = { 
-        id: `cart-mob-${Date.now()}-${Math.random().toString(36).substr(2, 5)}`, 
+        id: `cart-mob-${Date.now()}`, 
         storeId: props.user.storeId || '',
-        itemId: props.selectedItem.id, 
-        productName: props.selectedItem.name, 
-        category: props.selectedItem.category, 
-        flavor: props.selectedItem.flavor || 'Padrão', 
-        ml: props.selectedMl, 
-        unitsSold: props.quantity, 
-        unitPrice: props.selectedItem.price, 
-        totalValue: Number((props.selectedItem.price * props.quantity).toFixed(2)), 
+        itemId: item.id, 
+        productName: item.name, 
+        category: item.category, 
+        flavor: item.flavor || 'Padrão', 
+        unitsSold: 1, 
+        unitPrice: item.price, 
+        totalValue: item.price, 
         paymentMethod: 'Pix', 
-        createdAt: new Date().toISOString(), 
         status: 'active' 
     }; 
     props.setCart(prev => [...prev, newItem]); 
@@ -71,133 +61,131 @@ const PDVMobileView: React.FC<PDVMobileViewProps> = (props) => {
   };
 
   const handleFinalize = async () => {
-    if (props.cart.length === 0) { alert("Carrinho vazio."); return; }
+    if (props.cart.length === 0) return;
     if (!props.paymentMethod) { alert("Escolha o pagamento."); return; }
+    if (props.paymentMethod === 'Fiado' && !props.buyerName) { alert("Nome do funcionário obrigatório."); return; }
 
     props.setIsSubmitting(true);
-    const currentTime = new Date().toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' });
-    
     try {
-        const finalCart = props.cart.map(item => ({ ...item, paymentMethod: props.paymentMethod! }));
+        const saleCode = `GEL-M${Date.now().toString().slice(-5)}`;
+        const finalCart = props.cart.map(item => ({ 
+            ...item, 
+            paymentMethod: props.paymentMethod!, 
+            buyer_name: props.paymentMethod === 'Fiado' ? props.buyerName : undefined,
+            saleCode 
+        }));
         await props.onAddSales(finalCart);
-        props.setLastSoldItems([...finalCart]);
-        props.setLastSaleTime(currentTime);
+        props.handlePrintTicket(finalCart, props.buyerName);
         props.setCart([]); 
-        props.setShowTicketModal(true);
+        props.setPaymentMethod(null);
+        props.setBuyerName('');
         setStep('categories');
     } catch (e: any) { 
-        alert(`FALHA AO GRAVAR: ${e.message}`); 
+        alert(`FALHA: ${e.message}`); 
     } finally { 
         props.setIsSubmitting(false); 
     }
   };
 
+  const cartTotal = props.cart.reduce((a, b) => a + b.totalValue, 0);
+
   return (
-    <div className="flex flex-col h-screen bg-gray-50 text-gray-900 font-sans">
-      <header className="bg-white border-b px-4 py-3 flex justify-between items-center sticky top-0 z-50">
-        <div className="flex items-center gap-2"><div className="p-2 bg-blue-700 rounded-lg text-white"><ShoppingCart size={18}/></div><h1 className="font-black uppercase italic text-sm tracking-tighter">Real <span className="text-red-600">Mobile</span></h1></div>
-        <div className="text-[10px] font-black uppercase text-gray-400">Op: {props.user.name.split(' ')[0]}</div>
-      </header>
+    <div className="flex flex-col h-full bg-gray-50 text-gray-900 font-sans relative overflow-hidden">
+      <main className="flex-1 overflow-y-auto pb-48 p-4">
+        {step === 'categories' && (
+          <div className="grid grid-cols-2 gap-3 animate-in fade-in duration-300">
+            {['Sundae', 'Milkshake', 'Casquinha', 'Cascão', 'Copinho', 'Bebidas', 'Adicionais'].sort().map(cat => (
+              <button key={cat} onClick={() => { props.setSelectedCategory(cat as any); setStep('products'); }} className="aspect-square bg-white border-2 border-gray-100 rounded-[32px] flex flex-col items-center justify-center gap-2 shadow-sm active:scale-95 transition-all"><span className="font-black uppercase italic text-[11px] text-blue-700 tracking-tighter">{cat}</span></button>
+            ))}
+          </div>
+        )}
 
-      <main className="flex-1 overflow-y-auto pb-24 px-4 pt-4">
-        {mobileTab === 'vender' && (
-          <div className="space-y-4">
-            {step === 'categories' && (
-              <div className="grid grid-cols-2 gap-3">
-                {['Sundae', 'Milkshake', 'Casquinha', 'Cascão', 'Bebidas', 'Adicionais'].sort().map(cat => (
-                  <button key={cat} onClick={() => { props.setSelectedCategory(cat as any); setStep('products'); }} className="aspect-square bg-white border-2 border-gray-100 rounded-3xl flex flex-col items-center justify-center gap-2 shadow-sm active:bg-blue-50 transition-all"><span className="font-black uppercase italic text-xs text-blue-700">{cat}</span></button>
-                ))}
-              </div>
-            )}
-
-            {step === 'products' && (
-              <div className="space-y-3 animate-in slide-in-from-right duration-200">
-                <button onClick={() => setStep('categories')} className="text-[10px] font-black text-gray-400 uppercase flex items-center gap-1 mb-2">← Categorias</button>
-                <div className="grid grid-cols-1 gap-2">
-                  {props.selectedCategory && props.items.filter(i => i.category === props.selectedCategory && i.active).map(item => (
-                    <button key={item.id} onClick={() => { props.setSelectedProductName(item.name); setStep('details'); }} className="w-full p-4 bg-white border-2 border-gray-100 rounded-2xl flex justify-between items-center shadow-sm">
-                      <span className="font-black uppercase italic text-sm">{item.name}</span>
-                      <ChevronRight size={18} className="text-gray-300"/>
-                    </button>
-                  ))}
-                </div>
-              </div>
-            )}
-
-            {step === 'details' && props.selectedProductName && (
-                <div className="space-y-6 animate-in slide-in-from-right duration-300">
-                    <button onClick={() => setStep('products')} className="text-[10px] font-black text-gray-400 uppercase flex items-center gap-1 mb-2">← Produtos</button>
-                    <div className="bg-white p-6 rounded-[32px] border-2 border-gray-100 shadow-sm space-y-6">
-                        <div className="text-center">
-                            <h2 className="text-xl font-black uppercase italic tracking-tighter text-blue-900">{props.selectedProductName}</h2>
-                            <p className="text-[10px] font-bold text-gray-400 uppercase tracking-widest mt-1">Configure o item</p>
-                        </div>
-
-                        <div className="space-y-3">
-                            <label className="text-[9px] font-black text-gray-400 uppercase tracking-widest block text-center">Tamanho / Volume</label>
-                            <div className="grid grid-cols-3 gap-2">
-                                {['Padrão', '300ml', '500ml', '700ml'].map(ml => (
-                                    <button key={ml} onClick={() => props.setSelectedMl(ml)} className={`py-3 rounded-2xl font-black text-[10px] border-2 transition-all ${props.selectedMl === ml ? 'bg-blue-600 border-blue-600 text-white shadow-lg' : 'bg-gray-50 border-gray-100 text-gray-400'}`}>{ml}</button>
-                                ))}
-                            </div>
-                        </div>
-
-                        <div className="flex items-center justify-between bg-gray-50 p-4 rounded-3xl border border-gray-100">
-                             <span className="text-[10px] font-black text-gray-400 uppercase tracking-widest">Quantidade</span>
-                             <div className="flex items-center gap-6">
-                                 <button onClick={() => props.setQuantity(Math.max(1, props.quantity - 1))} className="w-10 h-10 bg-white rounded-xl shadow-sm flex items-center justify-center font-black text-lg border border-gray-200">-</button>
-                                 <span className="text-xl font-black text-blue-900 w-6 text-center">{props.quantity}</span>
-                                 <button onClick={() => props.setQuantity(props.quantity + 1)} className="w-10 h-10 bg-white rounded-xl shadow-sm flex items-center justify-center font-black text-lg border border-gray-200">+</button>
-                             </div>
-                        </div>
-
-                        <button onClick={handleMobileAddToCart} className="w-full py-5 bg-blue-700 text-white rounded-[24px] font-black uppercase text-xs shadow-xl flex items-center justify-center gap-3 active:scale-95 transition-all">
-                            <Plus size={18}/> Adicionar ao Carrinho
-                        </button>
-                    </div>
-                </div>
-            )}
-
-            {step === 'cart' && (
-              <div className="space-y-6 animate-in slide-in-from-bottom duration-300">
-                <div className="flex justify-between items-center"><button onClick={() => setStep('categories')} className="text-[10px] font-black text-blue-600 uppercase tracking-widest">+ ADICIONAR ITEM</button><button onClick={() => props.setCart([])} className="text-[10px] font-black text-red-400 uppercase tracking-widest">ESVAZIAR</button></div>
-                <div className="space-y-3">
-                  {props.cart.map((item, idx) => (
-                    <div key={item.id} className="bg-white p-4 rounded-2xl border flex justify-between items-center shadow-sm">
-                      <div><p className="text-[8px] font-black text-red-500 uppercase">{item.category} • {item.ml}</p><p className="font-black uppercase italic text-xs leading-none my-1">{item.productName}</p><p className="text-[10px] font-bold text-gray-400">{item.unitsSold}x {formatCurrency(item.unitPrice)}</p></div>
-                      <button onClick={() => props.setCart(prev => prev.filter((_, i) => i !== idx))} className="text-gray-300 p-2"><Trash2 size={16}/></button>
-                    </div>
-                  ))}
-                </div>
-                {props.cart.length > 0 && (
-                  <div className="bg-gray-900 rounded-[32px] p-6 text-white space-y-6 shadow-2xl">
-                    <div className="flex justify-between items-end"><span className="text-[10px] font-black text-gray-500 uppercase tracking-widest">Total</span><span className="text-4xl font-black italic tracking-tighter">{formatCurrency(props.cart.reduce((a, b) => a + b.totalValue, 0))}</span></div>
-                    <div className="space-y-3">
-                        <label className="text-[9px] font-black text-gray-400 uppercase tracking-widest block text-center">Pagamento</label>
-                        <div className="grid grid-cols-3 gap-2">
-                            {(['Pix', 'Cartão', 'Dinheiro'] as IceCreamPaymentMethod[]).map(pm => (
-                                <button key={pm} onClick={() => props.setPaymentMethod(pm)} className={`py-3 rounded-xl flex flex-col items-center gap-1 border-2 transition-all ${props.paymentMethod === pm ? 'bg-blue-600 border-blue-600 text-white shadow-lg' : 'bg-white/5 border-white/10 text-gray-400'}`}>
-                                    {pm === 'Pix' ? <Hash size={14}/> : pm === 'Cartão' ? <CreditCard size={14}/> : <Banknote size={14}/>}
-                                    <span className="text-[9px] font-black uppercase">{pm}</span>
-                                </button>
-                            ))}
-                        </div>
-                    </div>
-                    <button onClick={handleFinalize} disabled={props.isSubmitting || !props.paymentMethod} className="w-full py-5 bg-red-600 rounded-2xl font-black uppercase text-xs shadow-xl active:scale-95 disabled:bg-gray-800 transition-all">
-                        {props.isSubmitting ? (
-                          <div className="flex items-center justify-center gap-2">
-                            <Loader2 className="animate-spin" size={20}/>
-                            <span>Processando venda...</span>
-                          </div>
-                        ) : 'Finalizar e Imprimir'}
-                    </button>
+        {step === 'products' && (
+          <div className="space-y-4 animate-in slide-in-from-right duration-300">
+            <button onClick={() => setStep('categories')} className="text-[10px] font-black text-gray-400 uppercase flex items-center gap-1 mb-2">← Categorias</button>
+            <div className="grid grid-cols-1 gap-3">
+              {props.items.filter(i => i.category === props.selectedCategory && i.active).map(item => (
+                <button key={item.id} onClick={() => handleMobileAddToCart(item)} className="w-full p-5 bg-white border-2 border-gray-100 rounded-[28px] flex justify-between items-center shadow-sm active:border-blue-600 active:scale-[0.98] transition-all">
+                  <div>
+                    <p className="font-black uppercase italic text-xs text-blue-900">{item.name}</p>
+                    <p className="text-[10px] font-black text-gray-400 mt-1">{formatCurrency(item.price)}</p>
                   </div>
+                  <ChevronRight size={16} className="text-gray-300"/>
+                </button>
+              ))}
+            </div>
+          </div>
+        )}
+
+        {step === 'cart' && (
+          <div className="space-y-6 animate-in slide-in-from-bottom duration-300 pb-10">
+            <div className="flex justify-between items-center px-2">
+                <button onClick={() => setStep('categories')} className="text-[10px] font-black text-blue-600 uppercase tracking-widest">+ ADICIONAR</button>
+                <button onClick={() => { props.setCart([]); setStep('categories'); }} className="text-[10px] font-black text-red-400 uppercase tracking-widest">ESVAZIAR</button>
+            </div>
+            
+            <div className="space-y-3">
+              {props.cart.map((item, idx) => (
+                <div key={idx} className="bg-white p-4 rounded-[24px] border border-gray-100 flex justify-between items-center shadow-sm">
+                  <div>
+                    <p className="font-black uppercase italic text-[11px] text-blue-950 leading-tight">{item.productName}</p>
+                    <p className="text-[9px] font-bold text-gray-400 mt-1">{item.unitsSold}x {formatCurrency(item.unitPrice)}</p>
+                  </div>
+                  <button onClick={() => props.setCart(prev => prev.filter((_, i) => i !== idx))} className="text-red-300 p-2"><Trash2 size={16}/></button>
+                </div>
+              ))}
+              {props.cart.length === 0 && (
+                  <div className="text-center py-20 opacity-20">
+                      <ShoppingCart size={48} className="mx-auto mb-4" />
+                      <p className="text-[10px] font-black uppercase tracking-widest">Carrinho Vazio</p>
+                  </div>
+              )}
+            </div>
+
+            {props.cart.length > 0 && (
+              <div className="bg-blue-50/50 rounded-[32px] p-6 space-y-6 border border-blue-100">
+                <p className="text-[10px] font-black text-blue-900 uppercase tracking-widest border-b border-blue-100 pb-2">Pagamento & Cliente</p>
+                <div className="grid grid-cols-2 gap-2">
+                    {(['Pix', 'Dinheiro', 'Cartão', 'Fiado'] as IceCreamPaymentMethod[]).map(pm => (
+                        <button key={pm} onClick={() => props.setPaymentMethod(pm)} className={`py-4 rounded-2xl font-black uppercase text-[10px] border-2 transition-all ${props.paymentMethod === pm ? 'bg-blue-900 border-blue-900 text-white shadow-lg' : 'bg-white border-gray-200 text-gray-400'}`}>{pm}</button>
+                    ))}
+                </div>
+
+                {props.paymentMethod === 'Fiado' && (
+                    <div className="space-y-2 animate-in fade-in slide-in-from-top-2">
+                        <label className="text-[9px] font-black text-red-500 uppercase block ml-2">Funcionário / Comprador *</label>
+                        <input value={props.buyerName} onChange={e => props.setBuyerName(e.target.value)} placeholder="Nome..." className="w-full p-4 bg-red-50 border-none rounded-2xl text-sm font-black uppercase placeholder-red-200" />
+                    </div>
                 )}
               </div>
             )}
           </div>
         )}
       </main>
+
+      {/* RODAPÉ FIXO MOBILE PDV */}
+      {props.cart.length > 0 && (
+          <div className="fixed bottom-0 left-0 right-0 lg:hidden bg-white border-t border-gray-100 p-4 md:p-6 pb-6 md:pb-8 shadow-[0_-20px_40px_rgba(0,0,0,0.1)] z-50 rounded-t-[40px] animate-in slide-in-from-bottom duration-500">
+              <div className="flex justify-between items-center mb-4 px-2">
+                  <div className="flex flex-col">
+                    <span className="text-[9px] font-black text-gray-400 uppercase tracking-widest">Total Geral</span>
+                    <span className="text-2xl font-black italic tracking-tighter text-blue-950 leading-none">{formatCurrency(cartTotal)}</span>
+                  </div>
+                  <div className="text-right">
+                    <span className="text-[9px] font-black text-gray-400 uppercase tracking-widest">Itens</span>
+                    <span className="block text-sm font-black text-gray-900 leading-none">{props.cart.length}</span>
+                  </div>
+              </div>
+              <button 
+                onClick={handleFinalize} 
+                disabled={props.isSubmitting || !props.paymentMethod} 
+                className="w-full py-5 bg-red-600 hover:bg-red-700 disabled:bg-gray-200 text-white rounded-[24px] font-black uppercase text-xs shadow-2xl flex items-center justify-center gap-3 transition-all active:scale-95 border-b-4 border-red-900"
+              >
+                  {props.isSubmitting ? <Loader2 className="animate-spin" size={18}/> : <CheckCircle2 size={18}/>}
+                  Confirmar Venda
+              </button>
+          </div>
+      )}
     </div>
   );
 };

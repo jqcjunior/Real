@@ -1,8 +1,7 @@
 
-
 import React, { useState, useMemo, useRef } from 'react';
 import { Store, UserRole } from '../types';
-import { Plus, Edit, Trash2, Save, X, Store as StoreIcon, User, MapPin, Phone, Mail, AlertTriangle, Lock, CheckCircle, XCircle, Power, Shield, User as UserIcon, Wallet, ChevronDown, ChevronRight, Upload, FileSpreadsheet, Loader2 } from 'lucide-react';
+import { Plus, Edit, Trash2, Save, X, Store as StoreIcon, User, MapPin, Phone, Mail, AlertTriangle, Lock, CheckCircle, XCircle, Power, Shield, User as UserIcon, Wallet, ChevronDown, ChevronRight, Upload, FileSpreadsheet, Loader2, IceCream } from 'lucide-react';
 import * as XLSX from 'xlsx';
 
 interface AdminSettingsProps {
@@ -24,17 +23,11 @@ const AdminSettings: React.FC<AdminSettingsProps> = ({ stores, onAddStore, onUpd
   const [isEditing, setIsEditing] = useState(false);
   const [isProcessing, setIsProcessing] = useState(false);
   
-  // State for Delete Confirmation Modal
   const [storeToDelete, setStoreToDelete] = useState<Store | null>(null);
-  
   const [cityInput, setCityInput] = useState('');
   const [ufInput, setUfInput] = useState('BA'); 
 
-  const [pendingRoles, setPendingRoles] = useState<Record<string, UserRole>>({});
   const [expandedStores, setExpandedStores] = useState<Set<string>>(new Set());
-
-  const fileInputRef = useRef<HTMLInputElement>(null);
-  const [isImporting, setIsImporting] = useState(false);
 
   const pendingStores = useMemo(() => stores.filter(s => s.status === 'pending'), [stores]);
   
@@ -77,7 +70,7 @@ const AdminSettings: React.FC<AdminSettingsProps> = ({ stores, onAddStore, onUpd
   };
 
   const handleEdit = (store: Store) => {
-    setEditingStore(store);
+    setEditingStore({ ...store });
     if (store.city && store.city.includes(' - ')) {
       const parts = store.city.split(' - ');
       setCityInput(parts[0]);
@@ -90,17 +83,7 @@ const AdminSettings: React.FC<AdminSettingsProps> = ({ stores, onAddStore, onUpd
     setIsModalOpen(true);
   };
 
-  const confirmDelete = async () => {
-    if (storeToDelete) {
-      setIsProcessing(true);
-      await onDeleteStore(storeToDelete.id);
-      setIsProcessing(false);
-      setStoreToDelete(null); 
-    }
-  };
-
   const handleAdd = () => {
-    // Fixed: 'password' is now a known property of Partial<Store>
     setEditingStore({
       number: '',
       name: '',
@@ -122,16 +105,16 @@ const AdminSettings: React.FC<AdminSettingsProps> = ({ stores, onAddStore, onUpd
     setIsProcessing(true);
     const fullCity = `${cityInput} - ${ufInput}`;
     const cleanNumber = editingStore.number ? String(parseInt(editingStore.number.replace(/\D/g, ''), 10)) : '';
-    const storeData = { ...editingStore, city: fullCity, number: cleanNumber };
+    
+    const storeData: any = { ...editingStore, city: fullCity, number: cleanNumber };
+    
+    if (!storeData.password) delete storeData.password;
 
     try {
         if (isEditing && editingStore.id) {
-          // Fixed: passwordResetRequested now exists on Store type
-          const updatedStoreData = { ...storeData, passwordResetRequested: false } as Store;
-          await onUpdateStore(updatedStoreData);
+          await onUpdateStore(storeData as Store);
         } else {
-          const newStore = { ...storeData, id: `temp-${Date.now()}`, status: storeData.status || 'active' } as Store;
-          await onAddStore(newStore);
+          await onAddStore({ ...storeData } as Store);
         }
         setIsModalOpen(false);
     } catch (err) {
@@ -145,25 +128,6 @@ const AdminSettings: React.FC<AdminSettingsProps> = ({ stores, onAddStore, onUpd
     setEditingStore({ ...editingStore, [e.target.name]: e.target.value });
   };
 
-  const approveRequest = async (store: Store) => {
-      const roleToAssign = pendingRoles[store.id] || UserRole.MANAGER;
-      // Fixed: passwordResetRequested now exists on Store type
-      const updatedStore = { 
-          ...store, 
-          status: 'active', 
-          role: roleToAssign, 
-          passwordResetRequested: false 
-      } as Store;
-      await onUpdateStore(updatedStore);
-      alert(`Loja ${store.number} aprovada.`);
-  };
-
-  const rejectRequest = async (store: Store) => {
-      if(window.confirm("Deseja realmente rejeitar esta solicitação?")) {
-          await onDeleteStore(store.id);
-      }
-  };
-
   const toggleStatus = async (store: Store) => {
       const newStatus = store.status === 'active' ? 'inactive' : 'active';
       await onUpdateStore({ ...store, status: newStatus });
@@ -174,87 +138,16 @@ const AdminSettings: React.FC<AdminSettingsProps> = ({ stores, onAddStore, onUpd
       let newRole: UserRole;
       if (currentRole === UserRole.MANAGER) newRole = UserRole.ADMIN;
       else if (currentRole === UserRole.ADMIN) newRole = UserRole.CASHIER;
+      else if (currentRole === UserRole.CASHIER) newRole = UserRole.ICE_CREAM;
       else newRole = UserRole.MANAGER;
       await onUpdateStore({ ...store, role: newRole });
-  };
-
-  // --- IMPORT LOGIC ---
-  const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-      const file = e.target.files?.[0];
-      if (file && onImportStores) {
-          setIsImporting(true);
-          const reader = new FileReader();
-          reader.onload = async (evt) => {
-              try {
-                  const bstr = evt.target?.result;
-                  const wb = XLSX.read(bstr, { type: 'binary' });
-                  const wsname = wb.SheetNames[0];
-                  const ws = wb.Sheets[wsname];
-                  const data = XLSX.utils.sheet_to_json(ws, { header: 1 }) as any[][];
-                  
-                  let headerIdx = 0;
-                  for (let i = 0; i < Math.min(data.length, 10); i++) {
-                      const rowStr = data[i].join(' ').toLowerCase();
-                      if (rowStr.includes('loja') || rowStr.includes('nome')) {
-                          headerIdx = i;
-                          break;
-                      }
-                  }
-
-                  const header = data[headerIdx].map(h => String(h).toLowerCase());
-                  const idxNum = header.findIndex(h => h.includes('loja') || h.includes('numero'));
-                  const idxName = header.findIndex(h => h.includes('nome') || h.includes('unidade'));
-                  const idxCity = header.findIndex(h => h.includes('cidade'));
-                  const idxMgr = header.findIndex(h => h.includes('gerente') || h.includes('responsavel'));
-                  const idxEmail = header.findIndex(h => h.includes('email'));
-                  const idxPhone = header.findIndex(h => h.includes('telefone') || h.includes('celular'));
-
-                  const newStores: Store[] = [];
-                  
-                  for (let i = headerIdx + 1; i < data.length; i++) {
-                      const row = data[i];
-                      if (!row || row.length === 0) continue;
-                      
-                      const num = idxNum > -1 ? String(row[idxNum]).replace(/\D/g, '') : '';
-                      const name = idxName > -1 ? String(row[idxName]) : `Loja ${num}`;
-                      
-                      if (num && name) {
-                          newStores.push({
-                              id: `s-imp-${Date.now()}-${i}`,
-                              number: String(parseInt(num)), // Clean leading zeros
-                              name: name,
-                              city: idxCity > -1 ? String(row[idxCity]) : 'Cidade - UF',
-                              managerName: idxMgr > -1 ? String(row[idxMgr]) : 'Gerente',
-                              managerEmail: idxEmail > -1 ? String(row[idxEmail]) : `loja${num}@email.com`,
-                              managerPhone: idxPhone > -1 ? String(row[idxPhone]) : '',
-                              role: UserRole.MANAGER,
-                              status: 'active'
-                          });
-                      }
-                  }
-
-                  if (newStores.length > 0) {
-                      await onImportStores(newStores);
-                  } else {
-                      alert("Nenhuma loja válida encontrada na planilha. Verifique as colunas (Loja, Nome, Cidade, Gerente).");
-                  }
-
-              } catch (err) {
-                  console.error(err);
-                  alert("Erro ao ler arquivo Excel.");
-              } finally {
-                  setIsImporting(false);
-                  if (fileInputRef.current) fileInputRef.current.value = '';
-              }
-          };
-          reader.readAsBinaryString(file);
-      }
   };
 
   const renderStoreRow = (store: Store, isChild: boolean = false, hasChildren: boolean = false, expanded: boolean = false) => {
       const isActive = store.status === 'active';
       const isAdmin = store.role === UserRole.ADMIN;
       const isCashier = store.role === UserRole.CASHIER;
+      const isIceCream = store.role === UserRole.ICE_CREAM;
 
       return (
         <tr key={store.id} className={`transition-colors border-b border-gray-100 ${isActive ? 'hover:bg-gray-50' : 'bg-gray-50/50 grayscale opacity-70 hover:opacity-100'} ${isChild ? 'bg-gray-50/30' : ''}`}>
@@ -286,10 +179,16 @@ const AdminSettings: React.FC<AdminSettingsProps> = ({ stores, onAddStore, onUpd
                     <div className="text-xs text-gray-500">{store.managerEmail}</div>
             </td>
             <td className="p-4 text-center">
-                <button onClick={() => cycleRole(store)} className={`p-2 rounded-lg transition-colors border shadow-sm flex items-center gap-2 mx-auto min-w-[120px] justify-center ${isAdmin ? 'bg-blue-100 text-blue-700 border-blue-200 hover:bg-blue-200' : isCashier ? 'bg-green-100 text-green-700 border-green-200 hover:bg-green-200' : 'bg-gray-100 text-gray-600 border-gray-200 hover:bg-gray-200'}`}>
+                <button onClick={() => cycleRole(store)} className={`p-2 rounded-lg transition-colors border shadow-sm flex items-center gap-2 mx-auto min-w-[120px] justify-center ${
+                    isAdmin ? 'bg-blue-100 text-blue-700 border-blue-200 hover:bg-blue-200' : 
+                    isCashier ? 'bg-green-100 text-green-700 border-green-200 hover:bg-green-200' : 
+                    isIceCream ? 'bg-purple-100 text-purple-700 border-purple-200 hover:bg-purple-200' :
+                    'bg-gray-100 text-gray-600 border-gray-200 hover:bg-gray-200'
+                }`}>
                     {isAdmin && <><Shield size={16} /> ADMIN</>}
                     {isCashier && <><Wallet size={16} /> CAIXA</>}
-                    {!isAdmin && !isCashier && <><UserIcon size={16} /> GERENTE</>}
+                    {isIceCream && <><IceCream size={16} /> SORVETE</>}
+                    {!isAdmin && !isCashier && !isIceCream && <><UserIcon size={16} /> GERENTE</>}
                 </button>
             </td>
             <td className="p-4 text-right">
@@ -304,90 +203,22 @@ const AdminSettings: React.FC<AdminSettingsProps> = ({ stores, onAddStore, onUpd
 
   return (
     <div className="p-8 max-w-6xl mx-auto space-y-8">
-      
-      {/* PENDING REQUESTS SECTION */}
       {pendingStores.length > 0 && (
-          <div className="bg-yellow-50 border-2 border-yellow-200 rounded-xl overflow-hidden shadow-sm">
-              <div className="bg-yellow-100/50 p-4 border-b border-yellow-200 flex justify-between items-center">
-                  <h3 className="text-lg font-bold text-yellow-800 flex items-center gap-2"><AlertTriangle size={20} className="text-yellow-600" /> Solicitações Pendentes</h3>
-                  <span className="bg-yellow-200 text-yellow-800 text-xs font-bold px-2 py-1 rounded-full">{pendingStores.length} pendente(s)</span>
-              </div>
-              <div className="p-4">
-                  <table className="w-full text-left text-sm">
-                      <thead>
-                          <tr className="text-yellow-800 border-b border-yellow-200">
-                              <th className="pb-2 pl-2">Tipo</th>
-                              <th className="pb-2">Loja</th>
-                              <th className="pb-2">Gerente</th>
-                              <th className="pb-2 text-right">Ação</th>
-                          </tr>
-                      </thead>
-                      <tbody>
-                          {pendingStores.map(store => (
-                              <tr key={store.id} className="hover:bg-yellow-100/30 transition-colors">
-                                  <td className="py-3 pl-2">
-                                      {/* Fixed: passwordResetRequested now valid on Store type */}
-                                      {store.passwordResetRequested ? <span className="inline-flex items-center gap-1 bg-red-100 text-red-700 px-2 py-1 rounded text-[10px] font-bold border border-red-200">RECUPERAÇÃO</span> : <span className="inline-flex items-center gap-1 bg-green-100 text-green-700 px-2 py-1 rounded text-[10px] font-bold border border-green-200">NOVO CADASTRO</span>}
-                                  </td>
-                                  <td className="py-3"><div className="font-bold text-gray-800">{store.number} - {store.name}</div><div className="text-xs text-gray-500">{store.city}</div></td>
-                                  <td className="py-3"><div className="font-medium text-gray-800">{store.managerName}</div><div className="text-xs text-gray-500">{store.managerEmail}</div></td>
-                                  <td className="py-3 text-right">
-                                      <div className="flex justify-end items-center gap-2">
-                                          {/* Fixed: passwordResetRequested now valid on Store type */}
-                                          {store.passwordResetRequested && <button onClick={() => handleEdit(store)} className="flex items-center gap-1 bg-blue-100 text-blue-700 px-3 py-1.5 rounded-lg hover:bg-blue-200 border border-blue-200 text-xs font-bold transition-colors mr-2"><Edit size={14} /> Editar Senha</button>}
-                                          <div className="relative">
-                                              <select value={pendingRoles[store.id] || UserRole.MANAGER} onChange={(e) => setPendingRoles({ ...pendingRoles, [store.id]: e.target.value as UserRole })} className={`appearance-none pl-8 pr-8 py-1.5 rounded-lg border text-xs font-bold focus:ring-2 outline-none cursor-pointer ${pendingRoles[store.id] === UserRole.ADMIN ? 'bg-blue-100 border-blue-300 text-blue-800' : 'bg-white border-yellow-300 text-gray-700'}`}>
-                                                  <option value={UserRole.MANAGER}>Gerente</option>
-                                                  <option value={UserRole.ADMIN}>Administrador</option>
-                                              </select>
-                                              <div className="absolute left-2 top-1.5 pointer-events-none">{pendingRoles[store.id] === UserRole.ADMIN ? <Shield size={14} className="text-blue-600" /> : <User size={14} className="text-gray-500" />}</div>
-                                          </div>
-                                          <button onClick={() => approveRequest(store)} className="flex items-center gap-1 bg-green-600 text-white px-3 py-1.5 rounded-lg hover:bg-green-700 shadow-sm text-xs font-bold transition-colors"><CheckCircle size={14} /> Aceitar</button>
-                                          <button onClick={() => rejectRequest(store)} className="flex items-center gap-1 bg-red-100 text-red-600 px-3 py-1.5 rounded-lg hover:bg-red-200 border border-red-200 text-xs font-bold transition-colors"><XCircle size={14} /> Rejeitar</button>
-                                      </div>
-                                  </td>
-                              </tr>
-                          ))}
-                      </tbody>
-                  </table>
-              </div>
+          <div className="bg-yellow-50 border-2 border-yellow-200 rounded-xl overflow-hidden shadow-sm p-4">
+              <h3 className="text-lg font-bold text-yellow-800 mb-2 flex items-center gap-2"><AlertTriangle size={20}/> Solicitações Pendentes</h3>
+              {pendingStores.map(s => <div key={s.id} className="p-2 border-b last:border-0 flex justify-between items-center text-sm font-medium text-gray-700">{s.name} - {s.managerName} <button onClick={() => handleEdit(s)} className="text-blue-600 font-bold">Gerenciar</button></div>)}
           </div>
       )}
 
-      {/* MAIN STORES SECTION */}
-      <div>
-        <div className="flex justify-between items-center mb-6">
-            <div>
-            <h2 className="text-3xl font-bold text-gray-800">Gerenciamento de Usuários e Lojas</h2>
-            <p className="text-gray-500">Cadastre e gerencie as unidades, gerentes e operadores de caixa.</p>
-            </div>
-            <div className="flex gap-2">
-                {onImportStores && (
-                    <>
-                        <input type="file" ref={fileInputRef} className="hidden" accept=".xlsx, .xls, .csv" onChange={handleFileChange} />
-                        <button onClick={() => fileInputRef.current?.click()} disabled={isImporting} className="bg-green-600 text-white px-4 py-2 rounded-lg flex items-center gap-2 hover:bg-green-700 transition-colors shadow-sm disabled:opacity-50">
-                            {isImporting ? <Loader2 size={20} className="animate-spin" /> : <FileSpreadsheet size={20} />}
-                            Importar Excel
-                        </button>
-                    </>
-                )}
-                <button onClick={handleAdd} className="bg-blue-700 text-white px-4 py-2 rounded-lg flex items-center gap-2 hover:bg-blue-800 transition-colors shadow-sm">
-                    <Plus size={20} /> Novo Cadastro
-                </button>
-            </div>
-        </div>
+      <div className="flex justify-between items-center">
+          <h2 className="text-3xl font-bold text-gray-800 tracking-tight">Lojas e Gerentes</h2>
+          <button onClick={handleAdd} className="bg-gray-900 text-white px-6 py-3 rounded-xl flex items-center gap-2 hover:bg-black font-black uppercase text-xs tracking-widest border-b-4 border-red-600"><Plus size={16} /> Novo Cadastro</button>
+      </div>
 
-        <div className="bg-white rounded-xl shadow-sm border border-gray-100 overflow-hidden">
-            <table className="w-full text-left border-collapse">
-            <thead className="bg-gray-50 text-gray-600 text-sm font-semibold border-b border-gray-100">
-                <tr>
-                <th className="p-4">Status</th>
-                <th className="p-4">Nº</th>
-                <th className="p-4">Loja / Cidade</th>
-                <th className="p-4">Usuário</th>
-                <th className="p-4 text-center">Nível de Acesso</th>
-                <th className="p-4 text-right">Ações</th>
-                </tr>
+      <div className="bg-white rounded-xl shadow-sm border border-gray-100 overflow-hidden">
+          <table className="w-full text-left border-collapse">
+            <thead className="bg-gray-50 text-gray-600 text-[10px] font-black uppercase tracking-widest border-b">
+                <tr><th className="p-4">Status</th><th className="p-4">Nº</th><th className="p-4">Unidade</th><th className="p-4">Responsável</th><th className="p-4 text-center">Acesso</th><th className="p-4 text-right">Ações</th></tr>
             </thead>
             <tbody className="divide-y divide-gray-100 text-sm">
                 {groupedStores.map(([num, group]) => {
@@ -399,139 +230,99 @@ const AdminSettings: React.FC<AdminSettingsProps> = ({ stores, onAddStore, onUpd
                     if (isExpanded || !manager) cashiers.forEach(cashier => rows.push(renderStoreRow(cashier, true, false, false)));
                     return rows;
                 })}
-                {groupedStores.length === 0 && (
-                    <tr><td colSpan={6} className="p-8 text-center text-gray-400">Nenhum cadastro encontrado.</td></tr>
-                )}
             </tbody>
-            </table>
-        </div>
+          </table>
       </div>
 
-      {/* Edit/Add Modal */}
       {isModalOpen && (
-        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4 backdrop-blur-sm">
-          <div className="bg-white rounded-2xl shadow-xl w-full max-w-lg overflow-hidden animate-in fade-in zoom-in duration-200">
-            <div className="bg-gray-50 p-6 border-b border-gray-100 flex justify-between items-center">
-                <h3 className="text-xl font-bold text-gray-800">{isEditing ? 'Editar Cadastro' : 'Novo Cadastro'}</h3>
-                <button onClick={() => setIsModalOpen(false)} className="text-gray-400 hover:text-gray-600"><X size={20} /></button>
+        <div className="fixed inset-0 bg-black/70 flex items-center justify-center z-[100] p-4 backdrop-blur-md">
+          <div className="bg-white rounded-[40px] shadow-2xl w-full max-w-xl max-h-[95vh] overflow-hidden animate-in fade-in zoom-in duration-300 border border-gray-200 flex flex-col">
+            <div className="bg-gray-100/50 p-6 md:p-8 border-b flex justify-between items-center shrink-0">
+                <div>
+                    <h3 className="text-2xl font-black text-gray-900 uppercase italic tracking-tighter">
+                        {isEditing ? 'Editar' : 'Nova'} <span className="text-red-600">Unidade</span>
+                    </h3>
+                    <p className="text-[10px] font-black text-gray-400 uppercase tracking-widest mt-1">Configuração de Credenciais e Localização</p>
+                </div>
+                <button onClick={() => setIsModalOpen(false)} className="bg-white p-2 rounded-full text-gray-400 hover:text-red-600 shadow-sm border border-gray-100 transition-all"><X size={24} /></button>
             </div>
-            <form onSubmit={handleSave} className="p-6 space-y-4">
-                {/* ... existing form fields ... */}
-                <div className="grid grid-cols-4 gap-4">
-                     <div className="col-span-1">
-                        <label className="block text-xs font-semibold text-gray-600 mb-1">Status</label>
-                        <div className="relative">
-                            <span className="absolute left-3 top-2.5 text-gray-400"><Power size={16}/></span>
-                            <select name="status" value={editingStore.status || 'active'} onChange={handleChange} className="w-full pl-9 pr-2 py-2 bg-white border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none transition-all text-gray-600 text-sm appearance-none cursor-pointer">
-                                <option value="active">Ativa</option>
-                                <option value="pending">Pendente</option>
-                                <option value="inactive">Inativa</option>
+            
+            <div className="overflow-y-auto no-scrollbar flex-1">
+                <form onSubmit={handleSave} className="p-6 md:p-10 space-y-6">
+                    <div className="grid grid-cols-2 gap-6">
+                        <div className="space-y-1.5">
+                            <label className="block text-[10px] font-black text-blue-900 uppercase ml-2 tracking-widest">Nº Loja</label>
+                            <input required name="number" value={editingStore.number || ''} onChange={handleChange} className="w-full p-4 bg-gray-50 border-2 border-gray-200 rounded-2xl focus:border-blue-600 focus:bg-white outline-none transition-all font-bold text-gray-900 shadow-sm" placeholder="Ex: 01" />
+                        </div>
+                        <div className="space-y-1.5">
+                            <label className="block text-[10px] font-black text-blue-900 uppercase ml-2 tracking-widest">Identificação</label>
+                            <input required name="name" value={editingStore.name || ''} onChange={handleChange} className="w-full p-4 bg-gray-50 border-2 border-gray-200 rounded-2xl focus:border-blue-600 focus:bg-white outline-none transition-all font-bold text-gray-900 shadow-sm" placeholder="Ex: Loja Centro" />
+                        </div>
+                    </div>
+                    
+                    <div className="grid grid-cols-3 gap-6">
+                        <div className="col-span-2 space-y-1.5">
+                            <label className="block text-[10px] font-black text-blue-900 uppercase ml-2 tracking-widest">Cidade</label>
+                            <input required value={cityInput} onChange={e => setCityInput(e.target.value)} className="w-full p-4 bg-gray-50 border-2 border-gray-200 rounded-2xl focus:border-blue-600 focus:bg-white outline-none transition-all font-bold text-gray-900 shadow-sm" placeholder="Nome da cidade" />
+                        </div>
+                        <div className="space-y-1.5">
+                            <label className="block text-[10px] font-black text-blue-900 uppercase ml-2 tracking-widest">UF</label>
+                            <select value={ufInput} onChange={e => setUfInput(e.target.value)} className="w-full p-4 bg-gray-50 border-2 border-gray-200 rounded-2xl focus:border-blue-600 focus:bg-white outline-none transition-all font-bold text-gray-900 shadow-sm cursor-pointer">
+                                {BRAZIL_STATES.map(u => <option key={u} value={u}>{u}</option>)}
                             </select>
                         </div>
                     </div>
-                    <div className="col-span-1">
-                        <label className="block text-xs font-semibold text-gray-600 mb-1">Nº (Opcional)</label>
-                        <div className="relative">
-                            <span className="absolute left-3 top-2.5 text-gray-400"><StoreIcon size={16}/></span>
-                            <input name="number" value={editingStore.number || ''} onChange={handleChange} className="w-full pl-9 pr-3 py-2 bg-white border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none transition-all text-gray-600 placeholder-gray-400" placeholder="000" />
-                        </div>
-                    </div>
-                    <div className="col-span-2">
-                        <label className="block text-xs font-semibold text-gray-600 mb-1">Identificação (Loja/Caixa)</label>
-                        <input required name="name" value={editingStore.name || ''} onChange={handleChange} className="w-full px-3 py-2 bg-white border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none transition-all text-gray-600 placeholder-gray-400" placeholder="Ex: Loja Centro ou Caixa 01" />
-                    </div>
-                </div>
-                <div className="grid grid-cols-4 gap-4">
-                    <div className="col-span-3">
-                        <label className="block text-xs font-semibold text-gray-600 mb-1">Cidade</label>
-                        <div className="relative">
-                            <span className="absolute left-3 top-2.5 text-gray-400"><MapPin size={16}/></span>
-                            <input required value={cityInput} onChange={(e) => setCityInput(e.target.value)} className="w-full pl-9 pr-3 py-2 bg-white border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none transition-all text-gray-600 placeholder-gray-400" placeholder="Ex: Cruz das Almas" />
-                        </div>
-                    </div>
-                    <div className="col-span-1">
-                        <label className="block text-xs font-semibold text-gray-600 mb-1">Estado</label>
-                        <select required value={ufInput} onChange={(e) => setUfInput(e.target.value)} className="w-full px-2 py-2 bg-white border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none transition-all text-gray-600">
-                            {BRAZIL_STATES.map(uf => <option key={uf} value={uf}>{uf}</option>)}
-                        </select>
-                    </div>
-                </div>
-                <div className="pt-4 border-t border-gray-100">
-                    <p className="text-sm font-semibold text-blue-900 mb-3">Dados do Usuário</p>
-                    <div className="space-y-3">
-                        <div>
-                            <label className="block text-xs font-semibold text-gray-600 mb-1">Nome Completo</label>
-                            <div className="relative">
-                                <span className="absolute left-3 top-2.5 text-gray-400"><User size={16}/></span>
-                                <input required name="managerName" value={editingStore.managerName || ''} onChange={handleChange} className="w-full pl-9 pr-3 py-2 bg-white border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none transition-all text-gray-600 placeholder-gray-400" placeholder="Nome do responsável" />
-                            </div>
-                        </div>
-                        <div className="grid grid-cols-2 gap-4">
-                            <div>
-                                <label className="block text-xs font-semibold text-gray-600 mb-1">Email (Login)</label>
-                                <div className="relative">
-                                    <span className="absolute left-3 top-2.5 text-gray-400"><Mail size={16}/></span>
-                                    <input required type="email" name="managerEmail" value={editingStore.managerEmail || ''} onChange={handleChange} className="w-full pl-9 pr-3 py-2 bg-white border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none transition-all text-gray-600 placeholder-gray-400" placeholder="email@login.com" />
-                                </div>
-                            </div>
-                            <div>
-                                <label className="block text-xs font-semibold text-gray-600 mb-1">Telefone</label>
-                                <div className="relative">
-                                    <span className="absolute left-3 top-2.5 text-gray-400"><Phone size={16}/></span>
-                                    <input required name="managerPhone" value={editingStore.managerPhone || ''} onChange={handleChange} className="w-full pl-9 pr-3 py-2 bg-white border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none transition-all text-gray-600 placeholder-gray-400" placeholder="(00) 00000-0000" />
-                                </div>
-                            </div>
-                        </div>
-                    </div>
-                </div>
-                <div className="pt-4 border-t border-gray-100 bg-red-50/50 -mx-6 px-6 pb-2">
-                    <p className="text-sm font-semibold text-red-900 mb-3 flex items-center gap-2 mt-4"><Lock size={16} /> Segurança e Acesso</p>
-                    <div className="grid grid-cols-1 gap-4">
-                        <div>
-                            <label className="block text-xs font-semibold text-gray-600 mb-1">Senha de Acesso</label>
-                            <div className="relative">
-                                <span className="absolute left-3 top-2.5 text-gray-400"><Lock size={16}/></span>
-                                {/* Fixed: 'password' is now a known property of Partial<Store> */}
-                                <input type="text" name="password" value={editingStore.password || ''} onChange={handleChange} className="w-full pl-9 pr-3 py-2 bg-white border border-gray-300 rounded-lg focus:ring-2 focus:ring-red-500 focus:border-red-500 outline-none transition-all text-gray-600 placeholder-gray-400" placeholder="Definir senha" />
-                            </div>
-                            <p className="text-[10px] text-gray-400 mt-1">Deixe em branco para manter a senha atual (se houver).</p>
-                        </div>
-                    </div>
-                </div>
 
-                <div className="flex gap-3 pt-4">
-                    <button type="button" onClick={() => setIsModalOpen(false)} disabled={isProcessing} className="flex-1 px-4 py-2 text-gray-700 bg-gray-100 rounded-lg hover:bg-gray-200 font-medium transition-colors disabled:opacity-50">Cancelar</button>
-                    <button type="submit" disabled={isProcessing} className="flex-1 px-4 py-2 bg-blue-700 text-white rounded-lg hover:bg-blue-800 font-medium shadow-md transition-all flex items-center justify-center gap-2 disabled:opacity-50">
-                        {isProcessing ? <Loader2 size={18} className="animate-spin" /> : <Save size={18} />}
-                        Salvar
-                    </button>
-                </div>
-            </form>
+                    <div className="border-t border-gray-100 pt-6 space-y-6">
+                        <div className="space-y-1.5">
+                            <label className="block text-[10px] font-black text-blue-900 uppercase ml-2 tracking-widest">Nome Responsável</label>
+                            <input required name="managerName" value={editingStore.managerName || ''} onChange={handleChange} className="w-full p-4 bg-gray-50 border-2 border-gray-200 rounded-2xl focus:border-blue-600 focus:bg-white outline-none transition-all font-bold text-gray-900 shadow-sm" placeholder="Nome completo do gerente" />
+                        </div>
+                        
+                        <div className="grid grid-cols-2 gap-6">
+                            <div className="space-y-1.5">
+                                <label className="block text-[10px] font-black text-blue-900 uppercase ml-2 tracking-widest">E-mail de Acesso</label>
+                                <input required name="managerEmail" value={editingStore.managerEmail || ''} onChange={handleChange} className="w-full p-4 bg-gray-50 border-2 border-gray-200 rounded-2xl focus:border-blue-600 focus:bg-white outline-none transition-all font-bold text-gray-900 shadow-sm" placeholder="exemplo@real.com" />
+                            </div>
+                            <div className="space-y-1.5">
+                                <label className="block text-[10px] font-black text-blue-900 uppercase ml-2 tracking-widest">Telefone</label>
+                                <input required name="managerPhone" value={editingStore.managerPhone || ''} onChange={handleChange} className="w-full p-4 bg-gray-50 border-2 border-gray-200 rounded-2xl focus:border-blue-600 focus:bg-white outline-none transition-all font-bold text-gray-900 shadow-sm" placeholder="(00) 00000-0000" />
+                            </div>
+                        </div>
+                    </div>
+
+                    <div className="border-t border-gray-100 pt-6 bg-red-50/50 -mx-10 px-10 pb-8">
+                        <label className="block text-[10px] font-black text-red-600 uppercase mb-2 ml-2 tracking-widest">Segurança: Redefinir Senha</label>
+                        <div className="relative">
+                            <Lock className="absolute left-4 top-1/2 -translate-y-1/2 text-red-200" size={18} />
+                            <input name="password" type="password" value={editingStore.password || ''} onChange={handleChange} placeholder={isEditing ? "Deixe vazio para manter atual" : "Defina uma senha padrão"} className="w-full pl-12 pr-4 py-4 bg-white border-2 border-red-100 rounded-2xl focus:border-red-600 outline-none transition-all font-bold text-gray-900 shadow-sm" />
+                        </div>
+                        <p className="text-[9px] font-bold text-gray-400 mt-2 ml-2 uppercase italic tracking-tighter">Atenção: A nova senha entra em vigor imediatamente após salvar.</p>
+                    </div>
+
+                    <div className="pt-4 shrink-0 sticky bottom-0 bg-white -mx-10 px-10 pb-4">
+                        <button type="submit" disabled={isProcessing} className="w-full py-5 bg-blue-950 hover:bg-black text-white font-black uppercase text-xs rounded-2xl shadow-2xl flex items-center justify-center gap-3 transition-all active:scale-95 border-b-4 border-blue-900">
+                            {isProcessing ? <Loader2 className="animate-spin" size={20} /> : <Save size={20} />} 
+                            {isEditing ? 'Salvar Alterações' : 'Efetivar Novo Cadastro'}
+                        </button>
+                    </div>
+                </form>
+            </div>
           </div>
         </div>
       )}
 
       {storeToDelete && (
-         <div className="fixed inset-0 bg-black/60 flex items-center justify-center z-[60] p-4 backdrop-blur-sm">
-             <div className="bg-white rounded-2xl shadow-2xl w-full max-w-sm overflow-hidden animate-in fade-in zoom-in duration-200 border-t-4 border-red-500">
-                <div className="p-6 text-center">
-                    <div className="w-16 h-16 bg-red-100 rounded-full flex items-center justify-center mx-auto mb-4"><AlertTriangle size={32} className="text-red-500" /></div>
-                    <h3 className="text-xl font-bold text-gray-900 mb-2">
-                        {storeToDelete.status === 'inactive' || storeToDelete.status === 'pending' ? 'Excluir Permanentemente?' : 'Desativar Cadastro?'}
-                    </h3>
-                    <p className="text-gray-600 mb-6">
-                        {storeToDelete.status === 'inactive' || storeToDelete.status === 'pending' 
-                            ? <span>Esta ação <strong>não pode ser desfeita</strong>. Todos os dados desta loja serão removidos.</span>
-                            : <span>Você deseja desativar o cadastro de <span className="font-bold text-gray-900">{storeToDelete.name}</span>?<br/><span className="text-xs text-gray-400 mt-2 block">(O status será alterado para inativo)</span></span>
-                        }
-                    </p>
-                    <div className="flex gap-3">
-                         <button onClick={() => setStoreToDelete(null)} disabled={isProcessing} className="flex-1 px-4 py-2.5 text-gray-700 bg-gray-100 rounded-lg hover:bg-gray-200 font-medium transition-colors">Cancelar</button>
-                        <button onClick={confirmDelete} disabled={isProcessing} className="flex-1 px-4 py-2.5 bg-red-600 text-white rounded-lg hover:bg-red-700 font-medium shadow-md transition-all flex items-center justify-center gap-2">
-                            {isProcessing ? <Loader2 size={18} className="animate-spin" /> : <Trash2 size={18} />}
-                            {storeToDelete.status === 'inactive' || storeToDelete.status === 'pending' ? 'Excluir' : 'Desativar'}
-                        </button>
-                    </div>
+         <div className="fixed inset-0 bg-black/60 flex items-center justify-center z-[110] p-4 backdrop-blur-sm">
+             <div className="bg-white rounded-[40px] p-10 max-w-sm text-center shadow-2xl border border-gray-100 animate-in zoom-in duration-200">
+                <div className="p-5 bg-red-50 text-red-600 rounded-full w-fit mx-auto mb-6">
+                    <AlertTriangle size={48} />
+                </div>
+                <h3 className="text-2xl font-black text-gray-900 uppercase italic mb-2 tracking-tighter">Remover <span className="text-red-600">Unidade?</span></h3>
+                <p className="text-gray-500 text-sm font-medium mb-8 leading-relaxed">Esta ação removerá o acesso do responsável e os dados da loja definitivamente.</p>
+                <div className="flex gap-4">
+                    <button onClick={() => setStoreToDelete(null)} className="flex-1 py-4 bg-gray-100 hover:bg-gray-200 rounded-2xl font-black uppercase text-[10px] text-gray-600 transition-all">Cancelar</button>
+                    <button onClick={async () => { await onDeleteStore(storeToDelete.id); setStoreToDelete(null); }} className="flex-1 py-4 bg-red-600 hover:bg-red-700 text-white rounded-2xl font-black uppercase text-[10px] shadow-lg transition-all active:scale-95">Excluir Agora</button>
                 </div>
              </div>
          </div>

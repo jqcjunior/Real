@@ -1,6 +1,7 @@
 
 import React, { useState, useMemo, useEffect } from 'react';
-import { Store, User, Cota, UserRole, CotaSettings, CotaDebt, MonthlyPerformance } from '../types';
+// Fix: Renamed CotaDebt to CotaDebts to match exported member from types.ts
+import { Store, User, Cota, UserRole, CotaSettings, CotaDebts, MonthlyPerformance } from '../types';
 import { formatCurrency } from '../constants';
 import { 
     Plus, Trash2, AlertCircle, ShoppingBag, Target, X, Building2,
@@ -45,13 +46,15 @@ interface CotasManagementProps {
   stores: Store[];
   cotas: Cota[];
   cotaSettings: CotaSettings[];
-  cotaDebts: CotaDebt[];
+  // Fix: Use CotaDebts interface
+  cotaDebts: CotaDebts[];
   performanceData: MonthlyPerformance[];
   onAddCota: (cota: Cota) => Promise<void>;
   onUpdateCota: (id: string, updates: Partial<Cota>) => Promise<void>;
   onDeleteCota: (id: string) => Promise<void>;
   onSaveSettings: (settings: CotaSettings) => Promise<void>;
-  onSaveDebts: (debt: CotaDebt) => Promise<void>;
+  // Fix: Use CotaDebts interface
+  onSaveDebts: (debt: CotaDebts) => Promise<void>;
   onDeleteDebt: (id: string) => Promise<void>;
 }
 

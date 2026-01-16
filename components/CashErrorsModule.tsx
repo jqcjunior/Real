@@ -205,7 +205,7 @@ const CashErrorsModule: React.FC<CashErrorsModuleProps> = ({ user, store, stores
                 .info-row { display: flex; justify-content: space-between; margin-bottom: 5px; }
                 .info-label { font-weight: bold; color: #555; }
                 
-                table { width: 100%; border-collapse: collapse; margin-bottom: 20px; }
+                <table> { width: 100%; border-collapse: collapse; margin-bottom: 20px; }
                 th { background-color: #e5e7eb; padding: 10px 8px; text-align: left; border-bottom: 2px solid #999; font-size: 11px; text-transform: uppercase; }
                 td { padding: 8px; border-bottom: 1px solid #eee; font-size: 11px; }
                 .text-right { text-align: right; }
@@ -388,20 +388,20 @@ const CashErrorsModule: React.FC<CashErrorsModuleProps> = ({ user, store, stores
             </div>
             
             <div className="flex bg-white p-1 rounded-lg border border-gray-200 shadow-sm">
-                <button 
-                    onClick={() => { setActiveTab('list'); setEditingId(null); }} 
-                    className={`px-4 py-2 rounded-md text-sm font-bold transition-all ${activeTab === 'list' ? 'bg-gray-800 text-white shadow' : 'text-gray-500 hover:text-gray-800'}`}
-                >
-                    Histórico
-                </button>
                 {canEdit && (
                     <button 
                         onClick={() => setActiveTab('new')} 
-                        className={`px-4 py-2 rounded-md text-sm font-bold transition-all flex items-center gap-2 ${activeTab === 'new' ? 'bg-red-600 text-white shadow' : 'text-gray-500 hover:text-gray-800'}`}
+                        className={`px-4 py-2 rounded-md text-sm font-bold transition-all flex items-center gap-2 ${activeTab === 'new' ? 'bg-green-600 text-white shadow' : 'text-gray-500 hover:text-gray-800'}`}
                     >
                         <Plus size={16} /> Lançar Ocorrência
                     </button>
                 )}
+                <button 
+                    onClick={() => { setActiveTab('list'); setEditingId(null); }} 
+                    className={`px-4 py-2 rounded-md text-sm font-bold transition-all ${activeTab === 'list' ? 'bg-purple-100 text-purple-800 shadow' : 'text-gray-500 hover:text-gray-800'}`}
+                >
+                    Histórico
+                </button>
             </div>
         </div>
 

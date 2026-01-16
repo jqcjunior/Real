@@ -18,6 +18,7 @@ const AccessControlManagement: React.FC = () => {
         allow_admin: true,
         allow_manager: false,
         allow_cashier: false,
+        allow_sorvete: false,
         sort_order: 100
     });
 
@@ -38,7 +39,7 @@ const AccessControlManagement: React.FC = () => {
         fetchPermissions();
     }, []);
 
-    const togglePermission = async (perm: PagePermission, roleField: 'allow_admin' | 'allow_manager' | 'allow_cashier') => {
+    const togglePermission = async (perm: PagePermission, roleField: 'allow_admin' | 'allow_manager' | 'allow_cashier' | 'allow_sorvete') => {
         const newValue = !perm[roleField];
         const { error } = await supabase.from('page_permissions').update({ [roleField]: newValue }).eq('id', perm.id);
         if (!error) {
@@ -54,7 +55,7 @@ const AccessControlManagement: React.FC = () => {
             if (error) throw error;
             await fetchPermissions();
             setIsModalOpen(false);
-            setFormData({ page_key: '', label: '', module_group: 'Operação', allow_admin: true, allow_manager: false, allow_cashier: false, sort_order: 100 });
+            setFormData({ page_key: '', label: '', module_group: 'Operação', allow_admin: true, allow_manager: false, allow_cashier: false, allow_sorvete: false, sort_order: 100 });
         } catch (err: any) {
             alert("Erro ao adicionar página: " + err.message);
         } finally {
@@ -63,7 +64,7 @@ const AccessControlManagement: React.FC = () => {
     };
 
     const handleDeletePage = async (id: string, label: string) => {
-        if (!window.confirm(`Remover o módulo "${label}"?`)) return;
+        if (!window.confirm(`ATENÇÃO: Deseja remover o módulo "${label.toUpperCase()}" do sistema permanentemente?`)) return;
         const { error } = await supabase.from('page_permissions').delete().eq('id', id);
         if (!error) fetchPermissions();
     };
@@ -74,119 +75,122 @@ const AccessControlManagement: React.FC = () => {
     );
 
     return (
-        <div className="p-4 md:p-8 space-y-6 max-w-6xl mx-auto animate-in fade-in duration-500">
-            {/* Header - Compacto e elegante */}
-            <div className="flex flex-col sm:flex-row justify-between items-center gap-4 bg-white p-6 rounded-2xl shadow-sm border border-gray-100">
-                <div className="flex items-center gap-4">
-                    <div className="w-12 h-12 bg-gray-900 rounded-xl flex items-center justify-center text-white shadow-lg">
-                        <ShieldAlert size={24} />
+        <div className="p-6 md:p-10 space-y-8 max-w-7xl mx-auto animate-in fade-in duration-500">
+            <div className="flex flex-col md:flex-row justify-between items-center gap-6 bg-white p-10 rounded-[48px] shadow-sm border border-gray-100">
+                <div className="flex items-center gap-6">
+                    <div className="w-16 h-16 bg-gray-950 rounded-3xl flex items-center justify-center text-white shadow-2xl border-t-4 border-red-600">
+                        <ShieldAlert size={32} />
                     </div>
                     <div>
-                        <h2 className="text-xl font-black text-gray-900 uppercase italic tracking-tighter leading-none">
-                            Controle de <span className="text-red-600">Acessos</span>
+                        <h2 className="text-3xl font-black text-gray-900 uppercase italic tracking-tighter leading-none">
+                            Controle de <span className="text-red-600">Governança</span>
                         </h2>
-                        <p className="text-gray-400 font-bold text-[9px] uppercase tracking-widest mt-1 flex items-center gap-2">
-                           <Settings size={10} className="animate-spin-slow opacity-50" /> Matriz de Permissões Corporativas
+                        <p className="text-gray-400 font-bold text-[10px] uppercase tracking-[0.3em] mt-3 flex items-center gap-2">
+                           <Settings size={12} className="animate-spin-slow opacity-50" /> Matriz de Privilégios Corporativos
                         </p>
                     </div>
                 </div>
                 <button 
                     onClick={() => setIsModalOpen(true)}
-                    aria-label="Registrar novo módulo"
-                    className="bg-gray-900 text-white px-6 py-3 rounded-xl font-black uppercase text-[10px] shadow-md hover:bg-black transition-all active:scale-95 flex items-center gap-2 border-b-2 border-red-600"
+                    className="bg-gray-950 text-white px-10 py-5 rounded-[24px] font-black uppercase text-xs shadow-2xl hover:bg-black transition-all active:scale-95 flex items-center gap-3 border-b-4 border-red-600"
                 >
-                    <Plus size={16} /> Novo Módulo
+                    <Plus size={20} /> Registrar Novo Módulo
                 </button>
             </div>
 
-            {/* Matrix - Deep Dark and Refined */}
-            <div className="bg-[#0f0f0f] rounded-3xl shadow-xl border border-white/5 overflow-hidden">
-                <div className="p-5 border-b border-white/5 flex flex-col md:flex-row justify-between items-center gap-4 bg-black/40">
-                    <div className="relative flex-1 max-w-md w-full">
-                        <Search className="absolute left-4 top-1/2 -translate-y-1/2 text-gray-500" size={16} />
+            <div className="bg-white rounded-[48px] shadow-xl border border-gray-100 overflow-hidden">
+                <div className="p-8 border-b border-gray-50 flex flex-col md:flex-row justify-between items-center gap-6 bg-gray-50/30">
+                    <div className="relative flex-1 max-w-lg w-full">
+                        <Search className="absolute left-5 top-1/2 -translate-y-1/2 text-gray-400" size={20} />
                         <input 
                             type="text" 
-                            placeholder="Pesquisar módulo ou grupo..."
+                            placeholder="Localizar funcionalidade ou grupo de módulos..."
                             value={searchTerm}
                             onChange={(e) => setSearchTerm(e.target.value)}
-                            className="w-full pl-10 pr-4 py-2 bg-white/5 border border-white/10 rounded-xl text-xs font-bold text-white placeholder-white/20 focus:ring-2 focus:ring-red-600/50 transition-all outline-none"
+                            className="w-full pl-14 pr-6 py-4 bg-white border border-gray-200 rounded-2xl text-sm font-bold text-gray-700 focus:ring-4 focus:ring-blue-100 transition-all outline-none shadow-inner"
                         />
                     </div>
-                    <div className="flex items-center gap-2 text-white/20 text-[9px] font-black uppercase tracking-[0.3em]">
-                        <Sliders size={14} /> Sistema RBAC v2.8
+                    <div className="flex items-center gap-3 text-gray-300 text-[10px] font-black uppercase tracking-[0.3em]">
+                        <Sliders size={18} /> RBAC ENGINE v3.0
                     </div>
                 </div>
 
                 <div className="overflow-x-auto no-scrollbar">
-                    <table className="w-full text-left min-w-[600px]">
+                    <table className="w-full text-left min-w-[1000px]">
                         <thead>
-                            <tr className="bg-black/60 text-[9px] font-black text-white/40 uppercase tracking-widest border-b border-white/10">
-                                <th className="px-6 py-4">Módulo / Funcionalidade</th>
-                                <th className="px-4 py-4 text-center">Admin</th>
-                                <th className="px-4 py-4 text-center">Gerente</th>
-                                <th className="px-4 py-4 text-center">Caixa</th>
-                                <th className="px-4 py-4 text-right w-16"></th>
+                            <tr className="bg-white text-[11px] font-black text-gray-400 uppercase tracking-widest border-b border-gray-100">
+                                <th className="px-10 py-6">Módulo / Título</th>
+                                <th className="px-6 py-6 text-center bg-red-50/30">Administrador</th>
+                                <th className="px-6 py-6 text-center bg-blue-50/30">Gerente</th>
+                                <th className="px-6 py-6 text-center bg-green-50/30">Caixa</th>
+                                <th className="px-6 py-6 text-center bg-purple-50/30">Sorvete</th>
+                                <th className="px-6 py-6 text-right w-20"></th>
                             </tr>
                         </thead>
-                        <tbody className="divide-y divide-white/5">
+                        <tbody className="divide-y divide-gray-50">
                             {isLoading ? (
                                 <tr>
-                                    <td colSpan={5} className="py-20 text-center">
-                                        <Loader2 className="animate-spin mx-auto text-red-600" size={32} />
-                                        <p className="mt-4 text-[9px] font-black text-white/20 uppercase tracking-widest animate-pulse">Sincronizando banco...</p>
+                                    <td colSpan={6} className="py-24 text-center">
+                                        <Loader2 className="animate-spin mx-auto text-red-600" size={48} />
+                                        <p className="mt-6 text-[10px] font-black text-gray-400 uppercase tracking-widest animate-pulse">Sincronizando Matriz de Acessos...</p>
                                     </td>
                                 </tr>
                             ) : filteredPermissions.map(perm => (
-                                <tr key={perm.id} className="hover:bg-white/5 transition-all group">
-                                    <td className="px-6 py-4">
-                                        <div className="flex items-center gap-4">
-                                            <div className="w-1 h-8 bg-red-600 rounded-full shadow-[0_0_8px_rgba(220,38,38,0.4)]"></div>
+                                <tr key={perm.id} className="hover:bg-gray-50 transition-all group">
+                                    <td className="px-10 py-6">
+                                        <div className="flex items-center gap-5">
+                                            <div className="w-1 h-10 bg-red-600 rounded-full shadow-[0_0_10px_rgba(220,38,38,0.4)]"></div>
                                             <div>
-                                                <div className="font-black text-white uppercase italic text-sm tracking-tight leading-none">{perm.label}</div>
-                                                <div className="text-[8px] font-black text-red-500/60 uppercase tracking-widest mt-1.5 flex items-center gap-1">
-                                                    <ChevronRight size={8} /> {perm.module_group}
+                                                <div className="font-black text-gray-900 uppercase italic text-base tracking-tighter leading-none">{perm.label}</div>
+                                                <div className="text-[9px] font-black text-blue-500 uppercase tracking-widest mt-2 flex items-center gap-1 opacity-70">
+                                                    <ChevronRight size={10} /> {perm.module_group} <span className="mx-2 text-gray-200">|</span> KEY: {perm.page_key}
                                                 </div>
                                             </div>
                                         </div>
                                     </td>
                                     
-                                    <td className="px-4 py-4 text-center">
+                                    <td className="px-6 py-6 text-center bg-red-50/10">
                                         <button 
                                             onClick={() => togglePermission(perm, 'allow_admin')} 
-                                            aria-pressed={perm.allow_admin}
-                                            className={`w-10 h-10 rounded-xl transition-all active:scale-90 flex items-center justify-center border ${perm.allow_admin ? 'bg-blue-600 text-white border-blue-400 shadow-[0_0_15px_rgba(37,99,235,0.3)]' : 'bg-white/5 text-white/10 border-white/5 hover:border-white/10'}`}
+                                            className={`w-12 h-12 rounded-2xl transition-all active:scale-90 flex items-center justify-center border-2 ${perm.allow_admin ? 'bg-red-600 text-white border-red-500 shadow-xl shadow-red-100' : 'bg-white text-gray-200 border-gray-100 hover:border-red-200 hover:text-red-200'}`}
                                         >
-                                            {perm.allow_admin ? <Check size={20} strokeWidth={3} /> : <X size={18} className="opacity-20" />}
+                                            {perm.allow_admin ? <Check size={24} strokeWidth={4} /> : <X size={20} />}
                                         </button>
                                     </td>
 
-                                    <td className="px-4 py-4 text-center">
+                                    <td className="px-6 py-6 text-center bg-blue-50/10">
                                         <button 
                                             onClick={() => togglePermission(perm, 'allow_manager')} 
-                                            aria-pressed={perm.allow_manager}
-                                            className={`w-10 h-10 rounded-xl transition-all active:scale-90 flex items-center justify-center border ${perm.allow_manager ? 'bg-purple-600 text-white border-purple-400 shadow-[0_0_15px_rgba(147,51,234,0.3)]' : 'bg-white/5 text-white/10 border-white/5 hover:border-white/10'}`}
+                                            className={`w-12 h-12 rounded-2xl transition-all active:scale-90 flex items-center justify-center border-2 ${perm.allow_manager ? 'bg-blue-600 text-white border-blue-500 shadow-xl shadow-blue-100' : 'bg-white text-gray-200 border-gray-100 hover:border-blue-200 hover:text-blue-200'}`}
                                         >
-                                            {perm.allow_manager ? <Check size={20} strokeWidth={3} /> : <X size={18} className="opacity-20" />}
+                                            {perm.allow_manager ? <Check size={24} strokeWidth={4} /> : <X size={20} />}
                                         </button>
                                     </td>
 
-                                    <td className="px-4 py-4 text-center">
+                                    <td className="px-6 py-6 text-center bg-green-50/10">
                                         <button 
                                             onClick={() => togglePermission(perm, 'allow_cashier')} 
-                                            aria-pressed={perm.allow_cashier}
-                                            className={`w-10 h-10 rounded-xl transition-all active:scale-90 flex items-center justify-center border ${perm.allow_cashier ? 'bg-green-600 text-white border-green-400 shadow-[0_0_15px_rgba(22,163,74,0.3)]' : 'bg-white/5 text-white/10 border-white/5 hover:border-white/10'}`}
+                                            className={`w-12 h-12 rounded-2xl transition-all active:scale-90 flex items-center justify-center border-2 ${perm.allow_cashier ? 'bg-green-600 text-white border-green-500 shadow-xl shadow-green-100' : 'bg-white text-gray-200 border-gray-100 hover:border-green-200 hover:text-green-200'}`}
                                         >
-                                            {perm.allow_cashier ? <Check size={20} strokeWidth={3} /> : <X size={18} className="opacity-20" />}
+                                            {perm.allow_cashier ? <Check size={24} strokeWidth={4} /> : <X size={20} />}
                                         </button>
                                     </td>
 
-                                    <td className="px-4 py-4 text-right">
+                                    <td className="px-6 py-6 text-center bg-purple-50/10">
+                                        <button 
+                                            onClick={() => togglePermission(perm, 'allow_sorvete')} 
+                                            className={`w-12 h-12 rounded-2xl transition-all active:scale-90 flex items-center justify-center border-2 ${perm.allow_sorvete ? 'bg-purple-600 text-white border-purple-500 shadow-xl shadow-purple-100' : 'bg-white text-gray-200 border-gray-100 hover:border-purple-200 hover:text-purple-200'}`}
+                                        >
+                                            {perm.allow_sorvete ? <Check size={24} strokeWidth={4} /> : <X size={20} />}
+                                        </button>
+                                    </td>
+
+                                    <td className="px-10 py-6 text-right">
                                         <button 
                                             onClick={() => handleDeletePage(perm.id, perm.label)} 
-                                            title="Excluir módulo"
-                                            className="p-2 text-white/5 hover:text-red-500 transition-all opacity-0 group-hover:opacity-100"
+                                            className="p-3 text-gray-200 hover:text-red-600 hover:bg-red-50 rounded-2xl transition-all opacity-0 group-hover:opacity-100"
                                         >
-                                            <Trash2 size={16} />
+                                            <Trash2 size={20} />
                                         </button>
                                     </td>
                                 </tr>
@@ -195,67 +199,6 @@ const AccessControlManagement: React.FC = () => {
                     </table>
                 </div>
             </div>
-
-            {/* Info Card - Estilo Suave */}
-            <div className="bg-blue-50 border border-blue-100 p-6 rounded-2xl flex items-start gap-4">
-                <div className="p-3 bg-white rounded-xl text-blue-600 shadow-sm"><Info size={20}/></div>
-                <div>
-                    <h4 className="font-black text-blue-900 text-sm uppercase italic tracking-tight">Arquitetura de Segurança</h4>
-                    <p className="text-blue-700/70 text-xs font-medium mt-1 leading-relaxed">As alterações nos privilégios de acesso são aplicadas globalmente e em tempo real para todos os terminais conectados ao ecossistema.</p>
-                </div>
-            </div>
-
-            {/* Modal - Compacto e focado */}
-            {isModalOpen && (
-                <div className="fixed inset-0 bg-black/80 backdrop-blur-sm flex items-center justify-center z-[150] p-4">
-                    <div className="bg-white rounded-3xl shadow-2xl w-full max-w-md overflow-hidden animate-in zoom-in duration-200">
-                        <div className="p-6 bg-gray-50 border-b flex justify-between items-center">
-                            <div>
-                                <h3 className="text-lg font-black text-gray-900 uppercase italic tracking-tighter leading-none">Novo <span className="text-blue-700">Módulo</span></h3>
-                                <p className="text-[9px] font-bold text-gray-400 uppercase tracking-widest mt-1">Registrar rota no controle de acessos</p>
-                            </div>
-                            <button onClick={() => setIsModalOpen(false)} className="text-gray-400 hover:text-red-600 transition-colors"><X size={24} /></button>
-                        </div>
-                        
-                        <form onSubmit={handleSaveNewPage} className="p-8 space-y-6">
-                            <div className="space-y-4">
-                                <div>
-                                    <label className="text-[9px] font-black text-gray-500 uppercase block tracking-widest mb-1.5 ml-1">Chave do Módulo (Page Key)</label>
-                                    <input required value={formData.page_key} onChange={e => setFormData({...formData, page_key: e.target.value})} className="w-full px-4 py-3 bg-gray-100 border-none rounded-xl font-bold text-gray-800 text-xs focus:ring-2 focus:ring-blue-500 transition-all outline-none" placeholder="Ex: inventario_real" />
-                                </div>
-                                <div>
-                                    <label className="text-[9px] font-black text-gray-500 uppercase block tracking-widest mb-1.5 ml-1">Título de Exibição</label>
-                                    <input required value={formData.label} onChange={e => setFormData({...formData, label: e.target.value})} className="w-full px-4 py-3 bg-gray-100 border-none rounded-xl font-bold text-gray-800 text-xs focus:ring-2 focus:ring-blue-500 transition-all outline-none" placeholder="Ex: GESTÃO DE ESTOQUE" />
-                                </div>
-                                <div className="grid grid-cols-2 gap-4">
-                                    <div>
-                                        <label className="text-[9px] font-black text-gray-500 uppercase block tracking-widest mb-1.5 ml-1">Grupo</label>
-                                        <select value={formData.module_group} onChange={e => setFormData({...formData, module_group: e.target.value})} className="w-full px-4 py-3 bg-gray-100 border-none rounded-xl font-bold text-gray-800 text-xs focus:ring-2 focus:ring-blue-500 transition-all outline-none appearance-none cursor-pointer">
-                                            <option value="Inteligência">Inteligência</option>
-                                            <option value="Operação">Operação</option>
-                                            <option value="Marketing">Marketing</option>
-                                            <option value="Documentos">Documentos</option>
-                                            <option value="Administração">Administração</option>
-                                        </select>
-                                    </div>
-                                    <div>
-                                        <label className="text-[9px] font-black text-gray-500 uppercase block tracking-widest mb-1.5 ml-1">Ordem</label>
-                                        <input type="number" value={formData.sort_order} onChange={e => setFormData({...formData, sort_order: parseInt(e.target.value)})} className="w-full px-4 py-3 bg-gray-100 border-none rounded-xl font-bold text-gray-800 text-xs focus:ring-2 focus:ring-blue-500 transition-all outline-none" />
-                                    </div>
-                                </div>
-                            </div>
-
-                            <div className="flex gap-3 mt-4">
-                                <button type="button" onClick={() => setIsModalOpen(false)} className="flex-1 py-3 bg-gray-100 text-gray-500 rounded-xl font-black uppercase text-[10px] hover:bg-gray-200 transition-all">CANCELAR</button>
-                                <button type="submit" disabled={isSaving} className="flex-1 py-3 bg-red-600 text-white rounded-xl font-black uppercase text-[10px] shadow-lg hover:bg-red-700 transition-all flex items-center justify-center gap-2">
-                                    {isSaving ? <Loader2 className="animate-spin" size={14} /> : <Save size={14} />}
-                                    SALVAR MÓDULO
-                                </button>
-                            </div>
-                        </form>
-                    </div>
-                </div>
-            )}
         </div>
     );
 };

@@ -118,11 +118,31 @@ const DashboardManager: React.FC<DashboardManagerProps> = ({ user, stores, perfo
   
   const [sellerGoals, setSellerGoals] = useState<SellerGoal[]>([]);
 
-  // Garantindo que SEMPRE haja uma loja selecionada para visualização rápida no AI Studio
+  const handleMonthYearChange = (type: 'month' | 'year', value: number) => {
+      const [currentY, currentM] = selectedMonth.split('-');
+      let newY = Number(currentY);
+      let newM = Number(currentM);
+      if (type === 'month') newM = value;
+      if (type === 'year') newY = value;
+      setSelectedMonth(`${newY}-${String(newM).padStart(2, '0')}`);
+  };
+
+  const availableYears = useMemo(() => {
+      const years = new Set<number>();
+      const currentYear = new Date().getFullYear();
+      years.add(currentYear);
+      years.add(currentYear - 1);
+      performanceData.forEach(d => {
+          const y = Number(d.month.split('-')[0]);
+          if (!isNaN(y)) years.add(y);
+      });
+      return Array.from(years).sort((a,b) => b - a);
+  }, [performanceData]);
+
+  // Garantindo que SEMPRE haja uma loja selecionada
   const myStore = useMemo(() => {
     let found = (stores || []).find(s => s.id === user.storeId);
     if (!found && stores.length > 0) {
-        // Fallback para a primeira loja ativa para garantir visibilidade
         found = stores.find(s => s.status === 'active') || stores[0];
     }
     return found;
@@ -206,15 +226,27 @@ const DashboardManager: React.FC<DashboardManagerProps> = ({ user, stores, perfo
                     </h2>
                     <div className="flex items-center gap-2 mt-2">
                         <div className="w-2 h-2 bg-green-500 rounded-full animate-pulse"></div>
-                        <span className="text-[9px] font-black text-gray-400 uppercase tracking-widest">Dashboard Ativo - Inteligência em Tempo Real</span>
+                        <span className="text-[9px] font-black text-gray-400 uppercase tracking-widest">Dashboard Ativo</span>
                     </div>
                 </div>
             </div>
             <div className="flex gap-3">
-                <div className="bg-gray-50 p-1.5 rounded-2xl border border-gray-100 flex items-center gap-2">
+                <div className="bg-gray-50 p-1.5 rounded-2xl border border-gray-200 shadow-inner flex items-center gap-2">
                     <Calendar className="text-blue-600 ml-2" size={16} />
-                    <select value={selectedMonth} onChange={(e) => setSelectedMonth(e.target.value)} className="bg-transparent pr-4 py-2 rounded-xl text-xs font-black uppercase outline-none cursor-pointer">
-                        {MONTHS.map(m => <option key={m.value} value={`${new Date().getFullYear()}-${String(m.value).padStart(2, '0')}`}>{m.label}</option>)}
+                    <select 
+                        value={parseInt(selectedMonth.split('-')[1])} 
+                        onChange={(e) => handleMonthYearChange('month', parseInt(e.target.value))} 
+                        className="bg-transparent pr-2 py-2 rounded-xl text-xs font-black uppercase outline-none cursor-pointer"
+                    >
+                        {MONTHS.map(m => <option key={m.value} value={m.value}>{m.label}</option>)}
+                    </select>
+                    <div className="w-px h-6 bg-gray-200"></div>
+                    <select 
+                        value={parseInt(selectedMonth.split('-')[0])} 
+                        onChange={(e) => handleMonthYearChange('year', parseInt(e.target.value))} 
+                        className="bg-transparent px-2 py-2 rounded-xl text-xs font-black outline-none cursor-pointer"
+                    >
+                        {availableYears.map(y => <option key={y} value={y}>{y}</option>)}
                     </select>
                 </div>
                 <div className="hidden lg:flex items-center gap-2 bg-blue-50 text-blue-700 px-4 py-2 rounded-2xl border border-blue-100">
@@ -252,13 +284,12 @@ const DashboardManager: React.FC<DashboardManagerProps> = ({ user, stores, perfo
             <div className="p-20 text-center bg-white rounded-[48px] shadow-sm border-2 border-dashed border-gray-100">
                 <AlertCircle className="mx-auto text-gray-200 mb-6" size={64} />
                 <p className="text-gray-400 font-black uppercase text-xs tracking-widest">Aguardando Dados de Meta</p>
-                <p className="text-gray-300 text-[10px] mt-2">Clique em Metas no menu lateral para registrar ou sincronizar dados desta unidade.</p>
             </div>
         )}
         
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
             <div className="bg-white p-10 rounded-[48px] shadow-sm border border-gray-100">
-                <h3 className="text-xl font-black uppercase mb-8 flex items-center gap-3 italic text-gray-900 tracking-tighter"><Users className="text-blue-600"/> Equipe de Alta Performance</h3>
+                <h3 className="text-xl font-black uppercase mb-8 flex items-center gap-3 italic text-gray-900 tracking-tighter"><Users className="text-blue-600"/> Equipe de Vendas</h3>
                 {(sellerRanking || []).map((sg, idx) => (
                     <div key={idx} className="mb-6 p-6 bg-gray-50 rounded-[32px] border border-gray-100 group hover:border-blue-200 transition-all">
                         <div className="flex justify-between font-black uppercase text-[10px] mb-3 tracking-widest">
@@ -270,12 +301,6 @@ const DashboardManager: React.FC<DashboardManagerProps> = ({ user, stores, perfo
                         </div>
                     </div>
                 ))}
-                {sellerRanking.length === 0 && (
-                    <div className="py-20 text-center opacity-20">
-                        <Users size={48} className="mx-auto mb-4" />
-                        <p className="text-[10px] font-black uppercase tracking-[0.3em]">Vendedores Não Registrados</p>
-                    </div>
-                )}
             </div>
             <div className="bg-white p-10 rounded-[48px] shadow-sm border border-gray-100 flex flex-col">
                 <h3 className="text-xl font-black uppercase mb-8 flex items-center gap-3 italic text-gray-900 tracking-tighter"><Trophy className="text-yellow-500"/> Ranking Global da Rede</h3>
