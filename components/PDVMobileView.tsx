@@ -102,7 +102,7 @@ const PDVMobileView: React.FC<PDVMobileViewProps> = (props) => {
       <main className="flex-1 overflow-y-auto pb-64 p-4">
         {step === 'categories' && (
           <div className="grid grid-cols-2 gap-3 animate-in fade-in duration-300">
-            {['Sundae', 'Milkshake', 'Casquinha', 'Cascão', 'Copinho', 'Bebidas', 'Adicionais'].sort().map(cat => (
+            {['Sundae', 'Milkshake', 'Casquinha', 'Cascão', 'Cascão Trufado', 'Copinho', 'Bebidas', 'Adicionais'].sort().map(cat => (
               <button key={cat} onClick={() => { props.setSelectedCategory(cat as any); setStep('products'); }} className="aspect-square bg-white border-2 border-gray-100 rounded-[32px] flex flex-col items-center justify-center gap-2 shadow-sm active:scale-95 transition-all"><span className="font-black uppercase italic text-[11px] text-blue-700 tracking-tighter">{cat}</span></button>
             ))}
           </div>

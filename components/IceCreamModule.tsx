@@ -5,7 +5,7 @@ import { formatCurrency } from '../constants';
 import { 
     IceCream, Plus, Package, ShoppingCart, CheckCircle2, 
     Trash2, X, History, PieChart, ArrowDownCircle, ArrowUpCircle, 
-    Loader2, Search, Trash, ChevronRight, Calculator, FileText, Ban, UserCheck, Save, Image as ImageIcon, Sliders, Settings, Calendar, BarChart3, ListChecks, TrendingUp, TrendingDown, DollarSign, Wallet, CreditCard, Banknote, PackagePlus
+    Loader2, Search, Trash, ChevronRight, Calculator, FileText, Ban, UserCheck, Save, Image as ImageIcon, Sliders, Settings, Calendar, BarChart3, ListChecks, TrendingUp, TrendingDown, DollarSign, Wallet, CreditCard, Banknote, PackagePlus, Printer, ClipboardList
 } from 'lucide-react';
 import PDVMobileView from './PDVMobileView';
 import { supabase } from '../services/supabaseClient';
@@ -30,7 +30,7 @@ interface IceCreamModuleProps {
   liquidatePromissory: (id: string) => Promise<void>;
 }
 
-const PRODUCT_CATEGORIES: IceCreamCategory[] = ['Sundae', 'Milkshake', 'Casquinha', 'Cascão', 'Copinho', 'Bebidas', 'Adicionais'].sort() as IceCreamCategory[];
+const PRODUCT_CATEGORIES: IceCreamCategory[] = ['Sundae', 'Milkshake', 'Casquinha', 'Cascão', 'Cascão Trufado', 'Copinho', 'Bebidas', 'Adicionais'].sort() as IceCreamCategory[];
 
 const IceCreamModule: React.FC<IceCreamModuleProps> = ({ 
     user, stores = [], items = [], stock = [], sales = [], finances = [], promissories = [], can,
@@ -44,14 +44,13 @@ const IceCreamModule: React.FC<IceCreamModuleProps> = ({
   const [selectedCategory, setSelectedCategory] = useState<IceCreamCategory | null>(null);
   const [paymentMethod, setPaymentMethod] = useState<IceCreamPaymentMethod | null>(null);
   const [buyerName, setBuyerName] = useState('');
-  const [amountPaid, setAmountPaid] = useState(''); // Para cálculo de troco
+  const [amountPaid, setAmountPaid] = useState(''); 
   
   const [showProductModal, setShowProductModal] = useState(false);
   const [showTransactionModal, setShowTransactionModal] = useState(false);
   const [showNewStockModal, setShowNewStockModal] = useState(false);
-  const [showInwardModal, setShowInwardModal] = useState(false); // Modal de Entrada de Mercadoria
+  const [showInwardModal, setShowInwardModal] = useState(false); 
   
-  // States para Ficha Técnica (Receita)
   const [newProd, setNewProd] = useState({
       name: '',
       category: 'Copinho' as IceCreamCategory,
@@ -62,19 +61,15 @@ const IceCreamModule: React.FC<IceCreamModuleProps> = ({
   const [selectedStockBase, setSelectedStockBase] = useState('');
   const [qtyToConsume, setQtyToConsume] = useState('1');
 
-  // State para Novo Insumo de Estoque
   const [newStockItem, setNewStockItem] = useState({
       product_base: '',
       stock_initial: '',
       unit: 'un'
   });
 
-  // State para Entrada de Mercadoria
-  const [inwardData, setInwardData] = useState({
-      stock_item_id: '',
-      quantity: '',
-      date: new Date().toISOString().split('T')[0]
-  });
+  // Alterado para suportar entrada em lote: Record<ID_DO_ITEM, QUANTIDADE_STR>
+  const [batchInward, setBatchInward] = useState<Record<string, string>>({});
+  const [inwardDate, setInwardDate] = useState(new Date().toISOString().split('T')[0]);
 
   const [txForm, setTxForm] = useState({
       date: new Date().toISOString().split('T')[0],
@@ -85,11 +80,10 @@ const IceCreamModule: React.FC<IceCreamModuleProps> = ({
   
   const effectiveStoreId = user.storeId || (stores.length > 0 ? stores[0].id : '');
   const filteredItems = useMemo(() => (items || []).filter(i => i.storeId === effectiveStoreId), [items, effectiveStoreId]);
-  const filteredStock = useMemo(() => (stock || []).filter(s => s.store_id === effectiveStoreId), [stock, effectiveStoreId]);
+  const filteredStock = useMemo(() => (stock || []).filter(s => s.store_id === effectiveStoreId).sort((a,b) => a.product_base.localeCompare(b.product_base)), [stock, effectiveStoreId]);
   const todayKey = new Date().toISOString().split('T')[0];
   const monthKey = todayKey.substring(0, 7);
 
-  // Lógica de Carrinho: Agora insere itens individualmente para facilitar exclusão unitária
   const handleAddToCart = (item: IceCreamItem) => {
       setCart([...cart, { 
           id: `temp-${Date.now()}-${Math.random()}`, 
@@ -107,7 +101,8 @@ const IceCreamModule: React.FC<IceCreamModuleProps> = ({
 
   const cartTotal = useMemo(() => cart.reduce((a, b) => a + b.totalValue, 0), [cart]);
   const changeDue = useMemo(() => {
-      const paid = parseFloat(amountPaid.replace(',', '.')) || 0;
+      // Fix: Ensured amountPaid is explicitly treated as string to fix 'unknown' type error during replace call (Line 139)
+      const paid = parseFloat((amountPaid as string).replace(',', '.')) || 0;
       return Math.max(0, paid - cartTotal);
   }, [amountPaid, cartTotal]);
 
@@ -125,52 +120,102 @@ const IceCreamModule: React.FC<IceCreamModuleProps> = ({
               saleCode 
           }));
           await onAddSales(salesToSave);
-          setCart([]); 
-          setPaymentMethod(null); 
-          setBuyerName(''); 
-          setAmountPaid('');
-      } catch (e) { 
-          alert("Falha ao registrar venda."); 
-      } finally { 
-          setIsSubmitting(false); 
-      }
+          setCart([]); setPaymentMethod(null); setBuyerName(''); setAmountPaid('');
+      } catch (e) { alert("Falha ao registrar venda."); } finally { setIsSubmitting(false); }
   };
 
   const handleCreateStockItem = async (e: React.FormEvent) => {
       e.preventDefault();
       setIsSubmitting(true);
       try {
-          const val = parseFloat(newStockItem.stock_initial.replace(',', '.'));
+          // Fix: Explicitly casting to string to avoid potential 'unknown' inference error (Related to Line 147 reported context)
+          const val = parseFloat((newStockItem.stock_initial as string).replace(',', '.'));
           await onUpdateStock(effectiveStoreId, newStockItem.product_base.toUpperCase(), val, newStockItem.unit, 'adjustment');
           setShowNewStockModal(false);
           setNewStockItem({ product_base: '', stock_initial: '', unit: 'un' });
-      } catch (e) {
-          alert("Erro ao cadastrar insumo.");
-      } finally {
-          setIsSubmitting(false);
-      }
+      } catch (e) { alert("Erro ao cadastrar insumo."); } finally { setIsSubmitting(false); }
   };
 
-  const handleInwardEntry = async (e: React.FormEvent) => {
+  const handleBatchInwardEntry = async (e: React.FormEvent) => {
       e.preventDefault();
-      if (!inwardData.stock_item_id || !inwardData.quantity) return;
+      // Fix: Casting qty to string to satisfy TypeScript replace method requirement
+      const entries = Object.entries(batchInward).filter(([_, qty]) => qty && parseFloat((qty as string).replace(',', '.')) > 0);
+      if (entries.length === 0) return alert("Preencha ao menos uma quantidade.");
+
       setIsSubmitting(true);
       try {
-          const selectedItem = filteredStock.find(s => s.id === inwardData.stock_item_id);
-          if (!selectedItem) throw new Error("Item não encontrado.");
-
-          const qty = parseFloat(inwardData.quantity.replace(',', '.'));
-          // Usamos 'production' pois na nossa lógica de App.tsx ele soma ao valor atual
-          await onUpdateStock(effectiveStoreId, selectedItem.product_base, qty, selectedItem.unit, 'production');
-          
+          for (const [id, qtyStr] of entries) {
+              const item = filteredStock.find(s => s.id === id);
+              if (item) {
+                  // Fix: Casting qtyStr to string for replace method call
+                  const qty = parseFloat((qtyStr as string).replace(',', '.'));
+                  await onUpdateStock(effectiveStoreId, item.product_base, qty, item.unit, 'production');
+              }
+          }
           setShowInwardModal(false);
-          setInwardData({ stock_item_id: '', quantity: '', date: new Date().toISOString().split('T')[0] });
-          alert("Entrada registrada com sucesso!");
-      } catch (e) {
-          alert("Erro ao processar entrada.");
-      } finally {
-          setIsSubmitting(false);
-      }
+          setBatchInward({});
+          alert("Entradas registradas com sucesso!");
+      } catch (e) { alert("Erro ao processar entradas."); } finally { setIsSubmitting(false); }
+  };
+
+  const handlePrintInventory = () => {
+    const printWindow = window.open('', '_blank');
+    if (!printWindow) return;
+
+    const storeInfo = stores.find(s => s.id === effectiveStoreId);
+    const dateStr = new Date().toLocaleString('pt-BR');
+
+    const html = `
+      <html>
+        <head>
+          <title>Inventário de Estoque - Gelateria Real</title>
+          <style>
+            body { font-family: sans-serif; padding: 20px; color: #333; }
+            .header { text-align: center; border-bottom: 2px solid #000; margin-bottom: 20px; padding-bottom: 10px; }
+            h1 { margin: 0; font-size: 20px; text-transform: uppercase; }
+            .meta { font-size: 10px; color: #666; margin-top: 5px; }
+            table { width: 100%; border-collapse: collapse; margin-top: 20px; }
+            th { background: #f0f0f0; text-align: left; padding: 8px; border: 1px solid #ddd; font-size: 11px; text-transform: uppercase; }
+            td { padding: 8px; border: 1px solid #ddd; font-size: 11px; }
+            .footer { margin-top: 50px; display: flex; justify-content: space-between; }
+            .sig { border-top: 1px solid #000; width: 200px; text-align: center; padding-top: 5px; font-size: 10px; }
+          </style>
+        </head>
+        <body>
+          <div class="header">
+            <h1>Relatório de Conferência de Estoque</h1>
+            <div class="meta">GELATERIA REAL - UNIDADE ${storeInfo?.number} | EMISSÃO: ${dateStr}</div>
+          </div>
+          <table>
+            <thead>
+              <tr>
+                <th>Insumo / Material</th>
+                <th>Unidade</th>
+                <th style="text-align: right;">Saldo Atual</th>
+                <th style="width: 100px;">Conferido</th>
+              </tr>
+            </thead>
+            <tbody>
+              ${filteredStock.map(s => `
+                <tr>
+                  <td>${s.product_base}</td>
+                  <td>${s.unit}</td>
+                  <td style="text-align: right; font-weight: bold;">${s.stock_current}</td>
+                  <td></td>
+                </tr>
+              `).join('')}
+            </tbody>
+          </table>
+          <div class="footer">
+            <div class="sig">Responsável pela Unidade</div>
+            <div class="sig">Conferente / Auditor</div>
+          </div>
+        </body>
+      </html>
+    `;
+    printWindow.document.write(html);
+    printWindow.document.close();
+    printWindow.print();
   };
 
   const addToRecipe = () => {
@@ -185,7 +230,8 @@ const IceCreamModule: React.FC<IceCreamModuleProps> = ({
       if (recipe.length === 0) { alert("Adicione pelo menos um item à ficha técnica (Copo, casquinha, etc)"); return; }
       setIsSubmitting(true);
       try {
-          const priceNum = parseFloat(newProd.price.replace(',', '.'));
+          // Fix: Casting price string for replace method call
+          const priceNum = parseFloat((newProd.price as string).replace(',', '.'));
           await onAddItem(newProd.name, newProd.category, priceNum, newProd.flavor, 0, 'un', 1, effectiveStoreId, recipe);
           setShowProductModal(false);
           setNewProd({ name: '', category: 'Copinho', price: '', flavor: '' });
@@ -195,7 +241,8 @@ const IceCreamModule: React.FC<IceCreamModuleProps> = ({
 
   const handleSaveTransaction = async (e: React.FormEvent) => {
       e.preventDefault();
-      const val = parseFloat(txForm.value.replace(',', '.'));
+      // Fix: Casting value string for replace method call
+      const val = parseFloat((txForm.value as string).replace(',', '.'));
       if (isNaN(val) || val <= 0) return;
       setIsSubmitting(true);
       try {
@@ -222,9 +269,7 @@ const IceCreamModule: React.FC<IceCreamModuleProps> = ({
 
       const byCategory = (list: IceCreamDailySale[]) => {
           const catMap: Record<string, number> = {};
-          list.forEach(s => {
-              catMap[s.category] = (catMap[s.category] || 0) + s.totalValue;
-          });
+          list.forEach(s => { catMap[s.category] = (catMap[s.category] || 0) + s.totalValue; });
           return Object.entries(catMap).sort((a,b) => b[1] - a[1]);
       };
 
@@ -283,7 +328,7 @@ const IceCreamModule: React.FC<IceCreamModuleProps> = ({
                     <div className="col-span-4 bg-white rounded-[40px] shadow-2xl border border-gray-100 p-8 flex flex-col h-fit sticky top-0">
                         <h3 className="text-lg font-black uppercase italic mb-6 flex items-center gap-3 border-b pb-4"><ShoppingCart className="text-red-600" size={20} /> Carrinho <span className="text-gray-300 ml-auto font-bold text-xs">{cart.length} ITENS</span></h3>
                         <div className="flex-1 overflow-y-auto max-h-[300px] mb-6 space-y-2 no-scrollbar">
-                            {cart.map((c, i) => (
+                            {cart.map((c) => (
                                 <div key={c.id} className="flex justify-between items-center p-4 bg-gray-50 rounded-2xl border border-gray-100 animate-in slide-in-from-right duration-200">
                                     <div className="flex-1 min-w-0 pr-4">
                                         <p className="font-black text-gray-900 uppercase text-[10px] truncate">{c.productName}</p>
@@ -291,7 +336,7 @@ const IceCreamModule: React.FC<IceCreamModuleProps> = ({
                                     </div>
                                     <div className="flex items-center gap-3">
                                         <span className="font-black text-blue-900 text-xs">{formatCurrency(c.totalValue)}</span>
-                                        <button onClick={() => setCart(cart.filter((_, idx) => idx !== i))} className="p-1.5 text-red-300 hover:text-red-600 transition-colors"><Trash2 size={14}/></button>
+                                        <button onClick={() => setCart(cart.filter(item => item.id !== c.id))} className="p-1.5 text-red-300 hover:text-red-600 transition-colors"><Trash2 size={14}/></button>
                                     </div>
                                 </div>
                             ))}
@@ -299,18 +344,11 @@ const IceCreamModule: React.FC<IceCreamModuleProps> = ({
                         <div className="pt-4 border-t space-y-4">
                             <div className="flex justify-between items-baseline"><span className="text-[9px] font-black text-gray-400 uppercase tracking-widest">Subtotal</span><span className="text-3xl font-black text-blue-950 italic">{formatCurrency(cartTotal)}</span></div>
                             
-                            {/* CÁLCULO DE TROCO PARA DINHEIRO */}
                             {paymentMethod === 'Dinheiro' && (
                                 <div className="bg-green-50 p-4 rounded-2xl border border-green-200 space-y-3 animate-in fade-in zoom-in duration-300">
                                     <div className="flex justify-between items-center">
                                         <label className="text-[9px] font-black text-green-700 uppercase tracking-widest">Valor Pago</label>
-                                        <input 
-                                            autoFocus
-                                            value={amountPaid} 
-                                            onChange={e => setAmountPaid(e.target.value)} 
-                                            placeholder="0,00"
-                                            className="w-24 text-right bg-white border-none rounded-lg p-2 font-black text-green-900 outline-none focus:ring-2 focus:ring-green-400"
-                                        />
+                                        <input autoFocus value={amountPaid} onChange={e => setAmountPaid(e.target.value)} placeholder="0,00" className="w-24 text-right bg-white border-none rounded-lg p-2 font-black text-green-900 outline-none focus:ring-2 focus:ring-green-400" />
                                     </div>
                                     <div className="flex justify-between items-baseline border-t border-green-100 pt-2">
                                         <span className="text-[9px] font-black text-green-600 uppercase tracking-widest">Troco</span>
@@ -347,7 +385,7 @@ const IceCreamModule: React.FC<IceCreamModuleProps> = ({
                                     </div>
                                     <div className="bg-green-50 p-6 rounded-[32px] border border-green-100">
                                         <p className="text-[9px] font-black text-green-400 uppercase mb-2 flex items-center gap-1"><Banknote size={12}/> Dinheiro</p>
-                                        <p className="text-xl font-black text-green-900">{formatCurrency(dreStats.dayMethods.money)}</p>
+                                        <p className="text-xl font-black text-blue-900">{formatCurrency(dreStats.dayMethods.money)}</p>
                                     </div>
                                     <div className="bg-purple-50 p-6 rounded-[32px] border border-purple-100">
                                         <p className="text-[9px] font-black text-purple-400 uppercase mb-2 flex items-center gap-1"><CreditCard size={12}/> Cartão</p>
@@ -406,23 +444,6 @@ const IceCreamModule: React.FC<IceCreamModuleProps> = ({
                             <button onClick={() => setShowTransactionModal(true)} className="w-full py-5 bg-white border-2 border-gray-100 rounded-[32px] font-black text-blue-900 uppercase text-xs flex items-center justify-center gap-3 hover:bg-gray-50 transition-all shadow-sm">
                                 <ArrowDownCircle className="text-red-600" size={20}/> Lançar Saída de Caixa
                             </button>
-
-                            <div className="bg-white p-6 rounded-[32px] shadow-sm border border-gray-100 overflow-hidden">
-                                <h4 className="text-[10px] font-black uppercase tracking-widest text-gray-400 mb-4 border-b pb-3">Últimos Lançamentos</h4>
-                                <div className="space-y-3 max-h-[300px] overflow-y-auto no-scrollbar">
-                                    {finances.slice(0, 10).map(f => (
-                                        <div key={f.id} className="flex justify-between items-center p-3 bg-gray-50 rounded-2xl">
-                                            <div>
-                                                <p className="text-[9px] font-black uppercase text-gray-900">{f.category}</p>
-                                                <p className="text-[7px] font-bold text-gray-400 uppercase">{new Date(f.date).toLocaleDateString('pt-BR')}</p>
-                                            </div>
-                                            <span className={`text-[11px] font-black ${f.type === 'entry' ? 'text-green-600' : 'text-red-600'}`}>
-                                                {f.type === 'entry' ? '+' : '-'}{formatCurrency(f.value)}
-                                            </span>
-                                        </div>
-                                    ))}
-                                </div>
-                            </div>
                         </div>
                     </div>
                 </div>
@@ -433,7 +454,10 @@ const IceCreamModule: React.FC<IceCreamModuleProps> = ({
                     <div className="bg-white rounded-[40px] shadow-sm border border-gray-100 overflow-hidden">
                         <div className="p-8 border-b bg-gray-50 flex flex-col md:flex-row justify-between items-center gap-4">
                             <h3 className="text-xl font-black uppercase italic tracking-tighter">Itens Físicos <span className="text-blue-600">em Estoque</span></h3>
-                            <div className="flex gap-2">
+                            <div className="flex flex-wrap gap-2 justify-center">
+                                <button onClick={handlePrintInventory} className="bg-white text-gray-700 border border-gray-200 px-5 py-3 rounded-2xl font-black uppercase text-[10px] shadow-sm flex items-center gap-2 hover:bg-gray-50 transition-all active:scale-95">
+                                    <Printer size={16}/> Imprimir Inventário
+                                </button>
                                 <button onClick={() => setShowInwardModal(true)} className="bg-green-600 text-white px-5 py-3 rounded-2xl font-black uppercase text-[10px] shadow-lg flex items-center gap-2 hover:bg-green-700 transition-all active:scale-95 border-b-4 border-green-800">
                                     <PackagePlus size={16}/> Entrada de Mercadoria
                                 </button>
@@ -444,14 +468,17 @@ const IceCreamModule: React.FC<IceCreamModuleProps> = ({
                         </div>
                         <div className="divide-y divide-gray-50">
                             {filteredStock.map(st => (
-                                <div key={st.id} className="p-6 flex justify-between items-center hover:bg-blue-50/20 transition-all">
-                                    <div>
-                                        <p className="font-black uppercase text-gray-900 text-sm italic">{st.product_base}</p>
-                                        <p className="text-[9px] font-bold text-gray-400 uppercase tracking-widest mt-1">Material de Operação</p>
+                                <div key={st.id} className="p-2.5 md:p-3 flex justify-between items-center hover:bg-blue-50/20 transition-all">
+                                    <div className="flex items-center gap-3">
+                                        <div className="w-8 h-8 bg-gray-50 rounded-lg flex items-center justify-center text-gray-400"><Package size={16}/></div>
+                                        <div>
+                                            <p className="font-black uppercase text-gray-900 text-[11px] italic tracking-tight">{st.product_base}</p>
+                                            <p className="text-[7px] font-bold text-gray-400 uppercase tracking-widest leading-none">Material de Operação</p>
+                                        </div>
                                     </div>
                                     <div className="text-right">
-                                        <span className={`text-2xl font-black italic ${st.stock_current <= 50 ? 'text-red-600' : 'text-blue-900'}`}>{st.stock_current}</span>
-                                        <span className="ml-2 text-[10px] font-bold text-gray-400 uppercase">{st.unit}</span>
+                                        <span className={`text-lg font-black italic ${st.stock_current <= 50 ? 'text-red-600' : 'text-blue-900'}`}>{st.stock_current}</span>
+                                        <span className="ml-1 text-[8px] font-bold text-gray-400 uppercase">{st.unit}</span>
                                     </div>
                                 </div>
                             ))}
@@ -501,41 +528,56 @@ const IceCreamModule: React.FC<IceCreamModuleProps> = ({
             )}
         </div>
 
-        {/* MODAL ENTRADA DE MERCADORIA (NOVO) */}
+        {/* MODAL ENTRADA DE MERCADORIA EM LOTE (REDESENHADO) */}
         {showInwardModal && (
             <div className="fixed inset-0 bg-black/90 backdrop-blur-md flex items-center justify-center z-[100] p-4">
-                <div className="bg-white rounded-[48px] shadow-2xl w-full max-w-lg overflow-hidden animate-in zoom-in duration-300">
-                    <div className="p-10 bg-green-50 border-b flex justify-between items-center">
-                        <h3 className="text-2xl font-black text-green-900 uppercase italic tracking-tighter">Entrada de <span className="text-green-600">Mercadoria</span></h3>
-                        <button onClick={() => setShowInwardModal(false)} className="text-gray-400 hover:text-red-600"><X size={28}/></button>
+                <div className="bg-white rounded-[48px] shadow-2xl w-full max-w-2xl overflow-hidden animate-in zoom-in duration-300 flex flex-col max-h-[90vh]">
+                    <div className="p-10 bg-green-50 border-b flex justify-between items-center shrink-0">
+                        <div>
+                            <h3 className="text-2xl font-black text-green-900 uppercase italic tracking-tighter">Entrada de <span className="text-green-600">Mercadoria</span></h3>
+                            <p className="text-[9px] font-black text-green-700 uppercase tracking-widest mt-1">Insira as quantidades recebidas por item</p>
+                        </div>
+                        <button onClick={() => { setShowInwardModal(false); setBatchInward({}); }} className="text-gray-400 hover:text-red-600"><X size={28}/></button>
                     </div>
-                    <form onSubmit={handleInwardEntry} className="p-10 space-y-6">
-                        <div className="space-y-2">
-                            <label className="text-[10px] font-black text-gray-400 uppercase ml-1">Selecionar Insumo Registrado</label>
-                            <select required value={inwardData.stock_item_id} onChange={e => setInwardData({...inwardData, stock_item_id: e.target.value})} className="w-full px-6 py-4 bg-gray-50 border-none rounded-2xl font-black text-gray-800 uppercase text-xs outline-none focus:ring-4 focus:ring-green-100 shadow-sm appearance-none cursor-pointer">
-                                <option value="">ESCOLHA O ITEM...</option>
-                                {filteredStock.map(st => <option key={st.id} value={st.id}>{st.product_base} ({st.unit})</option>)}
-                            </select>
-                        </div>
-                        <div className="grid grid-cols-2 gap-4">
-                            <div className="space-y-2">
-                                <label className="text-[10px] font-black text-gray-400 uppercase ml-1">Qtd. Adquirida</label>
-                                <input required type="text" value={inwardData.quantity} onChange={e => setInwardData({...inwardData, quantity: e.target.value})} className="w-full px-6 py-4 bg-gray-50 border-none rounded-2xl font-black text-blue-900 text-lg outline-none focus:ring-4 focus:ring-green-100 shadow-sm" placeholder="0" />
+                    <form onSubmit={handleBatchInwardEntry} className="flex flex-col flex-1 overflow-hidden">
+                        <div className="p-6 bg-white overflow-y-auto flex-1 no-scrollbar space-y-4">
+                            <div className="mb-4">
+                                <label className="text-[10px] font-black text-gray-400 uppercase ml-1 block mb-2">Data da Aquisição</label>
+                                <input required type="date" value={inwardDate} onChange={e => setInwardDate(e.target.value)} className="w-full px-6 py-3 bg-gray-50 border-none rounded-2xl font-black text-gray-800 text-xs outline-none focus:ring-4 focus:ring-green-100 shadow-sm" />
                             </div>
-                            <div className="space-y-2">
-                                <label className="text-[10px] font-black text-gray-400 uppercase ml-1">Data da Aquisição</label>
-                                <input required type="date" value={inwardData.date} onChange={e => setInwardData({...inwardData, date: e.target.value})} className="w-full px-6 py-4 bg-gray-50 border-none rounded-2xl font-black text-gray-800 text-xs outline-none focus:ring-4 focus:ring-green-100 shadow-sm" />
+                            
+                            <div className="space-y-1">
+                                {filteredStock.map(st => (
+                                    <div key={st.id} className="flex items-center justify-between p-3 bg-gray-50 hover:bg-green-50/30 rounded-2xl transition-colors border border-transparent hover:border-green-100">
+                                        <div className="flex-1 pr-4">
+                                            <p className="font-black text-gray-800 uppercase italic text-[11px] leading-tight">{st.product_base}</p>
+                                            <p className="text-[8px] font-bold text-gray-400 uppercase tracking-widest">Saldo: {st.stock_current} {st.unit}</p>
+                                        </div>
+                                        <div className="flex items-center gap-2">
+                                            <input 
+                                                type="text" 
+                                                value={batchInward[st.id] || ''} 
+                                                onChange={e => setBatchInward({...batchInward, [st.id]: e.target.value})}
+                                                placeholder="0"
+                                                className="w-20 p-3 bg-white border-2 border-gray-100 rounded-xl font-black text-blue-900 text-center text-sm outline-none focus:border-green-500 shadow-inner"
+                                            />
+                                            <span className="text-[8px] font-black text-gray-400 uppercase w-6">{st.unit}</span>
+                                        </div>
+                                    </div>
+                                ))}
                             </div>
                         </div>
-                        <button type="submit" disabled={isSubmitting || !inwardData.stock_item_id} className="w-full py-5 bg-green-600 text-white rounded-[24px] font-black uppercase text-xs shadow-xl active:scale-95 transition-all border-b-4 border-green-800 disabled:opacity-30">
-                            {isSubmitting ? <Loader2 className="animate-spin" /> : <Save size={18}/>} EFETIVAR ENTRADA
-                        </button>
+                        <div className="p-8 bg-gray-50 border-t shrink-0">
+                            <button type="submit" disabled={isSubmitting} className="w-full py-5 bg-green-600 text-white rounded-[24px] font-black uppercase text-xs shadow-xl active:scale-95 transition-all border-b-4 border-green-800 disabled:opacity-30 flex items-center justify-center gap-3">
+                                {isSubmitting ? <Loader2 className="animate-spin" /> : <Save size={18}/>} EFETIVAR ENTRADA EM LOTE
+                            </button>
+                        </div>
                     </form>
                 </div>
             </div>
         )}
 
-        {/* MODAL NOVO INSUMO DE ESTOQUE */}
+        {/* MODAL NOVO INSUMO DE ESTOQUE (ADICIONADO PCT E CX) */}
         {showNewStockModal && (
             <div className="fixed inset-0 bg-black/90 backdrop-blur-md flex items-center justify-center z-[100] p-4">
                 <div className="bg-white rounded-[48px] shadow-2xl w-full max-w-lg overflow-hidden animate-in zoom-in duration-300">
@@ -555,8 +597,10 @@ const IceCreamModule: React.FC<IceCreamModuleProps> = ({
                             </div>
                             <div className="space-y-2">
                                 <label className="text-[10px] font-black text-gray-400 uppercase ml-1">Unidade</label>
-                                <select value={newStockItem.unit} onChange={e => setNewStockItem({...newStockItem, unit: e.target.value})} className="w-full px-6 py-4 bg-gray-50 border-none rounded-2xl font-black text-gray-800 uppercase text-xs outline-none focus:ring-4 focus:ring-blue-100 shadow-sm">
+                                <select value={newStockItem.unit} onChange={e => setNewStockItem({...newStockItem, unit: e.target.value})} className="w-full px-6 py-4 bg-gray-50 border-none rounded-2xl font-black text-gray-800 uppercase text-xs outline-none focus:ring-4 focus:ring-blue-100 shadow-sm appearance-none cursor-pointer">
                                     <option value="un">Unidade (un)</option>
+                                    <option value="pct">Pacote (pct)</option>
+                                    <option value="cx">Caixa (cx)</option>
                                     <option value="kg">Quilo (kg)</option>
                                     <option value="lt">Litro (lt)</option>
                                 </select>
@@ -646,14 +690,14 @@ const IceCreamModule: React.FC<IceCreamModuleProps> = ({
                             <div className="grid grid-cols-1 md:grid-cols-12 gap-4 items-end">
                                 <div className="md:col-span-7 space-y-2">
                                     <label className="text-[10px] font-black text-blue-300 uppercase ml-2">Item de Estoque Físico</label>
-                                    <select value={selectedStockBase} onChange={e => setSelectedStockBase(e.target.value)} className="w-full p-4 bg-white/10 border-none rounded-2xl text-white font-black uppercase text-xs outline-none focus:ring-2 focus:ring-blue-500 appearance-none cursor-pointer">
+                                    <select value={selectedStockBase} onChange={e => setSelectedStockBase(e.target.value)} className="w-full p-4 bg-white/10 border-none rounded-2xl text-white font-black uppercase text-xs outline-none focus:ring-2 focus:ring-blue-50 appearance-none cursor-pointer">
                                         <option value="" className="text-gray-900">Selecionar insumo...</option>
                                         {filteredStock.map(st => <option key={st.id} value={st.product_base} className="text-gray-900">{st.product_base}</option>)}
                                     </select>
                                 </div>
                                 <div className="md:col-span-3 space-y-2">
                                     <label className="text-[10px] font-black text-blue-300 uppercase ml-2">Quantidade</label>
-                                    <input type="number" value={qtyToConsume} onChange={e => setQtyToConsume(e.target.value)} className="w-full p-4 bg-white/10 border-none rounded-2xl text-white font-black text-center outline-none focus:ring-2 focus:ring-blue-500" />
+                                    <input type="number" value={qtyToConsume} onChange={e => setQtyToConsume(e.target.value)} className="w-full p-4 bg-white/10 border-none rounded-2xl text-white font-black text-center outline-none focus:ring-2 focus:ring-blue-50" />
                                 </div>
                                 <button type="button" onClick={addToRecipe} className="md:col-span-2 p-4 bg-blue-600 hover:bg-blue-500 rounded-2xl font-black uppercase text-[10px] transition-all flex items-center justify-center shadow-lg active:scale-95"><Plus size={18}/></button>
                             </div>
@@ -673,7 +717,7 @@ const IceCreamModule: React.FC<IceCreamModuleProps> = ({
                         </div>
 
                         <div className="flex gap-4 pt-4">
-                            <button type="button" onClick={() => setShowProductModal(false)} className="flex-1 py-5 bg-white border-2 border-gray-100 rounded-[28px] font-black text-gray-400 uppercase text-xs transition-all hover:bg-gray-50 active:scale-95">CANCELAR</button>
+                            <button type="button" onClick={() => setShowProductModal(false)} className="flex-1 py-5 bg-white border-2 border-gray-100 rounded-[28px] font-black text-gray-500 uppercase text-xs transition-all hover:bg-gray-50 active:scale-95">CANCELAR</button>
                             <button type="submit" disabled={isSubmitting || recipe.length === 0} className="flex-1 py-5 bg-red-600 text-white rounded-[28px] font-black uppercase text-xs shadow-2xl flex items-center justify-center gap-3 transition-all active:scale-95 disabled:opacity-30 border-b-4 border-red-900">
                                 {isSubmitting ? <Loader2 className="animate-spin" /> : <Save size={18}/>} SALVAR PRODUTO
                             </button>

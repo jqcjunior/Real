@@ -66,7 +66,7 @@ export interface IceCreamDailySale {
 }
 
 export type IceCreamPaymentMethod = 'Pix' | 'Cartão' | 'Dinheiro' | 'Fiado';
-export type IceCreamCategory = 'Sundae' | 'Milkshake' | 'Casquinha' | 'Cascão' | 'Copinho' | 'Bebidas' | 'Adicionais';
+export type IceCreamCategory = 'Sundae' | 'Milkshake' | 'Casquinha' | 'Cascão' | 'Cascão Trufado' | 'Copinho' | 'Bebidas' | 'Adicionais';
 
 export interface IceCreamTransaction {
   id: string;
@@ -148,6 +148,7 @@ export interface DownloadItem {
 
 export interface CashError { id: string; storeId: string; userId: string; userName: string; date: string; type: 'surplus' | 'shortage'; value: number; reason?: string; createdAt: Date; }
 export interface Receipt { id: string; storeId?: string; issuerName: string; payer: string; recipient: string; value: number; valueInWords: string; reference: string; date: string; createdAt: Date; }
+export interface CreditCardSale { id: string; storeId?: string; userId: string; date: string; brand: string; value: number; authorizationCode?: string; }
 export interface CreditCardSale { id: string; storeId?: string; userId: string; date: string; brand: string; value: number; authorizationCode?: string; }
 export interface SellerGoal { storeId: string; sellerName: string; month: string; revenueTarget: number; revenueActual: number; commissionRate?: number; itemsActual?: number; paActual?: number; }
 
