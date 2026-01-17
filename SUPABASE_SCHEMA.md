@@ -5,7 +5,20 @@ Copie e cole os blocos abaixo no SQL Editor do Supabase para garantir que o sist
 
 ---
 
-### 1. Configuração de Permissões de Páginas (Navegação)
+### 1. Atualização da Tabela de Itens (Receita/Ficha Técnica)
+
+```sql
+-- Adicionar coluna de receita (JSONB) para suportar múltiplos insumos por venda
+ALTER TABLE public.ice_cream_items 
+ADD COLUMN IF NOT EXISTS recipe jsonb DEFAULT '[]'::jsonb;
+
+-- Garantir que o estoque seja único por unidade e nome de base (Ex: Copo 300ml)
+-- Se houver erro de constraint, remova duplicidades antes de aplicar
+ALTER TABLE public.ice_cream_stock 
+ADD CONSTRAINT unique_stock_item_per_store UNIQUE (store_id, product_base);
+```
+
+### 2. Configuração de Permissões de Páginas (Navegação)
 
 ```sql
 -- Tabela de Permissões (se não existir)

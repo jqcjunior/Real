@@ -26,6 +26,11 @@ export interface IceCreamStock {
   created_at?: string;
 }
 
+export interface IceCreamRecipeItem {
+  stock_base_name: string;
+  quantity: number;
+}
+
 export interface IceCreamItem {
   id: string;
   storeId: string;
@@ -34,7 +39,8 @@ export interface IceCreamItem {
   price: number;
   flavor?: string;
   active: boolean;
-  consumptionPerSale: number;
+  consumptionPerSale: number; // Mantido para legado, mas prioriza recipe
+  recipe?: IceCreamRecipeItem[]; 
   image_url?: string;
   created_at?: string;
 }

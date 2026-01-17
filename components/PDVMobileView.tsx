@@ -1,5 +1,5 @@
 
-import React, { useState } from 'react';
+import React, { useState, useMemo } from 'react';
 import { 
     IceCreamItem, IceCreamDailySale, IceCreamTransaction, IceCreamCategory, 
     IceCreamPaymentMethod, User, UserRole 
@@ -41,10 +41,12 @@ interface PDVMobileViewProps {
 
 const PDVMobileView: React.FC<PDVMobileViewProps> = (props) => {
   const [step, setStep] = useState<'categories' | 'products' | 'cart'>('categories');
+  const [amountPaid, setAmountPaid] = useState('');
 
   const handleMobileAddToCart = (item: IceCreamItem) => {
+    // Agora insere um novo item individual para permitir exclusão ágil
     const newItem: IceCreamDailySale = { 
-        id: `cart-mob-${Date.now()}`, 
+        id: `cart-mob-${Date.now()}-${Math.random()}`, 
         storeId: props.user.storeId || '',
         itemId: item.id, 
         productName: item.name, 
@@ -60,6 +62,13 @@ const PDVMobileView: React.FC<PDVMobileViewProps> = (props) => {
     setStep('cart'); 
   };
 
+  const cartTotal = useMemo(() => props.cart.reduce((a, b) => a + b.totalValue, 0), [props.cart]);
+  
+  const changeDue = useMemo(() => {
+      const paid = parseFloat(amountPaid.replace(',', '.')) || 0;
+      return Math.max(0, paid - cartTotal);
+  }, [amountPaid, cartTotal]);
+
   const handleFinalize = async () => {
     if (props.cart.length === 0) return;
     if (!props.paymentMethod) { alert("Escolha o pagamento."); return; }
@@ -71,7 +80,7 @@ const PDVMobileView: React.FC<PDVMobileViewProps> = (props) => {
         const finalCart = props.cart.map(item => ({ 
             ...item, 
             paymentMethod: props.paymentMethod!, 
-            buyer_name: props.paymentMethod === 'Fiado' ? props.buyerName : undefined,
+            buyer_name: props.paymentMethod === 'Fiado' ? props.buyerName.toUpperCase() : undefined,
             saleCode 
         }));
         await props.onAddSales(finalCart);
@@ -79,6 +88,7 @@ const PDVMobileView: React.FC<PDVMobileViewProps> = (props) => {
         props.setCart([]); 
         props.setPaymentMethod(null);
         props.setBuyerName('');
+        setAmountPaid('');
         setStep('categories');
     } catch (e: any) { 
         alert(`FALHA: ${e.message}`); 
@@ -87,11 +97,9 @@ const PDVMobileView: React.FC<PDVMobileViewProps> = (props) => {
     }
   };
 
-  const cartTotal = props.cart.reduce((a, b) => a + b.totalValue, 0);
-
   return (
     <div className="flex flex-col h-full bg-gray-50 text-gray-900 font-sans relative overflow-hidden">
-      <main className="flex-1 overflow-y-auto pb-48 p-4">
+      <main className="flex-1 overflow-y-auto pb-64 p-4">
         {step === 'categories' && (
           <div className="grid grid-cols-2 gap-3 animate-in fade-in duration-300">
             {['Sundae', 'Milkshake', 'Casquinha', 'Cascão', 'Copinho', 'Bebidas', 'Adicionais'].sort().map(cat => (
@@ -126,12 +134,12 @@ const PDVMobileView: React.FC<PDVMobileViewProps> = (props) => {
             
             <div className="space-y-3">
               {props.cart.map((item, idx) => (
-                <div key={idx} className="bg-white p-4 rounded-[24px] border border-gray-100 flex justify-between items-center shadow-sm">
-                  <div>
-                    <p className="font-black uppercase italic text-[11px] text-blue-950 leading-tight">{item.productName}</p>
-                    <p className="text-[9px] font-bold text-gray-400 mt-1">{item.unitsSold}x {formatCurrency(item.unitPrice)}</p>
+                <div key={item.id} className="bg-white p-4 rounded-[24px] border border-gray-100 flex justify-between items-center shadow-sm animate-in slide-in-from-right duration-200">
+                  <div className="flex-1 pr-4">
+                    <p className="font-black uppercase italic text-[11px] text-blue-950 leading-tight truncate">{item.productName}</p>
+                    <p className="text-[9px] font-bold text-gray-400 mt-1">{formatCurrency(item.unitPrice)}</p>
                   </div>
-                  <button onClick={() => props.setCart(prev => prev.filter((_, i) => i !== idx))} className="text-red-300 p-2"><Trash2 size={16}/></button>
+                  <button onClick={() => props.setCart(prev => prev.filter(i => i.id !== item.id))} className="text-red-300 p-2 active:text-red-600"><Trash2 size={16}/></button>
                 </div>
               ))}
               {props.cart.length === 0 && (
@@ -147,14 +155,33 @@ const PDVMobileView: React.FC<PDVMobileViewProps> = (props) => {
                 <p className="text-[10px] font-black text-blue-900 uppercase tracking-widest border-b border-blue-100 pb-2">Pagamento & Cliente</p>
                 <div className="grid grid-cols-2 gap-2">
                     {(['Pix', 'Dinheiro', 'Cartão', 'Fiado'] as IceCreamPaymentMethod[]).map(pm => (
-                        <button key={pm} onClick={() => props.setPaymentMethod(pm)} className={`py-4 rounded-2xl font-black uppercase text-[10px] border-2 transition-all ${props.paymentMethod === pm ? 'bg-blue-900 border-blue-900 text-white shadow-lg' : 'bg-white border-gray-200 text-gray-400'}`}>{pm}</button>
+                        <button key={pm} onClick={() => { props.setPaymentMethod(pm); if(pm !== 'Dinheiro') setAmountPaid(''); }} className={`py-4 rounded-2xl font-black uppercase text-[10px] border-2 transition-all ${props.paymentMethod === pm ? 'bg-blue-900 border-blue-900 text-white shadow-lg' : 'bg-white border-gray-200 text-gray-400'}`}>{pm}</button>
                     ))}
                 </div>
+
+                {props.paymentMethod === 'Dinheiro' && (
+                    <div className="bg-white p-5 rounded-[24px] shadow-sm space-y-4 animate-in fade-in zoom-in">
+                        <div className="flex justify-between items-center">
+                            <label className="text-[9px] font-black text-gray-400 uppercase tracking-widest">Valor Pago</label>
+                            <input 
+                                autoFocus
+                                value={amountPaid} 
+                                onChange={e => setAmountPaid(e.target.value)} 
+                                placeholder="0,00"
+                                className="w-24 text-right bg-gray-50 rounded-lg p-2 font-black text-green-700 outline-none"
+                            />
+                        </div>
+                        <div className="flex justify-between items-baseline border-t border-gray-50 pt-2">
+                            <span className="text-[9px] font-black text-green-600 uppercase tracking-widest">Troco</span>
+                            <span className="text-xl font-black text-green-700 italic">{formatCurrency(changeDue)}</span>
+                        </div>
+                    </div>
+                )}
 
                 {props.paymentMethod === 'Fiado' && (
                     <div className="space-y-2 animate-in fade-in slide-in-from-top-2">
                         <label className="text-[9px] font-black text-red-500 uppercase block ml-2">Funcionário / Comprador *</label>
-                        <input value={props.buyerName} onChange={e => props.setBuyerName(e.target.value)} placeholder="Nome..." className="w-full p-4 bg-red-50 border-none rounded-2xl text-sm font-black uppercase placeholder-red-200" />
+                        <input value={props.buyerName} onChange={e => props.setBuyerName(e.target.value)} placeholder="NOME DO FUNCIONÁRIO..." className="w-full p-4 bg-red-50 border-none rounded-2xl text-sm font-black uppercase placeholder-red-200 outline-none" />
                     </div>
                 )}
               </div>
