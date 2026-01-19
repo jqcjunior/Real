@@ -2,6 +2,7 @@
 import React, { useState } from 'react';
 import { User, Store, UserRole } from '../types';
 import { Mail, Lock, Loader2, CheckCircle2, X, Store as StoreIcon, User as UserIcon, Phone, MapPin, ChevronDown } from 'lucide-react';
+import { BRAND_LOGO } from '../constants';
 
 interface LoginScreenProps {
   onLoginAttempt: (email: string, password: string, rememberMe: boolean) => Promise<{ success: boolean; user?: User; error?: string }>;
@@ -70,10 +71,10 @@ const LoginScreen: React.FC<LoginScreenProps> = ({ onLoginAttempt, onRegisterReq
         <div className="flex justify-center mb-8">
           <div className="w-28 h-28 rounded-full overflow-hidden shadow-xl border-4 border-white bg-white flex items-center justify-center">
             <img 
-              src="/branding/logo-real.png" 
+              src={BRAND_LOGO} 
               alt="Real Admin Logo"
               className="w-full h-full object-contain p-2"
-              onError={(e) => { (e.target as HTMLImageElement).src = 'https://rwwomakjhmglgoowbmsl.supabase.co/storage/v1/object/public/branding/logo-real.png'; }}
+              onError={(e) => { (e.target as HTMLImageElement).src = 'https://raw.githubusercontent.com/jqcjunior/Real/main/Real_PNG.png'; }}
             />
           </div>
         </div>
@@ -172,14 +173,14 @@ const LoginScreen: React.FC<LoginScreenProps> = ({ onLoginAttempt, onRegisterReq
 
                       <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
                           <div className="space-y-1.5">
-                              <label className="text-[10px] font-black text-gray-700 uppercase ml-2 tracking-widest">E-mail Corporativo</label>
+                              <label className="text-[10px] font-black text-gray-400 uppercase ml-2 tracking-widest">E-mail Corporativo</label>
                               <div className="relative">
                                 <Mail className="absolute left-4 top-1/2 -translate-y-1/2 text-gray-400" size={16}/>
                                 <input required type="email" value={regForm.managerEmail} onChange={e => setRegForm({...regForm, managerEmail: e.target.value})} className="w-full pl-12 pr-4 py-3.5 bg-gray-50 rounded-2xl text-sm font-bold text-gray-900 border border-gray-200 focus:border-blue-500 focus:bg-white outline-none transition-all placeholder-gray-400" placeholder="Ex: gerencia@loja.com"/>
                               </div>
                           </div>
                           <div className="space-y-1.5">
-                              <label className="text-[10px] font-black text-gray-700 uppercase ml-2 tracking-widest">Telefone de Contato</label>
+                              <label className="text-[10px] font-black text-gray-400 uppercase ml-2 tracking-widest">Telefone de Contato</label>
                               <div className="relative">
                                 <Phone className="absolute left-4 top-1/2 -translate-y-1/2 text-gray-400" size={16}/>
                                 <input required value={regForm.managerPhone} onChange={e => setRegForm({...regForm, managerPhone: e.target.value})} className="w-full pl-12 pr-4 py-3.5 bg-gray-50 rounded-2xl text-sm font-bold text-gray-900 border border-gray-200 focus:border-blue-500 focus:bg-white outline-none transition-all placeholder-gray-400" placeholder="(00) 00000-0000"/>

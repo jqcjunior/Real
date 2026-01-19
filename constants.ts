@@ -5,9 +5,9 @@ export const APP_NAME = "REAL ADMIN";
 
 /**
  * BRANDING DEFINITIVO
- * Configurações de identidade visual persistente via assets locais.
+ * Configurações de identidade visual via repositório remoto conforme solicitado.
  */
-export const BRAND_LOGO = "/branding/logo-real.png";
+export const BRAND_LOGO = "https://raw.githubusercontent.com/jqcjunior/Real/main/Real_PNG.png";
 
 export const BRANDING = {
   logo: BRAND_LOGO,

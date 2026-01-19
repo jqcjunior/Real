@@ -546,8 +546,9 @@ const IceCreamModule: React.FC<IceCreamModuleProps> = ({
   const handleBulkStockUpdate = async (type: 'production' | 'adjustment') => {
       setIsSubmitting(true);
       try {
+          // Fix: Explicitly cast valueStr to string to resolve "Property 'replace' does not exist on type 'unknown'" error on line 550
           for (const [productBase, valueStr] of Object.entries(bulkStockData)) {
-              const value = parseFloat(valueStr.replace(',', '.'));
+              const value = parseFloat((valueStr as string).replace(',', '.'));
               if (isNaN(value) || value === 0) continue;
               const item = filteredStock.find(s => s.product_base === productBase);
               await onUpdateStock(effectiveStoreId, productBase, value, item?.unit || 'Unidade', type);

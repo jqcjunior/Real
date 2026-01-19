@@ -1,3 +1,4 @@
+
 import React, { useState, useEffect, useMemo } from 'react';
 import { 
   LayoutDashboard, ShoppingBag, Calculator, DollarSign, Instagram, Download, 
@@ -29,6 +30,7 @@ import { User, Store, MonthlyPerformance, UserRole, Cota, AgendaItem, DownloadIt
 import { supabase } from './services/supabaseClient';
 import { useAuthorization } from './security/useAuthorization';
 import { PermissionKey } from './security/permissions';
+import { BRAND_LOGO } from './constants';
 
 const NavButton: React.FC<{ 
   view: string; 
@@ -148,9 +150,9 @@ const App: React.FC = () => {
             createdAt: new Date(c.created_at) 
         })));
         
-        if (cs) setCotaSettings(cs.map(s => ({ storeId: s.store_id, budgetValue: Number(s.budget_value), managerPercent: Number(s.manager_percent) })));
+        if (cs) setCotaSettings(cs.map(s => ({ storeId: s.store_id, budget_value: Number(s.budget_value), manager_percent: Number(s.manager_percent) })));
         
-        if (cd) setCotaDebts(cd.map(d => ({ id: d.id, storeId: d.store_id, month: d.month, value: Number(d.value), description: d.description })));
+        if (cd) setCotaDebts(cd.map(d => ({ id: d.id, store_id: d.store_id, month: d.month, value: Number(d.value), description: d.description })));
         if (dl) setDownloads(dl);
         if (ce) setCashErrors(ce);
         if (sl) setLogs(sl);
@@ -307,9 +309,14 @@ const App: React.FC = () => {
       
       <div className={`fixed lg:relative z-50 w-64 h-full bg-gray-950 border-r border-white/5 flex flex-col shadow-2xl transition-transform duration-300 ${isSidebarOpen ? 'translate-x-0' : '-translate-x-full lg:translate-x-0'}`}>
         <div className="p-8 border-b border-white/5 mb-4 flex justify-between items-center">
-          <div>
-            <h1 className="text-2xl font-black italic uppercase tracking-tighter leading-none">Real <span className="text-red-600">Admin</span></h1>
-            <p className="text-[8px] font-black text-blue-400 uppercase tracking-widest mt-2 opacity-50">Enterprise v28.2</p>
+          <div className="flex items-center gap-3">
+            <div className="w-10 h-10 rounded-full bg-white flex items-center justify-center p-1 shrink-0 overflow-hidden shadow-lg">
+                <img src={BRAND_LOGO} alt="Real Admin Logo" className="w-full h-full object-contain" />
+            </div>
+            <div>
+              <h1 className="text-xl font-black italic uppercase tracking-tighter leading-none">Real <span className="text-red-600">Admin</span></h1>
+              <p className="text-[8px] font-black text-blue-400 uppercase tracking-widest mt-1 opacity-50">Enterprise v28.2</p>
+            </div>
           </div>
           <button onClick={() => setIsSidebarOpen(false)} className="lg:hidden text-gray-500 hover:text-white p-2"><X size={24}/></button>
         </div>
