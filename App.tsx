@@ -5,7 +5,7 @@ import {
   AlertOctagon, FileSignature, LogOut, Menu, Calendar, Settings, X, 
   FileText, UserCog, History, Sliders, Banknote, Target, Loader2, 
   IceCream, Info, BarChart3, Wifi, AlertTriangle, Clock, ShieldAlert,
-  ChevronRight, MonitorPlay, Users as UsersIcon, ShieldCheck, Shield
+  ChevronRight, MonitorPlay, Users as UsersIcon, ShieldCheck, Shield, Printer
 } from 'lucide-react';
 import LoginScreen from './components/LoginScreen';
 import DashboardAdmin from './components/DashboardAdmin';
@@ -155,7 +155,14 @@ const App: React.FC = () => {
             managerPercent: Number(s.manager_percent || 30) 
         })));
         
-        if (cd) setCotaDebts(cd.map(d => ({ id: d.id, storeId: d.store_id, month: d.month, value: Number(d.value), description: d.description })));
+        if (cd) setCotaDebts(cd.map(d => ({ 
+            id: d.id, 
+            storeId: d.store_id, 
+            month: d.month, 
+            value: Number(d.value), 
+            description: d.description 
+        })));
+
         if (dl) setDownloads(dl);
         if (ce) setCashErrors(ce);
         if (sl) setLogs(sl);
@@ -213,7 +220,6 @@ const App: React.FC = () => {
       await fetchData();
   };
 
-  // Fix: Definition of handleIceCreamSale to persist sales and promissory notes in the database
   const handleIceCreamSale = async (salesBatch: IceCreamDailySale[]) => {
     try {
       const snakeSales = salesBatch.map(s => ({
@@ -298,7 +304,7 @@ const App: React.FC = () => {
             </div>
             <div>
               <h1 className="text-xl font-black italic uppercase tracking-tighter leading-none">Real <span className="text-red-600">Admin</span></h1>
-              <p className="text-[8px] font-black text-blue-400 uppercase tracking-widest mt-1 opacity-50">Enterprise v28.8</p>
+              <p className="text-[8px] font-black text-blue-400 uppercase tracking-widest mt-1 opacity-50">Enterprise v28.10</p>
             </div>
           </div>
           <button onClick={() => setIsSidebarOpen(false)} className="lg:hidden text-gray-500 hover:text-white p-2"><X size={24}/></button>
@@ -320,6 +326,11 @@ const App: React.FC = () => {
             <NavButton view="financial" icon={DollarSign} label="Financeiro" active={currentView === 'financial'} onClick={() => { setCurrentView('financial'); setIsSidebarOpen(false); }} permission="MODULE_FINANCIAL" can={can} />
             <NavButton view="cash_errors" icon={AlertOctagon} label="Quebras" active={currentView === 'cash_errors'} onClick={() => { setCurrentView('cash_errors'); setIsSidebarOpen(false); }} permission="MODULE_CASH_ERRORS" can={can} />
             <NavButton view="agenda" icon={Calendar} label="Agenda Semanal" active={currentView === 'agenda'} onClick={() => { setCurrentView('agenda'); setIsSidebarOpen(false); }} permission="MODULE_AGENDA" can={can} />
+          </div>
+          <div>
+            <p className="px-4 mb-2 text-[9px] font-black uppercase tracking-widest text-gray-600">Documentos</p>
+            <NavButton view="auth_print" icon={FileSignature} label="Autoriz. Compra" active={currentView === 'auth_print'} onClick={() => { setCurrentView('auth_print'); setIsSidebarOpen(false); }} permission="MODULE_DOCUMENTS" can={can} />
+            <NavButton view="termo_print" icon={Printer} label="Termo Condicional" active={currentView === 'termo_print'} onClick={() => { setCurrentView('termo_print'); setIsSidebarOpen(false); }} permission="MODULE_DOCUMENTS" can={can} />
             <NavButton view="downloads" icon={Download} label="Downloads" active={currentView === 'downloads'} onClick={() => { setCurrentView('downloads'); setIsSidebarOpen(false); }} permission="MODULE_DOWNLOADS" can={can} />
           </div>
           <div>
@@ -369,7 +380,7 @@ const App: React.FC = () => {
                     await supabase.from('cotas').update(payload).eq('id', id); fetchData(); 
                 }} onDeleteCota={async (id) => { await supabase.from('cotas').delete().eq('id', id); fetchData(); }} onSaveSettings={async (s) => { 
                     const { error } = await supabase.from('cota_settings').upsert({ 
-                        store_id: s.store_id, 
+                        store_id: s.storeId, 
                         budget_value: Number(s.budgetValue), 
                         manager_percent: Number(s.managerPercent) 
                     }, { onConflict: 'store_id' }); 
@@ -429,9 +440,11 @@ const App: React.FC = () => {
                     fetchData(); 
                 }} />;
                 if (currentView === 'cash_errors' && can('MODULE_CASH_ERRORS')) return <CashErrorsModule user={user} stores={stores} errors={cashErrors} onAddError={async (e) => { await supabase.from('cash_errors').insert([{...e, value: Number(e.value)}]); fetchData(); }} onUpdateError={async (e) => { await supabase.from('cash_errors').update({...e, value: Number(e.value)}).eq('id', e.id); fetchData(); }} onDeleteError={async (id) => { await supabase.from('cash_errors').delete().eq('id', id); fetchData(); }} />;
-                if (currentView === 'agenda' && can('MODULE_AGENDA')) return <AgendaSystem user={user} tasks={agendaTasks} onAddTask={async (t) => { await supabase.from('agenda_tasks').insert([{ user_id: t.userId, title: t.title, description: t.description, due_date: t.dueDate, due_time: t.dueTime || '00:00:00', priority: t.priority, reminder_level: t.reminder_level }]); fetchData(); }} onUpdateTask={async (t) => { await supabase.from('agenda_tasks').update({ title: t.title, description: t.description, due_date: t.dueDate, due_time: t.dueTime, priority: t.priority, is_completed: t.isCompleted, completed_note: t.completed_note, reminder_level: t.reminder_level }).eq('id', t.id); fetchData(); }} onDeleteTask={async (id) => { await supabase.from('agenda_tasks').delete().eq('id', id); fetchData(); }} />;
+                if (currentView === 'agenda' && can('MODULE_AGENDA')) return <AgendaSystem user={user} tasks={agendaTasks} onAddTask={async (t) => { await supabase.from('agenda_tasks').insert([{ user_id: t.userId, title: t.title, description: t.description, due_date: t.dueDate, due_time: t.due_time || '00:00:00', priority: t.priority, reminder_level: t.reminder_level }]); fetchData(); }} onUpdateTask={async (t) => { await supabase.from('agenda_tasks').update({ title: t.title, description: t.description, due_date: t.dueDate, due_time: t.dueTime, priority: t.priority, is_completed: t.isCompleted, completed_note: t.completed_note, reminder_level: t.reminder_level }).eq('id', t.id); fetchData(); }} onDeleteTask={async (id) => { await supabase.from('agenda_tasks').delete().eq('id', id); fetchData(); }} />;
                 if (currentView === 'downloads' && can('MODULE_DOWNLOADS')) return <DownloadsModule user={user} items={downloads} onUpload={async (i) => { await supabase.from('downloads').insert([i]); fetchData(); }} onDelete={async (id) => { await supabase.from('downloads').delete().eq('id', id); fetchData(); }} />;
                 if (currentView === 'marketing' && can('MODULE_MARKETING')) return <InstagramMarketing user={user} store={stores.find(s => s.id === user.storeId)} />;
+                if (currentView === 'auth_print' && can('MODULE_DOCUMENTS')) return <PurchaseAuthorization />;
+                if (currentView === 'termo_print' && can('MODULE_DOCUMENTS')) return <TermoAutorizacao user={user} store={stores.find(s => s.id === user.storeId)} />;
                 if (currentView === 'admin_users' && can('MODULE_ADMIN_USERS')) return <AdminUsersManagement currentUser={user} />;
                 if (currentView === 'access_control' && can('MODULE_ACCESS_CONTROL')) return <AccessControlManagement />;
                 if (currentView === 'audit' && can('MODULE_AUDIT')) return <SystemAudit logs={logs} receipts={receipts} cashErrors={cashErrors} iceCreamSales={iceCreamSales} icPromissories={iceCreamPromissories} onLogAction={logSystemAction} />;

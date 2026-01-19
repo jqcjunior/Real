@@ -5,7 +5,7 @@ export const APP_NAME = "REAL ADMIN";
 
 /**
  * BRANDING DEFINITIVO - LOGO REAL CALÇADOS
- * URL Raw do GitHub para garantir que a imagem seja carregada pelos navegadores.
+ * URL Raw do GitHub para garantir que a imagem seja carregada corretamente nos navegadores.
  */
 export const BRAND_LOGO = "https://raw.githubusercontent.com/jqcjunior/Real/main/Real_PNG.png";
 

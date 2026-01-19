@@ -1,3 +1,4 @@
+
 import React, { useState, useMemo, useEffect } from 'react';
 import { IceCreamItem, IceCreamDailySale, IceCreamTransaction, IceCreamCategory, IceCreamPaymentMethod, User, UserRole, Store, IceCreamStock, IceCreamPromissoryNote, IceCreamRecipeItem, StoreProfitPartner } from '../types';
 import { formatCurrency, BRAND_LOGO } from '../constants';
@@ -92,7 +93,12 @@ const IceCreamModule: React.FC<IceCreamModuleProps> = ({
   });
   
   const [manualStoreId, setManualStoreId] = useState('');
-  const effectiveStoreId = manualStoreId || user.storeId || (stores.length > 0 ? stores[0].id : '');
+  
+  // LOGICA DE SEGURANÇA: Se não for ADMIN, força o storeId do usuário logado
+  const isAdmin = user.role === UserRole.ADMIN;
+  const effectiveStoreId = isAdmin 
+    ? (manualStoreId || user.storeId || (stores.length > 0 ? stores[0].id : ''))
+    : (user.storeId || (stores.length > 0 ? stores[0].id : ''));
   
   const cartTotal = useMemo(() => cart.reduce((acc, curr) => acc + curr.totalValue, 0), [cart]);
 
@@ -102,6 +108,7 @@ const IceCreamModule: React.FC<IceCreamModuleProps> = ({
   }, [amountReceived, cartTotal]);
 
   const fetchPartners = async () => {
+    if (!effectiveStoreId) return;
     const { data } = await supabase
         .from('store_profit_distribution')
         .select('*')
@@ -112,6 +119,7 @@ const IceCreamModule: React.FC<IceCreamModuleProps> = ({
   };
 
   const fetchExpenseCategories = async () => {
+      if (!effectiveStoreId) return;
       const { data } = await supabase
           .from('ice_cream_expense_categories')
           .select('name')
@@ -546,7 +554,6 @@ const IceCreamModule: React.FC<IceCreamModuleProps> = ({
   const handleBulkStockUpdate = async (type: 'production' | 'adjustment') => {
       setIsSubmitting(true);
       try {
-          // Fix: Explicitly cast valueStr to string to resolve "Property 'replace' does not exist on type 'unknown'" error on line 550
           for (const [productBase, valueStr] of Object.entries(bulkStockData)) {
               const value = parseFloat((valueStr as string).replace(',', '.'));
               if (isNaN(value) || value === 0) continue;
@@ -606,6 +613,8 @@ const IceCreamModule: React.FC<IceCreamModuleProps> = ({
       setTimeout(() => printWindow.print(), 500);
   };
 
+  const activeStoreObj = stores.find(s => s.id === effectiveStoreId);
+
   return (
     <div className="flex flex-col h-full bg-gray-50 overflow-hidden font-sans relative">
         <div className="bg-white border-b px-4 md:px-6 py-2 flex flex-col md:flex-row justify-between items-center gap-2 z-40 shadow-sm shrink-0">
@@ -615,15 +624,21 @@ const IceCreamModule: React.FC<IceCreamModuleProps> = ({
                     <h2 className="text-sm md:text-base font-black uppercase italic tracking-tighter text-blue-950 leading-none">Gelateria <span className="text-red-600">Real</span></h2>
                     <div className="flex items-center gap-1 mt-0.5">
                         <p className="text-[7px] font-black text-gray-400 uppercase tracking-widest leading-none">Unidade</p>
-                        <select 
-                            value={effectiveStoreId} 
-                            onChange={(e) => setManualStoreId(e.target.value)}
-                            className="bg-transparent border-none text-[8px] font-black text-blue-600 uppercase outline-none cursor-pointer focus:ring-0 p-0 h-auto min-h-0"
-                        >
-                            {[...stores].sort((a, b) => parseInt(a.number || '0') - parseInt(b.number || '0')).map(s => (
-                                <option key={s.id} value={s.id}>{s.number} - {s.city}</option>
-                            ))}
-                        </select>
+                        {isAdmin ? (
+                            <select 
+                                value={effectiveStoreId} 
+                                onChange={(e) => setManualStoreId(e.target.value)}
+                                className="bg-transparent border-none text-[8px] font-black text-blue-600 uppercase outline-none cursor-pointer focus:ring-0 p-0 h-auto min-h-0"
+                            >
+                                {[...stores].sort((a, b) => parseInt(a.number || '0') - parseInt(b.number || '0')).map(s => (
+                                    <option key={s.id} value={s.id}>{s.number} - {s.city}</option>
+                                ))}
+                            </select>
+                        ) : (
+                            <span className="text-[8px] font-black text-blue-600 uppercase">
+                                {activeStoreObj?.number} - {activeStoreObj?.city}
+                            </span>
+                        )}
                     </div>
                 </div>
             </div>
@@ -641,7 +656,7 @@ const IceCreamModule: React.FC<IceCreamModuleProps> = ({
             {activeTab === 'pdv' && (
                 <div className="h-full">
                     <div className="lg:hidden h-full">
-                        <PDVMobileView user={user} items={filteredItems} cart={cart} setCart={setCart} selectedCategory={selectedCategory} setSelectedCategory={setSelectedCategory} selectedProductName={null} setSelectedProductName={() => {}} selectedItem={null} setSelectedItem={() => {}} selectedMl="" setSelectedMl={() => {}} quantity={1} setQuantity={() => {}} paymentMethod={paymentMethod} setPaymentMethod={setPaymentMethod} buyerName={buyerName} setBuyerName={setBuyerName} onAddSales={onAddSales} onCancelSale={onCancelSale} onAddTransaction={onAddTransaction} dailyData={dreStats} handlePrintTicket={printThermalTicket} isSubmitting={isSubmitting} setIsSubmitting={setIsSubmitting} />
+                        <PDVMobileView user={user} items={filteredItems} cart={cart} setCart={setCart} selectedCategory={selectedCategory} setSelectedCategory={setSelectedCategory} selectedProductName={null} setSelectedProductName={() => {}} selectedItem={null} setSelectedItem={() => {}} selectedMl="" setSelectedMl={() => {}} quantity={1} setQuantity={() => {}} paymentMethod={paymentMethod} setPaymentMethod={setPaymentMethod} buyerName={buyerName} setBuyerName={setBuyerName} onAddSales={onAddSales} onCancelSale={onCancelSale} onAddTransaction={onAddTransaction} dailyData={dreStats} handlePrintTicket={printThermalTicket} isSubmitting={isSubmitting} setIsSubmitting={setIsSubmitting} effectiveStoreId={effectiveStoreId} />
                     </div>
                     <div className="hidden lg:grid grid-cols-12 gap-4 p-6 max-w-[1500px] mx-auto h-full overflow-hidden">
                         <div className="col-span-8 flex flex-col h-full overflow-hidden">
@@ -692,218 +707,583 @@ const IceCreamModule: React.FC<IceCreamModuleProps> = ({
                     </div>
                 </div>
             )}
-
-            {activeTab === 'dre_diario' && (
-                <div className="p-4 md:p-8 max-w-5xl mx-auto space-y-6 animate-in fade-in duration-500">
-                    <div className="flex justify-between items-center bg-white p-6 rounded-[32px] shadow-sm border border-gray-100">
-                        <div><h3 className="text-xl font-black uppercase italic tracking-tighter text-blue-950">Fechamento <span className="text-red-600">do Dia</span></h3><p className="text-[10px] font-bold text-gray-400 uppercase tracking-widest">{new Date().toLocaleDateString('pt-BR')}</p></div>
-                        <button onClick={() => setShowTransactionModal(true)} className="bg-red-600 text-white px-5 py-3 rounded-2xl font-black uppercase text-[10px] shadow-lg flex items-center gap-2 hover:bg-red-700 transition-all border-b-4 border-red-900"><ArrowDownCircle size={16}/> Lançar Sangria</button>
-                    </div>
-                    <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-                        <div className="md:col-span-2 bg-white p-8 rounded-[40px] shadow-sm border border-gray-100">
-                            <h4 className="text-[10px] font-black text-gray-400 uppercase tracking-widest mb-6">Faturamento por Forma de Pagamento</h4>
-                            <div className="grid grid-cols-2 gap-4">
-                                <div className="p-5 bg-green-50 rounded-3xl border border-green-100"><div className="flex items-center gap-2 mb-2 text-green-600"><Zap size={14}/><span className="text-[10px] font-black uppercase">Pix</span></div><p className="text-xl font-black text-green-700 italic">{formatCurrency(dreStats.dayMethods.pix)}</p></div>
-                                <div className="p-5 bg-blue-50 rounded-3xl border border-blue-100"><div className="flex items-center gap-2 mb-2 text-blue-600"><Banknote size={14}/><span className="text-[10px] font-black uppercase">Dinheiro</span></div><p className="text-xl font-black text-blue-700 italic">{formatCurrency(dreStats.dayMethods.money)}</p></div>
-                                <div className="p-5 bg-orange-50 rounded-3xl border border-orange-100"><div className="flex items-center gap-2 mb-2 text-orange-600"><CreditCard size={14}/><span className="text-[10px] font-black uppercase">Cartão</span></div><p className="text-xl font-black text-orange-700 italic">{formatCurrency(dreStats.dayMethods.card)}</p></div>
-                                <div className="p-5 bg-red-50 rounded-3xl border border-red-100"><div className="flex items-center gap-2 mb-2 text-red-600"><UsersIcon size={14}/><span className="text-[10px] font-black uppercase">Fiado</span></div><p className="text-xl font-black text-red-700 italic">{formatCurrency(dreStats.dayMethods.fiado)}</p></div>
-                            </div>
+            
+            {activeTab === 'dre_diario' && can('MODULE_GELATERIA_DRE_DIARIO') && (
+                <div className="p-4 md:p-8 space-y-6 animate-in fade-in duration-300 max-w-5xl mx-auto">
+                    <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
+                        <div className="bg-white p-6 rounded-[32px] shadow-sm border border-gray-100">
+                            <p className="text-[9px] font-black text-gray-400 uppercase tracking-widest mb-1">Entradas (Hoje)</p>
+                            <h3 className="text-2xl font-black text-green-600 italic tracking-tighter">{formatCurrency(dreStats.dayIn)}</h3>
                         </div>
-                        <div className="space-y-6"><div className="bg-gray-900 p-8 rounded-[40px] shadow-2xl text-white border-b-8 border-green-500"><p className="text-[10px] font-black text-gray-400 uppercase tracking-widest mb-2">Entrada Líquida Hoje</p><h3 className="text-4xl font-black italic tracking-tighter">{formatCurrency(dreStats.dayIn - dreStats.dayOut)}</h3></div></div>
+                        <div className="bg-white p-6 rounded-[32px] shadow-sm border border-gray-100">
+                            <p className="text-[9px] font-black text-gray-400 uppercase tracking-widest mb-1">Saídas (Hoje)</p>
+                            <h3 className="text-2xl font-black text-red-600 italic tracking-tighter">{formatCurrency(dreStats.dayOut)}</h3>
+                        </div>
+                        <div className="bg-blue-900 p-6 rounded-[32px] shadow-xl text-white">
+                            <p className="text-[9px] font-black text-blue-300 uppercase tracking-widest mb-1">Saldo do Dia</p>
+                            <h3 className="text-2xl font-black italic tracking-tighter">{formatCurrency(dreStats.dayIn - dreStats.dayOut)}</h3>
+                        </div>
+                        <button onClick={() => setShowTransactionModal(true)} className="bg-red-600 hover:bg-red-700 text-white rounded-[32px] flex flex-col items-center justify-center gap-2 font-black uppercase text-[10px] shadow-lg transition-all active:scale-95 border-b-4 border-red-950">
+                            <ArrowDownCircle size={24}/> Registrar Saída
+                        </button>
+                    </div>
+
+                    <div className="bg-white rounded-[40px] shadow-sm border border-gray-100 overflow-hidden">
+                        <div className="p-6 border-b flex justify-between items-center bg-gray-50/50">
+                            <h3 className="text-sm font-black uppercase italic tracking-tighter flex items-center gap-3"><Clock className="text-blue-700" size={20}/> Vendas por Pagamento (Hoje)</h3>
+                        </div>
+                        <div className="grid grid-cols-2 md:grid-cols-4 divide-x divide-gray-100 border-b">
+                            <div className="p-6 text-center"><p className="text-[8px] font-black text-gray-400 uppercase mb-1">Pix</p><p className="text-lg font-black text-blue-950">{formatCurrency(dreStats.dayMethods.pix)}</p></div>
+                            <div className="p-6 text-center"><p className="text-[8px] font-black text-gray-400 uppercase mb-1">Cartão</p><p className="text-lg font-black text-blue-950">{formatCurrency(dreStats.dayMethods.card)}</p></div>
+                            <div className="p-6 text-center"><p className="text-[8px] font-black text-gray-400 uppercase mb-1">Dinheiro</p><p className="text-lg font-black text-blue-950">{formatCurrency(dreStats.dayMethods.money)}</p></div>
+                            <div className="p-6 text-center"><p className="text-[8px] font-black text-gray-400 uppercase mb-1">Fiado</p><p className="text-lg font-black text-red-600">{formatCurrency(dreStats.dayMethods.fiado)}</p></div>
+                        </div>
                     </div>
                 </div>
             )}
 
-            {activeTab === 'dre_mensal' && (
-                <div className="p-4 md:p-8 max-w-7xl mx-auto space-y-8 animate-in fade-in duration-500 pb-20">
-                    <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4 bg-white p-6 rounded-[32px] border shadow-sm">
-                        <div><h3 className="text-2xl font-black uppercase italic tracking-tighter flex items-center gap-3"><Calculator className="text-blue-900" size={32}/> DRE Mensal <span className="text-red-600">Gelateria</span></h3><p className="text-[10px] font-bold text-gray-400 uppercase tracking-widest mt-1 ml-11">Relatório Consolidado de Unidade</p></div>
-                        <div className="flex flex-wrap gap-2 items-center">
-                            <div className="flex bg-gray-50 p-1 rounded-2xl border border-gray-200 shadow-inner"><select value={selectedMonth} onChange={e => setSelectedMonth(Number(e.target.value))} className="bg-transparent text-gray-700 font-black px-4 py-2 outline-none uppercase text-xs cursor-pointer">{MONTHS.map(m => <option key={m.value} value={m.value}>{m.label}</option>)}</select><div className="w-px h-6 bg-gray-300 self-center"></div><select value={selectedYear} onChange={e => setSelectedYear(Number(e.target.value))} className="bg-transparent text-gray-700 font-black px-4 py-2 outline-none text-xs cursor-pointer">{[2024, 2025, 2026].map(y => <option key={y} value={y}>{y}</option>)}</select></div>
-                            <button onClick={() => handlePrintDRE(false)} className="bg-blue-600 text-white min-w-[120px] h-11 rounded-2xl font-black uppercase text-[10px] shadow-xl hover:bg-blue-700 transition-all flex items-center justify-center gap-2 border-b-4 border-blue-800"><Printer size={16}/> Resumo</button>
-                            <button onClick={() => handlePrintDRE(true)} className="bg-emerald-600 text-white min-w-[120px] h-11 rounded-2xl font-black uppercase text-[10px] shadow-xl hover:bg-emerald-700 transition-all flex items-center justify-center gap-2 border-b-4 border-emerald-800"><FileText size={16}/> Detalhado</button>
-                            <button onClick={() => setShowPartnersModal(true)} className="bg-blue-950 text-white min-w-[120px] h-11 rounded-2xl font-black uppercase text-[10px] shadow-xl flex items-center justify-center gap-2 hover:bg-black transition-all border-b-4 border-blue-800"><Users size={16}/> Sócios</button>
+            {activeTab === 'dre_mensal' && can('MODULE_GELATERIA_DRE_MENSAL') && (
+                <div className="p-4 md:p-8 space-y-6 animate-in fade-in duration-300 max-w-6xl mx-auto">
+                    <div className="bg-white p-8 rounded-[40px] shadow-sm border border-gray-100 flex flex-col md:flex-row justify-between items-center gap-6">
+                        <div className="flex items-center gap-4">
+                            <div className="p-4 bg-blue-50 text-blue-700 rounded-3xl"><FilePieChart size={32}/></div>
+                            <div>
+                                <h3 className="text-2xl font-black uppercase italic text-blue-950 tracking-tighter">Demonstrativo <span className="text-red-600">Mensal</span></h3>
+                                <p className="text-gray-400 text-[10px] font-black uppercase tracking-widest mt-1">Gestão de Lucratividade e Partilha</p>
+                            </div>
+                        </div>
+                        <div className="flex gap-2">
+                             <div className="flex items-center gap-2 bg-gray-100 p-1.5 rounded-2xl border shadow-inner">
+                                <select value={selectedMonth} onChange={e => setSelectedMonth(Number(e.target.value))} className="bg-transparent font-black text-[10px] uppercase outline-none px-2">{MONTHS.map(m => <option key={m.value} value={m.value}>{m.label}</option>)}</select>
+                                <select value={selectedYear} onChange={e => setSelectedYear(Number(e.target.value))} className="bg-transparent font-black text-[10px] uppercase outline-none px-2">{[2024, 2025, 2026].map(y => <option key={y} value={y}>{y}</option>)}</select>
+                             </div>
+                             <button onClick={() => setShowPartnersModal(true)} className="p-3 bg-gray-900 text-white rounded-2xl hover:bg-black transition-all shadow-md"><Users size={20}/></button>
                         </div>
                     </div>
+
                     <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-                        <div className="bg-white p-8 rounded-[40px] shadow-sm border border-gray-100 relative group overflow-hidden"><p className="text-[10px] font-black text-gray-400 uppercase tracking-widest mb-2">Faturamento Bruto (+)</p><h3 className="text-3xl font-black text-green-600 italic">{formatCurrency(dreStats.monthIn)}</h3><div className="mt-4 grid grid-cols-2 gap-2 border-t pt-4"><div><p className="text-[8px] font-black text-gray-400 uppercase">Pix</p><p className="text-xs font-black text-gray-700">{formatCurrency(dreStats.monthMethods.pix)}</p></div><div><p className="text-[8px] font-black text-gray-400 uppercase">Cartão</p><p className="text-xs font-black text-gray-700">{formatCurrency(dreStats.monthMethods.card)}</p></div><div><p className="text-[8px] font-black text-gray-400 uppercase">Dinheiro</p><p className="text-xs font-black text-gray-700">{formatCurrency(dreStats.monthMethods.money)}</p></div><div><p className="text-[8px] font-black text-gray-400 uppercase">Fiado</p><p className="text-xs font-black text-gray-700">{formatCurrency(dreStats.monthMethods.fiado)}</p></div></div></div>
-                        <div className="bg-white p-8 rounded-[40px] shadow-sm border border-gray-100 relative group overflow-hidden"><p className="text-[10px] font-black text-gray-400 uppercase tracking-widest mb-2">Total Despesas (-)</p><h3 className="text-3xl font-black text-red-600 italic">{formatCurrency(dreStats.monthOut)}</h3><p className="text-[9px] font-bold text-gray-400 uppercase mt-4 italic">Baseado em sangrias lançadas</p></div>
-                        <div className="bg-blue-900 p-8 rounded-[40px] shadow-2xl text-white relative overflow-hidden"><div className="absolute top-0 right-0 p-6 opacity-10"><DollarSign size={80}/></div><p className="text-[10px] font-black text-blue-300 uppercase tracking-widest mb-2">Lucro Líquido Real</p><h3 className={`text-4xl font-black italic tracking-tighter ${dreStats.profit >= 0 ? 'text-white' : 'text-red-400'}`}>{formatCurrency(dreStats.profit)}</h3></div>
+                        <div className="bg-white p-8 rounded-[40px] shadow-sm border border-gray-100">
+                            <p className="text-[10px] font-black text-gray-400 uppercase tracking-widest mb-2">Faturamento Bruto</p>
+                            <h3 className="text-3xl font-black text-blue-950 italic tracking-tighter">{formatCurrency(dreStats.monthIn)}</h3>
+                            <div className="mt-4 grid grid-cols-2 gap-2 text-[9px] font-bold text-gray-500 uppercase">
+                                <span>Pix: {formatCurrency(dreStats.monthMethods.pix)}</span>
+                                <span>Card: {formatCurrency(dreStats.monthMethods.card)}</span>
+                            </div>
+                        </div>
+                        <div className="bg-white p-8 rounded-[40px] shadow-sm border border-gray-100">
+                            <p className="text-[10px] font-black text-gray-400 uppercase tracking-widest mb-2">Total de Despesas</p>
+                            <h3 className="text-3xl font-black text-red-600 italic tracking-tighter">{formatCurrency(dreStats.monthOut)}</h3>
+                            <p className="text-[9px] font-bold text-gray-400 uppercase mt-4">Sangrias e Lançamentos de Saída</p>
+                        </div>
+                        <div className="bg-gradient-to-br from-green-600 to-green-700 p-8 rounded-[40px] shadow-xl text-white">
+                            <p className="text-[10px] font-black text-green-100 uppercase tracking-widest mb-2">Lucro Líquido Real</p>
+                            <h3 className="text-3xl font-black italic tracking-tighter">{formatCurrency(dreStats.profit)}</h3>
+                            <div className="mt-6 flex gap-2">
+                                <button onClick={() => handlePrintDRE(false)} className="flex-1 py-2 bg-white/20 hover:bg-white/30 rounded-xl text-[9px] font-black uppercase flex items-center justify-center gap-2"><Printer size={14}/> Simples</button>
+                                <button onClick={() => handlePrintDRE(true)} className="flex-1 py-2 bg-white/20 hover:bg-white/30 rounded-xl text-[9px] font-black uppercase flex items-center justify-center gap-2"><FileText size={14}/> Detalhado</button>
+                            </div>
+                        </div>
                     </div>
-                    <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
-                        <div className="bg-white p-8 rounded-[48px] border shadow-sm flex flex-col h-[500px]"><h4 className="text-sm font-black text-gray-900 uppercase italic tracking-tighter mb-6 flex items-center gap-2"><ListChecks size={20} className="text-blue-600"/> Detalhamento de Saídas</h4><div className="overflow-y-auto flex-1 pr-2 no-scrollbar"><table className="w-full text-left text-[10px]"><thead className="sticky top-0 bg-white border-b z-10 font-black text-gray-400 uppercase"><tr><th className="py-3">Data</th><th className="py-3">Categoria</th><th className="py-3 text-right">Valor</th></tr></thead><tbody className="divide-y font-bold uppercase italic text-gray-600">{(dreStats.monthExits ?? []).map(ex => (<tr key={ex.id} className="hover:bg-gray-50"><td className="py-4">{new Date(ex.date + 'T00:00:00').toLocaleDateString('pt-BR')}</td><td className="py-4">{ex.category} <span className="block text-[8px] not-italic text-gray-400">{ex.description}</span></td><td className="py-4 text-right text-red-600">{formatCurrency(ex.value)}</td></tr>))}{(!dreStats.monthExits || dreStats.monthExits.length === 0) && (<tr><td colSpan={3} className="py-20 text-center text-gray-300 uppercase">Nenhuma despesa no período</td></tr>)}</tbody></table></div></div>
-                        <div className="bg-gray-900 p-8 rounded-[48px] shadow-2xl text-white border-t-8 border-red-600 flex flex-col h-[500px]"><div className="flex justify-between items-center mb-8 border-b border-white/10 pb-6"><h3 className="text-xl font-black uppercase italic tracking-tighter flex items-center gap-3"><Handshake className="text-red-500" size={28}/> Partilha de Resultados</h3></div><div className="flex-1 overflow-y-auto pr-2 no-scrollbar space-y-8">{(partners ?? []).length > 0 ? partners.map(p => (<div key={p.id} className="space-y-4"><div className="flex justify-between items-end"><div><p className="text-[10px] font-black text-gray-400 uppercase tracking-widest mb-1">{p.partner_name} ({p.percentage}%)</p><p className="text-3xl font-black italic text-white leading-none">{formatCurrency(dreStats.profit > 0 ? (dreStats.profit * p.percentage) / 100 : 0)}</p></div><UsersIcon className="text-blue-500/30" size={32} /></div><div className="w-full h-2 bg-white/10 rounded-full overflow-hidden"><div className="h-full bg-blue-500" style={{ width: `${p.percentage}%` }}></div></div></div>)) : (<div className="py-20 text-center opacity-30 uppercase italic font-black text-xs tracking-widest">Defina o quadro societário em "Config. Sócios"</div>)}</div></div>
+
+                    <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+                        <div className="bg-white rounded-[40px] shadow-sm border border-gray-100 overflow-hidden flex flex-col">
+                            <div className="p-6 border-b flex justify-between items-center bg-gray-50/50">
+                                <h3 className="text-xs font-black uppercase italic tracking-tighter flex items-center gap-3"><Handshake className="text-green-600" size={20}/> Partilha de Resultados</h3>
+                                <span className="text-[9px] font-black text-gray-400 uppercase tracking-widest bg-gray-100 px-3 py-1 rounded-full">Automático</span>
+                            </div>
+                            <div className="p-6 space-y-4 flex-1">
+                                {partners.map(p => (
+                                    <div key={p.id} className="flex justify-between items-center p-4 bg-gray-50 rounded-2xl border border-gray-100 shadow-inner">
+                                        <div className="flex flex-col">
+                                            <span className="text-[10px] font-black text-gray-900 uppercase italic leading-none">{p.partner_name}</span>
+                                            <span className="text-[8px] font-bold text-gray-400 uppercase mt-1 tracking-widest">Participação: {p.percentage}%</span>
+                                        </div>
+                                        <span className="text-lg font-black text-green-700 italic tracking-tighter">
+                                            {formatCurrency(dreStats.profit > 0 ? (dreStats.profit * p.percentage) / 100 : 0)}
+                                        </span>
+                                    </div>
+                                ))}
+                                {partners.length === 0 && <p className="text-center py-10 text-gray-300 font-bold uppercase text-[10px] italic">Configure os sócios nas definições</p>}
+                            </div>
+                        </div>
+
+                        <div className="bg-white rounded-[40px] shadow-sm border border-gray-100 overflow-hidden flex flex-col">
+                            <div className="p-6 border-b flex justify-between items-center bg-gray-50/50">
+                                <h3 className="text-xs font-black uppercase italic tracking-tighter flex items-center gap-3"><AlertTriangle className="text-red-600" size={20}/> Débitos (Fiado Acumulado)</h3>
+                                <button onClick={handlePrintFiado} className="p-2 bg-red-50 text-red-600 rounded-xl hover:bg-red-100 transition-all"><Printer size={16}/></button>
+                            </div>
+                            <div className="p-6 space-y-3 flex-1 overflow-y-auto max-h-[400px] no-scrollbar">
+                                {fiadoReport.map(f => (
+                                    <div key={f.name} className="flex justify-between items-center p-4 bg-red-50/30 rounded-2xl border border-red-100/50">
+                                        <span className="text-[10px] font-black text-gray-800 uppercase italic">{f.name}</span>
+                                        <span className="text-sm font-black text-red-700">{formatCurrency(f.total)}</span>
+                                    </div>
+                                ))}
+                                {fiadoReport.length === 0 && <p className="text-center py-10 text-gray-300 font-bold uppercase text-[10px] italic">Nenhum débito no período</p>}
+                            </div>
+                        </div>
                     </div>
                 </div>
             )}
 
             {activeTab === 'estoque' && (
-                <div className="p-4 md:p-8 max-w-5xl mx-auto space-y-6 animate-in fade-in duration-500">
-                    <div className="bg-white rounded-[40px] shadow-sm border border-gray-100 overflow-hidden">
-                        <div className="p-6 md:p-8 border-b bg-gray-50 flex flex-col lg:flex-row justify-between items-center gap-4"><div className="text-center lg:text-left"><h3 className="text-xl font-black uppercase italic tracking-tighter">Gestão de <span className="text-blue-600">Estoque</span></h3><p className="text-[9px] font-bold text-gray-400 uppercase tracking-widest mt-1">Insumos e Matérias-Primas</p></div><div className="flex flex-row flex-nowrap items-center gap-2 justify-center lg:justify-end overflow-x-auto no-scrollbar pb-1"><button onClick={handlePrintStock} className="bg-gray-100 text-gray-600 px-3 py-2.5 rounded-xl font-black uppercase text-[9px] flex items-center gap-1.5 hover:bg-gray-200 transition-all border border-gray-200 shrink-0"><Clipboard size={14}/> Conferência</button><button onClick={() => { setBulkStockData({}); setShowInventoryModal(true); }} className="bg-orange-500 text-white px-3 py-2.5 rounded-xl font-black uppercase text-[9px] shadow-lg flex items-center gap-1.5 hover:bg-orange-600 transition-all border-b-4 border-orange-700 shrink-0"><Edit3 size={14}/> Inventário</button><button onClick={() => { setBulkStockData({}); setShowInwardStockModal(true); }} className="bg-green-600 text-white px-3 py-2.5 rounded-xl font-black uppercase text-[9px] shadow-lg flex items-center gap-1.5 hover:bg-green-700 transition-all border-b-4 border-green-800 shrink-0"><PackagePlus size={14}/> Entrada</button><button onClick={() => { setEditingStockItem(null); setShowNewStockModal(true); }} className="bg-blue-900 text-white px-3 py-2.5 rounded-xl font-black uppercase text-[9px] shadow-lg flex items-center gap-1.5 hover:bg-black transition-all border-b-4 border-blue-950 shrink-0"><Plus size={14}/> Criar Base</button></div></div>
-                        <div className="divide-y divide-gray-50">{(filteredStock ?? []).map(st => (<div key={st.id} className="p-4 flex justify-between items-center hover:bg-blue-50/20 transition-all group"><div className="flex items-center gap-3"><div className="w-10 h-10 bg-gray-50 rounded-xl flex items-center justify-center text-gray-400"><Package size={20}/></div><div><p className="font-black uppercase text-gray-900 text-[11px] italic tracking-tight">{st.product_base}</p><p className="text-[7px] font-bold text-gray-400 uppercase tracking-widest leading-none">Insumo Operacional</p></div></div><div className="flex items-center gap-4"><div className="text-right"><span className={`text-xl font-black italic ${st.stock_current <= 50 ? 'text-red-600' : 'text-blue-900'}`}>{st.stock_current}</span><span className="ml-1 text-[8px] font-bold text-gray-400 uppercase">{st.unit}</span></div><div className="flex gap-1 opacity-0 group-hover:opacity-100 transition-opacity"><button onClick={() => { setEditingStockItem(st); setShowNewStockModal(true); }} className="p-2 text-blue-400 hover:text-blue-600 hover:bg-blue-50 rounded-xl transition-all"><Edit3 size={16}/></button><button onClick={() => handleDeleteStockItem(st.id)} className="p-2 text-red-300 hover:text-red-600 hover:bg-red-50 rounded-xl transition-all"><Trash2 size={16}/></button></div></div></div>))}</div>
+                <div className="p-4 md:p-8 space-y-6 animate-in fade-in duration-300 max-w-6xl mx-auto">
+                    <div className="bg-white p-8 rounded-[40px] shadow-sm border border-gray-100 flex flex-col md:flex-row justify-between items-center gap-6">
+                        <div className="flex items-center gap-4">
+                            <div className="p-4 bg-orange-50 text-orange-600 rounded-3xl"><Package size={32}/></div>
+                            <div>
+                                <h3 className="text-2xl font-black uppercase italic text-blue-950 tracking-tighter">Controle de <span className="text-orange-600">Insumos</span></h3>
+                                <p className="text-gray-400 text-[10px] font-black uppercase tracking-widest mt-1">Gestão de Saldos e Produção Diária</p>
+                            </div>
+                        </div>
+                        <div className="flex flex-wrap justify-center gap-2">
+                            <button onClick={() => setShowInwardStockModal(true)} className="px-6 py-3 bg-orange-600 text-white rounded-2xl font-black uppercase text-[10px] shadow-lg hover:bg-orange-700 transition-all active:scale-95 border-b-4 border-orange-900 flex items-center gap-2"><ArrowUpCircle size={16}/> Produção</button>
+                            <button onClick={() => setShowInventoryModal(true)} className="px-6 py-3 bg-blue-900 text-white rounded-2xl font-black uppercase text-[10px] shadow-lg hover:bg-black transition-all active:scale-95 border-b-4 border-blue-950 flex items-center gap-2"><Zap size={16}/> Inventário</button>
+                            <button onClick={handlePrintStock} className="p-3 bg-white border-2 border-gray-100 text-gray-400 rounded-2xl hover:text-blue-600 transition-all shadow-sm"><Printer size={20}/></button>
+                            <button onClick={() => setShowNewStockModal(true)} className="p-3 bg-gray-900 text-white rounded-2xl hover:bg-black transition-all shadow-md"><Plus size={20}/></button>
+                        </div>
+                    </div>
+
+                    <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+                        {filteredStock.map(st => (
+                            <div key={st.id} className="bg-white p-6 rounded-[32px] shadow-sm border border-gray-100 relative group overflow-hidden">
+                                <div className="absolute top-0 right-0 p-4 opacity-5 group-hover:opacity-10 transition-opacity"><Layers size={60}/></div>
+                                <div className="flex justify-between items-start mb-4">
+                                    <div className={`p-2 rounded-xl text-white ${st.stock_current <= 5 ? 'bg-red-500 animate-pulse' : 'bg-orange-500'}`}><Package size={16}/></div>
+                                    <button onClick={() => handleDeleteStockItem(st.id)} className="text-gray-200 hover:text-red-500 opacity-0 group-hover:opacity-100 transition-all"><Trash2 size={14}/></button>
+                                </div>
+                                <h4 className="text-[10px] font-black text-blue-950 uppercase italic leading-none mb-2 truncate pr-4">{st.product_base}</h4>
+                                <div className="flex items-baseline gap-1">
+                                    <span className={`text-2xl font-black italic tracking-tighter ${st.stock_current <= 5 ? 'text-red-600' : 'text-gray-900'}`}>{st.stock_current}</span>
+                                    <span className="text-[8px] font-bold text-gray-400 uppercase tracking-widest">{getUnitAbbr(st.unit)}</span>
+                                </div>
+                                <div className="mt-4 pt-4 border-t border-gray-50 flex justify-between items-center">
+                                    <span className="text-[8px] font-black text-gray-300 uppercase">Saldo Sistema</span>
+                                    <div className={`w-12 h-1 rounded-full ${st.stock_current <= 5 ? 'bg-red-100' : 'bg-green-100'}`}>
+                                        <div className={`h-full rounded-full ${st.stock_current <= 5 ? 'bg-red-500' : 'bg-green-500'}`} style={{width: `${Math.min((st.stock_current / 20) * 100, 100)}%`}}></div>
+                                    </div>
+                                </div>
+                            </div>
+                        ))}
                     </div>
                 </div>
             )}
 
             {activeTab === 'audit' && (
-                <div className="p-4 md:p-8 max-w-7xl mx-auto space-y-8 animate-in fade-in duration-500">
-                    <div className="flex flex-col md:flex-row justify-between items-center gap-4 bg-white p-8 rounded-[40px] shadow-sm border border-gray-100">
-                        <div>
-                            <h3 className="text-xl font-black uppercase italic tracking-tighter">Central de <span className="text-red-600">Auditoria</span></h3>
-                            <p className="text-[10px] font-bold text-gray-400 uppercase tracking-widest mt-1">Sincronização de Vendas e Fiados</p>
-                        </div>
-                        <div className="flex gap-2">
-                             <div className="flex bg-gray-100 p-1 rounded-2xl border border-gray-200 shadow-inner">
-                                <select value={selectedMonth} onChange={e => setSelectedMonth(Number(e.target.value))} className="bg-transparent text-gray-700 font-black px-4 py-2 outline-none uppercase text-xs cursor-pointer">{MONTHS.map(m => <option key={m.value} value={m.value}>{m.label}</option>)}</select>
-                                <div className="w-px h-6 bg-gray-300 self-center"></div>
-                                <select value={selectedYear} onChange={e => setSelectedYear(Number(e.target.value))} className="bg-transparent text-gray-700 font-black px-4 py-2 outline-none text-xs cursor-pointer">{[2024, 2025, 2026].map(y => <option key={y} value={y}>{y}</option>)}</select>
+                <div className="p-4 md:p-8 space-y-6 animate-in fade-in duration-300 max-w-5xl mx-auto">
+                    <div className="bg-white rounded-[40px] shadow-xl border border-gray-100 overflow-hidden">
+                        <div className="p-8 border-b bg-gray-50/50 flex justify-between items-center">
+                            <div>
+                                <h3 className="text-xl font-black uppercase italic text-blue-950 tracking-tighter flex items-center gap-3"><History className="text-blue-700" size={28}/> Registro de <span className="text-red-600">Vendas</span></h3>
+                                <p className="text-gray-400 text-[9px] font-black uppercase tracking-widest mt-1">Histórico completo e cancelamentos</p>
                             </div>
-                            <button onClick={handlePrintFiado} className="bg-blue-900 text-white px-6 py-3 rounded-2xl font-black uppercase text-[10px] shadow-lg flex items-center gap-2 hover:bg-black transition-all border-b-4 border-blue-950">
-                                <Printer size={16}/> Imprimir Fiados (A4)
-                            </button>
-                        </div>
-                    </div>
-
-                    <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
-                        <div className="lg:col-span-2 bg-white rounded-[40px] shadow-sm border border-gray-100 overflow-hidden">
-                            <div className="p-6 border-b bg-gray-50 flex justify-between items-center">
-                                <h4 className="text-xs font-black uppercase text-gray-900 italic">Histórico Geral de Vendas</h4>
-                                <span className="text-[10px] font-black text-gray-400 uppercase tracking-widest">{(sales ?? []).filter(s => s.storeId === effectiveStoreId).length} REGISTROS</span>
-                            </div>
-                            <div className="overflow-x-auto max-h-[600px] no-scrollbar">
-                                <table className="w-full text-left">
-                                    <thead className="bg-white text-[9px] font-black text-gray-400 uppercase tracking-widest border-b">
-                                        <tr><th className="px-6 py-4">Cod. / Data</th><th className="px-6 py-4">Itens</th><th className="px-6 py-4">Pagamento</th><th className="px-6 py-4 text-right">Valor</th><th className="px-6 py-4 text-center">Status</th></tr>
-                                    </thead>
-                                    <tbody className="divide-y divide-gray-50">
-                                        {(sales ?? []).filter(s => s.storeId === effectiveStoreId).sort((a,b) => (b.createdAt || '').localeCompare(a.createdAt || '')).map(s => (
-                                            <tr key={s.id} className={`hover:bg-blue-50/20 transition-colors ${s.status === 'canceled' ? 'opacity-40 grayscale' : ''}`}>
-                                                <td className="px-6 py-4"><div className="font-black text-[11px] text-blue-900 italic">#{s.saleCode}</div><div className="text-[8px] text-gray-400 font-bold uppercase">{new Date(s.createdAt!).toLocaleString('pt-BR')}</div></td>
-                                                <td className="px-6 py-4 font-black text-[11px] uppercase italic text-gray-700">{s.unitsSold}x {s.productName}{s.buyer_name && <p className="text-[8px] text-red-500 not-italic mt-1">Ref: ${s.buyer_name}</p>}</td>
-                                                <td className="px-6 py-4"><span className={`px-2 py-1 rounded-lg text-[8px] font-black uppercase border ${s.paymentMethod === 'Fiado' ? 'bg-red-50 text-red-700 border-red-100' : 'bg-green-50 text-green-700 border-green-100'}`}>{s.paymentMethod}</span></td>
-                                                <td className="px-6 py-4 text-right font-black text-blue-900 italic text-[11px]">{formatCurrency(s.totalValue)}</td>
-                                                <td className="px-6 py-4 text-center">{s.status === 'canceled' ? (<span className="text-[7px] font-black text-red-600 bg-red-100 px-2 py-1 rounded-full uppercase">Cancelado</span>) : (<button onClick={() => setShowCancelModal({ code: s.saleCode! })} className="p-1.5 text-gray-300 hover:text-red-600 hover:bg-red-50 rounded-lg transition-all" title="Cancelar Venda"><Ban size={14}/></button>)}</td>
-                                            </tr>
-                                        ))}
-                                    </tbody>
-                                </table>
+                            <div className="relative">
+                                <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-300" size={16}/>
+                                <input placeholder="FILTRAR..." className="bg-white border-2 border-gray-100 rounded-xl pl-10 pr-4 py-2 text-[10px] font-black uppercase focus:border-blue-600 outline-none shadow-sm" />
                             </div>
                         </div>
-
-                        <div className="bg-gray-900 rounded-[40px] shadow-2xl text-white border-t-8 border-blue-600 flex flex-col h-[700px]">
-                            <div className="p-8 border-b border-white/10">
-                                <h4 className="text-base font-black uppercase italic tracking-tighter flex items-center gap-3">
-                                    <UsersIcon className="text-blue-500" size={24}/> Acúmulo Fiado <span className="text-blue-300 opacity-50">Mensal</span>
-                                </h4>
-                                <p className="text-[9px] font-bold text-gray-500 uppercase tracking-widest mt-2 italic">Ref: {MONTHS.find(m=>m.value===selectedMonth)?.label}</p>
-                            </div>
-                            <div className="flex-1 overflow-y-auto p-6 space-y-4 no-scrollbar">
-                                {fiadoReport.map(f => (
-                                    <div key={f.name} className="bg-white/5 p-5 rounded-3xl border border-white/10 hover:bg-white/10 transition-all group">
-                                        <div className="flex justify-between items-end">
-                                            <div>
-                                                <p className="text-[10px] font-black text-gray-500 uppercase tracking-widest mb-1 group-hover:text-blue-400 transition-colors">{f.name}</p>
-                                                <p className="text-2xl font-black italic text-white leading-none tracking-tighter">{formatCurrency(f.total)}</p>
-                                            </div>
-                                            <div className="p-2 bg-blue-600/20 text-blue-400 rounded-xl group-hover:scale-110 transition-transform"><ArrowRight size={16}/></div>
-                                        </div>
-                                    </div>
-                                ))}
-                                {fiadoReport.length === 0 && (
-                                    <div className="py-20 text-center opacity-30 uppercase italic font-black text-[10px] tracking-widest">Nenhuma compra fiado neste mês</div>
-                                )}
-                            </div>
-                            <div className="p-8 bg-blue-600 rounded-b-[40px]">
-                                <p className="text-[9px] font-black text-blue-100 uppercase tracking-widest mb-1">Total Consolidado Fiados</p>
-                                <p className="text-3xl font-black italic">{formatCurrency(fiadoReport.reduce((a,b)=>a+b.total, 0))}</p>
-                            </div>
+                        <div className="overflow-x-auto no-scrollbar">
+                            <table className="w-full text-left border-collapse">
+                                <thead>
+                                    <tr className="bg-white text-[9px] font-black text-gray-400 uppercase tracking-widest border-b">
+                                        <th className="px-8 py-5">Cod / Horário</th>
+                                        <th className="px-8 py-5">Produto / Qtd</th>
+                                        <th className="px-8 py-5">Pagamento</th>
+                                        <th className="px-8 py-5 text-right">Valor Total</th>
+                                        <th className="px-8 py-5 text-center">Ações</th>
+                                    </tr>
+                                </thead>
+                                <tbody className="divide-y divide-gray-50 font-bold">
+                                    {(sales ?? []).filter(s => s.storeId === effectiveStoreId).slice(0, 50).map(sale => (
+                                        <tr key={sale.id} className={`hover:bg-blue-50/30 transition-all ${sale.status === 'canceled' ? 'opacity-30 grayscale italic line-through' : ''}`}>
+                                            <td className="px-8 py-5">
+                                                <div className="text-xs font-black text-blue-950">#{sale.saleCode || 'GEL-000'}</div>
+                                                <div className="text-[8px] text-gray-400 uppercase mt-0.5">{new Date(sale.createdAt!).toLocaleTimeString('pt-BR')}</div>
+                                            </td>
+                                            <td className="px-8 py-5">
+                                                <div className="text-[10px] font-black text-gray-900 uppercase tracking-tighter italic">{sale.unitsSold}x {sale.productName}</div>
+                                                <div className="text-[8px] text-gray-400 uppercase mt-0.5">{sale.flavor}</div>
+                                            </td>
+                                            <td className="px-8 py-5">
+                                                <span className={`px-2 py-0.5 rounded text-[8px] font-black uppercase border ${sale.paymentMethod === 'Fiado' ? 'bg-red-50 text-red-600 border-red-100' : 'bg-green-50 text-green-600 border-green-100'}`}>{sale.paymentMethod}</span>
+                                            </td>
+                                            <td className="px-8 py-5 text-right font-black text-blue-950 text-sm">{formatCurrency(sale.totalValue)}</td>
+                                            <td className="px-8 py-5 text-center">
+                                                {sale.status !== 'canceled' && (
+                                                    <button onClick={() => setShowCancelModal({code: sale.saleCode || ''})} className="p-2 text-gray-300 hover:text-red-600 transition-all"><Ban size={16}/></button>
+                                                )}
+                                            </td>
+                                        </tr>
+                                    ))}
+                                </tbody>
+                            </table>
                         </div>
                     </div>
                 </div>
             )}
 
-            {activeTab === 'produtos' && (
-                <div className="p-4 md:p-8 max-w-5xl mx-auto space-y-6 animate-in fade-in duration-500">
-                    <div className="flex justify-between items-center bg-white p-6 rounded-[32px] shadow-sm border border-gray-100">
-                        <div><h3 className="text-xl font-black uppercase italic tracking-tighter text-blue-950">Catálogo de <span className="text-blue-600">Produtos</span></h3><p className="text-[10px] font-bold text-gray-400 uppercase tracking-widest">{(filteredItems ?? []).length} Itens Ativos</p></div>
-                        <button onClick={() => { setEditingProduct(null); setNewProd({name: '', category: 'Copinho', price: '', flavor: ''}); setTempRecipe([]); setShowProductModal(true); }} className="bg-blue-900 text-white px-5 py-3 rounded-2xl font-black uppercase text-[10px] shadow-lg flex items-center gap-2 hover:bg-black transition-all border-b-4 border-blue-950"><Plus size={16}/> Novo Produto</button>
+            {activeTab === 'produtos' && can('MODULE_GELATERIA_CONFIG') && (
+                <div className="p-4 md:p-8 space-y-6 animate-in fade-in duration-300 max-w-6xl mx-auto">
+                    <div className="bg-white p-8 rounded-[40px] shadow-sm border border-gray-100 flex flex-col md:flex-row justify-between items-center gap-6">
+                        <div className="flex items-center gap-4">
+                            <div className="p-4 bg-purple-50 text-purple-600 rounded-3xl"><PackagePlus size={32}/></div>
+                            <div>
+                                <h3 className="text-2xl font-black uppercase italic text-blue-950 tracking-tighter">Gestão de <span className="text-purple-600">Produtos</span></h3>
+                                <p className="text-gray-400 text-[10px] font-black uppercase tracking-widest mt-1">Configuração de Catálogo e Precificação</p>
+                            </div>
+                        </div>
+                        <div className="flex gap-2">
+                             <button onClick={() => setShowCategoryModal(true)} className="px-6 py-3 bg-white border-2 border-gray-100 text-gray-400 hover:text-blue-600 rounded-2xl font-black uppercase text-[10px] shadow-sm transition-all flex items-center gap-2"><Sliders size={16}/> Categorias</button>
+                             <button onClick={() => { setEditingProduct(null); setNewProd({ name: '', category: 'Copinho', price: '', flavor: '' }); setTempRecipe([]); setShowProductModal(true); }} className="px-6 py-3 bg-gray-950 text-white rounded-2xl font-black uppercase text-[10px] shadow-lg hover:bg-black transition-all active:scale-95 border-b-4 border-red-600 flex items-center gap-2"><Plus size={16}/> Novo Produto</button>
+                        </div>
                     </div>
+
                     <div className="bg-white rounded-[40px] shadow-sm border border-gray-100 overflow-hidden">
                         <table className="w-full text-left">
-                            <thead className="bg-gray-50 text-[9px] font-black text-gray-400 uppercase tracking-widest border-b"><tr><th className="px-8 py-5">Produto</th><th className="px-8 py-5">Categoria</th><th className="px-8 py-5 text-right">Preço</th><th className="px-8 py-5 text-right">Ações</th></tr></thead>
-                            <tbody className="divide-y divide-gray-50">{(filteredItems ?? []).map(item => (<tr key={item.id} className="hover:bg-blue-50/20 transition-all group"><td className="px-8 py-5 flex items-center gap-4"><div className="w-12 h-12 bg-gray-50 rounded-2xl flex items-center justify-center text-gray-300 shrink-0">{item.image_url ? <img src={item.image_url} className="w-full h-full object-cover rounded-2xl" /> : <ImageIcon size={20}/>}</div><div><p className="font-black uppercase italic text-sm text-gray-900">{item.name}</p>{item.recipe && (typeof item.recipe === 'string' ? JSON.parse(item.recipe) : item.recipe).length > 0 && (<p className="text-[7px] font-bold text-blue-500 uppercase tracking-widest mt-1">Composição: {(typeof item.recipe === 'string' ? JSON.parse(item.recipe) : item.recipe).map((r: any) => `${r.quantity}x ${r.stock_base_name}`).join(', ')}</p>)}</div></td><td className="px-8 py-5"><span className="px-3 py-1.5 rounded-xl bg-blue-50 text-blue-700 text-[9px] font-black uppercase border border-blue-100">{item.category}</span></td><td className="px-8 py-5 text-right font-black text-blue-900 italic">{formatCurrency(item.price)}</td><td className="px-8 py-5 text-right"><div className="flex justify-end gap-2 opacity-0 group-hover:opacity-100 transition-all"><button onClick={() => handleEditProduct(item)} className="p-2 text-blue-400 hover:text-blue-600 hover:bg-blue-50 rounded-xl transition-all" title="Editar Produto"><Edit3 size={18}/></button><button onClick={() => onDeleteItem(item.id)} className="p-2 text-red-300 hover:text-red-600 hover:bg-red-50 rounded-xl transition-all" title="Remover"><Trash2 size={18}/></button></div></td></tr>))}</tbody>
+                            <thead className="bg-gray-50/50 text-[10px] font-black text-gray-400 uppercase tracking-widest border-b">
+                                <tr>
+                                    <th className="px-8 py-5">Produto</th>
+                                    <th className="px-8 py-5">Categoria</th>
+                                    <th className="px-8 py-5 text-right">Preço</th>
+                                    <th className="px-8 py-5 text-center">Receita</th>
+                                    <th className="px-8 py-5 text-right">Ações</th>
+                                </tr>
+                            </thead>
+                            <tbody className="divide-y divide-gray-50">
+                                {filteredItems.map(item => (
+                                    <tr key={item.id} className="hover:bg-gray-50 transition-all group">
+                                        <td className="px-8 py-5 font-black text-blue-950 uppercase italic text-sm">{item.name}</td>
+                                        <td className="px-8 py-5"><span className="text-[9px] font-black text-gray-400 border border-gray-200 px-3 py-1 rounded-full uppercase">{item.category}</span></td>
+                                        <td className="px-8 py-5 text-right font-black text-blue-900">{formatCurrency(item.price)}</td>
+                                        <td className="px-8 py-5 text-center">
+                                            <div className="flex flex-wrap justify-center gap-1">
+                                                {(item.recipe ?? []).map((r, idx) => <span key={idx} className="bg-blue-50 text-blue-600 text-[7px] font-black px-1.5 py-0.5 rounded uppercase">{r.stock_base_name}</span>)}
+                                                {(item.recipe ?? []).length === 0 && <span className="text-[7px] text-gray-300 font-bold uppercase italic">Sem Receita</span>}
+                                            </div>
+                                        </td>
+                                        <td className="px-8 py-5 text-right">
+                                            <div className="flex justify-end gap-2 opacity-0 group-hover:opacity-100 transition-all">
+                                                <button onClick={() => handleEditProduct(item)} className="p-2 text-blue-600 hover:bg-blue-50 rounded-xl transition-all"><Edit3 size={18}/></button>
+                                                <button onClick={() => onDeleteItem(item.id)} className="p-2 text-red-300 hover:text-red-600 transition-all"><Trash size={18}/></button>
+                                            </div>
+                                        </td>
+                                    </tr>
+                                ))}
+                            </tbody>
                         </table>
                     </div>
                 </div>
             )}
         </div>
 
-        {/* MODAL: NOVO / EDITAR PRODUTO */}
+        {/* MODAL: NOVO PRODUTO */}
         {showProductModal && (
-            <div className="fixed inset-0 bg-black/80 backdrop-blur-md flex items-center justify-center z-[120] p-4">
-                <div className="bg-white rounded-[40px] shadow-2xl w-full max-w-2xl overflow-hidden animate-in zoom-in duration-300 border-t-8 border-blue-900 max-h-[95vh] flex flex-col">
-                    <div className="p-8 bg-gray-50 border-b flex justify-between items-center shrink-0"><h3 className="text-xl font-black uppercase italic tracking-tighter">{editingProduct ? 'Editar' : 'Novo'} <span className="text-blue-600">Produto</span></h3><button onClick={() => {setShowProductModal(false); setEditingProduct(null);}} className="bg-white p-2 rounded-full text-gray-400 hover:text-red-600 transition-all shadow-sm"><X size={24}/></button></div>
-                    <form onSubmit={handleSaveProduct} className="flex-1 overflow-y-auto p-10 space-y-8 no-scrollbar"><div className="grid grid-cols-1 md:grid-cols-2 gap-6"><div className="space-y-2"><label className="text-[10px] font-black text-gray-400 uppercase ml-2 tracking-widest">Identificação</label><input required value={newProd.name} onChange={e => setNewProd({...newProd, name: e.target.value})} className="w-full p-4 bg-gray-50 border-none rounded-2xl text-sm font-black uppercase italic outline-none focus:ring-4 focus:ring-blue-100 shadow-inner" placeholder="EX: CASCÃO MODERNO" /></div><div className="space-y-2"><label className="text-[10px] font-black text-gray-400 uppercase ml-2 tracking-widest">Preço de Venda (R$)</label><input required value={newProd.price} onChange={e => setNewProd({...newProd, price: e.target.value})} className="w-full p-4 bg-gray-50 border-none rounded-2xl text-lg font-black text-blue-900 italic outline-none focus:ring-4 focus:ring-blue-100 shadow-inner" placeholder="0,00" /></div></div><div className="grid grid-cols-1 md:grid-cols-2 gap-6"><div className="space-y-2"><label className="text-[10px] font-black text-gray-400 uppercase ml-2 tracking-widest">Categoria</label><select value={newProd.category} onChange={e => setNewProd({...newProd, category: e.target.value as any})} className="w-full p-4 bg-gray-50 border-none rounded-2xl text-xs font-black uppercase outline-none shadow-inner cursor-pointer">{PRODUCT_CATEGORIES.map(c => <option key={c} value={c}>{c}</option>)}</select></div><div className="space-y-2"><label className="text-[10px] font-black text-gray-400 uppercase ml-2 tracking-widest">Sabor / Detalhe</label><input value={newProd.flavor} onChange={e => setNewProd({...newProd, flavor: e.target.value})} className="w-full p-4 bg-gray-50 border-none rounded-2xl text-xs font-black uppercase italic outline-none focus:ring-4 focus:ring-blue-100 shadow-inner" placeholder="Padrão / Misto / etc" /></div></div><div className="bg-blue-50/50 p-6 rounded-[32px] border-2 border-blue-100 space-y-4"><div className="flex items-center gap-2 mb-2"><Beaker size={18} className="text-blue-600"/><h4 className="text-[10px] font-black text-blue-900 uppercase tracking-widest">Composição (Receita / Baixa de Estoque)</h4></div><div className="flex flex-col md:flex-row gap-2"><select value={newRecipeItem.stock_base_name} onChange={e => setNewRecipeItem({...newRecipeItem, stock_base_name: e.target.value})} className="flex-1 p-4 bg-white border border-blue-100 rounded-2xl text-[10px] font-black uppercase italic outline-none"><option value="">Selecione um insumo...</option>{(filteredStock ?? []).map(s => <option key={s.id} value={s.product_base}>{s.product_base} ({s.unit})</option>)}</select><input type="number" value={newRecipeItem.quantity} onChange={e => setNewRecipeItem({...newRecipeItem, quantity: e.target.value})} className="w-20 p-4 bg-white border border-blue-100 rounded-2xl text-center font-black" /><button type="button" onClick={() => { if(!newRecipeItem.stock_base_name) return; setTempRecipe([...tempRecipe, { stock_base_name: newRecipeItem.stock_base_name, quantity: Number(newRecipeItem.quantity) }]); setNewRecipeItem({ stock_base_name: '', quantity: '1' }); }} className="bg-blue-900 text-white p-4 rounded-2xl hover:bg-black transition-all shadow-md"><Plus size={18}/></button></div><div className="space-y-2">{tempRecipe.map((ri, idx) => (<div key={idx} className="bg-white p-3 rounded-xl border border-blue-50 flex justify-between items-center group"><p className="text-[10px] font-black uppercase text-blue-900 italic">{ri.quantity}x {ri.stock_base_name}</p><button type="button" onClick={() => setTempRecipe(tempRecipe.filter((_, i) => i !== idx))} className="p-1.5 text-red-300 hover:text-red-600 transition-colors"><Trash2 size={14}/></button></div>))}</div></div><button type="submit" disabled={isSubmitting} className="w-full py-5 bg-blue-900 text-white rounded-[24px] font-black uppercase text-xs shadow-xl active:scale-95 transition-all border-b-4 border-blue-950">{isSubmitting ? <Loader2 className="animate-spin" /> : <Save size={18}/>} Efetivar Dados</button></form>
+            <div className="fixed inset-0 bg-black/80 backdrop-blur-md flex items-center justify-center z-[100] p-4">
+                <div className="bg-white rounded-[48px] w-full max-w-2xl shadow-2xl animate-in zoom-in duration-300 overflow-hidden border-t-8 border-purple-600 max-h-[90vh] flex flex-col">
+                    <div className="p-8 border-b border-gray-100 flex justify-between items-center bg-gray-50/50">
+                        <div>
+                            <h3 className="text-2xl font-black uppercase italic text-blue-950 tracking-tighter">{editingProduct ? 'Editar' : 'Novo'} <span className="text-purple-600">Produto</span></h3>
+                            <p className="text-gray-400 text-[10px] font-black uppercase tracking-widest mt-1">Configurações de Venda e Composição</p>
+                        </div>
+                        <button onClick={() => setShowProductModal(false)} className="bg-white p-2 rounded-full text-gray-400 hover:text-red-600 transition-all border border-gray-100 shadow-sm"><X size={24}/></button>
+                    </div>
+                    <div className="overflow-y-auto no-scrollbar flex-1">
+                        <form onSubmit={handleSaveProduct} className="p-10 space-y-8">
+                            <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                                <div className="space-y-2">
+                                    <label className="text-[10px] font-black text-gray-400 uppercase ml-2 tracking-widest">Nome do Produto</label>
+                                    <input required value={newProd.name} onChange={e => setNewProd({...newProd, name: e.target.value})} className="w-full p-4 bg-gray-50 border-none rounded-2xl font-black text-gray-900 uppercase italic shadow-inner outline-none focus:ring-4 focus:ring-purple-50" placeholder="EX: SUNDAE DE MORANGO" />
+                                </div>
+                                <div className="space-y-2">
+                                    <label className="text-[10px] font-black text-gray-400 uppercase ml-2 tracking-widest">Categoria</label>
+                                    <select value={newProd.category} onChange={e => setNewProd({...newProd, category: e.target.value as IceCreamCategory})} className="w-full p-4 bg-gray-50 border-none rounded-2xl font-black text-gray-900 uppercase outline-none focus:ring-4 focus:ring-purple-50 cursor-pointer">
+                                        {PRODUCT_CATEGORIES.map(c => <option key={c} value={c}>{c}</option>)}
+                                    </select>
+                                </div>
+                            </div>
+                            <div className="grid grid-cols-2 gap-6">
+                                <div className="space-y-2">
+                                    <label className="text-[10px] font-black text-gray-400 uppercase ml-2 tracking-widest">Preço de Venda</label>
+                                    <input required value={newProd.price} onChange={e => setNewProd({...newProd, price: e.target.value})} className="w-full p-4 bg-purple-50/50 border-none rounded-2xl font-black text-purple-900 text-xl shadow-inner outline-none focus:ring-4 focus:ring-purple-100" placeholder="0,00" />
+                                </div>
+                                <div className="space-y-2">
+                                    <label className="text-[10px] font-black text-gray-400 uppercase ml-2 tracking-widest">Sabor / Obs</label>
+                                    <input value={newProd.flavor} onChange={e => setNewProd({...newProd, flavor: e.target.value})} className="w-full p-4 bg-gray-50 border-none rounded-2xl font-black text-gray-900 uppercase shadow-inner outline-none" placeholder="EX: MORANGO" />
+                                </div>
+                            </div>
+
+                            <div className="bg-gray-900 rounded-[32px] p-8 space-y-6 shadow-2xl">
+                                <div className="flex justify-between items-center border-b border-white/10 pb-4">
+                                    <h4 className="text-white font-black uppercase text-xs tracking-widest flex items-center gap-3"><Beaker size={20} className="text-purple-400" /> Receita / Insumos</h4>
+                                    <span className="text-[9px] font-black text-gray-400 uppercase">Dedução Automática</span>
+                                </div>
+                                <div className="space-y-4">
+                                    <div className="flex gap-3">
+                                        <select value={newRecipeItem.stock_base_name} onChange={e => setNewRecipeItem({...newRecipeItem, stock_base_name: e.target.value})} className="flex-1 p-3 bg-white/5 border border-white/10 rounded-xl font-black text-[10px] text-white uppercase outline-none focus:border-purple-500 transition-all">
+                                            <option value="" className="text-black">SELECIONE O INSUMO...</option>
+                                            {filteredStock.map(s => <option key={s.id} value={s.product_base} className="text-black">{s.product_base}</option>)}
+                                        </select>
+                                        <input type="number" step="0.01" value={newRecipeItem.quantity} onChange={e => setNewRecipeItem({...newRecipeItem, quantity: e.target.value})} className="w-20 p-3 bg-white/5 border border-white/10 rounded-xl font-black text-[10px] text-white text-center outline-none focus:border-purple-500" placeholder="QTD" />
+                                        <button type="button" onClick={() => { if(newRecipeItem.stock_base_name && Number(newRecipeItem.quantity) > 0) { setTempRecipe([...tempRecipe, { stock_base_name: newRecipeItem.stock_base_name, quantity: Number(newRecipeItem.quantity) }]); setNewRecipeItem({ stock_base_name: '', quantity: '1' }); } }} className="p-3 bg-purple-600 text-white rounded-xl hover:bg-purple-700 transition-all"><Plus size={20}/></button>
+                                    </div>
+                                    <div className="space-y-2 max-h-40 overflow-y-auto no-scrollbar">
+                                        {tempRecipe.map((r, idx) => (
+                                            <div key={idx} className="flex justify-between items-center p-3 bg-white/5 rounded-xl border border-white/5 group">
+                                                <span className="text-[10px] font-black text-gray-300 uppercase italic">{r.stock_base_name}</span>
+                                                <div className="flex items-center gap-4">
+                                                    <span className="text-[10px] font-black text-purple-400">{r.quantity} {getUnitAbbr(filteredStock.find(s => s.product_base === r.stock_base_name)?.unit || 'un')}</span>
+                                                    <button type="button" onClick={() => setTempRecipe(tempRecipe.filter((_, i) => i !== idx))} className="text-white/20 hover:text-red-500 transition-all"><X size={14}/></button>
+                                                </div>
+                                            </div>
+                                        ))}
+                                        {tempRecipe.length === 0 && <p className="text-center py-4 text-[9px] font-black text-white/20 uppercase tracking-[0.2em] italic">Nenhum insumo vinculado</p>}
+                                    </div>
+                                </div>
+                            </div>
+
+                            <div className="p-8 bg-gray-50 -mx-10 -mb-10 flex gap-4 mt-6">
+                                <button type="button" onClick={() => setShowProductModal(false)} className="flex-1 py-5 bg-white border-2 border-gray-200 rounded-[28px] font-black text-gray-400 uppercase text-xs active:scale-95 transition-all">CANCELAR</button>
+                                <button type="submit" disabled={isSubmitting} className="flex-1 py-5 bg-purple-600 text-white rounded-[28px] font-black uppercase text-xs shadow-2xl active:scale-95 transition-all border-b-4 border-purple-900 flex items-center justify-center gap-3">
+                                    {isSubmitting ? <Loader2 className="animate-spin" /> : <Save size={18}/>} SALVAR PRODUTO
+                                </button>
+                            </div>
+                        </form>
+                    </div>
                 </div>
             </div>
         )}
 
-        {/* MODAL: SANGRIAS */}
-        {showTransactionModal && (
-            <div className="fixed inset-0 bg-black/80 backdrop-blur-md flex items-center justify-center z-[120] p-4">
-                <div className="bg-white rounded-[40px] shadow-2xl w-full max-w-lg overflow-hidden border-t-8 border-red-600">
-                    <div className="p-8 bg-gray-50 border-b flex justify-between items-center"> 
-                        <h3 className="text-xl font-black uppercase italic tracking-tighter">Lançar <span className="text-red-600">Sangria</span></h3> 
-                        <button onClick={() => setShowTransactionModal(false)} className="bg-white p-2 rounded-full text-gray-400 hover:text-red-600 transition-all shadow-sm"><X size={24}/></button> 
+        {/* MODAL: NOVO INSUMO */}
+        {showNewStockModal && (
+            <div className="fixed inset-0 bg-black/80 backdrop-blur-md flex items-center justify-center z-[100] p-4">
+                <div className="bg-white rounded-[40px] w-full max-w-md shadow-2xl animate-in zoom-in duration-300 overflow-hidden border-t-8 border-orange-600">
+                    <div className="p-8 border-b bg-gray-50/50 flex justify-between items-center">
+                        <h3 className="text-xl font-black uppercase italic text-blue-950 flex items-center gap-3"><Package size={24} className="text-orange-600"/> Cadastrar Insumo</h3>
+                        <button onClick={() => setShowNewStockModal(false)} className="text-gray-400 hover:text-red-600 transition-all"><X size={24}/></button>
                     </div>
-                    <form onSubmit={handleSaveTransaction} className="p-10 space-y-6"> 
-                        <div className="grid grid-cols-2 gap-4"> 
-                            <div className="space-y-2"> 
-                                <label className="text-[10px] font-black text-gray-400 uppercase ml-2 tracking-widest">Valor (R$)</label> 
-                                <input required value={txForm.value} onChange={e => setTxForm({...txForm, value: e.target.value})} className="w-full p-4 bg-red-50 border-none rounded-2xl text-2xl font-black text-red-600 italic outline-none shadow-inner" placeholder="0,00" /> </div> <div className="space-y-2"> <label className="text-[10px] font-black text-gray-400 uppercase ml-2 tracking-widest flex justify-between"> Categoria <button type="button" onClick={() => setShowCategoryModal(true)} className="text-blue-600 hover:text-blue-800 transition-colors"><Settings size={12}/></button> </label> <select value={txForm.category} onChange={e => setTxForm({...txForm, category: e.target.value})} className="w-full p-4 bg-gray-50 border-none rounded-2xl text-xs font-black uppercase outline-none shadow-inner cursor-pointer"> {expenseCategories.map(cat => <option key={cat} value={cat}>{cat}</option>)} </select> </div> </div> <div className="space-y-2"> <label className="text-[10px] font-black text-gray-400 uppercase ml-2 tracking-widest">Descrição</label> <input required value={txForm.description} onChange={e => setTxForm({...txForm, description: e.target.value})} className="w-full p-4 bg-gray-50 border-none rounded-2xl text-sm font-black uppercase italic outline-none focus:ring-4 focus:ring-red-100 shadow-inner" placeholder="EX: COMPRA DE LEITE" /> </div> <button type="submit" disabled={isSubmitting} className="w-full py-5 bg-red-600 text-white rounded-[24px] font-black uppercase text-xs shadow-xl active:scale-95 transition-all border-b-4 border-red-900"> {isSubmitting ? <Loader2 className="animate-spin" size={20} /> : <Save size={18}/>} Confirmar Sangria </button> </form></div>
+                    <form onSubmit={async (e) => {
+                        e.preventDefault();
+                        const f = new FormData(e.currentTarget);
+                        const base = String(f.get('base')).toUpperCase().trim();
+                        const val = Number(f.get('val'));
+                        const unit = String(f.get('unit'));
+                        if(!base || isNaN(val)) return;
+                        setIsSubmitting(true);
+                        await onUpdateStock(effectiveStoreId, base, val, unit, 'adjustment');
+                        setIsSubmitting(false); setShowNewStockModal(false); window.location.reload();
+                    }} className="p-8 space-y-6">
+                        <div className="space-y-2">
+                            <label className="text-[10px] font-black text-gray-400 uppercase ml-2 tracking-widest">Nome do Insumo</label>
+                            <input name="base" required className="w-full p-4 bg-gray-50 border-none rounded-2xl font-black text-gray-900 uppercase italic shadow-inner outline-none focus:ring-4 focus:ring-orange-50" placeholder="EX: COPO 300ML" />
+                        </div>
+                        <div className="grid grid-cols-2 gap-4">
+                             <div className="space-y-2">
+                                <label className="text-[10px] font-black text-gray-400 uppercase ml-2 tracking-widest">Saldo Inicial</label>
+                                <input name="val" type="number" required className="w-full p-4 bg-gray-50 border-none rounded-2xl font-black text-gray-900 shadow-inner outline-none" placeholder="0" />
+                            </div>
+                            <div className="space-y-2">
+                                <label className="text-[10px] font-black text-gray-400 uppercase ml-2 tracking-widest">Unidade</label>
+                                <select name="unit" className="w-full p-4 bg-gray-50 border-none rounded-2xl font-black text-gray-900 uppercase outline-none cursor-pointer">
+                                    {STOCK_UNITS.map(u => <option key={u} value={u}>{u}</option>)}
+                                </select>
+                            </div>
+                        </div>
+                        <button type="submit" disabled={isSubmitting} className="w-full py-5 bg-orange-600 text-white rounded-[24px] font-black uppercase text-xs shadow-xl active:scale-95 transition-all border-b-4 border-orange-900 flex items-center justify-center gap-3">
+                            {isSubmitting ? <Loader2 className="animate-spin" /> : <Save size={18}/>} REGISTRAR INSUMO
+                        </button>
+                    </form>
+                </div>
             </div>
         )}
 
-        {/* MODAL: GERENCIAR CATEGORIAS DE DESPESA */}
-        {showCategoryModal && (
-            <div className="fixed inset-0 bg-black/90 backdrop-blur-sm flex items-center justify-center z-[130] p-4">
-                <div className="bg-white rounded-[40px] shadow-2xl w-full max-w-md overflow-hidden border-t-8 border-blue-600">
-                    <div className="p-8 bg-gray-50 border-b flex justify-between items-center"> 
-                        <h3 className="text-lg font-black uppercase italic tracking-tighter">Categorias de <span className="text-blue-600">Despesa</span></h3> 
-                        <button onClick={() => setShowCategoryModal(false)} className="bg-white p-2 rounded-full text-gray-400 hover:text-red-600 transition-all shadow-sm"><X size={20}/></button> 
-                    </div>
-                    <div className="p-8 space-y-6">
-                        <div className="flex gap-2">
-                            <input 
-                                value={newCategoryName} 
-                                onChange={e => setNewCategoryName(e.target.value)} 
-                                className="flex-1 p-4 bg-gray-50 rounded-2xl text-xs font-black uppercase outline-none shadow-inner border border-gray-100" 
-                                placeholder="NOVA CATEGORIA..." 
-                            />
-                            <button onClick={handleAddExpenseCategory} disabled={isSubmitting} className="bg-blue-600 text-white p-4 rounded-2xl shadow-lg hover:bg-blue-700 active:scale-95 transition-all">
-                                <Plus size={20}/>
-                            </button>
+        {/* MODAL: PRODUÇÃO DIÁRIA (ENTRADA EM MASSA) */}
+        {showInwardStockModal && (
+            <div className="fixed inset-0 bg-black/80 backdrop-blur-md flex items-center justify-center z-[100] p-4">
+                <div className="bg-white rounded-[48px] w-full max-w-4xl shadow-2xl animate-in zoom-in duration-300 overflow-hidden border-t-8 border-orange-600 max-h-[90vh] flex flex-col">
+                    <div className="p-8 border-b bg-gray-50/50 flex justify-between items-center">
+                        <div>
+                            <h3 className="text-2xl font-black uppercase italic text-blue-950 tracking-tighter">Produção <span className="text-orange-600">Diária</span></h3>
+                            <p className="text-gray-400 text-[10px] font-black uppercase tracking-widest mt-1">Incentive o lançamento de entradas de insumos (Ex: Baldes, Caldas)</p>
                         </div>
-                        <div className="max-h-60 overflow-y-auto no-scrollbar divide-y divide-gray-100 border rounded-2xl">
-                            {expenseCategories.map(cat => (
-                                <div key={cat} className="p-4 flex justify-between items-center hover:bg-gray-50">
-                                    <span className="text-[10px] font-black uppercase text-gray-700 italic">{cat}</span>
-                                    <button onClick={() => handleDeleteExpenseCategory(cat)} className="text-red-300 hover:text-red-600 transition-colors p-1">
-                                        <Trash2 size={14}/>
-                                    </button>
+                        <button onClick={() => setShowInwardStockModal(false)} className="bg-white p-2 rounded-full text-gray-400 hover:text-red-600 transition-all border border-gray-100 shadow-sm"><X size={24}/></button>
+                    </div>
+                    <div className="p-8 overflow-y-auto no-scrollbar flex-1">
+                        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+                            {filteredStock.map(st => (
+                                <div key={st.id} className="bg-gray-50 p-6 rounded-[32px] border border-gray-100 shadow-inner group transition-all focus-within:ring-4 focus-within:ring-orange-100">
+                                    <div className="flex justify-between items-start mb-4">
+                                        <span className="text-[10px] font-black text-gray-400 uppercase tracking-widest">Insumo</span>
+                                        <span className="text-[9px] font-bold text-orange-600 uppercase italic">Saldo: {st.stock_current} {getUnitAbbr(st.unit)}</span>
+                                    </div>
+                                    <p className="text-[11px] font-black text-blue-950 uppercase italic leading-none mb-3 truncate">{st.product_base}</p>
+                                    <div className="relative">
+                                        <input 
+                                            type="text" 
+                                            placeholder="ADICIONAR..." 
+                                            onChange={e => setBulkStockData({...bulkStockData, [st.product_base]: e.target.value})}
+                                            className="w-full p-4 bg-white border-none rounded-2xl font-black text-orange-700 placeholder-gray-200 outline-none shadow-sm text-lg"
+                                        />
+                                        <span className="absolute right-4 top-1/2 -translate-y-1/2 text-[9px] font-black text-gray-300 uppercase">{getUnitAbbr(st.unit)}</span>
+                                    </div>
                                 </div>
                             ))}
                         </div>
-                        <button onClick={() => setShowCategoryModal(false)} className="w-full py-4 bg-gray-900 text-white rounded-2xl font-black uppercase text-[10px] shadow-lg active:scale-95 transition-all">Concluir</button>
+                    </div>
+                    <div className="p-8 bg-gray-50 border-t flex gap-4">
+                         <button onClick={() => setShowInwardStockModal(false)} className="flex-1 py-5 bg-white border-2 border-gray-200 rounded-[28px] font-black text-gray-400 uppercase text-xs transition-all active:scale-95">CANCELAR</button>
+                         <button onClick={() => handleBulkStockUpdate('production')} disabled={isSubmitting} className="flex-1 py-5 bg-orange-600 text-white rounded-[28px] font-black uppercase text-xs shadow-2xl active:scale-95 transition-all border-b-4 border-orange-900 flex items-center justify-center gap-3">
+                             {isSubmitting ? <Loader2 className="animate-spin" /> : <CheckCircle2 size={18}/>} EFETIVAR PRODUÇÃO
+                         </button>
                     </div>
                 </div>
             </div>
         )}
 
-        {/* MODAL: SÓCIOS */}
+        {/* MODAL: INVENTÁRIO (AJUSTE EM MASSA) */}
+        {showInventoryModal && (
+            <div className="fixed inset-0 bg-black/80 backdrop-blur-md flex items-center justify-center z-[100] p-4">
+                <div className="bg-white rounded-[48px] w-full max-w-4xl shadow-2xl animate-in zoom-in duration-300 overflow-hidden border-t-8 border-blue-900 max-h-[90vh] flex flex-col">
+                    <div className="p-8 border-b bg-gray-50/50 flex justify-between items-center">
+                        <div>
+                            <h3 className="text-2xl font-black uppercase italic text-blue-950 tracking-tighter">Folha de <span className="text-blue-600">Inventário</span></h3>
+                            <p className="text-gray-400 text-[10px] font-black uppercase tracking-widest mt-1">Ajuste de saldos físicos conforme conferência real</p>
+                        </div>
+                        <button onClick={() => setShowInventoryModal(false)} className="bg-white p-2 rounded-full text-gray-400 hover:text-red-600 transition-all border border-gray-100 shadow-sm"><X size={24}/></button>
+                    </div>
+                    <div className="p-8 overflow-y-auto no-scrollbar flex-1">
+                        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+                            {filteredStock.map(st => (
+                                <div key={st.id} className="bg-blue-50/50 p-6 rounded-[32px] border border-blue-100 shadow-inner group transition-all focus-within:ring-4 focus-within:ring-blue-100">
+                                    <div className="flex justify-between items-start mb-4">
+                                        <span className="text-[10px] font-black text-gray-400 uppercase tracking-widest">Insumo</span>
+                                        <span className="text-[9px] font-bold text-blue-600 uppercase italic">Sist: {st.stock_current} {getUnitAbbr(st.unit)}</span>
+                                    </div>
+                                    <p className="text-[11px] font-black text-blue-950 uppercase italic leading-none mb-3 truncate">{st.product_base}</p>
+                                    <div className="relative">
+                                        <input 
+                                            type="text" 
+                                            placeholder="SALDO FÍSICO..." 
+                                            onChange={e => setBulkStockData({...bulkStockData, [st.product_base]: e.target.value})}
+                                            className="w-full p-4 bg-white border-none rounded-2xl font-black text-blue-900 placeholder-blue-100 outline-none shadow-sm text-lg"
+                                        />
+                                        <span className="absolute right-4 top-1/2 -translate-y-1/2 text-[9px] font-black text-gray-300 uppercase">{getUnitAbbr(st.unit)}</span>
+                                    </div>
+                                </div>
+                            ))}
+                        </div>
+                    </div>
+                    <div className="p-8 bg-gray-50 border-t flex gap-4">
+                         <button onClick={() => setShowInventoryModal(false)} className="flex-1 py-5 bg-white border-2 border-gray-200 rounded-[28px] font-black text-gray-400 uppercase text-xs transition-all active:scale-95">CANCELAR</button>
+                         <button onClick={() => handleBulkStockUpdate('adjustment')} disabled={isSubmitting} className="flex-1 py-5 bg-blue-900 text-white rounded-[28px] font-black uppercase text-xs shadow-2xl active:scale-95 transition-all border-b-4 border-blue-950 flex items-center justify-center gap-3">
+                             {isSubmitting ? <Loader2 className="animate-spin" /> : <Save size={18}/>} EFETIVAR INVENTÁRIO
+                         </button>
+                    </div>
+                </div>
+            </div>
+        )}
+
+        {/* MODAL: SANGRIAS E CATEGORIAS */}
+        {showTransactionModal && (
+            <div className="fixed inset-0 bg-black/80 backdrop-blur-md flex items-center justify-center z-[100] p-4">
+                <div className="bg-white rounded-[40px] w-full max-w-md shadow-2xl animate-in zoom-in duration-300 overflow-hidden border-t-8 border-red-600">
+                    <div className="p-8 border-b bg-gray-50/50 flex justify-between items-center">
+                        <h3 className="text-xl font-black uppercase italic text-blue-950 flex items-center gap-3"><ArrowDownCircle className="text-red-600" size={24}/> Registrar Saída</h3>
+                        <button onClick={() => setShowTransactionModal(false)} className="text-gray-400 hover:text-red-600 transition-all"><X size={24}/></button>
+                    </div>
+                    <form onSubmit={handleSaveTransaction} className="p-8 space-y-6">
+                        <div className="space-y-2">
+                            <label className="text-[10px] font-black text-gray-400 uppercase ml-2 tracking-widest">Categoria da Saída</label>
+                            <select value={txForm.category} onChange={e => setTxForm({...txForm, category: e.target.value})} className="w-full p-4 bg-gray-50 border-none rounded-2xl font-black text-gray-900 uppercase italic shadow-inner outline-none focus:ring-4 focus:ring-red-50 cursor-pointer">
+                                {expenseCategories.map(c => <option key={c} value={c}>{c}</option>)}
+                            </select>
+                        </div>
+                        <div className="space-y-2">
+                            <label className="text-[10px] font-black text-gray-400 uppercase ml-2 tracking-widest">Valor da Sangria</label>
+                            <input value={txForm.value} onChange={e => setTxForm({...txForm, value: e.target.value})} className="w-full p-4 bg-red-50/50 border-none rounded-2xl font-black text-red-700 text-2xl shadow-inner outline-none focus:ring-4 focus:ring-red-100" placeholder="0,00" />
+                        </div>
+                        <div className="space-y-2">
+                            <label className="text-[10px] font-black text-gray-400 uppercase ml-2 tracking-widest">Descrição / Motivo</label>
+                            <input value={txForm.description} onChange={e => setTxForm({...txForm, description: e.target.value})} className="w-full p-4 bg-gray-50 border-none rounded-2xl font-black text-gray-900 uppercase italic shadow-inner outline-none" placeholder="EX: PAGAMENTO ENERGIA" />
+                        </div>
+                        <button type="submit" disabled={isSubmitting} className="w-full py-5 bg-red-600 text-white rounded-[24px] font-black uppercase text-xs shadow-xl active:scale-95 transition-all border-b-4 border-red-900 flex items-center justify-center gap-3">
+                            {isSubmitting ? <Loader2 className="animate-spin" /> : <Save size={18}/>} EFETIVAR SANGRIA
+                        </button>
+                    </form>
+                </div>
+            </div>
+        )}
+
+        {/* MODAL: SÓCIOS E PARTILHA */}
         {showPartnersModal && (
-            <div className="fixed inset-0 bg-black/80 backdrop-blur-md flex items-center justify-center z-[110] p-4"><div className="bg-white rounded-[40px] w-full max-w-xl shadow-2xl overflow-hidden border-t-8 border-blue-950"><div className="p-8 border-b bg-gray-50 flex justify-between items-center"> <div><h3 className="text-xl font-black uppercase italic tracking-tighter">Configuração de <span className="text-red-600">Sócios</span></h3></div> <button onClick={() => setShowPartnersModal(false)} className="text-gray-400 hover:text-red-600 transition-all"><X size={32}/></button> </div><div className="p-10 space-y-8"> <div className="bg-blue-50 p-6 rounded-[32px] space-y-4 border border-blue-100"> <label className="text-[10px] font-black text-blue-900 uppercase ml-2 tracking-widest">Novo Sócio</label> <div className="flex gap-2"><input value={newPartner.name} onChange={e => setNewPartner({...newPartner, name: e.target.value})} placeholder="NOME DO SÓCIO" className="flex-1 p-4 bg-white rounded-2xl font-black text-xs uppercase outline-none shadow-sm" /><input value={newPartner.percentage} onChange={e => setNewPartner({...newPartner, percentage: e.target.value})} placeholder="%" className="w-20 p-4 bg-white rounded-2xl text-center font-black text-xs outline-none shadow-sm" /><button onClick={handleAddPartner} disabled={isSubmitting} className="bg-blue-950 text-white p-4 rounded-2xl hover:bg-black transition-all shadow-md">{isSubmitting ? <Loader2 className="animate-spin" size={20}/> : <Plus size={20}/>}</button></div> </div> <div className="space-y-3"> <p className="text-[10px] font-black text-gray-400 uppercase ml-2 tracking-widest">Sócios Atuais</p> <div className="divide-y divide-gray-50 border border-gray-100 rounded-[32px] overflow-hidden"> {(partners ?? []).map(p => (<div key={p.id} className="p-4 bg-white flex justify-between items-center group"><div><p className="font-black text-gray-900 uppercase italic text-[11px] leading-none">{p.partner_name}</p><p className="text-[9px] font-bold text-blue-600 mt-1 uppercase tracking-widest">{p.percentage}% de participação</p></div><button onClick={() => handleRemovePartner(p.id)} className="p-2 text-red-300 hover:text-red-600 hover:bg-red-50 rounded-xl transition-all"><Trash2 size={16}/></button></div>))} </div> </div> <button onClick={() => setShowPartnersModal(false)} className="w-full py-5 bg-blue-950 text-white rounded-[24px] font-black uppercase text-xs shadow-2xl transition-all hover:bg-black">Concluir</button> </div></div></div>
+            <div className="fixed inset-0 bg-black/80 backdrop-blur-md flex items-center justify-center z-[100] p-4">
+                <div className="bg-white rounded-[40px] w-full max-w-lg shadow-2xl animate-in zoom-in duration-300 overflow-hidden border-t-8 border-gray-900">
+                    <div className="p-8 border-b bg-gray-50/50 flex justify-between items-center">
+                        <h3 className="text-xl font-black uppercase italic text-blue-950 flex items-center gap-3"><Users className="text-blue-900" size={24}/> Configurar Sócios</h3>
+                        <button onClick={() => setShowPartnersModal(false)} className="text-gray-400 hover:text-red-600 transition-all"><X size={24}/></button>
+                    </div>
+                    <div className="p-8 space-y-6">
+                        <div className="space-y-4">
+                            <div className="flex gap-2">
+                                <input value={newPartner.name} onChange={e => setNewPartner({...newPartner, name: e.target.value})} className="flex-1 p-3 bg-gray-50 rounded-xl font-black text-[10px] uppercase outline-none" placeholder="NOME DO SÓCIO" />
+                                <input value={newPartner.percentage} onChange={e => setNewPartner({...newPartner, percentage: e.target.value})} className="w-20 p-3 bg-gray-50 rounded-xl font-black text-[10px] text-center outline-none" placeholder="%" />
+                                <button onClick={handleAddPartner} disabled={isSubmitting} className="p-3 bg-gray-900 text-white rounded-xl hover:bg-black transition-all shadow-md"><Plus size={18}/></button>
+                            </div>
+                            <div className="space-y-2">
+                                {partners.map(p => (
+                                    <div key={p.id} className="flex justify-between items-center p-3 bg-gray-50 rounded-xl border border-gray-100 group">
+                                        <span className="text-[10px] font-black text-blue-950 uppercase italic">{p.partner_name} ({p.percentage}%)</span>
+                                        <button onClick={() => handleRemovePartner(p.id)} className="text-gray-200 hover:text-red-600 opacity-0 group-hover:opacity-100 transition-all"><Trash2 size={16}/></button>
+                                    </div>
+                                ))}
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        )}
+
+        {/* MODAL: CANCELAR VENDA */}
+        {showCancelModal && (
+            <div className="fixed inset-0 bg-black/80 backdrop-blur-md flex items-center justify-center z-[110] p-4">
+                <div className="bg-white rounded-[40px] p-10 max-w-sm w-full text-center shadow-2xl animate-in zoom-in duration-200">
+                    <div className="p-5 bg-red-50 text-red-600 rounded-full w-fit mx-auto mb-6"><AlertTriangle size={48} /></div>
+                    <h3 className="text-2xl font-black text-gray-900 uppercase italic mb-2 tracking-tighter">Estornar <span className="text-red-600">Venda?</span></h3>
+                    <p className="text-gray-400 text-xs font-bold uppercase mb-8">Esta ação irá anular a entrada de caixa e devolver os insumos ao estoque.</p>
+                    <div className="space-y-4">
+                        <input value={cancelReason} onChange={e => setCancelReason(e.target.value.toUpperCase())} className="w-full p-4 bg-gray-50 border-2 border-gray-100 rounded-2xl text-[10px] font-black uppercase outline-none focus:border-red-600 mb-4 shadow-inner" placeholder="MOTIVO DO ESTORNO..." />
+                        <div className="flex gap-3">
+                            <button onClick={() => setShowCancelModal(null)} className="flex-1 py-4 bg-gray-100 text-gray-500 rounded-2xl font-black uppercase text-[10px]">Voltar</button>
+                            <button onClick={handleCancelSale} disabled={!cancelReason || isSubmitting} className="flex-1 py-4 bg-red-600 text-white rounded-2xl font-black uppercase text-[10px] shadow-lg active:scale-95 disabled:opacity-30">Confirmar</button>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        )}
+
+        {/* MODAL: CATEGORIAS DE DESPESA */}
+        {showCategoryModal && (
+            <div className="fixed inset-0 bg-black/80 backdrop-blur-md flex items-center justify-center z-[100] p-4">
+                <div className="bg-white rounded-[40px] w-full max-w-md shadow-2xl animate-in zoom-in duration-300 overflow-hidden border-t-8 border-gray-100">
+                    <div className="p-8 border-b bg-gray-50/50 flex justify-between items-center">
+                        <h3 className="text-xl font-black uppercase italic text-blue-950 flex items-center gap-3"><Sliders className="text-gray-400" size={24}/> Categorias Sangria</h3>
+                        <button onClick={() => setShowCategoryModal(false)} className="text-gray-400 hover:text-red-600 transition-all"><X size={24}/></button>
+                    </div>
+                    <div className="p-8 space-y-6">
+                        <div className="flex gap-2">
+                            <input value={newCategoryName} onChange={e => setNewCategoryName(e.target.value)} className="flex-1 p-3 bg-gray-50 rounded-xl font-black text-[10px] uppercase outline-none" placeholder="NOVA CATEGORIA..." />
+                            <button onClick={handleAddExpenseCategory} disabled={isSubmitting} className="p-3 bg-gray-900 text-white rounded-xl hover:bg-black transition-all shadow-md"><Plus size={18}/></button>
+                        </div>
+                        <div className="space-y-2 max-h-60 overflow-y-auto no-scrollbar">
+                            {expenseCategories.map(cat => (
+                                <div key={cat} className="flex justify-between items-center p-3 bg-gray-50 rounded-xl border border-gray-100 group">
+                                    <span className="text-[10px] font-black text-gray-700 uppercase italic">{cat}</span>
+                                    <button onClick={() => handleDeleteExpenseCategory(cat)} className="text-gray-200 hover:text-red-600 opacity-0 group-hover:opacity-100 transition-all"><Trash size={16}/></button>
+                                </div>
+                            ))}
+                        </div>
+                    </div>
+                </div>
+            </div>
         )}
     </div>
   );

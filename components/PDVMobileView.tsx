@@ -35,10 +35,10 @@ interface PDVMobileViewProps {
   onCancelSale: (saleCode: string, reason: string) => Promise<void>;
   onAddTransaction: (tx: IceCreamTransaction) => Promise<void>;
   dailyData: any;
-  // Fix: Updated handlePrintTicket signature to match printThermalTicket in IceCreamModule.tsx
   handlePrintTicket: (items: IceCreamDailySale[], saleCode: string, isFiado: boolean, buyer?: string) => void;
   isSubmitting: boolean;
   setIsSubmitting: (s: boolean) => void;
+  effectiveStoreId: string; // Nova prop para garantir UUID válido da loja
 }
 
 const PDVMobileView: React.FC<PDVMobileViewProps> = (props) => {
@@ -48,7 +48,7 @@ const PDVMobileView: React.FC<PDVMobileViewProps> = (props) => {
   const handleMobileAddToCart = (item: IceCreamItem) => {
     const newItem: IceCreamDailySale = { 
         id: `cart-mob-${Date.now()}-${Math.random()}`, 
-        storeId: props.user.storeId || '',
+        storeId: props.effectiveStoreId, // Correção: Usa a loja ativa e não o storeId do usuário (que pode ser null)
         itemId: item.id, 
         productName: item.name, 
         category: item.category, 
@@ -86,7 +86,6 @@ const PDVMobileView: React.FC<PDVMobileViewProps> = (props) => {
         }));
         await props.onAddSales(finalCart);
         
-        // Fix: Added call to handlePrintTicket to ensure mobile sales are printed after success
         props.handlePrintTicket(finalCart, saleCode, props.paymentMethod === 'Fiado', props.buyerName);
 
         props.setCart([]); 
@@ -95,7 +94,8 @@ const PDVMobileView: React.FC<PDVMobileViewProps> = (props) => {
         setAmountPaid('');
         setStep('categories');
     } catch (e: any) { 
-        alert(`FALHA: ${e.message}`); 
+        console.error("Erro ao finalizar venda mobile:", e);
+        alert(`FALHA NA GRAVAÇÃO: Verifique os dados e tente novamente. Detalhes: ${e.message}`); 
     } finally { 
         props.setIsSubmitting(false); 
     }
