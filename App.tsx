@@ -134,7 +134,6 @@ const App: React.FC = () => {
             storeId: p.store_id, month: p.month, brand: p.brand, category: p.category, pairsSold: Number(p.pairs_sold || 0), revenue: Number(p.revenue || 0)
         })));
 
-        // Fix: Mapping snake_case from DB to camelCase properties defined in Cota interface
         if (cData) setCotas(cData.map(c => ({ 
             id: c.id, 
             storeId: c.store_id, 
@@ -150,9 +149,13 @@ const App: React.FC = () => {
             createdAt: new Date(c.created_at) 
         })));
         
-        if (cs) setCotaSettings(cs.map(s => ({ storeId: s.store_id, budget_value: Number(s.budget_value), manager_percent: Number(s.manager_percent) })));
+        if (cs) setCotaSettings(cs.map(s => ({ 
+            storeId: s.store_id, 
+            budgetValue: Number(s.budget_value || 0), 
+            managerPercent: Number(s.manager_percent || 30) 
+        })));
         
-        if (cd) setCotaDebts(cd.map(d => ({ id: d.id, store_id: d.store_id, month: d.month, value: Number(d.value), description: d.description })));
+        if (cd) setCotaDebts(cd.map(d => ({ id: d.id, storeId: d.store_id, month: d.month, value: Number(d.value), description: d.description })));
         if (dl) setDownloads(dl);
         if (ce) setCashErrors(ce);
         if (sl) setLogs(sl);
@@ -210,69 +213,44 @@ const App: React.FC = () => {
       await fetchData();
   };
 
-  const handleIceCreamSale = async (salesList: IceCreamDailySale[]) => {
-      for (const sale of salesList) {
-          const payload: any = {
-              store_id: sale.storeId,
-              product_name: sale.productName,
-              category: sale.category || null,
-              flavor: sale.flavor || 'Padrão',
-              units_sold: Number(sale.unitsSold),
-              unit_price: Number(sale.unitPrice),
-              total_value: Number(sale.totalValue),
-              payment_method: sale.paymentMethod,
-              buyer_name: sale.buyer_name || null,
-              sale_code: sale.saleCode,
-              status: 'active'
-          };
+  // Fix: Definition of handleIceCreamSale to persist sales and promissory notes in the database
+  const handleIceCreamSale = async (salesBatch: IceCreamDailySale[]) => {
+    try {
+      const snakeSales = salesBatch.map(s => ({
+        store_id: s.storeId,
+        item_id: s.itemId,
+        product_name: s.productName,
+        category: s.category,
+        flavor: s.flavor,
+        units_sold: Number(s.unitsSold),
+        unit_price: Number(s.unitPrice),
+        total_value: Number(s.totalValue),
+        payment_method: s.paymentMethod,
+        buyer_name: s.buyer_name,
+        sale_code: s.saleCode,
+        status: 'active'
+      }));
 
-          if (sale.itemId && typeof sale.itemId === 'string' && sale.itemId.length === 36) {
-              payload.item_id = sale.itemId;
-          }
+      const { error: saleError } = await supabase.from('ice_cream_daily_sales').insert(snakeSales);
+      if (saleError) throw saleError;
 
-          const { data: savedSale, error } = await supabase
-              .from('ice_cream_daily_sales')
-              .insert([payload])
-              .select()
-              .single();
-
-          if (error) throw error;
-
-          if (sale.paymentMethod === 'Fiado') {
-              try {
-                  // CORREÇÃO OBRIGATÓRIA PAYLOAD PROMISSÓRIA (FIADO)
-                  const promissoryPayload = {
-                      store_id: sale.storeId,
-                      total_value: Number(sale.totalValue),
-                      sale_code: sale.saleCode,
-                      attendant_name: user?.name || 'Sistema',
-                      employee_buyer: sale.buyer_name || 'Desconhecido'
-                  };
-                  await supabase.from('ice_cream_promissory_notes').insert([promissoryPayload]);
-              } catch (pErr) {
-                  console.error("Erro ao registrar promissória:", pErr);
-              }
-          }
-
-          const item = iceCreamItems.find(i => i.id === sale.itemId);
-          if (item && item.recipe && item.recipe.length > 0) {
-              for (const recipePart of item.recipe) {
-                  const { data: stockItem } = await supabase.from('ice_cream_stock')
-                    .select('*')
-                    .eq('store_id', sale.storeId)
-                    .eq('product_base', recipePart.stock_base_name)
-                    .maybeSingle();
-
-                  if (stockItem) {
-                      const reduction = Number(recipePart.quantity) * Number(sale.unitsSold);
-                      await supabase.from('ice_cream_stock')
-                        .update({ stock_current: Number(stockItem.stock_current) - reduction })
-                        .eq('id', stockItem.id);
-                  }
-              }
-          }
+      const firstSale = salesBatch[0];
+      if (firstSale && firstSale.paymentMethod === 'Fiado') {
+        const totalValue = salesBatch.reduce((acc, curr) => acc + curr.totalValue, 0);
+        await supabase.from('ice_cream_promissory_notes').insert([{
+          store_id: firstSale.storeId,
+          buyer_name: firstSale.buyer_name || 'DESCONHECIDO',
+          value: totalValue,
+          status: 'pending',
+          sale_id: firstSale.saleCode
+        }]);
       }
-      fetchData();
+      
+      await fetchData();
+    } catch (error) {
+      console.error("Erro ao registrar venda de sorvete:", error);
+      throw error;
+    }
   };
 
   const logSystemAction = async (action: string, details: string) => {
@@ -310,12 +288,17 @@ const App: React.FC = () => {
       <div className={`fixed lg:relative z-50 w-64 h-full bg-gray-950 border-r border-white/5 flex flex-col shadow-2xl transition-transform duration-300 ${isSidebarOpen ? 'translate-x-0' : '-translate-x-full lg:translate-x-0'}`}>
         <div className="p-8 border-b border-white/5 mb-4 flex justify-between items-center">
           <div className="flex items-center gap-3">
-            <div className="w-10 h-10 rounded-full bg-white flex items-center justify-center p-1 shrink-0 overflow-hidden shadow-lg">
-                <img src={BRAND_LOGO} alt="Real Admin Logo" className="w-full h-full object-contain" />
+            <div className="w-10 h-10 min-w-[40px] min-h-[40px] rounded-full bg-white flex items-center justify-center p-1 shrink-0 overflow-hidden shadow-lg border border-white">
+                <img 
+                  src={BRAND_LOGO} 
+                  alt="Real Admin Logo" 
+                  loading="eager"
+                  className="w-full h-full object-contain" 
+                />
             </div>
             <div>
               <h1 className="text-xl font-black italic uppercase tracking-tighter leading-none">Real <span className="text-red-600">Admin</span></h1>
-              <p className="text-[8px] font-black text-blue-400 uppercase tracking-widest mt-1 opacity-50">Enterprise v28.2</p>
+              <p className="text-[8px] font-black text-blue-400 uppercase tracking-widest mt-1 opacity-50">Enterprise v28.8</p>
             </div>
           </div>
           <button onClick={() => setIsSidebarOpen(false)} className="lg:hidden text-gray-500 hover:text-white p-2"><X size={24}/></button>
@@ -360,7 +343,15 @@ const App: React.FC = () => {
       <div className="flex-1 flex flex-col h-full bg-[#f8fafc] overflow-hidden text-blue-950 relative">
         <header className="lg:hidden flex items-center justify-between p-4 bg-white border-b shrink-0 z-40 shadow-sm">
            <button onClick={() => setIsSidebarOpen(true)} className="p-2.5 bg-gray-100 rounded-xl text-gray-600 active:scale-95 transition-transform"><Menu size={24}/></button>
-           <h1 className="text-xl font-black uppercase italic tracking-tighter">Real <span className="text-red-600">Admin</span></h1>
+           <div className="flex items-center gap-2">
+             <img 
+               src={BRAND_LOGO} 
+               alt="Logo" 
+               loading="eager"
+               className="w-10 h-10 min-w-[40px] min-h-[40px] rounded-full object-contain border border-gray-100 shadow-sm" 
+             />
+             <h1 className="text-xl font-black uppercase italic tracking-tighter leading-none">Real <span className="text-red-600">Admin</span></h1>
+           </div>
            <div className="p-2.5 bg-blue-50 text-blue-600 rounded-xl"><Wifi size={20}/></div>
         </header>
 
@@ -370,17 +361,47 @@ const App: React.FC = () => {
                 if (currentView === 'dashboard_manager' && can('MODULE_DASHBOARD_MANAGER')) return <DashboardManager user={user} stores={stores} performanceData={performanceData} purchasingData={purchasingData} />;
                 if (currentView === 'metas' && can('MODULE_METAS')) return <GoalRegistration stores={stores} performanceData={performanceData} onUpdateData={handlePerformanceImport} />;
                 if (currentView === 'cotas' && can('MODULE_COTAS')) return <CotasManagement user={user} stores={stores} cotas={cotas} cotaSettings={cotaSettings} cotaDebts={cotaDebts} performanceData={performanceData} onAddCota={async (c) => { 
-                    // Fix: Using c.paymentTerms instead of non-existent c.payment_terms per type definition
                     const payload = { store_id: c.storeId, brand: c.brand, classification: c.classification, total_value: Number(c.totalValue), shipment_date: c.shipmentDate, payment_terms: c.paymentTerms, pairs: Number(c.pairs), installments: Array.isArray(c.installments) ? c.installments : c.installments || {}, created_by_role: c.createdByRole, status: c.status || 'pending' };
                     await supabase.from('cotas').insert([payload]); fetchData(); 
                 }} onUpdateCota={async (id, u) => { 
                     const payload: any = {};
                     if (u.storeId) payload.store_id = u.storeId; if (u.brand) payload.brand = u.brand; if (u.classification) payload.classification = u.classification; if (u.totalValue !== undefined) payload.total_value = Number(u.totalValue); if (u.shipmentDate) payload.shipment_date = u.shipmentDate; if (u.paymentTerms) payload.payment_terms = u.paymentTerms; if (u.pairs !== undefined) payload.pairs = Number(u.pairs); if (u.installments) payload.installments = u.installments; if (u.createdByRole) payload.created_by_role = u.createdByRole; if (u.status) payload.status = u.status;
                     await supabase.from('cotas').update(payload).eq('id', id); fetchData(); 
-                }} onDeleteCota={async (id) => { await supabase.from('cotas').delete().eq('id', id); fetchData(); }} onSaveSettings={async (s) => { await supabase.from('cota_settings').upsert({ store_id: s.storeId, budget_value: Number(s.budgetValue), manager_percent: Number(s.managerPercent) }, { onConflict: 'store_id' }); fetchData(); }} onSaveDebts={async (d) => { await supabase.from('cota_debts').upsert({ store_id: d.storeId, month: d.month, value: Number(d.value), description: d.description }, { onConflict: 'store_id,month' }); fetchData(); }} onDeleteDebt={async (id) => { await supabase.from('cota_debts').delete().eq('id', id); fetchData(); }} />;
+                }} onDeleteCota={async (id) => { await supabase.from('cotas').delete().eq('id', id); fetchData(); }} onSaveSettings={async (s) => { 
+                    const { error } = await supabase.from('cota_settings').upsert({ 
+                        store_id: s.store_id, 
+                        budget_value: Number(s.budgetValue), 
+                        manager_percent: Number(s.managerPercent) 
+                    }, { onConflict: 'store_id' }); 
+                    if (error) {
+                        alert("Falha ao salvar no banco de dados: " + error.message);
+                    } else {
+                        setCotaSettings(prev => {
+                            const filtered = prev.filter(ps => ps.storeId !== s.storeId);
+                            return [...filtered, { storeId: s.storeId, budgetValue: Number(s.budgetValue), managerPercent: Number(s.managerPercent) }];
+                        });
+                        fetchData();
+                    }
+                }} onSaveDebts={async (d) => { 
+                    const { error } = await supabase.from('cota_debts').upsert({ 
+                        store_id: d.storeId, 
+                        month: d.month, 
+                        value: Number(d.value), 
+                        description: d.description 
+                    }, { onConflict: 'store_id,month' }); 
+                    if (error) {
+                        alert("Erro ao salvar gastos na Engenharia de Compras: " + error.message);
+                    } else {
+                        // Sincroniza estado local para resposta imediata na interface
+                        setCotaDebts(prev => {
+                            const filtered = prev.filter(pd => !(pd.storeId === d.storeId && pd.month === d.month));
+                            return [...filtered, { storeId: d.storeId, month: d.month, value: Number(d.value), description: d.description }];
+                        });
+                        fetchData(); 
+                    }
+                }} onDeleteDebt={async (id) => { await supabase.from('cota_debts').delete().eq('id', id); fetchData(); }} />;
                 if (currentView === 'purchases' && can('MODULE_PURCHASES')) return <DashboardPurchases stores={stores} data={purchasingData} onImport={async (d) => { await supabase.from('product_performance').insert(d); fetchData(); }} />;
                 if (currentView === 'icecream' && can('MODULE_ICECREAM')) return <IceCreamModule user={user} stores={stores} items={iceCreamItems} stock={iceCreamStock} sales={iceCreamSales} finances={iceCreamFinances} promissories={iceCreamPromissories} can={can} onAddSales={handleIceCreamSale} onAddTransaction={async (tx) => { 
-                    // MAPEAMENTO OBRIGATÓRIO PARA ICE_CREAM_FINANCES (CAMEL -> SNAKE + MODELO FINAL)
                     const payload = {
                         store_id: tx.storeId,
                         date: tx.date,
@@ -394,7 +415,6 @@ const App: React.FC = () => {
                 }} onDeleteItem={async (id) => { await supabase.from('ice_cream_items').delete().eq('id', id); fetchData(); }} onAddItem={async (name, cat, price, flavor, initialStock, unit, cons, target, recipe) => { const storeId = target || user.storeId; await supabase.from('ice_cream_items').insert([{ name, category: cat, price: Number(price), flavor, consumption_per_sale: Number(cons), store_id: storeId, recipe: JSON.stringify(recipe || []) }]); fetchData(); }} onUpdatePrice={async (id, p) => { await supabase.from('ice_cream_items').update({ price: Number(p) }).eq('id', id); fetchData(); }} onCancelSale={async (code, reason) => { await supabase.from('ice_cream_daily_sales').update({ status: 'canceled', cancel_reason: reason, canceled_by: user.name }).eq('sale_code', code); fetchData(); }} onUpdateStock={async (sid, base, val, unit, type) => { const existing = iceCreamStock.find(s => s.store_id === sid && s.product_base === base); if (existing) await supabase.from('ice_cream_stock').update({ stock_current: type === 'production' ? Number(existing.stock_current) + Number(val) : Number(val) }).eq('id', existing.id); else await supabase.from('ice_cream_stock').insert([{ store_id: sid, product_base: base, stock_initial: Number(val), stock_current: Number(val), unit }]); fetchData(); }} liquidatePromissory={async (id) => { await supabase.from('ice_cream_promissory_notes').delete().eq('id', id); fetchData(); }} />;
                 if (currentView === 'cash_register' && can('MODULE_CASH_REGISTER')) return <CashRegisterModule user={user} sales={iceCreamSales} finances={iceCreamFinances} closures={closures} onAddClosure={async (c) => { await supabase.from('cash_register_closures').insert([{ ...c, store_id: user.storeId, closed_by: user.name, total_sales: Number(c.totalSales), total_expenses: Number(c.totalExpenses), balance: Number(c.balance) }]); fetchData(); }} />;
                 if (currentView === 'financial' && can('MODULE_FINANCIAL')) return <FinancialModule user={user} store={stores.find(s => s.id === user.storeId)} sales={[]} receipts={receipts} onAddSale={async () => {}} onDeleteSale={async () => {}} onAddReceipt={async (r) => { 
-                    // MAPEAMENTO OBRIGATÓRIO PARA RECEIPTS (CAMEL -> SNAKE)
                     const payload = {
                         store_id: r.storeId,
                         issuer_name: r.issuerName,
@@ -409,10 +429,7 @@ const App: React.FC = () => {
                     fetchData(); 
                 }} />;
                 if (currentView === 'cash_errors' && can('MODULE_CASH_ERRORS')) return <CashErrorsModule user={user} stores={stores} errors={cashErrors} onAddError={async (e) => { await supabase.from('cash_errors').insert([{...e, value: Number(e.value)}]); fetchData(); }} onUpdateError={async (e) => { await supabase.from('cash_errors').update({...e, value: Number(e.value)}).eq('id', e.id); fetchData(); }} onDeleteError={async (id) => { await supabase.from('cash_errors').delete().eq('id', id); fetchData(); }} />;
-                
-                // Fix: Comentário corrigido para estilo JS padrão dentro da IIFE para evitar erro de sintaxe
                 if (currentView === 'agenda' && can('MODULE_AGENDA')) return <AgendaSystem user={user} tasks={agendaTasks} onAddTask={async (t) => { await supabase.from('agenda_tasks').insert([{ user_id: t.userId, title: t.title, description: t.description, due_date: t.dueDate, due_time: t.dueTime || '00:00:00', priority: t.priority, reminder_level: t.reminder_level }]); fetchData(); }} onUpdateTask={async (t) => { await supabase.from('agenda_tasks').update({ title: t.title, description: t.description, due_date: t.dueDate, due_time: t.dueTime, priority: t.priority, is_completed: t.isCompleted, completed_note: t.completed_note, reminder_level: t.reminder_level }).eq('id', t.id); fetchData(); }} onDeleteTask={async (id) => { await supabase.from('agenda_tasks').delete().eq('id', id); fetchData(); }} />;
-                
                 if (currentView === 'downloads' && can('MODULE_DOWNLOADS')) return <DownloadsModule user={user} items={downloads} onUpload={async (i) => { await supabase.from('downloads').insert([i]); fetchData(); }} onDelete={async (id) => { await supabase.from('downloads').delete().eq('id', id); fetchData(); }} />;
                 if (currentView === 'marketing' && can('MODULE_MARKETING')) return <InstagramMarketing user={user} store={stores.find(s => s.id === user.storeId)} />;
                 if (currentView === 'admin_users' && can('MODULE_ADMIN_USERS')) return <AdminUsersManagement currentUser={user} />;

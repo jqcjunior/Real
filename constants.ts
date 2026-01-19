@@ -4,8 +4,8 @@ import { MonthlyPerformance, Store, User, ProductPerformance, Cota, AgendaItem, 
 export const APP_NAME = "REAL ADMIN";
 
 /**
- * BRANDING DEFINITIVO
- * Configurações de identidade visual via repositório remoto conforme solicitado.
+ * BRANDING DEFINITIVO - LOGO REAL CALÇADOS
+ * URL Raw do GitHub para garantir que a imagem seja carregada pelos navegadores.
  */
 export const BRAND_LOGO = "https://raw.githubusercontent.com/jqcjunior/Real/main/Real_PNG.png";
 
@@ -14,7 +14,6 @@ export const BRANDING = {
   appName: "Real Admin"
 };
 
-// Mantido para compatibilidade de módulos legados
 export const LOGO_URL = BRAND_LOGO; 
 
 export const MOCK_USERS: User[] = [];
