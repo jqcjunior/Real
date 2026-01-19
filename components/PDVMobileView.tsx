@@ -6,9 +6,10 @@ import {
 } from '../types';
 import { formatCurrency } from '../constants';
 import { 
-    ShoppingCart, FileText, ArrowDownCircle, Plus, Trash2, 
-    CheckCircle2, Hash, CreditCard, Banknote, X, ChevronRight, 
-    Printer, List, PieChart, Save, Loader2, ArrowUpCircle, Ban, Info, Boxes, AlertTriangle
+    ShoppingCart, Plus, Trash2, 
+    CheckCircle2, ChevronRight, 
+    Loader2, ChevronLeft,
+    IceCream
 } from 'lucide-react';
 
 interface PDVMobileViewProps {
@@ -34,7 +35,8 @@ interface PDVMobileViewProps {
   onCancelSale: (saleCode: string, reason: string) => Promise<void>;
   onAddTransaction: (tx: IceCreamTransaction) => Promise<void>;
   dailyData: any;
-  handlePrintTicket: (items: IceCreamDailySale[], buyer?: string) => void;
+  // Fix: Updated handlePrintTicket signature to match printThermalTicket in IceCreamModule.tsx
+  handlePrintTicket: (items: IceCreamDailySale[], saleCode: string, isFiado: boolean, buyer?: string) => void;
   isSubmitting: boolean;
   setIsSubmitting: (s: boolean) => void;
 }
@@ -44,7 +46,6 @@ const PDVMobileView: React.FC<PDVMobileViewProps> = (props) => {
   const [amountPaid, setAmountPaid] = useState('');
 
   const handleMobileAddToCart = (item: IceCreamItem) => {
-    // Agora insere um novo item individual para permitir exclusão ágil
     const newItem: IceCreamDailySale = { 
         id: `cart-mob-${Date.now()}-${Math.random()}`, 
         storeId: props.user.storeId || '',
@@ -84,7 +85,10 @@ const PDVMobileView: React.FC<PDVMobileViewProps> = (props) => {
             saleCode 
         }));
         await props.onAddSales(finalCart);
-        props.handlePrintTicket(finalCart, props.buyerName);
+        
+        // Fix: Added call to handlePrintTicket to ensure mobile sales are printed after success
+        props.handlePrintTicket(finalCart, saleCode, props.paymentMethod === 'Fiado', props.buyerName);
+
         props.setCart([]); 
         props.setPaymentMethod(null);
         props.setBuyerName('');
@@ -98,27 +102,50 @@ const PDVMobileView: React.FC<PDVMobileViewProps> = (props) => {
   };
 
   return (
-    <div className="flex flex-col h-full bg-gray-50 text-gray-900 font-sans relative overflow-hidden">
-      <main className="flex-1 overflow-y-auto pb-64 p-4">
+    <div className="flex flex-col h-full bg-white text-gray-900 font-sans relative overflow-hidden">
+      <main className="flex-1 overflow-y-auto pb-40 p-3 no-scrollbar">
         {step === 'categories' && (
-          <div className="grid grid-cols-2 gap-3 animate-in fade-in duration-300">
-            {['Sundae', 'Milkshake', 'Casquinha', 'Cascão', 'Cascão Trufado', 'Copinho', 'Bebidas', 'Adicionais'].sort().map(cat => (
-              <button key={cat} onClick={() => { props.setSelectedCategory(cat as any); setStep('products'); }} className="aspect-square bg-white border-2 border-gray-100 rounded-[32px] flex flex-col items-center justify-center gap-2 shadow-sm active:scale-95 transition-all"><span className="font-black uppercase italic text-[11px] text-blue-700 tracking-tighter">{cat}</span></button>
-            ))}
+          <div className="space-y-3 animate-in fade-in duration-300">
+            <h2 className="text-[10px] font-black text-gray-400 uppercase tracking-widest ml-1">Menu Gelateria</h2>
+            <div className="grid grid-cols-2 gap-2">
+              {['Sundae', 'Milkshake', 'Casquinha', 'Cascão', 'Cascão Trufado', 'Copinho', 'Bebidas', 'Adicionais'].sort().map(cat => (
+                <button 
+                  key={cat} 
+                  onClick={() => { props.setSelectedCategory(cat as any); setStep('products'); }} 
+                  className="bg-gray-50 border border-gray-100 rounded-2xl py-6 flex flex-col items-center justify-center gap-1 shadow-sm active:scale-95 active:bg-blue-50 transition-all border-b-4 border-gray-200"
+                >
+                  <span className="font-black uppercase italic text-[11px] text-blue-950 tracking-tighter leading-none">{cat}</span>
+                </button>
+              ))}
+            </div>
           </div>
         )}
 
         {step === 'products' && (
-          <div className="space-y-4 animate-in slide-in-from-right duration-300">
-            <button onClick={() => setStep('categories')} className="text-[10px] font-black text-gray-400 uppercase flex items-center gap-1 mb-2">← Categorias</button>
-            <div className="grid grid-cols-1 gap-3">
+          <div className="space-y-3 animate-in slide-in-from-right duration-300">
+            <div className="flex items-center justify-between mb-2">
+              <button onClick={() => setStep('categories')} className="text-[10px] font-black text-blue-600 uppercase flex items-center gap-1 bg-blue-50 px-3 py-2 rounded-xl">
+                <ChevronLeft size={14} /> Menu
+              </button>
+              <h2 className="text-xs font-black text-gray-900 uppercase italic tracking-tighter bg-gray-50 px-4 py-2 rounded-xl">{props.selectedCategory}</h2>
+            </div>
+            <div className="grid grid-cols-1 gap-2.5">
               {props.items.filter(i => i.category === props.selectedCategory && i.active).map(item => (
-                <button key={item.id} onClick={() => handleMobileAddToCart(item)} className="w-full p-5 bg-white border-2 border-gray-100 rounded-[28px] flex justify-between items-center shadow-sm active:border-blue-600 active:scale-[0.98] transition-all">
-                  <div>
-                    <p className="font-black uppercase italic text-xs text-blue-900">{item.name}</p>
-                    <p className="text-[10px] font-black text-gray-400 mt-1">{formatCurrency(item.price)}</p>
+                <button 
+                  key={item.id} 
+                  onClick={() => handleMobileAddToCart(item)} 
+                  className="w-full p-4 bg-white border border-gray-100 rounded-2xl flex justify-between items-center shadow-sm active:border-blue-600 active:scale-[0.98] transition-all"
+                >
+                  <div className="flex items-center gap-4">
+                    <div className="w-12 h-12 bg-blue-50 rounded-xl flex items-center justify-center shrink-0">
+                      {item.image_url ? <img src={item.image_url} className="w-full h-full object-cover rounded-xl" /> : <IceCream size={20} className="text-blue-900" />}
+                    </div>
+                    <div className="text-left">
+                      <p className="font-black uppercase italic text-[11px] text-blue-950 leading-tight">{item.name}</p>
+                      <p className="text-[10px] font-bold text-gray-400 mt-1">{formatCurrency(item.price)}</p>
+                    </div>
                   </div>
-                  <ChevronRight size={16} className="text-gray-300"/>
+                  <div className="bg-blue-900 text-white p-2 rounded-xl shadow-lg"><Plus size={18}/></div>
                 </button>
               ))}
             </div>
@@ -126,62 +153,56 @@ const PDVMobileView: React.FC<PDVMobileViewProps> = (props) => {
         )}
 
         {step === 'cart' && (
-          <div className="space-y-6 animate-in slide-in-from-bottom duration-300 pb-10">
-            <div className="flex justify-between items-center px-2">
-                <button onClick={() => setStep('categories')} className="text-[10px] font-black text-blue-600 uppercase tracking-widest">+ ADICIONAR</button>
-                <button onClick={() => { props.setCart([]); setStep('categories'); }} className="text-[10px] font-black text-red-400 uppercase tracking-widest">ESVAZIAR</button>
+          <div className="space-y-4 animate-in slide-in-from-bottom duration-300">
+            <div className="flex justify-between items-center px-1">
+                <button onClick={() => setStep('categories')} className="text-[10px] font-black text-blue-600 uppercase flex items-center gap-1.5 border border-blue-200 px-4 py-2 rounded-2xl bg-blue-50 shadow-sm">
+                  <Plus size={14}/> ADICIONAR
+                </button>
+                <button onClick={() => { if(window.confirm("Zerar carrinho?")) { props.setCart([]); setStep('categories'); } }} className="text-[10px] font-black text-red-500 uppercase tracking-widest p-2">ESVAZIAR</button>
             </div>
             
-            <div className="space-y-3">
-              {props.cart.map((item, idx) => (
-                <div key={item.id} className="bg-white p-4 rounded-[24px] border border-gray-100 flex justify-between items-center shadow-sm animate-in slide-in-from-right duration-200">
-                  <div className="flex-1 pr-4">
-                    <p className="font-black uppercase italic text-[11px] text-blue-950 leading-tight truncate">{item.productName}</p>
-                    <p className="text-[9px] font-bold text-gray-400 mt-1">{formatCurrency(item.unitPrice)}</p>
+            <div className="space-y-2">
+              <h3 className="text-[9px] font-black text-gray-400 uppercase tracking-[0.2em] ml-2">RESUMO DO PEDIDO</h3>
+              {props.cart.map((item) => (
+                <div key={item.id} className="bg-gray-50 p-3.5 rounded-2xl border border-gray-100 flex justify-between items-center shadow-sm animate-in slide-in-from-right duration-200">
+                  <div className="flex-1 pr-4 truncate">
+                    <p className="font-black uppercase italic text-[10px] text-blue-950 leading-tight truncate">{item.productName}</p>
+                    <p className="text-[9px] font-bold text-gray-400 mt-0.5">{formatCurrency(item.unitPrice)}</p>
                   </div>
-                  <button onClick={() => props.setCart(prev => prev.filter(i => i.id !== item.id))} className="text-red-300 p-2 active:text-red-600"><Trash2 size={16}/></button>
+                  <div className="flex items-center gap-3">
+                    <span className="text-[11px] font-black text-blue-900">{formatCurrency(item.totalValue)}</span>
+                    <button onClick={() => props.setCart(prev => prev.filter(i => i.id !== item.id))} className="text-red-300 p-2 active:text-red-600 bg-white rounded-xl border border-red-50 shadow-sm"><Trash2 size={16}/></button>
+                  </div>
                 </div>
               ))}
-              {props.cart.length === 0 && (
-                  <div className="text-center py-20 opacity-20">
-                      <ShoppingCart size={48} className="mx-auto mb-4" />
-                      <p className="text-[10px] font-black uppercase tracking-widest">Carrinho Vazio</p>
-                  </div>
-              )}
             </div>
 
             {props.cart.length > 0 && (
-              <div className="bg-blue-50/50 rounded-[32px] p-6 space-y-6 border border-blue-100">
-                <p className="text-[10px] font-black text-blue-900 uppercase tracking-widest border-b border-blue-100 pb-2">Pagamento & Cliente</p>
+              <div className="bg-blue-50/40 rounded-[32px] p-5 space-y-5 border border-blue-100 shadow-inner">
+                <p className="text-[10px] font-black text-blue-900 uppercase tracking-widest border-b border-blue-100 pb-2">FECHAMENTO</p>
                 <div className="grid grid-cols-2 gap-2">
                     {(['Pix', 'Dinheiro', 'Cartão', 'Fiado'] as IceCreamPaymentMethod[]).map(pm => (
-                        <button key={pm} onClick={() => { props.setPaymentMethod(pm); if(pm !== 'Dinheiro') setAmountPaid(''); }} className={`py-4 rounded-2xl font-black uppercase text-[10px] border-2 transition-all ${props.paymentMethod === pm ? 'bg-blue-900 border-blue-900 text-white shadow-lg' : 'bg-white border-gray-200 text-gray-400'}`}>{pm}</button>
+                        <button key={pm} onClick={() => { props.setPaymentMethod(pm); if(pm !== 'Dinheiro') setAmountPaid(''); }} className={`py-4 rounded-2xl font-black uppercase text-[10px] border-2 transition-all ${props.paymentMethod === pm ? 'bg-blue-900 border-blue-900 text-white shadow-xl scale-[1.02]' : 'bg-white border-gray-200 text-gray-400'}`}>{pm}</button>
                     ))}
                 </div>
 
                 {props.paymentMethod === 'Dinheiro' && (
-                    <div className="bg-white p-5 rounded-[24px] shadow-sm space-y-4 animate-in fade-in zoom-in">
+                    <div className="bg-white p-4 rounded-2xl shadow-xl space-y-3 animate-in zoom-in border-2 border-green-500">
                         <div className="flex justify-between items-center">
-                            <label className="text-[9px] font-black text-gray-400 uppercase tracking-widest">Valor Pago</label>
-                            <input 
-                                autoFocus
-                                value={amountPaid} 
-                                onChange={e => setAmountPaid(e.target.value)} 
-                                placeholder="0,00"
-                                className="w-24 text-right bg-gray-50 rounded-lg p-2 font-black text-green-700 outline-none"
-                            />
+                            <label className="text-[9px] font-black text-gray-400 uppercase">Recebido (R$)</label>
+                            <input autoFocus value={amountPaid} onChange={e => setAmountPaid(e.target.value)} placeholder="0,00" className="w-24 text-right bg-gray-50 rounded-xl p-2.5 font-black text-green-700 outline-none text-sm border-2 border-green-50 focus:border-green-500" />
                         </div>
                         <div className="flex justify-between items-baseline border-t border-gray-50 pt-2">
-                            <span className="text-[9px] font-black text-green-600 uppercase tracking-widest">Troco</span>
-                            <span className="text-xl font-black text-green-700 italic">{formatCurrency(changeDue)}</span>
+                            <span className="text-[9px] font-black text-green-600 uppercase">Troco</span>
+                            <span className="text-xl font-black text-green-700 italic leading-none">{formatCurrency(changeDue)}</span>
                         </div>
                     </div>
                 )}
 
                 {props.paymentMethod === 'Fiado' && (
                     <div className="space-y-2 animate-in fade-in slide-in-from-top-2">
-                        <label className="text-[9px] font-black text-red-500 uppercase block ml-2">Funcionário / Comprador *</label>
-                        <input value={props.buyerName} onChange={e => props.setBuyerName(e.target.value)} placeholder="NOME DO FUNCIONÁRIO..." className="w-full p-4 bg-red-50 border-none rounded-2xl text-sm font-black uppercase placeholder-red-200 outline-none" />
+                        <label className="text-[9px] font-black text-red-500 uppercase block ml-1">Funcionário (Comprador)</label>
+                        <input value={props.buyerName} onChange={e => props.setBuyerName(e.target.value)} placeholder="NOME DO FUNCIONÁRIO..." className="w-full p-4 bg-red-50 border-2 border-red-100 rounded-2xl text-[11px] font-black uppercase placeholder-red-200 outline-none shadow-sm" />
                     </div>
                 )}
               </div>
@@ -190,26 +211,26 @@ const PDVMobileView: React.FC<PDVMobileViewProps> = (props) => {
         )}
       </main>
 
-      {/* RODAPÉ FIXO MOBILE PDV */}
+      {/* Finalizador Rodapé */}
       {props.cart.length > 0 && (
-          <div className="fixed bottom-0 left-0 right-0 lg:hidden bg-white border-t border-gray-100 p-4 md:p-6 pb-6 md:pb-8 shadow-[0_-20px_40px_rgba(0,0,0,0.1)] z-50 rounded-t-[40px] animate-in slide-in-from-bottom duration-500">
-              <div className="flex justify-between items-center mb-4 px-2">
+          <div className="fixed bottom-0 left-0 right-0 lg:hidden bg-white border-t border-gray-100 px-5 py-4 pb-10 shadow-[0_-20px_40px_rgba(0,0,0,0.1)] z-50 rounded-t-[40px] animate-in slide-in-from-bottom duration-500">
+              <div className="flex justify-between items-center mb-4">
                   <div className="flex flex-col">
-                    <span className="text-[9px] font-black text-gray-400 uppercase tracking-widest">Total Geral</span>
+                    <span className="text-[10px] font-black text-gray-400 uppercase tracking-widest">Valor Final</span>
                     <span className="text-2xl font-black italic tracking-tighter text-blue-950 leading-none">{formatCurrency(cartTotal)}</span>
                   </div>
-                  <div className="text-right">
-                    <span className="text-[9px] font-black text-gray-400 uppercase tracking-widest">Itens</span>
-                    <span className="block text-sm font-black text-gray-900 leading-none">{props.cart.length}</span>
+                  <div className="bg-blue-900 text-white px-4 py-2 rounded-2xl flex items-center gap-2 shadow-lg">
+                    <ShoppingCart size={14}/>
+                    <span className="text-xs font-black">{props.cart.length}</span>
                   </div>
               </div>
               <button 
                 onClick={handleFinalize} 
                 disabled={props.isSubmitting || !props.paymentMethod} 
-                className="w-full py-5 bg-red-600 hover:bg-red-700 disabled:bg-gray-200 text-white rounded-[24px] font-black uppercase text-xs shadow-2xl flex items-center justify-center gap-3 transition-all active:scale-95 border-b-4 border-red-900"
+                className="w-full py-5 bg-red-600 hover:bg-red-700 disabled:bg-gray-200 disabled:text-gray-400 text-white rounded-[24px] font-black uppercase text-xs shadow-2xl flex items-center justify-center gap-3 transition-all active:scale-95 border-b-4 border-red-900"
               >
-                  {props.isSubmitting ? <Loader2 className="animate-spin" size={18}/> : <CheckCircle2 size={18}/>}
-                  Confirmar Venda
+                  {props.isSubmitting ? <Loader2 className="animate-spin" size={20}/> : <CheckCircle2 size={20}/>}
+                  Registrar Venda
               </button>
           </div>
       )}

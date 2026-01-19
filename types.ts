@@ -1,4 +1,3 @@
-
 export enum UserRole {
   ADMIN = 'ADMIN',
   MANAGER = 'MANAGER',
@@ -39,7 +38,7 @@ export interface IceCreamItem {
   price: number;
   flavor?: string;
   active: boolean;
-  consumptionPerSale: number; // Mantido para legado, mas prioriza recipe
+  consumptionPerSale: number; 
   recipe?: IceCreamRecipeItem[]; 
   image_url?: string;
   created_at?: string;
@@ -148,7 +147,6 @@ export interface DownloadItem {
 
 export interface CashError { id: string; storeId: string; userId: string; userName: string; date: string; type: 'surplus' | 'shortage'; value: number; reason?: string; createdAt: Date; }
 export interface Receipt { id: string; storeId?: string; issuerName: string; payer: string; recipient: string; value: number; valueInWords: string; reference: string; date: string; createdAt: Date; }
-export interface CreditCardSale { id: string; storeId?: string; userId: string; date: string; brand: string; value: number; authorizationCode?: string; }
 export interface CreditCardSale { id: string; storeId?: string; userId: string; date: string; brand: string; value: number; authorizationCode?: string; }
 export interface SellerGoal { storeId: string; sellerName: string; month: string; revenueTarget: number; revenueActual: number; commissionRate?: number; itemsActual?: number; paActual?: number; }
 

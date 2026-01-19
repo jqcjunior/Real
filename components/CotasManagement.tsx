@@ -1,6 +1,5 @@
 
 import React, { useState, useMemo, useEffect } from 'react';
-// Fix: Renamed CotaDebt to CotaDebts to match exported member from types.ts
 import { Store, User, Cota, UserRole, CotaSettings, CotaDebts, MonthlyPerformance } from '../types';
 import { formatCurrency } from '../constants';
 import { 
@@ -11,6 +10,7 @@ import {
 } from 'lucide-react';
 
 const SHORT_MONTHS = ['JAN', 'FEV', 'MAR', 'ABR', 'MAI', 'JUN', 'JUL', 'AGO', 'SET', 'OUT', 'NOV', 'DEZ'];
+const FULL_MONTHS = ['JANEIRO', 'FEVEREIRO', 'MARÇO', 'ABRIL', 'MAIO', 'JUNHO', 'JULHO', 'AGOSTO', 'SETEMBRO', 'OUTUBRO', 'NOVEMBRO', 'DEZEMBRO'];
 
 const generateTimeline = () => {
     const months = [];
@@ -41,19 +41,20 @@ const calculateInstallments = (shipmentMonth: string, terms: string, totalValue:
     return installments;
 };
 
+// Helper para definir o rótulo de quantidade baseado na classificação
+const getQtyLabel = (clf: string) => clf?.startsWith('Acessórios') ? 'Unidades' : 'Pares';
+
 interface CotasManagementProps {
   user: User;
   stores: Store[];
   cotas: Cota[];
   cotaSettings: CotaSettings[];
-  // Fix: Use CotaDebts interface
   cotaDebts: CotaDebts[];
   performanceData: MonthlyPerformance[];
   onAddCota: (cota: Cota) => Promise<void>;
   onUpdateCota: (id: string, updates: Partial<Cota>) => Promise<void>;
   onDeleteCota: (id: string) => Promise<void>;
   onSaveSettings: (settings: CotaSettings) => Promise<void>;
-  // Fix: Use CotaDebts interface
   onSaveDebts: (debt: CotaDebts) => Promise<void>;
   onDeleteDebt: (id: string) => Promise<void>;
 }
@@ -117,7 +118,6 @@ const CotasManagement: React.FC<CotasManagementProps> = ({
     }> = {};
 
     timeline.forEach(m => {
-        // Uniformidade absoluta Jan/2026: Usar budget_value de cota_settings para uniformidade total
         const otb = Number(storeSettings?.budgetValue || 0);
         const managerPct = Number(storeSettings?.managerPercent || 30);
         const compradorLimit = otb * ((100 - managerPct) / 100);
@@ -185,8 +185,6 @@ const CotasManagement: React.FC<CotasManagementProps> = ({
     try {
         const valNum = Number(totalValue.replace(/\./g, '').replace(',', '.'));
         const installments = calculateInstallments(shipmentDate, paymentTerms, valNum);
-        
-        // Normalização de data solicitada: YYYY-MM para YYYY-MM-01
         const normalizedShipmentDate = `${shipmentDate}-01`;
 
         for (const storeId of selectedStoresForOrder) {
@@ -246,7 +244,6 @@ const CotasManagement: React.FC<CotasManagementProps> = ({
 
   return (
     <div className="flex flex-col h-screen bg-[#f8fafc] font-sans overflow-hidden text-blue-950">
-        {/* CABEÇALHO ESTRATÉGICO */}
         <div className="flex-none bg-white border-b border-gray-200 px-8 py-4 flex justify-between items-center z-50 shadow-sm">
             <div className="flex items-center gap-6">
                 <div className="bg-blue-900 text-white w-14 h-14 rounded-2xl flex flex-col items-center justify-center shadow-lg border-2 border-white">
@@ -280,7 +277,6 @@ const CotasManagement: React.FC<CotasManagementProps> = ({
             </div>
         </div>
 
-        {/* GRADE FINANCEIRA PRINCIPAL */}
         <div className="flex-1 overflow-auto bg-white relative shadow-inner">
             <table className="w-full text-center border-separate border-spacing-0 table-fixed min-w-[1800px]">
                 <thead className="sticky top-0 z-40">
@@ -303,8 +299,8 @@ const CotasManagement: React.FC<CotasManagementProps> = ({
                     
                     {consolidated.pendingOrders.map((order, idx) => (
                         <tr key={order.id} className={`${idx % 2 === 0 ? 'bg-white' : 'bg-gray-50/40'} hover:bg-blue-50 transition-colors border-b border-gray-100 group h-10`}>
-                            <td className="p-2.5 text-left border-r border-gray-100 sticky left-0 bg-inherit z-30 font-black text-gray-900 shadow-sm"><div className="flex items-center justify-between"><div className="flex flex-col"><div className="flex items-center gap-2"><div className={`w-2.5 h-2.5 rounded-full shadow-sm ${order.createdByRole === 'GERENTE' ? 'bg-orange-600' : 'bg-blue-600'}`}></div><span className="truncate text-sm text-blue-950 leading-none italic uppercase">{order.brand}</span></div><span className="text-[7px] text-gray-400 not-italic uppercase mt-1 leading-none ml-4.5 tracking-widest">{order.classification} | {order.pairs || 0} PARES</span></div><div className="flex gap-1 opacity-0 group-hover:opacity-100 transition-opacity"><button onClick={() => toggleValidation(order)} className="p-1 text-gray-300 hover:text-green-500 hover:scale-110 transition-all"><CheckCircle2 size={16}/></button><button onClick={() => onDeleteCota(order.id)} className="p-1 text-red-300 hover:text-red-600 transition-all"><Trash2 size={16}/></button></div></div></td>
-                            <td className="p-2 border-r border-gray-100 sticky left-[260px] bg-inherit z-30 text-[8px] font-black text-center shadow-sm"><div className="flex flex-col gap-0.5 leading-tight"><span className="text-blue-600">EMB: {order.shipmentDate.substring(0, 7)}</span><span className="text-gray-900 border-t border-gray-100 mt-0.5 pt-0.5">{formatCurrency(order.totalValue)}</span></div></td>
+                            <td className="p-2.5 text-left border-r border-gray-100 sticky left-0 bg-inherit z-30 font-black text-gray-900 shadow-sm"><div className="flex items-center justify-between"><div className="flex flex-col"><div className="flex items-center gap-2"><div className={`w-2.5 h-2.5 rounded-full shadow-sm ${order.createdByRole === 'GERENTE' ? 'bg-orange-600' : 'bg-blue-600'}`}></div><span className="truncate text-sm text-blue-950 leading-none italic uppercase">{order.brand}</span></div><span className="text-[7px] text-gray-400 not-italic uppercase mt-1 leading-none ml-4.5 tracking-widest">{order.classification} | {order.pairs || 0} {getQtyLabel(order.classification).toUpperCase()}</span></div><div className="flex gap-1 opacity-0 group-hover:opacity-100 transition-opacity"><button onClick={() => toggleValidation(order)} className="p-1 text-gray-300 hover:text-green-500 hover:scale-110 transition-all"><CheckCircle2 size={16}/></button><button onClick={() => onDeleteCota(order.id)} className="p-1 text-red-300 hover:text-red-600 transition-all"><Trash2 size={16}/></button></div></div></td>
+                            <td className="p-2 border-r border-gray-100 sticky left-[260px] bg-inherit z-30 text-[8px] font-black text-center shadow-sm"><div className="flex flex-col gap-0.5 leading-tight"><span className="text-blue-600">EMB: {FULL_MONTHS[parseInt(order.shipmentDate.split('-')[1]) - 1]}</span><span className="text-gray-900 border-t border-gray-100 mt-0.5 pt-0.5">{formatCurrency(order.totalValue)}</span></div></td>
                             {timeline.map(m => { const inst = typeof order.installments === 'string' ? JSON.parse(order.installments) : order.installments; const val = Number(inst?.[m.key] || 0); return (<td key={m.key} className={`p-2 border-r border-gray-50 text-center ${val > 0 ? 'bg-yellow-100/10 text-gray-400 font-bold text-[9px]' : 'text-gray-100'}`}>{val > 0 ? formatCurrency(val) : '-'}</td>); })}
                         </tr>
                     ))}
@@ -319,7 +315,7 @@ const CotasManagement: React.FC<CotasManagementProps> = ({
                     <div className="p-8 border-b border-gray-100 flex justify-between items-center bg-purple-50">
                         <div>
                             <h3 className="text-xl font-black uppercase italic text-blue-950 flex items-center gap-3"><PieChart className="text-purple-600" size={28}/> Parâmetros de Mix - Loja {stores.find(s => s.id === viewStoreId)?.number}</h3>
-                            <p className="text-[10px] font-black text-purple-400 uppercase tracking-widest mt-1 ml-10">Análise de Distribuição por Grande Grupo (Pares Totais: {storeParams.totalPairs})</p>
+                            <p className="text-[10px] font-black text-purple-400 uppercase tracking-widest mt-1 ml-10">Análise de Distribuição por Grande Grupo (Volume Total: {storeParams.totalPairs})</p>
                         </div>
                         <button onClick={() => setActiveForm(null)} className="text-gray-400 hover:text-red-600 transition-all"><X size={32}/></button>
                     </div>
@@ -329,6 +325,7 @@ const CotasManagement: React.FC<CotasManagementProps> = ({
                                 const data = storeParams.summary[catKey];
                                 if (!data) return null;
                                 const mainPercent = storeParams.totalPairs > 0 ? (data.total / storeParams.totalPairs) * 100 : 0;
+                                const label = getQtyLabel(catKey);
                                 return (
                                     <div key={catKey} className="bg-gray-50 p-6 rounded-[32px] border border-gray-100 flex flex-col">
                                         <div className="flex justify-between items-end mb-4">
@@ -338,7 +335,7 @@ const CotasManagement: React.FC<CotasManagementProps> = ({
                                             </div>
                                             <div className="text-right">
                                                 <p className="text-[9px] font-bold text-gray-400 uppercase">Sugestão: {data.target}%</p>
-                                                <p className="text-xs font-black text-blue-600">{data.total} PARES</p>
+                                                <p className="text-xs font-black text-blue-600">{data.total} {label.toUpperCase()}</p>
                                             </div>
                                         </div>
                                         <div className="w-full h-2 bg-gray-200 rounded-full overflow-hidden mb-6">
@@ -355,7 +352,7 @@ const CotasManagement: React.FC<CotasManagementProps> = ({
                                                 return (
                                                     <div key={subName} className="flex justify-between items-center text-[10px]">
                                                         <span className="font-bold text-gray-600 uppercase">{subName}</span>
-                                                        <span className="font-black text-blue-900">{subPct.toFixed(1)}% <span className="text-gray-300 ml-1">({val} pr)</span></span>
+                                                        <span className="font-black text-blue-900">{subPct.toFixed(1)}% <span className="text-gray-300 ml-1">({val} {getQtyLabel(subName).toLowerCase()})</span></span>
                                                     </div>
                                                 );
                                             }) : <p className="text-[9px] text-gray-300 uppercase italic">Nenhum pedido lançado para este grupo</p>}
@@ -389,7 +386,7 @@ const CotasManagement: React.FC<CotasManagementProps> = ({
                                     <th className="py-3 px-6 border-b border-white/5">Marca / Fabricante</th>
                                     <th className="py-3 px-6 border-b border-white/5 text-center">Classificação</th>
                                     <th className="py-3 px-6 border-b border-white/5 text-center w-24">Embarque</th>
-                                    <th className="py-3 px-6 border-b border-white/5 text-center w-24">Pares</th>
+                                    <th className="py-3 px-6 border-b border-white/5 text-center w-32">Vol (Pr/Un)</th>
                                     <th className="py-3 px-6 border-b border-white/5 text-right w-36">Investimento</th>
                                     <th className="py-3 px-6 border-b border-white/5 text-center w-16"></th>
                                 </tr>
@@ -407,10 +404,10 @@ const CotasManagement: React.FC<CotasManagementProps> = ({
                                             <span className="text-[9px] font-bold text-gray-500 uppercase leading-none">{order.classification}</span>
                                         </td>
                                         <td className="py-2 px-6 text-center text-[10px] font-black text-blue-600">
-                                            {order.shipmentDate.substring(0, 7)}
+                                            {FULL_MONTHS[parseInt(order.shipmentDate.split('-')[1]) - 1]}
                                         </td>
                                         <td className="py-2 px-6 text-center font-black text-gray-800 text-sm italic">
-                                            {order.pairs || 0}
+                                            {order.pairs || 0} <span className="text-[8px] font-bold text-gray-400 uppercase">{getQtyLabel(order.classification)}</span>
                                         </td>
                                         <td className="py-2 px-6 text-right font-black text-gray-900 text-sm tabular-nums">
                                             {formatCurrency(order.totalValue)}
@@ -441,7 +438,7 @@ const CotasManagement: React.FC<CotasManagementProps> = ({
                         <div className="bg-gray-950 p-4 flex justify-between items-center text-white shrink-0">
                              <div className="flex gap-8">
                                  <div>
-                                     <p className="text-[7px] font-black text-white/40 uppercase tracking-widest">Total Pares</p>
+                                     <p className="text-[7px] font-black text-white/40 uppercase tracking-widest">Volume Acumulado</p>
                                      <p className="text-lg font-black italic">{consolidated.validatedOrders.reduce((a,b) => a + (Number(b.pairs) || 0), 0)}</p>
                                  </div>
                                  <div>
@@ -459,7 +456,7 @@ const CotasManagement: React.FC<CotasManagementProps> = ({
         {/* MODAL: CONFIGURAÇÃO COTA */}
         {activeForm === 'cota_config' && (
             <div className="fixed inset-0 bg-black/80 backdrop-blur-md flex items-center justify-center z-[100] p-4">
-                <div className="bg-white rounded-[40px] w-full max-w-lg shadow-2xl animate-in zoom-in duration-200 overflow-hidden border-t-8 border-yellow-400">
+                <div className="bg-white rounded-[40px] w-full max-w-lg shadow-2xl animate-in zoom-in duration-300 overflow-hidden border-t-8 border-yellow-400">
                     <div className="p-8 border-b border-gray-100 flex justify-between items-center bg-yellow-50">
                         <h3 className="text-xl font-black uppercase italic text-blue-950 flex items-center gap-3"><Settings2 className="text-yellow-600" size={28}/> Configurar Cota Base</h3>
                         <button onClick={() => setActiveForm(null)} className="text-gray-400 hover:text-red-600"><X size={32}/></button>
@@ -490,7 +487,7 @@ const CotasManagement: React.FC<CotasManagementProps> = ({
         {/* MODAL: LANÇAR DESPESA */}
         {activeForm === 'expense' && (
             <div className="fixed inset-0 bg-black/80 backdrop-blur-md flex items-center justify-center z-[100] p-4">
-                <div className="bg-white rounded-[40px] w-full max-w-lg shadow-2xl animate-in zoom-in duration-200 overflow-hidden border-t-8 border-orange-600">
+                <div className="bg-white rounded-[40px] w-full max-w-lg shadow-2xl animate-in zoom-in duration-300 overflow-hidden border-t-8 border-orange-600">
                     <div className="p-8 border-b border-gray-100 flex justify-between items-center bg-orange-50">
                         <h3 className="text-xl font-black uppercase italic text-blue-950 flex items-center gap-3"><AlertCircle className="text-orange-600" size={28}/> Lançar Despesa de Cota</h3>
                         <button onClick={() => setActiveForm(null)} className="text-gray-400 hover:text-red-600"><X size={32}/></button>
@@ -518,7 +515,7 @@ const CotasManagement: React.FC<CotasManagementProps> = ({
             </div>
         )}
         
-        {/* MODAL: NOVO PEDIDO - RESTAURADO COM SELETOR DE RESPONSÁVEL E NORMALIZAÇÃO DE DATA */}
+        {/* MODAL: NOVO PEDIDO */}
         {activeForm === 'order' && (
             <div className="fixed inset-0 bg-black/80 backdrop-blur-md flex items-center justify-center z-[100] p-4">
                 <div className="bg-white rounded-[40px] w-full max-w-5xl shadow-2xl animate-in zoom-in duration-200 overflow-hidden border-t-8 border-blue-900 max-h-[90vh] flex flex-col">
@@ -557,7 +554,7 @@ const CotasManagement: React.FC<CotasManagementProps> = ({
                                 <input value={brand} onChange={e => setBrand(e.target.value)} className="w-full p-4 bg-gray-50 rounded-2xl outline-none text-lg font-black uppercase border-2 border-transparent focus:border-blue-500" placeholder="BEIRA RIO" />
                             </div>
                             <div>
-                                <label className="text-[10px] font-black text-gray-400 uppercase mb-2 block">Quantidade (Pares)</label>
+                                <label className="text-[10px] font-black text-gray-400 uppercase mb-2 block">Quantidade ({getQtyLabel(classification)})</label>
                                 <input type="number" value={pairs} onChange={e => setPairs(e.target.value)} className="w-full p-4 bg-gray-50 rounded-2xl outline-none text-lg font-black border-2 border-transparent focus:border-blue-500" placeholder="0" />
                             </div>
                             <div>
@@ -603,7 +600,6 @@ const CotasManagement: React.FC<CotasManagementProps> = ({
             </div>
         )}
         
-        {/* RODAPÉ ESTRATÉGICO */}
         <div className="flex-none bg-gray-900 text-white px-8 py-2 flex justify-between items-center text-[8px] font-black uppercase tracking-[0.3em] z-50">
             <div className="flex gap-8"><span className="flex items-center gap-2 text-green-400"><CheckCircle2 size={10}/> Engenharia Sincronizada</span><span className="opacity-30">Real Admin 2026 | v26.0</span></div>
             <span className="text-blue-400 italic">Gestão Estratégica de Capital Corporativo</span>

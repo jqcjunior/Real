@@ -1,7 +1,6 @@
-
 import React, { useState, useMemo, useRef } from 'react';
 import { Store, UserRole } from '../types';
-import { Plus, Edit, Trash2, Save, X, Store as StoreIcon, User, MapPin, Phone, Mail, AlertTriangle, Lock, CheckCircle, XCircle, Power, Shield, User as UserIcon, Wallet, ChevronDown, ChevronRight, Upload, FileSpreadsheet, Loader2, IceCream } from 'lucide-react';
+import { Plus, Edit, Trash2, Save, X, Store as StoreIcon, User, MapPin, Phone, Mail, AlertTriangle, Lock, Eye, EyeOff, CheckCircle, XCircle, Power, Shield, User as UserIcon, Wallet, ChevronDown, ChevronRight, Upload, FileSpreadsheet, Loader2, IceCream } from 'lucide-react';
 import * as XLSX from 'xlsx';
 
 interface AdminSettingsProps {
@@ -22,6 +21,7 @@ const AdminSettings: React.FC<AdminSettingsProps> = ({ stores, onAddStore, onUpd
   const [editingStore, setEditingStore] = useState<Partial<Store>>({});
   const [isEditing, setIsEditing] = useState(false);
   const [isProcessing, setIsProcessing] = useState(false);
+  const [showPassword, setShowPassword] = useState(false);
   
   const [storeToDelete, setStoreToDelete] = useState<Store | null>(null);
   const [cityInput, setCityInput] = useState('');
@@ -70,7 +70,8 @@ const AdminSettings: React.FC<AdminSettingsProps> = ({ stores, onAddStore, onUpd
   };
 
   const handleEdit = (store: Store) => {
-    setEditingStore({ ...store });
+    setEditingStore({ ...store, password: '' }); // Nunca exibir a senha atual por segurança
+    setShowPassword(false);
     if (store.city && store.city.includes(' - ')) {
       const parts = store.city.split(' - ');
       setCityInput(parts[0]);
@@ -97,6 +98,7 @@ const AdminSettings: React.FC<AdminSettingsProps> = ({ stores, onAddStore, onUpd
     setCityInput('');
     setUfInput('BA'); 
     setIsEditing(false);
+    setShowPassword(false);
     setIsModalOpen(true);
   };
 
@@ -106,9 +108,18 @@ const AdminSettings: React.FC<AdminSettingsProps> = ({ stores, onAddStore, onUpd
     const fullCity = `${cityInput} - ${ufInput}`;
     const cleanNumber = editingStore.number ? String(parseInt(editingStore.number.replace(/\D/g, ''), 10)) : '';
     
-    const storeData: any = { ...editingStore, city: fullCity, number: cleanNumber };
+    // Preparar objeto para envio
+    const storeData: any = { 
+        ...editingStore, 
+        city: fullCity, 
+        number: cleanNumber 
+    };
     
-    if (!storeData.password) delete storeData.password;
+    // REGRA DE OURO: Se estiver editando e a senha estiver vazia, removemos do payload
+    // para não sobrescrever a senha atual no banco de dados.
+    if (isEditing && (!storeData.password || storeData.password.trim() === '')) {
+        delete storeData.password;
+    }
 
     try {
         if (isEditing && editingStore.id) {
@@ -117,8 +128,8 @@ const AdminSettings: React.FC<AdminSettingsProps> = ({ stores, onAddStore, onUpd
           await onAddStore({ ...storeData } as Store);
         }
         setIsModalOpen(false);
-    } catch (err) {
-        console.error(err);
+    } catch (err: any) {
+        alert(err.message || "Erro ao salvar dados da unidade.");
     } finally {
         setIsProcessing(false);
     }
@@ -292,12 +303,28 @@ const AdminSettings: React.FC<AdminSettingsProps> = ({ stores, onAddStore, onUpd
                     </div>
 
                     <div className="border-t border-gray-100 pt-6 bg-red-50/50 -mx-10 px-10 pb-8">
-                        <label className="block text-[10px] font-black text-red-600 uppercase mb-2 ml-2 tracking-widest">Segurança: Redefinir Senha</label>
-                        <div className="relative">
-                            <Lock className="absolute left-4 top-1/2 -translate-y-1/2 text-red-200" size={18} />
-                            <input name="password" type="password" value={editingStore.password || ''} onChange={handleChange} placeholder={isEditing ? "Deixe vazio para manter atual" : "Defina uma senha padrão"} className="w-full pl-12 pr-4 py-4 bg-white border-2 border-red-100 rounded-2xl focus:border-red-600 outline-none transition-all font-bold text-gray-900 shadow-sm" />
+                        <label className="block text-[10px] font-black text-red-600 uppercase mb-2 ml-2 tracking-widest">Segurança: {isEditing ? 'Redefinir Senha' : 'Definir Senha'}</label>
+                        <div className="relative group">
+                            <Lock className="absolute left-4 top-1/2 -translate-y-1/2 text-red-300" size={18} />
+                            <input 
+                                name="password" 
+                                type={showPassword ? "text" : "password"} 
+                                value={editingStore.password || ''} 
+                                onChange={handleChange} 
+                                placeholder={isEditing ? "Deixe vazio para manter a atual" : "Defina uma senha padrão"} 
+                                className="w-full pl-12 pr-12 py-4 bg-white border-2 border-red-100 rounded-2xl focus:border-red-600 outline-none transition-all font-bold text-gray-900 shadow-sm" 
+                            />
+                            <button 
+                                type="button" 
+                                onClick={() => setShowPassword(!showPassword)}
+                                className="absolute right-4 top-1/2 -translate-y-1/2 text-gray-400 hover:text-blue-600 transition-colors"
+                            >
+                                {showPassword ? <EyeOff size={18}/> : <Eye size={18}/>}
+                            </button>
                         </div>
-                        <p className="text-[9px] font-bold text-gray-400 mt-2 ml-2 uppercase italic tracking-tighter">Atenção: A nova senha entra em vigor imediatamente após salvar.</p>
+                        <p className="text-[9px] font-bold text-gray-400 mt-2 ml-2 uppercase italic tracking-tighter">
+                            {isEditing ? 'Nota: A nova senha só será salva se este campo for preenchido.' : 'A senha padrão será usada para o primeiro acesso.'}
+                        </p>
                     </div>
 
                     <div className="pt-4 shrink-0 sticky bottom-0 bg-white -mx-10 px-10 pb-4">
