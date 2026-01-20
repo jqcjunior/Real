@@ -338,7 +338,7 @@ const CotasManagement: React.FC<CotasManagementProps> = ({
                         <td className="px-4 py-2 text-left sticky left-0 bg-yellow-400 z-30 font-black text-blue-900 shadow-sm">SALDO COTA ATUAL</td>
                         <td className="font-black italic text-blue-900">LÍQUIDO</td>
                         {timeline.map(m => (
-                            <td key={m.key} className="p-2 font-black text-blue-900">
+                            <td key={m.key} className={`p-2 font-black ${consolidated.stats[m.key].available < 0 ? 'text-red-600 animate-pulse' : 'text-blue-900'}`}>
                                 {formatCurrency(consolidated.stats[m.key].available)}
                             </td>
                         ))}
@@ -495,25 +495,37 @@ const CotasManagement: React.FC<CotasManagementProps> = ({
                         <div className="grid grid-cols-4 gap-6">
                              {(Object.entries(groupedCategories) as [string, QuotaCategory[]][]).map(([parent, children]) => {
                                  const allOrders = consolidated.orders;
-                                 const totalStore = allOrders.reduce((a,b) => a + b.totalValue, 0);
-                                 const budgetTotal = Number(storeSettings?.budgetValue || 0);
                                  
-                                 // Cálculo de Meta do Grupo (Soma das metas de sub-classes)
-                                 const groupMetaPercent = mixParameters
-                                    .filter(p => children.some(c => c.category_name === p.category_name))
-                                    .reduce((acc, curr) => acc + curr.percentage, 0);
+                                 /** 
+                                  * REGRA OBRIGATÓRIA DE CÁLCULO:
+                                  * TOTAL_GERAL = Soma de total_comprado de TODAS as parent_category 
+                                  * (OU o Budget total definido, caso desejado para controle de ocupação de cota)
+                                  * Para alinhar com o objetivo de decisão, usaremos o BUDGET TOTAL como denominador global.
+                                  */
+                                 const budgetTotalGlobal = Number(storeSettings?.budgetValue || 0);
+                                 const totalPurchasedGlobal = allOrders.reduce((a,b) => a + b.totalValue, 0);
                                  
+                                 // Denominador Único e Global para o MIX
+                                 const TOTAL_GERAL_DENOMINADOR = budgetTotalGlobal > 0 ? budgetTotalGlobal : (totalPurchasedGlobal > 0 ? totalPurchasedGlobal : 1);
+                                 
+                                 // Cálculo da Categoria Pai
                                  const parentTotalValue = allOrders
                                     .filter(o => children.some(c => c.category_name === (o.classification || o.category_name)))
                                     .reduce((a,b) => a + b.totalValue, 0);
                                  
-                                 const actualPercent = totalStore > 0 ? (parentTotalValue / totalStore) * 100 : 0;
+                                 // percentual_real = total_comprado / TOTAL_GERAL * 100
+                                 const actualPercent = (parentTotalValue / TOTAL_GERAL_DENOMINADOR) * 100;
+                                 
+                                 // percentual_meta = Soma das metas das subcategorias (mix_percentage)
+                                 const groupMetaPercent = mixParameters
+                                    .filter(p => children.some(c => c.category_name === p.category_name))
+                                    .reduce((acc, curr) => acc + curr.percentage, 0);
                                  
                                  // Valor Financeiro da Meta baseado no orçamento total
-                                 const budgetValueTarget = (budgetTotal * groupMetaPercent) / 100;
+                                 const budgetValueTarget = (budgetTotalGlobal * groupMetaPercent) / 100;
                                  const diffValue = budgetValueTarget - parentTotalValue;
                                  
-                                 // Definição de Cores e Status
+                                 // Cores de Alerta Baseadas no Delta
                                  let statusColor = "border-gray-100 bg-gray-50";
                                  let textColor = "text-gray-400";
                                  let Icon = Info;
@@ -545,7 +557,7 @@ const CotasManagement: React.FC<CotasManagementProps> = ({
                                                  <span className="text-xl font-black text-blue-950 italic">{formatCurrency(parentTotalValue)}</span>
                                              </div>
 
-                                             {/* INDICADOR DE DECISÃO */}
+                                             {/* Alertas de Decisão baseados no Delta Financeiro */}
                                              <div className="pt-4 border-t border-dashed border-gray-200">
                                                  {diffValue > 100 ? (
                                                      <div className="flex items-center gap-2 text-yellow-600 animate-pulse">
@@ -570,9 +582,9 @@ const CotasManagement: React.FC<CotasManagementProps> = ({
                              })}
                         </div>
 
-                        {/* TABELA DE DETALHAMENTO (PRESERVADA) */}
+                        {/* TABELA DE DETALHAMENTO POR SUB-CLASSE (BRODOWN) */}
                         <div className="space-y-4">
-                             <h4 className="text-xs font-black text-gray-400 uppercase tracking-[0.3em] ml-2 flex items-center gap-2"><Layers size={14}/> Detalhamento por Sub-Classe</h4>
+                             <h4 className="text-xs font-black text-gray-400 uppercase tracking-[0.3em] ml-2 flex items-center gap-2"><Layers size={14}/> Participação Interna por Sub-Classe</h4>
                              <div className="grid grid-cols-4 gap-4">
                                 {(Object.entries(groupedCategories) as [string, QuotaCategory[]][]).map(([parent, children]) => {
                                     const allOrders = consolidated.orders;
@@ -582,6 +594,7 @@ const CotasManagement: React.FC<CotasManagementProps> = ({
                                         <div key={parent + '_detail'} className="bg-gray-50 rounded-[32px] p-5 border border-gray-100 shadow-inner flex flex-col">
                                             <div className="flex justify-between items-center mb-4 bg-white p-3 rounded-2xl shadow-sm border border-gray-100">
                                                 <h5 className="font-black text-blue-900 uppercase italic text-[10px] truncate">{parent}</h5>
+                                                <span className="text-[9px] font-black text-gray-400 uppercase">Detalhamento</span>
                                             </div>
                                             <div className="space-y-1.5 flex-1">
                                                 {children.map(child => {
