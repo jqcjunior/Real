@@ -7,9 +7,8 @@
     <title>REAL ADMIN | Gestão Real Calçados</title>
     <meta name="description" content="Painel Administrativo Real Calçados - Gestão de Metas e Performance" />
     
-    <!-- Preload da logo para carregamento prioritário -->
-    <link rel="preload" href="https://raw.githubusercontent.com/jqcjunior/Real/main/Real_PNG.png" as="image">
-    <link rel="icon" type="image/png" href="https://raw.githubusercontent.com/jqcjunior/Real/main/Real_PNG.png" />
+    <link rel="preload" href="/logo.png" as="image">
+    <link rel="icon" type="image/png" href="/logo.png" />
     
     <script src="https://cdn.tailwindcss.com"></script>
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=Montserrat:wght@700;800;900&family=Open+Sans:wght@700;800&family=Oswald:wght@500;700&family=Playfair+Display:wght@700;900&family=Poppins:wght@700;900&family=Roboto:wght@700;900&display=swap" rel="stylesheet">
@@ -18,14 +17,8 @@
         font-family: 'Inter', sans-serif;
         background-color: #f3f4f6;
       }
-      
-      .no-scrollbar {
-          -ms-overflow-style: none;
-          scrollbar-width: none;
-      }
-      .no-scrollbar::-webkit-scrollbar {
-          display: none;
-      }
+      .no-scrollbar::-webkit-scrollbar { display: none; }
+      .no-scrollbar { -ms-overflow-style: none; scrollbar-width: none; }
     </style>
   <script type="importmap">
 {
@@ -33,11 +26,11 @@
     "@google/genai": "https://aistudiocdn.com/@google/genai@^1.31.0",
     "react": "https://aistudiocdn.com/react@18.3.1",
     "react-dom/": "https://aistudiocdn.com/react-dom@18.3.1/",
-    "lucide-react": "https://aistudiocdn.com/lucide-react@0.378.0",
     "react/": "https://aistudiocdn.com/react@18.3.1/",
     "recharts": "https://aistudiocdn.com/recharts@2.12.7",
     "xlsx": "https://cdn.sheetjs.com/xlsx-0.20.1/package/xlsx.mjs",
-    "@supabase/supabase-js": "https://esm.sh/@supabase/supabase-js@^2.88.0"
+    "@supabase/supabase-js": "https://esm.sh/@supabase/supabase-js@^2.88.0",
+    "lucide-react": "https://esm.sh/lucide-react@0.420.0?external=react"
   }
 }
 </script>

@@ -1,15 +1,14 @@
-
 import React, { useState, useEffect } from 'react';
-import { AdminUser, AdminRoleLevel, User, UserRole } from '../types';
-// Fix: Added alias Users as UsersIcon to match usage in component
-import { UserPlus, Search, Edit3, Trash2, ShieldCheck, Mail, Lock, X, Save, Loader2, Power, ShieldAlert, BadgeCheck, Eye, UserCog, History, Users as UsersIcon, Wallet, Briefcase, Shield, ChevronRight, IceCream } from 'lucide-react';
+import { AdminUser, AdminRoleLevel, User, UserRole, Store } from '../types';
+import { UserPlus, Search, Edit3, Trash2, ShieldCheck, Mail, Lock, X, Save, Loader2, Power, ShieldAlert, BadgeCheck, Eye, UserCog, History, Users as UsersIcon, Wallet, Briefcase, Shield, ChevronRight, IceCream, Building2 } from 'lucide-react';
 import { supabase } from '../services/supabaseClient';
 
 interface AdminUsersManagementProps {
     currentUser: User | null;
+    stores: Store[];
 }
 
-const AdminUsersManagement: React.FC<AdminUsersManagementProps> = ({ currentUser }) => {
+const AdminUsersManagement: React.FC<AdminUsersManagementProps> = ({ currentUser, stores }) => {
     const [admins, setAdmins] = useState<AdminUser[]>([]);
     const [isLoading, setIsLoading] = useState(true);
     const [searchTerm, setSearchTerm] = useState('');
@@ -21,11 +20,11 @@ const AdminUsersManagement: React.FC<AdminUsersManagementProps> = ({ currentUser
         email: '',
         password: '',
         status: 'active',
-        role_level: 'admin'
+        role_level: 'admin',
+        store_id: null
     });
     const [editingId, setEditingId] = useState<string | null>(null);
 
-    // Fix: Defined filteredAdmins variable to filter the admins list based on search term
     const filteredAdmins = admins.filter(admin => 
         admin.name.toLowerCase().includes(searchTerm.toLowerCase()) || 
         admin.email.toLowerCase().includes(searchTerm.toLowerCase())
@@ -62,17 +61,31 @@ const AdminUsersManagement: React.FC<AdminUsersManagementProps> = ({ currentUser
 
     const handleSave = async (e: React.FormEvent) => {
         e.preventDefault();
+        
+        const isNonAdmin = formData.role_level !== 'admin';
+        if (isNonAdmin && !formData.store_id) {
+            alert("Vínculo de Unidade obrigatório para este perfil.");
+            return;
+        }
+
         setIsSubmitting(true);
         try {
-            const payload = { 
-                name: formData.name, 
+            // Correção Crítica: Se for Admin ou se store_id estiver vazio, envia NULL explícito para o Supabase
+            // Evita erro de 'invalid input syntax for type uuid'
+            const cleanStoreId = (isNonAdmin && formData.store_id && formData.store_id !== '') 
+                ? formData.store_id 
+                : null;
+
+            const payload: any = { 
+                name: formData.name?.toUpperCase().trim(), 
                 email: formData.email?.trim().toLowerCase(), 
                 status: formData.status,
-                role_level: formData.role_level
+                role_level: formData.role_level,
+                store_id: cleanStoreId
             };
             
-            if (formData.password) {
-                Object.assign(payload, { password: formData.password });
+            if (formData.password && formData.password.trim() !== '') {
+                payload.password = formData.password.trim();
             }
 
             if (editingId) {
@@ -84,11 +97,14 @@ const AdminUsersManagement: React.FC<AdminUsersManagementProps> = ({ currentUser
                 if (error) throw error;
                 await logAction('CREATE_ADMIN', `Criou novo usuário ${payload.name} com nível ${payload.role_level}`);
             }
+            
             await fetchAdmins();
             setIsModalOpen(false);
             resetForm();
+            alert("Usuário salvo com sucesso!");
         } catch (err: any) {
-            alert("Erro ao processar requisição: " + (err.message || "E-mail corporativo já cadastrado ou erro de conexão."));
+            console.error("Erro no Supabase:", err);
+            alert("Erro ao processar requisição: " + (err.message || "Verifique se a coluna 'store_id' foi criada no banco de dados."));
         } finally {
             setIsSubmitting(false);
         }
@@ -132,14 +148,15 @@ const AdminUsersManagement: React.FC<AdminUsersManagementProps> = ({ currentUser
             email: user.email, 
             password: '', 
             status: user.status,
-            role_level: user.role_level || 'admin'
+            role_level: user.role_level || 'admin',
+            store_id: user.store_id
         });
         setIsModalOpen(true);
     };
 
     const resetForm = () => {
         setEditingId(null);
-        setFormData({ name: '', email: '', password: '', status: 'active', role_level: 'admin' });
+        setFormData({ name: '', email: '', password: '', status: 'active', role_level: 'admin', store_id: null });
     };
 
     const getRoleBadge = (level: AdminRoleLevel) => {
@@ -190,7 +207,7 @@ const AdminUsersManagement: React.FC<AdminUsersManagementProps> = ({ currentUser
                             <tr className="bg-white border-b border-gray-100 text-[11px] font-black text-gray-400 uppercase tracking-widest">
                                 <th className="px-10 py-6">Perfil</th>
                                 <th className="px-10 py-6">Nome do Profissional</th>
-                                <th className="px-10 py-6">E-mail Corporativo</th>
+                                <th className="px-10 py-6">Vínculo / Unidade</th>
                                 <th className="px-10 py-6">Status</th>
                                 <th className="px-10 py-6 text-right">Ações</th>
                             </tr>
@@ -205,6 +222,7 @@ const AdminUsersManagement: React.FC<AdminUsersManagementProps> = ({ currentUser
                                 </tr>
                             ) : filteredAdmins.map(admin => {
                                 const role = getRoleBadge(admin.role_level);
+                                const assignedStore = stores.find(s => s.id === admin.store_id);
                                 return (
                                     <tr key={admin.id} className={`hover:bg-gray-50 transition-colors group ${admin.status === 'inactive' ? 'opacity-40 grayscale' : ''}`}>
                                         <td className="px-10 py-6">
@@ -215,10 +233,20 @@ const AdminUsersManagement: React.FC<AdminUsersManagementProps> = ({ currentUser
                                         </td>
                                         <td className="px-10 py-6">
                                             <div className="font-black text-gray-900 uppercase italic text-base tracking-tighter">{admin.name}</div>
+                                            <div className="text-[10px] font-bold text-gray-400 uppercase mt-0.5">{admin.email}</div>
                                             {admin.id === currentUser?.id && <span className="bg-blue-100 text-blue-700 text-[8px] font-black px-1.5 py-0.5 rounded uppercase mt-1 inline-block">Sua Conta</span>}
                                         </td>
-                                        <td className="px-10 py-6 text-sm font-bold text-gray-500">
-                                            {admin.email}
+                                        <td className="px-10 py-6">
+                                            {admin.role_level === 'admin' ? (
+                                                <span className="text-[10px] font-black text-blue-600 uppercase tracking-widest bg-blue-50 px-2 py-1 rounded">Visão Global</span>
+                                            ) : assignedStore ? (
+                                                <div className="flex items-center gap-2 text-gray-700">
+                                                    <Building2 size={14} className="text-gray-400" />
+                                                    <span className="font-bold text-xs">UNID. {assignedStore.number} - {assignedStore.city}</span>
+                                                </div>
+                                            ) : (
+                                                <span className="text-red-500 font-black text-[10px] uppercase animate-pulse">Unidade Não Vinculada</span>
+                                            )}
                                         </td>
                                         <td className="px-10 py-6">
                                             <button 
@@ -274,20 +302,40 @@ const AdminUsersManagement: React.FC<AdminUsersManagementProps> = ({ currentUser
                                 />
                             </div>
 
-                            <div className="space-y-2">
-                                <label className="text-[10px] font-black text-gray-500 uppercase block ml-1 tracking-widest">Nível de Acesso (Perfil)</label>
-                                <div className="relative">
-                                    <select 
-                                        value={formData.role_level}
-                                        onChange={e => setFormData({...formData, role_level: e.target.value as AdminRoleLevel})}
-                                        className="w-full px-6 py-5 bg-gray-50 border-none rounded-[24px] font-black text-gray-800 uppercase text-xs focus:ring-4 focus:ring-blue-100 transition-all outline-none appearance-none cursor-pointer shadow-inner"
-                                    >
-                                        <option value="admin">Administrador (God Mode)</option>
-                                        <option value="manager">Gerente (Gestão Unidade)</option>
-                                        <option value="cashier">Caixa (Operação Loja)</option>
-                                        <option value="sorvete">Sorvete (Exclusivo Gelateria)</option>
-                                    </select>
-                                    <ChevronRight className="absolute right-5 top-1/2 -translate-y-1/2 rotate-90 text-gray-400 pointer-events-none" size={18} />
+                            <div className="grid grid-cols-2 gap-6">
+                                <div className="space-y-2">
+                                    <label className="text-[10px] font-black text-gray-500 uppercase block ml-1 tracking-widest">Perfil de Acesso</label>
+                                    <div className="relative">
+                                        <select 
+                                            value={formData.role_level}
+                                            onChange={e => setFormData({...formData, role_level: e.target.value as AdminRoleLevel})}
+                                            className="w-full px-6 py-5 bg-gray-50 border-none rounded-[24px] font-black text-gray-800 uppercase text-xs focus:ring-4 focus:ring-blue-100 transition-all outline-none appearance-none cursor-pointer shadow-inner"
+                                        >
+                                            <option value="admin">Administrador</option>
+                                            <option value="manager">Gerente</option>
+                                            <option value="cashier">Caixa</option>
+                                            <option value="sorvete">Sorvete</option>
+                                        </select>
+                                        <ChevronRight className="absolute right-5 top-1/2 -translate-y-1/2 rotate-90 text-gray-400 pointer-events-none" size={18} />
+                                    </div>
+                                </div>
+                                <div className="space-y-2">
+                                    <label className="text-[10px] font-black text-gray-500 uppercase block ml-1 tracking-widest">Unidade Vinculada</label>
+                                    <div className="relative">
+                                        <select 
+                                            required={formData.role_level !== 'admin'}
+                                            disabled={formData.role_level === 'admin'}
+                                            value={formData.store_id || ''}
+                                            onChange={e => setFormData({...formData, store_id: e.target.value || null})}
+                                            className="w-full px-6 py-5 bg-gray-50 border-none rounded-[24px] font-black text-gray-800 uppercase text-xs focus:ring-4 focus:ring-blue-100 transition-all outline-none appearance-none cursor-pointer shadow-inner disabled:opacity-20"
+                                        >
+                                            <option value="">{formData.role_level === 'admin' ? 'ACESSO TOTAL' : 'SELECIONE A LOJA...'}</option>
+                                            {stores.map(s => (
+                                                <option key={s.id} value={s.id}>#{s.number} - {s.city}</option>
+                                            ))}
+                                        </select>
+                                        <ChevronRight className="absolute right-5 top-1/2 -translate-y-1/2 rotate-90 text-gray-400 pointer-events-none" size={18} />
+                                    </div>
                                 </div>
                             </div>
 

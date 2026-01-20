@@ -1,3 +1,4 @@
+
 export enum UserRole {
   ADMIN = 'ADMIN',
   MANAGER = 'MANAGER',
@@ -13,6 +14,22 @@ export interface User {
   email: string;
   password?: string;
   photo?: string;
+}
+
+export interface QuotaCategory {
+  id: string;
+  parent_category: string; // Ex: FEMININO, MASCULINO
+  category_name: string;   // Ex: FEMININO RASTEIRA
+  is_active?: boolean;
+  created_at?: string;
+}
+
+export interface QuotaMixParameter {
+  id: string;
+  category_name: string;
+  percentage: number;
+  semester?: 1 | 2; // 1: Jan-Jun, 2: Jul-Dez
+  created_at?: string;
 }
 
 export interface IceCreamStock {
@@ -96,6 +113,11 @@ export interface StoreProfitPartner { id: string; store_id: string; partner_name
 export interface CashRegisterClosure { id: string; storeId: string; closedBy: string; date: string; totalSales: number; totalExpenses: number; balance: number; notes?: string; createdAt: string; }
 export interface SystemLog { id?: string; created_at: string; userId: string; userName: string; userRole: UserRole; action: string; details: string; }
 
+export interface Installment {
+  n: number;
+  value: number;
+}
+
 export interface Cota { 
   id: string; 
   storeId: string; 
@@ -103,12 +125,15 @@ export interface Cota {
   totalValue: number; 
   shipmentDate: string; 
   paymentTerms: string; 
-  installments: Record<string, number>; 
+  installments: Record<string, number> | Installment[]; 
   createdAt: Date; 
   createdByRole?: string; 
-  status?: 'pending' | 'validated'; 
+  status?: string; 
   pairs?: number; 
-  classification?: string; 
+  classification?: string;
+  category_id?: string;
+  category_name?: string;
+  parent_category?: string; 
 }
 
 export interface CotaSettings { storeId: string; budgetValue: number; managerPercent: number; }
@@ -148,7 +173,6 @@ export interface DownloadItem {
 export interface CashError { id: string; storeId: string; userId: string; userName: string; date: string; type: 'surplus' | 'shortage'; value: number; reason?: string; createdAt: Date; }
 export interface Receipt { id: string; storeId?: string; issuerName: string; payer: string; recipient: string; value: number; valueInWords: string; reference: string; date: string; createdAt: Date; }
 export interface CreditCardSale { id: string; storeId?: string; userId: string; date: string; brand: string; value: number; authorizationCode?: string; }
-export interface SellerGoal { storeId: string; sellerName: string; month: string; revenueTarget: number; revenueActual: number; commissionRate?: number; itemsActual?: number; paActual?: number; }
 
 export type AdminRoleLevel = 'admin' | 'manager' | 'cashier' | 'sorvete';
 export interface AdminUser {
@@ -158,5 +182,6 @@ export interface AdminUser {
   password?: string;
   status: 'active' | 'inactive';
   role_level: AdminRoleLevel;
+  store_id: string | null;
   last_activity?: string;
 }

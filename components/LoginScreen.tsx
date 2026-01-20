@@ -1,7 +1,7 @@
 
 import React, { useState } from 'react';
 import { User, Store, UserRole } from '../types';
-import { Mail, Lock, Loader2, CheckCircle2, X, Store as StoreIcon, User as UserIcon, Phone, MapPin, ChevronDown } from 'lucide-react';
+import { Store as StoreIcon, MapPin, Mail, Phone, Lock, X, CheckCircle2, Loader2, ChevronDown } from 'lucide-react';
 import { BRAND_LOGO } from '../constants';
 
 interface LoginScreenProps {
@@ -160,7 +160,7 @@ const LoginScreen: React.FC<LoginScreenProps> = ({ onLoginAttempt, onRegisterReq
                         <div className="space-y-1.5">
                             <label className="text-[10px] font-black text-gray-700 uppercase ml-2 tracking-widest">Nome do Responsável / Gerente</label>
                             <div className="relative">
-                              <UserIcon className="absolute left-4 top-1/2 -translate-y-1/2 text-gray-400" size={16}/>
+                              <MapPin className="absolute left-4 top-1/2 -translate-y-1/2 text-gray-400" size={16}/>
                               <input required value={regForm.managerName} onChange={e => setRegForm({...regForm, managerName: e.target.value})} className="w-full pl-12 pr-4 py-3.5 bg-gray-50 rounded-2xl text-sm font-bold text-gray-900 border border-gray-200 focus:border-blue-500 focus:bg-white outline-none transition-all placeholder-gray-400" placeholder="Nome completo do solicitante"/>
                             </div>
                         </div>

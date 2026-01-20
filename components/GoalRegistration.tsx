@@ -1,7 +1,8 @@
 
 import React, { useState, useEffect, useMemo } from 'react';
 import { Store, MonthlyPerformance } from '../types';
-import { Save, Calendar, Target, Loader2, CheckCircle, Info } from 'lucide-react';
+import { formatCurrency } from '../constants';
+import { Target, Loader2, Save, Calendar, Calculator, TrendingUp } from 'lucide-react';
 
 interface GoalRegistrationProps {
   stores: Store[];
@@ -10,16 +11,13 @@ interface GoalRegistrationProps {
 }
 
 const GoalRegistration: React.FC<GoalRegistrationProps> = ({ stores, performanceData, onUpdateData }) => {
-  const currentYear = new Date().getFullYear();
-  const currentMonth = new Date().getMonth() + 1;
-  const [selectedYear, setSelectedYear] = useState(currentYear);
-  const [selectedMonthIndex, setSelectedMonthIndex] = useState(currentMonth);
+  const [selectedYear, setSelectedYear] = useState(2026);
+  const [selectedMonthIndex, setSelectedMonthIndex] = useState(1);
   const selectedMonthStr = `${selectedYear}-${String(selectedMonthIndex).padStart(2, '0')}`;
   
   const [formData, setFormData] = useState<Record<string, Partial<MonthlyPerformance>>>({});
   const [saveStatus, setSaveStatus] = useState<'idle' | 'saving' | 'success' | 'error'>('idle');
 
-  const years = Array.from({ length: 5 }, (_, i) => currentYear - 1 + i);
   const months = [
     { value: 1, label: 'Janeiro' }, { value: 2, label: 'Fevereiro' }, { value: 3, label: 'Março' },
     { value: 4, label: 'Abril' }, { value: 5, label: 'Maio' }, { value: 6, label: 'Junho' },
@@ -28,150 +26,192 @@ const GoalRegistration: React.FC<GoalRegistrationProps> = ({ stores, performance
   ];
 
   const activeStores = useMemo(() => {
-    const unique = new Map<string, Store>();
-    (stores || []).filter(s => s.status === 'active').forEach(s => {
-        if (!unique.has(s.number)) unique.set(s.number, s);
-    });
-    return Array.from(unique.values()).sort((a, b) => parseInt(a.number) - parseInt(b.number));
+    return (stores || []).filter(s => s.status === 'active').sort((a, b) => parseInt(a.number) - parseInt(b.number));
   }, [stores]);
 
   useEffect(() => {
     const newFormData: Record<string, Partial<MonthlyPerformance>> = {};
     activeStores.forEach(store => {
       const existing = performanceData.find(p => p.storeId === store.id && p.month === selectedMonthStr);
-      if (existing) {
-          newFormData[store.id] = { 
-              ...existing,
-              delinquencyTarget: existing.delinquencyTarget || 2.00,
-              paTarget: existing.paTarget || 0,
-              ticketTarget: existing.ticketTarget || 0,
-              puTarget: existing.puTarget || 0,
-              itemsTarget: existing.itemsTarget || 0
-          };
-      } else {
-          newFormData[store.id] = { 
-            revenueTarget: 0, itemsTarget: 0, paTarget: 0, ticketTarget: 0, puTarget: 0, delinquencyTarget: 2.00, businessDays: 26 
-          };
-      }
+      newFormData[store.id] = existing || { 
+        revenueTarget: 0, 
+        itemsTarget: 0, 
+        paTarget: 0, 
+        ticketTarget: 0, 
+        puTarget: 0, 
+        delinquencyTarget: 2, 
+        businessDays: 26 
+      };
     });
     setFormData(newFormData);
-    setSaveStatus('idle');
-  }, [selectedMonthStr, performanceData, activeStores]); 
+  }, [selectedMonthStr, performanceData, activeStores]);
+
+  const globalStats = useMemo(() => {
+      let revenue = 0;
+      let items = 0;
+      Object.keys(formData).forEach(key => {
+          const item = formData[key];
+          revenue += Number(item?.revenueTarget || 0);
+          items += Number(item?.itemsTarget || 0);
+      });
+      return { revenue, items };
+  }, [formData]);
 
   const handleInputChange = (storeId: string, field: keyof MonthlyPerformance, value: string) => {
-    const cleanValue = value.replace(',', '.');
-    setFormData(prev => ({ ...prev, [storeId]: { ...prev[storeId], [field]: Number(cleanValue) || 0 } }));
-    setSaveStatus('idle');
+      const numValue = parseFloat(value.replace(',', '.')) || 0;
+      setFormData(prev => ({
+          ...prev,
+          [storeId]: { ...prev[storeId], [field]: numValue }
+      }));
   };
 
-  const executeSaveStores = async () => {
+  const handleSave = async () => {
     setSaveStatus('saving');
     try {
         const dataToSave: MonthlyPerformance[] = activeStores.map(store => {
-            const data = formData[store.id] || {};
-            const existing = performanceData.find(p => p.storeId === store.id && p.month === selectedMonthStr);
+            const data = formData[store.id];
+            const dailyGoal = (Number(data?.revenueTarget) || 0) / (Number(data?.businessDays) || 26);
             return {
+                ...data,
                 storeId: store.id,
                 month: selectedMonthStr,
-                revenueTarget: Number(data.revenueTarget || 0),
-                revenueActual: Number(existing?.revenueActual || 0),
-                itemsTarget: Math.round(Number(data.itemsTarget || 0)),
-                itemsActual: Number(existing?.itemsActual || 0),
-                paTarget: Number(data.paTarget || 0),
-                itemsPerTicket: Number(existing?.itemsPerTicket || 0),
-                ticketTarget: Number(data.ticketTarget || 0),
-                averageTicket: Number(existing?.averageTicket || 0),
-                puTarget: Number(data.puTarget || 0),
-                unitPriceAverage: Number(existing?.unitPriceAverage || 0),
-                delinquencyTarget: Number(data.delinquencyTarget || 0),
-                delinquencyRate: Number(existing?.delinquencyRate || 0),
-                businessDays: Number(data.businessDays || 26),
-                percentMeta: 0, trend: 'stable', correctedDailyGoal: 0
+                correctedDailyGoal: dailyGoal,
+                trend: 'stable'
             } as MonthlyPerformance;
         });
+        
         await onUpdateData(dataToSave);
         setSaveStatus('success');
-        setTimeout(() => setSaveStatus('idle'), 3000);
-    } catch (e: any) { setSaveStatus('error'); alert(`Erro: ${e.message}`); }
+        setTimeout(() => setSaveStatus('idle'), 2000);
+    } catch (e) { 
+        setSaveStatus('error');
+        alert("Erro ao salvar metas.");
+    }
   };
 
   return (
-    <div className="p-4 md:p-6 lg:p-8 space-y-6 max-w-full bg-gray-50 min-h-full flex flex-col h-screen overflow-hidden">
-      <div className="flex flex-col lg:flex-row justify-between items-start lg:items-center gap-6 bg-white p-5 rounded-2xl shadow-sm border border-gray-200 shrink-0">
-        <div className="flex items-center gap-4">
-          <div className="p-3 bg-blue-100 text-blue-700 rounded-xl"><Target size={24} /></div>
+    <div className="p-2 md:p-3 space-y-3 flex flex-col h-full animate-in fade-in duration-500 pb-20">
+      {/* Header Compacto */}
+      <div className="flex flex-col lg:flex-row justify-between items-start lg:items-center gap-3 bg-white p-3 md:p-4 rounded-[20px] shadow-sm border border-gray-100">
+        <div className="flex items-center gap-2.5">
+          <div className="p-2 bg-red-50 text-red-600 rounded-[12px]">
+            <Target size={20} />
+          </div>
           <div>
-            <h2 className="text-lg font-black text-gray-900 tracking-tight uppercase italic leading-none">Metas <span className="text-red-600">Corporativas</span></h2>
-            <p className="text-gray-500 font-bold text-[9px] uppercase tracking-widest mt-1">Configuração de Performance por Unidade</p>
+            <h2 className="text-lg md:text-xl font-black uppercase italic tracking-tighter leading-none text-gray-900">
+                Gestão <span className="text-red-600">de Metas</span>
+            </h2>
+            <p className="text-gray-400 font-bold uppercase text-[7px] tracking-[0.2em] mt-0.5">Definição de Objetivos de Performance</p>
           </div>
         </div>
-        <div className="flex flex-wrap items-center gap-2 w-full lg:w-auto">
-            <div className="flex items-center gap-1 bg-gray-50 p-1.5 rounded-xl border border-gray-200 shadow-inner mr-2">
-                <Calendar className="text-blue-600 ml-1" size={14} />
-                <select value={selectedMonthIndex} onChange={(e) => setSelectedMonthIndex(Number(e.target.value))} className="bg-transparent border-none font-black text-gray-800 outline-none cursor-pointer uppercase text-[10px]">
+
+        <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-2 w-full lg:w-auto">
+          <div className="flex items-center gap-1 bg-gray-50 p-1 rounded-lg border border-gray-200 shadow-inner flex-1 sm:flex-none">
+                <Calendar className="text-blue-600 ml-1" size={12} />
+                <select value={selectedMonthIndex} onChange={(e) => setSelectedMonthIndex(Number(e.target.value))} className="bg-transparent text-gray-900 font-black outline-none cursor-pointer px-1 uppercase text-[9px]">
                     {months.map(m => <option key={m.value} value={m.value}>{m.label}</option>)}
                 </select>
                 <div className="w-px h-3 bg-gray-300 mx-1"></div>
-                <select value={selectedYear} onChange={(e) => setSelectedYear(Number(e.target.value))} className="bg-transparent border-none font-black text-gray-800 outline-none cursor-pointer text-[10px]">
-                    {years.map(y => <option key={y} value={y}>{y}</option>)}
+                <select value={selectedYear} onChange={(e) => setSelectedYear(Number(e.target.value))} className="bg-transparent text-gray-900 font-black outline-none cursor-pointer px-1 text-[9px]">
+                    {[2024, 2025, 2026].map(y => <option key={y} value={y}>{y}</option>)}
                 </select>
-            </div>
-            <button onClick={executeSaveStores} disabled={saveStatus === 'saving'} className={`flex-1 lg:flex-none px-6 py-2.5 rounded-xl font-black uppercase text-[10px] shadow-lg transition-all flex items-center justify-center gap-2 active:scale-95 disabled:opacity-50 ${saveStatus === 'success' ? 'bg-green-600 text-white' : saveStatus === 'error' ? 'bg-red-600 text-white' : 'bg-gray-900 text-white hover:bg-black'}`}>
-                {saveStatus === 'saving' ? <><Loader2 className="animate-spin" size={14} /> Gravando...</> : saveStatus === 'success' ? <><CheckCircle size={14} /> OK!</> : <><Save size={14} /> Efetivar Metas</>}
-            </button>
+          </div>
+
+          <button onClick={handleSave} disabled={saveStatus === 'saving'} className="bg-gray-950 text-white px-4 py-2 rounded-xl font-black uppercase text-[9px] tracking-widest flex items-center justify-center gap-2 shadow-lg hover:bg-black transition-all active:scale-95 border-b-2 border-red-700 disabled:opacity-50">
+            {saveStatus === 'saving' ? <Loader2 className="animate-spin" size={12}/> : <Save size={12}/>} 
+            {saveStatus === 'success' ? 'Salvo!' : 'Efetivar'}
+          </button>
         </div>
       </div>
 
-      <div className="bg-white rounded-2xl shadow-xl border border-gray-200 overflow-hidden flex flex-col flex-1">
-        <div className="overflow-x-auto overflow-y-auto flex-1 no-scrollbar">
-            <table className="w-full border-collapse table-fixed min-w-[1100px]">
-                <thead className="sticky top-0 z-20">
-                    <tr className="bg-gray-900 text-white text-[9px] font-black uppercase tracking-widest h-10">
-                        <th className="p-3 w-44 border-r border-white/5 bg-gray-950 sticky left-0 z-30 shadow-md text-left">Unidade</th>
-                        <th className="p-3 w-28 border-r border-white/5 bg-blue-900">META FAT. (R$)</th>
-                        <th className="p-3 w-20 border-r border-white/5">META ITENS</th>
-                        <th className="p-3 w-20 border-r border-white/5">META P.A.</th>
-                        <th className="p-3 w-28 border-r border-white/5">META TICKET</th>
-                        <th className="p-3 w-24 border-r border-white/5">META P.U.</th>
-                        <th className="p-3 w-16 border-r border-white/5">DIAS</th>
-                        <th className="p-3 w-20 bg-red-950/20">INADIMP. (%)</th>
-                    </tr>
-                </thead>
-                <tbody className="divide-y divide-gray-100">
-                    {activeStores.map(store => {
-                        const data = formData[store.id] || {};
-                        return (
-                            <tr key={store.id} className="hover:bg-blue-50/50 transition-all group h-12">
-                                <td className="p-3 border-r border-gray-100 bg-white group-hover:bg-blue-50 sticky left-0 z-10 shadow-sm overflow-hidden">
-                                    <div className="font-black text-gray-900 text-[11px] uppercase italic tracking-tighter leading-none truncate">{store.number} - {store.name}</div>
-                                </td>
-                                <td className="p-1 border-r border-gray-100 bg-blue-50/10">
-                                    <input type="text" value={data.revenueTarget || ''} onChange={e => handleInputChange(store.id, 'revenueTarget', e.target.value)} className="w-full p-1.5 bg-transparent border-none rounded-lg outline-none text-center font-black text-blue-900 focus:bg-white transition-all text-xs" placeholder="0,00" />
-                                </td>
-                                <td className="p-1 border-r border-gray-100">
-                                    <input type="text" value={data.itemsTarget || ''} onChange={e => handleInputChange(store.id, 'itemsTarget', e.target.value)} className="w-full p-1.5 bg-transparent border-none rounded-lg outline-none text-center font-black text-blue-600 focus:bg-white transition-all text-xs" placeholder="0" />
-                                </td>
-                                <td className="p-1 border-r border-gray-100">
-                                    <input type="text" value={data.paTarget || ''} onChange={e => handleInputChange(store.id, 'paTarget', e.target.value)} className="w-full p-1.5 bg-transparent border-none rounded-lg outline-none text-center font-bold text-gray-700 focus:bg-white transition-all text-xs" placeholder="0,00" />
-                                </td>
-                                <td className="p-1 border-r border-gray-100">
-                                    <input type="text" value={data.ticketTarget || ''} onChange={e => handleInputChange(store.id, 'ticketTarget', e.target.value)} className="w-full p-1.5 bg-transparent border-none rounded-lg outline-none text-center font-bold text-gray-700 focus:bg-white transition-all text-xs" placeholder="0,00" />
-                                </td>
-                                <td className="p-1 border-r border-gray-100">
-                                    <input type="text" value={data.puTarget || ''} onChange={e => handleInputChange(store.id, 'puTarget', e.target.value)} className="w-full p-1.5 bg-transparent border-none rounded-lg outline-none text-center font-bold text-gray-700 focus:bg-white transition-all text-xs" placeholder="0,00" />
-                                </td>
-                                <td className="p-1 border-r border-gray-100">
-                                    <input type="number" value={data.businessDays || 26} onChange={e => handleInputChange(store.id, 'businessDays', e.target.value)} className="w-full p-1.5 bg-transparent border-none rounded-lg outline-none text-center font-bold text-gray-700 focus:bg-white transition-all text-xs" placeholder="26" />
-                                </td>
-                                <td className="p-1 bg-red-50/20">
-                                    <input type="text" value={data.delinquencyTarget || ''} onChange={e => handleInputChange(store.id, 'delinquencyTarget', e.target.value)} className="w-full p-1.5 bg-transparent border-none rounded-lg outline-none text-center font-black text-red-600 focus:bg-white transition-all text-xs" placeholder="2,00" />
-                                </td>
-                            </tr>
-                        );
-                    })}
-                </tbody>
+      {/* Stats Globais Menores */}
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-2">
+          <div className="bg-blue-900 text-white p-3 md:p-4 rounded-[20px] shadow-md flex items-center justify-between group overflow-hidden relative">
+               <div className="absolute top-0 right-0 p-2 opacity-10"><TrendingUp size={40}/></div>
+               <div>
+                   <p className="text-[7px] font-black text-blue-300 uppercase tracking-widest mb-0.5">Faturamento Rede</p>
+                   <h3 className="text-xl font-black italic tracking-tighter">{formatCurrency(globalStats.revenue)}</h3>
+               </div>
+          </div>
+          <div className="bg-white p-3 md:p-4 rounded-[20px] shadow-sm border border-gray-100 flex items-center justify-between group overflow-hidden relative">
+               <div className="absolute top-0 right-0 p-2 opacity-5"><Calculator size={40}/></div>
+               <div>
+                   <p className="text-[7px] font-black text-gray-400 uppercase tracking-widest mb-0.5">Total de Itens</p>
+                   <h3 className="text-xl font-black text-gray-900 italic tracking-tighter">{globalStats.items.toLocaleString()} <span className="text-[10px] not-italic text-gray-400 font-bold uppercase ml-0.5">PARES</span></h3>
+               </div>
+          </div>
+      </div>
+
+      {/* Tabela de Lançamento Ultra Compacta */}
+      <div className="flex-1 bg-white rounded-[20px] shadow-sm border border-gray-100 overflow-hidden flex flex-col">
+        <div className="overflow-x-auto no-scrollbar">
+            <table className="w-full text-left border-collapse min-w-[1000px]">
+              <thead className="bg-gray-50 text-[7px] font-black uppercase tracking-[0.1em] text-gray-400 border-b">
+                <tr>
+                  <th className="px-3 py-2 sticky left-0 bg-gray-50 z-20 w-[160px]">Unidade</th>
+                  <th className="px-1 py-2 text-center">Faturamento (R$)</th>
+                  <th className="px-1 py-2 text-center">Ritmo</th>
+                  <th className="px-1 py-2 text-center">Itens</th>
+                  <th className="px-1 py-2 text-center">P.A.</th>
+                  <th className="px-1 py-2 text-center">Ticket</th>
+                  <th className="px-1 py-2 text-center">P.U.</th>
+                  <th className="px-1 py-2 text-center w-14">Dias</th>
+                  <th className="px-3 py-2 text-center">Inadimp. (%)</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-gray-50">
+                {activeStores.map(s => {
+                    const rowData = formData[s.id];
+                    const daily = (Number(rowData?.revenueTarget) || 0) / (Number(rowData?.businessDays) || 26);
+                    return (
+                        <tr key={s.id} className="hover:bg-blue-50/20 transition-colors group">
+                            <td className="px-3 py-1 sticky left-0 bg-white group-hover:bg-blue-50/30 z-10">
+                                <div className="flex flex-col">
+                                    <span className="font-black uppercase italic text-gray-900 text-[11px] tracking-tight">{s.number} - {s.name}</span>
+                                    <span className="text-[7px] font-bold text-gray-400 uppercase leading-none">{s.city.split(' - ')[0]}</span>
+                                </div>
+                            </td>
+                            <td className="px-1 py-1">
+                                <input type="text" value={rowData?.revenueTarget || ''} onChange={e => handleInputChange(s.id, 'revenueTarget', e.target.value)} className="w-full p-1.5 bg-gray-50 border-none rounded-lg font-black text-blue-900 text-center text-[11px] focus:ring-1 focus:ring-blue-200 transition-all outline-none" placeholder="0" />
+                            </td>
+                            <td className="px-1 py-1 text-center">
+                                <div className="py-1 px-1.5 bg-blue-50/50 rounded-lg border border-dashed border-blue-200 min-w-[70px]">
+                                    <span className="text-[9px] font-black text-blue-700 italic">{formatCurrency(daily)}</span>
+                                </div>
+                            </td>
+                            <td className="px-1 py-1">
+                                <input type="text" value={rowData?.itemsTarget || ''} onChange={e => handleInputChange(s.id, 'itemsTarget', e.target.value)} className="w-full p-1.5 bg-gray-50 border-none rounded-lg font-black text-gray-700 text-center text-[11px] focus:ring-1 focus:ring-blue-100 outline-none" placeholder="0" />
+                            </td>
+                            <td className="px-1 py-1">
+                                <input type="text" value={rowData?.paTarget || ''} onChange={e => handleInputChange(s.id, 'paTarget', e.target.value)} className="w-full p-1.5 bg-gray-50 border-none rounded-lg font-black text-gray-700 text-center text-[11px] focus:ring-1 focus:ring-blue-100 outline-none" placeholder="0,00" />
+                            </td>
+                            <td className="px-1 py-1">
+                                <input type="text" value={rowData?.ticketTarget || ''} onChange={e => handleInputChange(s.id, 'ticketTarget', e.target.value)} className="w-full p-1.5 bg-gray-50 border-none rounded-lg font-black text-gray-700 text-center text-[11px] focus:ring-1 focus:ring-blue-100 outline-none" placeholder="0,00" />
+                            </td>
+                            <td className="px-1 py-1">
+                                <input type="text" value={rowData?.puTarget || ''} onChange={e => handleInputChange(s.id, 'puTarget', e.target.value)} className="w-full p-1.5 bg-gray-50 border-none rounded-lg font-black text-gray-700 text-center text-[11px] focus:ring-1 focus:ring-blue-100 outline-none" placeholder="0,00" />
+                            </td>
+                            <td className="px-1 py-1">
+                                <input type="text" value={rowData?.businessDays || ''} onChange={e => handleInputChange(s.id, 'businessDays', e.target.value)} className="w-full p-1.5 bg-gray-50 border-none rounded-lg font-black text-gray-700 text-center text-[11px] outline-none" placeholder="26" />
+                            </td>
+                            <td className="px-3 py-1">
+                                <input type="text" value={rowData?.delinquencyTarget || ''} onChange={e => handleInputChange(s.id, 'delinquencyTarget', e.target.value)} className="w-full p-1.5 bg-red-50/50 border-none rounded-lg font-black text-red-700 text-center text-[11px] focus:ring-1 focus:ring-red-100 outline-none" placeholder="2.0" />
+                            </td>
+                        </tr>
+                    );
+                })}
+              </tbody>
             </table>
         </div>
+      </div>
+      
+      {/* Bottom Compacto */}
+      <div className="fixed bottom-0 left-0 lg:left-64 right-0 bg-white border-t border-gray-100 p-2 flex justify-between items-center z-40 shadow-lg">
+          <div className="flex items-center gap-1.5 ml-2">
+              <div className="w-1 h-1 bg-green-500 rounded-full animate-pulse"></div>
+              <span className="text-[7px] font-black uppercase text-gray-400 tracking-widest">Sincronização Real-Time</span>
+          </div>
+          <p className="text-[8px] font-black text-blue-900 uppercase italic mr-2">Rede Real: <span className="text-red-600 ml-1">{formatCurrency(globalStats.revenue)}</span></p>
       </div>
     </div>
   );
