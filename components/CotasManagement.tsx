@@ -323,12 +323,12 @@ const CotasManagement: React.FC<CotasManagementProps> = ({
         </div>
 
         {/* TIMELINE TABLE */}
-        <div className="flex-1 overflow-auto bg-white border-t border-gray-100 no-scrollbar">
+        <div className="flex-1 overflow-auto bg-white border-t border-gray-100">
             <table className="w-full text-center border-separate border-spacing-0 table-fixed min-w-[1800px]">
                 <thead className="sticky top-0 z-40">
                     <tr className="bg-blue-900 text-white text-[10px] font-black uppercase h-12">
-                        <th className="p-2 w-[320px] text-left sticky left-0 bg-blue-900 z-50">Marca / Identificação</th>
-                        <th className="p-2 w-32 border-l border-white/10">Resumo</th>
+                        <th className="p-2 w-[224px] text-left sticky left-0 bg-blue-900 z-50">Marca / Identificação</th>
+                        <th className="p-2 w-32 border-l border-white/10 sticky left-[224px] bg-blue-900 z-50">Resumo</th>
                         {timeline.map(m => <th key={m.key} className="p-2 w-32 border-l border-white/10">{m.label}</th>)}
                     </tr>
                 </thead>
@@ -336,7 +336,7 @@ const CotasManagement: React.FC<CotasManagementProps> = ({
                     {/* LINHA DE SALDO FINAL */}
                     <tr className="bg-yellow-400 border-b border-yellow-500 h-12">
                         <td className="px-4 py-2 text-left sticky left-0 bg-yellow-400 z-30 font-black text-blue-900 shadow-sm">SALDO COTA ATUAL</td>
-                        <td className="font-black italic text-blue-900">LÍQUIDO</td>
+                        <td className="font-black italic text-blue-900 sticky left-[224px] bg-yellow-400 z-30">LÍQUIDO</td>
                         {timeline.map(m => (
                             <td key={m.key} className={`p-2 font-black ${consolidated.stats[m.key].available < 0 ? 'text-red-600 animate-pulse' : 'text-blue-900'}`}>
                                 {formatCurrency(consolidated.stats[m.key].available)}
@@ -347,7 +347,7 @@ const CotasManagement: React.FC<CotasManagementProps> = ({
                     {/* LINHA DE GASTOS FIXOS */}
                     <tr className="bg-gray-50/50 border-b h-11">
                         <td className="px-4 text-left sticky left-0 bg-[#f9fafb] z-30 font-black text-red-600">GASTOS FIXOS / DEBTS</td>
-                        <td className="font-black italic text-red-600">SAÍDAS</td>
+                        <td className="font-black italic text-red-600 sticky left-[224px] bg-[#f9fafb] z-30">SAÍDAS</td>
                         {timeline.map(m => (
                             <td key={m.key} className="p-2 font-black text-red-600">
                                 {formatCurrency(consolidated.stats[m.key].debts)}
@@ -357,7 +357,7 @@ const CotasManagement: React.FC<CotasManagementProps> = ({
 
                     <tr className="bg-white border-b h-11">
                         <td className="px-4 text-left sticky left-0 bg-white z-30 font-black text-blue-800">COTA COMPRADOR ({100 - (storeSettings?.managerPercent || 20)}%)</td>
-                        <td className="font-black italic text-blue-800">VALIDADO</td>
+                        <td className="font-black italic text-blue-800 sticky left-[224px] bg-white z-30">VALIDADO</td>
                         {timeline.map(m => (
                             <td key={m.key} className="p-2 font-black text-blue-800">
                                 {formatCurrency(consolidated.stats[m.key].buyerValid)}
@@ -367,7 +367,7 @@ const CotasManagement: React.FC<CotasManagementProps> = ({
 
                     <tr className="bg-orange-50/20 border-b h-11">
                         <td className="px-4 text-left sticky left-0 bg-[#fefce8] z-30 font-black text-orange-700">COTA GERENTE ({storeSettings?.managerPercent || 20}%)</td>
-                        <td className="font-black italic text-orange-700">VALIDADO</td>
+                        <td className="font-black italic text-orange-700 sticky left-[224px] bg-[#fefce8] z-30">VALIDADO</td>
                         {timeline.map(m => (
                             <td key={m.key} className="p-2 font-black text-orange-700">
                                 {formatCurrency(consolidated.stats[m.key].managerValid)}
@@ -380,7 +380,7 @@ const CotasManagement: React.FC<CotasManagementProps> = ({
                         <td className="px-4 text-left sticky left-0 bg-gray-100 z-30 font-black text-gray-500 italic text-[9px] tracking-widest">
                             AGUARDANDO VALIDAÇÃO
                         </td>
-                        <td className="bg-gray-100 font-black text-[9px] text-gray-400">PENDENTE</td>
+                        <td className="bg-gray-100 font-black text-[9px] text-gray-400 sticky left-[224px] z-30">PENDENTE</td>
                         {timeline.map(m => (
                             <td key={m.key} className="p-2 font-black text-gray-400 italic">
                                 {consolidated.stats[m.key].pendingInstallmentSum > 0 ? formatCurrency(consolidated.stats[m.key].pendingInstallmentSum) : '-'}
@@ -414,7 +414,7 @@ const CotasManagement: React.FC<CotasManagementProps> = ({
                                         </div>
                                     </div>
                                 </td>
-                                <td className="bg-white">
+                                <td className="bg-white sticky left-[224px] z-30 group-hover:bg-blue-50/50 shadow-sm">
                                     <div className="flex flex-col items-center justify-center h-full">
                                         <div className="text-[9px] font-black text-blue-600 uppercase tracking-tighter mb-0.5">EMB: {getMonthNameFromKey(order.shipmentDate)}</div>
                                         <div className="text-[10px] font-black text-gray-900 italic">{formatCurrency(order.totalValue)}</div>
