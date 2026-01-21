@@ -142,21 +142,21 @@ const GoalRegistration: React.FC<GoalRegistrationProps> = ({ stores, performance
           </div>
       </div>
 
-      {/* Tabela de Lançamento Ultra Compacta */}
-      <div className="flex-1 bg-white rounded-[20px] shadow-sm border border-gray-100 overflow-hidden flex flex-col">
-        <div className="overflow-x-auto no-scrollbar">
-            <table className="w-full text-left border-collapse min-w-[1000px]">
-              <thead className="bg-gray-50 text-[7px] font-black uppercase tracking-[0.1em] text-gray-400 border-b">
+      {/* Tabela de Lançamento com Scrollbars Visíveis e Colunas Reduzidas */}
+      <div className="flex-1 bg-white rounded-[20px] shadow-sm border border-gray-100 flex flex-col overflow-hidden">
+        <div className="flex-1 overflow-auto">
+            <table className="w-full text-left border-separate border-spacing-0 min-w-[1000px]">
+              <thead className="bg-gray-50 text-[7px] font-black uppercase tracking-[0.1em] text-gray-400 border-b sticky top-0 z-30">
                 <tr>
-                  <th className="px-3 py-2 sticky left-0 bg-gray-50 z-20 w-[160px]">Unidade</th>
-                  <th className="px-1 py-2 text-center">Faturamento (R$)</th>
-                  <th className="px-1 py-2 text-center">Ritmo</th>
-                  <th className="px-1 py-2 text-center">Itens</th>
-                  <th className="px-1 py-2 text-center">P.A.</th>
-                  <th className="px-1 py-2 text-center">Ticket</th>
-                  <th className="px-1 py-2 text-center">P.U.</th>
-                  <th className="px-1 py-2 text-center w-14">Dias</th>
-                  <th className="px-3 py-2 text-center">Inadimp. (%)</th>
+                  <th className="px-4 py-3 sticky left-0 bg-gray-50 z-40 w-[220px]">Identificação da Unidade</th>
+                  <th className="px-1 py-3 text-center">Faturamento (R$)</th>
+                  <th className="px-1 py-3 text-center">Ritmo</th>
+                  <th className="px-1 py-3 text-center w-16">Itens</th>
+                  <th className="px-1 py-3 text-center w-16">P.A.</th>
+                  <th className="px-1 py-3 text-center w-24">Ticket</th>
+                  <th className="px-1 py-3 text-center w-24">P.U.</th>
+                  <th className="px-1 py-3 text-center w-14">Dias</th>
+                  <th className="px-3 py-3 text-center">Inadimp. (%)</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-gray-50">
@@ -165,37 +165,41 @@ const GoalRegistration: React.FC<GoalRegistrationProps> = ({ stores, performance
                     const daily = (Number(rowData?.revenueTarget) || 0) / (Number(rowData?.businessDays) || 26);
                     return (
                         <tr key={s.id} className="hover:bg-blue-50/20 transition-colors group">
-                            <td className="px-3 py-1 sticky left-0 bg-white group-hover:bg-blue-50/30 z-10">
+                            <td className="px-4 py-1 sticky left-0 bg-white group-hover:bg-blue-50/30 z-20 border-l-4 border-blue-900 shadow-sm">
                                 <div className="flex flex-col">
-                                    <span className="font-black uppercase italic text-gray-900 text-[11px] tracking-tight">{s.number} - {s.name}</span>
-                                    <span className="text-[7px] font-bold text-gray-400 uppercase leading-none">{s.city.split(' - ')[0]}</span>
+                                    <span className="font-black uppercase italic text-blue-950 text-[11px] tracking-tight leading-none">
+                                        Loja {s.number.padStart(2, '0')} - {s.city.split(' - ')[0]}
+                                    </span>
+                                    <span className="text-[8px] font-bold text-gray-400 uppercase leading-none mt-1 opacity-60">
+                                        {s.name}
+                                    </span>
                                 </div>
                             </td>
                             <td className="px-1 py-1">
-                                <input type="text" value={rowData?.revenueTarget || ''} onChange={e => handleInputChange(s.id, 'revenueTarget', e.target.value)} className="w-full p-1.5 bg-gray-50 border-none rounded-lg font-black text-blue-900 text-center text-[11px] focus:ring-1 focus:ring-blue-200 transition-all outline-none" placeholder="0" />
+                                <input type="text" value={rowData?.revenueTarget || ''} onChange={e => handleInputChange(s.id, 'revenueTarget', e.target.value)} className="w-full p-1 bg-gray-50 border-none rounded-lg font-black text-blue-900 text-center text-[11px] focus:ring-1 focus:ring-blue-200 transition-all outline-none" placeholder="0" />
                             </td>
                             <td className="px-1 py-1 text-center">
-                                <div className="py-1 px-1.5 bg-blue-50/50 rounded-lg border border-dashed border-blue-200 min-w-[70px]">
+                                <div className="py-0.5 px-1.5 bg-blue-50/50 rounded-lg border border-dashed border-blue-200 min-w-[70px]">
                                     <span className="text-[9px] font-black text-blue-700 italic">{formatCurrency(daily)}</span>
                                 </div>
                             </td>
                             <td className="px-1 py-1">
-                                <input type="text" value={rowData?.itemsTarget || ''} onChange={e => handleInputChange(s.id, 'itemsTarget', e.target.value)} className="w-full p-1.5 bg-gray-50 border-none rounded-lg font-black text-gray-700 text-center text-[11px] focus:ring-1 focus:ring-blue-100 outline-none" placeholder="0" />
+                                <input type="text" value={rowData?.itemsTarget || ''} onChange={e => handleInputChange(s.id, 'itemsTarget', e.target.value)} className="w-full p-1 bg-gray-50 border-none rounded-lg font-black text-gray-700 text-center text-[11px] focus:ring-1 focus:ring-blue-100 outline-none" placeholder="0" />
                             </td>
                             <td className="px-1 py-1">
-                                <input type="text" value={rowData?.paTarget || ''} onChange={e => handleInputChange(s.id, 'paTarget', e.target.value)} className="w-full p-1.5 bg-gray-50 border-none rounded-lg font-black text-gray-700 text-center text-[11px] focus:ring-1 focus:ring-blue-100 outline-none" placeholder="0,00" />
+                                <input type="text" value={rowData?.paTarget || ''} onChange={e => handleInputChange(s.id, 'paTarget', e.target.value)} className="w-full p-1 bg-gray-50 border-none rounded-lg font-black text-gray-700 text-center text-[11px] focus:ring-1 focus:ring-blue-100 outline-none" placeholder="0,00" />
                             </td>
                             <td className="px-1 py-1">
-                                <input type="text" value={rowData?.ticketTarget || ''} onChange={e => handleInputChange(s.id, 'ticketTarget', e.target.value)} className="w-full p-1.5 bg-gray-50 border-none rounded-lg font-black text-gray-700 text-center text-[11px] focus:ring-1 focus:ring-blue-100 outline-none" placeholder="0,00" />
+                                <input type="text" value={rowData?.ticketTarget || ''} onChange={e => handleInputChange(s.id, 'ticketTarget', e.target.value)} className="w-full p-1 bg-gray-50 border-none rounded-lg font-black text-gray-700 text-center text-[11px] focus:ring-1 focus:ring-blue-100 outline-none" placeholder="0,00" />
                             </td>
                             <td className="px-1 py-1">
-                                <input type="text" value={rowData?.puTarget || ''} onChange={e => handleInputChange(s.id, 'puTarget', e.target.value)} className="w-full p-1.5 bg-gray-50 border-none rounded-lg font-black text-gray-700 text-center text-[11px] focus:ring-1 focus:ring-blue-100 outline-none" placeholder="0,00" />
+                                <input type="text" value={rowData?.puTarget || ''} onChange={e => handleInputChange(s.id, 'puTarget', e.target.value)} className="w-full p-1 bg-gray-50 border-none rounded-lg font-black text-gray-700 text-center text-[11px] focus:ring-1 focus:ring-blue-100 outline-none" placeholder="0,00" />
                             </td>
                             <td className="px-1 py-1">
-                                <input type="text" value={rowData?.businessDays || ''} onChange={e => handleInputChange(s.id, 'businessDays', e.target.value)} className="w-full p-1.5 bg-gray-50 border-none rounded-lg font-black text-gray-700 text-center text-[11px] outline-none" placeholder="26" />
+                                <input type="text" value={rowData?.businessDays || ''} onChange={e => handleInputChange(s.id, 'businessDays', e.target.value)} className="w-full p-1 bg-gray-50 border-none rounded-lg font-black text-gray-700 text-center text-[11px] outline-none" placeholder="26" />
                             </td>
                             <td className="px-3 py-1">
-                                <input type="text" value={rowData?.delinquencyTarget || ''} onChange={e => handleInputChange(s.id, 'delinquencyTarget', e.target.value)} className="w-full p-1.5 bg-red-50/50 border-none rounded-lg font-black text-red-700 text-center text-[11px] focus:ring-1 focus:ring-red-100 outline-none" placeholder="2.0" />
+                                <input type="text" value={rowData?.delinquencyTarget || ''} onChange={e => handleInputChange(s.id, 'delinquencyTarget', e.target.value)} className="w-full p-1 bg-red-50/50 border-none rounded-lg font-black text-red-700 text-center text-[11px] focus:ring-1 focus:ring-red-100 outline-none" placeholder="2.0" />
                             </td>
                         </tr>
                     );

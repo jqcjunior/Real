@@ -395,7 +395,7 @@ const CotasManagement: React.FC<CotasManagementProps> = ({
                         const qtyType = isAcessorio ? 'UNIDADES' : 'PARES';
 
                         return (
-                            <tr key={order.id} className="hover:bg-blue-50/50 transition-colors border-b group h-20">
+                            <tr key={order.id} className="hover:bg-blue-50/50 transition-colors border-b group h-16">
                                 <td className="px-4 text-left sticky left-0 bg-white group-hover:bg-blue-50/50 z-30 shadow-sm">
                                     <div className="flex items-center gap-3">
                                         <div className={`w-3 h-3 rounded-full shrink-0 ${isManagerOrder ? 'bg-orange-500 shadow-orange-200' : 'bg-blue-600 shadow-blue-200'} shadow-md`}></div>
