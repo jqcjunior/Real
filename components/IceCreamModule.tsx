@@ -490,6 +490,7 @@ const IceCreamModule: React.FC<IceCreamModuleProps> = ({
             description: txForm.description
         };
 
+        // Envia para o prop que trata a persistência via App.tsx com o mapper
         await onAddTransaction(formData as any);
         
         setTxForm({ ...txForm, value: '', description: '' });
@@ -497,6 +498,7 @@ const IceCreamModule: React.FC<IceCreamModuleProps> = ({
     } catch (err) { alert("Erro ao lançar despesa."); } finally { setIsSubmitting(false); }
   };
 
+  // CRUD DE CATEGORIAS
   const handleAddExpenseCategory = async () => {
       if (!newCategoryName.trim()) return;
       setIsSubmitting(true);
@@ -546,15 +548,7 @@ const IceCreamModule: React.FC<IceCreamModuleProps> = ({
   const handleEditProduct = (item: IceCreamItem) => {
       setEditingProduct(item);
       setNewProd({ name: item.name, category: item.category, price: item.price.toFixed(2).replace('.', ','), flavor: item.flavor || '' });
-      
-      let parsedRecipe: IceCreamRecipeItem[] = [];
-      try {
-          parsedRecipe = Array.isArray(item.recipe) ? item.recipe : (typeof item.recipe === 'string' ? JSON.parse(item.recipe) : []);
-      } catch(e) {
-          parsedRecipe = [];
-      }
-      setTempRecipe(parsedRecipe); 
-      setShowProductModal(true);
+      setTempRecipe(item.recipe ?? []); setShowProductModal(true);
   };
 
   const handleBulkStockUpdate = async (type: 'production' | 'adjustment') => {
@@ -911,7 +905,7 @@ const IceCreamModule: React.FC<IceCreamModuleProps> = ({
                                                 <div className="text-[8px] text-gray-400 uppercase mt-0.5">{sale.flavor}</div>
                                             </td>
                                             <td className="px-8 py-5">
-                                                <span className={`px-2 py-0.5 rounded text-[8px] font-black uppercase border ${sale.paymentMethod === 'Fiado' ? 'bg-red-50 text-red-700 border-red-100' : 'bg-green-50 text-green-600 border-green-100'}`}>{sale.paymentMethod}</span>
+                                                <span className={`px-2 py-0.5 rounded text-[8px] font-black uppercase border ${sale.paymentMethod === 'Fiado' ? 'bg-red-50 text-red-600 border-red-100' : 'bg-green-50 text-green-600 border-green-100'}`}>{sale.paymentMethod}</span>
                                             </td>
                                             <td className="px-8 py-5 text-right font-black text-blue-950 text-sm">{formatCurrency(sale.totalValue)}</td>
                                             <td className="px-8 py-5 text-center">
@@ -961,24 +955,24 @@ const IceCreamModule: React.FC<IceCreamModuleProps> = ({
                                         <td className="px-8 py-5 font-black text-blue-950 uppercase italic text-sm">{item.name}</td>
                                         <td className="px-8 py-5"><span className="text-[9px] font-black text-gray-400 border border-gray-200 px-3 py-1 rounded-full uppercase">{item.category}</span></td>
                                         <td className="px-8 py-5 text-right font-black text-blue-900">{formatCurrency(item.price)}</td>
-                                        <td className="px-8 py-5 text-center">
-                                            <div className="flex flex-wrap justify-center gap-1">
-                                                {(() => {
-                                                    let recipeArray: IceCreamRecipeItem[] = [];
-                                                    try {
-                                                        recipeArray = Array.isArray(item.recipe) 
-                                                            ? item.recipe 
-                                                            : (typeof item.recipe === 'string' ? JSON.parse(item.recipe) : []);
-                                                    } catch (e) {
-                                                        recipeArray = [];
-                                                    }
-                                                    return recipeArray.map((r, idx) => (
-                                                        <span key={idx} className="bg-blue-50 text-blue-600 text-[7px] font-black px-1.5 py-0.5 rounded uppercase">{r.stock_base_name}</span>
-                                                    ));
-                                                })()}
-                                                {(!item.recipe || (Array.isArray(item.recipe) && item.recipe.length === 0)) && <span className="text-[7px] text-gray-300 font-bold uppercase italic">Sem Receita</span>}
-                                            </div>
-                                        </td>
+                                      <td className="px-8 py-5 text-center">
+  <div className="flex flex-wrap justify-center gap-1">
+    {Array.isArray(item.recipe) && item.recipe.map((r, idx) => (
+      <span
+        key={idx}
+        className="bg-blue-50 text-blue-600 text-[7px] font-black px-1.5 py-0.5 rounded uppercase"
+      >
+        {r.stock_base_name}
+      </span>
+    ))}
+
+    {!Array.isArray(item.recipe) || item.recipe.length === 0 ? (
+      <span className="text-[7px] text-gray-300 font-bold uppercase italic">
+        Sem Receita
+      </span>
+    ) : null}
+  </div>
+</td>
                                         <td className="px-8 py-5 text-right">
                                             <div className="flex justify-end gap-2 opacity-0 group-hover:opacity-100 transition-all">
                                                 <button onClick={() => handleEditProduct(item)} className="p-2 text-blue-600 hover:bg-blue-50 rounded-xl transition-all"><Edit3 size={18}/></button>
@@ -987,13 +981,6 @@ const IceCreamModule: React.FC<IceCreamModuleProps> = ({
                                         </td>
                                     </tr>
                                 ))}
-                                {filteredItems.length === 0 && (
-                                    <tr>
-                                        <td colSpan={5} className="px-8 py-10 text-center text-gray-300 font-black uppercase text-xs italic">
-                                            Nenhum produto cadastrado para esta unidade
-                                        </td>
-                                    </tr>
-                                )}
                             </tbody>
                         </table>
                     </div>
@@ -1017,7 +1004,7 @@ const IceCreamModule: React.FC<IceCreamModuleProps> = ({
                             <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
                                 <div className="space-y-2">
                                     <label className="text-[10px] font-black text-gray-400 uppercase ml-2 tracking-widest">Nome do Produto</label>
-                                    <input required value={newProd.name} onChange={e => setNewProd({...newProd, name: e.target.value})} className="w-full p-4 bg-gray-50 border-none rounded-2xl font-black text-gray-800 uppercase italic shadow-inner outline-none focus:ring-4 focus:ring-purple-50" placeholder="EX: SUNDAE DE MORANGO" />
+                                    <input required value={newProd.name} onChange={e => setNewProd({...newProd, name: e.target.value})} className="w-full p-4 bg-gray-50 border-none rounded-2xl font-black text-gray-900 uppercase italic shadow-inner outline-none focus:ring-4 focus:ring-purple-50" placeholder="EX: SUNDAE DE MORANGO" />
                                 </div>
                                 <div className="space-y-2">
                                     <label className="text-[10px] font-black text-gray-400 uppercase ml-2 tracking-widest">Categoria</label>
