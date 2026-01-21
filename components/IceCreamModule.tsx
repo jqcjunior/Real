@@ -94,7 +94,6 @@ const IceCreamModule: React.FC<IceCreamModuleProps> = ({
   
   const [manualStoreId, setManualStoreId] = useState('');
   
-  // LOGICA DE SEGURANÇA: Se não for ADMIN, força o storeId do usuário logado
   const isAdmin = user.role === UserRole.ADMIN;
   const effectiveStoreId = isAdmin 
     ? (manualStoreId || user.storeId || (stores.length > 0 ? stores[0].id : ''))
@@ -489,16 +488,12 @@ const IceCreamModule: React.FC<IceCreamModuleProps> = ({
             value: txForm.value.replace(',', '.'),
             description: txForm.description
         };
-
-        // Envia para o prop que trata a persistência via App.tsx com o mapper
         await onAddTransaction(formData as any);
-        
         setTxForm({ ...txForm, value: '', description: '' });
         setShowTransactionModal(false);
     } catch (err) { alert("Erro ao lançar despesa."); } finally { setIsSubmitting(false); }
   };
 
-  // CRUD DE CATEGORIAS
   const handleAddExpenseCategory = async () => {
       if (!newCategoryName.trim()) return;
       setIsSubmitting(true);
@@ -548,7 +543,8 @@ const IceCreamModule: React.FC<IceCreamModuleProps> = ({
   const handleEditProduct = (item: IceCreamItem) => {
       setEditingProduct(item);
       setNewProd({ name: item.name, category: item.category, price: item.price.toFixed(2).replace('.', ','), flavor: item.flavor || '' });
-      setTempRecipe(item.recipe ?? []); setShowProductModal(true);
+      // Correção de segurança: Garantir que recipe seja um array
+      setTempRecipe(Array.isArray(item.recipe) ? item.recipe : []); setShowProductModal(true);
   };
 
   const handleBulkStockUpdate = async (type: 'production' | 'adjustment') => {
@@ -957,8 +953,9 @@ const IceCreamModule: React.FC<IceCreamModuleProps> = ({
                                         <td className="px-8 py-5 text-right font-black text-blue-900">{formatCurrency(item.price)}</td>
                                         <td className="px-8 py-5 text-center">
                                             <div className="flex flex-wrap justify-center gap-1">
-                                                {(item.recipe ?? []).map((r, idx) => <span key={idx} className="bg-blue-50 text-blue-600 text-[7px] font-black px-1.5 py-0.5 rounded uppercase">{r.stock_base_name}</span>)}
-                                                {(item.recipe ?? []).length === 0 && <span className="text-[7px] text-gray-300 font-bold uppercase italic">Sem Receita</span>}
+                                                {/* Correção de segurança: Verificar se recipe é array antes de mapear */}
+                                                {(Array.isArray(item.recipe) ? item.recipe : []).map((r, idx) => <span key={idx} className="bg-blue-50 text-blue-600 text-[7px] font-black px-1.5 py-0.5 rounded uppercase">{r.stock_base_name}</span>)}
+                                                {(!item.recipe || (Array.isArray(item.recipe) && item.recipe.length === 0)) && <span className="text-[7px] text-gray-300 font-bold uppercase italic">Sem Receita</span>}
                                             </div>
                                         </td>
                                         <td className="px-8 py-5 text-right">
@@ -1245,7 +1242,7 @@ const IceCreamModule: React.FC<IceCreamModuleProps> = ({
         {/* MODAL: CANCELAR VENDA */}
         {showCancelModal && (
             <div className="fixed inset-0 bg-black/80 backdrop-blur-md flex items-center justify-center z-[110] p-4">
-                <div className="bg-white rounded-[40px] p-10 max-w-sm w-full text-center shadow-2xl animate-in zoom-in duration-200">
+                <div className="bg-white rounded-[40px] p-10 max-sm w-full text-center shadow-2xl animate-in zoom-in duration-200">
                     <div className="p-5 bg-red-50 text-red-600 rounded-full w-fit mx-auto mb-6"><AlertTriangle size={48} /></div>
                     <h3 className="text-2xl font-black text-gray-900 uppercase italic mb-2 tracking-tighter">Estornar <span className="text-red-600">Venda?</span></h3>
                     <p className="text-gray-400 text-xs font-bold uppercase mb-8">Esta ação irá anular a entrada de caixa e devolver os insumos ao estoque.</p>
