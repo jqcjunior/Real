@@ -1,3 +1,4 @@
+
 import React, { useState, useEffect } from 'react';
 import { AdminUser, AdminRoleLevel, User, UserRole, Store } from '../types';
 import { UserPlus, Search, Edit3, Trash2, ShieldCheck, Mail, Lock, X, Save, Loader2, Power, ShieldAlert, BadgeCheck, Eye, UserCog, History, Users as UsersIcon, Wallet, Briefcase, Shield, ChevronRight, IceCream, Building2 } from 'lucide-react';
@@ -16,12 +17,7 @@ const AdminUsersManagement: React.FC<AdminUsersManagementProps> = ({ currentUser
     const [isSubmitting, setIsSubmitting] = useState(false);
     
     const [formData, setFormData] = useState<Partial<AdminUser>>({
-        name: '',
-        email: '',
-        password: '',
-        status: 'active',
-        role_level: 'admin',
-        store_id: null
+        name: '', email: '', password: '', status: 'active', role_level: 'admin', store_id: null
     });
     const [editingId, setEditingId] = useState<string | null>(null);
 
@@ -47,21 +43,8 @@ const AdminUsersManagement: React.FC<AdminUsersManagementProps> = ({ currentUser
         fetchAdmins();
     }, []);
 
-    const logAction = async (action: string, details: string) => {
-        if (!currentUser) return;
-        await supabase.from('system_logs').insert([{
-            created_at: new Date().toISOString(),
-            userId: currentUser.id,
-            userName: currentUser.name,
-            userRole: currentUser.role,
-            action: action,
-            details: details
-        }]);
-    };
-
     const handleSave = async (e: React.FormEvent) => {
         e.preventDefault();
-        
         const isNonAdmin = formData.role_level !== 'admin';
         if (isNonAdmin && !formData.store_id) {
             alert("Vínculo de Unidade obrigatório para este perfil.");
@@ -70,12 +53,7 @@ const AdminUsersManagement: React.FC<AdminUsersManagementProps> = ({ currentUser
 
         setIsSubmitting(true);
         try {
-            // Correção Crítica: Se for Admin ou se store_id estiver vazio, envia NULL explícito para o Supabase
-            // Evita erro de 'invalid input syntax for type uuid'
-            const cleanStoreId = (isNonAdmin && formData.store_id && formData.store_id !== '') 
-                ? formData.store_id 
-                : null;
-
+            const cleanStoreId = (isNonAdmin && formData.store_id && formData.store_id !== '') ? formData.store_id : null;
             const payload: any = { 
                 name: formData.name?.toUpperCase().trim(), 
                 email: formData.email?.trim().toLowerCase(), 
@@ -83,80 +61,35 @@ const AdminUsersManagement: React.FC<AdminUsersManagementProps> = ({ currentUser
                 role_level: formData.role_level,
                 store_id: cleanStoreId
             };
-            
-            if (formData.password && formData.password.trim() !== '') {
-                payload.password = formData.password.trim();
-            }
+            if (formData.password && formData.password.trim() !== '') payload.password = formData.password.trim();
 
             if (editingId) {
                 const { error } = await supabase.from('admin_users').update(payload).eq('id', editingId);
                 if (error) throw error;
-                await logAction('UPDATE_ADMIN', `Atualizou dados do admin ${payload.name}`);
             } else {
                 const { error } = await supabase.from('admin_users').insert([payload]);
                 if (error) throw error;
-                await logAction('CREATE_ADMIN', `Criou novo usuário ${payload.name} com nível ${payload.role_level}`);
             }
             
             await fetchAdmins();
             setIsModalOpen(false);
-            resetForm();
-            alert("Usuário salvo com sucesso!");
+            setEditingId(null);
+            setFormData({ name: '', email: '', password: '', status: 'active', role_level: 'admin', store_id: null });
+            alert("Usuário atualizado!");
         } catch (err: any) {
-            console.error("Erro no Supabase:", err);
-            alert("Erro ao processar requisição: " + (err.message || "Verifique se a coluna 'store_id' foi criada no banco de dados."));
+            alert("Erro ao processar: " + err.message);
         } finally {
             setIsSubmitting(false);
         }
     };
 
     const handleDelete = async (id: string, name: string) => {
-        if (id === currentUser?.id) {
-            alert("Operação bloqueada: Você não pode remover seu próprio acesso administrativo.");
-            return;
-        }
-
-        if (!window.confirm(`ATENÇÃO: Deseja remover permanentemente o acesso de ${name.toUpperCase()}?`)) return;
-        
+        if (id === currentUser?.id) { alert("Você não pode remover seu próprio acesso."); return; }
+        if (!window.confirm(`Deseja remover o acesso de ${name.toUpperCase()}?`)) return;
         try {
-            const { error } = await supabase.from('admin_users').delete().eq('id', id);
-            if (error) throw error;
-            await logAction('DELETE_ADMIN', `Removeu o acesso de ${name}`);
+            await supabase.from('admin_users').delete().eq('id', id);
             fetchAdmins();
-        } catch (err) {
-            alert("Erro ao deletar usuário.");
-        }
-    };
-
-    const toggleStatus = async (user: AdminUser) => {
-        if (user.id === currentUser?.id) {
-            alert("Você não pode desativar sua própria conta.");
-            return;
-        }
-        const newStatus = user.status === 'active' ? 'inactive' : 'active';
-        const { error } = await supabase.from('admin_users').update({ status: newStatus }).eq('id', user.id);
-        if (!error) {
-            await logAction('TOGGLE_ADMIN_STATUS', `Alterou status de ${user.name} para ${newStatus}`);
-            fetchAdmins();
-        }
-    };
-
-    const openEdit = (user: AdminUser) => {
-        setEditingId(user.id);
-        setFormData({ 
-            name: user.name, 
-            email: user.email, 
-            password: '', 
-            status: user.status,
-            role_level: user.role_level || 'admin',
-            store_id: user.store_id
-        });
-        setIsModalOpen(true);
-    };
-
-    const resetForm = () => {
-        setEditingId(null);
-        setFormData({ name: '', email: '', password: '', status: 'active', role_level: 'admin', store_id: null });
+        } catch (err) { alert("Erro ao deletar."); }
     };
 
     const getRoleBadge = (level: AdminRoleLevel) => {
@@ -170,103 +103,62 @@ const AdminUsersManagement: React.FC<AdminUsersManagementProps> = ({ currentUser
     };
 
     return (
-        <div className="p-6 md:p-10 space-y-8 max-w-7xl mx-auto animate-in fade-in duration-500">
-            <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-6 bg-white p-8 rounded-[40px] shadow-sm border border-gray-100">
-                <div>
-                    <h2 className="text-4xl font-black text-gray-900 uppercase italic tracking-tighter leading-none flex items-center gap-3">
-                        <UsersIcon className="text-blue-700" size={42} />
-                        Gestão de <span className="text-red-600">Usuários</span>
-                    </h2>
-                    <p className="text-gray-400 font-bold text-xs uppercase tracking-widest mt-3">Configuração de permissões e hierarquia de acesso</p>
+        <div className="p-4 md:p-10 space-y-6 md:space-y-8 max-w-7xl mx-auto animate-in fade-in duration-500">
+            <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-6 bg-white p-6 md:p-8 rounded-[32px] md:rounded-[40px] shadow-sm border border-gray-100">
+                <div className="flex items-center gap-4">
+                    <div className="p-4 bg-blue-50 text-blue-700 rounded-2xl"><UsersIcon size={32} /></div>
+                    <div>
+                        <h2 className="text-2xl md:text-3xl font-black text-gray-900 uppercase italic tracking-tighter leading-none">Gestão de <span className="text-red-600">Usuários</span></h2>
+                        <p className="text-gray-400 font-bold text-[9px] uppercase tracking-widest mt-1">Matriz de Acessos Corporativos</p>
+                    </div>
                 </div>
-                <button 
-                    onClick={() => { resetForm(); setIsModalOpen(true); }}
-                    className="bg-gray-950 text-white px-10 py-5 rounded-[24px] font-black uppercase text-xs shadow-2xl hover:bg-black transition-all active:scale-95 flex items-center gap-3 border-b-4 border-red-700"
-                >
-                    <UserPlus size={20} /> Criar Novo Usuário
+                <button onClick={() => { setEditingId(null); setIsModalOpen(true); }} className="w-full md:w-auto bg-gray-950 text-white px-8 py-4 rounded-2xl font-black uppercase text-[10px] shadow-xl hover:bg-black transition-all active:scale-95 border-b-4 border-red-700 flex items-center justify-center gap-2">
+                    <UserPlus size={18} /> Novo Usuário
                 </button>
             </div>
 
-            <div className="bg-white rounded-[40px] shadow-sm border border-gray-100 overflow-hidden">
-                <div className="p-8 border-b border-gray-50 flex items-center px-10 bg-gray-50/30">
-                    <div className="relative flex-1 max-w-md">
-                        <Search className="absolute left-5 top-1/2 -translate-y-1/2 text-gray-400" size={20} />
-                        <input 
-                            type="text" 
-                            placeholder="Pesquisar por nome ou e-mail..."
-                            value={searchTerm}
-                            onChange={(e) => setSearchTerm(e.target.value)}
-                            className="w-full pl-14 pr-6 py-4 bg-white border border-gray-200 rounded-2xl text-sm font-bold text-gray-700 focus:ring-4 focus:ring-blue-100 transition-all outline-none shadow-inner"
-                        />
+            <div className="bg-white rounded-[32px] md:rounded-[40px] shadow-sm border border-gray-100 overflow-hidden">
+                <div className="p-6 border-b bg-gray-50/30">
+                    <div className="relative max-w-md">
+                        <Search className="absolute left-4 top-1/2 -translate-y-1/2 text-gray-400" size={18} />
+                        <input type="text" placeholder="Pesquisar profissionais..." value={searchTerm} onChange={(e) => setSearchTerm(e.target.value)} className="w-full pl-12 pr-6 py-3 bg-white border border-gray-200 rounded-xl text-sm font-bold text-gray-700 focus:ring-4 focus:ring-blue-50 outline-none shadow-inner" />
                     </div>
                 </div>
 
                 <div className="overflow-x-auto no-scrollbar">
-                    <table className="w-full text-left">
+                    <table className="w-full text-left min-w-[900px]">
                         <thead>
-                            <tr className="bg-white border-b border-gray-100 text-[11px] font-black text-gray-400 uppercase tracking-widest">
-                                <th className="px-10 py-6">Perfil</th>
-                                <th className="px-10 py-6">Nome do Profissional</th>
-                                <th className="px-10 py-6">Vínculo / Unidade</th>
-                                <th className="px-10 py-6">Status</th>
-                                <th className="px-10 py-6 text-right">Ações</th>
+                            <tr className="bg-white border-b border-gray-100 text-[10px] font-black text-gray-400 uppercase tracking-widest">
+                                <th className="px-8 py-5">Perfil</th>
+                                <th className="px-8 py-5">Nome do Profissional</th>
+                                <th className="px-8 py-5">Unidade</th>
+                                <th className="px-8 py-5 text-right">Ações</th>
                             </tr>
                         </thead>
                         <tbody className="divide-y divide-gray-50">
                             {isLoading ? (
-                                <tr>
-                                    <td colSpan={5} className="py-24 text-center">
-                                        <Loader2 className="animate-spin mx-auto text-red-600" size={48} />
-                                        <p className="mt-6 text-xs font-black text-gray-400 uppercase tracking-widest animate-pulse">Sincronizando usuários...</p>
-                                    </td>
-                                </tr>
+                                <tr><td colSpan={4} className="py-20 text-center"><Loader2 className="animate-spin mx-auto text-red-600" /></td></tr>
                             ) : filteredAdmins.map(admin => {
                                 const role = getRoleBadge(admin.role_level);
                                 const assignedStore = stores.find(s => s.id === admin.store_id);
                                 return (
-                                    <tr key={admin.id} className={`hover:bg-gray-50 transition-colors group ${admin.status === 'inactive' ? 'opacity-40 grayscale' : ''}`}>
-                                        <td className="px-10 py-6">
-                                            <div className={`w-fit flex items-center gap-2 px-3 py-1.5 rounded-xl border-2 font-black uppercase text-[10px] ${role.class}`}>
-                                                <role.icon size={14} />
-                                                {role.label}
+                                    <tr key={admin.id} className="hover:bg-gray-50 transition-colors group">
+                                        <td className="px-8 py-5">
+                                            <div className={`w-fit flex items-center gap-1.5 px-2 py-1 rounded-lg border font-black uppercase text-[8px] ${role.class}`}>
+                                                <role.icon size={12} /> {role.label}
                                             </div>
                                         </td>
-                                        <td className="px-10 py-6">
-                                            <div className="font-black text-gray-900 uppercase italic text-base tracking-tighter">{admin.name}</div>
-                                            <div className="text-[10px] font-bold text-gray-400 uppercase mt-0.5">{admin.email}</div>
-                                            {admin.id === currentUser?.id && <span className="bg-blue-100 text-blue-700 text-[8px] font-black px-1.5 py-0.5 rounded uppercase mt-1 inline-block">Sua Conta</span>}
+                                        <td className="px-8 py-5">
+                                            <div className="font-black text-gray-900 uppercase italic text-sm tracking-tighter leading-none">{admin.name}</div>
+                                            <div className="text-[9px] font-bold text-gray-400 uppercase mt-1">{admin.email}</div>
                                         </td>
-                                        <td className="px-10 py-6">
-                                            {admin.role_level === 'admin' ? (
-                                                <span className="text-[10px] font-black text-blue-600 uppercase tracking-widest bg-blue-50 px-2 py-1 rounded">Visão Global</span>
-                                            ) : assignedStore ? (
-                                                <div className="flex items-center gap-2 text-gray-700">
-                                                    <Building2 size={14} className="text-gray-400" />
-                                                    <span className="font-bold text-xs">UNID. {assignedStore.number} - {assignedStore.city}</span>
-                                                </div>
-                                            ) : (
-                                                <span className="text-red-500 font-black text-[10px] uppercase animate-pulse">Unidade Não Vinculada</span>
-                                            )}
+                                        <td className="px-8 py-5 text-[10px] font-black uppercase italic text-blue-900">
+                                            {admin.role_level === 'admin' ? 'Rede Real' : (assignedStore ? `UNID. ${assignedStore.number}` : '-')}
                                         </td>
-                                        <td className="px-10 py-6">
-                                            <button 
-                                                onClick={() => toggleStatus(admin)}
-                                                className={`flex items-center gap-2 px-3 py-1 rounded-lg text-[9px] font-black uppercase border transition-all ${admin.status === 'active' ? 'bg-green-50 text-green-700 border-green-200' : 'bg-gray-100 text-gray-400 border-gray-200'}`}
-                                            >
-                                                <Power size={10} />
-                                                {admin.status === 'active' ? 'Ativo' : 'Inativo'}
-                                            </button>
-                                        </td>
-                                        <td className="px-10 py-6 text-right">
-                                            <div className="flex justify-end gap-3 opacity-0 group-hover:opacity-100 transition-opacity">
-                                                <button onClick={() => openEdit(admin)} className="p-3 bg-white text-blue-600 border-2 border-blue-50 hover:bg-blue-600 hover:text-white rounded-2xl shadow-sm transition-all"><Edit3 size={20} /></button>
-                                                <button 
-                                                    onClick={() => handleDelete(admin.id, admin.name)} 
-                                                    disabled={admin.id === currentUser?.id}
-                                                    className={`p-3 border-2 rounded-2xl shadow-sm transition-all ${admin.id === currentUser?.id ? 'bg-gray-50 text-gray-200 border-gray-100 cursor-not-allowed' : 'bg-white text-red-400 border-red-50 hover:bg-red-600 hover:text-white'}`}
-                                                >
-                                                    <Trash2 size={20} />
-                                                </button>
+                                        <td className="px-8 py-5 text-right">
+                                            <div className="flex justify-end gap-2 opacity-0 group-hover:opacity-100 transition-all">
+                                                <button onClick={() => { setEditingId(admin.id); setFormData(admin); setIsModalOpen(true); }} className="p-2 text-blue-600 hover:bg-blue-50 rounded-xl transition-all"><Edit3 size={18} /></button>
+                                                <button onClick={() => handleDelete(admin.id, admin.name)} className="p-2 text-red-300 hover:text-red-500 rounded-xl transition-all"><Trash2 size={18} /></button>
                                             </div>
                                         </td>
                                     </tr>
@@ -278,108 +170,46 @@ const AdminUsersManagement: React.FC<AdminUsersManagementProps> = ({ currentUser
             </div>
 
             {isModalOpen && (
-                <div className="fixed inset-0 bg-black/90 backdrop-blur-xl flex items-center justify-center z-[120] p-4">
-                    <div className="bg-white rounded-[60px] shadow-2xl w-full max-w-xl overflow-hidden animate-in zoom-in duration-300">
-                        <div className="p-10 bg-gray-50 border-b flex justify-between items-center">
-                            <div>
-                                <h3 className="text-3xl font-black text-gray-900 uppercase italic tracking-tighter leading-none">
-                                    {editingId ? 'Editar' : 'Novo'} <span className="text-red-600">Profissional</span>
-                                </h3>
-                                <p className="text-[10px] font-black text-gray-400 uppercase tracking-widest mt-2">Atribua um perfil de acesso estratégico</p>
-                            </div>
-                            <button onClick={() => setIsModalOpen(false)} className="bg-white p-3 rounded-full text-gray-400 hover:text-red-600 shadow-xl transition-all border border-gray-100"><X size={24} /></button>
+                <div className="fixed inset-0 bg-black/90 backdrop-blur-md flex items-center justify-center z-[120] p-4">
+                    <div className="bg-white rounded-[48px] shadow-2xl w-full max-w-xl overflow-hidden animate-in zoom-in duration-300">
+                        <div className="p-8 bg-gray-50 border-b flex justify-between items-center">
+                            <h3 className="text-2xl font-black text-gray-900 uppercase italic tracking-tighter leading-none">{editingId ? 'Editar' : 'Novo'} <span className="text-red-600">Usuário</span></h3>
+                            <button onClick={() => setIsModalOpen(false)} className="bg-white p-2 rounded-full text-gray-400 hover:text-red-600 shadow-sm border"><X size={20} /></button>
                         </div>
-                        
-                        <form onSubmit={handleSave} className="p-12 space-y-8">
+                        <form onSubmit={handleSave} className="p-10 space-y-6">
                             <div className="space-y-2">
-                                <label className="text-[10px] font-black text-gray-500 uppercase block ml-1 tracking-widest">Nome Completo *</label>
-                                <input 
-                                    required
-                                    value={formData.name}
-                                    onChange={e => setFormData({...formData, name: e.target.value})}
-                                    className="w-full px-6 py-5 bg-gray-50 border-none rounded-[24px] font-black text-gray-800 uppercase italic text-sm focus:ring-4 focus:ring-blue-100 transition-all outline-none"
-                                    placeholder="EX: JOÃO DA SILVA"
-                                />
+                                <label className="text-[9px] font-black text-gray-400 uppercase ml-2 tracking-widest">Nome Completo</label>
+                                <input required value={formData.name} onChange={e => setFormData({...formData, name: e.target.value})} className="w-full p-4 bg-gray-50 border-none rounded-2xl font-black text-gray-800 uppercase italic outline-none focus:ring-4 focus:ring-blue-50 transition-all" />
                             </div>
-
-                            <div className="grid grid-cols-2 gap-6">
+                            <div className="grid grid-cols-2 gap-4">
                                 <div className="space-y-2">
-                                    <label className="text-[10px] font-black text-gray-500 uppercase block ml-1 tracking-widest">Perfil de Acesso</label>
-                                    <div className="relative">
-                                        <select 
-                                            value={formData.role_level}
-                                            onChange={e => setFormData({...formData, role_level: e.target.value as AdminRoleLevel})}
-                                            className="w-full px-6 py-5 bg-gray-50 border-none rounded-[24px] font-black text-gray-800 uppercase text-xs focus:ring-4 focus:ring-blue-100 transition-all outline-none appearance-none cursor-pointer shadow-inner"
-                                        >
-                                            <option value="admin">Administrador</option>
-                                            <option value="manager">Gerente</option>
-                                            <option value="cashier">Caixa</option>
-                                            <option value="sorvete">Sorvete</option>
-                                        </select>
-                                        <ChevronRight className="absolute right-5 top-1/2 -translate-y-1/2 rotate-90 text-gray-400 pointer-events-none" size={18} />
-                                    </div>
+                                    <label className="text-[9px] font-black text-gray-400 uppercase ml-2 tracking-widest">Papel</label>
+                                    <select value={formData.role_level} onChange={e => setFormData({...formData, role_level: e.target.value as AdminRoleLevel})} className="w-full p-4 bg-gray-50 rounded-2xl font-black uppercase text-xs outline-none cursor-pointer">
+                                        <option value="admin">Administrador</option>
+                                        <option value="manager">Gerente</option>
+                                        <option value="cashier">Caixa</option>
+                                        <option value="sorvete">Sorvete</option>
+                                    </select>
                                 </div>
                                 <div className="space-y-2">
-                                    <label className="text-[10px] font-black text-gray-500 uppercase block ml-1 tracking-widest">Unidade Vinculada</label>
-                                    <div className="relative">
-                                        <select 
-                                            required={formData.role_level !== 'admin'}
-                                            disabled={formData.role_level === 'admin'}
-                                            value={formData.store_id || ''}
-                                            onChange={e => setFormData({...formData, store_id: e.target.value || null})}
-                                            className="w-full px-6 py-5 bg-gray-50 border-none rounded-[24px] font-black text-gray-800 uppercase text-xs focus:ring-4 focus:ring-blue-100 transition-all outline-none appearance-none cursor-pointer shadow-inner disabled:opacity-20"
-                                        >
-                                            <option value="">{formData.role_level === 'admin' ? 'ACESSO TOTAL' : 'SELECIONE A LOJA...'}</option>
-                                            {stores.map(s => (
-                                                <option key={s.id} value={s.id}>#{s.number} - {s.city}</option>
-                                            ))}
-                                        </select>
-                                        <ChevronRight className="absolute right-5 top-1/2 -translate-y-1/2 rotate-90 text-gray-400 pointer-events-none" size={18} />
-                                    </div>
+                                    <label className="text-[9px] font-black text-gray-400 uppercase ml-2 tracking-widest">Unidade</label>
+                                    <select value={formData.store_id || ''} onChange={e => setFormData({...formData, store_id: e.target.value || null})} className="w-full p-4 bg-gray-50 rounded-2xl font-black uppercase text-xs outline-none cursor-pointer">
+                                        <option value="">TODAS AS LOJAS</option>
+                                        {stores.map(s => <option key={s.id} value={s.id}>#{s.number} - {s.city}</option>)}
+                                    </select>
                                 </div>
                             </div>
-
                             <div className="space-y-2">
-                                <label className="text-[10px] font-black text-gray-500 uppercase block ml-1 tracking-widest">E-mail Corporativo *</label>
-                                <div className="relative">
-                                    <Mail className="absolute left-6 top-1/2 -translate-y-1/2 text-gray-300" size={20} />
-                                    <input 
-                                        required
-                                        type="email"
-                                        value={formData.email}
-                                        onChange={e => setFormData({...formData, email: e.target.value})}
-                                        className="w-full pl-16 pr-6 py-5 bg-gray-50 border-none rounded-[24px] font-bold text-gray-800 focus:ring-4 focus:ring-blue-100 transition-all outline-none shadow-sm"
-                                        placeholder="usuario@realcalcados.com.br"
-                                    />
-                                </div>
+                                <label className="text-[9px] font-black text-gray-400 uppercase ml-2 tracking-widest">E-mail Corporativo</label>
+                                <input required type="email" value={formData.email} onChange={e => setFormData({...formData, email: e.target.value})} className="w-full p-4 bg-gray-50 border-none rounded-2xl font-bold text-gray-700 outline-none" />
                             </div>
-
                             <div className="space-y-2">
-                                <label className="text-[10px] font-black text-gray-500 uppercase block ml-1 tracking-widest">Senha de Segurança</label>
-                                <div className="relative">
-                                    <Lock className="absolute left-6 top-1/2 -translate-y-1/2 text-gray-300" size={20} />
-                                    <input 
-                                        required={!editingId}
-                                        type="password"
-                                        value={formData.password}
-                                        onChange={e => setFormData({...formData, password: e.target.value})}
-                                        className="w-full pl-16 pr-6 py-5 bg-gray-50 border-none rounded-[24px] font-bold text-gray-800 focus:ring-4 focus:ring-blue-100 transition-all outline-none shadow-sm"
-                                        placeholder={editingId ? "Manter senha atual" : "••••••••"}
-                                    />
-                                </div>
+                                <label className="text-[9px] font-black text-gray-400 uppercase ml-2 tracking-widest">Senha</label>
+                                <input required={!editingId} type="password" value={formData.password} onChange={e => setFormData({...formData, password: e.target.value})} className="w-full p-4 bg-gray-50 border-none rounded-2xl font-bold text-gray-700 outline-none" placeholder="••••••••" />
                             </div>
-
-                            <div className="p-10 bg-gray-50 -mx-12 -mb-12 flex gap-5 mt-10">
-                                <button type="button" onClick={() => setIsModalOpen(false)} className="flex-1 py-5 bg-white border-2 border-gray-200 rounded-[28px] font-black text-gray-500 uppercase text-xs hover:bg-gray-100 transition-all active:scale-95">CANCELAR</button>
-                                <button 
-                                    type="submit" 
-                                    disabled={isSubmitting}
-                                    className="flex-1 py-5 bg-red-600 text-white rounded-[28px] font-black uppercase text-xs shadow-2xl flex items-center justify-center gap-3 hover:bg-red-700 transition-all active:scale-95 border-b-4 border-red-900"
-                                >
-                                    {isSubmitting ? <Loader2 className="animate-spin" size={20} /> : <Save size={20} />}
-                                    EFETIVAR USUÁRIO
-                                </button>
-                            </div>
+                            <button type="submit" disabled={isSubmitting} className="w-full py-5 bg-red-600 text-white rounded-[28px] font-black uppercase text-xs shadow-xl active:scale-95 transition-all border-b-4 border-red-900 flex items-center justify-center gap-2">
+                                {isSubmitting ? <Loader2 className="animate-spin" /> : <Save size={18}/>} EFETIVAR USUÁRIO
+                            </button>
                         </form>
                     </div>
                 </div>

@@ -301,3 +301,4 @@ const DashboardManager: React.FC<DashboardManagerProps> = ({ user, stores, perfo
 };
 
 export default DashboardManager;
+

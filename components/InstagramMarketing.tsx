@@ -103,7 +103,7 @@ const InstagramMarketing: React.FC<InstagramMarketingProps> = ({ user, store }) 
         return;
     }
     
-    // Check if API Key is selected
+    // Fix: Mandatory API Key selection for high-quality image generation via gemini-3-pro-image-preview.
     const hasKey = await (window as any).aistudio.hasSelectedApiKey();
     if (!hasKey) {
         await (window as any).aistudio.openSelectKey();
@@ -119,8 +119,15 @@ const InstagramMarketing: React.FC<InstagramMarketingProps> = ({ user, store }) 
             setBgStyle('white'); // Clear background style as AI already provides one
             alert("Cenário gerado com sucesso pela IA!");
         }
-    } catch (e) {
-        alert("Erro na geração por IA. Tente novamente.");
+    } catch (e: any) {
+        // Fix: If request fails with "Requested entity was not found.", reset key selection state via openSelectKey().
+        if (e?.message?.includes("Requested entity was not found.")) {
+            alert("Sua chave de API expirou ou é inválida para este modelo. Por favor, selecione uma chave de um projeto pago.");
+            await (window as any).aistudio.openSelectKey();
+        } else {
+            console.error("Image Gen Error:", e);
+            alert("Erro na geração por IA. Tente novamente.");
+        }
     } finally {
         setIsAiGenerating(false);
     }
@@ -355,7 +362,7 @@ const InstagramMarketing: React.FC<InstagramMarketingProps> = ({ user, store }) 
                     {mode === 'promo' && (
                         <div className="bg-white/5 p-6 rounded-[32px] space-y-4 border border-white/5">
                             <label className="text-[10px] font-black uppercase text-red-500 tracking-widest flex items-center gap-2"><DollarSign size={14}/> Detalhes da Oferta</label>
-                            <input value={promoName} onChange={e => setPromoName(e.target.value)} placeholder="Título da Promoção" className="w-full bg-black/40 border-none rounded-xl p-3 text-sm font-bold focus:ring-2 focus:ring-red-500" />
+                            <input value={promoName} onChange={e => setPromoName(e.target.value)} placeholder="Título da Promoção" className="w-full bg-black/40 border-none rounded-xl p-3 text-sm font-bold focus:ring-2 focus:ring-red-50" />
                             <div className="grid grid-cols-2 gap-2">
                                 <input value={pricePromo} onChange={e => setPricePromo(e.target.value)} placeholder="Preço (ex: 99,90)" className="w-full bg-black/40 border-none rounded-xl p-3 text-sm font-black text-green-400" />
                                 <select onChange={e => setActiveColorIndex(parseInt(e.target.value))} className="w-full bg-black/40 border-none rounded-xl p-3 text-xs font-bold uppercase tracking-tight">

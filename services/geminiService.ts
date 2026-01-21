@@ -1,5 +1,6 @@
 
-import { GoogleGenAI } from "@google/genai";
+// Fix: Use correct import for GoogleGenAI and include GenerateContentResponse for typing.
+import { GoogleGenAI, GenerateContentResponse } from "@google/genai";
 import { MonthlyPerformance, Store } from "../types";
 
 export const analyzePerformance = async (
@@ -43,7 +44,8 @@ export const analyzePerformance = async (
   `;
 
   try {
-    const response = await ai.models.generateContent({
+    // Fix: Explicitly typing the response from models.generateContent.
+    const response: GenerateContentResponse = await ai.models.generateContent({
       model: 'gemini-3-flash-preview',
       contents: prompt,
     });
@@ -95,7 +97,8 @@ export const extractDataFromDocument = async (base64Data: string, mimeType: stri
     `;
 
     try {
-        const response = await ai.models.generateContent({
+        // Fix: Explicitly typing the response from models.generateContent.
+        const response: GenerateContentResponse = await ai.models.generateContent({
             model: 'gemini-3-flash-preview',
             contents: {
                 parts: [
@@ -142,7 +145,8 @@ export const generateMarketingImage = async (
     `;
 
     try {
-        const response = await ai.models.generateContent({
+        // Fix: Explicitly typing the response from models.generateContent.
+        const response: GenerateContentResponse = await ai.models.generateContent({
             model: modelName,
             contents: {
                 parts: [
@@ -163,7 +167,8 @@ export const generateMarketingImage = async (
             }
         });
 
-        // Fix: Finding image part in content parts as per response extraction guidelines
+        // Fix: Finding image part in content parts as per response extraction guidelines.
+        // We iterate through all candidates and parts to find inlineData.
         for (const part of response.candidates?.[0]?.content?.parts || []) {
              if (part.inlineData) {
                  return part.inlineData.data;
@@ -173,6 +178,7 @@ export const generateMarketingImage = async (
 
     } catch (error) {
         console.error("Image Gen Error:", error);
-        return undefined;
+        // Throw specific error for component to handle API key reset if "Requested entity was not found" occurs.
+        throw error;
     }
 };
