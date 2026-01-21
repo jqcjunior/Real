@@ -40,6 +40,7 @@ const App: React.FC = () => {
     const [user, setUser] = useState<User | null>(null);
     const [currentView, setCurrentView] = useState<string>(''); 
     const [isLoading, setIsLoading] = useState(true);
+    const [isSidebarOpen, setIsSidebarOpen] = useState(false);
 
     // States de Dados Consolidados
     const [stores, setStores] = useState<Store[]>([]);
@@ -79,7 +80,7 @@ const App: React.FC = () => {
                 supabase.from('quota_product_categories').select('*'),
                 supabase.from('quota_mix_parameters').select('*'),
                 supabase.from('ice_cream_items').select('*'),
-                supabase.from('ice_cream_sales').select('*'),
+                supabase.from('ice_cream_sales').select('*').order('created_at', { ascending: false }),
                 supabase.from('ice_cream_finances').select('*'),
                 supabase.from('ice_cream_stock').select('*'),
                 supabase.from('ice_cream_promissories').select('*'),
@@ -133,7 +134,27 @@ const App: React.FC = () => {
             if(cat) setQuotaCategories(cat);
             if(mix) setQuotaMixParams(mix);
             if(ici) setIceCreamItems(ici.map(x => ({...x, storeId: x.store_id, image_url: x.image_url})));
-            if(ics) setIceCreamSales(ics.map(x => ({...x, storeId: x.store_id, productName: x.product_name, units_sold: x.units_sold, total_value: x.total_value, payment_method: x.payment_method, sale_code: x.sale_code, buyer_name: x.buyer_name, createdAt: x.created_at})));
+            
+            // CORREÇÃO DE MAPEAMENTO PARA AUDITORIA
+            if(ics) setIceCreamSales(ics.map(x => ({
+                id: x.id,
+                storeId: x.store_id, 
+                itemId: x.item_id,
+                productName: x.product_name, 
+                category: x.category,
+                flavor: x.flavor,
+                unitsSold: Number(x.units_sold || 0), 
+                unitPrice: Number(x.unit_price || 0),
+                totalValue: Number(x.total_value || 0), 
+                paymentMethod: x.payment_method, 
+                saleCode: x.sale_code, 
+                buyer_name: x.buyer_name, 
+                createdAt: x.created_at,
+                status: x.status,
+                cancel_reason: x.cancel_reason,
+                canceled_by: x.canceled_by
+            })));
+
             if(icf) setIceCreamFinances(icf.map(x => ({...x, storeId: x.store_id})));
             if(icst) setIceCreamStock(icst);
             if(icp) setIcPromissories(icp);
@@ -150,12 +171,12 @@ const App: React.FC = () => {
 
     useEffect(() => {
         fetchData();
-        // REMOVIDO LOGIN AUTOMÁTICO: Agora o sistema sempre exige credenciais.
     }, []);
 
     useEffect(() => {
         if (user && !currentView) {
             if (user.role === UserRole.ADMIN) setCurrentView('dashboard_rede');
+            else if (user.role === UserRole.ICE_CREAM) setCurrentView('pdv_gelateria');
             else setCurrentView('dashboard_loja');
         }
     }, [user, currentView]);
@@ -230,8 +251,8 @@ const App: React.FC = () => {
             title: 'Documentos',
             items: [
                 { id: 'downloads', label: 'Downloads', icon: Download, perm: 'MODULE_DOWNLOADS' },
-                { id: 'autoriz_compra', label: 'Autoriz. Compra', icon: FileSignature, perm: 'MODULE_DOCUMENTS' },
-                { id: 'termo_condicional', label: 'Termo Condicional', icon: FileText, perm: 'MODULE_DOCUMENTS' }
+                { id: 'autoriz_compra', label: 'Autoriz. Compra', icon: FileSignature, perm: 'MODULE_AUTORIZ_COMPRA' },
+                { id: 'termo_condicional', label: 'Termo Condicional', icon: FileText, perm: 'MODULE_TERMO_CONDICIONAL' }
             ]
         },
         {
@@ -249,14 +270,58 @@ const App: React.FC = () => {
 
     if (isLoading || !currentView) return <div className="h-screen flex flex-col items-center justify-center bg-gray-950"><Loader2 className="animate-spin text-red-600 mb-4" size={48} /><p className="text-white font-black uppercase text-[10px] tracking-widest animate-pulse">Sincronizando Ecossistema Real...</p></div>;
 
+    const renderCurrentView = () => {
+        if (currentView === 'dashboard_rede') return <DashboardAdmin stores={stores} performanceData={performanceData} onImportData={fetchData} />;
+        if (currentView === 'dashboard_loja') return <DashboardManager user={user!} stores={stores} performanceData={performanceData} purchasingData={purchasingData} />;
+        if (currentView === 'metas') return <GoalRegistration stores={stores} performanceData={performanceData} onUpdateData={async (data) => { for(const row of data) { await supabase.from('monthly_performance').upsert({ store_id: row.storeId, month: row.month, revenue_target: row.revenueTarget, pa_target: row.paTarget, ticket_target: row.ticketTarget, pu_target: row.puTarget, items_target: row.itemsTarget, business_days: row.businessDays }); } fetchData(); }} />;
+        if (currentView === 'cotas') return <CotasManagement user={user!} stores={stores} cotas={cotas} cotaSettings={cotaSettings} cotaDebts={cotaDebts} performanceData={performanceData} productCategories={quotaCategories} mixParameters={quotaMixParams} onAddCota={async (c) => { await supabase.from('cotas').insert([{ store_id: c.storeId, brand: c.brand, category_id: c.category_id, total_value: c.totalValue, shipment_date: `${c.shipmentDate}-01`, payment_terms: c.paymentTerms, pairs: c.pairs, installments: c.installments, status: 'ABERTA' }]); fetchData(); }} onUpdateCota={async (id, u) => { await supabase.from('cotas').update(u).eq('id', id); fetchData(); }} onDeleteCota={async (id) => { await supabase.from('cotas').delete().eq('id', id); fetchData(); }} onSaveSettings={async (s) => { await supabase.from('cota_settings').upsert({ store_id: s.storeId, budget_value: s.budgetValue, manager_percent: s.managerPercent }, { onConflict: 'store_id' }); fetchData(); }} onSaveDebts={async (d) => { await supabase.from('cota_debts').upsert({ store_id: d.storeId, month: d.month, value: d.value }, { onConflict: 'store_id, month' }); fetchData(); }} onDeleteDebt={async (id) => { await supabase.from('cota_debts').delete().eq('id', id); fetchData(); }} />;
+        if (currentView === 'compras') return <DashboardPurchases user={user!} stores={stores} data={purchasingData} onImport={async (d) => { await supabase.from('product_performance').insert(d.map(x => ({ store_id: x.storeId, month: x.month, brand: x.brand, category: x.category, pairs_sold: x.pairsSold, revenue: x.revenue }))); fetchData(); }} onOpenSpreadsheetModule={() => setCurrentView('spreadsheet_order')} />;
+        if (currentView === 'pdv_gelateria') return <IceCreamModule user={user!} stores={stores} items={iceCreamItems} sales={iceCreamSales} finances={iceCreamFinances} stock={iceCreamStock} promissories={icPromissories} can={can} onAddSales={async (s) => { await supabase.from('ice_cream_sales').insert(s.map(x => ({ store_id: x.storeId, product_name: x.productName, units_sold: x.unitsSold, total_value: x.totalValue, payment_method: x.paymentMethod, sale_code: x.saleCode, buyer_name: x.buyer_name, item_id: x.itemId, flavor: x.flavor }))); fetchData(); }} onCancelSale={async (code, r) => { await supabase.from('ice_cream_sales').update({ status: 'canceled', cancel_reason: r }).eq('sale_code', code); fetchData(); }} onUpdatePrice={async (id, p) => { await supabase.from('ice_cream_items').update({ price: p }).eq('id', id); fetchData(); }} onAddTransaction={async (t) => { await supabase.from('ice_cream_finances').insert([{ store_id: t.storeId, date: t.date, type: t.type, category: t.category, value: t.value, description: t.description }]); fetchData(); }} onAddItem={async (n, c, p, f, si, u, cps, tsId, r) => { await supabase.from('ice_cream_items').insert([{ store_id: tsId, name: n, category: c, price: p, flavor: f, active: true, consumption_per_sale: cps, recipe: r }]); fetchData(); }} onDeleteItem={async (id) => { await supabase.from('ice_cream_items').delete().eq('id', id); fetchData(); }} onUpdateStock={async (sId, b, v, u, t) => { await supabase.from('ice_cream_stock_moves').insert([{ store_id: sId, product_base: b, quantity: v, unit: u, move_type: t }]); fetchData(); } } liquidatePromissory={async (id) => { await supabase.from('ice_cream_promissories').update({ status: 'paid' }).eq('id', id); fetchData(); }} />;
+        if (currentView === 'caixa') return <CashRegisterModule user={user!} sales={iceCreamSales} finances={iceCreamFinances} closures={closures} onAddClosure={async (c) => { await supabase.from('cash_register_closures').insert([{ store_id: user?.storeId, closed_by: user?.name, total_sales: c.totalSales, total_expenses: c.totalExpenses, balance: c.balance, notes: c.notes, date: c.date }]); fetchData(); }} />;
+        if (currentView === 'financeiro') return <FinancialModule user={user!} store={stores.find(s => s.id === user?.storeId)} sales={[]} receipts={receipts} onAddReceipt={async (r) => { await supabase.from('receipts').insert([{ store_id: r.storeId, issuer_name: r.issuerName, payer: r.payer, recipient: r.recipient, value: r.value, value_in_words: r.valueInWords, reference: r.reference, date: r.date }]); fetchData(); }} onAddSale={async () => {}} onDeleteSale={async () => {}} />;
+        if (currentView === 'quebras') return <CashErrorsModule user={user!} stores={stores} errors={cashErrors} onAddError={async (e) => { await supabase.from('cash_errors').insert([{ store_id: e.storeId, user_id: e.userId, user_name: e.userName, date: e.date, type: e.type, value: e.value, reason: e.reason }]); fetchData(); }} onUpdateError={async (e) => { await supabase.from('cash_errors').update(e).eq('id', e.id); fetchData(); }} onDeleteError={async (id) => { await supabase.from('cash_errors').delete().eq('id', id); fetchData(); }} />;
+        if (currentView === 'agenda') return <AgendaSystem user={user!} tasks={agenda} onAddTask={async (t) => { await supabase.from('agenda_items').insert([{ user_id: t.userId, title: t.title, description: t.description, due_date: t.dueDate, due_time: t.dueTime, priority: t.priority, reminder_level: t.reminder_level }]); fetchData(); }} onUpdateTask={async (t) => { await supabase.from('agenda_items').update({ is_completed: t.isCompleted, completed_note: t.completed_note }).eq('id', t.id); fetchData(); }} onDeleteTask={async (id) => { await supabase.from('agenda_items').delete().eq('id', id); fetchData(); }} />;
+        if (currentView === 'autoriz_compra') return <PurchaseAuthorization />;
+        if (currentView === 'termo_condicional') return <TermoAutorizacao user={user!} store={stores.find(s => s.id === user?.storeId)} />;
+        if (currentView === 'downloads') return <DownloadsModule user={user!} items={downloads} onUpload={async (i) => { await supabase.from('downloads').insert([{ title: i.title, description: i.description, category: i.category, url: i.url, file_name: i.fileName, size: i.size, campaign: i.campaign, created_by: i.createdBy }]); fetchData(); }} onDelete={async (id) => { await supabase.from('downloads').delete().eq('id', id); fetchData(); }} />;
+        if (currentView === 'users') return <AdminUsersManagement currentUser={user!} stores={stores} />;
+        if (currentView === 'access') return <AccessControlManagement />;
+        if (currentView === 'audit') return <SystemAudit logs={logs} receipts={receipts} cashErrors={cashErrors} iceCreamSales={iceCreamSales} icPromissories={icPromissories} store={stores.find(s => s.id === user?.storeId)} />;
+        if (currentView === 'settings') return <AdminSettings stores={stores} onAddStore={async (s) => { await supabase.from('stores').insert([s]); fetchData(); }} onUpdateStore={async (s) => { await supabase.from('stores').update(s).eq('id', s.id); fetchData(); }} onDeleteStore={async (id) => { await supabase.from('stores').delete().eq('id', id); fetchData(); }} />;
+        if (currentView === 'spreadsheet_order') return <SpreadsheetOrderModule user={user!} onClose={() => setCurrentView('compras')} />;
+        return <DashboardAdmin stores={stores} performanceData={performanceData} onImportData={fetchData} />;
+    };
+
     return (
-        <div className="flex h-screen bg-gray-950 text-white overflow-hidden font-sans">
-            {/* SIDEBAR FIXA - ENTERPRISE v6.3 */}
-            <aside className="w-72 bg-gray-950 border-r border-white/5 flex flex-col p-8 overflow-y-auto no-scrollbar shrink-0">
+        <div className="flex h-screen bg-gray-950 text-white overflow-hidden font-sans relative">
+            {/* OVERLAY MOBILE */}
+            {isSidebarOpen && (
+                <div 
+                    className="fixed inset-0 bg-black/60 z-[90] lg:hidden backdrop-blur-sm animate-in fade-in duration-300" 
+                    onClick={() => setIsSidebarOpen(false)}
+                />
+            )}
+
+            {/* SIDEBAR RESPONSIVA */}
+            <aside className={`
+                fixed inset-y-0 left-0 z-[100] w-72 bg-gray-950 border-r border-white/5 
+                flex flex-col p-8 transition-transform duration-300 transform
+                ${isSidebarOpen ? 'translate-x-0' : '-translate-x-full'}
+                lg:relative lg:translate-x-0 lg:flex shrink-0 overflow-y-auto no-scrollbar
+            `}>
+                {/* BOTÃO FECHAR MOBILE */}
+                <button 
+                    onClick={() => setIsSidebarOpen(false)}
+                    className="lg:hidden absolute top-6 right-6 text-gray-400 hover:text-white transition-colors"
+                >
+                    <X size={28} />
+                </button>
+
                 <div className="flex items-center gap-4 mb-12 shrink-0">
                     <img src={BRAND_LOGO} alt="Logo" className="w-12 h-12 object-contain" />
                     <h1 className="text-2xl font-black italic tracking-tighter uppercase leading-none">REAL <span className="text-red-600">ADMIN</span></h1>
                 </div>
+
                 <nav className="flex-1 space-y-10">
                     {menuSections.map(section => {
                         const visibleItems = section.items.filter(i => can(i.perm as any));
@@ -267,7 +332,7 @@ const App: React.FC = () => {
                                 {section.items.map(item => can(item.perm as any) && (
                                     <button 
                                         key={item.id} 
-                                        onClick={() => setCurrentView(item.id)} 
+                                        onClick={() => { setCurrentView(item.id); setIsSidebarOpen(false); }} 
                                         className={`w-full text-left p-4 rounded-[20px] font-black uppercase text-[10px] tracking-widest flex items-center gap-4 transition-all duration-300 ${currentView === item.id ? 'bg-blue-600 text-white shadow-[0_15px_30px_rgba(37,99,235,0.3)]' : 'text-gray-500 hover:text-white hover:bg-white/5'}`}
                                     >
                                         <item.icon size={20} /> {item.label}
@@ -277,47 +342,42 @@ const App: React.FC = () => {
                         );
                     })}
                 </nav>
-                <button onClick={handleLogout} className="mt-12 flex items-center gap-4 p-5 text-red-500 font-black uppercase text-[10px] tracking-widest hover:bg-red-500/10 rounded-2xl transition-all border border-red-500/20"><LogOut size={18} /> Sair do Sistema</button>
+
+                <button onClick={handleLogout} className="mt-12 flex items-center gap-4 p-5 text-red-500 font-black uppercase text-[10px] tracking-widest hover:bg-red-500/10 rounded-2xl transition-all border border-red-500/20 shrink-0">
+                    <LogOut size={18} /> Sair do Sistema
+                </button>
             </aside>
 
             {/* AREA DE CONTEÚDO PRINCIPAL */}
             <div className="flex-1 flex flex-col h-full bg-[#f3f4f6] overflow-hidden text-blue-950">
-                <header className="h-16 border-b border-gray-100 bg-white items-center justify-between px-12 flex shrink-0 z-50">
-                    <span className="text-xs font-black uppercase text-gray-400 tracking-widest flex items-center gap-3">
-                        <UserCog className="text-blue-900" size={18}/> Sessão Ativa: <span className="text-blue-950 italic">{user?.name}</span>
-                    </span>
+                <header className="h-16 border-b border-gray-100 bg-white items-center justify-between px-6 lg:px-12 flex shrink-0 z-50">
+                    <div className="flex items-center gap-4">
+                        {/* BOTÃO HAMBÚRGUER MOBILE */}
+                        <button 
+                            onClick={() => setIsSidebarOpen(true)}
+                            className="lg:hidden p-2 text-blue-900 -ml-2 hover:bg-gray-100 rounded-xl transition-all"
+                        >
+                            <Menu size={24} />
+                        </button>
+                        <span className="text-xs font-black uppercase text-gray-400 tracking-widest hidden sm:flex items-center gap-3">
+                            <UserCog className="text-blue-900" size={18}/> Sessão: <span className="text-blue-950 italic">{user?.name}</span>
+                        </span>
+                        <span className="text-[10px] font-black uppercase text-blue-950 sm:hidden">
+                            {user?.name.split(' ')[0]}
+                        </span>
+                    </div>
+                    
                     <div className="flex items-center gap-6">
-                        <div className="flex items-center gap-2">
+                        <div className="hidden md:flex items-center gap-2">
                             <div className="w-2 h-2 rounded-full bg-green-500 animate-pulse"></div>
                             <span className="text-[10px] font-black text-gray-400 uppercase">Rede Sincronizada</span>
                         </div>
-                        <span className="text-[10px] font-black text-gray-300 uppercase italic tracking-widest">Enterprise v6.3 Stable</span>
+                        <span className="text-[10px] font-black text-gray-300 uppercase italic tracking-widest">v6.5 Stable</span>
                     </div>
                 </header>
 
                 <main className="flex-1 overflow-y-auto relative no-scrollbar">
-                    {(() => {
-                        if (currentView === 'dashboard_rede') return <DashboardAdmin stores={stores} performanceData={performanceData} onImportData={fetchData} />;
-                        if (currentView === 'dashboard_loja') return <DashboardManager user={user!} stores={stores} performanceData={performanceData} purchasingData={purchasingData} />;
-                        if (currentView === 'metas') return <GoalRegistration stores={stores} performanceData={performanceData} onUpdateData={async (data) => { for(const row of data) { await supabase.from('monthly_performance').upsert({ store_id: row.storeId, month: row.month, revenue_target: row.revenueTarget, pa_target: row.paTarget, ticket_target: row.ticketTarget, pu_target: row.puTarget, items_target: row.itemsTarget, business_days: row.businessDays }); } fetchData(); }} />;
-                        if (currentView === 'cotas') return <CotasManagement user={user!} stores={stores} cotas={cotas} cotaSettings={cotaSettings} cotaDebts={cotaDebts} performanceData={performanceData} productCategories={quotaCategories} mixParameters={quotaMixParams} onAddCota={async (c) => { await supabase.from('cotas').insert([{ store_id: c.storeId, brand: c.brand, category_id: c.category_id, total_value: c.totalValue, shipment_date: `${c.shipmentDate}-01`, payment_terms: c.paymentTerms, pairs: c.pairs, installments: c.installments, status: 'ABERTA' }]); fetchData(); }} onUpdateCota={async (id, u) => { await supabase.from('cotas').update(u).eq('id', id); fetchData(); }} onDeleteCota={async (id) => { await supabase.from('cotas').delete().eq('id', id); fetchData(); }} onSaveSettings={async (s) => { await supabase.from('cota_settings').upsert({ store_id: s.storeId, budget_value: s.budgetValue, manager_percent: s.managerPercent }, { onConflict: 'store_id' }); fetchData(); }} onSaveDebts={async (d) => { await supabase.from('cota_debts').upsert({ store_id: d.storeId, month: d.month, value: d.value }, { onConflict: 'store_id, month' }); fetchData(); }} onDeleteDebt={async (id) => { await supabase.from('cota_debts').delete().eq('id', id); fetchData(); }} />;
-                        if (currentView === 'compras') return <DashboardPurchases user={user!} stores={stores} data={purchasingData} onImport={async (d) => { await supabase.from('product_performance').insert(d.map(x => ({ store_id: x.storeId, month: x.month, brand: x.brand, category: x.category, pairs_sold: x.pairsSold, revenue: x.revenue }))); fetchData(); }} onOpenSpreadsheetModule={() => setCurrentView('spreadsheet_order')} />;
-                        if (currentView === 'pdv_gelateria') return <IceCreamModule user={user!} stores={stores} items={iceCreamItems} sales={iceCreamSales} finances={iceCreamFinances} stock={iceCreamStock} promissories={icPromissories} can={can} onAddSales={async (s) => { await supabase.from('ice_cream_sales').insert(s.map(x => ({ store_id: x.storeId, product_name: x.productName, units_sold: x.unitsSold, total_value: x.totalValue, payment_method: x.paymentMethod, sale_code: x.saleCode, buyer_name: x.buyer_name, item_id: x.itemId, flavor: x.flavor }))); fetchData(); }} onCancelSale={async (code, r) => { await supabase.from('ice_cream_sales').update({ status: 'canceled', cancel_reason: r }).eq('sale_code', code); fetchData(); }} onUpdatePrice={async (id, p) => { await supabase.from('ice_cream_items').update({ price: p }).eq('id', id); fetchData(); }} onAddTransaction={async (t) => { await supabase.from('ice_cream_finances').insert([{ store_id: t.storeId, date: t.date, type: t.type, category: t.category, value: t.value, description: t.description }]); fetchData(); }} onAddItem={async (n, c, p, f, si, u, cps, tsId, r) => { await supabase.from('ice_cream_items').insert([{ store_id: tsId, name: n, category: c, price: p, flavor: f, active: true, consumption_per_sale: cps, recipe: r }]); fetchData(); }} onDeleteItem={async (id) => { await supabase.from('ice_cream_items').delete().eq('id', id); fetchData(); }} onUpdateStock={async (sId, b, v, u, t) => { await supabase.from('ice_cream_stock_moves').insert([{ store_id: sId, product_base: b, quantity: v, unit: u, move_type: t }]); fetchData(); } } liquidatePromissory={async (id) => { await supabase.from('ice_cream_promissories').update({ status: 'paid' }).eq('id', id); fetchData(); }} />;
-                        if (currentView === 'caixa') return <CashRegisterModule user={user!} sales={iceCreamSales} finances={iceCreamFinances} closures={closures} onAddClosure={async (c) => { await supabase.from('cash_register_closures').insert([{ store_id: user?.storeId, closed_by: user?.name, total_sales: c.totalSales, total_expenses: c.totalExpenses, balance: c.balance, notes: c.notes, date: c.date }]); fetchData(); }} />;
-                        if (currentView === 'financeiro') return <FinancialModule user={user!} store={stores.find(s => s.id === user?.storeId)} sales={[]} receipts={receipts} onAddReceipt={async (r) => { await supabase.from('receipts').insert([{ store_id: r.storeId, issuer_name: r.issuerName, payer: r.payer, recipient: r.recipient, value: r.value, value_in_words: r.valueInWords, reference: r.reference, date: r.date }]); fetchData(); }} onAddSale={async () => {}} onDeleteSale={async () => {}} />;
-                        if (currentView === 'quebras') return <CashErrorsModule user={user!} stores={stores} errors={cashErrors} onAddError={async (e) => { await supabase.from('cash_errors').insert([{ store_id: e.storeId, user_id: e.userId, user_name: e.userName, date: e.date, type: e.type, value: e.value, reason: e.reason }]); fetchData(); }} onUpdateError={async (e) => { await supabase.from('cash_errors').update(e).eq('id', e.id); fetchData(); }} onDeleteError={async (id) => { await supabase.from('cash_errors').delete().eq('id', id); fetchData(); }} />;
-                        if (currentView === 'agenda') return <AgendaSystem user={user!} tasks={agenda} onAddTask={async (t) => { await supabase.from('agenda_items').insert([{ user_id: t.userId, title: t.title, description: t.description, due_date: t.dueDate, due_time: t.dueTime, priority: t.priority, reminder_level: t.reminder_level }]); fetchData(); }} onUpdateTask={async (t) => { await supabase.from('agenda_items').update({ is_completed: t.isCompleted, completed_note: t.completed_note }).eq('id', t.id); fetchData(); }} onDeleteTask={async (id) => { await supabase.from('agenda_items').delete().eq('id', id); fetchData(); }} />;
-                        if (currentView === 'autoriz_compra') return <PurchaseAuthorization />;
-                        if (currentView === 'termo_condicional') return <TermoAutorizacao user={user!} store={stores.find(s => s.id === user?.storeId)} />;
-                        if (currentView === 'downloads') return <DownloadsModule user={user!} items={downloads} onUpload={async (i) => { await supabase.from('downloads').insert([{ title: i.title, description: i.description, category: i.category, url: i.url, file_name: i.fileName, size: i.size, campaign: i.campaign, created_by: i.createdBy }]); fetchData(); }} onDelete={async (id) => { await supabase.from('downloads').delete().eq('id', id); fetchData(); }} />;
-                        if (currentView === 'studio_real') return <InstagramMarketing user={user!} store={stores.find(s => s.id === user?.storeId)} />;
-                        if (currentView === 'users') return <AdminUsersManagement currentUser={user!} stores={stores} />;
-                        if (currentView === 'access') return <AccessControlManagement />;
-                        if (currentView === 'audit') return <SystemAudit logs={logs} receipts={receipts} cashErrors={cashErrors} iceCreamSales={iceCreamSales} icPromissories={icPromissories} store={stores.find(s => s.id === user?.storeId)} />;
-                        if (currentView === 'settings') return <AdminSettings stores={stores} onAddStore={async (s) => { await supabase.from('stores').insert([s]); fetchData(); }} onUpdateStore={async (s) => { await supabase.from('stores').update(s).eq('id', s.id); fetchData(); }} onDeleteStore={async (id) => { await supabase.from('stores').delete().eq('id', id); fetchData(); }} />;
-                        if (currentView === 'spreadsheet_order') return <SpreadsheetOrderModule user={user!} onClose={() => setCurrentView('compras')} />;
-                        return <DashboardAdmin stores={stores} performanceData={performanceData} onImportData={fetchData} />;
-                    })()}
+                    {renderCurrentView()}
                 </main>
             </div>
         </div>
