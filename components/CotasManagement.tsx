@@ -6,7 +6,7 @@ import {
     Plus, Trash2, Building2, Loader2, DollarSign, Calculator, X, Save, 
     History, CheckCircle, BadgeCheck, FileBarChart, Printer, Check,
     LayoutGrid, UserCheck, Briefcase, Layers, TrendingDown, Info, Calendar,
-    AlertTriangle, ArrowUpRight, ArrowDownRight, Target, PieChart
+    AlertTriangle, ArrowUpRight, ArrowDownRight, Target, PieChart, ChevronRight
 } from 'lucide-react';
 
 const FULL_MONTH_NAMES = ["JANEIRO", "FEVEREIRO", "MARÇO", "ABRIL", "MAIO", "JUNHO", "JULHO", "AGOSTO", "SETEMBRO", "OUTUBRO", "NOVEMBRO", "DEZEMBRO"];
@@ -80,9 +80,9 @@ interface CotasManagementProps {
   onDeleteDebt: (id: string) => Promise<void>;
 }
 
-const CotasManagement: React.FC<CotasManagementProps> = ({ 
+export const CotasManagement: React.FC<CotasManagementProps> = ({ 
   user, stores, cotas, cotaSettings, cotaDebts, productCategories = [], mixParameters = [],
-  onAddCota, onUpdateCota, onDeleteCota, onSaveSettings, onSaveDebts
+  onAddCota, onUpdateCota, onDeleteCota, onSaveSettings, onSaveDebts, onDeleteDebt
 }) => {
   const timeline = useMemo(() => generateTimeline(), []);
   const isAdmin = user.role === UserRole.ADMIN;
@@ -135,19 +135,25 @@ const CotasManagement: React.FC<CotasManagementProps> = ({
     const settings = cotaSettings.find(s => s.storeId === viewStoreId);
     const stats: Record<string, any> = {};
 
+    let totalBuyerValidGlobal = 0;
+    let totalManagerValidGlobal = 0;
+    let totalDebtsGlobal = 0;
+
     timeline.forEach(m => {
         const budgetTotal = Number(settings?.budgetValue || 0);
         const monthlyDebts = storeDebts.filter(d => d.month === m.key).reduce((a, b) => a + Number(b.value), 0);
-        
+        totalDebtsGlobal += monthlyDebts;
+
         let buyerValid = 0;
         let managerValid = 0;
         let pendingInstallmentSum = 0;
 
         storeOrders.forEach(p => { 
             const val = getInstallmentValueForMonth(p, m.key);
+            const role = String(p.createdByRole || '').toUpperCase();
             if (p.status === 'VALIDADO' || p.status === 'validated' || p.status === 'FECHADA') {
-                if (p.createdByRole === 'GERENTE') managerValid += val;
-                else buyerValid += val;
+                if (role === 'GERENTE') { managerValid += val; totalManagerValidGlobal += val; }
+                else { buyerValid += val; totalBuyerValidGlobal += val; }
             } else if (p.status === 'ABERTA' || p.status === 'pending') {
                 pendingInstallmentSum += val;
             }
@@ -164,7 +170,7 @@ const CotasManagement: React.FC<CotasManagementProps> = ({
             pendingInstallmentSum 
         };
     });
-    return { orders: storeOrders, stats, debts: storeDebts };
+    return { orders: storeOrders, stats, debts: storeDebts, totalBuyerValidGlobal, totalManagerValidGlobal, totalDebtsGlobal };
   }, [cotas, cotaSettings, cotaDebts, viewStoreId, timeline]);
 
   const handleSaveOrder = async (e: React.FormEvent) => {
@@ -194,6 +200,7 @@ const CotasManagement: React.FC<CotasManagementProps> = ({
               });
           }
           setBrand(''); setTotalValue(''); setPairs(''); setActiveForm(null);
+          alert("Pedido(s) registrado(s) com sucesso!");
       } catch (err: any) {
           alert("Erro: " + err.message);
       } finally { setIsSubmitting(false); }
@@ -227,6 +234,7 @@ const CotasManagement: React.FC<CotasManagementProps> = ({
     await onSaveSettings({ storeId: viewStoreId, budgetValue: val, managerPercent: pct });
     setActiveForm(null);
     setIsSubmitting(false);
+    alert("Cota configurada com sucesso!");
   };
 
   const handlePrintValidated = () => {
@@ -296,7 +304,7 @@ const CotasManagement: React.FC<CotasManagementProps> = ({
 
   return (
     <div className="flex flex-col h-screen bg-[#f3f4f6] overflow-hidden text-blue-950 font-sans">
-        {/* TOP BAR */}
+        {/* TOP BAR - RESTAURADO */}
         <div className="bg-white px-8 py-4 flex flex-col md:flex-row justify-between items-center gap-4 z-50 shadow-sm border-b shrink-0">
             <div className="flex items-center gap-3">
                 <div className="bg-blue-900 text-white p-2.5 rounded-xl shadow-lg shrink-0"><Building2 size={24}/></div>
@@ -313,6 +321,7 @@ const CotasManagement: React.FC<CotasManagementProps> = ({
                     </div>
                 </div>
             </div>
+            {/* BOTÕES DE AÇÕES RESTAURADOS */}
             <div className="flex flex-wrap gap-2">
                 <button onClick={() => { setSelectedStoresForOrder([viewStoreId]); setActiveForm('order'); }} className="bg-blue-900 text-white px-5 py-2.5 rounded-lg font-black uppercase text-[10px] shadow-md hover:bg-black transition-all flex items-center gap-2 border-b-4 border-blue-950"><Plus size={14}/> Novo Pedido</button>
                 <button onClick={() => setActiveForm('validated_orders')} className="bg-green-600 text-white px-5 py-2.5 rounded-lg font-black uppercase text-[10px] shadow-md hover:bg-green-700 transition-all flex items-center gap-2 border-b-4 border-green-800"><BadgeCheck size={14}/> Pedidos Validados</button>
@@ -322,7 +331,7 @@ const CotasManagement: React.FC<CotasManagementProps> = ({
             </div>
         </div>
 
-        {/* TIMELINE TABLE */}
+        {/* TIMELINE TABLE - CORRIGIDO MAPEAMENTO */}
         <div className="flex-1 overflow-auto bg-white border-t border-gray-100">
             <table className="w-full text-center border-separate border-spacing-0 table-fixed min-w-[1800px]">
                 <thead className="sticky top-0 z-40">
@@ -347,7 +356,7 @@ const CotasManagement: React.FC<CotasManagementProps> = ({
                     {/* LINHA DE GASTOS FIXOS */}
                     <tr className="bg-gray-50/50 border-b h-11">
                         <td className="px-4 text-left sticky left-0 bg-[#f9fafb] z-30 font-black text-red-600">GASTOS FIXOS / DEBTS</td>
-                        <td className="font-black italic text-red-600 sticky left-[224px] bg-[#f9fafb] z-30">SAÍDAS</td>
+                        <td className="font-black italic text-red-600 sticky left-[224px] bg-[#f9fafb] z-30">{formatCurrency(consolidated.totalDebtsGlobal)}</td>
                         {timeline.map(m => (
                             <td key={m.key} className="p-2 font-black text-red-600">
                                 {formatCurrency(consolidated.stats[m.key].debts)}
@@ -357,7 +366,7 @@ const CotasManagement: React.FC<CotasManagementProps> = ({
 
                     <tr className="bg-white border-b h-11">
                         <td className="px-4 text-left sticky left-0 bg-white z-30 font-black text-blue-800">COTA COMPRADOR ({100 - (storeSettings?.managerPercent || 20)}%)</td>
-                        <td className="font-black italic text-blue-800 sticky left-[224px] bg-white z-30">VALIDADO</td>
+                        <td className="font-black italic text-blue-800 sticky left-[224px] bg-white z-30">{formatCurrency(consolidated.totalBuyerValidGlobal)}</td>
                         {timeline.map(m => (
                             <td key={m.key} className="p-2 font-black text-blue-800">
                                 {formatCurrency(consolidated.stats[m.key].buyerValid)}
@@ -367,7 +376,7 @@ const CotasManagement: React.FC<CotasManagementProps> = ({
 
                     <tr className="bg-orange-50/20 border-b h-11">
                         <td className="px-4 text-left sticky left-0 bg-[#fefce8] z-30 font-black text-orange-700">COTA GERENTE ({storeSettings?.managerPercent || 20}%)</td>
-                        <td className="font-black italic text-orange-700 sticky left-[224px] bg-[#fefce8] z-30">VALIDADO</td>
+                        <td className="font-black italic text-orange-700 sticky left-[224px] bg-[#fefce8] z-30">{formatCurrency(consolidated.totalManagerValidGlobal)}</td>
                         {timeline.map(m => (
                             <td key={m.key} className="p-2 font-black text-orange-700">
                                 {formatCurrency(consolidated.stats[m.key].managerValid)}
@@ -388,9 +397,10 @@ const CotasManagement: React.FC<CotasManagementProps> = ({
                         ))}
                     </tr>
 
-                    {/* GRID DE PEDIDOS ABERTOS */}
+                    {/* GRID DE PEDIDOS ABERTOS - CORRIGIDO CORES E DADOS */}
                     {consolidated.orders.filter(o => o.status === 'ABERTA' || o.status === 'pending').map(order => {
-                        const isManagerOrder = order.createdByRole === 'GERENTE';
+                        const role = String(order.createdByRole || '').toUpperCase();
+                        const isManagerOrder = role === 'GERENTE';
                         const isAcessorio = (order.classification || order.category_name)?.toUpperCase().includes('ACESSÓRIO');
                         const qtyType = isAcessorio ? 'UNIDADES' : 'PARES';
 
@@ -398,6 +408,7 @@ const CotasManagement: React.FC<CotasManagementProps> = ({
                             <tr key={order.id} className="hover:bg-blue-50/50 transition-colors border-b group h-16">
                                 <td className="px-4 text-left sticky left-0 bg-white group-hover:bg-blue-50/50 z-30 shadow-sm">
                                     <div className="flex items-center gap-3">
+                                        {/* BOLINHA DE COR POR PERFIL */}
                                         <div className={`w-3 h-3 rounded-full shrink-0 ${isManagerOrder ? 'bg-orange-500 shadow-orange-200' : 'bg-blue-600 shadow-blue-200'} shadow-md`}></div>
                                         <div className="flex-1 min-w-0">
                                             <div className={`text-sm font-black uppercase italic leading-none mb-1 truncate ${isManagerOrder ? 'text-orange-700' : 'text-blue-800'}`}>{order.brand}</div>
@@ -416,7 +427,9 @@ const CotasManagement: React.FC<CotasManagementProps> = ({
                                 </td>
                                 <td className="bg-white sticky left-[224px] z-30 group-hover:bg-blue-50/50 shadow-sm">
                                     <div className="flex flex-col items-center justify-center h-full">
+                                        {/* MÊS DE EMBARQUE RESTAURADO */}
                                         <div className="text-[9px] font-black text-blue-600 uppercase tracking-tighter mb-0.5">EMB: {getMonthNameFromKey(order.shipmentDate)}</div>
+                                        {/* VALOR TOTAL RESTAURADO */}
                                         <div className="text-[10px] font-black text-gray-900 italic">{formatCurrency(order.totalValue)}</div>
                                     </div>
                                 </td>
@@ -431,40 +444,191 @@ const CotasManagement: React.FC<CotasManagementProps> = ({
             </table>
         </div>
 
-        {/* MODAL PEDIDOS VALIDADOS */}
-        {activeForm === 'validated_orders' && (
-            <div className="fixed inset-0 bg-black/60 backdrop-blur-md z-[150] flex items-center justify-center p-4">
-                <div className="bg-white rounded-[40px] shadow-2xl w-full max-w-4xl overflow-hidden animate-in zoom-in duration-300 border-t-8 border-green-600 flex flex-col max-h-[90vh]">
-                    <div className="p-8 border-b bg-gray-50 flex justify-between items-center">
+        {/* MODAL: NOVO PEDIDO */}
+        {activeForm === 'order' && (
+            <div className="fixed inset-0 bg-black/80 backdrop-blur-md flex items-center justify-center z-[100] p-4">
+                <div className="bg-white rounded-[40px] w-full max-w-2xl shadow-2xl animate-in zoom-in duration-300 overflow-hidden border-t-8 border-blue-900">
+                    <div className="p-8 border-b bg-gray-50/50 flex justify-between items-center">
+                        <h3 className="text-2xl font-black uppercase italic text-blue-950 flex items-center gap-3"><Plus className="text-red-600" /> Registrar <span className="text-red-600">Novo Pedido</span></h3>
+                        <button onClick={() => setActiveForm(null)} className="text-gray-400 hover:text-red-600"><X size={24}/></button>
+                    </div>
+                    <form onSubmit={handleSaveOrder} className="p-10 space-y-6">
+                        <div className="grid grid-cols-2 gap-6">
+                            <div className="space-y-2">
+                                <label className="text-[10px] font-black text-gray-400 uppercase ml-2">Marca / Fabricante</label>
+                                <input required value={brand} onChange={e => setBrand(e.target.value)} className="w-full p-4 bg-gray-50 rounded-2xl font-black text-gray-900 uppercase italic shadow-inner outline-none focus:ring-4 focus:ring-blue-50" placeholder="EX: BEIRA RIO" />
+                            </div>
+                            <div className="space-y-2">
+                                <label className="text-[10px] font-black text-gray-400 uppercase ml-2">Classificação</label>
+                                <select required value={selectedCategoryId} onChange={e => setSelectedCategoryId(e.target.value)} className="w-full p-4 bg-gray-50 rounded-2xl font-black text-gray-900 uppercase outline-none cursor-pointer">
+                                    <option value="">SELECIONE...</option>
+                                    {Object.entries(groupedCategories).map(([parent, cats]) => (
+                                        <optgroup key={parent} label={parent}>
+                                            {cats.map(c => <option key={c.id} value={c.id}>{c.category_name}</option>)}
+                                        </optgroup>
+                                    ))}
+                                </select>
+                            </div>
+                        </div>
+
+                        <div className="grid grid-cols-3 gap-6">
+                            <div className="space-y-2">
+                                <label className="text-[10px] font-black text-gray-400 uppercase ml-2">Mês Embarque</label>
+                                <select value={shipmentMonth} onChange={e => setShipmentMonth(e.target.value)} className="w-full p-4 bg-gray-50 rounded-2xl font-black text-gray-900 outline-none">
+                                    {timeline.map(m => <option key={m.key} value={m.key}>{m.label}</option>)}
+                                </select>
+                            </div>
+                            <div className="space-y-2">
+                                <label className="text-[10px] font-black text-gray-400 uppercase ml-2">Prazos (ex: 30/60/90)</label>
+                                <input required value={paymentTerms} onChange={e => setPaymentTerms(e.target.value)} className="w-full p-4 bg-gray-50 rounded-2xl font-black text-gray-900 text-center outline-none" />
+                            </div>
+                            <div className="space-y-2">
+                                <label className="text-[10px] font-black text-gray-400 uppercase ml-2">Total Pedido (R$)</label>
+                                <input required value={totalValue} onChange={e => setTotalValue(e.target.value)} className="w-full p-4 bg-blue-50/50 rounded-2xl font-black text-blue-900 text-xl text-center shadow-inner outline-none focus:ring-4 focus:ring-blue-100" placeholder="0,00" />
+                            </div>
+                        </div>
+
+                        <div className="grid grid-cols-2 gap-6">
+                            <div className="space-y-2">
+                                <label className="text-[10px] font-black text-gray-400 uppercase ml-2">Volume (Pares/Unidades)</label>
+                                <input value={pairs} onChange={e => setPairs(e.target.value.replace(/\D/g, ''))} className="w-full p-4 bg-gray-50 rounded-2xl font-black text-gray-900 text-center outline-none" placeholder="0" />
+                            </div>
+                            <div className="space-y-2">
+                                <label className="text-[10px] font-black text-gray-400 uppercase ml-2">Perfil do Pedido</label>
+                                <div className="flex bg-gray-100 p-1 rounded-2xl">
+                                    <button type="button" onClick={() => setOrderCreatedByRole('COMPRADOR')} className={`flex-1 py-3 rounded-xl font-black text-[10px] uppercase transition-all ${orderCreatedByRole === 'COMPRADOR' ? 'bg-blue-900 text-white shadow-lg' : 'text-gray-400'}`}>Comprador</button>
+                                    <button type="button" onClick={() => setOrderCreatedByRole('GERENTE')} className={`flex-1 py-3 rounded-xl font-black text-[10px] uppercase transition-all ${orderCreatedByRole === 'GERENTE' ? 'bg-orange-600 text-white shadow-lg' : 'text-gray-400'}`}>Gerente</button>
+                                </div>
+                            </div>
+                        </div>
+
+                        {isAdmin && (
+                            <div className="space-y-3 bg-gray-50 p-6 rounded-[32px] border border-gray-100 shadow-inner">
+                                <label className="text-[10px] font-black text-blue-900 uppercase italic ml-2">Vincular Unidades (Multi-loja)</label>
+                                <div className="grid grid-cols-4 gap-2 max-h-32 overflow-y-auto pr-2 no-scrollbar">
+                                    {activeStores.map(s => (
+                                        <button key={s.id} type="button" onClick={() => setSelectedStoresForOrder(prev => prev.includes(s.id) ? prev.filter(id => id !== s.id) : [...prev, s.id])} className={`p-2 rounded-xl text-[9px] font-black uppercase border-2 transition-all ${selectedStoresForOrder.includes(s.id) ? 'bg-blue-900 border-blue-900 text-white shadow-md' : 'bg-white border-gray-100 text-gray-400 hover:border-blue-200'}`}>{s.number}</button>
+                                    ))}
+                                </div>
+                            </div>
+                        )}
+
+                        <button type="submit" disabled={isSubmitting} className="w-full py-5 bg-red-600 text-white rounded-[28px] font-black uppercase text-xs shadow-2xl active:scale-95 transition-all border-b-4 border-red-900 flex items-center justify-center gap-3">
+                            {isSubmitting ? <Loader2 className="animate-spin" /> : <Save size={18}/>} SALVAR PEDIDO
+                        </button>
+                    </form>
+                </div>
+            </div>
+        )}
+
+        {/* MODAL: LANÇAR DESPESA */}
+        {activeForm === 'expense' && (
+            <div className="fixed inset-0 bg-black/80 backdrop-blur-md flex items-center justify-center z-[100] p-4">
+                <div className="bg-white rounded-[40px] w-full max-w-xl shadow-2xl animate-in zoom-in duration-300 overflow-hidden border-t-8 border-orange-600 max-h-[90vh] flex flex-col">
+                    <div className="p-8 border-b bg-gray-50/50 flex justify-between items-center">
                         <div>
-                            <h3 className="text-2xl font-black uppercase italic text-blue-900 tracking-tighter leading-none">Pedidos <span className="text-green-600">Validados</span></h3>
-                            <p className="text-[10px] font-black text-gray-400 uppercase tracking-widest mt-1">Conferência de Carteira Ativa</p>
+                            <h3 className="text-2xl font-black uppercase italic text-blue-950 flex items-center gap-3"><DollarSign className="text-orange-600" /> Despesas <span className="text-orange-600">Extra-OTB</span></h3>
+                            <p className="text-gray-400 text-[10px] font-black uppercase tracking-widest mt-1">Lançamento de gastos fixos e deduções</p>
+                        </div>
+                        <button onClick={() => setActiveForm(null)} className="text-gray-400 hover:text-red-600"><X size={24}/></button>
+                    </div>
+                    <form onSubmit={handleSaveAllExpenses} className="flex-1 overflow-y-auto no-scrollbar">
+                        <div className="p-10 space-y-4">
+                            {timeline.map(m => (
+                                <div key={m.key} className="flex items-center gap-4 bg-gray-50 p-4 rounded-[24px] border border-gray-100 group hover:border-orange-200 transition-all">
+                                    <div className="w-20 font-black text-[10px] text-gray-500 uppercase tracking-tighter">{m.label}</div>
+                                    <div className="flex-1 relative">
+                                        <input 
+                                            value={semesterDebts[m.key] || ''} 
+                                            onChange={e => setSemesterDebts({...semesterDebts, [m.key]: e.target.value})}
+                                            className="w-full p-4 bg-white rounded-2xl font-black text-orange-700 shadow-inner outline-none focus:ring-4 focus:ring-orange-50 text-right pr-12"
+                                            placeholder="0,00"
+                                        />
+                                        <span className="absolute right-4 top-1/2 -translate-y-1/2 text-gray-300 font-black text-[10px]">R$</span>
+                                    </div>
+                                </div>
+                            ))}
+                        </div>
+                        <div className="p-10 bg-gray-50 border-t flex justify-center">
+                            <button type="submit" disabled={isSubmitting} className="w-full max-w-sm py-5 bg-orange-600 text-white rounded-[28px] font-black uppercase text-xs shadow-2xl active:scale-95 transition-all border-b-4 border-orange-900 flex items-center justify-center gap-3">
+                                {isSubmitting ? <Loader2 className="animate-spin" /> : <Save size={18}/>} ATUALIZAR DESPESAS
+                            </button>
+                        </div>
+                    </form>
+                </div>
+            </div>
+        )}
+
+        {/* MODAL: DEFINIR COTA */}
+        {activeForm === 'cota_config' && (
+            <div className="fixed inset-0 bg-black/80 backdrop-blur-md flex items-center justify-center z-[100] p-4">
+                <div className="bg-white rounded-[40px] w-full max-w-md shadow-2xl animate-in zoom-in duration-300 overflow-hidden border-t-8 border-yellow-500">
+                    <div className="p-8 border-b bg-gray-50/50 flex justify-between items-center">
+                        <h3 className="text-xl font-black uppercase italic text-blue-950 flex items-center gap-3"><Calculator className="text-yellow-600" /> Configurar <span className="text-yellow-600">Limites</span></h3>
+                        <button onClick={() => setActiveForm(null)} className="text-gray-400 hover:text-red-600"><X size={24}/></button>
+                    </div>
+                    <form onSubmit={handleSaveCotaSettings} className="p-10 space-y-8">
+                        <div className="space-y-2">
+                            <label className="text-[10px] font-black text-gray-400 uppercase ml-2">Teto de Compras (Mensal)</label>
+                            <div className="relative">
+                                <input required value={budgetVal} onChange={e => setBudgetVal(e.target.value)} className="w-full p-5 bg-gray-50 rounded-[28px] font-black text-gray-900 text-2xl shadow-inner outline-none focus:ring-4 focus:ring-yellow-50 pl-12" placeholder="0,00" />
+                                <DollarSign className="absolute left-5 top-1/2 -translate-y-1/2 text-yellow-500" size={24}/>
+                            </div>
+                        </div>
+                        <div className="space-y-2">
+                            <label className="text-[10px] font-black text-gray-400 uppercase ml-2">Participação Gerência (%)</label>
+                            <input required value={managerPct} onChange={e => setManagerPct(e.target.value)} className="w-full p-5 bg-gray-50 rounded-[28px] font-black text-gray-900 text-2xl shadow-inner outline-none text-center" placeholder="20" />
+                        </div>
+                        <div className="p-5 bg-yellow-50 rounded-2xl border border-yellow-100 flex items-start gap-3">
+                            <Info className="text-yellow-600 shrink-0" size={18} />
+                            <p className="text-[9px] font-bold text-yellow-800 leading-relaxed uppercase">Este valor define o limite bruto disponível para compras em cada mês da timeline.</p>
+                        </div>
+                        <button type="submit" disabled={isSubmitting} className="w-full py-5 bg-yellow-500 text-blue-950 rounded-[28px] font-black uppercase text-xs shadow-xl active:scale-95 transition-all border-b-4 border-yellow-700 flex items-center justify-center gap-3">
+                            {isSubmitting ? <Loader2 className="animate-spin" /> : <Save size={18}/>} EFETIVAR CONFIGURAÇÃO
+                        </button>
+                    </form>
+                </div>
+            </div>
+        )}
+
+        {/* MODAL: PEDIDOS VALIDADOS */}
+        {activeForm === 'validated_orders' && (
+            <div className="fixed inset-0 bg-black/80 backdrop-blur-md flex items-center justify-center z-[100] p-4">
+                <div className="bg-white rounded-[48px] w-full max-w-4xl shadow-2xl animate-in zoom-in duration-300 overflow-hidden border-t-8 border-green-600 max-h-[90vh] flex flex-col">
+                    <div className="p-8 border-b bg-gray-50/50 flex justify-between items-center">
+                        <div>
+                            <h3 className="text-2xl font-black uppercase italic text-blue-950 flex items-center gap-3"><BadgeCheck className="text-green-600" /> Carteira de <span className="text-green-600">Pedidos</span></h3>
+                            <p className="text-gray-400 text-[10px] font-black uppercase tracking-widest mt-1">Histórico de compras autorizadas pela rede</p>
                         </div>
                         <div className="flex gap-2">
-                             <button onClick={handlePrintValidated} className="p-3 bg-white text-blue-600 rounded-xl hover:bg-blue-50 border border-blue-100 transition-all shadow-sm" title="Imprimir para Conferência"><Printer size={20}/></button>
-                             <button onClick={() => setActiveForm(null)} className="p-3 bg-white text-gray-400 hover:text-red-600 rounded-xl transition-all border border-gray-100 shadow-sm"><X size={20}/></button>
+                             <button onClick={handlePrintValidated} className="p-3 bg-blue-50 text-blue-700 rounded-2xl hover:bg-blue-100 transition-all shadow-sm"><Printer size={20}/></button>
+                             <button onClick={() => setActiveForm(null)} className="p-3 bg-gray-50 text-gray-400 hover:text-red-600 rounded-2xl transition-all"><X size={20}/></button>
                         </div>
                     </div>
-                    <div className="overflow-y-auto flex-1 p-8 no-scrollbar bg-white">
+                    <div className="flex-1 overflow-y-auto no-scrollbar">
                         <table className="w-full text-left">
-                            <thead className="text-[10px] font-black text-gray-400 uppercase tracking-widest border-b">
+                            <thead className="bg-white sticky top-0 z-10 border-b border-gray-100 text-[10px] font-black text-gray-400 uppercase tracking-widest">
                                 <tr>
-                                    <th className="py-4">Mês Embarque</th>
-                                    <th className="py-4">Marca</th>
-                                    <th className="py-4">Classificação</th>
-                                    <th className="py-4 text-right">Valor Total</th>
-                                    <th className="py-4 text-center">Ações</th>
+                                    <th className="px-8 py-5">Identificação</th>
+                                    <th className="px-8 py-5">Embarque</th>
+                                    <th className="px-8 py-5 text-right">Valor Total</th>
+                                    <th className="px-8 py-5 text-center">Ações</th>
                                 </tr>
                             </thead>
-                            <tbody className="divide-y divide-gray-50">
-                                {consolidated.orders.filter(o => o.status === 'VALIDADO' || o.status === 'validated' || o.status === 'FECHADA').sort((a,b) => a.shipmentDate.localeCompare(b.shipmentDate)).map(order => (
-                                    <tr key={order.id} className="hover:bg-gray-50 transition-colors">
-                                        <td className="py-4 text-[11px] font-black text-blue-600">{getMonthNameFromKey(order.shipmentDate)}</td>
-                                        <td className={`py-4 text-[11px] font-black uppercase italic ${order.createdByRole === 'GERENTE' ? 'text-orange-700' : 'text-blue-800'}`}>{order.brand}</td>
-                                        <td className="py-4 text-[9px] font-bold text-gray-400 uppercase">{order.classification || order.category_name}</td>
-                                        <td className="py-4 text-right font-black text-blue-900">{formatCurrency(order.totalValue)}</td>
-                                        <td className="py-4 text-center">
-                                            <button onClick={() => onUpdateCota(order.id, { status: 'ABERTA' })} className="p-1.5 text-gray-400 hover:text-red-600" title="Retornar para Aberta (Em Edição)"><History size={14}/></button>
+                            <tbody className="divide-y divide-gray-50 font-bold">
+                                {consolidated.orders.filter(o => o.status === 'VALIDADO' || o.status === 'validated' || o.status === 'FECHADA').map(order => (
+                                    <tr key={order.id} className="hover:bg-gray-50 transition-all group">
+                                        <td className="px-8 py-5">
+                                            <div className="font-black text-gray-900 uppercase italic text-sm tracking-tighter leading-none">{order.brand}</div>
+                                            <div className="text-[9px] text-gray-400 uppercase mt-1 italic tracking-widest">{order.classification || order.category_name}</div>
+                                        </td>
+                                        <td className="px-8 py-5"><span className="text-[10px] font-black text-blue-600 bg-blue-50 px-3 py-1 rounded-full uppercase italic">{getMonthNameFromKey(order.shipmentDate)}</span></td>
+                                        <td className="px-8 py-5 text-right font-black text-blue-950 text-base italic">{formatCurrency(order.totalValue)}</td>
+                                        <td className="px-8 py-5 text-center">
+                                            <div className="flex justify-center gap-1 opacity-0 group-hover:opacity-100 transition-all">
+                                                <button onClick={() => onUpdateCota(order.id, { status: 'ABERTA' })} className="p-2 text-orange-600 hover:bg-orange-50 rounded-xl transition-all" title="Reverter p/ Aberto"><ArrowDownRight size={18}/></button>
+                                                <button onClick={() => onDeleteCota(order.id)} className="p-2 text-red-300 hover:text-red-600 rounded-xl transition-all"><Trash2 size={18}/></button>
+                                            </div>
                                         </td>
                                     </tr>
                                 ))}
@@ -475,268 +639,62 @@ const CotasManagement: React.FC<CotasManagementProps> = ({
             </div>
         )}
 
-        {/* MODAL MIX ANALYTICS - MELHORADO E COMPARATIVO */}
+        {/* MODAL: MIX DE PRODUTOS */}
         {activeForm === 'mix_view' && (
-            <div className="fixed inset-0 bg-black/60 backdrop-blur-md z-[150] flex items-center justify-center p-4">
-                <div className="bg-white rounded-[40px] shadow-2xl w-full max-w-[95vw] overflow-hidden animate-in zoom-in duration-300 border-t-8 border-purple-600 flex flex-col max-h-[95vh]">
-                    <div className="p-8 border-b bg-gray-50 flex justify-between items-center">
-                        <div className="flex items-center gap-4">
-                            <div className="p-3 bg-purple-100 text-purple-600 rounded-2xl shadow-inner"><PieChart size={28}/></div>
-                            <div>
-                                <h3 className="text-2xl font-black uppercase italic text-blue-950 tracking-tighter leading-none">Análise de <span className="text-purple-600">Mix Estratégico</span></h3>
-                                <p className="text-[10px] font-black text-gray-400 uppercase tracking-widest mt-1">Comparativo de Meta vs. Real (Pendentes + Validados)</p>
-                            </div>
+            <div className="fixed inset-0 bg-black/80 backdrop-blur-md flex items-center justify-center z-[100] p-4">
+                <div className="bg-white rounded-[48px] w-full max-w-4xl shadow-2xl animate-in zoom-in duration-300 overflow-hidden border-t-8 border-purple-600 max-h-[90vh] flex flex-col">
+                    <div className="p-8 border-b bg-gray-50/50 flex justify-between items-center">
+                        <div>
+                            <h3 className="text-2xl font-black uppercase italic text-blue-950 flex items-center gap-3"><FileBarChart className="text-purple-600" /> Parâmetros <span className="text-purple-600">de Mix</span></h3>
+                            <p className="text-gray-400 text-[10px] font-black uppercase tracking-widest mt-1">Sugestão de compra ideal baseada em performance</p>
                         </div>
-                        <button onClick={() => setActiveForm(null)} className="p-3 bg-white text-gray-400 hover:text-red-600 rounded-xl transition-all border border-gray-100 shadow-sm"><X size={20}/></button>
+                        <button onClick={() => setActiveForm(null)} className="text-gray-400 hover:text-red-600 transition-all"><X size={24}/></button>
                     </div>
-                    
-                    <div className="overflow-y-auto flex-1 p-8 no-scrollbar bg-white space-y-10">
-                        {/* NOVO: CAMADA VISUAL DE CARDS DE DECISÃO */}
-                        <div className="grid grid-cols-4 gap-6">
-                             {(Object.entries(groupedCategories) as [string, QuotaCategory[]][]).map(([parent, children]) => {
-                                 const allOrders = consolidated.orders;
-                                 
-                                 /** 
-                                  * REGRA OBRIGATÓRIA DE CÁLCULO:
-                                  * TOTAL_GERAL = Soma de total_comprado de TODAS as parent_category 
-                                  * (OU o Budget total definido, caso desejado para controle de ocupação de cota)
-                                  * Para alinhar com o objetivo de decisão, usaremos o BUDGET TOTAL como denominador global.
-                                  */
-                                 const budgetTotalGlobal = Number(storeSettings?.budgetValue || 0);
-                                 const totalPurchasedGlobal = allOrders.reduce((a,b) => a + b.totalValue, 0);
-                                 
-                                 // Denominador Único e Global para o MIX
-                                 const TOTAL_GERAL_DENOMINADOR = budgetTotalGlobal > 0 ? budgetTotalGlobal : (totalPurchasedGlobal > 0 ? totalPurchasedGlobal : 1);
-                                 
-                                 // Cálculo da Categoria Pai
-                                 const parentTotalValue = allOrders
-                                    .filter(o => children.some(c => c.category_name === (o.classification || o.category_name)))
-                                    .reduce((a,b) => a + b.totalValue, 0);
-                                 
-                                 // percentual_real = total_comprado / TOTAL_GERAL * 100
-                                 const actualPercent = (parentTotalValue / TOTAL_GERAL_DENOMINADOR) * 100;
-                                 
-                                 // percentual_meta = Soma das metas das subcategorias (mix_percentage)
-                                 const groupMetaPercent = mixParameters
-                                    .filter(p => children.some(c => c.category_name === p.category_name))
-                                    .reduce((acc, curr) => acc + curr.percentage, 0);
-                                 
-                                 // Valor Financeiro da Meta baseado no orçamento total
-                                 const budgetValueTarget = (budgetTotalGlobal * groupMetaPercent) / 100;
-                                 const diffValue = budgetValueTarget - parentTotalValue;
-                                 
-                                 // Cores de Alerta Baseadas no Delta
-                                 let statusColor = "border-gray-100 bg-gray-50";
-                                 let textColor = "text-gray-400";
-                                 let Icon = Info;
-                                 
-                                 if (groupMetaPercent > 0) {
-                                     const diffPct = actualPercent - groupMetaPercent;
-                                     if (Math.abs(diffPct) <= 2) { statusColor = "border-green-100 bg-green-50/50"; textColor = "text-green-600"; Icon = BadgeCheck; }
-                                     else if (diffPct < -2) { statusColor = "border-yellow-100 bg-yellow-50/50"; textColor = "text-yellow-600"; Icon = Target; }
-                                     else { statusColor = "border-red-100 bg-red-50/50"; textColor = "text-red-600"; Icon = AlertTriangle; }
-                                 }
-
-                                 return (
-                                     <div key={parent} className={`rounded-[40px] p-8 border-2 shadow-sm transition-all flex flex-col relative overflow-hidden group ${statusColor}`}>
-                                         <div className="absolute top-0 right-0 p-4 opacity-10 group-hover:scale-110 transition-transform"><Icon size={80}/></div>
-                                         
-                                         <div className="flex justify-between items-start mb-6">
-                                             <div>
-                                                 <h4 className="font-black text-blue-900 uppercase italic text-sm truncate pr-10">{parent}</h4>
-                                                 <div className="flex items-center gap-2 mt-2">
-                                                     <span className="text-[10px] font-black bg-white px-2 py-1 rounded-lg shadow-sm text-gray-500 border border-gray-100">META: {groupMetaPercent.toFixed(1)}%</span>
-                                                     <span className={`text-[10px] font-black px-2 py-1 rounded-lg shadow-sm border ${textColor} bg-white`}>REAL: {actualPercent.toFixed(1)}%</span>
-                                                 </div>
-                                             </div>
-                                         </div>
-
-                                         <div className="flex-1 space-y-4">
-                                             <div className="flex flex-col">
-                                                 <span className="text-[9px] font-black text-gray-400 uppercase tracking-widest mb-1">Total Comprado</span>
-                                                 <span className="text-xl font-black text-blue-950 italic">{formatCurrency(parentTotalValue)}</span>
-                                             </div>
-
-                                             {/* Alertas de Decisão baseados no Delta Financeiro */}
-                                             <div className="pt-4 border-t border-dashed border-gray-200">
-                                                 {diffValue > 100 ? (
-                                                     <div className="flex items-center gap-2 text-yellow-600 animate-pulse">
-                                                         <ArrowDownRight size={16}/>
-                                                         <span className="text-[10px] font-black uppercase">Falta Comprar {formatCurrency(diffValue)}</span>
-                                                     </div>
-                                                 ) : diffValue < -100 ? (
-                                                     <div className="flex items-center gap-2 text-red-600">
-                                                         <ArrowUpRight size={16}/>
-                                                         <span className="text-[10px] font-black uppercase">Excesso de {formatCurrency(Math.abs(diffValue))}</span>
-                                                     </div>
-                                                 ) : (
-                                                     <div className="flex items-center gap-2 text-green-600">
-                                                         <CheckCircle size={16}/>
-                                                         <span className="text-[10px] font-black uppercase">Meta Atingida</span>
-                                                     </div>
-                                                 )}
-                                             </div>
-                                         </div>
-                                     </div>
-                                 );
-                             })}
-                        </div>
-
-                        {/* TABELA DE DETALHAMENTO POR SUB-CLASSE (BRODOWN) */}
-                        <div className="space-y-4">
-                             <h4 className="text-xs font-black text-gray-400 uppercase tracking-[0.3em] ml-2 flex items-center gap-2"><Layers size={14}/> Participação Interna por Sub-Classe</h4>
-                             <div className="grid grid-cols-4 gap-4">
-                                {(Object.entries(groupedCategories) as [string, QuotaCategory[]][]).map(([parent, children]) => {
-                                    const allOrders = consolidated.orders;
-                                    const parentTotal = allOrders.filter(o => children.some(c => c.category_name === (o.classification || o.category_name))).reduce((a,b) => a + b.totalValue, 0);
-
-                                    return (
-                                        <div key={parent + '_detail'} className="bg-gray-50 rounded-[32px] p-5 border border-gray-100 shadow-inner flex flex-col">
-                                            <div className="flex justify-between items-center mb-4 bg-white p-3 rounded-2xl shadow-sm border border-gray-100">
-                                                <h5 className="font-black text-blue-900 uppercase italic text-[10px] truncate">{parent}</h5>
-                                                <span className="text-[9px] font-black text-gray-400 uppercase">Detalhamento</span>
+                    <div className="flex-1 overflow-y-auto no-scrollbar p-10">
+                        <div className="grid grid-cols-1 md:grid-cols-2 gap-12">
+                             <div className="space-y-6">
+                                <h4 className="text-[10px] font-black text-purple-600 uppercase tracking-[0.2em] flex items-center gap-3"><PieChart size={16}/> Composição Proporcional</h4>
+                                <div className="space-y-4">
+                                    {mixParameters.map(p => {
+                                        const budget = Number(storeSettings?.budgetValue || 0);
+                                        const share = (budget * p.percentage) / 100;
+                                        return (
+                                            <div key={p.id} className="bg-gray-50 p-6 rounded-[32px] border border-gray-100 shadow-sm">
+                                                <div className="flex justify-between items-center mb-2">
+                                                    <span className="text-[11px] font-black text-gray-900 uppercase italic">{p.category_name}</span>
+                                                    <span className="text-xs font-black text-purple-600">{p.percentage}%</span>
+                                                </div>
+                                                <div className="w-full bg-white rounded-full h-1.5 overflow-hidden shadow-inner mb-3">
+                                                    <div className="bg-purple-600 h-full rounded-full" style={{width: `${p.percentage}%`}}></div>
+                                                </div>
+                                                <div className="flex justify-between items-baseline">
+                                                    <span className="text-[8px] font-black text-gray-400 uppercase">Potencial de Compra</span>
+                                                    <span className="text-sm font-black text-blue-950 italic">{formatCurrency(share)}</span>
+                                                </div>
                                             </div>
-                                            <div className="space-y-1.5 flex-1">
-                                                {children.map(child => {
-                                                    const childTotal = allOrders.filter(o => (o.classification || o.category_name) === child.category_name).reduce((a,b) => a + b.totalValue, 0);
-                                                    const pctChild = parentTotal > 0 ? (childTotal / parentTotal) * 100 : 0;
-                                                    return (
-                                                        <div key={child.id} className="bg-white/60 p-2.5 rounded-xl border border-gray-100 flex justify-between items-center">
-                                                            <span className="text-[8px] font-black text-gray-500 uppercase truncate pr-2">{child.category_name}</span>
-                                                            <span className="text-[9px] font-black text-purple-700 shrink-0">{pctChild.toFixed(1)}%</span>
-                                                        </div>
-                                                    );
-                                                })}
+                                        );
+                                    })}
+                                </div>
+                             </div>
+
+                             <div className="space-y-6">
+                                <h4 className="text-[10px] font-black text-blue-900 uppercase tracking-[0.2em] flex items-center gap-3"><Layers size={16}/> Classificações de Compra</h4>
+                                <div className="grid grid-cols-1 gap-3">
+                                    {productCategories.slice(0, 10).map(cat => (
+                                        <div key={cat.id} className="flex justify-between items-center p-4 bg-white border-2 border-gray-50 rounded-2xl group hover:border-blue-100 transition-all">
+                                            <div className="flex items-center gap-4">
+                                                <div className="w-1 h-6 bg-blue-900 rounded-full group-hover:scale-y-125 transition-transform"></div>
+                                                <div>
+                                                    <p className="text-[10px] font-black text-blue-950 uppercase italic leading-none">{cat.category_name}</p>
+                                                    <p className="text-[8px] font-bold text-gray-400 uppercase mt-1">{cat.parent_category}</p>
+                                                </div>
                                             </div>
+                                            <ChevronRight className="text-gray-200 group-hover:text-blue-600 transition-colors" size={16}/>
                                         </div>
-                                    );
-                                })}
+                                    ))}
+                                </div>
                              </div>
                         </div>
-                    </div>
-                </div>
-            </div>
-        )}
-
-        {/* MODAL LANÇAR DESPESA EXTRA */}
-        {activeForm === 'expense' && (
-            <div className="fixed inset-0 bg-black/60 backdrop-blur-md z-[150] flex items-center justify-center p-4">
-                <div className="bg-white rounded-[40px] shadow-2xl w-full max-w-2xl overflow-hidden animate-in zoom-in duration-300 border-t-8 border-orange-600 flex flex-col max-h-[90vh]">
-                    <div className="p-8 border-b bg-gray-50 flex justify-between items-center">
-                        <div>
-                            <h3 className="text-xl font-black uppercase italic text-blue-900">Programação de <span className="text-orange-600">Gastos Fixos (Debts)</span></h3>
-                            <p className="text-[10px] font-black text-gray-400 uppercase tracking-widest mt-1">Previsão Mensal (Dedução do OTB)</p>
-                        </div>
-                        <button onClick={() => setActiveForm(null)} className="text-gray-400 hover:text-red-600 transition-all"><X size={24}/></button>
-                    </div>
-                    <form onSubmit={handleSaveAllExpenses} className="overflow-y-auto no-scrollbar flex-1 p-8">
-                        <div className="grid grid-cols-2 gap-4">
-                            {timeline.map(m => (
-                                <div key={m.key} className="bg-gray-50 p-4 rounded-[24px] border border-gray-100 shadow-inner flex items-center gap-4">
-                                    <div className="bg-white w-20 py-2 rounded-xl text-center shadow-sm border border-gray-100">
-                                        <span className="text-[10px] font-black text-blue-900 uppercase">{m.label}</span>
-                                    </div>
-                                    <div className="flex-1">
-                                        <input 
-                                            value={semesterDebts[m.key] || ''} 
-                                            onChange={e => setSemesterDebts({...semesterDebts, [m.key]: e.target.value})}
-                                            className="w-full bg-transparent border-none font-black text-red-600 text-lg outline-none text-right pr-2"
-                                            placeholder="0,00"
-                                        />
-                                    </div>
-                                </div>
-                            ))}
-                        </div>
-                    </form>
-                    <div className="p-8 bg-gray-50 border-t flex gap-4">
-                        <button type="button" onClick={() => setActiveForm(null)} className="flex-1 py-5 bg-white border-2 border-gray-200 rounded-[28px] font-black text-gray-400 uppercase text-xs active:scale-95 transition-all">Cancelar</button>
-                        <button onClick={handleSaveAllExpenses} disabled={isSubmitting} className="flex-1 py-5 bg-orange-600 text-white rounded-[28px] font-black uppercase text-xs shadow-xl active:scale-95 transition-all border-b-4 border-orange-800 flex items-center justify-center gap-3">
-                            {isSubmitting ? <Loader2 className="animate-spin" /> : <Save size={18}/>} Gravar Programação
-                        </button>
-                    </div>
-                </div>
-            </div>
-        )}
-
-        {/* MODAL CONFIGURAR COTA OTB */}
-        {activeForm === 'cota_config' && (
-            <div className="fixed inset-0 bg-black/60 backdrop-blur-md z-[150] flex items-center justify-center p-4">
-                <div className="bg-white rounded-[40px] shadow-2xl w-full max-w-lg overflow-hidden animate-in zoom-in duration-300 border-t-8 border-yellow-500">
-                    <div className="p-8 border-b bg-gray-50 flex justify-between items-center">
-                        <h3 className="text-xl font-black uppercase italic text-blue-950 flex items-center gap-3"><Calculator className="text-yellow-600" size={24}/> Definir Cota OTB</h3>
-                        <button onClick={() => setActiveForm(null)} className="text-gray-400 hover:text-red-600 transition-all"><X size={24}/></button>
-                    </div>
-                    <form onSubmit={handleSaveCotaSettings} className="p-10 space-y-6">
-                        <div className="space-y-2">
-                            <label className="text-[10px] font-black text-gray-400 uppercase ml-2 tracking-widest">Valor do OTB (Orçamento)</label>
-                            <input required value={budgetVal} onChange={e => setBudgetVal(e.target.value)} className="w-full p-5 bg-gray-50 rounded-[28px] font-black text-blue-900 text-3xl text-center shadow-inner outline-none focus:ring-8 focus:ring-yellow-50" placeholder="0,00" />
-                        </div>
-                        <div className="space-y-2">
-                            <label className="text-[10px] font-black text-gray-400 uppercase ml-2 tracking-widest">Participação do Gerente (%)</label>
-                            <input required value={managerPct} onChange={e => setManagerPct(e.target.value)} className="w-full p-4 bg-gray-50 rounded-2xl font-black text-orange-600 text-center shadow-inner outline-none" placeholder="20" />
-                        </div>
-                        <button type="submit" className="w-full py-5 bg-blue-900 text-white rounded-[24px] font-black uppercase text-xs shadow-xl active:scale-95 transition-all border-b-4 border-blue-950">Confirmar Cota</button>
-                    </form>
-                </div>
-            </div>
-        )}
-
-        {/* MODAL NOVO PEDIDO CORPORATIVO */}
-        {activeForm === 'order' && (
-            <div className="fixed inset-0 bg-black/60 backdrop-blur-md z-[150] flex items-center justify-center p-4">
-                <div className="bg-white rounded-[40px] shadow-2xl w-full max-w-4xl overflow-hidden animate-in zoom-in duration-300 border-t-8 border-blue-900 flex flex-col max-h-[95vh]">
-                    <div className="p-8 border-b bg-gray-50 flex justify-between items-center">
-                        <div className="flex items-center gap-6">
-                            <div>
-                                <h3 className="text-2xl font-black uppercase italic text-blue-900 tracking-tighter leading-none">Incluir <span className="text-red-600">Pedido</span></h3>
-                                <p className="text-[10px] font-black text-gray-400 uppercase tracking-widest mt-1">Registro de Pedido Estratégico</p>
-                            </div>
-                            <div className="bg-gray-200 p-1 rounded-full flex items-center shadow-inner border border-gray-300 h-9 shrink-0">
-                                <button type="button" onClick={() => setOrderCreatedByRole('COMPRADOR')} className={`px-4 h-7 rounded-full text-[9px] font-black uppercase transition-all flex items-center gap-2 ${orderCreatedByRole === 'COMPRADOR' ? 'bg-blue-900 text-white shadow-lg' : 'text-gray-500'}`}><UserCheck size={12}/> Comprador</button>
-                                <button type="button" onClick={() => setOrderCreatedByRole('GERENTE')} className={`px-4 h-7 rounded-full text-[9px] font-black uppercase transition-all flex items-center gap-2 ${orderCreatedByRole === 'GERENTE' ? 'bg-orange-600 text-white shadow-lg' : 'text-gray-500'}`}><Briefcase size={12}/> Gerente</button>
-                            </div>
-                        </div>
-                        <button onClick={() => setActiveForm(null)} className="bg-white p-2 rounded-full text-gray-400 hover:text-red-600 transition-all shadow-sm border border-gray-100"><X size={24}/></button>
-                    </div>
-
-                    <div className="overflow-y-auto flex-1 p-8 space-y-8 no-scrollbar bg-white">
-                        <div className="space-y-4">
-                            <label className="text-[11px] font-black text-blue-900 uppercase tracking-widest flex items-center gap-2"><LayoutGrid size={16}/> Destino do Pedido (Lojas)</label>
-                            <div className="grid grid-cols-5 sm:grid-cols-8 md:grid-cols-10 gap-3 p-6 bg-gray-50 rounded-[32px] border border-gray-100 shadow-inner">
-                                {activeStores.map(s => {
-                                    const isSelected = selectedStoresForOrder.includes(s.id);
-                                    return (
-                                        <button key={s.id} type="button" onClick={() => setSelectedStoresForOrder(prev => isSelected ? prev.filter(id => id !== s.id) : [...prev, s.id])} className={`relative w-12 h-12 rounded-full font-black text-[11px] transition-all flex items-center justify-center border-2 ${isSelected ? 'bg-green-500 border-green-600 text-white shadow-lg scale-110' : 'bg-white border-gray-200 text-gray-400 hover:border-blue-400'}`}>{isSelected ? <Check size={14} strokeWidth={4} /> : s.number.padStart(2, '0')}</button>
-                                    );
-                                })}
-                            </div>
-                        </div>
-
-                        <form onSubmit={handleSaveOrder} className="space-y-6">
-                            <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-                                <div className="space-y-2"><label className="text-[10px] font-black text-gray-400 uppercase ml-2 tracking-widest">Marca / Fornecedor</label><input required value={brand} onChange={e => setBrand(e.target.value)} className="w-full p-4 bg-gray-50 border-none rounded-2xl font-black text-gray-900 uppercase italic shadow-inner outline-none focus:ring-4 focus:ring-blue-100" placeholder="EX: MOLECA" /></div>
-                                <div className="space-y-2">
-                                    <label className="text-[10px] font-black text-gray-400 uppercase ml-2 tracking-widest">Classificação Oficial</label>
-                                    <select required value={selectedCategoryId} onChange={e => setSelectedCategoryId(e.target.value)} className="w-full p-4 bg-gray-50 border-none rounded-2xl font-black text-gray-900 uppercase text-xs shadow-inner outline-none">
-                                        <option value="">SELECIONE...</option>
-                                        {(Object.entries(groupedCategories) as [string, QuotaCategory[]][]).map(([parent, children]) => (
-                                            <optgroup key={parent} label={parent} className="text-blue-600 font-black">
-                                                {children.map(c => <option key={c.id} value={c.id} className="text-gray-900">{c.category_name}</option>)}
-                                            </optgroup>
-                                        ))}
-                                    </select>
-                                </div>
-                                <div className="space-y-2"><label className="text-[10px] font-black text-gray-400 uppercase ml-2 tracking-widest">Mês Referência (Embarque)</label><select value={shipmentMonth} onChange={e => setShipmentMonth(e.target.value)} className="w-full p-4 bg-gray-50 border-none rounded-2xl font-black text-gray-900 uppercase shadow-inner">{timeline.map(m => <option key={m.key} value={m.key}>{m.label}</option>)}</select></div>
-                            </div>
-                            <div className="grid grid-cols-1 md:grid-cols-4 gap-6">
-                                <div className="space-y-2"><label className="text-[10px] font-black text-gray-400 uppercase ml-2 tracking-widest">Condição de Pagto</label><input required value={paymentTerms} onChange={e => setPaymentTerms(e.target.value)} className="w-full p-4 bg-gray-50 border-none rounded-2xl font-black text-gray-900 text-center shadow-inner" placeholder="30/60/90" /></div>
-                                <div className="md:col-span-2 space-y-2"><label className="text-[10px] font-black text-gray-400 uppercase ml-2 tracking-widest">Valor do Pedido (R$)</label><input required value={totalValue} onChange={e => setTotalValue(e.target.value)} className="w-full p-4 bg-blue-50 border-none rounded-2xl font-black text-blue-900 text-2xl shadow-inner text-center" placeholder="0,00" /></div>
-                                <div className="space-y-2"><label className="text-[10px] font-black text-gray-400 uppercase ml-2 tracking-widest">Qtd (Pares/Unids)</label><input required value={pairs} onChange={e => setPairs(e.target.value)} className="w-full p-4 bg-gray-50 border-none rounded-2xl font-black text-gray-900 text-center shadow-inner" placeholder="0" /></div>
-                            </div>
-                            <button type="submit" disabled={isSubmitting || selectedStoresForOrder.length === 0} className="w-full py-5 bg-blue-900 hover:bg-black text-white rounded-[24px] font-black uppercase text-xs shadow-2xl transition-all border-b-4 border-blue-950 flex items-center justify-center gap-3">
-                                {isSubmitting ? <Loader2 className="animate-spin" /> : <Save size={20}/>} Confirmar Pedido em {selectedStoresForOrder.length} Loja(s)
-                            </button>
-                        </form>
                     </div>
                 </div>
             </div>
@@ -744,5 +702,3 @@ const CotasManagement: React.FC<CotasManagementProps> = ({
     </div>
   );
 };
-
-export default CotasManagement;

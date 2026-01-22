@@ -9,7 +9,8 @@ import { useAuthorization } from '../security/useAuthorization';
 import { BRAND_LOGO } from '../constants';
 
 // Módulos
-import CotasManagement from './CotasManagement';
+// Fix: Import as named export to match components/CotasManagement.tsx modification
+import { CotasManagement } from './CotasManagement';
 import DashboardAdmin from './DashboardAdmin';
 import DashboardManager from './DashboardManager';
 import GoalRegistration from './GoalRegistration';
@@ -147,6 +148,32 @@ const App: React.FC = () => {
         finally { setIsLoading(false); }
     };
 
+    // Fix: Helper function to handle product saving (update or insert) for IceCreamModule.
+    const handleSaveIceCreamProduct = async (product: Partial<IceCreamItem>) => {
+        try {
+            const payload = {
+                store_id: product.storeId,
+                name: product.name?.toUpperCase().trim(),
+                category: product.category,
+                price: product.price,
+                flavor: product.flavor || 'Padrão',
+                active: true,
+                consumption_per_sale: 0,
+                recipe: JSON.stringify(product.recipe || [])
+            };
+
+            if (product.id) {
+                await supabase.from('ice_cream_items').update(payload).eq('id', product.id);
+            } else {
+                await supabase.from('ice_cream_items').insert([payload]);
+            }
+            await fetchData();
+        } catch (err) {
+            console.error("Erro ao salvar produto:", err);
+            throw err;
+        }
+    };
+
     useEffect(() => {
         fetchData();
         if (!user) {
@@ -261,7 +288,9 @@ const App: React.FC = () => {
                                 onCancelSale={async (code, r) => { await supabase.from('ice_cream_daily_sales').update({ status: 'canceled', cancel_reason: r, canceled_by: user?.name }).eq('sale_code', code); await fetchData(); }} 
                                 onUpdatePrice={async (id, p) => { await supabase.from('ice_cream_items').update({ price: p }).eq('id', id); await fetchData(); }} 
                                 onAddTransaction={async (t) => { await supabase.from('ice_cream_finances').insert([{ store_id: t.storeId, date: t.date, type: t.type, category: t.category, value: Number(t.value), description: t.description }]); await fetchData(); }} 
-                                onAddItem={async (n, c, p, f, si, u, cps, tsId, r) => { await supabase.from('ice_cream_items').insert([{ store_id: tsId, name: n, category: c, price: p, flavor: f, active: true, consumption_per_sale: cps, recipe: r ? JSON.stringify(r) : null }]); await fetchData(); }} 
+                                // Fix: Use handleSaveIceCreamProduct for onAddItem and provide required onSaveProduct prop.
+                                onAddItem={async (n, c, p, f, si, u, cps, tsId, r) => { await handleSaveIceCreamProduct({ storeId: tsId, name: n, category: c as any, price: p, flavor: f, recipe: r }); }} 
+                                onSaveProduct={handleSaveIceCreamProduct}
                                 onDeleteItem={async (id) => { await supabase.from('ice_cream_items').delete().eq('id', id); await fetchData(); }} 
                                 onUpdateStock={async (sId, b, v, u, t) => { await supabase.from('ice_cream_stock_moves').insert([{ store_id: sId, product_base: b, quantity: v, unit: u, move_type: t }]); await fetchData(); }} 
                                 liquidatePromissory={async (id) => { await supabase.from('ice_cream_promissory_notes').update({ status: 'paid' }).eq('id', id); await fetchData(); }} 
