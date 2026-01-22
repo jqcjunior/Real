@@ -1,4 +1,3 @@
-
 import React, { useState, useMemo } from 'react';
 import { 
     IceCreamItem, IceCreamDailySale, IceCreamTransaction, IceCreamCategory, 
@@ -38,17 +37,46 @@ interface PDVMobileViewProps {
   handlePrintTicket: (items: IceCreamDailySale[], saleCode: string, isFiado: boolean, buyer?: string) => void;
   isSubmitting: boolean;
   setIsSubmitting: (s: boolean) => void;
-  effectiveStoreId: string; // Nova prop para garantir UUID válido da loja
+  effectiveStoreId: string; 
 }
 
 const PDVMobileView: React.FC<PDVMobileViewProps> = (props) => {
   const [step, setStep] = useState<'categories' | 'products' | 'cart'>('categories');
   const [amountPaid, setAmountPaid] = useState('');
 
+  // Helper refinado para obter imagem ilustrativa por palavra-chave e categoria
+  const getCategoryImage = (category: IceCreamCategory, name: string) => {
+      const itemName = name.toLowerCase();
+      
+      // 1. Mains (Sundae e Cascão agora repetem a imagem da Casquinha conforme solicitado)
+      if (['Sundae', 'Casquinha', 'Cascão', 'Cascão Trufado'].includes(category)) {
+          return 'https://img.icons8.com/color/144/ice-cream-cone.png';
+      }
+
+      // 2. Keyword Overrides (Caldas e Chocolate agora replicam o ícone da Nutella)
+      if (itemName.includes('nutella') || itemName.includes('calda') || itemName.includes('chocolate')) {
+          return 'https://img.icons8.com/color/144/chocolate-spread.png';
+      }
+      
+      if (itemName.includes('água') || itemName.includes('agua')) {
+          return 'https://img.icons8.com/color/144/water-bottle.png';
+      }
+
+      // 3. Outras Categorias
+      const icons: Record<string, string> = {
+          'Milkshake': 'https://img.icons8.com/color/144/milkshake.png',
+          'Copinho': 'https://img.icons8.com/color/144/ice-cream-bowl.png',
+          'Bebidas': 'https://img.icons8.com/color/144/natural-food.png',
+          'Adicionais': 'https://img.icons8.com/color/144/sugar-bowl.png'
+      };
+
+      return icons[category] || 'https://img.icons8.com/color/144/ice-cream.png';
+  };
+
   const handleMobileAddToCart = (item: IceCreamItem) => {
     const newItem: IceCreamDailySale = { 
         id: `cart-mob-${Date.now()}-${Math.random()}`, 
-        storeId: props.effectiveStoreId, // Correção: Usa a loja ativa e não o storeId do usuário (que pode ser null)
+        storeId: props.effectiveStoreId, 
         itemId: item.id, 
         productName: item.name, 
         category: item.category, 
@@ -137,8 +165,8 @@ const PDVMobileView: React.FC<PDVMobileViewProps> = (props) => {
                   className="w-full p-4 bg-white border border-gray-100 rounded-2xl flex justify-between items-center shadow-sm active:border-blue-600 active:scale-[0.98] transition-all"
                 >
                   <div className="flex items-center gap-4">
-                    <div className="w-12 h-12 bg-blue-50 rounded-xl flex items-center justify-center shrink-0">
-                      {item.image_url ? <img src={item.image_url} className="w-full h-full object-cover rounded-xl" /> : <IceCream size={20} className="text-blue-900" />}
+                    <div className="w-12 h-12 bg-blue-50 rounded-xl flex items-center justify-center shrink-0 overflow-hidden">
+                      <img src={item.image_url || getCategoryImage(item.category as IceCreamCategory, item.name)} className="w-full h-full object-cover p-1" />
                     </div>
                     <div className="text-left">
                       <p className="font-black uppercase italic text-[11px] text-blue-950 leading-tight">{item.name}</p>

@@ -66,13 +66,13 @@ const LoginScreen: React.FC<LoginScreenProps> = ({ onLoginAttempt, onRegisterReq
     <div className="min-h-screen flex items-center justify-center bg-gray-100 font-sans p-4">
       <div className="w-full max-w-md bg-white rounded-[40px] shadow-2xl overflow-hidden p-8 md:p-12 border border-gray-100 relative">
         
-        <div className="flex justify-center mb-8">
-          <div className="w-28 h-28 min-w-[112px] min-h-[112px] rounded-full overflow-hidden shadow-xl border-4 border-white bg-white flex items-center justify-center">
+        <div className="flex justify-center mb-10">
+          <div className="w-full h-24 flex items-center justify-center overflow-hidden">
             <img 
               src={BRAND_LOGO} 
               alt="Real Admin Logo"
               loading="eager"
-              className="w-full h-full object-contain p-2"
+              className="max-h-full w-auto object-contain transition-transform duration-500 hover:scale-105"
             />
           </div>
         </div>

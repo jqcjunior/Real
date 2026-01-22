@@ -58,14 +58,19 @@ const DashboardAdmin: React.FC<DashboardAdminProps> = ({ stores, performanceData
       
       return activeStores.map(store => {
           const perf = monthlyPerf.find(p => p.storeId === store.id);
+          const revenueActual = Number(perf?.revenueActual || 0);
+          const revenueTarget = Number(perf?.revenueTarget || 0);
+          const gap = revenueTarget - revenueActual;
+
           return {
               id: perf?.id || store.id,
               storeId: store.id,
               storeName: store.name,
               storeNumber: store.number,
-              revenueTarget: Number(perf?.revenueTarget || 0),
-              revenueActual: Number(perf?.revenueActual || 0),
-              percentMeta: Number(perf?.percentMeta || 0),
+              revenueTarget,
+              revenueActual,
+              gap,
+              percentMeta: revenueTarget > 0 ? (revenueActual / revenueTarget) * 100 : 0,
               itemsActual: Number(perf?.itemsActual || 0),
               itemsTarget: Number(perf?.itemsTarget || 0),
               itemsPerTicket: Number(perf?.itemsPerTicket || 0),
@@ -82,8 +87,8 @@ const DashboardAdmin: React.FC<DashboardAdminProps> = ({ stores, performanceData
   }, [performanceData, selectedMonth, stores]);
 
   const networkStats = useMemo(() => {
-      const totalRevenue = currentMonthData.reduce((acc, curr) => acc + (Number(curr.revenueActual) || 0), 0);
-      const totalTarget = currentMonthData.reduce((acc, curr) => acc + (Number(curr.revenueTarget) || 0), 0);
+      const totalRevenue = currentMonthData.reduce((acc, curr) => acc + curr.revenueActual, 0);
+      const totalTarget = currentMonthData.reduce((acc, curr) => acc + curr.revenueTarget, 0);
       const diff = totalTarget - totalRevenue;
       const percentMeta = totalTarget > 0 ? (totalRevenue / totalTarget) * 100 : 0;
       const currentRhythm = totalRevenue / Math.max(timeStats.day, 1);
@@ -93,22 +98,9 @@ const DashboardAdmin: React.FC<DashboardAdminProps> = ({ stores, performanceData
 
   const rankedStores = useMemo(() => {
       return [...currentMonthData]
-        .sort((a, b) => (Number(b.percentMeta) || 0) - (Number(a.percentMeta) || 0))
+        .sort((a, b) => b.percentMeta - a.percentMeta)
         .map((item, index) => ({ ...item, rank: index + 1 }));
   }, [currentMonthData]);
-
-  const getStatusColor = (actual: number, target: number, invert: boolean = false) => {
-      if (!target || target <= 0) return 'text-gray-400';
-      const success = invert ? actual <= target : actual >= target;
-      return success ? 'text-green-600' : 'text-red-600';
-  };
-
-  const formatKPIValue = (val: number, type: 'currency' | 'decimal' | 'percent') => {
-      if (val === undefined || val === null) return '-';
-      if (type === 'currency') return formatCurrency(val);
-      if (type === 'percent') return `${val.toFixed(2)}%`;
-      return val.toFixed(2);
-  };
 
   const handleProcessImport = async () => {
     if (!selectedFile) return;
@@ -124,7 +116,7 @@ const DashboardAdmin: React.FC<DashboardAdminProps> = ({ stores, performanceData
             if (rowStr.includes('loja') || rowStr.includes('filial')) { headerIdx = i; break; }
         }
 
-        if (headerIdx === -1) throw new Error("Cabeçalho não identificado. Verifique se a coluna 'LOJA' existe.");
+        if (headerIdx === -1) throw new Error("Cabeçalho não identificado.");
 
         const headerRow = jsonData[headerIdx].map(h => String(h || '').toLowerCase().trim());
         const findCol = (keys: string[]) => headerRow.findIndex(h => keys.some(k => h.includes(k)));
@@ -157,7 +149,7 @@ const DashboardAdmin: React.FC<DashboardAdminProps> = ({ stores, performanceData
 
                 const revenueActual = cleanNum(row[idxRevenue]);
                 const existing = performanceData.find(p => p.storeId === targetStore.id && p.month === selectedMonth);
-                const revenueTarget = existing?.revenueTarget || 0;
+                const revenueTarget = Number(existing?.revenueTarget || 0);
 
                 parsedData.push({
                     storeId: targetStore.id,
@@ -173,7 +165,7 @@ const DashboardAdmin: React.FC<DashboardAdminProps> = ({ stores, performanceData
                     averageTicket: cleanNum(row[idxTicket]),
                     ticketTarget: existing?.ticketTarget || 0,
                     delinquencyRate: cleanNum(row[idxInadimp]),
-                    delinquencyTarget: existing?.delinquencyTarget || 0,
+                    delinquencyTarget: existing?.delinquencyTarget || 2.0,
                     percentMeta: revenueTarget > 0 ? (revenueActual / revenueTarget) * 100 : 0,
                     trend: 'stable',
                     correctedDailyGoal: 0
@@ -185,31 +177,29 @@ const DashboardAdmin: React.FC<DashboardAdminProps> = ({ stores, performanceData
             await onImportData(parsedData);
             setShowImportModal(false);
             setSelectedFile(null);
-        } else {
-            alert("Nenhuma loja correspondente encontrada na planilha.");
+            alert("Dados confrontados com sucesso!");
         }
     } catch (err: any) {
-        alert("Erro ao processar Excel: " + err.message);
+        alert("Erro ao processar: " + err.message);
     } finally {
         setIsProcessing(false);
     }
   };
 
   return (
-    <div className="p-4 md:p-8 space-y-8 animate-in fade-in duration-700 pb-20 min-h-full">
+    <div className="p-4 md:p-8 space-y-8 animate-in fade-in duration-700 pb-20">
        
-       {/* CARDS DE RESUMO DE TOPO */}
        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
            <div className="bg-white p-6 rounded-[32px] shadow-sm border border-gray-100 flex flex-col justify-between group hover:border-blue-200 transition-all">
                <div className="flex justify-between items-start mb-4">
                     <div className="p-3 bg-blue-50 text-blue-700 rounded-2xl"><TrendingUp size={20}/></div>
-                    <span className="text-[9px] font-black text-blue-400 uppercase tracking-widest">Faturamento Rede</span>
+                    <span className="text-[9px] font-black text-blue-400 uppercase tracking-widest text-right">Faturamento Realizado</span>
                </div>
                <div>
                    <h3 className="text-2xl font-black italic text-gray-900 tracking-tighter">{formatCurrency(networkStats.totalRevenue)}</h3>
                    <div className="mt-2 flex items-center gap-2">
                        <span className={`text-[10px] font-black px-2 py-0.5 rounded-full ${networkStats.percentMeta >= 100 ? 'bg-green-100 text-green-700' : 'bg-red-100 text-red-700'}`}>
-                           {networkStats.percentMeta.toFixed(1)}% Meta
+                           {networkStats.percentMeta.toFixed(1)}% da Meta
                        </span>
                    </div>
                </div>
@@ -218,11 +208,11 @@ const DashboardAdmin: React.FC<DashboardAdminProps> = ({ stores, performanceData
            <div className="bg-white p-6 rounded-[32px] shadow-sm border border-gray-100 flex flex-col justify-between">
                <div className="flex justify-between items-start mb-4">
                     <div className="p-3 bg-red-50 text-red-600 rounded-2xl"><Target size={20}/></div>
-                    <span className="text-[9px] font-black text-gray-400 uppercase tracking-widest">Meta Global</span>
+                    <span className="text-[9px] font-black text-gray-400 uppercase tracking-widest text-right">Meta Definida Rede</span>
                </div>
                <div>
                    <h3 className="text-2xl font-black italic text-gray-900 tracking-tighter">{formatCurrency(networkStats.totalTarget)}</h3>
-                   <p className="text-[9px] font-black text-red-500 mt-2 uppercase">DIF: {formatCurrency(networkStats.diff)}</p>
+                   <p className="text-[9px] font-black text-red-500 mt-2 uppercase">Falta: {formatCurrency(Math.max(0, networkStats.diff))}</p>
                </div>
            </div>
 
@@ -233,30 +223,29 @@ const DashboardAdmin: React.FC<DashboardAdminProps> = ({ stores, performanceData
                </div>
                <div>
                    <h3 className="text-2xl font-black italic text-gray-900 tracking-tighter">{networkStats.activeCount} Lojas</h3>
-                   <p className="text-[9px] font-black text-green-500 mt-2 uppercase tracking-widest">Operação Rede Real</p>
+                   <p className="text-[9px] font-black text-green-500 mt-2 uppercase tracking-widest">Rede em Operação</p>
                </div>
            </div>
 
-           <div className="bg-gray-900 p-6 rounded-[32px] shadow-xl flex flex-col justify-between text-white">
+           <div className="bg-gray-900 p-6 rounded-[32px] shadow-xl flex flex-col justify-between text-white border-t-4 border-blue-500">
                <div className="flex justify-between items-start mb-4">
                     <div className="p-3 bg-white/10 text-blue-400 rounded-2xl"><Zap size={20}/></div>
-                    <span className="text-[9px] font-black text-gray-400 uppercase tracking-widest">Ritmo Diário</span>
+                    <span className="text-[9px] font-black text-gray-300 uppercase tracking-widest">Ritmo Realizado</span>
                </div>
                <div>
-                   <h3 className="text-2xl font-black italic tracking-tighter">{formatCurrency(networkStats.currentRhythm)}</h3>
-                   <p className="text-[9px] font-black text-blue-300 mt-2 uppercase">Necessário: {formatCurrency(networkStats.neededRhythm)}/dia</p>
+                   <h3 className="text-2xl font-black italic tracking-tighter text-blue-400">{formatCurrency(networkStats.currentRhythm)}</h3>
+                   <p className="text-[9px] font-black text-gray-500 mt-2 uppercase">Necessário p/ bater meta: {formatCurrency(networkStats.neededRhythm)}/dia</p>
                </div>
            </div>
        </div>
 
-       {/* HEADER */}
        <div className="flex flex-col lg:flex-row justify-between items-start lg:items-center gap-6 bg-white p-8 rounded-[40px] shadow-sm border border-gray-100">
           <div>
-            <h2 className="text-3xl md:text-4xl font-black text-gray-900 tracking-tighter uppercase italic leading-none flex items-center gap-4">
-                <BrainCircuit className="text-blue-700" size={42} />
-                Gestão de <span className="text-red-600">Performance</span>
+            <h2 className="text-3xl font-black text-gray-900 tracking-tighter uppercase italic leading-none flex items-center gap-4">
+                <BarChart3 className="text-blue-700" size={36} />
+                Confronto de <span className="text-red-600">Resultados</span>
             </h2>
-            <p className="text-gray-400 font-bold uppercase text-[10px] tracking-[0.3em] mt-3 ml-1">Comparativo de Unidades - Real Time v6.3</p>
+            <p className="text-gray-400 font-bold uppercase text-[10px] tracking-[0.3em] mt-3 ml-1">Análise de Performance Meta x Real</p>
           </div>
 
           <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-3 w-full lg:w-auto">
@@ -278,83 +267,60 @@ const DashboardAdmin: React.FC<DashboardAdminProps> = ({ stores, performanceData
                     {[2024, 2025, 2026].map(y => <option key={y} value={y}>{y}</option>)}
                 </select>
              </div>
-             <button onClick={() => setShowImportModal(true)} className="flex items-center justify-center gap-2 bg-green-600 text-white px-6 py-3.5 rounded-[22px] hover:bg-green-700 transition-all shadow-xl font-black uppercase text-[10px] tracking-widest border-b-4 border-green-800 active:scale-95">
-                <Upload size={16} /> Importar Excel
+             <button onClick={() => setShowImportModal(true)} className="flex items-center justify-center gap-2 bg-green-600 text-white px-8 py-3.5 rounded-2xl hover:bg-green-700 shadow-lg font-black uppercase text-[10px] tracking-widest border-b-4 border-green-800">
+                <Upload size={16} /> Confrontar Planilha
              </button>
           </div>
        </div>
 
-       {/* TABLE */}
-       <div className="bg-white rounded-[48px] shadow-2xl border border-gray-100 overflow-hidden">
-          <div className="p-8 border-b bg-gray-50/50 flex justify-between items-center">
-              <h3 className="text-lg font-black uppercase italic tracking-tighter flex items-center gap-3">
-                  <BarChart3 className="text-blue-600" size={24} /> Desempenho <span className="text-blue-600">Por Unidade</span>
-              </h3>
-              <div className="flex gap-2">
-                  <span className="flex items-center gap-1.5 text-[9px] font-black uppercase text-green-600 bg-green-50 px-3 py-1 rounded-full border border-green-100">Meta Batida</span>
-                  <span className="flex items-center gap-1.5 text-[9px] font-black uppercase text-red-600 bg-red-50 px-3 py-1 rounded-full border border-red-100">Abaixo da Meta</span>
-              </div>
-          </div>
+       <div className="bg-white rounded-[40px] shadow-2xl border border-gray-100 overflow-hidden">
           <div className="overflow-x-auto no-scrollbar">
-            <table className="w-full text-left min-w-[1400px] border-collapse">
+            <table className="w-full text-left min-w-[1200px] border-collapse">
                 <thead>
-                    <tr className="bg-white text-[10px] font-black text-gray-400 uppercase tracking-[0.2em] border-b sticky top-0 z-10">
-                        <th className="px-6 py-8 text-center w-20">Rank</th>
-                        <th className="px-8 py-8 sticky left-0 bg-white z-20 shadow-[4px_0_10px_rgba(0,0,0,0.02)] min-w-[280px]">Loja / Unidade</th>
-                        <th className="px-6 py-8 text-right">Atingimento (XP%)</th>
-                        <th className="px-6 py-8 text-center">Itens (Real/Meta)</th>
-                        <th className="px-6 py-8 text-center">P.A (Real/Meta)</th>
-                        <th className="px-6 py-8 text-center">P.U (Real/Meta)</th>
-                        <th className="px-6 py-8 text-center">Ticket (Real/Meta)</th>
-                        <th className="px-6 py-8 text-center">Inadimplência (%)</th>
+                    <tr className="bg-gray-50/50 text-[10px] font-black text-gray-400 uppercase tracking-widest border-b border-gray-100">
+                        <th className="px-8 py-6 w-20 text-center">Rank</th>
+                        <th className="px-8 py-6 sticky left-0 bg-gray-50/90 backdrop-blur z-20 shadow-sm">Unidade / Loja</th>
+                        <th className="px-6 py-6 text-right">Faturamento Real</th>
+                        <th className="px-6 py-6 text-right">Meta Definida</th>
+                        <th className="px-6 py-6 text-right text-red-600">Gap (Diferença)</th>
+                        <th className="px-6 py-6 text-center">XP% Atingimento</th>
+                        <th className="px-6 py-6 text-center">Peças/Atend.</th>
+                        <th className="px-6 py-6 text-center">Inadimplência</th>
                     </tr>
                 </thead>
                 <tbody className="divide-y divide-gray-50">
                     {rankedStores.map((item, idx) => (
-                        <tr key={item.storeNumber} className="hover:bg-blue-50/40 transition-all group">
-                            <td className="px-6 py-8 text-center">
-                                <span className={`text-xl font-black italic ${idx < 3 && item.revenueActual > 0 ? 'text-yellow-500' : 'text-gray-300'}`}>#{item.rank}</span>
+                        <tr key={item.storeId} className="hover:bg-blue-50/30 transition-all group">
+                            <td className="px-8 py-6 text-center">
+                                <span className={`text-xl font-black italic ${idx < 3 ? 'text-yellow-500' : 'text-gray-300'}`}>#{item.rank}</span>
                             </td>
-                            <td className="px-8 py-8 sticky left-0 bg-inherit z-10 shadow-[4px_0_10px_rgba(0,0,0,0.02)]">
+                            <td className="px-8 py-6 sticky left-0 bg-white group-hover:bg-blue-50/30 z-10 shadow-sm">
                                 <div className="flex flex-col">
-                                    <span className="text-base font-black text-gray-900 uppercase italic tracking-tight leading-none mb-1">{item.storeNumber} - {item.storeName}</span>
-                                    <span className="text-[10px] font-black text-blue-600 uppercase tracking-tighter">FAT: {formatCurrency(item.revenueActual)}</span>
+                                    <span className="text-sm font-black text-gray-900 uppercase italic tracking-tighter leading-none mb-1">LOJA {item.storeNumber}</span>
+                                    <span className="text-[10px] font-bold text-gray-400 uppercase truncate max-w-[150px]">{item.storeName}</span>
                                 </div>
                             </td>
-                            <td className="px-6 py-8 text-right">
-                                <span className={`text-2xl font-black italic tracking-tighter ${item.percentMeta >= 100 ? 'text-green-600' : 'text-red-600'}`}>
+                            <td className="px-6 py-6 text-right font-black text-blue-900 text-sm">
+                                {formatCurrency(item.revenueActual)}
+                            </td>
+                            <td className="px-6 py-6 text-right font-black text-gray-400 text-sm italic">
+                                {formatCurrency(item.revenueTarget)}
+                            </td>
+                            <td className="px-6 py-6 text-right font-black text-red-600 text-sm">
+                                {item.gap > 0 ? `-${formatCurrency(item.gap)}` : <span className="text-green-600">Meta Batida</span>}
+                            </td>
+                            <td className="px-6 py-6 text-center">
+                                <span className={`text-lg font-black italic tracking-tighter ${item.percentMeta >= 100 ? 'text-green-600' : 'text-red-600'}`}>
                                     {item.percentMeta.toFixed(1)}%
                                 </span>
                             </td>
-                            <td className="px-6 py-8 text-center">
-                                <div className="flex flex-col gap-0.5">
-                                    <span className={`text-base font-black ${getStatusColor(item.itemsActual, item.itemsTarget)}`}>{item.itemsActual || '-'}</span>
-                                    <span className="text-[9px] font-bold text-gray-400 uppercase tracking-widest">META: {item.itemsTarget || '-'}</span>
-                                </div>
+                            <td className="px-6 py-6 text-center">
+                                <span className="text-sm font-black text-gray-700">{formatDecimal(item.itemsPerTicket)}</span>
+                                <span className="block text-[8px] font-bold text-gray-300 uppercase">META: {formatDecimal(item.paTarget)}</span>
                             </td>
-                            <td className="px-6 py-8 text-center">
-                                <div className="flex flex-col gap-0.5">
-                                    <span className={`text-base font-black ${getStatusColor(item.itemsPerTicket, item.paTarget)}`}>{formatKPIValue(item.itemsPerTicket, 'decimal')}</span>
-                                    <span className="text-[9px] font-bold text-gray-400 uppercase tracking-widest">META: {formatKPIValue(item.paTarget, 'decimal')}</span>
-                                </div>
-                            </td>
-                            <td className="px-6 py-8 text-center">
-                                <div className="flex flex-col gap-0.5">
-                                    <span className={`text-base font-black ${getStatusColor(item.unitPriceAverage, item.puTarget, true)}`}>{formatKPIValue(item.unitPriceAverage, 'currency')}</span>
-                                    <span className="text-[9px] font-bold text-gray-400 uppercase tracking-widest">META: {formatKPIValue(item.puTarget, 'currency')}</span>
-                                </div>
-                            </td>
-                            <td className="px-6 py-8 text-center">
-                                <div className="flex flex-col gap-0.5">
-                                    <span className={`text-base font-black ${getStatusColor(item.averageTicket, item.ticketTarget)}`}>{formatKPIValue(item.averageTicket, 'currency')}</span>
-                                    <span className="text-[9px] font-bold text-gray-400 uppercase tracking-widest">META: {formatKPIValue(item.ticketTarget, 'currency')}</span>
-                                </div>
-                            </td>
-                            <td className="px-6 py-8 text-center">
-                                <div className="flex flex-col gap-0.5">
-                                    <span className={`text-base font-black ${item.delinquencyRate > item.delinquencyTarget ? 'text-red-600' : 'text-green-600'}`}>{item.delinquencyRate.toFixed(2)}%</span>
-                                    <span className="text-[9px] font-bold text-gray-400 uppercase tracking-widest">LIMITE: {item.delinquencyTarget}%</span>
-                                </div>
+                            <td className="px-6 py-6 text-center">
+                                <span className={`text-sm font-black ${item.delinquencyRate > item.delinquencyTarget ? 'text-red-600' : 'text-green-600'}`}>{item.delinquencyRate.toFixed(2)}%</span>
+                                <span className="block text-[8px] font-bold text-gray-300 uppercase">LIMITE: {item.delinquencyTarget}%</span>
                             </td>
                         </tr>
                     ))}
@@ -363,7 +329,6 @@ const DashboardAdmin: React.FC<DashboardAdminProps> = ({ stores, performanceData
           </div>
        </div>
 
-       {/* MODAL DE IMPORTAÇÃO */}
        {showImportModal && (
             <div className="fixed inset-0 bg-black/80 backdrop-blur-md flex items-center justify-center z-[200] p-4">
                 <div className="bg-white rounded-[48px] p-10 max-w-md w-full shadow-2xl animate-in zoom-in duration-300 border-t-8 border-green-600">
@@ -380,7 +345,7 @@ const DashboardAdmin: React.FC<DashboardAdminProps> = ({ stores, performanceData
                     >
                         {selectedFile ? <CheckCircle size={48} className="text-green-500 mb-2" /> : <FileSpreadsheet size={48} className="text-gray-200 mb-2" />}
                         <span className="text-[10px] font-black uppercase text-gray-500 text-center">
-                            {selectedFile ? selectedFile.name : 'Clique para selecionar a planilha de vendas'}
+                            {selectedFile ? selectedFile.name : 'Selecione a planilha de faturamento (BI)'}
                         </span>
                     </div>
 
@@ -394,7 +359,6 @@ const DashboardAdmin: React.FC<DashboardAdminProps> = ({ stores, performanceData
                             {isProcessing ? <Loader2 className="animate-spin" size={16}/> : 'Processar Agora'}
                         </button>
                     </div>
-                    <p className="text-[8px] font-bold text-gray-400 uppercase mt-4 text-center">Formatos aceitos: .XLSX, .XLS (Aba inicial)</p>
                 </div>
             </div>
        )}

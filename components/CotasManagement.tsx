@@ -462,7 +462,8 @@ export const CotasManagement: React.FC<CotasManagementProps> = ({
                                 <label className="text-[10px] font-black text-gray-400 uppercase ml-2">Classificação</label>
                                 <select required value={selectedCategoryId} onChange={e => setSelectedCategoryId(e.target.value)} className="w-full p-4 bg-gray-50 rounded-2xl font-black text-gray-900 uppercase outline-none cursor-pointer">
                                     <option value="">SELECIONE...</option>
-                                    {Object.entries(groupedCategories).map(([parent, cats]) => (
+                                    {/* Fix: Explicitly casting Object.entries to resolve 'unknown' type inference on 'cats' array */}
+                                    {(Object.entries(groupedCategories) as [string, QuotaCategory[]][]).map(([parent, cats]) => (
                                         <optgroup key={parent} label={parent}>
                                             {cats.map(c => <option key={c.id} value={c.id}>{c.category_name}</option>)}
                                         </optgroup>

@@ -1,4 +1,3 @@
-
 import React, { useState, useMemo, useEffect } from 'react';
 import { IceCreamItem, IceCreamDailySale, IceCreamTransaction, IceCreamCategory, IceCreamPaymentMethod, User, UserRole, Store, IceCreamStock, IceCreamPromissoryNote, IceCreamRecipeItem, StoreProfitPartner } from '../types';
 import { formatCurrency, BRAND_LOGO } from '../constants';
@@ -33,6 +32,36 @@ interface IceCreamModuleProps {
 }
 
 const PRODUCT_CATEGORIES: IceCreamCategory[] = ['Sundae', 'Milkshake', 'Casquinha', 'Cascão', 'Cascão Trufado', 'Copinho', 'Bebidas', 'Adicionais'].sort() as IceCreamCategory[];
+
+// Helper refinado para obter imagem ilustrativa por palavra-chave e categoria
+const getCategoryImage = (category: IceCreamCategory, name: string) => {
+    const itemName = name.toLowerCase();
+    
+    // 1. Mains (Sundae e Cascão agora repetem a imagem da Casquinha conforme solicitado)
+    if (['Sundae', 'Casquinha', 'Cascão', 'Cascão Trufado'].includes(category)) {
+        return 'https://img.icons8.com/color/144/ice-cream-cone.png';
+    }
+
+    // 2. Keyword Overrides (Caldas e Chocolate agora replicam o ícone da Nutella)
+    if (itemName.includes('nutella') || itemName.includes('calda') || itemName.includes('chocolate')) {
+        return 'https://img.icons8.com/color/144/chocolate-spread.png';
+    }
+    
+    if (itemName.includes('água') || itemName.includes('agua')) {
+        return 'https://img.icons8.com/color/144/water-bottle.png';
+    }
+
+    // 3. Outras Categorias
+    const icons: Record<string, string> = {
+        'Milkshake': 'https://img.icons8.com/color/144/milkshake.png',
+        'Copinho': 'https://img.icons8.com/color/144/ice-cream-bowl.png',
+        'Bebidas': 'https://img.icons8.com/color/144/natural-food.png',
+        'Adicionais': 'https://img.icons8.com/color/144/sugar-bowl.png'
+    };
+
+    return icons[category] || 'https://img.icons8.com/color/144/ice-cream.png';
+};
+
 const MONTHS = [
   { value: 1, label: 'Janeiro' }, { value: 2, label: 'Fevereiro' }, { value: 3, label: 'Março' },
   { value: 4, label: 'Abril' }, { value: 5, label: 'Maio' }, { value: 6, label: 'Junho' },
@@ -78,7 +107,7 @@ const IceCreamModule: React.FC<IceCreamModuleProps> = ({
   const [newPartner, setNewPartner] = useState({ name: '', percentage: '' });
   
   const [newInsumo, setNewInsumo] = useState({ name: '', unit: 'un', initial: '' });
-  const [purchaseForm, setPurchaseForm] = useState<Record<string, string>>({}); // Mudado para Record similar ao inventário
+  const [purchaseForm, setPurchaseForm] = useState<Record<string, string>>({}); 
   const [inventoryForm, setInventoryForm] = useState<Record<string, string>>({});
 
   const [newProd, setNewProd] = useState({
@@ -407,7 +436,7 @@ const IceCreamModule: React.FC<IceCreamModuleProps> = ({
                                 {filteredItems.filter(i => (!selectedCategory || i.category === selectedCategory) && i.active).map(item => (
                                     <button key={item.id} onClick={() => handleAddToCart(item)} className="bg-white p-4 rounded-[32px] border-2 border-gray-100 hover:border-blue-600 transition-all flex flex-col items-center text-center group shadow-sm">
                                         <div className="w-full aspect-square bg-gray-50 rounded-[24px] mb-3 flex items-center justify-center text-blue-100 group-hover:scale-105 transition-transform overflow-hidden">
-                                            {item.image_url ? <img src={item.image_url} className="w-full h-full object-cover" /> : <IceCream size={40} />}
+                                            <img src={item.image_url || getCategoryImage(item.category, item.name)} className="w-full h-full object-cover p-2" />
                                         </div>
                                         <h4 className="font-black text-gray-900 uppercase text-[10px] truncate w-full mb-1">{item.name}</h4>
                                         <p className="text-lg font-black text-blue-900 italic leading-none">{formatCurrency(item.price)}</p>
@@ -673,8 +702,8 @@ const IceCreamModule: React.FC<IceCreamModuleProps> = ({
                                         <th className="px-8 py-5 text-center">Ações</th>
                                     </tr>
                                 </thead>
-                                <tbody className="divide-y divide-gray-50 font-bold">
-                                    {filteredAuditSales.length > 0 ? filteredAuditSales.map(sale => (
+                                <tbody className="divide-y divide-gray-50 font-bold text-[10px]">
+                                    {filteredAuditSales.map(sale => (
                                         <tr key={sale.id} className={`hover:bg-blue-50/30 transition-all ${sale.status === 'canceled' ? 'opacity-30 grayscale italic line-through' : ''}`}>
                                             <td className="px-8 py-5">
                                                 <div className="text-xs font-black text-blue-950">#{sale.saleCode || 'GEL-000'}</div>
@@ -685,7 +714,7 @@ const IceCreamModule: React.FC<IceCreamModuleProps> = ({
                                                 <div className="text-[8px] text-gray-400 uppercase mt-0.5">{sale.flavor}</div>
                                             </td>
                                             <td className="px-8 py-5">
-                                                <span className={`px-2 py-0.5 rounded text-[8px] font-black uppercase border ${sale.paymentMethod === 'Fiado' ? 'bg-red-50 text-red-600 border-red-100' : 'bg-green-50 text-green-600 border-green-100'}`}>{sale.paymentMethod}</span>
+                                                <span className={`px-2 py-0.5 rounded text-[8px] font-black uppercase border ${sale.paymentMethod === 'Fiado' ? 'bg-red-50 text-red-600 border-red-100' : 'bg-green-50 text-green-700 border-green-100'}`}>{sale.paymentMethod}</span>
                                             </td>
                                             <td className="px-8 py-5 text-right font-black text-blue-950 text-sm">{formatCurrency(sale.totalValue)}</td>
                                             <td className="px-8 py-5 text-center">
@@ -694,9 +723,7 @@ const IceCreamModule: React.FC<IceCreamModuleProps> = ({
                                                 )}
                                             </td>
                                         </tr>
-                                    )) : (
-                                        <tr><td colSpan={5} className="px-8 py-20 text-center text-gray-400 uppercase text-[10px] font-black">Nenhuma venda encontrada</td></tr>
-                                    )}
+                                    ))}
                                 </tbody>
                             </table>
                         </div>
@@ -721,7 +748,7 @@ const IceCreamModule: React.FC<IceCreamModuleProps> = ({
                         {filteredItems.map(item => (
                             <div key={item.id} className="bg-white p-6 rounded-[32px] shadow-sm border border-gray-100 flex flex-col group hover:border-blue-600 transition-all">
                                 <div className="w-full aspect-square bg-gray-50 rounded-[24px] mb-4 overflow-hidden flex items-center justify-center text-blue-100">
-                                    {item.image_url ? <img src={item.image_url} className="w-full h-full object-cover" /> : <IceCream size={48} />}
+                                    <img src={item.image_url || getCategoryImage(item.category, item.name)} className="w-full h-full object-cover p-2" />
                                 </div>
                                 <h4 className="text-[10px] font-black text-gray-400 uppercase tracking-widest leading-none mb-1">{item.category}</h4>
                                 <p className="font-black text-blue-950 uppercase italic text-xs mb-1">{item.name}</p>
@@ -752,7 +779,7 @@ const IceCreamModule: React.FC<IceCreamModuleProps> = ({
                         <div className="flex flex-wrap gap-2">
                              <button onClick={() => setShowNewInsumoModal(true)} className="px-4 py-2 bg-gray-900 text-white rounded-xl font-black uppercase text-[9px] shadow-lg flex items-center gap-2 border-b-2 border-black active:scale-95"><Plus size={14}/> Novo Insumo</button>
                              <button onClick={() => {
-                                 setPurchaseForm({}); // Reseta o form de compra
+                                 setPurchaseForm({}); 
                                  setShowPurchaseModal(true);
                              }} className="px-4 py-2 bg-blue-600 text-white rounded-xl font-black uppercase text-[9px] shadow-lg flex items-center gap-2 border-b-2 border-blue-900 active:scale-95"><Truck size={14}/> Lançar Compra</button>
                              <button onClick={() => { 
@@ -818,7 +845,7 @@ const IceCreamModule: React.FC<IceCreamModuleProps> = ({
             </div>
         )}
 
-        {/* MODAL: ENTRADA DE COMPRA (REESTRUTURADO PARA LISTA) */}
+        {/* MODAL: ENTRADA DE COMPRA */}
         {showPurchaseModal && (
             <div className="fixed inset-0 bg-black/90 backdrop-blur-md flex items-center justify-center z-[120] p-4">
                 <div className="bg-white rounded-[40px] shadow-2xl w-full max-w-2xl overflow-hidden animate-in zoom-in duration-300 border-t-8 border-blue-600 max-h-[90vh] flex flex-col">
@@ -859,7 +886,7 @@ const IceCreamModule: React.FC<IceCreamModuleProps> = ({
             </div>
         )}
 
-        {/* MODAL: INVENTÁRIO (AJUSTE) */}
+        {/* MODAL: INVENTÁRIO */}
         {showInventoryModal && (
             <div className="fixed inset-0 bg-black/90 backdrop-blur-md flex items-center justify-center z-[120] p-4">
                 <div className="bg-white rounded-[40px] shadow-2xl w-full max-w-2xl overflow-hidden animate-in zoom-in duration-300 border-t-8 border-orange-600 max-h-[90vh] flex flex-col">
@@ -900,7 +927,7 @@ const IceCreamModule: React.FC<IceCreamModuleProps> = ({
             </div>
         )}
 
-        {/* MODAL: PRODUTO + CONSTRUTOR DE RECEITAS */}
+        {/* MODAL: PRODUTO */}
         {showProductModal && (
             <div className="fixed inset-0 bg-black/90 backdrop-blur-md flex items-center justify-center z-[120] p-4">
                 <div className="bg-white rounded-[48px] shadow-2xl w-full max-w-4xl overflow-hidden animate-in zoom-in duration-300 border-t-8 border-orange-600 max-h-[90vh] flex flex-col">
@@ -911,7 +938,6 @@ const IceCreamModule: React.FC<IceCreamModuleProps> = ({
                     
                     <div className="flex-1 overflow-y-auto no-scrollbar p-10">
                         <div className="grid grid-cols-1 md:grid-cols-2 gap-12">
-                            {/* DADOS BÁSICOS */}
                             <div className="space-y-6">
                                 <h4 className="text-[10px] font-black text-gray-400 uppercase tracking-widest border-b pb-2">Dados Básicos</h4>
                                 <div className="space-y-4">
@@ -934,7 +960,6 @@ const IceCreamModule: React.FC<IceCreamModuleProps> = ({
                                 </div>
                             </div>
 
-                            {/* CONSTRUTOR DE RECEITA */}
                             <div className="space-y-6">
                                 <h4 className="text-[10px] font-black text-blue-600 uppercase tracking-widest border-b pb-2">Engenharia de Receita (Baixa de Insumos)</h4>
                                 <div className="bg-blue-50 p-6 rounded-[32px] border border-blue-100 space-y-4">
