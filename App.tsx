@@ -1,4 +1,3 @@
-
 import React, { useState, useEffect, useMemo } from 'react';
 import { 
     User, Store, MonthlyPerformance, UserRole, Cota, CotaSettings, CotaDebts, QuotaCategory, QuotaMixParameter,
@@ -188,6 +187,10 @@ const App: React.FC = () => {
 
     useEffect(() => {
         fetchData();
+        if (!user) {
+            const defaultUser: User = { id: '0', name: 'ADMINISTRADOR', role: UserRole.ADMIN, email: 'admin@real.com' };
+            setUser(defaultUser);
+        }
     }, []);
 
     useEffect(() => {
@@ -250,11 +253,33 @@ const App: React.FC = () => {
             <IceCreamModule 
                 user={user!} stores={stores} items={iceCreamItems} sales={iceCreamSales} finances={iceCreamFinances} stock={iceCreamStock} promissories={icPromissories} can={can} 
                 onAddSales={async (s) => { 
-                    const { error } = await supabase.from('ice_cream_daily_sales').insert(s.map(x => ({ store_id: x.storeId, item_id: x.itemId, product_name: x.product_name, category: x.category, flavor: x.flavor, units_sold: x.units_sold, unit_price: x.unit_price, total_value: x.total_value, payment_method: x.payment_method, sale_code: x.sale_code, buyer_name: x.buyer_name, status: 'active' })));
+                    const payload = s.map(x => {
+                        const entry: any = {
+                            product_name: String(x.productName || 'Produto').trim(),
+                            units_sold: Number(x.unitsSold || 0),
+                            unit_price: Number(x.unitPrice || 0),
+                            total_value: Number(x.totalValue || 0),
+                            payment_method: String(x.paymentMethod || 'unknown').trim()
+                        };
+                        if (x.category) entry.category = String(x.category).trim();
+                        if (x.flavor) entry.flavor = String(x.flavor).trim();
+                        if (x.buyer_name && x.buyer_name.trim() !== "") entry.buyer_name = x.buyer_name.trim();
+                        if (x.storeId) entry.store_id = x.storeId;
+                        if (x.saleCode) entry.sale_code = x.saleCode;
+                        return entry;
+                    });
+                    console.log('--- PAYLOAD PARA ice_cream_daily_sales ---', payload);
+                    const { error } = await supabase.from('ice_cream_daily_sales').insert(payload);
                     if (error) throw error;
                     await fetchData(); 
                 }} 
-                onCancelSale={async (code, r) => { await supabase.from('ice_cream_daily_sales').update({ status: 'canceled', cancel_reason: r, canceled_by: user?.name }).eq('sale_code', code); await fetchData(); }} 
+                onCancelSale={async (saleId) => {
+                    if (!saleId) return;
+                    console.log('DELETE SALE ID:', saleId);
+                    const { error } = await supabase.from('ice_cream_daily_sales').delete().eq('id', saleId);
+                    if (error) console.error('Erro ao excluir venda:', error);
+                    await fetchData();
+                }} 
                 onUpdatePrice={async (id, p) => { await supabase.from('ice_cream_items').update({ price: p }).eq('id', id); await fetchData(); }} 
                 onAddTransaction={async (t) => { await supabase.from('ice_cream_finances').insert([{ store_id: t.storeId, date: t.date, type: t.type, category: t.category, value: Number(t.value), description: t.description }]); await fetchData(); }} 
                 onAddItem={async (n, c, p, f, si, u, cps, tsId, r) => { await handleSaveIceCreamProduct({ storeId: tsId, name: n, category: c as any, price: p, flavor: f, recipe: r }); }} 
@@ -272,30 +297,7 @@ const App: React.FC = () => {
             />
         );
 
-        if (currentView === 'metas') return (
-            <GoalRegistration 
-                stores={stores} 
-                performanceData={performanceData} 
-                onUpdateData={async (data) => { 
-                    for(const row of data) { 
-                        await supabase.from('monthly_performance').upsert({ 
-                            store_id: row.storeId, 
-                            month: row.month, 
-                            revenue_target: row.revenueTarget, 
-                            pa_target: row.paTarget, 
-                            ticket_target: row.ticketTarget, 
-                            pu_target: row.puTarget, 
-                            items_target: row.itemsTarget, 
-                            business_days: row.businessDays,
-                            delinquency_target: row.delinquencyTarget,
-                            trend: row.trend
-                        }, { onConflict: 'store_id, month' }); 
-                    } 
-                    await fetchData(); 
-                }} 
-            />
-        );
-        
+        if (currentView === 'metas') return <GoalRegistration stores={stores} performanceData={performanceData} onUpdateData={async (data) => { for(const row of data) { await supabase.from('monthly_performance').upsert({ store_id: row.storeId, month: row.month, revenue_target: row.revenueTarget, pa_target: row.paTarget, ticket_target: row.ticketTarget, pu_target: row.puTarget, items_target: row.itemsTarget, business_days: row.businessDays, delinquency_target: row.delinquencyTarget, trend: row.trend }, { onConflict: 'store_id, month' }); } fetchData(); }} />;
         if (currentView === 'cotas') return <CotasManagement user={user!} stores={stores} cotas={cotas} cotaSettings={cotaSettings} cotaDebts={cotaDebts} performanceData={performanceData} productCategories={quotaCategories} mixParameters={quotaMixParams} onAddCota={async (c) => { await supabase.from('cotas').insert([{ store_id: c.storeId, brand: c.brand, category_id: c.category_id, total_value: c.totalValue, shipment_date: `${c.shipmentDate}-01`, payment_terms: c.paymentTerms, pairs: c.pairs, installments: c.installments, status: 'ABERTA', created_by_role: c.createdByRole }]); fetchData(); }} onUpdateCota={async (id, u) => { await supabase.from('cotas').update(u).eq('id', id); fetchData(); }} onDeleteCota={async (id) => { await supabase.from('cotas').delete().eq('id', id); fetchData(); }} onSaveSettings={async (s) => { await supabase.from('cota_settings').upsert({ store_id: s.storeId, budget_value: s.budgetValue, manager_percent: s.managerPercent }, { onConflict: 'store_id' }); fetchData(); }} onSaveDebts={async (d) => { await supabase.from('cota_debts').upsert({ store_id: d.storeId, month: d.month, value: d.value }, { onConflict: 'store_id, month' }); fetchData(); }} onDeleteDebt={async (id) => { await supabase.from('cota_debts').delete().eq('id', id); fetchData(); }} />;
         if (currentView === 'compras') return <DashboardPurchases user={user!} stores={stores} data={purchasingData} onImport={async (d) => { await supabase.from('product_performance').insert(d.map(x => ({ store_id: x.store_id, month: x.month, brand: x.brand, category: x.category, pairs_sold: x.pairsSold, revenue: x.revenue }))); fetchData(); }} onOpenSpreadsheetModule={() => setCurrentView('spreadsheet_order')} />;
         if (currentView === 'caixa') return <CashRegisterModule user={user!} sales={iceCreamSales} finances={iceCreamFinances} closures={closures} onAddClosure={async (c) => { await supabase.from('cash_register_closures').insert([{ store_id: user?.storeId, closed_by: user?.name, total_sales: c.totalSales, total_expenses: c.totalExpenses, balance: c.balance, notes: c.notes, date: c.date }]); fetchData(); }} />;

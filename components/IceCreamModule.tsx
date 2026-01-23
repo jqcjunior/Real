@@ -1,3 +1,4 @@
+
 import React, { useState, useMemo, useEffect } from 'react';
 import { IceCreamItem, IceCreamDailySale, IceCreamTransaction, IceCreamCategory, IceCreamPaymentMethod, User, UserRole, Store, IceCreamStock, IceCreamPromissoryNote, IceCreamRecipeItem, StoreProfitPartner } from '../types';
 import { formatCurrency, BRAND_LOGO } from '../constants';
@@ -21,7 +22,7 @@ interface IceCreamModuleProps {
   promissories: IceCreamPromissoryNote[];
   can: (p: PermissionKey) => boolean;
   onAddSales: (sale: IceCreamDailySale[]) => Promise<void>;
-  onCancelSale: (saleCode: string, reason: string) => Promise<void>;
+  onCancelSale: (id: string) => Promise<void>;
   onUpdatePrice: (id: string, price: number) => Promise<void>;
   onAddTransaction: (tx: IceCreamTransaction) => Promise<void>;
   onAddItem: (name: string, category: string, price: number, flavor?: string, stockInitial?: number, unit?: string, consumptionPerSale?: number, targetStoreId?: string, recipe?: IceCreamRecipeItem[]) => Promise<void>;
@@ -95,7 +96,7 @@ const IceCreamModule: React.FC<IceCreamModuleProps> = ({
   const [showProductModal, setShowProductModal] = useState(false);
   const [showTransactionModal, setShowTransactionModal] = useState(false);
   const [showPartnersModal, setShowPartnersModal] = useState(false);
-  const [showCancelModal, setShowCancelModal] = useState<{code: string} | null>(null);
+  const [showCancelModal, setShowCancelModal] = useState<{id: string} | null>(null);
   const [cancelReason, setCancelReason] = useState('');
   
   // Modais de Estoque
@@ -291,13 +292,13 @@ const IceCreamModule: React.FC<IceCreamModuleProps> = ({
   };
 
   const handleCancelSale = async () => {
-      if (!showCancelModal || !cancelReason) return;
+      if (!showCancelModal) return;
       setIsSubmitting(true);
       try {
-          await onCancelSale(showCancelModal.code, cancelReason);
+          await onCancelSale(showCancelModal.id);
           setShowCancelModal(null); setCancelReason('');
-          alert("Venda cancelada.");
-      } catch (e) { alert("Erro ao cancelar."); } finally { setIsSubmitting(false); }
+          alert("Venda excluída com sucesso!");
+      } catch (e) { alert("Erro ao excluir."); } finally { setIsSubmitting(false); }
   };
 
   const handleAddPartner = async () => {
@@ -719,7 +720,7 @@ const IceCreamModule: React.FC<IceCreamModuleProps> = ({
                                             <td className="px-8 py-5 text-right font-black text-blue-950 text-sm">{formatCurrency(sale.totalValue)}</td>
                                             <td className="px-8 py-5 text-center">
                                                 {sale.status !== 'canceled' && (
-                                                    <button onClick={() => setShowCancelModal({code: sale.saleCode || ''})} className="p-2 text-gray-300 hover:text-red-600 transition-all"><Ban size={16}/></button>
+                                                    <button onClick={() => setShowCancelModal({id: sale.id})} className="p-2 text-gray-300 hover:text-red-600 transition-all"><Ban size={16}/></button>
                                                 )}
                                             </td>
                                         </tr>
@@ -1045,12 +1046,11 @@ const IceCreamModule: React.FC<IceCreamModuleProps> = ({
                 <div className="bg-white rounded-[40px] p-10 max-w-sm w-full text-center shadow-2xl animate-in zoom-in duration-200">
                     <div className="p-5 bg-red-50 text-red-600 rounded-full w-fit mx-auto mb-6"><AlertTriangle size={48} /></div>
                     <h3 className="text-2xl font-black text-gray-900 uppercase italic mb-2 tracking-tighter">Estornar <span className="text-red-600">Venda?</span></h3>
-                    <p className="text-gray-400 text-xs font-bold uppercase mb-8">Esta ação irá anular a entrada de caixa e devolver os insumos ao estoque.</p>
+                    <p className="text-gray-400 text-xs font-bold uppercase mb-8">Esta ação irá remover permanentemente a entrada de caixa.</p>
                     <div className="space-y-4">
-                        <input value={cancelReason} onChange={e => setCancelReason(e.target.value.toUpperCase())} className="w-full p-4 bg-gray-50 border-2 border-gray-100 rounded-2xl text-[10px] font-black uppercase outline-none focus:border-red-600 mb-4 shadow-inner" placeholder="MOTIVO DO ESTORNO..." />
                         <div className="flex gap-3">
                             <button onClick={() => setShowCancelModal(null)} className="flex-1 py-4 bg-gray-100 text-gray-500 rounded-2xl font-black uppercase text-[10px]">Voltar</button>
-                            <button onClick={handleCancelSale} disabled={!cancelReason || isSubmitting} className="flex-1 py-4 bg-red-600 text-white rounded-2xl font-black uppercase text-[10px] shadow-lg active:scale-95 disabled:opacity-30">Confirmar</button>
+                            <button onClick={handleCancelSale} disabled={isSubmitting} className="flex-1 py-4 bg-red-600 text-white rounded-2xl font-black uppercase text-[10px] shadow-lg active:scale-95 disabled:opacity-30">Confirmar Exclusão</button>
                         </div>
                     </div>
                 </div>

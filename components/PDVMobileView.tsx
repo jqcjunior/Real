@@ -1,3 +1,4 @@
+
 import React, { useState, useMemo } from 'react';
 import { 
     IceCreamItem, IceCreamDailySale, IceCreamTransaction, IceCreamCategory, 
@@ -31,7 +32,7 @@ interface PDVMobileViewProps {
   buyerName: string;
   setBuyerName: (name: string) => void;
   onAddSales: (sale: IceCreamDailySale[]) => Promise<void>;
-  onCancelSale: (saleCode: string, reason: string) => Promise<void>;
+  onCancelSale: (id: string) => Promise<void>;
   onAddTransaction: (tx: IceCreamTransaction) => Promise<void>;
   dailyData: any;
   handlePrintTicket: (items: IceCreamDailySale[], saleCode: string, isFiado: boolean, buyer?: string) => void;
