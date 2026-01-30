@@ -1,3 +1,4 @@
+
 import React, { useState, useEffect, useMemo } from 'react';
 import { 
     User, Store, MonthlyPerformance, UserRole, Cota, CotaSettings, CotaDebts, QuotaCategory, QuotaMixParameter,
@@ -110,87 +111,33 @@ const App: React.FC = () => {
                 percentMeta: Number(x.percent_meta || 0)
             })));
             if(pur) setPurchasingData(pur.map(x => ({...x, storeId: x.store_id, pairsSold: x.pairs_sold})));
-            
-            if(c) setCotas(c.map(x => ({ 
-                ...x, 
-                id: x.id, 
-                storeId: x.store_id, 
-                totalValue: Number(x.total_value || 0),
-                shipmentDate: x.shipment_date,
-                paymentTerms: x.payment_terms,
-                createdByRole: x.created_by_role,
-                category_name: x.category_name || x.classification,
-                createdAt: new Date(x.created_at) 
-            })));
-
+            if(c) setCotas(c.map(x => ({ ...x, id: x.id, storeId: x.store_id, totalValue: Number(x.total_value || 0), shipmentDate: x.shipment_date, paymentTerms: x.payment_terms, createdByRole: x.created_by_role, category_name: x.category_name || x.classification, createdAt: new Date(x.created_at) })));
             if(cs) setCotaSettings(cs.map(x => ({...x, storeId: x.store_id, budgetValue: x.budget_value, managerPercent: x.manager_percent})));
             if(cd) setCotaDebts(cd.map(x => ({...x, storeId: x.store_id})));
             if(cat) setQuotaCategories(cat);
             if(mix) setQuotaMixParams(mix);
-            
             if(ici) setIceCreamItems(ici.map(x => {
                 let recipeParsed = [];
-                try {
-                    recipeParsed = typeof x.recipe === 'string' ? JSON.parse(x.recipe) : (x.recipe || []);
-                } catch(e) { recipeParsed = []; }
-
-                return {
-                    id: x.id, 
-                    storeId: x.store_id, 
-                    name: x.name, 
-                    category: x.category, 
-                    price: Number(x.price || 0), 
-                    flavor: x.flavor, 
-                    active: x.active, 
-                    consumptionPerSale: x.consumption_per_sale, 
-                    recipe: recipeParsed, 
-                    image_url: x.image_url
-                };
+                try { recipeParsed = typeof x.recipe === 'string' ? JSON.parse(x.recipe) : (x.recipe || []); } catch(e) { recipeParsed = []; }
+                return { id: x.id, storeId: x.store_id, name: x.name, category: x.category, price: Number(x.price || 0), flavor: x.flavor, active: x.active, consumptionPerSale: x.consumption_per_sale, recipe: recipeParsed, image_url: x.image_url };
             }));
-            
-            if(ics) setIceCreamSales(ics.map(x => ({
-                id: x.id, 
-                storeId: x.store_id, 
-                itemId: x.item_id, 
-                productName: x.product_name, 
-                category: x.category, 
-                flavor: x.flavor, 
-                unitsSold: Number(x.units_sold || 0), 
-                unitPrice: Number(x.unit_price || 0), 
-                totalValue: Number(x.total_value || 0), 
-                paymentMethod: x.payment_method, 
-                saleCode: x.sale_code, 
-                buyer_name: x.buyer_name, 
-                createdAt: x.created_at, 
-                status: x.status
-            })));
-
-            if(icf) setIceCreamFinances(icf.map(x => ({
-                id: x.id, storeId: x.store_id, date: x.date, type: x.type, 
-                category: x.category, value: Number(x.value || 0), description: x.description, 
-                createdAt: new Date(x.created_at)
-            })));
-            
+            if(ics) setIceCreamSales(ics.map(x => ({ id: x.id, storeId: x.store_id, itemId: x.item_id, productName: x.product_name, category: x.category, flavor: x.flavor, unitsSold: Number(x.units_sold || 0), unitPrice: Number(x.unit_price || 0), totalValue: Number(x.total_value || 0), paymentMethod: x.payment_method, saleCode: x.sale_code, buyer_name: x.buyer_name, createdAt: x.created_at, status: x.status })));
+            if(icf) setIceCreamFinances(icf.map(x => ({ id: x.id, storeId: x.store_id, date: x.date, type: x.type, category: x.category, value: Number(x.value || 0), description: x.description, createdAt: new Date(x.created_at) })));
             if(icst) setIceCreamStock(icst);
             if(icp) setIcPromissories(icp);
-
             if(r) setReceipts(r.map(x => ({...x, storeId: x.store_id, issuerName: x.issuer_name, valueInWords: x.value_in_words})));
             if(ce) setCashErrors(ce.map(x => ({...x, id: x.id, storeId: x.store_id, userId: x.user_id, userName: x.user_name || 'Usuário', date: x.error_date || x.date, value: Number(x.value || 0), type: x.type, reason: x.reason, createdAt: new Date(x.created_at)})));
             if(ag) setAgenda(ag.map(x => ({...x, userId: x.user_id, dueDate: x.due_date, dueTime: x.due_time, isCompleted: x.is_completed})));
             if(dl) setDownloads(dl.map(x => ({...x, fileName: x.file_name, createdBy: x.created_by})));
             if(cl) setClosures(cl.map(x => ({...x, storeId: x.store_id, closedBy: x.closed_by})));
             if(lg) setLogs(lg);
-
         } catch (err) { console.error("Erro Sincronismo:", err); }
         finally { setIsLoading(false); }
     };
 
     useEffect(() => {
         fetchData();
-        if (!user) {
-            const defaultUser: User = { id: '0', name: 'ADMINISTRADOR', role: UserRole.ADMIN, email: 'admin@real.com' };
-            setUser(defaultUser);
-        }
+        // REMOVIDO: O auto-login forçado para administrador foi removido para garantir que o sistema sempre solicite login.
     }, []);
 
     useEffect(() => {
@@ -222,64 +169,25 @@ const App: React.FC = () => {
 
     const handleSaveIceCreamProduct = async (product: Partial<IceCreamItem>) => {
         try {
-            const payload = {
-                store_id: product.storeId,
-                name: product.name?.toUpperCase().trim(),
-                category: product.category,
-                price: product.price,
-                flavor: product.flavor || 'Padrão',
-                active: true,
-                consumption_per_sale: 0,
-                recipe: JSON.stringify(product.recipe || [])
-            };
-
-            if (product.id) {
-                await supabase.from('ice_cream_items').update(payload).eq('id', product.id);
-            } else {
-                await supabase.from('ice_cream_items').insert([payload]);
-            }
+            const payload = { store_id: product.storeId, name: product.name?.toUpperCase().trim(), category: product.category, price: product.price, flavor: product.flavor || 'Padrão', active: true, consumption_per_sale: 0, recipe: JSON.stringify(product.recipe || []) };
+            if (product.id) { await supabase.from('ice_cream_items').update(payload).eq('id', product.id); } 
+            else { await supabase.from('ice_cream_items').insert([payload]); }
             await fetchData();
-        } catch (err) {
-            console.error("Erro ao salvar produto:", err);
-            throw err;
-        }
+        } catch (err) { console.error("Erro ao salvar produto:", err); throw err; }
     };
 
     const renderCurrentView = () => {
         if (currentView === 'dashboard_rede') return <DashboardAdmin stores={stores} performanceData={performanceData} onImportData={fetchData} />;
         if (currentView === 'dashboard_loja') return <DashboardManager user={user!} stores={stores} performanceData={performanceData} purchasingData={purchasingData} />;
-        
         if (currentView === 'pdv_gelateria') return (
             <IceCreamModule 
                 user={user!} stores={stores} items={iceCreamItems} sales={iceCreamSales} finances={iceCreamFinances} stock={iceCreamStock} promissories={icPromissories} can={can} 
                 onAddSales={async (s) => { 
-                    const payload = s.map(x => {
-                        const entry: any = {
-                            product_name: String(x.productName || 'Produto').trim(),
-                            units_sold: Number(x.unitsSold || 0),
-                            unit_price: Number(x.unitPrice || 0),
-                            total_value: Number(x.totalValue || 0),
-                            payment_method: String(x.paymentMethod || 'unknown').trim()
-                        };
-                        if (x.category) entry.category = String(x.category).trim();
-                        if (x.flavor) entry.flavor = String(x.flavor).trim();
-                        if (x.buyer_name && x.buyer_name.trim() !== "") entry.buyer_name = x.buyer_name.trim();
-                        if (x.storeId) entry.store_id = x.storeId;
-                        if (x.saleCode) entry.sale_code = x.saleCode;
-                        return entry;
-                    });
-                    console.log('--- PAYLOAD PARA ice_cream_daily_sales ---', payload);
-                    const { error } = await supabase.from('ice_cream_daily_sales').insert(payload);
+                    const { error } = await supabase.from('ice_cream_daily_sales').insert(s.map(x => ({ store_id: x.storeId, item_id: x.itemId, product_name: x.productName, category: x.category, flavor: x.flavor, units_sold: x.unitsSold, unit_price: x.unitPrice, total_value: x.totalValue, payment_method: x.paymentMethod, sale_code: x.saleCode, buyer_name: x.buyer_name, status: 'active' })));
                     if (error) throw error;
                     await fetchData(); 
                 }} 
-                onCancelSale={async (saleId) => {
-                    if (!saleId) return;
-                    console.log('DELETE SALE ID:', saleId);
-                    const { error } = await supabase.from('ice_cream_daily_sales').delete().eq('id', saleId);
-                    if (error) console.error('Erro ao excluir venda:', error);
-                    await fetchData();
-                }} 
+                onCancelSale={async (code, r) => { await supabase.from('ice_cream_daily_sales').update({ status: 'canceled', cancel_reason: r, canceled_by: user?.name }).eq('sale_code', code); await fetchData(); }} 
                 onUpdatePrice={async (id, p) => { await supabase.from('ice_cream_items').update({ price: p }).eq('id', id); await fetchData(); }} 
                 onAddTransaction={async (t) => { await supabase.from('ice_cream_finances').insert([{ store_id: t.storeId, date: t.date, type: t.type, category: t.category, value: Number(t.value), description: t.description }]); await fetchData(); }} 
                 onAddItem={async (n, c, p, f, si, u, cps, tsId, r) => { await handleSaveIceCreamProduct({ storeId: tsId, name: n, category: c as any, price: p, flavor: f, recipe: r }); }} 
@@ -296,7 +204,6 @@ const App: React.FC = () => {
                 liquidatePromissory={async (id) => { await supabase.from('ice_cream_promissory_notes').update({ status: 'paid' }).eq('id', id); await fetchData(); }} 
             />
         );
-
         if (currentView === 'metas') return <GoalRegistration stores={stores} performanceData={performanceData} onUpdateData={async (data) => { for(const row of data) { await supabase.from('monthly_performance').upsert({ store_id: row.storeId, month: row.month, revenue_target: row.revenueTarget, pa_target: row.paTarget, ticket_target: row.ticketTarget, pu_target: row.puTarget, items_target: row.itemsTarget, business_days: row.businessDays, delinquency_target: row.delinquencyTarget, trend: row.trend }, { onConflict: 'store_id, month' }); } fetchData(); }} />;
         if (currentView === 'cotas') return <CotasManagement user={user!} stores={stores} cotas={cotas} cotaSettings={cotaSettings} cotaDebts={cotaDebts} performanceData={performanceData} productCategories={quotaCategories} mixParameters={quotaMixParams} onAddCota={async (c) => { await supabase.from('cotas').insert([{ store_id: c.storeId, brand: c.brand, category_id: c.category_id, total_value: c.totalValue, shipment_date: `${c.shipmentDate}-01`, payment_terms: c.paymentTerms, pairs: c.pairs, installments: c.installments, status: 'ABERTA', created_by_role: c.createdByRole }]); fetchData(); }} onUpdateCota={async (id, u) => { await supabase.from('cotas').update(u).eq('id', id); fetchData(); }} onDeleteCota={async (id) => { await supabase.from('cotas').delete().eq('id', id); fetchData(); }} onSaveSettings={async (s) => { await supabase.from('cota_settings').upsert({ store_id: s.storeId, budget_value: s.budgetValue, manager_percent: s.managerPercent }, { onConflict: 'store_id' }); fetchData(); }} onSaveDebts={async (d) => { await supabase.from('cota_debts').upsert({ store_id: d.storeId, month: d.month, value: d.value }, { onConflict: 'store_id, month' }); fetchData(); }} onDeleteDebt={async (id) => { await supabase.from('cota_debts').delete().eq('id', id); fetchData(); }} />;
         if (currentView === 'compras') return <DashboardPurchases user={user!} stores={stores} data={purchasingData} onImport={async (d) => { await supabase.from('product_performance').insert(d.map(x => ({ store_id: x.store_id, month: x.month, brand: x.brand, category: x.category, pairs_sold: x.pairsSold, revenue: x.revenue }))); fetchData(); }} onOpenSpreadsheetModule={() => setCurrentView('spreadsheet_order')} />;
