@@ -121,7 +121,7 @@ const App: React.FC = () => {
                 try { recipeParsed = typeof x.recipe === 'string' ? JSON.parse(x.recipe) : (x.recipe || []); } catch(e) { recipeParsed = []; }
                 return { id: x.id, storeId: x.store_id, name: x.name, category: x.category, price: Number(x.price || 0), flavor: x.flavor, active: x.active, consumptionPerSale: x.consumption_per_sale, recipe: recipeParsed, image_url: x.image_url };
             }));
-            if(ics) setIceCreamSales(ics.map(x => ({ id: x.id, storeId: x.store_id, itemId: x.item_id, productName: x.product_name, category: x.category, flavor: x.flavor, unitsSold: Number(x.units_sold || 0), unitPrice: Number(x.unit_price || 0), totalValue: Number(x.total_value || 0), paymentMethod: x.payment_method, saleCode: x.sale_code, buyer_name: x.buyer_name, createdAt: x.created_at, status: x.status })));
+            if(ics) setIceCreamSales(ics.map(x => ({ id: x.id, storeId: x.store_id, itemId: x.item_id, productName: x.product_name, category: x.category, flavor: x.flavor, unitsSold: Number(x.units_sold || 0), unit_price: Number(x.unit_price || 0), total_value: Number(x.total_value || 0), payment_method: x.payment_method, sale_code: x.sale_code, buyer_name: x.buyer_name, createdAt: x.created_at, status: x.status })));
             if(icf) setIceCreamFinances(icf.map(x => ({ id: x.id, storeId: x.store_id, date: x.date, type: x.type, category: x.category, value: Number(x.value || 0), description: x.description, createdAt: new Date(x.created_at) })));
             if(icst) setIceCreamStock(icst);
             if(icp) setIcPromissories(icp);
@@ -137,7 +137,6 @@ const App: React.FC = () => {
 
     useEffect(() => {
         fetchData();
-        // REMOVIDO: O auto-login forçado para administrador foi removido para garantir que o sistema sempre solicite login.
     }, []);
 
     useEffect(() => {
@@ -183,7 +182,7 @@ const App: React.FC = () => {
             <IceCreamModule 
                 user={user!} stores={stores} items={iceCreamItems} sales={iceCreamSales} finances={iceCreamFinances} stock={iceCreamStock} promissories={icPromissories} can={can} 
                 onAddSales={async (s) => { 
-                    const { error } = await supabase.from('ice_cream_daily_sales').insert(s.map(x => ({ store_id: x.storeId, item_id: x.itemId, product_name: x.productName, category: x.category, flavor: x.flavor, units_sold: x.unitsSold, unit_price: x.unitPrice, total_value: x.totalValue, payment_method: x.paymentMethod, sale_code: x.saleCode, buyer_name: x.buyer_name, status: 'active' })));
+                    const { error } = await supabase.from('ice_cream_daily_sales').insert(s.map(x => ({ store_id: x.storeId, item_id: x.itemId, product_name: x.productName, category: x.category, flavor: x.flavor, units_sold: x.units_sold, unit_price: x.unit_price, total_value: x.total_value, payment_method: x.payment_method, sale_code: x.sale_code, buyer_name: x.buyer_name, status: 'active' })));
                     if (error) throw error;
                     await fetchData(); 
                 }} 
@@ -233,36 +232,45 @@ const App: React.FC = () => {
     if (isLoading || !currentView) return <div className="h-screen flex flex-col items-center justify-center bg-gray-950"><Loader2 className="animate-spin text-red-600 mb-4" size={48} /><p className="text-white font-black uppercase text-[10px] tracking-widest animate-pulse">Sincronizando Ecossistema Real...</p></div>;
 
     return (
-        <div className="flex h-screen bg-gray-950 text-white overflow-hidden font-sans">
-            <aside className={`fixed inset-y-0 left-0 z-[100] w-72 bg-gray-950 border-r border-white/5 flex flex-col p-8 transition-transform duration-300 transform ${isSidebarOpen ? 'translate-x-0' : '-translate-x-full'} lg:relative lg:translate-x-0 lg:flex shrink-0 overflow-y-auto no-scrollbar`}>
-                <button onClick={() => setIsSidebarOpen(false)} className="lg:hidden absolute top-6 right-6 text-gray-400 hover:text-white transition-colors"><X size={28} /></button>
-                <div className="flex items-center gap-4 mb-12 shrink-0">
+        <div className="flex h-screen bg-gray-950 text-white overflow-hidden font-sans relative">
+            {/* Backdrop for Sidebar - Click to Close */}
+            {isSidebarOpen && (
+                <div 
+                    className="fixed inset-0 bg-black/60 backdrop-blur-sm z-[90] transition-opacity duration-300"
+                    onClick={() => setIsSidebarOpen(false)}
+                />
+            )}
+
+            <aside className={`fixed inset-y-0 left-0 z-[100] w-72 bg-gray-950 border-r border-white/5 flex flex-col p-6 transition-transform duration-300 transform ${isSidebarOpen ? 'translate-x-0' : '-translate-x-full'} shrink-0 overflow-y-auto no-scrollbar shadow-2xl`}>
+                <button onClick={() => setIsSidebarOpen(false)} className="absolute top-6 right-6 text-gray-400 hover:text-white transition-colors"><X size={28} /></button>
+                <div className="flex items-center gap-4 mb-8 shrink-0">
                     <img src={BRAND_LOGO} alt="Logo" className="h-10 w-auto max-w-[180px] object-contain" />
                     <h1 className="text-xl font-black italic tracking-tighter uppercase leading-none">ADMIN</h1>
                 </div>
-                <nav className="flex-1 space-y-10">
+                <nav className="flex-1 space-y-6">
                     {menuSections.map(section => {
                         const visibleItems = section.items.filter(i => can(i.perm as any));
                         if (visibleItems.length === 0) return null;
                         return (
-                            <div key={section.title} className="space-y-4">
-                                <h3 className="px-4 text-[10px] font-black uppercase text-gray-600 tracking-[0.4em] mb-4">{section.title}</h3>
+                            <div key={section.title} className="space-y-1">
+                                <h3 className="px-4 text-[10px] font-black uppercase text-gray-600 tracking-[0.4em] mb-2">{section.title}</h3>
                                 {section.items.map(item => can(item.perm as any) && (
-                                    <button key={item.id} onClick={() => { setCurrentView(item.id); setIsSidebarOpen(false); }} className={`w-full text-left p-4 rounded-[20px] font-black uppercase text-[10px] tracking-widest flex items-center gap-4 transition-all duration-300 ${currentView === item.id ? 'bg-blue-600 text-white shadow-[0_15px_30px_rgba(37,99,235,0.3)]' : 'text-gray-500 hover:text-white hover:bg-white/5'}`}><item.icon size={20} /> {item.label}</button>
+                                    <button key={item.id} onClick={() => { setCurrentView(item.id); setIsSidebarOpen(false); }} className={`w-full text-left py-2.5 px-4 rounded-xl font-black uppercase text-[10px] tracking-widest flex items-center gap-4 transition-all duration-300 ${currentView === item.id ? 'bg-blue-600 text-white shadow-[0_15px_30px_rgba(37,99,235,0.3)]' : 'text-gray-500 hover:text-white hover:bg-white/5'}`}><item.icon size={20} /> {item.label}</button>
                                 ))}
                             </div>
                         );
                     })}
                 </nav>
-                <button onClick={() => window.location.reload()} className="mt-12 flex items-center gap-4 p-5 text-red-500 font-black uppercase text-[10px] tracking-widest hover:bg-red-500/10 rounded-2xl transition-all border border-red-500/20 shrink-0"><LogOut size={18} /> Sair do Sistema</button>
+                <button onClick={() => window.location.reload()} className="mt-8 flex items-center gap-4 p-4 text-red-500 font-black uppercase text-[10px] tracking-widest hover:bg-red-500/10 rounded-xl transition-all border border-red-500/20 shrink-0"><LogOut size={18} /> Sair do Sistema</button>
             </aside>
+
             <div className="flex-1 flex flex-col h-full bg-[#f3f4f6] overflow-hidden text-blue-950">
                 <header className="h-16 border-b border-gray-100 bg-white items-center justify-between px-6 lg:px-12 flex shrink-0 z-50">
                     <div className="flex items-center gap-4">
-                        <button onClick={() => setIsSidebarOpen(true)} className="lg:hidden p-2 text-blue-900 -ml-2 hover:bg-gray-100 rounded-xl transition-all"><Menu size={24} /></button>
+                        <button onClick={() => setIsSidebarOpen(true)} className="p-2 text-blue-900 -ml-2 hover:bg-gray-100 rounded-xl transition-all"><Menu size={24} /></button>
                         <span className="text-xs font-black uppercase text-gray-400 tracking-widest hidden sm:flex items-center gap-3"><UserCog className="text-blue-900" size={18}/> Sessão: <span className="text-blue-950 italic">{user?.name}</span></span>
                     </div>
-                    <div className="flex items-center gap-6"><div className="hidden md:flex items-center gap-2"><div className="w-2 h-2 rounded-full bg-green-500 animate-pulse"></div><span className="text-[10px] font-black text-gray-400 uppercase">Rede Sincronizada</span></div><span className="text-[10px] font-black text-gray-300 uppercase italic tracking-widest">v6.7 Stable</span></div>
+                    <div className="flex items-center gap-6"><div className="hidden md:flex items-center gap-2"><div className="w-2 h-2 rounded-full bg-green-500 animate-pulse"></div><span className="text-[10px] font-black text-gray-400 uppercase">Rede Sincronizada</span></div><span className="text-[10px] font-black text-gray-300 uppercase italic tracking-widest">v6.9 Stable</span></div>
                 </header>
                 <main className="flex-1 overflow-y-auto relative no-scrollbar">{renderCurrentView()}</main>
             </div>
