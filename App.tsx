@@ -116,13 +116,55 @@ const App: React.FC = () => {
             if(cd) setCotaDebts(cd.map(x => ({...x, storeId: x.store_id})));
             if(cat) setQuotaCategories(cat);
             if(mix) setQuotaMixParams(mix);
+            
+            // Correção do mapeamento de ITENS da Gelateria
             if(ici) setIceCreamItems(ici.map(x => {
                 let recipeParsed = [];
                 try { recipeParsed = typeof x.recipe === 'string' ? JSON.parse(x.recipe) : (x.recipe || []); } catch(e) { recipeParsed = []; }
-                return { id: x.id, storeId: x.store_id, name: x.name, category: x.category, price: Number(x.price || 0), flavor: x.flavor, active: x.active, consumptionPerSale: x.consumption_per_sale, recipe: recipeParsed, image_url: x.image_url };
+                return { 
+                    id: x.id, 
+                    storeId: x.store_id, 
+                    name: x.name, 
+                    category: x.category, 
+                    price: Number(x.price || 0), 
+                    flavor: x.flavor, 
+                    active: x.active, 
+                    consumptionPerSale: x.consumption_per_sale || 0, 
+                    recipe: recipeParsed, 
+                    image_url: x.image_url 
+                };
             }));
-            if(ics) setIceCreamSales(ics.map(x => ({ id: x.id, storeId: x.store_id, itemId: x.item_id, productName: x.product_name, category: x.category, flavor: x.flavor, unitsSold: Number(x.units_sold || 0), unit_price: Number(x.unit_price || 0), total_value: Number(x.total_value || 0), payment_method: x.payment_method, sale_code: x.sale_code, buyer_name: x.buyer_name, createdAt: x.created_at, status: x.status })));
-            if(icf) setIceCreamFinances(icf.map(x => ({ id: x.id, storeId: x.store_id, date: x.date, type: x.type, category: x.category, value: Number(x.value || 0), description: x.description, createdAt: new Date(x.created_at) })));
+
+            // Correção do mapeamento de VENDAS da Gelateria
+            if(ics) setIceCreamSales(ics.map(x => ({ 
+                id: x.id, 
+                storeId: x.store_id, 
+                itemId: x.item_id, 
+                productName: x.product_name, 
+                category: x.category, 
+                flavor: x.flavor, 
+                unitsSold: Number(x.units_sold || 0), 
+                unitPrice: Number(x.unit_price || 0), 
+                totalValue: Number(x.total_value || 0), 
+                paymentMethod: x.payment_method, 
+                saleCode: x.sale_code, 
+                buyer_name: x.buyer_name, 
+                createdAt: x.created_at, 
+                status: x.status 
+            })));
+
+            // Correção do mapeamento de FINANÇAS da Gelateria
+            if(icf) setIceCreamFinances(icf.map(x => ({ 
+                id: x.id, 
+                storeId: x.store_id, 
+                date: x.date, 
+                type: x.type, 
+                category: x.category, 
+                value: Number(x.value || 0), 
+                description: x.description, 
+                createdAt: new Date(x.created_at) 
+            })));
+
             if(icst) setIceCreamStock(icst);
             if(icp) setIcPromissories(icp);
             if(r) setReceipts(r.map(x => ({...x, storeId: x.store_id, issuerName: x.issuer_name, valueInWords: x.value_in_words})));
@@ -182,7 +224,7 @@ const App: React.FC = () => {
             <IceCreamModule 
                 user={user!} stores={stores} items={iceCreamItems} sales={iceCreamSales} finances={iceCreamFinances} stock={iceCreamStock} promissories={icPromissories} can={can} 
                 onAddSales={async (s) => { 
-                    const { error } = await supabase.from('ice_cream_daily_sales').insert(s.map(x => ({ store_id: x.storeId, item_id: x.itemId, product_name: x.productName, category: x.category, flavor: x.flavor, units_sold: x.units_sold, unit_price: x.unit_price, total_value: x.total_value, payment_method: x.payment_method, sale_code: x.sale_code, buyer_name: x.buyer_name, status: 'active' })));
+                    const { error } = await supabase.from('ice_cream_daily_sales').insert(s.map(x => ({ store_id: x.storeId, item_id: x.itemId, product_name: x.productName, category: x.category, flavor: x.flavor, units_sold: x.unitsSold, unit_price: x.unitPrice, total_value: x.totalValue, payment_method: x.paymentMethod, sale_code: x.saleCode, buyer_name: x.buyer_name, status: 'active' })));
                     if (error) throw error;
                     await fetchData(); 
                 }} 
