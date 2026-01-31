@@ -154,7 +154,7 @@ const App: React.FC = () => {
 
     useEffect(() => {
         fetchData();
-        // REMOVIDO AUTO-LOGIN BYPASS
+        // REMOVIDO AUTO-LOGIN BYPASS QUE EXISTIA NO INDEX.TSX OU useEffect
     }, []);
 
     const handleSaveIceCreamProduct = async (product: Partial<IceCreamItem>) => {
@@ -210,31 +210,7 @@ const App: React.FC = () => {
                     {(() => {
                         if (currentView === 'dashboard_rede') return <DashboardAdmin stores={stores} performanceData={performanceData} onImportData={fetchData} />;
                         if (currentView === 'dashboard_loja') return <DashboardManager user={user!} stores={stores} performanceData={performanceData} purchasingData={purchasingData} />;
-                        if (currentView === 'metas') return <GoalRegistration stores={stores} performanceData={performanceData} onUpdateData={async (data) => { 
-                            for(const row of data) { 
-                                await supabase.from('monthly_performance').upsert({ 
-                                    store_id: row.storeId, 
-                                    month: row.month, 
-                                    revenue_target: row.revenueTarget, 
-                                    pa_target: row.paTarget, 
-                                    ticket_target: row.ticketTarget, 
-                                    pu_target: row.puTarget, 
-                                    items_target: row.itemsTarget, 
-                                    business_days: row.businessDays,
-                                    growth_target: row.growthTarget,
-                                    reward_value: row.rewardValue
-                                }); 
-                            } 
-                            // AUDITORIA DE ALTERAÇÃO DE METAS
-                            await supabase.from('system_logs').insert([{
-                                userId: user.id,
-                                userName: user.name,
-                                userRole: user.role,
-                                action: 'ALTERACAO_METAS',
-                                details: `Administrador alterou as diretrizes de metas para o período solicitado.`
-                            }]);
-                            fetchData(); 
-                        }} />;
+                        if (currentView === 'metas') return <GoalRegistration stores={stores} performanceData={performanceData} onUpdateData={async (data) => { for(const row of data) { await supabase.from('monthly_performance').upsert({ store_id: row.storeId, month: row.month, revenue_target: row.revenueTarget, pa_target: row.paTarget, ticket_target: row.ticketTarget, pu_target: row.puTarget, items_target: row.itemsTarget, business_days: row.businessDays, growth_target: row.growthTarget, reward_value: row.rewardValue }); } fetchData(); }} />;
                         if (currentView === 'cotas') return <CotasManagement user={user!} stores={stores} cotas={cotas} cotaSettings={cotaSettings} cotaDebts={cotaDebts} performanceData={performanceData} productCategories={quotaCategories} mixParameters={quotaMixParams} onAddCota={async (c) => { await supabase.from('cotas').insert([{ store_id: c.storeId, brand: c.brand, category_id: c.category_id, total_value: c.totalValue, shipment_date: `${c.shipmentDate}-01`, payment_terms: c.paymentTerms, pairs: c.pairs, installments: c.installments, status: 'ABERTA' }]); fetchData(); }} onUpdateCota={async (id, u) => { await supabase.from('cotas').update(u).eq('id', id); fetchData(); }} onDeleteCota={async (id) => { await supabase.from('cotas').delete().eq('id', id); fetchData(); }} onSaveSettings={async (s) => { await supabase.from('cota_settings').upsert({ store_id: s.storeId, budget_value: s.budgetValue, manager_percent: s.managerPercent }, { onConflict: 'store_id' }); fetchData(); }} onSaveDebts={async (d) => { await supabase.from('cota_debts').upsert({ store_id: d.storeId, month: d.month, value: d.value }, { onConflict: 'store_id, month' }); fetchData(); }} onDeleteDebt={async (id) => { await supabase.from('cota_debts').delete().eq('id', id); fetchData(); }} />;
                         if (currentView === 'compras') return <DashboardPurchases user={user!} stores={stores} data={purchasingData} onImport={async (d) => { await supabase.from('product_performance').insert(d.map(x => ({ store_id: x.storeId, month: x.month, brand: x.brand, category: x.category, pairs_sold: x.pairsSold, revenue: x.revenue }))); fetchData(); }} onOpenSpreadsheetModule={() => setCurrentView('spreadsheet_order')} />;
                         if (currentView === 'quebras') return <CashErrorsModule user={user!} stores={stores} store={stores.find(s => s.id === user?.storeId)} errors={cashErrors} onAddError={async (e: any) => { await supabase.from('cash_errors').insert([e]); fetchData(); }} onUpdateError={async (e) => { await supabase.from('cash_errors').update(e).eq('id', e.id); fetchData(); }} onDeleteError={async (id) => { await supabase.from('cash_errors').delete().eq('id', id); fetchData(); }} />;
@@ -245,20 +221,7 @@ const App: React.FC = () => {
                             <IceCreamModule 
                                 user={user!} stores={stores} items={iceCreamItems} sales={iceCreamSales} finances={iceCreamFinances} stock={iceCreamStock} promissories={icPromissories} can={can} 
                                 onAddSales={async (s) => { 
-                                    const { error } = await supabase.from('ice_cream_daily_sales').insert(s.map(x => ({ 
-                                        store_id: x.storeId, 
-                                        item_id: x.itemId, 
-                                        product_name: x.productName, 
-                                        category: x.category, 
-                                        flavor: x.flavor, 
-                                        units_sold: Math.round(x.unitsSold), 
-                                        unit_price: x.unitPrice, 
-                                        total_value: x.totalValue, 
-                                        payment_method: x.paymentMethod, 
-                                        sale_code: x.saleCode, 
-                                        buyer_name: x.buyer_name, 
-                                        status: 'active' 
-                                    })));
+                                    const { error } = await supabase.from('ice_cream_daily_sales').insert(s.map(x => ({ store_id: x.storeId, item_id: x.itemId, product_name: x.productName, category: x.category, flavor: x.flavor, units_sold: Math.round(x.unitsSold), unit_price: x.unitPrice, total_value: x.totalValue, payment_method: x.paymentMethod, sale_code: x.saleCode, buyer_name: x.buyer_name, status: 'active' })));
                                     if (error) throw error;
                                     await fetchData(); 
                                 }} 

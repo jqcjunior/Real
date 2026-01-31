@@ -131,7 +131,6 @@ const IceCreamModule: React.FC<IceCreamModuleProps> = ({
   const filteredItems = useMemo(() => (items ?? []).filter(i => i.storeId === effectiveStoreId), [items, effectiveStoreId]);
   const filteredStock = useMemo(() => (stock ?? []).filter(s => s.store_id === effectiveStoreId).sort((a,b) => a.product_base.localeCompare(b.product_base)), [stock, effectiveStoreId]);
   
-  // Robust day key generation (ISO local)
   const todayDate = new Date();
   const todayKey = `${todayDate.getFullYear()}-${String(todayDate.getMonth() + 1).padStart(2, '0')}-${String(todayDate.getDate()).padStart(2, '0')}`;
   const periodKey = `${selectedYear}-${String(selectedMonth).padStart(2, '0')}`;
@@ -184,7 +183,7 @@ const IceCreamModule: React.FC<IceCreamModuleProps> = ({
 
       const dayOut = dayFinances.filter(f => f.type === 'exit').reduce((a, b) => a + Number(b.value), 0);
 
-      // 4. Resumo Mensal (Fonte Primária: Vendas Operacionais)
+      // 4. Resumo Mensal (Fonte Primária: Vendas Operacionais para os métodos)
       let monthIn = 0;
       const monthMethods = { pix: 0, money: 0, card: 0, fiado: 0 };
 
@@ -209,14 +208,9 @@ const IceCreamModule: React.FC<IceCreamModuleProps> = ({
       const profit = monthIn - monthOut;
 
       return {
-          dayIn, 
-          dayOut, 
-          dayMethods, 
+          dayIn, dayOut, dayMethods, 
           daySales: daySales.sort((a,b) => (b.createdAt || '').localeCompare(a.createdAt || '')),
-          monthMethods, 
-          monthIn, 
-          monthOut, 
-          profit,
+          monthMethods, monthIn, monthOut, profit,
       };
   }, [sales, finances, todayKey, periodKey, effectiveStoreId]);
 
