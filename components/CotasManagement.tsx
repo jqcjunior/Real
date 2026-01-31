@@ -6,7 +6,8 @@ import {
     Plus, Trash2, Building2, Loader2, DollarSign, Calculator, X, Save, 
     History, CheckCircle, BadgeCheck, FileBarChart, Printer, Check,
     LayoutGrid, UserCheck, Briefcase, Layers, TrendingDown, Info, Calendar,
-    AlertTriangle, ArrowUpRight, ArrowDownRight, Target, PieChart, ChevronRight
+    AlertTriangle, ArrowUpRight, ArrowDownRight, Target, PieChart, ChevronRight, Settings,
+    Activity, ArrowRight
 } from 'lucide-react';
 
 const FULL_MONTH_NAMES = ["JANEIRO", "FEVEREIRO", "MARÇO", "ABRIL", "MAIO", "JUNHO", "JULHO", "AGOSTO", "SETEMBRO", "OUTUBRO", "NOVEMBRO", "DEZEMBRO"];
@@ -78,11 +79,12 @@ interface CotasManagementProps {
   onSaveSettings: (settings: CotaSettings) => Promise<void>;
   onSaveDebts: (debt: CotaDebts) => Promise<void>;
   onDeleteDebt: (id: string) => Promise<void>;
+  onUpdateMixParameter?: (id: string | null, category: string, percent: number) => Promise<void>;
 }
 
 export const CotasManagement: React.FC<CotasManagementProps> = ({ 
   user, stores, cotas, cotaSettings, cotaDebts, productCategories = [], mixParameters = [],
-  onAddCota, onUpdateCota, onDeleteCota, onSaveSettings, onSaveDebts, onDeleteDebt
+  onAddCota, onUpdateCota, onDeleteCota, onSaveSettings, onSaveDebts, onDeleteDebt, onUpdateMixParameter
 }) => {
   const timeline = useMemo(() => generateTimeline(), []);
   const isAdmin = user.role === UserRole.ADMIN;
@@ -92,6 +94,7 @@ export const CotasManagement: React.FC<CotasManagementProps> = ({
 
   const [activeForm, setActiveForm] = useState<'order' | 'expense' | 'cota_config' | 'validated_orders' | 'mix_view' | null>(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const [isEditingMix, setIsEditingMix] = useState(false);
 
   // Form states
   const [brand, setBrand] = useState('');
@@ -302,9 +305,57 @@ export const CotasManagement: React.FC<CotasManagementProps> = ({
       return groups;
   }, [productCategories]);
 
+  // Dados consolidados do Mix para o Modal Hierárquico - CORREÇÃO DA SOMA DE PEDIDOS
+  const mixHierarchyData = useMemo(() => {
+      const budget = Number(storeSettings?.budgetValue || 0);
+      const segments = ['FEMININO', 'MASCULINO', 'INFANTIL', 'ACESSÓRIO'];
+      
+      return segments.map(segName => {
+          const subCats = (productCategories || []).filter(c => c.parent_category === segName);
+          let segMetaPercentTotal = 0;
+          let segUtilizedValueTotal = 0;
+
+          const details = subCats.map(cat => {
+              const param = mixParameters.find(m => m.category_name === cat.category_name);
+              const metaPercent = param?.percentage || 0;
+              
+              // FIX: Busca precisa de pedidos cadastrados para esta categoria na loja atual
+              const utilizedValue = cotas
+                .filter(o => o.storeId === viewStoreId && (o.category_id === cat.id || o.category_name === cat.category_name || o.classification === cat.category_name))
+                .reduce((acc, curr) => acc + Number(curr.totalValue || 0), 0);
+              
+              segMetaPercentTotal += metaPercent;
+              segUtilizedValueTotal += utilizedValue;
+
+              return {
+                  id: cat.id,
+                  category_name: cat.category_name,
+                  metaPercent,
+                  utilizedValue,
+                  utilizedPercent: budget > 0 ? (utilizedValue / budget) * 100 : 0
+              };
+          });
+
+          return {
+              segment: segName,
+              metaPercent: segMetaPercentTotal,
+              utilizedValue: segUtilizedValueTotal,
+              utilizedPercent: budget > 0 ? (segUtilizedValueTotal / budget) * 100 : 0,
+              subcategories: details
+          };
+      });
+  }, [productCategories, mixParameters, cotas, viewStoreId, storeSettings]);
+
+  const handleUpdateMix = async (category: string, value: string) => {
+      if (!onUpdateMixParameter) return;
+      const percent = parseFloat(value.replace(',', '.')) || 0;
+      const existing = mixParameters.find(p => p.category_name === category);
+      await onUpdateMixParameter(existing?.id || null, category, percent);
+  };
+
   return (
     <div className="flex flex-col h-screen bg-[#f3f4f6] overflow-hidden text-blue-950 font-sans">
-        {/* TOP BAR - RESTAURADO */}
+        {/* TOP BAR */}
         <div className="bg-white px-8 py-4 flex flex-col md:flex-row justify-between items-center gap-4 z-50 shadow-sm border-b shrink-0">
             <div className="flex items-center gap-3">
                 <div className="bg-blue-900 text-white p-2.5 rounded-xl shadow-lg shrink-0"><Building2 size={24}/></div>
@@ -321,7 +372,7 @@ export const CotasManagement: React.FC<CotasManagementProps> = ({
                     </div>
                 </div>
             </div>
-            {/* BOTÕES DE AÇÕES RESTAURADOS */}
+            
             <div className="flex flex-wrap gap-2">
                 <button onClick={() => { setSelectedStoresForOrder([viewStoreId]); setActiveForm('order'); }} className="bg-blue-900 text-white px-5 py-2.5 rounded-lg font-black uppercase text-[10px] shadow-md hover:bg-black transition-all flex items-center gap-2 border-b-4 border-blue-950"><Plus size={14}/> Novo Pedido</button>
                 <button onClick={() => setActiveForm('validated_orders')} className="bg-green-600 text-white px-5 py-2.5 rounded-lg font-black uppercase text-[10px] shadow-md hover:bg-green-700 transition-all flex items-center gap-2 border-b-4 border-green-800"><BadgeCheck size={14}/> Pedidos Validados</button>
@@ -331,7 +382,7 @@ export const CotasManagement: React.FC<CotasManagementProps> = ({
             </div>
         </div>
 
-        {/* TIMELINE TABLE - CORRIGIDO MAPEAMENTO */}
+        {/* TIMELINE TABLE */}
         <div className="flex-1 overflow-auto bg-white border-t border-gray-100">
             <table className="w-full text-center border-separate border-spacing-0 table-fixed min-w-[1800px]">
                 <thead className="sticky top-0 z-40">
@@ -342,7 +393,6 @@ export const CotasManagement: React.FC<CotasManagementProps> = ({
                     </tr>
                 </thead>
                 <tbody className="text-[11px] font-bold uppercase">
-                    {/* LINHA DE SALDO FINAL */}
                     <tr className="bg-yellow-400 border-b border-yellow-500 h-12">
                         <td className="px-4 py-2 text-left sticky left-0 bg-yellow-400 z-30 font-black text-blue-900 shadow-sm">SALDO COTA ATUAL</td>
                         <td className="font-black italic text-blue-900 sticky left-[224px] bg-yellow-400 z-30">LÍQUIDO</td>
@@ -353,7 +403,6 @@ export const CotasManagement: React.FC<CotasManagementProps> = ({
                         ))}
                     </tr>
 
-                    {/* LINHA DE GASTOS FIXOS */}
                     <tr className="bg-gray-50/50 border-b h-11">
                         <td className="px-4 text-left sticky left-0 bg-[#f9fafb] z-30 font-black text-red-600">GASTOS FIXOS / DEBTS</td>
                         <td className="font-black italic text-red-600 sticky left-[224px] bg-[#f9fafb] z-30">{formatCurrency(consolidated.totalDebtsGlobal)}</td>
@@ -384,7 +433,6 @@ export const CotasManagement: React.FC<CotasManagementProps> = ({
                         ))}
                     </tr>
 
-                    {/* SEÇÃO AGUARDANDO VALIDAÇÃO */}
                     <tr className="bg-gray-100 border-b border-gray-200 h-10">
                         <td className="px-4 text-left sticky left-0 bg-gray-100 z-30 font-black text-gray-500 italic text-[9px] tracking-widest">
                             AGUARDANDO VALIDAÇÃO
@@ -397,7 +445,6 @@ export const CotasManagement: React.FC<CotasManagementProps> = ({
                         ))}
                     </tr>
 
-                    {/* GRID DE PEDIDOS ABERTOS - CORRIGIDO CORES E DADOS */}
                     {consolidated.orders.filter(o => o.status === 'ABERTA' || o.status === 'pending').map(order => {
                         const role = String(order.createdByRole || '').toUpperCase();
                         const isManagerOrder = role === 'GERENTE';
@@ -408,14 +455,13 @@ export const CotasManagement: React.FC<CotasManagementProps> = ({
                             <tr key={order.id} className="hover:bg-blue-50/50 transition-colors border-b group h-16">
                                 <td className="px-4 text-left sticky left-0 bg-white group-hover:bg-blue-50/50 z-30 shadow-sm">
                                     <div className="flex items-center gap-3">
-                                        {/* BOLINHA DE COR POR PERFIL */}
                                         <div className={`w-3 h-3 rounded-full shrink-0 ${isManagerOrder ? 'bg-orange-500 shadow-orange-200' : 'bg-blue-600 shadow-blue-200'} shadow-md`}></div>
                                         <div className="flex-1 min-w-0">
                                             <div className={`text-sm font-black uppercase italic leading-none mb-1 truncate ${isManagerOrder ? 'text-orange-700' : 'text-blue-800'}`}>{order.brand}</div>
                                             <div className="text-[9px] text-gray-900 font-bold uppercase leading-none mb-0.5">
                                                 {order.classification || order.category_name || 'GERAL'}
                                             </div>
-                                            <div className="text-[8px] text-gray-400 font-bold uppercase italic">
+                                            <div className="text-[8px] font-bold text-gray-400 uppercase italic">
                                                 | {order.pairs || 0} {qtyType}
                                             </div>
                                         </div>
@@ -427,9 +473,7 @@ export const CotasManagement: React.FC<CotasManagementProps> = ({
                                 </td>
                                 <td className="bg-white sticky left-[224px] z-30 group-hover:bg-blue-50/50 shadow-sm">
                                     <div className="flex flex-col items-center justify-center h-full">
-                                        {/* MÊS DE EMBARQUE RESTAURADO */}
                                         <div className="text-[9px] font-black text-blue-600 uppercase tracking-tighter mb-0.5">EMB: {getMonthNameFromKey(order.shipmentDate)}</div>
-                                        {/* VALOR TOTAL RESTAURADO */}
                                         <div className="text-[10px] font-black text-gray-900 italic">{formatCurrency(order.totalValue)}</div>
                                     </div>
                                 </td>
@@ -444,7 +488,131 @@ export const CotasManagement: React.FC<CotasManagementProps> = ({
             </table>
         </div>
 
-        {/* MODAL: NOVO PEDIDO */}
+        {/* MODAL: MIX DE PRODUTOS - PAINEL HIERÁRQUICO SOLICITADO */}
+        {activeForm === 'mix_view' && (
+            <div className="fixed inset-0 bg-black/80 backdrop-blur-md flex items-center justify-center z-[100] p-4">
+                <div className="bg-[#f8fafc] rounded-[48px] w-full max-w-7xl shadow-2xl animate-in zoom-in duration-300 overflow-hidden border-t-8 border-purple-600 max-h-[95vh] flex flex-col">
+                    
+                    {/* Header do Modal */}
+                    <div className="p-8 border-b bg-white flex justify-between items-center shrink-0">
+                        <div>
+                            <h3 className="text-2xl font-black uppercase italic text-blue-950 flex items-center gap-3">
+                                <Activity className="text-purple-600" /> Dashboard <span className="text-purple-600">de Mix Proporcional</span>
+                            </h3>
+                            <p className="text-gray-400 text-[10px] font-black uppercase tracking-widest mt-1">Definição estratégica de metas por segmento e atingimento real (Pedidos do Banco)</p>
+                        </div>
+                        <div className="flex items-center gap-2">
+                             {isAdmin && (
+                                <button onClick={() => setIsEditingMix(!isEditingMix)} className={`p-4 rounded-2xl transition-all shadow-md ${isEditingMix ? 'bg-purple-600 text-white' : 'bg-white text-purple-600 border border-purple-100 hover:bg-purple-50'}`}>
+                                    {isEditingMix ? <Save size={24} /> : <Settings size={24} />}
+                                </button>
+                             )}
+                             <button onClick={() => { setActiveForm(null); setIsEditingMix(false); }} className="p-4 bg-gray-100 text-gray-400 hover:text-red-600 rounded-2xl transition-all"><X size={24}/></button>
+                        </div>
+                    </div>
+
+                    <div className="flex-1 overflow-y-auto p-8 space-y-12 no-scrollbar">
+                        
+                        {/* PAINEL SUPERIOR: SEGMENTOS PRINCIPAIS (AGREGADO) */}
+                        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-6">
+                            {mixHierarchyData.map(seg => (
+                                <div key={seg.segment} className="bg-white p-6 rounded-[36px] shadow-sm border border-gray-100 flex flex-col justify-between group hover:border-purple-300 transition-all">
+                                    <div className="flex justify-between items-start mb-4">
+                                        <div className="p-3 bg-purple-50 text-purple-600 rounded-2xl group-hover:scale-110 transition-transform"><Layers size={20}/></div>
+                                        <div className="text-right">
+                                            <p className="text-[10px] font-black text-gray-400 uppercase tracking-widest leading-none mb-1">Meta Segmento</p>
+                                            <span className="text-xl font-black text-purple-600 italic tracking-tighter">{seg.metaPercent.toFixed(1)}%</span>
+                                        </div>
+                                    </div>
+                                    <div>
+                                        <h4 className="text-sm font-black text-blue-950 uppercase italic tracking-tighter mb-3">{seg.segment}</h4>
+                                        <div className="space-y-1.5">
+                                            <div className="flex justify-between items-end">
+                                                <span className="text-[9px] font-black text-gray-400 uppercase">Utilizado: {formatCurrency(seg.utilizedValue)}</span>
+                                                <span className={`text-[10px] font-black italic ${seg.utilizedPercent > seg.metaPercent ? 'text-red-600' : 'text-green-600'}`}>{seg.utilizedPercent.toFixed(1)}%</span>
+                                            </div>
+                                            <div className="w-full bg-gray-100 rounded-full h-2 overflow-hidden shadow-inner">
+                                                <div 
+                                                    className={`h-full rounded-full transition-all duration-1000 ${seg.utilizedPercent > seg.metaPercent ? 'bg-red-500' : 'bg-purple-600'}`} 
+                                                    style={{width: `${Math.min((seg.utilizedPercent / Math.max(seg.metaPercent, 1)) * 100, 100)}%`}}
+                                                />
+                                            </div>
+                                        </div>
+                                    </div>
+                                </div>
+                            ))}
+                        </div>
+
+                        {/* PAINEL INFERIOR: DETALHAMENTO DE SUB-CATEGORIAS */}
+                        <div className="space-y-10">
+                            <h3 className="text-xs font-black text-gray-400 uppercase tracking-[0.3em] flex items-center gap-3 ml-4">
+                                <Plus size={14} className="text-purple-600"/> Detalhamento das Metas de Mix (Categorias Individuais)
+                            </h3>
+                            
+                            <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
+                                {mixHierarchyData.map(seg => (
+                                    <div key={seg.segment} className="bg-white rounded-[40px] shadow-lg border border-gray-100 overflow-hidden flex flex-col">
+                                        <div className="p-6 bg-gray-950 text-white flex justify-between items-center">
+                                            <h4 className="font-black uppercase italic tracking-widest text-xs flex items-center gap-3">
+                                                <div className="w-1 h-6 bg-purple-500 rounded-full"></div>
+                                                {seg.segment} <span className="text-[9px] not-italic text-gray-500 font-bold ml-2">({seg.subcategories.length} CATEGORIAS)</span>
+                                            </h4>
+                                            <span className="text-[10px] font-black text-purple-400 uppercase tracking-widest">Soma Meta: {seg.metaPercent.toFixed(1)}%</span>
+                                        </div>
+                                        <div className="p-6 space-y-3">
+                                            {seg.subcategories.map(sub => (
+                                                <div key={sub.id} className="flex items-center gap-4 p-4 bg-gray-50 rounded-2xl border border-transparent hover:border-purple-100 group transition-all">
+                                                    <div className="flex-1">
+                                                        <p className="text-[10px] font-black text-blue-950 uppercase italic leading-none mb-1">{sub.category_name}</p>
+                                                        <p className="text-[8px] font-bold text-gray-400 uppercase tracking-widest">Atingimento: {formatCurrency(sub.utilizedValue)}</p>
+                                                    </div>
+                                                    <div className="flex items-center gap-6">
+                                                        <div className="text-right">
+                                                            <p className="text-[8px] font-black text-gray-400 uppercase leading-none mb-1">Atingido</p>
+                                                            <span className="text-xs font-black text-blue-900 italic">{sub.utilizedPercent.toFixed(1)}%</span>
+                                                        </div>
+                                                        <div className="w-px h-6 bg-gray-200"></div>
+                                                        <div className="w-24">
+                                                            <p className="text-[8px] font-black text-purple-600 uppercase leading-none mb-1">Meta Mix</p>
+                                                            {isEditingMix ? (
+                                                                <div className="flex items-center gap-1">
+                                                                    <input 
+                                                                        type="text" 
+                                                                        defaultValue={sub.metaPercent}
+                                                                        key={`${sub.id}-${sub.metaPercent}`}
+                                                                        onBlur={(e) => handleUpdateMix(sub.category_name, e.target.value)}
+                                                                        className="w-full p-1.5 bg-white border border-purple-200 rounded-lg text-center text-xs font-black text-purple-600 outline-none focus:ring-4 focus:ring-purple-50"
+                                                                    />
+                                                                    <span className="text-[9px] font-black text-purple-300">%</span>
+                                                                </div>
+                                                            ) : (
+                                                                <span className="text-sm font-black text-purple-600 italic">{sub.metaPercent.toFixed(1)}%</span>
+                                                            )}
+                                                        </div>
+                                                    </div>
+                                                </div>
+                                            ))}
+                                        </div>
+                                    </div>
+                                ))}
+                            </div>
+                        </div>
+                    </div>
+
+                    {isEditingMix && (
+                        <div className="p-6 bg-purple-600 text-white flex items-center justify-center gap-4 animate-in slide-in-from-bottom duration-300">
+                            <AlertTriangle size={24} />
+                            <p className="text-[11px] font-black uppercase tracking-widest text-center leading-relaxed">
+                                Modo de Configuração Ativo: A meta do Segmento superior será atualizada automaticamente ao salvar as subcategorias.
+                                <br/><span className="text-[9px] opacity-70 italic font-bold">Os dados são persistidos no banco de dados corporativo.</span>
+                            </p>
+                        </div>
+                    )}
+                </div>
+            </div>
+        )}
+
+        {/* RESTANTE DOS MODAIS (Order, Expense, Config, Validated) - MANTIDOS */}
         {activeForm === 'order' && (
             <div className="fixed inset-0 bg-black/80 backdrop-blur-md flex items-center justify-center z-[100] p-4">
                 <div className="bg-white rounded-[40px] w-full max-w-2xl shadow-2xl animate-in zoom-in duration-300 overflow-hidden border-t-8 border-blue-900">
@@ -462,7 +630,6 @@ export const CotasManagement: React.FC<CotasManagementProps> = ({
                                 <label className="text-[10px] font-black text-gray-400 uppercase ml-2">Classificação</label>
                                 <select required value={selectedCategoryId} onChange={e => setSelectedCategoryId(e.target.value)} className="w-full p-4 bg-gray-50 rounded-2xl font-black text-gray-900 uppercase outline-none cursor-pointer">
                                     <option value="">SELECIONE...</option>
-                                    {/* Fix: Explicitly casting Object.entries to resolve 'unknown' type inference on 'cats' array */}
                                     {(Object.entries(groupedCategories) as [string, QuotaCategory[]][]).map(([parent, cats]) => (
                                         <optgroup key={parent} label={parent}>
                                             {cats.map(c => <option key={c.id} value={c.id}>{c.category_name}</option>)}
@@ -522,7 +689,6 @@ export const CotasManagement: React.FC<CotasManagementProps> = ({
             </div>
         )}
 
-        {/* MODAL: LANÇAR DESPESA */}
         {activeForm === 'expense' && (
             <div className="fixed inset-0 bg-black/80 backdrop-blur-md flex items-center justify-center z-[100] p-4">
                 <div className="bg-white rounded-[40px] w-full max-w-xl shadow-2xl animate-in zoom-in duration-300 overflow-hidden border-t-8 border-orange-600 max-h-[90vh] flex flex-col">
@@ -560,7 +726,6 @@ export const CotasManagement: React.FC<CotasManagementProps> = ({
             </div>
         )}
 
-        {/* MODAL: DEFINIR COTA */}
         {activeForm === 'cota_config' && (
             <div className="fixed inset-0 bg-black/80 backdrop-blur-md flex items-center justify-center z-[100] p-4">
                 <div className="bg-white rounded-[40px] w-full max-w-md shadow-2xl animate-in zoom-in duration-300 overflow-hidden border-t-8 border-yellow-500">
@@ -580,10 +745,6 @@ export const CotasManagement: React.FC<CotasManagementProps> = ({
                             <label className="text-[10px] font-black text-gray-400 uppercase ml-2">Participação Gerência (%)</label>
                             <input required value={managerPct} onChange={e => setManagerPct(e.target.value)} className="w-full p-5 bg-gray-50 rounded-[28px] font-black text-gray-900 text-2xl shadow-inner outline-none text-center" placeholder="20" />
                         </div>
-                        <div className="p-5 bg-yellow-50 rounded-2xl border border-yellow-100 flex items-start gap-3">
-                            <Info className="text-yellow-600 shrink-0" size={18} />
-                            <p className="text-[9px] font-bold text-yellow-800 leading-relaxed uppercase">Este valor define o limite bruto disponível para compras em cada mês da timeline.</p>
-                        </div>
                         <button type="submit" disabled={isSubmitting} className="w-full py-5 bg-yellow-500 text-blue-950 rounded-[28px] font-black uppercase text-xs shadow-xl active:scale-95 transition-all border-b-4 border-yellow-700 flex items-center justify-center gap-3">
                             {isSubmitting ? <Loader2 className="animate-spin" /> : <Save size={18}/>} EFETIVAR CONFIGURAÇÃO
                         </button>
@@ -592,7 +753,6 @@ export const CotasManagement: React.FC<CotasManagementProps> = ({
             </div>
         )}
 
-        {/* MODAL: PEDIDOS VALIDADOS */}
         {activeForm === 'validated_orders' && (
             <div className="fixed inset-0 bg-black/80 backdrop-blur-md flex items-center justify-center z-[100] p-4">
                 <div className="bg-white rounded-[48px] w-full max-w-4xl shadow-2xl animate-in zoom-in duration-300 overflow-hidden border-t-8 border-green-600 max-h-[90vh] flex flex-col">
@@ -635,67 +795,6 @@ export const CotasManagement: React.FC<CotasManagementProps> = ({
                                 ))}
                             </tbody>
                         </table>
-                    </div>
-                </div>
-            </div>
-        )}
-
-        {/* MODAL: MIX DE PRODUTOS */}
-        {activeForm === 'mix_view' && (
-            <div className="fixed inset-0 bg-black/80 backdrop-blur-md flex items-center justify-center z-[100] p-4">
-                <div className="bg-white rounded-[48px] w-full max-w-4xl shadow-2xl animate-in zoom-in duration-300 overflow-hidden border-t-8 border-purple-600 max-h-[90vh] flex flex-col">
-                    <div className="p-8 border-b bg-gray-50/50 flex justify-between items-center">
-                        <div>
-                            <h3 className="text-2xl font-black uppercase italic text-blue-950 flex items-center gap-3"><FileBarChart className="text-purple-600" /> Parâmetros <span className="text-purple-600">de Mix</span></h3>
-                            <p className="text-gray-400 text-[10px] font-black uppercase tracking-widest mt-1">Sugestão de compra ideal baseada em performance</p>
-                        </div>
-                        <button onClick={() => setActiveForm(null)} className="text-gray-400 hover:text-red-600 transition-all"><X size={24}/></button>
-                    </div>
-                    <div className="flex-1 overflow-y-auto no-scrollbar p-10">
-                        <div className="grid grid-cols-1 md:grid-cols-2 gap-12">
-                             <div className="space-y-6">
-                                <h4 className="text-[10px] font-black text-purple-600 uppercase tracking-[0.2em] flex items-center gap-3"><PieChart size={16}/> Composição Proporcional</h4>
-                                <div className="space-y-4">
-                                    {mixParameters.map(p => {
-                                        const budget = Number(storeSettings?.budgetValue || 0);
-                                        const share = (budget * p.percentage) / 100;
-                                        return (
-                                            <div key={p.id} className="bg-gray-50 p-6 rounded-[32px] border border-gray-100 shadow-sm">
-                                                <div className="flex justify-between items-center mb-2">
-                                                    <span className="text-[11px] font-black text-gray-900 uppercase italic">{p.category_name}</span>
-                                                    <span className="text-xs font-black text-purple-600">{p.percentage}%</span>
-                                                </div>
-                                                <div className="w-full bg-white rounded-full h-1.5 overflow-hidden shadow-inner mb-3">
-                                                    <div className="bg-purple-600 h-full rounded-full" style={{width: `${p.percentage}%`}}></div>
-                                                </div>
-                                                <div className="flex justify-between items-baseline">
-                                                    <span className="text-[8px] font-black text-gray-400 uppercase">Potencial de Compra</span>
-                                                    <span className="text-sm font-black text-blue-950 italic">{formatCurrency(share)}</span>
-                                                </div>
-                                            </div>
-                                        );
-                                    })}
-                                </div>
-                             </div>
-
-                             <div className="space-y-6">
-                                <h4 className="text-[10px] font-black text-blue-900 uppercase tracking-[0.2em] flex items-center gap-3"><Layers size={16}/> Classificações de Compra</h4>
-                                <div className="grid grid-cols-1 gap-3">
-                                    {productCategories.slice(0, 10).map(cat => (
-                                        <div key={cat.id} className="flex justify-between items-center p-4 bg-white border-2 border-gray-50 rounded-2xl group hover:border-blue-100 transition-all">
-                                            <div className="flex items-center gap-4">
-                                                <div className="w-1 h-6 bg-blue-900 rounded-full group-hover:scale-y-125 transition-transform"></div>
-                                                <div>
-                                                    <p className="text-[10px] font-black text-blue-950 uppercase italic leading-none">{cat.category_name}</p>
-                                                    <p className="text-[8px] font-bold text-gray-400 uppercase mt-1">{cat.parent_category}</p>
-                                                </div>
-                                            </div>
-                                            <ChevronRight className="text-gray-200 group-hover:text-blue-600 transition-colors" size={16}/>
-                                        </div>
-                                    ))}
-                                </div>
-                             </div>
-                        </div>
                     </div>
                 </div>
             </div>

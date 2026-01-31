@@ -94,8 +94,7 @@ const PDVMobileView: React.FC<PDVMobileViewProps> = (props) => {
   }, [amountPaid, cartTotal]);
 
   const handleFinalize = async () => {
-    if (props.cart.length === 0) return;
-    if (!props.paymentMethod) { alert("Escolha o pagamento."); return; }
+    if (props.cart.length === 0 || !props.paymentMethod) return;
 
     const isMisto = props.paymentMethod === 'Misto';
     const splitData = isMisto ? Object.entries(props.mistoValues).map(([method, val]) => ({
@@ -105,61 +104,66 @@ const PDVMobileView: React.FC<PDVMobileViewProps> = (props) => {
 
     const totalInformed = splitData.reduce((a, b) => a + b.amount, 0);
     if (isMisto && Math.abs(totalInformed - cartTotal) > 0.05) {
-        alert(`O total informado (${formatCurrency(totalInformed)}) difere do total do carrinho (${formatCurrency(cartTotal)})`);
+        alert(`Total divergente.`);
         return;
     }
 
     if (splitData.some(p => p.method === 'Fiado') && !props.buyerName) {
-        alert("Nome do funcionário obrigatório.");
+        alert("Funcionário obrigatório.");
         return;
     }
 
     props.setIsSubmitting(true);
+    const saleCode = `GEL-M${Date.now().toString().slice(-5)}`;
+    
     try {
-        const saleCode = `GEL-M${Date.now().toString().slice(-5)}`;
-        let finalCart: IceCreamDailySale[] = [];
+        // 1. REGISTRO OPERACIONAL: Itens com unidades INTEIRAS
+        const operationalSales = props.cart.map(item => ({
+            ...item,
+            // Fix: Explicitly cast paymentMethod and status to avoid string widening and align with IceCreamDailySale interface.
+            paymentMethod: (isMisto ? 'Misto' : props.paymentMethod) as IceCreamPaymentMethod,
+            buyer_name: (props.paymentMethod === 'Fiado' || (isMisto && props.mistoValues['Fiado'])) ? props.buyerName.toUpperCase() : undefined,
+            saleCode,
+            unitsSold: Math.round(item.unitsSold), // GARANTIA DE INTEIRO
+            status: 'active' as const
+        }));
 
-        splitData.forEach(payment => {
-            const ratio = payment.amount / cartTotal;
-            props.cart.forEach(item => {
-                finalCart.push({ 
-                    ...item, 
-                    id: `save-mob-${Math.random()}`,
-                    paymentMethod: payment.method, 
-                    buyer_name: payment.method === 'Fiado' ? props.buyerName.toUpperCase() : undefined,
-                    saleCode,
-                    unitsSold: item.unitsSold * ratio,
-                    totalValue: item.totalValue * ratio
-                });
-            });
-        });
+        // 2. REGISTRO FINANCEIRO: Rateio real disparado individualmente para o DRE
+        const financialPromises = splitData.map(payment => 
+            props.onAddTransaction({
+                id: '0',
+                storeId: props.effectiveStoreId,
+                date: new Date().toLocaleDateString('en-CA'),
+                type: 'entry',
+                category: 'RECEITA DE VENDA PDV',
+                value: payment.amount,
+                description: `Pagamento via ${payment.method} - Ref. ${saleCode}`,
+                createdAt: new Date()
+            })
+        );
 
-        await props.onAddSales(finalCart);
+        // Processamento paralelo para agilizar conclusão
+        await Promise.all([
+            props.onAddSales(operationalSales),
+            ...financialPromises
+        ]);
 
-        // BAIXA DE ESTOQUE AUTOMÁTICA MOBILE
+        // Baixa de estoque paralela
         for (const c of props.cart) {
             const itemDef = props.items.find(it => it.id === c.itemId);
-            if (itemDef?.recipe && itemDef.recipe.length > 0) {
+            if (itemDef?.recipe) {
                 for (const ingredient of itemDef.recipe) {
-                    const qtyToDeduct = ingredient.quantity * c.unitsSold;
-                    await props.onUpdateStock(props.effectiveStoreId, ingredient.stock_base_name, -qtyToDeduct, '', 'adjustment');
+                    props.onUpdateStock(props.effectiveStoreId, ingredient.stock_base_name, -(ingredient.quantity * c.unitsSold), '', 'adjustment');
                 }
             }
         }
 
-        props.handlePrintTicket(finalCart, saleCode, splitData.some(p => p.method === 'Fiado'), props.buyerName);
-        props.setCart([]); 
-        props.setPaymentMethod(null);
-        props.setBuyerName('');
-        setAmountPaid('');
+        // Limpeza instantânea da interface
+        props.setCart([]); props.setPaymentMethod(null); props.setBuyerName(''); setAmountPaid('');
         props.setMistoValues({ 'Pix': '', 'Dinheiro': '', 'Cartão': '' });
         setStep('categories');
-    } catch (e: any) { 
-        console.error("Erro ao finalizar venda mobile:", e);
-        alert(`FALHA NA GRAVAÇÃO: ${e.message}`); 
-    } finally { 
-        props.setIsSubmitting(false); 
-    }
+        alert("Venda registrada!");
+    } catch (e) { alert("Erro ao finalizar."); } finally { props.setIsSubmitting(false); }
   };
 
   return (
@@ -296,7 +300,7 @@ const PDVMobileView: React.FC<PDVMobileViewProps> = (props) => {
               <button 
                 onClick={handleFinalize} 
                 disabled={props.isSubmitting || !props.paymentMethod} 
-                className="w-full py-5 bg-red-600 hover:bg-red-700 disabled:bg-gray-200 disabled:text-gray-400 text-white rounded-[24px] font-black uppercase text-xs shadow-2xl flex items-center justify-center gap-3 transition-all active:scale-95 border-b-4 border-red-900"
+                className="w-full py-5 bg-red-600 hover:bg-red-700 disabled:bg-gray-300 disabled:text-gray-400 text-white rounded-[24px] font-black uppercase text-xs shadow-2xl flex items-center justify-center gap-3 transition-all active:scale-95 border-b-4 border-red-900"
               >
                   {props.isSubmitting ? <Loader2 className="animate-spin" size={20}/> : <CheckCircle2 size={20}/>}
                   Registrar Venda

@@ -116,7 +116,7 @@ const DashboardAdmin: React.FC<DashboardAdminProps> = ({ stores, performanceData
             if (rowStr.includes('loja') || rowStr.includes('filial')) { headerIdx = i; break; }
         }
 
-        if (headerIdx === -1) throw new Error("Cabeçalho não identificado.");
+        if (headerIdx === -1) throw new Error("Cabeçalho não identificado na planilha.");
 
         const headerRow = jsonData[headerIdx].map(h => String(h || '').toLowerCase().trim());
         const findCol = (keys: string[]) => headerRow.findIndex(h => keys.some(k => h.includes(k)));
@@ -125,7 +125,7 @@ const DashboardAdmin: React.FC<DashboardAdminProps> = ({ stores, performanceData
         const idxRevenue = findCol(['faturamento', 'venda', 'fat']);
         const idxItems = findCol(['itens', 'qtd', 'pares']);
         const idxPA = findCol(['pa', 'peças', 'atend']);
-        const idxPU = findCol(['pu', 'preço unitário', 'preço médio']);
+        const idxPU = findCol(['pu', 'preço unitário', 'preço médio', 'médio']);
         const idxTicket = findCol(['ticket', 'médio']);
         const idxInadimp = findCol(['inadimp', 'atraso']);
 
@@ -140,9 +140,20 @@ const DashboardAdmin: React.FC<DashboardAdminProps> = ({ stores, performanceData
             const targetStore = stores.find(s => s.number === storeNum);
 
             if (targetStore) {
+                // FIX: Limpeza aprimorada de strings para números decimais
                 const cleanNum = (val: any) => {
                     if (val === undefined || val === null || val === '') return 0;
-                    const str = String(val).replace('R$', '').replace('%', '').replace(/\./g, '').replace(',', '.').trim();
+                    // Remove símbolos de moeda, porcentagem e espaços
+                    let str = String(val).replace(/R\$|\s|%/g, '');
+                    
+                    // Lógica para tratar separadores de milhar e decimal
+                    // Se houver vírgula, assumimos formato PT-BR
+                    if (str.includes(',') && str.includes('.')) {
+                        str = str.replace(/\./g, '').replace(',', '.'); // Remove milhar(.) e muda decimal(,) para (.)
+                    } else if (str.includes(',')) {
+                        str = str.replace(',', '.'); // Apenas troca decimal(,) para (.)
+                    }
+                    
                     const num = parseFloat(str);
                     return isNaN(num) ? 0 : num;
                 };
@@ -167,7 +178,7 @@ const DashboardAdmin: React.FC<DashboardAdminProps> = ({ stores, performanceData
                     delinquencyRate: cleanNum(row[idxInadimp]),
                     delinquencyTarget: existing?.delinquencyTarget || 2.0,
                     percentMeta: revenueTarget > 0 ? (revenueActual / revenueTarget) * 100 : 0,
-                    trend: 'stable',
+                    trend: existing?.trend || 'stable',
                     correctedDailyGoal: 0
                 });
             }
@@ -177,7 +188,9 @@ const DashboardAdmin: React.FC<DashboardAdminProps> = ({ stores, performanceData
             await onImportData(parsedData);
             setShowImportModal(false);
             setSelectedFile(null);
-            alert("Dados confrontados com sucesso!");
+            alert(`Confronto finalizado! ${parsedData.length} unidades processadas.`);
+        } else {
+            alert("Nenhuma correspondência de loja encontrada na planilha.");
         }
     } catch (err: any) {
         alert("Erro ao processar: " + err.message);
@@ -188,7 +201,6 @@ const DashboardAdmin: React.FC<DashboardAdminProps> = ({ stores, performanceData
 
   return (
     <div className="p-4 md:p-8 space-y-8 animate-in fade-in duration-700 pb-20">
-       
        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
            <div className="bg-white p-6 rounded-[32px] shadow-sm border border-gray-100 flex flex-col justify-between group hover:border-blue-200 transition-all">
                <div className="flex justify-between items-start mb-4">
@@ -204,7 +216,6 @@ const DashboardAdmin: React.FC<DashboardAdminProps> = ({ stores, performanceData
                    </div>
                </div>
            </div>
-
            <div className="bg-white p-6 rounded-[32px] shadow-sm border border-gray-100 flex flex-col justify-between">
                <div className="flex justify-between items-start mb-4">
                     <div className="p-3 bg-red-50 text-red-600 rounded-2xl"><Target size={20}/></div>
@@ -215,7 +226,6 @@ const DashboardAdmin: React.FC<DashboardAdminProps> = ({ stores, performanceData
                    <p className="text-[9px] font-black text-red-500 mt-2 uppercase">Falta: {formatCurrency(Math.max(0, networkStats.diff))}</p>
                </div>
            </div>
-
            <div className="bg-white p-6 rounded-[32px] shadow-sm border border-gray-100 flex flex-col justify-between">
                <div className="flex justify-between items-start mb-4">
                     <div className="p-3 bg-green-50 text-green-600 rounded-2xl"><Users size={20}/></div>
@@ -226,7 +236,6 @@ const DashboardAdmin: React.FC<DashboardAdminProps> = ({ stores, performanceData
                    <p className="text-[9px] font-black text-green-500 mt-2 uppercase tracking-widest">Rede em Operação</p>
                </div>
            </div>
-
            <div className="bg-gray-900 p-6 rounded-[32px] shadow-xl flex flex-col justify-between text-white border-t-4 border-blue-500">
                <div className="flex justify-between items-start mb-4">
                     <div className="p-3 bg-white/10 text-blue-400 rounded-2xl"><Zap size={20}/></div>
@@ -247,23 +256,14 @@ const DashboardAdmin: React.FC<DashboardAdminProps> = ({ stores, performanceData
             </h2>
             <p className="text-gray-400 font-bold uppercase text-[10px] tracking-[0.3em] mt-3 ml-1">Análise de Performance Meta x Real</p>
           </div>
-
           <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-3 w-full lg:w-auto">
              <div className="flex items-center gap-2 bg-gray-50 p-2 rounded-2xl border border-gray-200 shadow-inner">
                 <Calendar className="text-blue-600 ml-2" size={18} />
-                <select 
-                    value={parseInt(selectedMonth.split('-')[1])} 
-                    onChange={(e) => handleMonthYearChange('month', parseInt(e.target.value))} 
-                    className="bg-transparent text-gray-800 font-black outline-none cursor-pointer px-2 uppercase text-xs"
-                >
+                <select value={parseInt(selectedMonth.split('-')[1])} onChange={(e) => handleMonthYearChange('month', parseInt(e.target.value))} className="bg-transparent text-gray-800 font-black outline-none cursor-pointer px-2 uppercase text-xs">
                     {MONTHS.map(m => <option key={m.value} value={m.value}>{m.label}</option>)}
                 </select>
                 <div className="w-px h-6 bg-gray-300 mx-1"></div>
-                <select 
-                    value={parseInt(selectedMonth.split('-')[0])} 
-                    onChange={(e) => handleMonthYearChange('year', parseInt(e.target.value))} 
-                    className="bg-transparent text-gray-800 font-black outline-none cursor-pointer px-2 text-xs"
-                >
+                <select value={parseInt(selectedMonth.split('-')[0])} onChange={(e) => handleMonthYearChange('year', parseInt(e.target.value))} className="bg-transparent text-gray-800 font-black outline-none cursor-pointer px-2 text-xs">
                     {[2024, 2025, 2026].map(y => <option key={y} value={y}>{y}</option>)}
                 </select>
              </div>
@@ -300,28 +300,12 @@ const DashboardAdmin: React.FC<DashboardAdminProps> = ({ stores, performanceData
                                     <span className="text-[10px] font-bold text-gray-400 uppercase truncate max-w-[150px]">{item.storeName}</span>
                                 </div>
                             </td>
-                            <td className="px-6 py-6 text-right font-black text-blue-900 text-sm">
-                                {formatCurrency(item.revenueActual)}
-                            </td>
-                            <td className="px-6 py-6 text-right font-black text-gray-400 text-sm italic">
-                                {formatCurrency(item.revenueTarget)}
-                            </td>
-                            <td className="px-6 py-6 text-right font-black text-red-600 text-sm">
-                                {item.gap > 0 ? `-${formatCurrency(item.gap)}` : <span className="text-green-600">Meta Batida</span>}
-                            </td>
-                            <td className="px-6 py-6 text-center">
-                                <span className={`text-lg font-black italic tracking-tighter ${item.percentMeta >= 100 ? 'text-green-600' : 'text-red-600'}`}>
-                                    {item.percentMeta.toFixed(1)}%
-                                </span>
-                            </td>
-                            <td className="px-6 py-6 text-center">
-                                <span className="text-sm font-black text-gray-700">{formatDecimal(item.itemsPerTicket)}</span>
-                                <span className="block text-[8px] font-bold text-gray-300 uppercase">META: {formatDecimal(item.paTarget)}</span>
-                            </td>
-                            <td className="px-6 py-6 text-center">
-                                <span className={`text-sm font-black ${item.delinquencyRate > item.delinquencyTarget ? 'text-red-600' : 'text-green-600'}`}>{item.delinquencyRate.toFixed(2)}%</span>
-                                <span className="block text-[8px] font-bold text-gray-300 uppercase">LIMITE: {item.delinquencyTarget}%</span>
-                            </td>
+                            <td className="px-6 py-6 text-right font-black text-blue-900 text-sm"> {formatCurrency(item.revenueActual)} </td>
+                            <td className="px-6 py-6 text-right font-black text-gray-400 text-sm italic"> {formatCurrency(item.revenueTarget)} </td>
+                            <td className="px-6 py-6 text-right font-black text-red-600 text-sm"> {item.gap > 0 ? `-${formatCurrency(item.gap)}` : <span className="text-green-600">Meta Batida</span>} </td>
+                            <td className="px-6 py-6 text-center"> <span className={`text-lg font-black italic tracking-tighter ${item.percentMeta >= 100 ? 'text-green-600' : 'text-red-600'}`}> {item.percentMeta.toFixed(1)}% </span> </td>
+                            <td className="px-6 py-6 text-center"> <span className="text-sm font-black text-gray-700">{formatDecimal(item.itemsPerTicket)}</span> <span className="block text-[8px] font-bold text-gray-300 uppercase">META: {formatDecimal(item.paTarget)}</span> </td>
+                            <td className="px-6 py-6 text-center"> <span className={`text-sm font-black ${item.delinquencyRate > item.delinquencyTarget ? 'text-red-600' : 'text-green-600'}`}>{item.delinquencyRate.toFixed(2)}%</span> <span className="block text-[8px] font-bold text-gray-300 uppercase">LIMITE: {item.delinquencyTarget}%</span> </td>
                         </tr>
                     ))}
                 </tbody>
@@ -336,26 +320,14 @@ const DashboardAdmin: React.FC<DashboardAdminProps> = ({ stores, performanceData
                         <h3 className="text-2xl font-black text-gray-900 uppercase italic tracking-tighter">Importar <span className="text-green-600">Performance</span></h3>
                         <button onClick={() => setShowImportModal(false)} className="text-gray-400 hover:text-red-600"><X size={24}/></button>
                     </div>
-                    
                     <input type="file" ref={fileInputRef} className="hidden" accept=".xlsx, .xls" onChange={e => setSelectedFile(e.target.files?.[0] || null)} />
-                    
-                    <div 
-                        onClick={() => !isProcessing && fileInputRef.current?.click()}
-                        className={`border-4 border-dashed rounded-[32px] p-12 flex flex-col items-center justify-center mb-8 cursor-pointer transition-all ${selectedFile ? 'border-green-300 bg-green-50' : 'border-gray-100 bg-gray-50 hover:bg-white hover:border-blue-300'}`}
-                    >
+                    <div onClick={() => !isProcessing && fileInputRef.current?.click()} className={`border-4 border-dashed rounded-[32px] p-12 flex flex-col items-center justify-center mb-8 cursor-pointer transition-all ${selectedFile ? 'border-green-300 bg-green-50' : 'border-gray-100 bg-gray-50 hover:bg-white hover:border-blue-300'}`}>
                         {selectedFile ? <CheckCircle size={48} className="text-green-500 mb-2" /> : <FileSpreadsheet size={48} className="text-gray-200 mb-2" />}
-                        <span className="text-[10px] font-black uppercase text-gray-500 text-center">
-                            {selectedFile ? selectedFile.name : 'Selecione a planilha de faturamento (BI)'}
-                        </span>
+                        <span className="text-[10px] font-black uppercase text-gray-500 text-center">{selectedFile ? selectedFile.name : 'Selecione a planilha de faturamento (BI)'}</span>
                     </div>
-
                     <div className="flex gap-4">
                         <button onClick={() => setShowImportModal(false)} className="flex-1 py-4 bg-gray-100 rounded-2xl font-black uppercase text-[10px] text-gray-500">Cancelar</button>
-                        <button 
-                            onClick={handleProcessImport} 
-                            disabled={!selectedFile || isProcessing} 
-                            className="flex-1 py-4 bg-green-600 text-white rounded-2xl font-black uppercase text-[10px] shadow-lg flex items-center justify-center gap-2"
-                        >
+                        <button onClick={handleProcessImport} disabled={!selectedFile || isProcessing} className="flex-1 py-4 bg-green-600 text-white rounded-2xl font-black uppercase text-[10px] shadow-lg flex items-center justify-center gap-2">
                             {isProcessing ? <Loader2 className="animate-spin" size={16}/> : 'Processar Agora'}
                         </button>
                     </div>

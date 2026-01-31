@@ -1,4 +1,5 @@
 
+
 export enum UserRole {
   ADMIN = 'ADMIN',
   MANAGER = 'MANAGER',
@@ -81,7 +82,8 @@ export interface IceCreamDailySale {
   ml?: string;
 }
 
-export type IceCreamPaymentMethod = 'Pix' | 'Cartão' | 'Dinheiro' | 'Fiado';
+// Fix: Added 'Misto' to the valid payment methods union to support combined payment logic in the PDV.
+export type IceCreamPaymentMethod = 'Pix' | 'Cartão' | 'Dinheiro' | 'Fiado' | 'Misto';
 export type IceCreamCategory = 'Sundae' | 'Milkshake' | 'Casquinha' | 'Cascão' | 'Cascão Trufado' | 'Copinho' | 'Bebidas' | 'Adicionais';
 
 export interface IceCreamTransaction {
