@@ -92,7 +92,7 @@ const App: React.FC = () => {
             ]);
 
             if(s) setStores(s);
-            if(p) setPerformanceData(p.map(x => ({ ...x, storeId: x.store_id, revenueTarget: Number(x.revenue_target || 0), revenueActual: Number(x.revenue_actual || 0), paTarget: Number(x.pa_target || 0), ticketTarget: Number(x.ticket_target || 0), puTarget: Number(x.pu_target || 0), delinquencyTarget: Number(x.delinquency_target || 0), itemsTarget: Number(x.items_target || 0), itemsActual: Number(x.items_actual || 0), itemsPerTicket: Number(x.items_per_ticket || 0), unitPriceAverage: Number(x.unit_price_average || 0), averageTicket: Number(x.average_ticket || 0), delinquencyRate: Number(x.delinquency_rate || 0), businessDays: x.business_days, percentMeta: Number(x.percent_meta || 0) })));
+            if(p) setPerformanceData(p.map(x => ({ ...x, storeId: x.store_id, revenueTarget: Number(x.revenue_target || 0), revenueActual: Number(x.revenue_actual || 0), paTarget: Number(x.pa_target || 0), ticketTarget: Number(x.ticket_target || 0), puTarget: Number(x.pu_target || 0), delinquencyTarget: Number(x.delinquency_target || 0), itemsTarget: Number(x.items_target || 0), itemsActual: Number(x.items_actual || 0), itemsPerTicket: Number(x.items_per_ticket || 0), unitPriceAverage: Number(x.unit_price_average || 0), averageTicket: Number(x.average_ticket || 0), delinquencyRate: Number(x.delinquency_rate || 0), businessDays: x.business_days, percentMeta: Number(x.percent_meta || 0), growthTarget: Number(x.growth_target || 0), rewardValue: Number(x.reward_value || 0) })));
             if(pur) setPurchasingData(pur.map(x => ({...x, storeId: x.store_id, pairsSold: x.pairs_sold})));
             if(c) setCotas(c.map(x => ({ ...x, id: x.id, storeId: x.store_id, totalValue: Number(x.total_value || 0), shipmentDate: x.shipment_date, paymentTerms: x.payment_terms, createdByRole: x.created_by_role, category_id: x.category_id, category_name: x.category_name || x.classification, createdAt: new Date(x.created_at) })));
             if(cs) setCotaSettings(cs.map(x => ({...x, storeId: x.store_id, budgetValue: x.budget_value, managerPercent: x.manager_percent})));
@@ -120,12 +120,41 @@ const App: React.FC = () => {
         finally { setIsLoading(false); }
     };
 
+    const handleLogin = async (email: string, pass: string, remember: boolean) => {
+        try {
+            const { data, error } = await supabase.from('admin_users').select('*').eq('email', email).eq('password', pass).eq('status', 'active').single();
+            if (error || !data) return { success: false, error: 'Credenciais inválidas ou acesso inativo.' };
+
+            const loggedUser: User = { 
+                id: data.id, 
+                name: data.name, 
+                role: data.role_level.toUpperCase() as UserRole, 
+                email: data.email,
+                storeId: data.store_id 
+            };
+
+            // LOG DE ACESSO OBRIGATÓRIO NO BANCO
+            await supabase.from('system_logs').insert([{
+                userId: loggedUser.id,
+                userName: loggedUser.name,
+                userRole: loggedUser.role,
+                action: 'LOGIN_SISTEMA',
+                details: `Profissional realizou acesso via terminal. Unidade: ${data.store_id || 'REDE'}`
+            }]);
+
+            setUser(loggedUser);
+            if (loggedUser.role === UserRole.ADMIN) setCurrentView('dashboard_rede');
+            else setCurrentView('dashboard_loja');
+            
+            return { success: true, user: loggedUser };
+        } catch (err) {
+            return { success: false, error: 'Falha na conexão.' };
+        }
+    };
+
     useEffect(() => {
         fetchData();
-        if (!user) {
-            const defaultUser: User = { id: '0', name: 'ADMINISTRADOR', role: UserRole.ADMIN, email: 'admin@real.com' };
-            setUser(defaultUser);
-        }
+        // REMOVIDO AUTO-LOGIN BYPASS
     }, []);
 
     const handleSaveIceCreamProduct = async (product: Partial<IceCreamItem>) => {
@@ -136,6 +165,8 @@ const App: React.FC = () => {
             await fetchData();
         } catch (err) { console.error("Erro ao salvar produto:", err); throw err; }
     };
+
+    if (!user) return <LoginScreen onLoginAttempt={handleLogin} />;
 
     return (
         <div className="flex h-screen bg-gray-950 text-white overflow-hidden font-sans relative">
@@ -179,7 +210,31 @@ const App: React.FC = () => {
                     {(() => {
                         if (currentView === 'dashboard_rede') return <DashboardAdmin stores={stores} performanceData={performanceData} onImportData={fetchData} />;
                         if (currentView === 'dashboard_loja') return <DashboardManager user={user!} stores={stores} performanceData={performanceData} purchasingData={purchasingData} />;
-                        if (currentView === 'metas') return <GoalRegistration stores={stores} performanceData={performanceData} onUpdateData={async (data) => { for(const row of data) { await supabase.from('monthly_performance').upsert({ store_id: row.storeId, month: row.month, revenue_target: row.revenueTarget, pa_target: row.paTarget, ticket_target: row.ticketTarget, pu_target: row.puTarget, items_target: row.itemsTarget, business_days: row.businessDays }); } fetchData(); }} />;
+                        if (currentView === 'metas') return <GoalRegistration stores={stores} performanceData={performanceData} onUpdateData={async (data) => { 
+                            for(const row of data) { 
+                                await supabase.from('monthly_performance').upsert({ 
+                                    store_id: row.storeId, 
+                                    month: row.month, 
+                                    revenue_target: row.revenueTarget, 
+                                    pa_target: row.paTarget, 
+                                    ticket_target: row.ticketTarget, 
+                                    pu_target: row.puTarget, 
+                                    items_target: row.itemsTarget, 
+                                    business_days: row.businessDays,
+                                    growth_target: row.growthTarget,
+                                    reward_value: row.rewardValue
+                                }); 
+                            } 
+                            // AUDITORIA DE ALTERAÇÃO DE METAS
+                            await supabase.from('system_logs').insert([{
+                                userId: user.id,
+                                userName: user.name,
+                                userRole: user.role,
+                                action: 'ALTERACAO_METAS',
+                                details: `Administrador alterou as diretrizes de metas para o período solicitado.`
+                            }]);
+                            fetchData(); 
+                        }} />;
                         if (currentView === 'cotas') return <CotasManagement user={user!} stores={stores} cotas={cotas} cotaSettings={cotaSettings} cotaDebts={cotaDebts} performanceData={performanceData} productCategories={quotaCategories} mixParameters={quotaMixParams} onAddCota={async (c) => { await supabase.from('cotas').insert([{ store_id: c.storeId, brand: c.brand, category_id: c.category_id, total_value: c.totalValue, shipment_date: `${c.shipmentDate}-01`, payment_terms: c.paymentTerms, pairs: c.pairs, installments: c.installments, status: 'ABERTA' }]); fetchData(); }} onUpdateCota={async (id, u) => { await supabase.from('cotas').update(u).eq('id', id); fetchData(); }} onDeleteCota={async (id) => { await supabase.from('cotas').delete().eq('id', id); fetchData(); }} onSaveSettings={async (s) => { await supabase.from('cota_settings').upsert({ store_id: s.storeId, budget_value: s.budgetValue, manager_percent: s.managerPercent }, { onConflict: 'store_id' }); fetchData(); }} onSaveDebts={async (d) => { await supabase.from('cota_debts').upsert({ store_id: d.storeId, month: d.month, value: d.value }, { onConflict: 'store_id, month' }); fetchData(); }} onDeleteDebt={async (id) => { await supabase.from('cota_debts').delete().eq('id', id); fetchData(); }} />;
                         if (currentView === 'compras') return <DashboardPurchases user={user!} stores={stores} data={purchasingData} onImport={async (d) => { await supabase.from('product_performance').insert(d.map(x => ({ store_id: x.storeId, month: x.month, brand: x.brand, category: x.category, pairs_sold: x.pairsSold, revenue: x.revenue }))); fetchData(); }} onOpenSpreadsheetModule={() => setCurrentView('spreadsheet_order')} />;
                         if (currentView === 'quebras') return <CashErrorsModule user={user!} stores={stores} store={stores.find(s => s.id === user?.storeId)} errors={cashErrors} onAddError={async (e: any) => { await supabase.from('cash_errors').insert([e]); fetchData(); }} onUpdateError={async (e) => { await supabase.from('cash_errors').update(e).eq('id', e.id); fetchData(); }} onDeleteError={async (id) => { await supabase.from('cash_errors').delete().eq('id', id); fetchData(); }} />;
@@ -190,14 +245,13 @@ const App: React.FC = () => {
                             <IceCreamModule 
                                 user={user!} stores={stores} items={iceCreamItems} sales={iceCreamSales} finances={iceCreamFinances} stock={iceCreamStock} promissories={icPromissories} can={can} 
                                 onAddSales={async (s) => { 
-                                    // OPERACIONAL: Insere os itens com unidades INTEIRAS sem split de pagamento
                                     const { error } = await supabase.from('ice_cream_daily_sales').insert(s.map(x => ({ 
                                         store_id: x.storeId, 
                                         item_id: x.itemId, 
                                         product_name: x.productName, 
                                         category: x.category, 
                                         flavor: x.flavor, 
-                                        units_sold: Math.round(x.unitsSold), // Garante inteiro >= 1
+                                        units_sold: Math.round(x.unitsSold), 
                                         unit_price: x.unitPrice, 
                                         total_value: x.totalValue, 
                                         payment_method: x.paymentMethod, 

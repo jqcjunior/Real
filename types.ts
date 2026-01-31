@@ -1,5 +1,4 @@
 
-
 export enum UserRole {
   ADMIN = 'ADMIN',
   MANAGER = 'MANAGER',
@@ -19,8 +18,8 @@ export interface User {
 
 export interface QuotaCategory {
   id: string;
-  parent_category: string; // Ex: FEMININO, MASCULINO
-  category_name: string;   // Ex: FEMININO RASTEIRA
+  parent_category: string; 
+  category_name: string;   
   is_active?: boolean;
   created_at?: string;
 }
@@ -29,7 +28,7 @@ export interface QuotaMixParameter {
   id: string;
   category_name: string;
   percentage: number;
-  semester?: 1 | 2; // 1: Jan-Jun, 2: Jul-Dez
+  semester?: 1 | 2; 
   created_at?: string;
 }
 
@@ -82,7 +81,6 @@ export interface IceCreamDailySale {
   ml?: string;
 }
 
-// Fix: Added 'Misto' to the valid payment methods union to support combined payment logic in the PDV.
 export type IceCreamPaymentMethod = 'Pix' | 'Cartão' | 'Dinheiro' | 'Fiado' | 'Misto';
 export type IceCreamCategory = 'Sundae' | 'Milkshake' | 'Casquinha' | 'Cascão' | 'Cascão Trufado' | 'Copinho' | 'Bebidas' | 'Adicionais';
 
@@ -109,7 +107,31 @@ export interface IceCreamPromissoryNote {
 
 export interface PagePermission { id: string; page_key: string; label: string; module_group: string; allow_admin: boolean; allow_manager: boolean; allow_cashier: boolean; allow_sorvete: boolean; sort_order: number; }
 export interface Store { id: string; number: string; name: string; city: string; managerName: string; managerEmail: string; managerPhone: string; status?: 'active' | 'pending' | 'inactive'; role?: UserRole; password?: string; passwordResetRequested?: boolean; }
-export interface MonthlyPerformance { id?: string; storeId: string; month: string; revenueTarget: number; revenueActual: number; percentMeta: number; itemsTarget?: number; itemsActual?: number; itemsPerTicket: number; unitPriceAverage: number; averageTicket: number; delinquencyRate: number; paTarget?: number; ticketTarget?: number; puTarget?: number; delinquencyTarget?: number; trend: 'up' | 'down' | 'stable'; correctedDailyGoal: number; businessDays?: number; }
+
+export interface MonthlyPerformance { 
+  id?: string; 
+  storeId: string; 
+  month: string; 
+  revenueTarget: number; 
+  revenueActual: number; 
+  percentMeta: number; 
+  itemsTarget?: number; 
+  itemsActual?: number; 
+  itemsPerTicket: number; 
+  unitPriceAverage: number; 
+  averageTicket: number; 
+  delinquencyRate: number; 
+  paTarget?: number; 
+  ticketTarget?: number; 
+  puTarget?: number; 
+  delinquencyTarget?: number; 
+  trend: 'up' | 'down' | 'stable'; 
+  correctedDailyGoal: number; 
+  businessDays?: number;
+  growthTarget?: number; // % de crescimento esperado vs ano anterior
+  rewardValue?: number; // Valor em R$ de premiação para a loja se bater meta
+}
+
 export interface ProductPerformance { storeId: string; month: string; brand: string; category: string; pairsSold: number; revenue: number; }
 export interface StoreProfitPartner { id: string; store_id: string; partner_name: string; percentage: number; active: boolean; created_at?: string; }
 export interface CashRegisterClosure { id: string; storeId: string; closedBy: string; date: string; totalSales: number; totalExpenses: number; balance: number; notes?: string; createdAt: string; }

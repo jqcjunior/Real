@@ -2,7 +2,7 @@
 import React, { useState, useEffect, useMemo } from 'react';
 import { Store, MonthlyPerformance } from '../types';
 import { formatCurrency } from '../constants';
-import { Target, Loader2, Save, Calendar, Calculator, TrendingUp, Copy, CheckCircle2, ArrowUpRight, ArrowDownRight, Minus } from 'lucide-react';
+import { Target, Loader2, Save, Calendar, Calculator, TrendingUp, Copy, CheckCircle2, ArrowUpRight, ArrowDownRight, Minus, Sparkles, DollarSign, Zap } from 'lucide-react';
 
 interface GoalRegistrationProps {
   stores: Store[];
@@ -41,7 +41,9 @@ const GoalRegistration: React.FC<GoalRegistrationProps> = ({ stores, performance
         puTarget: 0, 
         delinquencyTarget: 2, 
         businessDays: 26,
-        trend: 'stable'
+        trend: 'stable',
+        growthTarget: 0,
+        rewardValue: 0
       };
     });
     setFormData(newFormData);
@@ -101,7 +103,9 @@ const GoalRegistration: React.FC<GoalRegistrationProps> = ({ stores, performance
                 puTarget: Number(data?.puTarget) || 0,
                 delinquencyTarget: Number(data?.delinquencyTarget) || 0,
                 businessDays: Number(data?.businessDays) || 26,
-                trend: data?.trend || 'stable'
+                trend: data?.trend || 'stable',
+                growthTarget: Number(data?.growthTarget) || 0,
+                rewardValue: Number(data?.rewardValue) || 0
             } as MonthlyPerformance;
         });
         
@@ -123,9 +127,9 @@ const GoalRegistration: React.FC<GoalRegistrationProps> = ({ stores, performance
           </div>
           <div>
             <h2 className="text-xl font-black uppercase italic tracking-tighter text-gray-900">
-                Planejamento <span className="text-red-600">de Metas</span>
+                Planejamento <span className="text-red-600">de Metas & Prêmios</span>
             </h2>
-            <p className="text-gray-400 font-bold uppercase text-[9px] tracking-widest">Definição mensal por unidade</p>
+            <p className="text-gray-400 font-bold uppercase text-[9px] tracking-widest leading-none mt-1">Diretrizes estratégicas por unidade operante</p>
           </div>
         </div>
 
@@ -151,54 +155,63 @@ const GoalRegistration: React.FC<GoalRegistrationProps> = ({ stores, performance
 
       <div className="flex-1 bg-white rounded-3xl shadow-sm border border-gray-100 flex flex-col overflow-hidden">
         <div className="flex-1 overflow-auto no-scrollbar">
-            <table className="w-full text-left border-collapse min-w-[1000px]">
+            <table className="w-full text-left border-collapse min-w-[1200px]">
               <thead className="bg-gray-50 text-[9px] font-black uppercase tracking-widest text-gray-400 border-b sticky top-0 z-30">
                 <tr>
-                  <th className="px-6 py-3 sticky left-0 bg-gray-50 z-40">Unidade</th>
-                  <th className="px-3 py-3 text-center">Faturamento (R$)</th>
-                  <th className="px-3 py-3 text-center">Ritmo Dia</th>
-                  <th className="px-3 py-3 text-center">Pares</th>
-                  <th className="px-3 py-3 text-center">P.A</th>
-                  <th className="px-3 py-3 text-center w-24">Ticket</th>
-                  <th className="px-3 py-3 text-center w-20">Dias</th>
-                  <th className="px-3 py-3 text-center w-20">Inad (%)</th>
-                  <th className="px-3 py-3 text-center w-24">Trend</th>
+                  <th className="px-6 py-4 sticky left-0 bg-gray-50 z-40">Unidade</th>
+                  <th className="px-3 py-4 text-center">Faturamento (R$)</th>
+                  <th className="px-3 py-4 text-center">Crescimento (%)</th>
+                  <th className="px-3 py-4 text-center">Peças</th>
+                  <th className="px-3 py-4 text-center">P.A</th>
+                  <th className="px-3 py-4 text-center">Ticket</th>
+                  <th className="px-3 py-4 text-center">Prêmio (R$)</th>
+                  <th className="px-3 py-4 text-center w-16">Dias</th>
+                  <th className="px-3 py-4 text-center w-16">Inad (%)</th>
+                  <th className="px-3 py-4 text-center w-20">Trend</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-gray-50">
                 {activeStores.map(s => {
                     const rowData = formData[s.id];
-                    const daily = (Number(rowData?.revenueTarget) || 0) / (Number(rowData?.businessDays) || 26);
                     return (
                         <tr key={s.id} className="hover:bg-blue-50/20 transition-all group">
-                            <td className="px-6 py-1.5 sticky left-0 bg-white group-hover:bg-blue-50/30 z-20 shadow-sm">
+                            <td className="px-6 py-2 sticky left-0 bg-white group-hover:bg-blue-50/30 z-20 shadow-sm">
                                 <div className="flex flex-col">
                                     <span className="font-black uppercase italic text-blue-950 text-[11px]">LOJA {s.number}</span>
                                     <span className="text-[8px] font-bold text-gray-400 uppercase leading-none truncate max-w-[100px]">{s.city.split(' - ')[0]}</span>
                                 </div>
                             </td>
-                            <td className="px-2 py-1.5">
-                                <input type="text" value={rowData?.revenueTarget || ''} onChange={e => handleInputChange(s.id, 'revenueTarget', e.target.value)} className="w-full p-1.5 bg-gray-50 rounded-lg font-black text-blue-900 text-center text-[11px] focus:ring-2 focus:ring-blue-100 outline-none border-none shadow-inner" placeholder="0" />
+                            <td className="px-2 py-2">
+                                <input type="text" value={rowData?.revenueTarget || ''} onChange={e => handleInputChange(s.id, 'revenueTarget', e.target.value)} className="w-full p-2 bg-gray-50 rounded-xl font-black text-blue-900 text-center text-[11px] outline-none border-none shadow-inner" placeholder="0" />
                             </td>
-                            <td className="px-2 py-1.5 text-center">
-                                <span className="text-[10px] font-black text-gray-400 italic">{formatCurrency(daily)}</span>
+                            <td className="px-2 py-2">
+                                <div className="relative">
+                                    <input type="text" value={rowData?.growthTarget || ''} onChange={e => handleInputChange(s.id, 'growthTarget', e.target.value)} className="w-full p-2 bg-purple-50 rounded-xl font-black text-purple-700 text-center text-[11px] outline-none border-none shadow-inner" placeholder="0" />
+                                    <Sparkles className="absolute right-2 top-1/2 -translate-y-1/2 text-purple-200" size={10} />
+                                </div>
                             </td>
-                            <td className="px-2 py-1.5">
-                                <input type="text" value={rowData?.itemsTarget || ''} onChange={e => handleInputChange(s.id, 'itemsTarget', e.target.value)} className="w-full p-1.5 bg-gray-50 rounded-lg font-black text-gray-700 text-center text-[11px] outline-none border-none shadow-inner" placeholder="0" />
+                            <td className="px-2 py-2">
+                                <input type="text" value={rowData?.itemsTarget || ''} onChange={e => handleInputChange(s.id, 'itemsTarget', e.target.value)} className="w-full p-2 bg-gray-50 rounded-xl font-black text-gray-700 text-center text-[11px] outline-none border-none shadow-inner" placeholder="0" />
                             </td>
-                            <td className="px-2 py-1.5">
-                                <input type="text" value={rowData?.paTarget || ''} onChange={e => handleInputChange(s.id, 'paTarget', e.target.value)} className="w-full p-1.5 bg-gray-50 rounded-lg font-black text-gray-700 text-center text-[11px] outline-none border-none shadow-inner" placeholder="0,00" />
+                            <td className="px-2 py-2">
+                                <input type="text" value={rowData?.paTarget || ''} onChange={e => handleInputChange(s.id, 'paTarget', e.target.value)} className="w-full p-2 bg-gray-50 rounded-xl font-black text-gray-700 text-center text-[11px] outline-none border-none shadow-inner" placeholder="0,00" />
                             </td>
-                            <td className="px-2 py-1.5">
-                                <input type="text" value={rowData?.ticketTarget || ''} onChange={e => handleInputChange(s.id, 'ticketTarget', e.target.value)} className="w-full p-1.5 bg-gray-50 rounded-lg font-black text-gray-700 text-center text-[11px] outline-none border-none shadow-inner" placeholder="0,00" />
+                            <td className="px-2 py-2">
+                                <input type="text" value={rowData?.ticketTarget || ''} onChange={e => handleInputChange(s.id, 'ticketTarget', e.target.value)} className="w-full p-2 bg-gray-50 rounded-xl font-black text-gray-700 text-center text-[11px] outline-none border-none shadow-inner" placeholder="0,00" />
                             </td>
-                            <td className="px-2 py-1.5">
-                                <input type="text" value={rowData?.businessDays || ''} onChange={e => handleInputChange(s.id, 'businessDays', e.target.value)} className="w-full p-1.5 bg-gray-50 rounded-lg font-black text-gray-700 text-center text-[11px] outline-none border-none shadow-inner" placeholder="26" />
+                            <td className="px-2 py-2">
+                                <div className="relative">
+                                    <input type="text" value={rowData?.rewardValue || ''} onChange={e => handleInputChange(s.id, 'rewardValue', e.target.value)} className="w-full p-2 bg-green-50 rounded-xl font-black text-green-700 text-center text-[11px] outline-none border-none shadow-inner" placeholder="0,00" />
+                                    <DollarSign className="absolute right-2 top-1/2 -translate-y-1/2 text-green-200" size={10} />
+                                </div>
                             </td>
-                            <td className="px-2 py-1.5">
-                                <input type="text" value={rowData?.delinquencyTarget || ''} onChange={e => handleInputChange(s.id, 'delinquencyTarget', e.target.value)} className="w-full p-1.5 bg-red-50 rounded-lg font-black text-red-700 text-center text-[11px] outline-none border-none shadow-inner" placeholder="2.0" />
+                            <td className="px-2 py-2">
+                                <input type="text" value={rowData?.businessDays || ''} onChange={e => handleInputChange(s.id, 'businessDays', e.target.value)} className="w-full p-2 bg-gray-50 rounded-xl font-black text-gray-700 text-center text-[11px] outline-none border-none shadow-inner" placeholder="26" />
                             </td>
-                            <td className="px-2 py-1.5">
+                            <td className="px-2 py-2">
+                                <input type="text" value={rowData?.delinquencyTarget || ''} onChange={e => handleInputChange(s.id, 'delinquencyTarget', e.target.value)} className="w-full p-2 bg-red-50 rounded-xl font-black text-red-700 text-center text-[11px] outline-none border-none shadow-inner" placeholder="2.0" />
+                            </td>
+                            <td className="px-2 py-2">
                                 <div className="flex bg-gray-100 p-0.5 rounded-lg justify-center">
                                     <button onClick={() => handleInputChange(s.id, 'trend', 'up')} className={`p-1 rounded ${rowData?.trend === 'up' ? 'bg-green-500 text-white shadow-sm' : 'text-gray-400'}`}><ArrowUpRight size={12}/></button>
                                     <button onClick={() => handleInputChange(s.id, 'trend', 'stable')} className={`p-1 rounded ${rowData?.trend === 'stable' ? 'bg-blue-600 text-white shadow-sm' : 'text-gray-400'}`}><Minus size={12}/></button>
@@ -214,8 +227,8 @@ const GoalRegistration: React.FC<GoalRegistrationProps> = ({ stores, performance
       </div>
       
       {saveStatus === 'success' && (
-          <div className="fixed bottom-4 right-4 bg-green-600 text-white px-4 py-2 rounded-xl text-[10px] font-black uppercase animate-bounce shadow-xl flex items-center gap-2">
-              <CheckCircle2 size={14}/> Sincronizado com o Servidor
+          <div className="fixed bottom-4 right-4 bg-green-600 text-white px-6 py-3 rounded-2xl text-[10px] font-black uppercase animate-bounce shadow-2xl flex items-center gap-3">
+              <CheckCircle2 size={16}/> Sincronizado: Logs de acesso gravados
           </div>
       )}
     </div>
