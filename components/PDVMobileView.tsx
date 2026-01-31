@@ -36,6 +36,7 @@ interface PDVMobileViewProps {
   onAddSales: (sale: IceCreamDailySale[]) => Promise<void>;
   onCancelSale: (id: string) => Promise<void>;
   onAddTransaction: (tx: IceCreamTransaction) => Promise<void>;
+  onUpdateStock: (storeId: string, base: string, value: number, unit: string, type: 'production' | 'adjustment' | 'purchase') => Promise<void>;
   dailyData: any;
   handlePrintTicket: (items: IceCreamDailySale[], saleCode: string, isFiado: boolean, buyer?: string) => void;
   isSubmitting: boolean;
@@ -88,7 +89,6 @@ const PDVMobileView: React.FC<PDVMobileViewProps> = (props) => {
   const cartTotal = useMemo(() => props.cart.reduce((a, b) => a + b.totalValue, 0), [props.cart]);
   
   const changeDue = useMemo(() => {
-      // Fix: amountPaid might be inferred as unknown, cast to string
       const paid = parseFloat((amountPaid as string).replace(',', '.')) || 0;
       return Math.max(0, paid - cartTotal);
   }, [amountPaid, cartTotal]);
@@ -100,7 +100,6 @@ const PDVMobileView: React.FC<PDVMobileViewProps> = (props) => {
     const isMisto = props.paymentMethod === 'Misto';
     const splitData = isMisto ? Object.entries(props.mistoValues).map(([method, val]) => ({
         method: method as IceCreamPaymentMethod,
-        // Fix: val might be inferred as unknown, cast to string
         amount: parseFloat((val as string).replace(',', '.')) || 0
     })).filter(p => p.amount > 0) : [{ method: props.paymentMethod as IceCreamPaymentMethod, amount: cartTotal }];
 
@@ -136,6 +135,18 @@ const PDVMobileView: React.FC<PDVMobileViewProps> = (props) => {
         });
 
         await props.onAddSales(finalCart);
+
+        // BAIXA DE ESTOQUE AUTOMÁTICA MOBILE
+        for (const c of props.cart) {
+            const itemDef = props.items.find(it => it.id === c.itemId);
+            if (itemDef?.recipe && itemDef.recipe.length > 0) {
+                for (const ingredient of itemDef.recipe) {
+                    const qtyToDeduct = ingredient.quantity * c.unitsSold;
+                    await props.onUpdateStock(props.effectiveStoreId, ingredient.stock_base_name, -qtyToDeduct, '', 'adjustment');
+                }
+            }
+        }
+
         props.handlePrintTicket(finalCart, saleCode, splitData.some(p => p.method === 'Fiado'), props.buyerName);
         props.setCart([]); 
         props.setPaymentMethod(null);
