@@ -34,32 +34,23 @@ interface IceCreamModuleProps {
 
 const PRODUCT_CATEGORIES: IceCreamCategory[] = ['Sundae', 'Milkshake', 'Casquinha', 'Cascão', 'Cascão Trufado', 'Copinho', 'Bebidas', 'Adicionais'].sort() as IceCreamCategory[];
 
-// Helper refinado para obter imagem ilustrativa por palavra-chave e categoria
 const getCategoryImage = (category: IceCreamCategory, name: string) => {
     const itemName = name.toLowerCase();
-    
-    // 1. Mains (Sundae e Cascão agora repetem a imagem da Casquinha conforme solicitado)
     if (['Sundae', 'Casquinha', 'Cascão', 'Cascão Trufado'].includes(category)) {
         return 'https://img.icons8.com/color/144/ice-cream-cone.png';
     }
-
-    // 2. Keyword Overrides (Caldas e Chocolate agora replicam o ícone da Nutella)
     if (itemName.includes('nutella') || itemName.includes('calda') || itemName.includes('chocolate')) {
         return 'https://img.icons8.com/color/144/chocolate-spread.png';
     }
-    
     if (itemName.includes('água') || itemName.includes('agua')) {
         return 'https://img.icons8.com/color/144/water-bottle.png';
     }
-
-    // 3. Outras Categorias
     const icons: Record<string, string> = {
         'Milkshake': 'https://img.icons8.com/color/144/milkshake.png',
         'Copinho': 'https://img.icons8.com/color/144/ice-cream-bowl.png',
         'Bebidas': 'https://img.icons8.com/color/144/natural-food.png',
         'Adicionais': 'https://img.icons8.com/color/144/sugar-bowl.png'
     };
-
     return icons[category] || 'https://img.icons8.com/color/144/ice-cream.png';
 };
 
@@ -80,14 +71,14 @@ const IceCreamModule: React.FC<IceCreamModuleProps> = ({
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [cart, setCart] = useState<IceCreamDailySale[]>([]);
   const [selectedCategory, setSelectedCategory] = useState<IceCreamCategory | null>(null);
-  const [paymentMethod, setPaymentMethod] = useState<IceCreamPaymentMethod | null>(null);
+  const [paymentMethod, setPaymentMethod] = useState<IceCreamPaymentMethod | 'Misto' | null>(null);
+  const [mistoValues, setMistoValues] = useState<Record<string, string>>({ 'Pix': '', 'Dinheiro': '', 'Cartão': '' });
   const [buyerName, setBuyerName] = useState('');
   const [amountReceived, setAmountReceived] = useState('');
   
   const [selectedMonth, setSelectedMonth] = useState(new Date().getMonth() + 1);
   const [selectedYear, setSelectedYear] = useState(new Date().getFullYear());
 
-  // Filtros de Auditoria
   const [auditDay, setAuditDay] = useState<string>(new Date().getDate().toString());
   const [auditMonth, setAuditMonth] = useState<string>((new Date().getMonth() + 1).toString());
   const [auditYear, setAuditYear] = useState<string>(new Date().getFullYear().toString());
@@ -99,7 +90,6 @@ const IceCreamModule: React.FC<IceCreamModuleProps> = ({
   const [showCancelModal, setShowCancelModal] = useState<{id: string} | null>(null);
   const [cancelReason, setCancelReason] = useState('');
   
-  // Modais de Estoque
   const [showNewInsumoModal, setShowNewInsumoModal] = useState(false);
   const [showPurchaseModal, setShowPurchaseModal] = useState(false);
   const [showInventoryModal, setShowInventoryModal] = useState(false);
@@ -138,7 +128,7 @@ const IceCreamModule: React.FC<IceCreamModuleProps> = ({
   const cartTotal = useMemo(() => cart.reduce((acc, curr) => acc + curr.totalValue, 0), [cart]);
 
   const changeDue = useMemo(() => {
-    const paid = parseFloat(amountReceived.replace(',', '.')) || 0;
+    const paid = parseFloat((amountReceived as string).replace(',', '.')) || 0;
     return Math.max(0, paid - cartTotal);
   }, [amountReceived, cartTotal]);
 
@@ -202,12 +192,10 @@ const IceCreamModule: React.FC<IceCreamModuleProps> = ({
       return (sales ?? []).filter(s => {
           if (s.storeId !== effectiveStoreId) return false;
           if (!s.createdAt) return false;
-          
           const sDate = new Date(s.createdAt);
           const sDay = sDate.getDate().toString();
           const sMonth = (sDate.getMonth() + 1).toString();
           const sYear = sDate.getFullYear().toString();
-
           const matchDay = auditDay === '' || auditDay === sDay;
           const matchMonth = auditMonth === '' || auditMonth === sMonth;
           const matchYear = auditYear === '' || auditYear === sYear;
@@ -215,7 +203,6 @@ const IceCreamModule: React.FC<IceCreamModuleProps> = ({
               s.productName.toLowerCase().includes(auditSearch.toLowerCase()) || 
               s.saleCode?.toLowerCase().includes(auditSearch.toLowerCase()) ||
               s.buyer_name?.toLowerCase().includes(auditSearch.toLowerCase());
-
           return matchDay && matchMonth && matchYear && matchSearch;
       });
   }, [sales, effectiveStoreId, auditDay, auditMonth, auditYear, auditSearch]);
@@ -237,16 +224,47 @@ const IceCreamModule: React.FC<IceCreamModuleProps> = ({
 
   const finalizeSale = async () => {
       if (cart.length === 0 || !paymentMethod) return;
-      if (paymentMethod === 'Fiado' && !buyerName) { alert("Nome do funcionário obrigatório."); return; }
+
+      const isMisto = paymentMethod === 'Misto';
+      const splitData = isMisto ? Object.entries(mistoValues).map(([method, val]) => ({
+          method: method as IceCreamPaymentMethod,
+          amount: parseFloat((val as string).replace(',', '.')) || 0
+      })).filter(p => p.amount > 0) : [{ method: paymentMethod as IceCreamPaymentMethod, amount: cartTotal }];
+
+      const totalInformed = splitData.reduce((a, b) => a + b.amount, 0);
+      if (isMisto && Math.abs(totalInformed - cartTotal) > 0.05) {
+          alert(`O total informado (${formatCurrency(totalInformed)}) difere do total do carrinho (${formatCurrency(cartTotal)})`);
+          return;
+      }
+
+      if (splitData.some(p => p.method === 'Fiado') && !buyerName) {
+          alert("Nome do funcionário obrigatório para pagamento em Fiado.");
+          return;
+      }
+
       setIsSubmitting(true);
       try {
           const saleCode = `GEL-${Date.now().toString().slice(-6)}`;
-          const salesToSave = cart.map(c => ({ ...c, paymentMethod: paymentMethod!, buyer_name: paymentMethod === 'Fiado' ? buyerName.toUpperCase() : undefined, saleCode }));
-          
-          // Registrar Venda
-          await onAddSales(salesToSave);
+          let allSalesToSave: IceCreamDailySale[] = [];
 
-          // Baixa Automática de Insumos (CONJUNTA)
+          splitData.forEach(payment => {
+              const ratio = payment.amount / cartTotal;
+              cart.forEach(item => {
+                  allSalesToSave.push({
+                      ...item,
+                      id: `temp-save-${Math.random()}`,
+                      paymentMethod: payment.method,
+                      buyer_name: payment.method === 'Fiado' ? buyerName.toUpperCase() : undefined,
+                      saleCode,
+                      unitsSold: item.unitsSold * ratio,
+                      totalValue: item.totalValue * ratio,
+                      status: 'active'
+                  });
+              });
+          });
+
+          await onAddSales(allSalesToSave);
+
           for (const c of cart) {
               const itemDef = items.find(it => it.id === c.itemId);
               if (itemDef?.recipe && itemDef.recipe.length > 0) {
@@ -258,7 +276,8 @@ const IceCreamModule: React.FC<IceCreamModuleProps> = ({
           }
 
           setCart([]); setPaymentMethod(null); setBuyerName(''); setAmountReceived('');
-          alert("Venda realizada com baixa de insumos!");
+          setMistoValues({ 'Pix': '', 'Dinheiro': '', 'Cartão': '' });
+          alert("Venda realizada com sucesso!");
       } catch (e) { alert("Falha ao registrar venda."); } finally { setIsSubmitting(false); }
   };
 
@@ -276,7 +295,6 @@ const IceCreamModule: React.FC<IceCreamModuleProps> = ({
               flavor: newProd.flavor,
               recipe: tempRecipe
           });
-          
           setNewProd({ name: '', category: 'Copinho', price: '', flavor: '' });
           setTempRecipe([]); setEditingProduct(null); setShowProductModal(false);
           alert("Produto e Receita salvos com sucesso!"); 
@@ -324,7 +342,6 @@ const IceCreamModule: React.FC<IceCreamModuleProps> = ({
     }
   };
 
-  // Funções de Estoque
   const handleAddNewInsumo = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!newInsumo.name || !effectiveStoreId) return;
@@ -349,7 +366,6 @@ const IceCreamModule: React.FC<IceCreamModuleProps> = ({
     e.preventDefault();
     setIsSubmitting(true);
     try {
-        // Itera sobre as quantidades informadas no formulário de compra (Record)
         for (const st of filteredStock) {
             const qtyStr = purchaseForm[st.id];
             if (qtyStr !== undefined && qtyStr !== '') {
@@ -425,7 +441,7 @@ const IceCreamModule: React.FC<IceCreamModuleProps> = ({
             {activeTab === 'pdv' && (
                 <div className="h-full">
                     <div className="lg:hidden h-full">
-                        <PDVMobileView user={user} items={filteredItems} cart={cart} setCart={setCart} selectedCategory={selectedCategory} setSelectedCategory={setSelectedCategory} selectedProductName={null} setSelectedProductName={() => {}} selectedItem={null} setSelectedItem={() => {}} selectedMl="" setSelectedMl={() => {}} quantity={1} setQuantity={() => {}} paymentMethod={paymentMethod} setPaymentMethod={setPaymentMethod} buyerName={buyerName} setBuyerName={setBuyerName} onAddSales={onAddSales} onCancelSale={onCancelSale} onAddTransaction={onAddTransaction} dailyData={dreStats} handlePrintTicket={() => {}} isSubmitting={isSubmitting} setIsSubmitting={setIsSubmitting} effectiveStoreId={effectiveStoreId} />
+                        <PDVMobileView user={user} items={filteredItems} cart={cart} setCart={setCart} selectedCategory={selectedCategory} setSelectedCategory={setSelectedCategory} selectedProductName={null} setSelectedProductName={() => {}} selectedItem={null} setSelectedItem={() => {}} selectedMl="" setSelectedMl={() => {}} quantity={1} setQuantity={() => {}} paymentMethod={paymentMethod} setPaymentMethod={setPaymentMethod} buyerName={buyerName} setBuyerName={setBuyerName} mistoValues={mistoValues} setMistoValues={setMistoValues} onAddSales={onAddSales} onCancelSale={onCancelSale} onAddTransaction={onAddTransaction} dailyData={dreStats} handlePrintTicket={() => {}} isSubmitting={isSubmitting} setIsSubmitting={setIsSubmitting} effectiveStoreId={effectiveStoreId} />
                     </div>
                     <div className="hidden lg:grid grid-cols-12 gap-4 p-6 max-w-[1500px] mx-auto h-full overflow-hidden">
                         <div className="col-span-8 flex flex-col h-full overflow-hidden">
@@ -455,22 +471,48 @@ const IceCreamModule: React.FC<IceCreamModuleProps> = ({
                                     </div>
                                 ))}
                             </div>
-                            <div className="pt-4 border-t space-y-4 shrink-0">
+                            <div className="pt-4 border-t space-y-4 shrink-0 overflow-y-auto no-scrollbar max-h-[70%]">
                                 <div className="flex justify-between items-baseline"><span className="text-[9px] font-black text-gray-400 uppercase tracking-widest">Subtotal</span><span className="text-3xl font-black text-blue-950 italic">{formatCurrency(cartTotal)}</span></div>
-                                <div className="grid grid-cols-2 gap-2">{['Pix', 'Dinheiro', 'Cartão', 'Fiado'].map((m: any) => (<button key={m} onClick={() => { setPaymentMethod(m); }} className={`py-3 rounded-xl font-black uppercase text-[10px] border-2 transition-all ${paymentMethod === m ? 'bg-blue-900 text-white border-blue-900 shadow-xl' : 'bg-white border-gray-200 text-gray-400'}`}>{m}</button>))}</div>
+                                <div className="grid grid-cols-2 gap-2">
+                                    {['Pix', 'Dinheiro', 'Cartão', 'Fiado', 'Misto'].map((m: any) => (
+                                        <button 
+                                            key={m} 
+                                            onClick={() => { setPaymentMethod(m); if(m !== 'Dinheiro' && m !== 'Misto') setAmountReceived(''); }} 
+                                            className={`py-3 rounded-xl font-black uppercase text-[10px] border-2 transition-all ${paymentMethod === m ? 'bg-blue-900 text-white border-blue-900 shadow-xl' : 'bg-white border-gray-200 text-gray-400'}`}
+                                        >
+                                            {m}
+                                        </button>
+                                    ))}
+                                </div>
                                 {paymentMethod === 'Dinheiro' && (
                                     <div className="bg-green-50 p-4 rounded-2xl border-2 border-green-200 animate-in zoom-in duration-300 space-y-3">
                                         <div className="flex justify-between items-center"><label className="text-[10px] font-black text-green-700 uppercase">Valor Recebido</label><input autoFocus value={amountReceived} onChange={e => setAmountReceived(e.target.value)} placeholder="0,00" className="w-32 text-right bg-white border-none rounded-xl p-3 font-black text-green-700 outline-none text-lg shadow-inner" /></div>
                                         <div className="flex justify-between items-baseline border-t border-green-100 pt-2"><span className="text-[10px] font-black text-green-600 uppercase">Troco a Devolver</span><span className="text-2xl font-black text-green-700 italic">{formatCurrency(changeDue)}</span></div>
                                     </div>
                                 )}
-                                {paymentMethod === 'Fiado' && (
+                                {paymentMethod === 'Misto' && (
+                                    <div className="bg-blue-50 p-4 rounded-2xl border-2 border-blue-200 animate-in zoom-in duration-300 space-y-2">
+                                        <p className="text-[9px] font-black text-blue-700 uppercase mb-2 border-b border-blue-100 pb-1 text-center italic">Distribuir Valores</p>
+                                        {['Pix', 'Dinheiro', 'Cartão'].map(m => (
+                                            <div key={m} className="flex justify-between items-center bg-white px-3 py-2 rounded-lg shadow-sm border border-blue-50">
+                                                <label className="text-[10px] font-black text-gray-500 uppercase">{m}</label>
+                                                <input 
+                                                    value={mistoValues[m] || ''} 
+                                                    onChange={e => setMistoValues({...mistoValues, [m]: e.target.value})} 
+                                                    placeholder="0,00" 
+                                                    className="w-20 text-right font-black text-blue-900 text-xs outline-none bg-transparent" 
+                                                />
+                                            </div>
+                                        ))}
+                                    </div>
+                                )}
+                                {(paymentMethod === 'Fiado' || (paymentMethod === 'Misto' && mistoValues['Fiado'])) && (
                                     <div className="animate-in fade-in duration-300">
                                         <label className="text-[9px] font-black text-red-600 uppercase mb-1 block ml-1">Funcionário Comprador</label>
                                         <input value={buyerName} onChange={e => setBuyerName(e.target.value.toUpperCase())} className="w-full p-4 bg-red-50 border-2 border-red-100 rounded-2xl font-black uppercase text-sm outline-none focus:ring-4 focus:ring-red-100 shadow-inner" placeholder="NOME DO FUNCIONÁRIO..." />
                                     </div>
                                 )}
-                                <button onClick={finalizeSale} disabled={isSubmitting || cart.length === 0 || !paymentMethod || (paymentMethod === 'Fiado' && !buyerName)} className="w-full py-5 bg-red-600 hover:bg-red-700 disabled:opacity-30 text-white rounded-[24px] font-black uppercase text-xs shadow-2xl flex items-center justify-center gap-3 transition-all border-b-4 border-red-900 active:scale-95">{isSubmitting ? <Loader2 className="animate-spin" /> : <CheckCircle2 size={18}/>} {paymentMethod === 'Fiado' ? 'Gerar Promissória' : 'Finalizar Venda'}</button>
+                                <button onClick={finalizeSale} disabled={isSubmitting || cart.length === 0 || !paymentMethod} className="w-full py-5 bg-red-600 hover:bg-red-700 disabled:opacity-30 text-white rounded-[24px] font-black uppercase text-xs shadow-2xl flex items-center justify-center gap-3 transition-all border-b-4 border-red-900 active:scale-95">{isSubmitting ? <Loader2 className="animate-spin" /> : <CheckCircle2 size={18}/>} Finalizar Venda</button>
                             </div>
                         </div>
                     </div>
@@ -495,7 +537,6 @@ const IceCreamModule: React.FC<IceCreamModuleProps> = ({
                              <p className="text-lg font-black text-blue-950">{new Date().toLocaleDateString('pt-BR')}</p>
                         </div>
                     </div>
-
                     {dreSubTab === 'resumo' ? (
                         <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
                             <div className="bg-white p-6 rounded-[32px] border-2 border-green-100 shadow-sm space-y-4">
@@ -575,7 +616,6 @@ const IceCreamModule: React.FC<IceCreamModuleProps> = ({
                              </select>
                         </div>
                     </div>
-
                     <div className="grid grid-cols-1 lg:grid-cols-12 gap-8">
                         <div className="lg:col-span-8 space-y-6">
                             <div className="bg-white p-8 rounded-[40px] shadow-sm border border-gray-100">
@@ -595,7 +635,6 @@ const IceCreamModule: React.FC<IceCreamModuleProps> = ({
                                     </div>
                                 </div>
                             </div>
-
                             {dreSubTab === 'resumo' ? (
                                 <div className="bg-white p-8 rounded-[40px] shadow-sm border border-gray-100">
                                     <h4 className="text-[10px] font-black text-gray-400 uppercase tracking-[0.2em] mb-6 flex items-center gap-2"><PieChart size={14}/> Mix de Categorias</h4>
@@ -625,7 +664,6 @@ const IceCreamModule: React.FC<IceCreamModuleProps> = ({
                                 </div>
                             )}
                         </div>
-
                         <div className="lg:col-span-4 space-y-6">
                             <div className="bg-gray-950 p-8 rounded-[40px] shadow-2xl text-white">
                                 <div className="flex justify-between items-center mb-6">
@@ -639,7 +677,7 @@ const IceCreamModule: React.FC<IceCreamModuleProps> = ({
                                                 <span className="text-[10px] font-black uppercase italic tracking-tighter">{p.partner_name}</span>
                                                 <span className="text-[9px] font-bold text-blue-400">{p.percentage}%</span>
                                             </div>
-                                            <p className="text-xl font-black italic tracking-tighter text-blue-100">{formatCurrency((dreStats.profit * p.percentage) / 100)}</p>
+                                            <p className="textxl font-black italic tracking-tighter text-blue-100">{formatCurrency((dreStats.profit * p.percentage) / 100)}</p>
                                         </div>
                                     ))}
                                 </div>
@@ -656,7 +694,6 @@ const IceCreamModule: React.FC<IceCreamModuleProps> = ({
                             <h3 className="text-xl font-black uppercase italic text-blue-950 tracking-tighter flex items-center gap-3"><History className="text-blue-700" size={28}/> Auditoria de <span className="text-red-600">Vendas</span></h3>
                             <p className="text-gray-400 text-[9px] font-black uppercase tracking-widest mt-1">Controle de transações por período</p>
                         </div>
-                        
                         <div className="grid grid-cols-2 md:grid-cols-5 gap-4">
                             <div className="space-y-1">
                                 <label className="text-[8px] font-black text-gray-400 uppercase ml-1">Dia</label>
@@ -690,7 +727,6 @@ const IceCreamModule: React.FC<IceCreamModuleProps> = ({
                             </div>
                         </div>
                     </div>
-
                     <div className="bg-white rounded-[40px] shadow-xl border border-gray-100 overflow-hidden">
                         <div className="overflow-x-auto no-scrollbar">
                             <table className="w-full text-left">
@@ -744,7 +780,6 @@ const IceCreamModule: React.FC<IceCreamModuleProps> = ({
                         </div>
                         <button onClick={() => { setEditingProduct(null); setNewProd({name: '', category: 'Copinho', price: '', flavor: ''}); setTempRecipe([]); setShowProductModal(true); }} className="px-8 py-3 bg-orange-600 text-white rounded-2xl font-black uppercase text-[10px] shadow-lg hover:bg-orange-700 transition-all active:scale-95 border-b-4 border-orange-900 flex items-center gap-2"><Plus size={16}/> Novo Item</button>
                     </div>
-
                     <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4">
                         {filteredItems.map(item => (
                             <div key={item.id} className="bg-white p-6 rounded-[32px] shadow-sm border border-gray-100 flex flex-col group hover:border-blue-600 transition-all">
@@ -779,10 +814,7 @@ const IceCreamModule: React.FC<IceCreamModuleProps> = ({
                         </div>
                         <div className="flex flex-wrap gap-2">
                              <button onClick={() => setShowNewInsumoModal(true)} className="px-4 py-2 bg-gray-900 text-white rounded-xl font-black uppercase text-[9px] shadow-lg flex items-center gap-2 border-b-2 border-black active:scale-95"><Plus size={14}/> Novo Insumo</button>
-                             <button onClick={() => {
-                                 setPurchaseForm({}); 
-                                 setShowPurchaseModal(true);
-                             }} className="px-4 py-2 bg-blue-600 text-white rounded-xl font-black uppercase text-[9px] shadow-lg flex items-center gap-2 border-b-2 border-blue-900 active:scale-95"><Truck size={14}/> Lançar Compra</button>
+                             <button onClick={() => { setPurchaseForm({}); setShowPurchaseModal(true); }} className="px-4 py-2 bg-blue-600 text-white rounded-xl font-black uppercase text-[9px] shadow-lg flex items-center gap-2 border-b-2 border-blue-900 active:scale-95"><Truck size={14}/> Lançar Compra</button>
                              <button onClick={() => { 
                                  const initialInv: Record<string, string> = {};
                                  filteredStock.forEach(s => initialInv[s.id] = s.stock_current.toString());
@@ -810,7 +842,6 @@ const IceCreamModule: React.FC<IceCreamModuleProps> = ({
             )}
         </div>
 
-        {/* MODAL: NOVO INSUMO (PRODUTO DE ESTOQUE) */}
         {showNewInsumoModal && (
             <div className="fixed inset-0 bg-black/90 backdrop-blur-md flex items-center justify-center z-[120] p-4">
                 <div className="bg-white rounded-[40px] shadow-2xl w-full max-w-md overflow-hidden animate-in zoom-in duration-300 border-t-8 border-gray-900">
@@ -846,7 +877,6 @@ const IceCreamModule: React.FC<IceCreamModuleProps> = ({
             </div>
         )}
 
-        {/* MODAL: ENTRADA DE COMPRA */}
         {showPurchaseModal && (
             <div className="fixed inset-0 bg-black/90 backdrop-blur-md flex items-center justify-center z-[120] p-4">
                 <div className="bg-white rounded-[40px] shadow-2xl w-full max-w-2xl overflow-hidden animate-in zoom-in duration-300 border-t-8 border-blue-600 max-h-[90vh] flex flex-col">
@@ -887,7 +917,6 @@ const IceCreamModule: React.FC<IceCreamModuleProps> = ({
             </div>
         )}
 
-        {/* MODAL: INVENTÁRIO */}
         {showInventoryModal && (
             <div className="fixed inset-0 bg-black/90 backdrop-blur-md flex items-center justify-center z-[120] p-4">
                 <div className="bg-white rounded-[40px] shadow-2xl w-full max-w-2xl overflow-hidden animate-in zoom-in duration-300 border-t-8 border-orange-600 max-h-[90vh] flex flex-col">
@@ -928,7 +957,6 @@ const IceCreamModule: React.FC<IceCreamModuleProps> = ({
             </div>
         )}
 
-        {/* MODAL: PRODUTO */}
         {showProductModal && (
             <div className="fixed inset-0 bg-black/90 backdrop-blur-md flex items-center justify-center z-[120] p-4">
                 <div className="bg-white rounded-[48px] shadow-2xl w-full max-w-4xl overflow-hidden animate-in zoom-in duration-300 border-t-8 border-orange-600 max-h-[90vh] flex flex-col">
@@ -936,7 +964,6 @@ const IceCreamModule: React.FC<IceCreamModuleProps> = ({
                         <h3 className="text-2xl font-black text-gray-900 uppercase italic tracking-tighter leading-none">{editingProduct ? 'Editar' : 'Novo'} <span className="text-orange-600">Produto</span></h3>
                         <button onClick={() => setShowProductModal(false)} className="bg-white p-2 rounded-full text-gray-400 hover:text-red-600 shadow-sm border"><X size={20} /></button>
                     </div>
-                    
                     <div className="flex-1 overflow-y-auto no-scrollbar p-10">
                         <div className="grid grid-cols-1 md:grid-cols-2 gap-12">
                             <div className="space-y-6">
@@ -960,7 +987,6 @@ const IceCreamModule: React.FC<IceCreamModuleProps> = ({
                                     </div>
                                 </div>
                             </div>
-
                             <div className="space-y-6">
                                 <h4 className="text-[10px] font-black text-blue-600 uppercase tracking-widest border-b pb-2">Engenharia de Receita (Baixa de Insumos)</h4>
                                 <div className="bg-blue-50 p-6 rounded-[32px] border border-blue-100 space-y-4">
@@ -981,7 +1007,6 @@ const IceCreamModule: React.FC<IceCreamModuleProps> = ({
                                         />
                                         <button type="button" onClick={handleAddRecipeItem} className="p-3 bg-blue-600 text-white rounded-xl shadow-lg hover:bg-blue-700"><Plus size={16}/></button>
                                     </div>
-
                                     <div className="space-y-2 max-h-40 overflow-y-auto no-scrollbar">
                                         {tempRecipe.map((item, i) => (
                                             <div key={i} className="flex justify-between items-center bg-white p-3 rounded-xl border border-blue-50 shadow-sm">
@@ -1000,7 +1025,6 @@ const IceCreamModule: React.FC<IceCreamModuleProps> = ({
                             </div>
                         </div>
                     </div>
-
                     <div className="p-8 bg-gray-50 border-t flex justify-center shrink-0">
                         <button onClick={handleSaveProductForm} disabled={isSubmitting} className="w-full max-w-sm py-5 bg-gray-950 text-white rounded-[28px] font-black uppercase text-xs shadow-xl active:scale-95 transition-all border-b-4 border-orange-600 flex items-center justify-center gap-2">
                             {isSubmitting ? <Loader2 className="animate-spin" /> : <Save size={18}/>} SALVAR PRODUTO E RECEITA
@@ -1010,7 +1034,6 @@ const IceCreamModule: React.FC<IceCreamModuleProps> = ({
             </div>
         )}
 
-        {/* MODAL: SÓCIOS */}
         {showPartnersModal && (
             <div className="fixed inset-0 bg-black/90 backdrop-blur-md flex items-center justify-center z-[120] p-4">
                 <div className="bg-white rounded-[40px] shadow-2xl w-full max-w-md overflow-hidden animate-in zoom-in duration-300">
@@ -1040,10 +1063,9 @@ const IceCreamModule: React.FC<IceCreamModuleProps> = ({
             </div>
         )}
 
-        {/* Modal de Cancelamento */}
         {showCancelModal && (
             <div className="fixed inset-0 bg-black/80 backdrop-blur-md flex items-center justify-center z-[130] p-4">
-                <div className="bg-white rounded-[40px] p-10 max-w-sm w-full text-center shadow-2xl animate-in zoom-in duration-200">
+                <div className="bg-white rounded-[40px] p-10 max-sm w-full text-center shadow-2xl animate-in zoom-in duration-200">
                     <div className="p-5 bg-red-50 text-red-600 rounded-full w-fit mx-auto mb-6"><AlertTriangle size={48} /></div>
                     <h3 className="text-2xl font-black text-gray-900 uppercase italic mb-2 tracking-tighter">Estornar <span className="text-red-600">Venda?</span></h3>
                     <p className="text-gray-400 text-xs font-bold uppercase mb-8">Esta ação irá remover permanentemente a entrada de caixa.</p>
