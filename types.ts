@@ -1,4 +1,6 @@
-
+/* =========================
+   ROLES / USUÁRIOS
+========================= */
 export enum UserRole {
   ADMIN = 'ADMIN',
   MANAGER = 'MANAGER',
@@ -16,10 +18,13 @@ export interface User {
   photo?: string;
 }
 
+/* =========================
+   CATEGORIAS / COTAS
+========================= */
 export interface QuotaCategory {
   id: string;
-  parent_category: string; 
-  category_name: string;   
+  parent_category: string;
+  category_name: string;
   is_active?: boolean;
   created_at?: string;
 }
@@ -28,10 +33,13 @@ export interface QuotaMixParameter {
   id: string;
   category_name: string;
   percentage: number;
-  semester?: 1 | 2; 
+  semester?: 1 | 2;
   created_at?: string;
 }
 
+/* =========================
+   ESTOQUE / SORVETERIA
+========================= */
 export interface IceCreamStock {
   id: string;
   store_id: string;
@@ -55,8 +63,8 @@ export interface IceCreamItem {
   price: number;
   flavor?: string;
   active: boolean;
-  consumptionPerSale: number; 
-  recipe?: IceCreamRecipeItem[]; 
+  consumptionPerSale: number;
+  recipe?: IceCreamRecipeItem[];
   image_url?: string;
   created_at?: string;
 }
@@ -69,7 +77,7 @@ export interface IceCreamDailySale {
   category: string;
   flavor: string;
   unitsSold: number;
-  unitPrice: number; 
+  unitPrice: number;
   totalValue: number;
   paymentMethod: IceCreamPaymentMethod;
   buyer_name?: string;
@@ -81,9 +89,26 @@ export interface IceCreamDailySale {
   ml?: string;
 }
 
-export type IceCreamPaymentMethod = 'Pix' | 'Cartão' | 'Dinheiro' | 'Fiado' | 'Misto';
-export type IceCreamCategory = 'Sundae' | 'Milkshake' | 'Casquinha' | 'Cascão' | 'Cascão Trufado' | 'Copinho' | 'Bebidas' | 'Adicionais';
+export type IceCreamPaymentMethod =
+  | 'Pix'
+  | 'Cartão'
+  | 'Dinheiro'
+  | 'Fiado'
+  | 'Misto';
 
+export type IceCreamCategory =
+  | 'Sundae'
+  | 'Milkshake'
+  | 'Casquinha'
+  | 'Cascão'
+  | 'Cascão Trufado'
+  | 'Copinho'
+  | 'Bebidas'
+  | 'Adicionais';
+
+/* =========================
+   TRANSAÇÕES
+========================= */
 export interface IceCreamTransaction {
   id: string;
   storeId: string;
@@ -96,109 +121,282 @@ export interface IceCreamTransaction {
 }
 
 export interface IceCreamPromissoryNote {
-    id: string;
-    store_id: string;
-    sale_id: string;
-    buyer_name: string;
-    value: number;
-    status: 'pending' | 'paid';
-    created_at: string;
+  id: string;
+  store_id: string;
+  sale_id: string;
+  buyer_name: string;
+  value: number;
+  status: 'pending' | 'paid';
+  created_at: string;
 }
 
-export interface PagePermission { id: string; page_key: string; label: string; module_group: string; allow_admin: boolean; allow_manager: boolean; allow_cashier: boolean; allow_sorvete: boolean; sort_order: number; }
-export interface Store { id: string; number: string; name: string; city: string; managerName: string; managerEmail: string; managerPhone: string; status?: 'active' | 'pending' | 'inactive'; role?: UserRole; password?: string; passwordResetRequested?: boolean; }
+/* =========================
+   PERMISSÕES / LOJAS
+========================= */
+export interface PagePermission {
+  id: string;
+  page_key: string;
+  label: string;
+  module_group: string;
+  allow_admin: boolean;
+  allow_manager: boolean;
+  allow_cashier: boolean;
+  allow_sorvete: boolean;
+  sort_order: number;
+}
 
-export interface MonthlyPerformance { 
-  id?: string; 
-  storeId: string; 
-  month: string; 
-  revenueTarget: number; 
-  revenueActual: number; 
-  percentMeta: number; 
-  itemsTarget?: number; 
-  itemsActual?: number; 
-  itemsPerTicket: number; 
-  unitPriceAverage: number; 
-  averageTicket: number; 
-  delinquencyRate: number; 
-  paTarget?: number; 
-  ticketTarget?: number; 
-  puTarget?: number; 
-  delinquencyTarget?: number; 
-  trend: 'up' | 'down' | 'stable'; 
-  correctedDailyGoal: number; 
+export interface Store {
+  id: string;
+  number: string;
+  name: string;
+  city: string;
+  managerName: string;
+  managerEmail: string;
+  managerPhone: string;
+  status?: 'active' | 'pending' | 'inactive';
+  role?: UserRole;
+  password?: string;
+  passwordResetRequested?: boolean;
+}
+
+/* =========================
+   🔹 METAS MENSAIS (NOVO)
+   Tabela: monthly_goals
+========================= */
+export interface MonthlyGoal {
+  id?: string;
+  storeId: string;
+  year: number;
+  month: number;
+
+  revenueTarget: number;
+  itemsTarget: number;
+  paTarget: number;
+  puTarget: number;
+  delinquencyTarget: number;
+
+  businessDays: number;
+  trend: 'up' | 'stable' | 'down';
+}
+
+/* =========================
+   🔹 PERFORMANCE (VIEW)
+   View: monthly_performance
+========================= */
+export interface MonthlyPerformanceView {
+  storeId: string;
+  year: number;
+  month: number;
+
+  revenueTarget: number;
+  itemsTarget: number;
+  paTarget: number;
+  puTarget: number;
+  delinquencyTarget: number;
+
+  revenueActual: number;
+  itemsActual: number;
+  paActual: number | null;
+  puActual: number | null;
+  delinquencyActual: number | null;
+
+  revenuePercent: number | null;
+  paPercent: number | null;
+  puPercent: number | null;
+
+  businessDays: number | null;
+  trend: 'up' | 'stable' | 'down' | null;
+}
+
+/* =========================
+   ⚠️ PERFORMANCE LEGADO
+   NÃO usar para metas novas
+========================= */
+export interface MonthlyPerformance {
+  id?: string;
+  storeId: string;
+  month: string;
+
+  revenueTarget: number;
+  revenueActual: number;
+  percentMeta: number;
+
+  itemsTarget?: number;
+  itemsActual?: number;
+
+  itemsPerTicket: number;
+  unitPriceAverage: number;
+  averageTicket: number;
+
+  delinquencyRate: number;
+
+  paTarget?: number;
+  ticketTarget?: number;
+  puTarget?: number;
+  delinquencyTarget?: number;
+
+  trend: 'up' | 'down' | 'stable';
+  correctedDailyGoal: number;
   businessDays?: number;
-  growthTarget?: number; // % de crescimento esperado vs ano anterior
-  rewardValue?: number; // Valor em R$ de premiação para a loja se bater meta
+  growthTarget?: number;
+  rewardValue?: number;
 }
 
-export interface ProductPerformance { storeId: string; month: string; brand: string; category: string; pairsSold: number; revenue: number; }
-export interface StoreProfitPartner { id: string; store_id: string; partner_name: string; percentage: number; active: boolean; created_at?: string; }
-export interface CashRegisterClosure { id: string; storeId: string; closedBy: string; date: string; totalSales: number; totalExpenses: number; balance: number; notes?: string; createdAt: string; }
-export interface SystemLog { id?: string; created_at: string; userId: string; userName: string; userRole: UserRole; action: string; details: string; }
+/* =========================
+   OUTROS MÓDULOS
+========================= */
+export interface ProductPerformance {
+  storeId: string;
+  month: string;
+  brand: string;
+  category: string;
+  pairsSold: number;
+  revenue: number;
+}
+
+export interface StoreProfitPartner {
+  id: string;
+  store_id: string;
+  partner_name: string;
+  percentage: number;
+  active: boolean;
+  created_at?: string;
+}
+
+export interface CashRegisterClosure {
+  id: string;
+  storeId: string;
+  closedBy: string;
+  date: string;
+  totalSales: number;
+  totalExpenses: number;
+  balance: number;
+  notes?: string;
+  createdAt: string;
+}
+
+export interface SystemLog {
+  id?: string;
+  created_at: string;
+  userId: string;
+  userName: string;
+  userRole: UserRole;
+  action: string;
+  details: string;
+}
 
 export interface Installment {
   n: number;
   value: number;
 }
 
-export interface Cota { 
-  id: string; 
-  storeId: string; 
-  brand: string; 
-  totalValue: number; 
-  shipmentDate: string; 
-  paymentTerms: string; 
-  installments: Record<string, number> | Installment[]; 
-  createdAt: Date; 
-  createdByRole?: string; 
-  status?: string; 
-  pairs?: number; 
+export interface Cota {
+  id: string;
+  storeId: string;
+  brand: string;
+  totalValue: number;
+  shipmentDate: string;
+  paymentTerms: string;
+  installments: Record<string, number> | Installment[];
+  createdAt: Date;
+  createdByRole?: string;
+  status?: string;
+  pairs?: number;
   classification?: string;
   category_id?: string;
   category_name?: string;
-  parent_category?: string; 
+  parent_category?: string;
 }
 
-export interface CotaSettings { storeId: string; budgetValue: number; managerPercent: number; }
-export interface CotaDebts { id?: string; storeId: string; month: string; value: number; description?: string; }
+export interface CotaSettings {
+  storeId: string;
+  budgetValue: number;
+  managerPercent: number;
+}
+
+export interface CotaDebts {
+  id?: string;
+  storeId: string;
+  month: string;
+  value: number;
+  description?: string;
+}
 
 export type TaskPriority = 'highest' | 'high' | 'medium' | 'low' | 'lowest';
 
-export interface AgendaItem { 
-  id: string; 
-  userId: string; 
-  title: string; 
-  description: string; 
-  dueDate: string; 
+export interface AgendaItem {
+  id: string;
+  userId: string;
+  title: string;
+  description: string;
+  dueDate: string;
   dueTime: string;
-  priority: TaskPriority; 
-  isCompleted: boolean; 
+  priority: TaskPriority;
+  isCompleted: boolean;
   createdAt: Date;
   reminder_level: 1 | 2 | 3;
   reminded_at?: string | null;
   completed_note?: string;
 }
 
-export type DownloadCategory = 'spreadsheet' | 'media' | 'video' | 'image' | 'audio' | 'other';
-export interface DownloadItem { 
-  id: string; 
-  title: string; 
-  description: string | null; 
-  category: DownloadCategory; 
-  url: string; 
-  fileName: string | null; 
-  size: string | null; 
-  campaign: string | null; 
-  createdAt: Date; 
-  createdBy: string; 
+export type DownloadCategory =
+  | 'spreadsheet'
+  | 'media'
+  | 'video'
+  | 'image'
+  | 'audio'
+  | 'other';
+
+export interface DownloadItem {
+  id: string;
+  title: string;
+  description: string | null;
+  category: DownloadCategory;
+  url: string;
+  fileName: string | null;
+  size: string | null;
+  campaign: string | null;
+  createdAt: Date;
+  createdBy: string;
 }
 
-export interface CashError { id: string; storeId: string; userId: string; userName: string; date: string; type: 'surplus' | 'shortage'; value: number; reason?: string; createdAt: Date; }
-export interface Receipt { id: string; storeId?: string; issuerName: string; payer: string; recipient: string; value: number; valueInWords: string; reference: string; date: string; createdAt: Date; }
-export interface CreditCardSale { id: string; storeId?: string; userId: string; date: string; brand: string; value: number; authorizationCode?: string; }
+export interface CashError {
+  id: string;
+  storeId: string;
+  userId: string;
+  userName: string;
+  date: string;
+  type: 'surplus' | 'shortage';
+  value: number;
+  reason?: string;
+  createdAt: Date;
+}
+
+export interface Receipt {
+  id: string;
+  storeId?: string;
+  issuerName: string;
+  payer: string;
+  recipient: string;
+  value: number;
+  valueInWords: string;
+  reference: string;
+  date: string;
+  createdAt: Date;
+}
+
+export interface CreditCardSale {
+  id: string;
+  storeId?: string;
+  userId: string;
+  date: string;
+  brand: string;
+  value: number;
+  authorizationCode?: string;
+}
 
 export type AdminRoleLevel = 'admin' | 'manager' | 'cashier' | 'sorvete';
+
 export interface AdminUser {
   id: string;
   name: string;

@@ -1,235 +1,345 @@
-
 import React, { useState, useEffect, useMemo } from 'react';
-import { Store, MonthlyPerformance } from '../types';
-import { formatCurrency } from '../constants';
-import { Target, Loader2, Save, Calendar, Calculator, TrendingUp, Copy, CheckCircle2, ArrowUpRight, ArrowDownRight, Minus, Sparkles, DollarSign, Zap } from 'lucide-react';
+import { Store, MonthlyGoal } from '../types';
+import {
+  Target,
+  Loader2,
+  Save,
+  Calendar,
+  Copy,
+  CheckCircle2,
+  ArrowUpRight,
+  ArrowDownRight,
+  Minus
+} from 'lucide-react';
 
 interface GoalRegistrationProps {
   stores: Store[];
-  performanceData: MonthlyPerformance[];
-  onUpdateData: (data: MonthlyPerformance[]) => Promise<void>; 
+  goalsData: MonthlyGoal[];
+  onSaveGoals: (data: MonthlyGoal[]) => Promise<void>;
 }
 
-const GoalRegistration: React.FC<GoalRegistrationProps> = ({ stores, performanceData, onUpdateData }) => {
+const GoalRegistration: React.FC<GoalRegistrationProps> = ({
+  stores,
+  goalsData,
+  onSaveGoals
+}) => {
   const [selectedYear, setSelectedYear] = useState(new Date().getFullYear());
-  const [selectedMonthIndex, setSelectedMonthIndex] = useState(new Date().getMonth() + 1);
-  const selectedMonthStr = `${selectedYear}-${String(selectedMonthIndex).padStart(2, '0')}`;
-  
-  const [formData, setFormData] = useState<Record<string, Partial<MonthlyPerformance>>>({});
-  const [saveStatus, setSaveStatus] = useState<'idle' | 'saving' | 'success' | 'error'>('idle');
+  const [selectedMonth, setSelectedMonth] = useState(new Date().getMonth() + 1);
+
+  const [formData, setFormData] = useState<Record<string, MonthlyGoal>>({});
+  const [saveStatus, setSaveStatus] =
+    useState<'idle' | 'saving' | 'success' | 'error'>('idle');
 
   const months = [
-    { value: 1, label: 'Janeiro' }, { value: 2, label: 'Fevereiro' }, { value: 3, label: 'Março' },
-    { value: 4, label: 'Abril' }, { value: 5, label: 'Maio' }, { value: 6, label: 'Junho' },
-    { value: 7, label: 'Julho' }, { value: 8, label: 'Agosto' }, { value: 9, label: 'Setembro' },
-    { value: 10, label: 'Outubro' }, { value: 11, label: 'Novembro' }, { value: 12, label: 'Dezembro' }
+    { value: 1, label: 'Janeiro' },
+    { value: 2, label: 'Fevereiro' },
+    { value: 3, label: 'Março' },
+    { value: 4, label: 'Abril' },
+    { value: 5, label: 'Maio' },
+    { value: 6, label: 'Junho' },
+    { value: 7, label: 'Julho' },
+    { value: 8, label: 'Agosto' },
+    { value: 9, label: 'Setembro' },
+    { value: 10, label: 'Outubro' },
+    { value: 11, label: 'Novembro' },
+    { value: 12, label: 'Dezembro' }
   ];
 
-  const activeStores = useMemo(() => {
-    return (stores || []).filter(s => s.status === 'active').sort((a, b) => parseInt(a.number) - parseInt(b.number));
-  }, [stores]);
+  const activeStores = useMemo(
+    () =>
+      (stores || [])
+        .filter(s => s.status === 'active')
+        .sort((a, b) => parseInt(a.number) - parseInt(b.number)),
+    [stores]
+  );
 
+  /* =========================
+     LOAD METAS
+  ========================= */
   useEffect(() => {
-    const newFormData: Record<string, Partial<MonthlyPerformance>> = {};
+    const initial: Record<string, MonthlyGoal> = {};
+
     activeStores.forEach(store => {
-      const existing = performanceData.find(p => p.storeId === store.id && p.month === selectedMonthStr);
-      newFormData[store.id] = existing || { 
-        revenueTarget: 0, 
-        itemsTarget: 0, 
-        paTarget: 0, 
-        ticketTarget: 0, 
-        puTarget: 0, 
-        delinquencyTarget: 2, 
-        businessDays: 26,
-        trend: 'stable',
-        growthTarget: 0,
-        rewardValue: 0
-      };
+      const existing = goalsData.find(
+        g =>
+          g.storeId === store.id &&
+          g.year === selectedYear &&
+          g.month === selectedMonth
+      );
+
+      initial[store.id] =
+        existing || {
+          storeId: store.id,
+          year: selectedYear,
+          month: selectedMonth,
+          revenueTarget: 0,
+          itemsTarget: 0,
+          paTarget: 0,
+          puTarget: 0,
+          delinquencyTarget: 2,
+          businessDays: 26,
+          trend: 'stable'
+        };
     });
-    setFormData(newFormData);
-  }, [selectedMonthStr, performanceData, activeStores]);
 
-  const handleInputChange = (storeId: string, field: keyof MonthlyPerformance, value: any) => {
-      let finalValue = value;
-      if (typeof value === 'string' && field !== 'trend') {
-          finalValue = parseFloat(value.replace(/\./g, '').replace(',', '.')) || 0;
-      }
-      
-      setFormData(prev => ({
-          ...prev,
-          [storeId]: { ...prev[storeId], [field]: finalValue }
-      }));
+    setFormData(initial);
+  }, [activeStores, goalsData, selectedYear, selectedMonth]);
+
+  /* =========================
+     INPUT HANDLER
+  ========================= */
+  const handleChange = (
+    storeId: string,
+    field: keyof MonthlyGoal,
+    value: any
+  ) => {
+    const parsed =
+      typeof value === 'string' && field !== 'trend'
+        ? parseFloat(value.replace(/\./g, '').replace(',', '.')) || 0
+        : value;
+
+    setFormData(prev => ({
+      ...prev,
+      [storeId]: { ...prev[storeId], [field]: parsed }
+    }));
   };
 
+  /* =========================
+     CLONE LAST MONTH
+  ========================= */
   const handleCloneLastMonth = () => {
-      const lastMonthIndex = selectedMonthIndex === 1 ? 12 : selectedMonthIndex - 1;
-      const lastYear = selectedMonthIndex === 1 ? selectedYear - 1 : selectedYear;
-      const lastMonthStr = `${lastYear}-${String(lastMonthIndex).padStart(2, '0')}`;
-      
-      if (window.confirm(`Deseja clonar as metas de ${lastMonthStr} para o mês atual?`)) {
-          const clonedData: Record<string, Partial<MonthlyPerformance>> = {};
-          activeStores.forEach(store => {
-              const lastMonthPerf = performanceData.find(p => p.storeId === store.id && p.month === lastMonthStr);
-              if (lastMonthPerf) {
-                  clonedData[store.id] = {
-                      ...lastMonthPerf,
-                      id: undefined,
-                      month: selectedMonthStr,
-                      revenueActual: 0,
-                      itemsActual: 0,
-                      percentMeta: 0
-                  };
-              } else {
-                  clonedData[store.id] = formData[store.id];
-              }
-          });
-          setFormData(clonedData);
-      }
+    const prevMonth = selectedMonth === 1 ? 12 : selectedMonth - 1;
+    const prevYear = selectedMonth === 1 ? selectedYear - 1 : selectedYear;
+
+    if (!window.confirm(`Clonar metas de ${prevMonth}/${prevYear}?`)) return;
+
+    const cloned: Record<string, MonthlyGoal> = {};
+
+    activeStores.forEach(store => {
+      const last = goalsData.find(
+        g =>
+          g.storeId === store.id &&
+          g.year === prevYear &&
+          g.month === prevMonth
+      );
+
+      cloned[store.id] = last
+        ? { ...last, year: selectedYear, month: selectedMonth }
+        : formData[store.id];
+    });
+
+    setFormData(cloned);
   };
 
+  /* =========================
+     SAVE METAS
+  ========================= */
   const handleSave = async () => {
     setSaveStatus('saving');
     try {
-        const dataToSave: MonthlyPerformance[] = activeStores.map(store => {
-            const data = formData[store.id];
-            return {
-                ...data,
-                storeId: store.id,
-                month: selectedMonthStr,
-                revenueTarget: Number(data?.revenueTarget) || 0,
-                itemsTarget: Number(data?.itemsTarget) || 0,
-                paTarget: Number(data?.paTarget) || 0,
-                ticketTarget: Number(data?.ticketTarget) || 0,
-                puTarget: Number(data?.puTarget) || 0,
-                delinquencyTarget: Number(data?.delinquencyTarget) || 0,
-                businessDays: Number(data?.businessDays) || 26,
-                trend: data?.trend || 'stable',
-                growthTarget: Number(data?.growthTarget) || 0,
-                rewardValue: Number(data?.rewardValue) || 0
-            } as MonthlyPerformance;
-        });
-        
-        await onUpdateData(dataToSave);
-        setSaveStatus('success');
-        setTimeout(() => setSaveStatus('idle'), 3000);
-    } catch (e) { 
-        setSaveStatus('error');
+      await onSaveGoals(Object.values(formData));
+      setSaveStatus('success');
+      setTimeout(() => setSaveStatus('idle'), 2500);
+    } catch {
+      setSaveStatus('error');
     }
   };
 
   return (
-    <div className="p-4 md:p-6 space-y-4 flex flex-col h-full animate-in fade-in duration-500 pb-20">
-      
-      <div className="flex flex-col lg:flex-row justify-between items-center gap-4 bg-white p-6 rounded-3xl shadow-sm border border-gray-100">
+    <div className="p-4 md:p-6 space-y-4 flex flex-col h-full pb-20">
+      {/* HEADER */}
+      <div className="flex flex-col lg:flex-row justify-between items-center gap-4 bg-white p-6 rounded-3xl shadow-sm border">
         <div className="flex items-center gap-4">
           <div className="p-3 bg-red-600 text-white rounded-2xl">
             <Target size={24} />
           </div>
           <div>
-            <h2 className="text-xl font-black uppercase italic tracking-tighter text-gray-900">
-                Planejamento <span className="text-red-600">de Metas & Prêmios</span>
+            <h2 className="text-xl font-black uppercase italic">
+              Planejamento <span className="text-red-600">de Metas</span>
             </h2>
-            <p className="text-gray-400 font-bold uppercase text-[9px] tracking-widest leading-none mt-1">Diretrizes estratégicas por unidade operante</p>
+            <p className="text-gray-400 text-[9px] uppercase font-bold">
+              Definição mensal por loja
+            </p>
           </div>
         </div>
 
         <div className="flex items-center gap-2">
           <div className="flex items-center gap-2 bg-gray-50 p-1.5 rounded-xl border">
-                <Calendar className="text-blue-600 ml-1" size={14} />
-                <select value={selectedMonthIndex} onChange={(e) => setSelectedMonthIndex(Number(e.target.value))} className="bg-transparent text-gray-900 font-black outline-none cursor-pointer px-1 uppercase text-[10px]">
-                    {months.map(m => <option key={m.value} value={m.value}>{m.label}</option>)}
-                </select>
-                <select value={selectedYear} onChange={(e) => setSelectedYear(Number(e.target.value))} className="bg-transparent text-gray-900 font-black outline-none cursor-pointer px-1 text-[10px]">
-                    {[2024, 2025, 2026].map(y => <option key={y} value={y}>{y}</option>)}
-                </select>
+            <Calendar size={14} />
+            <select
+              value={selectedMonth}
+              onChange={e => setSelectedMonth(Number(e.target.value))}
+              className="bg-transparent font-black text-[10px]"
+            >
+              {months.map(m => (
+                <option key={m.value} value={m.value}>
+                  {m.label}
+                </option>
+              ))}
+            </select>
+            <select
+              value={selectedYear}
+              onChange={e => setSelectedYear(Number(e.target.value))}
+              className="bg-transparent font-black text-[10px]"
+            >
+              {[2024, 2025, 2026].map(y => (
+                <option key={y} value={y}>
+                  {y}
+                </option>
+              ))}
+            </select>
           </div>
-          <button onClick={handleCloneLastMonth} className="bg-blue-50 text-blue-700 px-4 py-2 rounded-xl hover:bg-blue-100 font-black uppercase text-[9px] tracking-widest flex items-center gap-2">
-              <Copy size={14} /> Clonar
+
+          <button
+            onClick={handleCloneLastMonth}
+            className="bg-blue-50 px-4 py-2 rounded-xl font-black text-[9px]"
+          >
+            <Copy size={14} /> Clonar
           </button>
-          <button onClick={handleSave} disabled={saveStatus === 'saving'} className="bg-gray-950 text-white px-6 py-2.5 rounded-xl font-black uppercase text-[9px] tracking-widest flex items-center gap-2 border-b-4 border-red-600 active:scale-95 disabled:opacity-50">
-            {saveStatus === 'saving' ? <Loader2 className="animate-spin" size={14}/> : <Save size={14}/>} 
+
+          <button
+            onClick={handleSave}
+            disabled={saveStatus === 'saving'}
+            className="bg-gray-950 text-white px-6 py-2.5 rounded-xl font-black text-[9px]"
+          >
+            {saveStatus === 'saving' ? (
+              <Loader2 className="animate-spin" size={14} />
+            ) : (
+              <Save size={14} />
+            )}
             Efetivar
           </button>
         </div>
       </div>
 
-      <div className="flex-1 bg-white rounded-3xl shadow-sm border border-gray-100 flex flex-col overflow-hidden">
-        <div className="flex-1 overflow-auto no-scrollbar">
-            <table className="w-full text-left border-collapse min-w-[1200px]">
-              <thead className="bg-gray-50 text-[9px] font-black uppercase tracking-widest text-gray-400 border-b sticky top-0 z-30">
-                <tr>
-                  <th className="px-6 py-4 sticky left-0 bg-gray-50 z-40">Unidade</th>
-                  <th className="px-3 py-4 text-center">Faturamento (R$)</th>
-                  <th className="px-3 py-4 text-center">Crescimento (%)</th>
-                  <th className="px-3 py-4 text-center">Peças</th>
-                  <th className="px-3 py-4 text-center">P.A</th>
-                  <th className="px-3 py-4 text-center">Ticket</th>
-                  <th className="px-3 py-4 text-center">Prêmio (R$)</th>
-                  <th className="px-3 py-4 text-center w-16">Dias</th>
-                  <th className="px-3 py-4 text-center w-16">Inad (%)</th>
-                  <th className="px-3 py-4 text-center w-20">Trend</th>
+      {/* TABLE */}
+      <div className="flex-1 bg-white rounded-3xl border overflow-auto">
+        <table className="w-full min-w-[1100px] text-left">
+          <thead className="bg-gray-50 text-[9px] font-black uppercase text-gray-400">
+            <tr>
+              <th className="px-6 py-4">Unidade</th>
+              <th className="text-center">Faturamento</th>
+              <th className="text-center">Peças</th>
+              <th className="text-center">P.A</th>
+              <th className="text-center">P.U</th>
+              <th className="text-center">Dias</th>
+              <th className="text-center">Inad (%)</th>
+              <th className="text-center">Trend</th>
+            </tr>
+          </thead>
+          <tbody>
+            {activeStores.map(store => {
+              const row = formData[store.id];
+              if (!row) return null;
+
+              return (
+                <tr key={store.id} className="border-t">
+                  <td className="px-6 py-2 font-black">
+                    LOJA {store.number}
+                  </td>
+                  <td>
+                    <input
+                      value={row.revenueTarget}
+                      onChange={e =>
+                        handleChange(store.id, 'revenueTarget', e.target.value)
+                      }
+                    />
+                  </td>
+                  <td>
+                    <input
+                      value={row.itemsTarget}
+                      onChange={e =>
+                        handleChange(store.id, 'itemsTarget', e.target.value)
+                      }
+                    />
+                  </td>
+                  <td>
+                    <input
+                      value={row.paTarget}
+                      onChange={e =>
+                        handleChange(store.id, 'paTarget', e.target.value)
+                      }
+                    />
+                  </td>
+                  <td>
+                    <input
+                      value={row.puTarget}
+                      onChange={e =>
+                        handleChange(store.id, 'puTarget', e.target.value)
+                      }
+                    />
+                  </td>
+                  <td>
+                    <input
+                      value={row.businessDays}
+                      onChange={e =>
+                        handleChange(store.id, 'businessDays', e.target.value)
+                      }
+                    />
+                  </td>
+                  <td>
+                    <input
+                      value={row.delinquencyTarget}
+                      onChange={e =>
+                        handleChange(
+                          store.id,
+                          'delinquencyTarget',
+                          e.target.value
+                        )
+                      }
+                    />
+                  </td>
+                  <td>
+                    <div className="flex justify-center gap-1">
+                      <button
+                        onClick={() =>
+                          handleChange(store.id, 'trend', 'up')
+                        }
+                        className={
+                          row.trend === 'up'
+                            ? 'text-green-600'
+                            : 'text-gray-300'
+                        }
+                      >
+                        <ArrowUpRight size={14} />
+                      </button>
+                      <button
+                        onClick={() =>
+                          handleChange(store.id, 'trend', 'stable')
+                        }
+                        className={
+                          row.trend === 'stable'
+                            ? 'text-blue-600'
+                            : 'text-gray-300'
+                        }
+                      >
+                        <Minus size={14} />
+                      </button>
+                      <button
+                        onClick={() =>
+                          handleChange(store.id, 'trend', 'down')
+                        }
+                        className={
+                          row.trend === 'down'
+                            ? 'text-red-600'
+                            : 'text-gray-300'
+                        }
+                      >
+                        <ArrowDownRight size={14} />
+                      </button>
+                    </div>
+                  </td>
                 </tr>
-              </thead>
-              <tbody className="divide-y divide-gray-50">
-                {activeStores.map(s => {
-                    const rowData = formData[s.id];
-                    return (
-                        <tr key={s.id} className="hover:bg-blue-50/20 transition-all group">
-                            <td className="px-6 py-2 sticky left-0 bg-white group-hover:bg-blue-50/30 z-20 shadow-sm">
-                                <div className="flex flex-col">
-                                    <span className="font-black uppercase italic text-blue-950 text-[11px]">LOJA {s.number}</span>
-                                    <span className="text-[8px] font-bold text-gray-400 uppercase leading-none truncate max-w-[100px]">{s.city.split(' - ')[0]}</span>
-                                </div>
-                            </td>
-                            <td className="px-2 py-2">
-                                <input type="text" value={rowData?.revenueTarget || ''} onChange={e => handleInputChange(s.id, 'revenueTarget', e.target.value)} className="w-full p-2 bg-gray-50 rounded-xl font-black text-blue-900 text-center text-[11px] outline-none border-none shadow-inner" placeholder="0" />
-                            </td>
-                            <td className="px-2 py-2">
-                                <div className="relative">
-                                    <input type="text" value={rowData?.growthTarget || ''} onChange={e => handleInputChange(s.id, 'growthTarget', e.target.value)} className="w-full p-2 bg-purple-50 rounded-xl font-black text-purple-700 text-center text-[11px] outline-none border-none shadow-inner" placeholder="0" />
-                                    <Sparkles className="absolute right-2 top-1/2 -translate-y-1/2 text-purple-200" size={10} />
-                                </div>
-                            </td>
-                            <td className="px-2 py-2">
-                                <input type="text" value={rowData?.itemsTarget || ''} onChange={e => handleInputChange(s.id, 'itemsTarget', e.target.value)} className="w-full p-2 bg-gray-50 rounded-xl font-black text-gray-700 text-center text-[11px] outline-none border-none shadow-inner" placeholder="0" />
-                            </td>
-                            <td className="px-2 py-2">
-                                <input type="text" value={rowData?.paTarget || ''} onChange={e => handleInputChange(s.id, 'paTarget', e.target.value)} className="w-full p-2 bg-gray-50 rounded-xl font-black text-gray-700 text-center text-[11px] outline-none border-none shadow-inner" placeholder="0,00" />
-                            </td>
-                            <td className="px-2 py-2">
-                                <input type="text" value={rowData?.ticketTarget || ''} onChange={e => handleInputChange(s.id, 'ticketTarget', e.target.value)} className="w-full p-2 bg-gray-50 rounded-xl font-black text-gray-700 text-center text-[11px] outline-none border-none shadow-inner" placeholder="0,00" />
-                            </td>
-                            <td className="px-2 py-2">
-                                <div className="relative">
-                                    <input type="text" value={rowData?.rewardValue || ''} onChange={e => handleInputChange(s.id, 'rewardValue', e.target.value)} className="w-full p-2 bg-green-50 rounded-xl font-black text-green-700 text-center text-[11px] outline-none border-none shadow-inner" placeholder="0,00" />
-                                    <DollarSign className="absolute right-2 top-1/2 -translate-y-1/2 text-green-200" size={10} />
-                                </div>
-                            </td>
-                            <td className="px-2 py-2">
-                                <input type="text" value={rowData?.businessDays || ''} onChange={e => handleInputChange(s.id, 'businessDays', e.target.value)} className="w-full p-2 bg-gray-50 rounded-xl font-black text-gray-700 text-center text-[11px] outline-none border-none shadow-inner" placeholder="26" />
-                            </td>
-                            <td className="px-2 py-2">
-                                <input type="text" value={rowData?.delinquencyTarget || ''} onChange={e => handleInputChange(s.id, 'delinquencyTarget', e.target.value)} className="w-full p-2 bg-red-50 rounded-xl font-black text-red-700 text-center text-[11px] outline-none border-none shadow-inner" placeholder="2.0" />
-                            </td>
-                            <td className="px-2 py-2">
-                                <div className="flex bg-gray-100 p-0.5 rounded-lg justify-center">
-                                    <button onClick={() => handleInputChange(s.id, 'trend', 'up')} className={`p-1 rounded ${rowData?.trend === 'up' ? 'bg-green-500 text-white shadow-sm' : 'text-gray-400'}`}><ArrowUpRight size={12}/></button>
-                                    <button onClick={() => handleInputChange(s.id, 'trend', 'stable')} className={`p-1 rounded ${rowData?.trend === 'stable' ? 'bg-blue-600 text-white shadow-sm' : 'text-gray-400'}`}><Minus size={12}/></button>
-                                    <button onClick={() => handleInputChange(s.id, 'trend', 'down')} className={`p-1 rounded ${rowData?.trend === 'down' ? 'bg-red-500 text-white shadow-sm' : 'text-gray-400'}`}><ArrowDownRight size={12}/></button>
-                                </div>
-                            </td>
-                        </tr>
-                    );
-                })}
-              </tbody>
-            </table>
-        </div>
+              );
+            })}
+          </tbody>
+        </table>
       </div>
-      
+
       {saveStatus === 'success' && (
-          <div className="fixed bottom-4 right-4 bg-green-600 text-white px-6 py-3 rounded-2xl text-[10px] font-black uppercase animate-bounce shadow-2xl flex items-center gap-3">
-              <CheckCircle2 size={16}/> Sincronizado: Logs de acesso gravados
-          </div>
+        <div className="fixed bottom-4 right-4 bg-green-600 text-white px-6 py-3 rounded-2xl text-[10px] font-black">
+          <CheckCircle2 size={16} /> Metas salvas com sucesso
+        </div>
       )}
     </div>
   );
