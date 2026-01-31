@@ -137,20 +137,31 @@ const IceCreamModule: React.FC<IceCreamModuleProps> = ({
   const periodKey = `${selectedYear}-${String(selectedMonth).padStart(2, '0')}`;
 
   const dreStats = useMemo(() => {
-      // 1. Filtrar Vendas Operacionais do dia (Fonte Primária)
+      // 1. Filtrar Vendas Operacionais (Hoje e Período Mensal)
       const daySales = (sales ?? []).filter(s => 
           s.createdAt?.startsWith(todayKey) && 
           s.status !== 'canceled' && 
           s.storeId === effectiveStoreId
       );
 
-      // 2. Filtrar Finanças do dia (Saídas e Rateio)
+      const monthSales = (sales ?? []).filter(s => 
+          s.createdAt?.startsWith(periodKey) && 
+          s.status !== 'canceled' && 
+          s.storeId === effectiveStoreId
+      );
+
+      // 2. Filtrar Finanças (Hoje e Período Mensal)
       const dayFinances = (finances ?? []).filter(f => 
           f.date?.startsWith(todayKey) && 
           f.storeId === effectiveStoreId
       );
 
-      // 3. Resumo de Entradas via Sales (Garante que se salvou no PDV, aparece no DRE)
+      const monthFinances = (finances ?? []).filter(f => 
+          f.date?.startsWith(periodKey) && 
+          f.storeId === effectiveStoreId
+      );
+
+      // 3. Resumo Diário
       let dayIn = 0;
       const dayMethods = { pix: 0, money: 0, card: 0, fiado: 0 };
 
@@ -161,40 +172,51 @@ const IceCreamModule: React.FC<IceCreamModuleProps> = ({
           else if (s.paymentMethod === 'Cartão') dayMethods.card += Number(s.totalValue);
           else if (s.paymentMethod === 'Fiado') dayMethods.fiado += Number(s.totalValue);
           else if (s.paymentMethod === 'Misto') {
-              // Se for misto, buscamos o rateio real gravado nas finanças para esta venda
               const relatedFinances = dayFinances.filter(f => f.type === 'entry' && f.description?.includes(s.saleCode || ''));
               relatedFinances.forEach(f => {
-                  if (f.description?.includes('via Pix')) dayMethods.pix += Number(f.value);
-                  else if (f.description?.includes('via Dinheiro')) dayMethods.money += Number(f.value);
-                  else if (f.description?.includes('via Cartão')) dayMethods.card += Number(f.value);
+                  const desc = f.description?.toLowerCase() || '';
+                  if (desc.includes('via pix')) dayMethods.pix += Number(f.value);
+                  else if (desc.includes('via dinheiro')) dayMethods.money += Number(f.value);
+                  else if (desc.includes('via cartão')) dayMethods.card += Number(f.value);
               });
           }
       });
 
       const dayOut = dayFinances.filter(f => f.type === 'exit').reduce((a, b) => a + Number(b.value), 0);
 
-      // 4. Estatísticas Mensais (Mantendo via Finanças para consistência contábil)
-      const monthFinances = (finances ?? []).filter(f => f.date?.startsWith(periodKey) && f.storeId === effectiveStoreId);
-      const monthIn = monthFinances.filter(f => f.type === 'entry').reduce((a, b) => a + Number(b.value), 0);
+      // 4. Resumo Mensal (Fonte Primária: Vendas Operacionais)
+      let monthIn = 0;
+      const monthMethods = { pix: 0, money: 0, card: 0, fiado: 0 };
+
+      monthSales.forEach(s => {
+          monthIn += Number(s.totalValue);
+          if (s.paymentMethod === 'Pix') monthMethods.pix += Number(s.totalValue);
+          else if (s.paymentMethod === 'Dinheiro') monthMethods.money += Number(s.totalValue);
+          else if (s.paymentMethod === 'Cartão') monthMethods.card += Number(s.totalValue);
+          else if (s.paymentMethod === 'Fiado') monthMethods.fiado += Number(s.totalValue);
+          else if (s.paymentMethod === 'Misto') {
+              const relatedFinances = monthFinances.filter(f => f.type === 'entry' && f.description?.includes(s.saleCode || ''));
+              relatedFinances.forEach(f => {
+                  const desc = f.description?.toLowerCase() || '';
+                  if (desc.includes('via pix')) monthMethods.pix += Number(f.value);
+                  else if (desc.includes('via dinheiro')) monthMethods.money += Number(f.value);
+                  else if (desc.includes('via cartão')) monthMethods.card += Number(f.value);
+              });
+          }
+      });
+
       const monthOut = monthFinances.filter(f => f.type === 'exit').reduce((a, b) => a + Number(b.value), 0);
       const profit = monthIn - monthOut;
-
-      const getMethodTotalMonth = (list: IceCreamTransaction[], method: string) => 
-        list.filter(f => f.type === 'entry' && f.description?.toLowerCase().includes(`via ${method.toLowerCase()}`)).reduce((a, b) => a + Number(b.value), 0);
-
-      const monthMethods = {
-          pix: getMethodTotalMonth(monthFinances, 'Pix'),
-          money: getMethodTotalMonth(monthFinances, 'Dinheiro'),
-          card: getMethodTotalMonth(monthFinances, 'Cartão'),
-          fiado: getMethodTotalMonth(monthFinances, 'Fiado')
-      };
 
       return {
           dayIn, 
           dayOut, 
           dayMethods, 
           daySales: daySales.sort((a,b) => (b.createdAt || '').localeCompare(a.createdAt || '')),
-          monthMethods, monthIn, monthOut, profit,
+          monthMethods, 
+          monthIn, 
+          monthOut, 
+          profit,
       };
   }, [sales, finances, todayKey, periodKey, effectiveStoreId]);
 
@@ -361,7 +383,6 @@ const IceCreamModule: React.FC<IceCreamModuleProps> = ({
       setIsSubmitting(true);
       try {
           for (const [stockId, valueStr] of Object.entries(purchaseForm)) {
-              // Fix: Added string cast to valueStr to ensure 'replace' method is available (fixes unknown type error)
               const val = parseFloat((valueStr as string).replace(',', '.'));
               const stockItem = stock.find(s => s.id === stockId);
               if (!isNaN(val) && val > 0 && stockItem) {
@@ -378,7 +399,6 @@ const IceCreamModule: React.FC<IceCreamModuleProps> = ({
       setIsSubmitting(true);
       try {
           for (const [stockId, valueStr] of Object.entries(inventoryForm)) {
-              // Fix: Added string cast to valueStr to ensure 'replace' method is available (fixes unknown type error)
               const newVal = parseFloat((valueStr as string).replace(',', '.'));
               const stockItem = stock.find(s => s.id === stockId);
               if (!isNaN(newVal) && stockItem) {
