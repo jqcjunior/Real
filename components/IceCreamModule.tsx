@@ -86,6 +86,10 @@ const IceCreamModule: React.FC<IceCreamModuleProps> = ({
 
   const [showProductModal, setShowProductModal] = useState(false);
   const [showTransactionModal, setShowTransactionModal] = useState(false);
+  const [showCategoryManager, setShowCategoryManager] = useState(false);
+  const [expenseCategories, setExpenseCategories] = useState<{id: string, name: string}[]>([]);
+  const [newCategoryName, setNewCategoryName] = useState('');
+
   const [showPartnersModal, setShowPartnersModal] = useState(false);
   const [showCancelModal, setShowCancelModal] = useState<{id: string, code: string} | null>(null);
   const [cancelReason, setCancelReason] = useState('');
@@ -101,12 +105,11 @@ const IceCreamModule: React.FC<IceCreamModuleProps> = ({
   const [purchaseForm, setPurchaseForm] = useState<Record<string, string>>({}); 
   const [inventoryForm, setInventoryForm] = useState<Record<string, string>>({});
 
-  const [newProd, setNewProd] = useState({ name: '', category: 'Copinho' as IceCreamCategory, price: '', flavor: '' });
-  const [tempRecipe, setTempRecipe] = useState<IceCreamRecipeItem[]>([]);
-  const [newRecipeItem, setNewRecipeItem] = useState({ stock_base_name: '', quantity: '1' });
   const [editingProduct, setEditingProduct] = useState<IceCreamItem | null>(null);
+  const [productForm, setProductForm] = useState<Partial<IceCreamItem>>({ name: '', category: 'Copinho', price: 0, active: true, recipe: [] });
+  const [newRecipeItem, setNewRecipeItem] = useState({ stock_base_name: '', quantity: '1' });
 
-  const [txForm, setTxForm] = useState({ date: new Date().toLocaleDateString('en-CA'), category: 'Despesa Operacional', value: '', description: '' });
+  const [txForm, setTxForm] = useState({ date: new Date().toLocaleDateString('en-CA'), category: '', value: '', description: '' });
   
   const [manualStoreId, setManualStoreId] = useState('');
   const isAdmin = user.role === UserRole.ADMIN;
@@ -127,13 +130,40 @@ const IceCreamModule: React.FC<IceCreamModuleProps> = ({
     if (data) setPartners(data);
   };
 
-  useEffect(() => { fetchPartners(); }, [effectiveStoreId]);
+  const fetchExpenseCategories = async () => {
+    if (!effectiveStoreId) return;
+    const { data } = await supabase.from('ice_cream_expense_categories').select('*').eq('store_id', effectiveStoreId).order('name', { ascending: true });
+    if (data) {
+        setExpenseCategories(data);
+        if (data.length > 0 && !txForm.category) {
+            setTxForm(prev => ({ ...prev, category: data[0].name }));
+        }
+    }
+  };
+
+  useEffect(() => { 
+      fetchPartners(); 
+      fetchExpenseCategories();
+  }, [effectiveStoreId]);
+
+  const handleAddCategory = async () => {
+      if (!newCategoryName.trim()) return;
+      const { error } = await supabase.from('ice_cream_expense_categories').insert([{ store_id: effectiveStoreId, name: newCategoryName.toUpperCase().trim() }]);
+      if (error) { alert("Erro ao adicionar categoria ou nome duplicado."); }
+      else { setNewCategoryName(''); fetchExpenseCategories(); }
+  };
+
+  const handleDeleteCategory = async (id: string) => {
+      if (!window.confirm("Deseja remover esta categoria?")) return;
+      const { error } = await supabase.from('ice_cream_expense_categories').delete().eq('id', id);
+      if (error) { alert("Erro ao remover."); }
+      else { fetchExpenseCategories(); }
+  };
 
   const filteredItems = useMemo(() => (items ?? []).filter(i => i.storeId === effectiveStoreId), [items, effectiveStoreId]);
   const filteredStock = useMemo(() => (stock ?? []).filter(s => s.store_id === effectiveStoreId).sort((a,b) => a.product_base.localeCompare(b.product_base)), [stock, effectiveStoreId]);
   
-  const todayDate = new Date();
-  const todayKey = `${todayDate.getFullYear()}-${String(todayDate.getMonth() + 1).padStart(2, '0')}-${String(todayDate.getDate()).padStart(2, '0')}`;
+  const todayKey = new Date().toLocaleDateString('en-CA'); 
   const periodKey = `${selectedYear}-${String(selectedMonth).padStart(2, '0')}`;
 
   const dreStats = useMemo(() => {
@@ -150,7 +180,7 @@ const IceCreamModule: React.FC<IceCreamModuleProps> = ({
       );
 
       const dayFinances = (finances ?? []).filter(f => 
-          f.date?.startsWith(todayKey) && 
+          f.date === todayKey && 
           f.storeId === effectiveStoreId
       );
 
@@ -220,7 +250,6 @@ const IceCreamModule: React.FC<IceCreamModuleProps> = ({
       };
   }, [sales, finances, todayKey, periodKey, effectiveStoreId]);
 
-  // Lógica de Agrupamento Mensal de Fiado por Funcionário
   const monthFiadoGrouped = useMemo(() => {
     const groups: Record<string, { name: string, total: number, items: any[] }> = {};
     dreStats.monthFiadoDetails.forEach(f => {
@@ -232,13 +261,34 @@ const IceCreamModule: React.FC<IceCreamModuleProps> = ({
     return Object.values(groups).sort((a, b) => b.total - a.total);
   }, [dreStats.monthFiadoDetails]);
 
+  const groupedAuditSales = useMemo(() => {
+    const grouped: Record<string, any> = {};
+    const filtered = (sales || []).filter(s => {
+        if (s.storeId !== effectiveStoreId) return false;
+        if (!s.createdAt) return false;
+        const date = new Date(s.createdAt);
+        const dMatch = auditDay ? date.getDate() === parseInt(auditDay) : true;
+        const mMatch = auditMonth ? (date.getMonth() + 1) === parseInt(auditMonth) : true;
+        const yMatch = auditYear ? date.getFullYear() === parseInt(auditYear) : true;
+        const search = auditSearch.toLowerCase();
+        const sMatch = search ? (s.productName.toLowerCase().includes(search) || s.saleCode?.toLowerCase().includes(search) || s.buyer_name?.toLowerCase().includes(search)) : true;
+        return dMatch && mMatch && yMatch && sMatch;
+    });
+    filtered.forEach(s => {
+      const code = s.saleCode || 'GEL-000';
+      if (!grouped[code]) grouped[code] = { saleCode: code, createdAt: s.createdAt, buyer_name: s.buyer_name, status: s.status, totalValue: 0, paymentMethods: new Set<string>(), items: [] };
+      grouped[code].totalValue += Number(s.totalValue);
+      grouped[code].paymentMethods.add(s.paymentMethod);
+      grouped[code].items.push(s);
+    });
+    return Object.values(grouped).sort((a: any, b: any) => (b.createdAt || '').localeCompare(a.createdAt || '')).map((g: any) => ({ ...g, paymentMethods: Array.from(g.paymentMethods) }));
+  }, [sales, effectiveStoreId, auditDay, auditMonth, auditYear, auditSearch]);
+
   const handlePrintDreMensal = () => {
       const printWindow = window.open('', '_blank');
       if (!printWindow) return;
-
       const store = stores.find(s => s.id === effectiveStoreId);
       const monthLabel = MONTHS.find(m => m.value === selectedMonth)?.label;
-
       const html = `
         <!DOCTYPE html>
         <html>
@@ -250,30 +300,21 @@ const IceCreamModule: React.FC<IceCreamModuleProps> = ({
                 .header { text-align: center; border-bottom: 3px solid #1e3a8a; padding-bottom: 15px; margin-bottom: 25px; }
                 .title { font-size: 26px; font-weight: 900; color: #1e3a8a; text-transform: uppercase; margin: 0; letter-spacing: -1px; }
                 .subtitle { font-size: 13px; color: #64748b; font-weight: 700; margin-top: 4px; text-transform: uppercase; }
-                
                 .section { margin-bottom: 20px; background: #fff; }
                 .section-title { font-size: 11px; font-weight: 900; text-transform: uppercase; color: #475569; letter-spacing: 1.5px; margin-bottom: 12px; border-left: 5px solid #1e3a8a; padding-left: 10px; background: #f8fafc; padding-top: 5px; padding-bottom: 5px; }
-                
                 .vertical-stats { display: flex; flex-direction: column; gap: 10px; }
                 .kpi-row { display: flex; justify-content: space-between; align-items: center; padding: 12px 20px; border: 1px solid #e2e8f0; border-radius: 12px; }
                 .kpi-label { font-size: 12px; font-weight: 800; color: #64748b; text-transform: uppercase; }
                 .kpi-value { font-size: 16px; font-weight: 900; }
-                
                 .profit-row { background: #1e3a8a; color: white; border: none; }
                 .profit-row .kpi-label { color: #94a3b8; }
-                
                 table { width: 100%; border-collapse: collapse; margin-top: 5px; }
                 th { text-align: left; font-size: 10px; text-transform: uppercase; color: #64748b; padding: 12px; border-bottom: 2px solid #e2e8f0; }
                 td { padding: 12px; font-size: 12px; border-bottom: 1px solid #f1f5f9; }
                 .text-right { text-align: right; }
                 .bold { font-weight: 800; }
-                
                 .footer { margin-top: 30px; text-align: center; font-size: 9px; color: #94a3b8; font-weight: 700; text-transform: uppercase; border-top: 1px solid #e2e8f0; padding-top: 15px; }
-                
-                @media print {
-                    body { padding: 0; }
-                    .no-print { display: none; }
-                }
+                @media print { body { padding: 0; } .no-print { display: none; } }
             </style>
         </head>
         <body>
@@ -281,7 +322,6 @@ const IceCreamModule: React.FC<IceCreamModuleProps> = ({
                 <p class="title">GELATERIA REAL</p>
                 <p class="subtitle">RELATÓRIO MENSAL - UNIDADE: ${store?.number} | ${monthLabel} / ${selectedYear}</p>
             </div>
-
             <div class="section">
                 <p class="section-title">Fluxo Financeiro Consolidado</p>
                 <div class="vertical-stats">
@@ -299,16 +339,10 @@ const IceCreamModule: React.FC<IceCreamModuleProps> = ({
                     </div>
                 </div>
             </div>
-
             <div class="section">
                 <p class="section-title">Detalhamento por Meio de Recebimento</p>
                 <table>
-                    <thead>
-                        <tr>
-                            <th>Modalidade</th>
-                            <th class="text-right">Valor Acumulado</th>
-                        </tr>
-                    </thead>
+                    <thead><tr><th>Modalidade</th><th class="text-right">Valor Acumulado</th></tr></thead>
                     <tbody>
                         <tr><td class="bold">PIX</td><td class="text-right bold">${formatCurrency(dreStats.monthMethods.pix)}</td></tr>
                         <tr><td class="bold">DINHEIRO EM ESPÉCIE</td><td class="text-right bold">${formatCurrency(dreStats.monthMethods.money)}</td></tr>
@@ -317,170 +351,64 @@ const IceCreamModule: React.FC<IceCreamModuleProps> = ({
                     </tbody>
                 </table>
             </div>
-
             <div class="section">
                 <p class="section-title">Relação de Débitos por Colaborador</p>
                 <table>
-                    <thead>
-                        <tr>
-                            <th>Funcionário</th>
-                            <th class="text-right">Total a Descontar</th>
-                        </tr>
-                    </thead>
+                    <thead><tr><th>Funcionário</th><th class="text-right">Total a Descontar</th></tr></thead>
                     <tbody>
-                        ${monthFiadoGrouped.map(f => `
-                            <tr>
-                                <td class="bold" style="text-transform: uppercase;">${f.name}</td>
-                                <td class="text-right bold" style="color: #dc2626;">${formatCurrency(f.total)}</td>
-                            </tr>
-                        `).join('')}
+                        ${monthFiadoGrouped.map(f => `<tr><td class="bold" style="text-transform: uppercase;">${f.name}</td><td class="text-right bold" style="color: #dc2626;">${formatCurrency(f.total)}</td></tr>`).join('')}
                         ${monthFiadoGrouped.length === 0 ? '<tr><td colspan="2" style="text-align:center; color:#94a3b8; padding: 30px;">Nenhum débito pendente para este período</td></tr>' : ''}
                     </tbody>
                 </table>
             </div>
-
-            <div class="footer">
-                Documento Oficial de Conferência - Gerado em ${new Date().toLocaleString('pt-BR')}
-            </div>
-
-            <script>
-                window.onload = () => {
-                    window.print();
-                    setTimeout(() => window.close(), 1000);
-                }
-            </script>
+            <div class="footer">Documento Oficial de Conferência - Gerado em ${new Date().toLocaleString('pt-BR')}</div>
+            <script>window.onload = () => { window.print(); setTimeout(() => window.close(), 1000); }</script>
         </body>
         </html>
       `;
-
       printWindow.document.write(html);
       printWindow.document.close();
   };
 
-  const groupedAuditSales = useMemo(() => {
-    const filtered = (sales ?? []).filter(s => {
-      if (s.storeId !== effectiveStoreId) return false;
-      
-      if (auditSearch) {
-        const term = auditSearch.toLowerCase();
-        const match = s.productName.toLowerCase().includes(term) ||
-                      s.saleCode?.toLowerCase().includes(term) ||
-                      s.buyer_name?.toLowerCase().includes(term);
-        if (!match) return false;
-      }
-
-      if (s.createdAt) {
-        const d = new Date(s.createdAt);
-        if (auditYear && d.getFullYear().toString() !== auditYear) return false;
-        if (auditMonth && (d.getMonth() + 1).toString() !== auditMonth) return false;
-        if (auditDay && d.getDate().toString() !== auditDay) return false;
-      }
-      
-      return true;
-    });
-
-    const groups: Record<string, any> = {};
-    filtered.forEach(s => {
-      const code = s.saleCode || 'GEL-000';
-      if (!groups[code]) {
-        groups[code] = {
-          saleCode: code,
-          createdAt: s.createdAt,
-          buyer_name: s.buyer_name,
-          status: s.status,
-          items: [],
-          totalValue: 0,
-          paymentMethods: new Set()
-        };
-      }
-      groups[code].items.push(s);
-      groups[code].totalValue += Number(s.totalValue);
-      groups[code].paymentMethods.add(s.paymentMethod);
-    });
-
-    return Object.values(groups)
-      .map(g => ({ ...g, paymentMethods: Array.from(g.paymentMethods) }))
-      .sort((a: any, b: any) => (b.createdAt || '').localeCompare(a.createdAt || ''));
-  }, [sales, effectiveStoreId, auditDay, auditMonth, auditYear, auditSearch]);
-
-  const handlePrintTicket = (items: IceCreamDailySale[], saleCode: string, method: string, buyer?: string) => {
-    const printWindow = window.open('', '_blank');
+  const handlePrintTicket = (items: IceCreamDailySale[], saleCode: string, method: string | null, buyer?: string) => {
+    const printWindow = window.open('', '_blank', 'width=300,height=600');
     if (!printWindow) return;
-
     const store = stores.find(s => s.id === effectiveStoreId);
-    const dateStr = new Date().toLocaleString('pt-BR');
-    const total = items.reduce((a, b) => a + b.totalValue, 0);
-    const isFiado = method === 'Fiado' || method === 'Misto';
-
+    const total = items.reduce((acc, curr) => acc + curr.totalValue, 0);
     const html = `
       <!DOCTYPE html>
       <html>
-      <head>
+        <head>
+          <title>Cupom - ${saleCode}</title>
           <style>
-              @media print {
-                  @page { margin: 0; }
-                  body { margin: 0; padding: 10px; width: 100%; max-width: 300px; font-family: monospace; font-size: 12px; }
-              }
-              body { font-family: monospace; font-size: 12px; line-height: 1.2; width: 280px; margin: auto; padding: 20px 0; }
-              .center { text-align: center; }
-              .divider { border-bottom: 1px dashed #000; margin: 8px 0; }
-              .bold { font-weight: bold; }
-              .table { width: 100%; border-collapse: collapse; }
-              .right { text-align: right; }
-              .sig { border-top: 1px solid #000; margin-top: 40px; padding-top: 5px; font-size: 10px; }
+            body { font-family: 'Courier New', Courier, monospace; font-size: 12px; width: 80mm; padding: 5mm; margin: 0; }
+            .header { text-align: center; margin-bottom: 10px; border-bottom: 1px dashed #000; padding-bottom: 10px; }
+            .title { font-weight: bold; font-size: 14px; }
+            .item { display: flex; justify-content: space-between; margin-bottom: 3px; }
+            .total { margin-top: 10px; border-top: 1px dashed #000; padding-top: 10px; font-weight: bold; }
+            .footer { margin-top: 20px; text-align: center; font-size: 10px; border-top: 1px dashed #000; padding-top: 5px; }
+            @media print { body { width: auto; } }
           </style>
-      </head>
-      <body>
-          <div class="center">
-              <img src="${BRAND_LOGO}" width="80" style="margin-bottom: 5px;">
-              <div class="bold">GELATERIA REAL</div>
-              <div>UNIDADE: ${store?.number || 'REDE'}</div>
-              <div>DATA: ${dateStr}</div>
-              <div class="divider"></div>
-              <div class="bold italic">CUPOM NÃO FISCAL</div>
-              <div class="divider"></div>
+        </head>
+        <body>
+          <div class="header">
+            <div class="title">GELATERIA REAL</div>
+            <div>LOJA: ${store?.number || '---'}</div>
+            <div>DATA: ${new Date().toLocaleString('pt-BR')}</div>
           </div>
-          <table class="table">
-              ${items.map(i => `
-                  <tr>
-                      <td colspan="2">${i.productName}</td>
-                  </tr>
-                  <tr>
-                      <td>${i.unitsSold}x ${formatCurrency(i.unitPrice)}</td>
-                      <td class="right">${formatCurrency(i.totalValue)}</td>
-                  </tr>
-              `).join('')}
-          </table>
-          <div class="divider"></div>
-          <div class="bold" style="display: flex; justify-content: space-between;">
-              <span>TOTAL:</span>
-              <span>${formatCurrency(total)}</span>
+          <div class="items">
+            ${items.map(i => `<div class="item"><span>${i.unitsSold}x ${i.productName}</span><span>${formatCurrency(i.totalValue)}</span></div>`).join('')}
           </div>
-          <div style="margin-top: 5px;">MÉTODO: ${method}</div>
-          <div style="margin-top: 2px;">CÓDIGO: #${saleCode}</div>
-          
-          ${isFiado && buyer ? `
-            <div class="center" style="margin-top: 30px;">
-                <div class="sig">
-                    ASSINATURA DO FUNCIONÁRIO
-                    <br><span class="bold">${buyer.toUpperCase()}</span>
-                </div>
-            </div>
-          ` : ''}
-
-          <div class="center" style="margin-top: 20px;">
-              OBRIGADO PELA PREFERÊNCIA!
+          <div class="total">
+            <div class="item"><span>TOTAL</span><span>${formatCurrency(total)}</span></div>
+            <div class="item"><span>PAGAMENTO</span><span>${(method || 'MISTO').toUpperCase()}</span></div>
+            ${buyer ? `<div class="item" style="margin-top: 5px;"><span>COMPRADOR:</span><span>${buyer}</span></div>` : ''}
           </div>
-      </body>
-      <script>
-          window.onload = () => {
-              window.print();
-              setTimeout(() => window.close(), 1000);
-          }
-      </script>
+          <div class="footer"><p>SISTEMA REAL ADMIN</p></div>
+          <script>window.onload = () => { window.print(); setTimeout(() => window.close(), 500); };</script>
+        </body>
       </html>
     `;
-
     printWindow.document.write(html);
     printWindow.document.close();
   };
@@ -497,49 +425,25 @@ const IceCreamModule: React.FC<IceCreamModuleProps> = ({
 
       setIsSubmitting(true);
       const saleCode = `GEL-${Date.now().toString().slice(-6)}`;
-      
       try {
-          const operationalSales = cart.map(item => ({
-              ...item,
-              paymentMethod: (isMisto ? 'Misto' : paymentMethod) as IceCreamPaymentMethod,
-              buyer_name: (paymentMethod === 'Fiado' || (isMisto && mistoValues['Fiado'])) ? buyerName.toUpperCase() : undefined,
-              saleCode,
-              unitsSold: Math.round(item.unitsSold),
-              status: 'active' as const
-          }));
-
-          const financialPromises = splitData.map(payment => 
-              onAddTransaction({
-                  id: '0',
-                  storeId: effectiveStoreId,
-                  date: new Date().toISOString().split('T')[0],
-                  type: 'entry',
-                  category: 'RECEITA DE VENDA PDV',
-                  value: payment.amount,
-                  description: `Pagamento via ${payment.method} - Ref. ${saleCode}`,
-                  createdAt: new Date()
-              })
-          );
-
-          await Promise.all([
-              onAddSales(operationalSales),
-              ...financialPromises
-          ]);
-
+          const operationalSales = cart.map(item => ({ ...item, paymentMethod: (isMisto ? 'Misto' : paymentMethod) as IceCreamPaymentMethod, buyer_name: (paymentMethod === 'Fiado' || (isMisto && mistoValues['Fiado'])) ? buyerName.toUpperCase() : undefined, saleCode, unitsSold: Math.round(item.unitsSold), status: 'active' as const }));
+          const financialPromises = splitData.map(payment => onAddTransaction({ id: '0', storeId: effectiveStoreId, date: new Date().toISOString().split('T')[0], type: 'entry', category: 'RECEITA DE VENDA PDV', value: payment.amount, description: `Pagamento via ${payment.method} - Ref. ${saleCode}`, createdAt: new Date() }));
+          await Promise.all([onAddSales(operationalSales), ...financialPromises]);
           handlePrintTicket(operationalSales, saleCode, isMisto ? 'Misto' : paymentMethod, buyerName);
-
+          
           for (const c of cart) {
               const itemDef = items.find(it => it.id === c.itemId);
-              if (itemDef?.recipe) {
+              if (itemDef?.recipe && itemDef.recipe.length > 0) {
                   for (const ingredient of itemDef.recipe) {
-                      await onUpdateStock(effectiveStoreId, ingredient.stock_base_name, -(ingredient.quantity * c.unitsSold), '', 'adjustment');
+                      const normalizedIngredientName = String(ingredient.stock_base_name || '').trim().toUpperCase();
+                      await onUpdateStock(effectiveStoreId, normalizedIngredientName, -(ingredient.quantity * c.unitsSold), '', 'adjustment');
                   }
               }
           }
-
+          
           setCart([]); setPaymentMethod(null); setBuyerName(''); setAmountReceived(''); setMistoValues({ 'Pix': '', 'Dinheiro': '', 'Cartão': '', 'Fiado': '' });
-          alert("Venda realizada!");
-      } catch (e) { alert("Falha ao registrar."); } finally { setIsSubmitting(false); }
+          alert("Venda registrada e estoque abatido!");
+      } catch (e) { alert("Falha ao registrar venda."); } finally { setIsSubmitting(false); }
   };
 
   const handleCancelSale = async () => {
@@ -547,75 +451,52 @@ const IceCreamModule: React.FC<IceCreamModuleProps> = ({
       setIsSubmitting(true);
       try {
           await onCancelSale(showCancelModal.code, cancelReason);
-          setShowCancelModal(null); setCancelReason('');
-          alert("Estorno realizado!");
-      } catch (e) { alert("Erro ao estornar."); } finally { setIsSubmitting(false); }
+          setShowCancelModal(null);
+          setCancelReason('');
+          alert("Venda estornada!");
+      } catch (e) { alert("Falha ao processar."); } finally { setIsSubmitting(false); }
+  };
+
+  const handleSaveProductForm = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setIsSubmitting(true);
+    try { await onSaveProduct({ ...productForm, storeId: effectiveStoreId }); setShowProductModal(false); setEditingProduct(null); alert("Produto salvo!"); } catch (e) { alert("Erro ao salvar."); } finally { setIsSubmitting(false); }
   };
 
   const handleSaveTransaction = async () => {
-    if (!txForm.value || !txForm.description) return;
+    if (!txForm.value || !txForm.description || !txForm.category) return;
     setIsSubmitting(true);
-    try {
-        await onAddTransaction({
-            id: '0',
-            storeId: effectiveStoreId,
-            date: txForm.date,
-            type: 'exit',
-            category: txForm.category,
-            value: parseFloat(txForm.value.replace(',', '.')),
-            description: txForm.description,
-            createdAt: new Date()
-        });
-        setShowTransactionModal(false);
-        setTxForm({ date: new Date().toLocaleDateString('en-CA'), category: 'Despesa Operacional', value: '', description: '' });
-        alert("Lançamento efetuado!");
-    } catch (e) { alert("Erro ao registrar."); } finally { setIsSubmitting(false); }
+    try { await onAddTransaction({ id: '0', storeId: effectiveStoreId, date: txForm.date, type: 'exit', category: txForm.category, value: parseFloat(txForm.value.replace(',', '.')), description: txForm.description, createdAt: new Date() }); setShowTransactionModal(false); setTxForm({ date: new Date().toLocaleDateString('en-CA'), category: expenseCategories[0]?.name || '', value: '', description: '' }); alert("Saída lançada!"); } catch (e) { alert("Erro ao lançar."); } finally { setIsSubmitting(false); }
   };
 
   const handleSaveSupplies = async () => {
       if (!newInsumo.name || !newInsumo.initial) return;
       setIsSubmitting(true);
-      try {
-          await onUpdateStock(effectiveStoreId, newInsumo.name.toUpperCase(), parseFloat(newInsumo.initial.replace(',', '.')), newInsumo.unit, 'adjustment');
-          setNewInsumo({ name: '', unit: 'un', initial: '' });
-          setShowNewInsumoModal(false);
-          alert("Insumo cadastrado!");
-      } catch (e) { alert("Erro ao salvar insumo."); } finally { setIsSubmitting(false); }
+      try { await onUpdateStock(effectiveStoreId, newInsumo.name.toUpperCase(), parseFloat(newInsumo.initial.replace(',', '.')), newInsumo.unit, 'adjustment'); setNewInsumo({ name: '', unit: 'un', initial: '' }); setShowNewInsumoModal(false); alert("Insumo cadastrado!"); } catch (e) { alert("Erro."); } finally { setIsSubmitting(false); }
   };
 
   const handleSavePurchase = async () => {
       setIsSubmitting(true);
       try {
           for (const [stockId, valueStr] of Object.entries(purchaseForm)) {
-              const val = parseFloat((valueStr as string).replace(',', '.')) || 0;
+              const val = parseFloat((valueStr as string).replace(',', '.'));
               const stockItem = stock.find(s => s.id === stockId);
-              if (!isNaN(val) && val > 0 && stockItem) {
-                  await onUpdateStock(effectiveStoreId, stockItem.product_base, val, stockItem.unit, 'purchase');
-              }
+              if (!isNaN(val) && val > 0 && stockItem) await onUpdateStock(effectiveStoreId, stockItem.product_base, val, stockItem.unit, 'purchase');
           }
-          setPurchaseForm({});
-          setShowPurchaseModal(false);
-          alert("Compras lançadas!");
-      } catch (e) { alert("Erro ao salvar compras."); } finally { setIsSubmitting(false); }
+          setPurchaseForm({}); setShowPurchaseModal(false); alert("Estoque abastecido!");
+      } catch (e) { alert("Erro."); } finally { setIsSubmitting(false); }
   };
 
   const handleSaveInventory = async () => {
       setIsSubmitting(true);
       try {
           for (const [stockId, valueStr] of Object.entries(inventoryForm)) {
-              const newVal = parseFloat((valueStr as string).replace(',', '.')) || 0;
+              const newVal = parseFloat((valueStr as string).replace(',', '.'));
               const stockItem = stock.find(s => s.id === stockId);
-              if (!isNaN(newVal) && stockItem) {
-                  const diff = newVal - stockItem.stock_current;
-                  if (diff !== 0) {
-                      await onUpdateStock(effectiveStoreId, stockItem.product_base, diff, stockItem.unit, 'adjustment');
-                  }
-              }
+              if (stockItem && !isNaN(newVal)) { const diff = newVal - stockItem.stock_current; if (diff !== 0) await onUpdateStock(effectiveStoreId, stockItem.product_base, diff, stockItem.unit, 'adjustment'); }
           }
-          setInventoryForm({});
-          setShowInventoryModal(false);
-          alert("Inventário atualizado!");
-      } catch (e) { alert("Erro ao salvar inventário."); } finally { setIsSubmitting(false); }
+          setInventoryForm({}); setShowInventoryModal(false); alert("Inventário atualizado!");
+      } catch (e) { alert("Erro."); } finally { setIsSubmitting(false); }
   };
 
   return (
@@ -636,12 +517,12 @@ const IceCreamModule: React.FC<IceCreamModuleProps> = ({
                 </div>
             </div>
             <div className="flex bg-gray-100 p-0.5 rounded-xl overflow-x-auto no-scrollbar w-full md:w-auto max-w-full">
-                <button onClick={() => setActiveTab('pdv')} className={`flex-1 md:flex-none px-3 py-2 rounded-lg text-[8px] md:text-[9px] font-black uppercase transition-all flex items-center justify-center gap-1.5 whitespace-nowrap ${activeTab === 'pdv' ? 'bg-white text-blue-700 shadow-md' : 'text-gray-500'}`}><ShoppingCart size={12}/> PDV</button>
-                <button onClick={() => setActiveTab('estoque')} className={`flex-1 md:flex-none px-3 py-2 rounded-lg text-[8px] md:text-[9px] font-black uppercase transition-all flex items-center justify-center gap-1.5 whitespace-nowrap ${activeTab === 'estoque' ? 'bg-white text-blue-700 shadow-md' : 'text-gray-500'}`}><Package size={12}/> Estoque</button>
-                {can('MODULE_GELATERIA_DRE_DIARIO') && <button onClick={() => setActiveTab('dre_diario')} className={`flex-1 md:flex-none px-3 py-2 rounded-lg text-[8px] md:text-[9px] font-black uppercase transition-all flex items-center justify-center gap-1.5 whitespace-nowrap ${activeTab === 'dre_diario' ? 'bg-white text-blue-700 shadow-md' : 'text-gray-500'}`}><Clock size={12}/> DRE Diário</button>}
-                {can('MODULE_GELATERIA_DRE_MENSAL') && <button onClick={() => setActiveTab('dre_mensal')} className={`flex-1 md:flex-none px-3 py-2 rounded-lg text-[8px] md:text-[9px] font-black uppercase transition-all flex items-center justify-center gap-1.5 whitespace-nowrap ${activeTab === 'dre_mensal' ? 'bg-white text-purple-700 shadow-sm' : 'text-gray-400'}`}><FileBarChart size={12}/> DRE Mensal</button>}
-                <button onClick={() => setActiveTab('audit')} className={`flex-1 md:flex-none px-3 py-2 rounded-lg text-[8px] md:text-[9px] font-black uppercase transition-all flex items-center justify-center gap-1.5 whitespace-nowrap ${activeTab === 'audit' ? 'bg-white text-blue-700 shadow-md' : 'text-gray-500'}`}><History size={12}/> Auditoria</button>
-                {can('MODULE_GELATERIA_CONFIG') && <button onClick={() => setActiveTab('produtos')} className={`flex-1 md:flex-none px-3 py-2 rounded-lg text-[8px] md:text-[9px] font-black uppercase transition-all flex items-center justify-center gap-1.5 whitespace-nowrap ${activeTab === 'produtos' ? 'bg-white text-blue-700 shadow-md' : 'text-gray-500'}`}><PackagePlus size={12}/> Produtos</button>}
+                <button onClick={() => setActiveTab('pdv')} className={`flex-1 md:flex-none px-3 py-2 rounded-lg text-[8px] md:text-[9px] font-black uppercase transition-all flex items-center justify-center gap-1.5 whitespace-nowrap ${activeTab === 'pdv' ? 'bg-white text-blue-900 shadow-sm border border-blue-100' : 'text-gray-500 hover:text-blue-900 hover:bg-white/50'}`}><ShoppingCart size={12}/> PDV</button>
+                <button onClick={() => setActiveTab('estoque')} className={`flex-1 md:flex-none px-3 py-2 rounded-lg text-[8px] md:text-[9px] font-black uppercase transition-all flex items-center justify-center gap-1.5 whitespace-nowrap ${activeTab === 'estoque' ? 'bg-white text-blue-900 shadow-sm border border-blue-100' : 'text-gray-500 hover:text-blue-900 hover:bg-white/50'}`}><Package size={12}/> Estoque</button>
+                <button onClick={() => setActiveTab('dre_diario')} className={`flex-1 md:flex-none px-3 py-2 rounded-lg text-[8px] md:text-[9px] font-black uppercase transition-all flex items-center justify-center gap-1.5 whitespace-nowrap ${activeTab === 'dre_diario' ? 'bg-white text-blue-900 shadow-sm border border-blue-100' : 'text-gray-500 hover:text-blue-900 hover:bg-white/50'}`}><Clock size={12}/> DRE Diário</button>
+                <button onClick={() => setActiveTab('dre_mensal')} className={`flex-1 md:flex-none px-3 py-2 rounded-lg text-[8px] md:text-[9px] font-black uppercase transition-all flex items-center justify-center gap-1.5 whitespace-nowrap ${activeTab === 'dre_mensal' ? 'bg-white text-purple-900 shadow-sm border border-purple-100' : 'text-gray-500 hover:text-purple-900 hover:bg-white/50'}`}><FileBarChart size={12}/> DRE Mensal</button>
+                <button onClick={() => setActiveTab('audit')} className={`flex-1 md:flex-none px-3 py-2 rounded-lg text-[8px] md:text-[9px] font-black uppercase transition-all flex items-center justify-center gap-1.5 whitespace-nowrap ${activeTab === 'audit' ? 'bg-white text-blue-900 shadow-sm border border-blue-100' : 'text-gray-500 hover:text-blue-900 hover:bg-white/50'}`}><History size={12}/> Auditoria</button>
+                <button onClick={() => setActiveTab('produtos')} className={`flex-1 md:flex-none px-3 py-2 rounded-lg text-[8px] md:text-[9px] font-black uppercase transition-all flex items-center justify-center gap-1.5 whitespace-nowrap ${activeTab === 'produtos' ? 'bg-white text-blue-900 shadow-sm border border-blue-100' : 'text-gray-500 hover:text-blue-900 hover:bg-white/50'}`}><PackagePlus size={12}/> Produtos</button>
             </div>
         </div>
 
@@ -758,12 +639,11 @@ const IceCreamModule: React.FC<IceCreamModuleProps> = ({
                             {partners.length === 0 && <p className="text-[9px] text-gray-600 uppercase text-center py-10 italic">Nenhuma partilha configurada</p>}
                         </div>
                     </div>
-
                     <div className="bg-white rounded-[40px] shadow-xl border border-gray-100 overflow-hidden">
                         <div className="p-6 bg-red-50 border-b border-red-100 flex justify-between items-center">
                             <div>
                                 <h4 className="text-xs font-black uppercase text-red-700 flex items-center gap-2"><ClipboardList size={16}/> Débito Funcionário - Resumo Mensal</h4>
-                                <p className="text-[9px] font-bold text-red-400 uppercase mt-1">Soma total por colaborador (Clique para ver detalhes)</p>
+                                <p className="text-[9px] font-bold text-red-400 uppercase mt-1">Soma total por colaborador</p>
                             </div>
                             <span className="text-lg font-black text-red-700 italic">{formatCurrency(dreStats.monthMethods.fiado)}</span>
                         </div>
@@ -778,13 +658,10 @@ const IceCreamModule: React.FC<IceCreamModuleProps> = ({
                                 <tbody className="divide-y divide-gray-50 font-bold text-[10px]">
                                     {monthFiadoGrouped.map((f, i) => (
                                         <React.Fragment key={f.name}>
-                                            <tr 
-                                                onClick={() => setExpandedEmployee(expandedEmployee === f.name ? null : f.name)}
-                                                className={`hover:bg-red-50/20 cursor-pointer transition-all ${expandedEmployee === f.name ? 'bg-red-50/40' : ''}`}
-                                            >
+                                            <tr onClick={() => setExpandedEmployee(expandedEmployee === f.name ? null : f.name)} className={`hover:bg-red-50/20 cursor-pointer transition-all ${expandedEmployee === f.name ? 'bg-red-50/40' : ''}`}>
                                                 <td className="px-8 py-4 flex items-center gap-3">
                                                     {expandedEmployee === f.name ? <ChevronUp size={14} className="text-red-500" /> : <ChevronDown size={14} className="text-gray-400" />}
-                                                    <span className="text-blue-900 uppercase italic text-xs tracking-tighter">{f.name}</span>
+                                                    <span className="text-blue-950 uppercase italic text-xs tracking-tighter">{f.name}</span>
                                                 </td>
                                                 <td className="px-8 py-4 text-right text-red-700 text-sm font-black italic">{formatCurrency(f.total)}</td>
                                             </tr>
@@ -795,20 +672,15 @@ const IceCreamModule: React.FC<IceCreamModuleProps> = ({
                                                             <div className="p-3 bg-red-600 text-white text-[8px] font-black uppercase tracking-widest">Histórico Detalhado: {f.name}</div>
                                                             <table className="w-full text-[9px] font-bold">
                                                                 <thead className="bg-gray-50 border-b border-gray-100 text-gray-400 uppercase">
-                                                                    <tr>
-                                                                        <th className="px-4 py-2">Data</th>
-                                                                        <th className="px-4 py-2">Cód. Venda</th>
-                                                                        <th className="px-4 py-2">Item</th>
-                                                                        <th className="px-4 py-2 text-right">Valor</th>
-                                                                    </tr>
+                                                                    <tr><th className="px-4 py-2 text-gray-900">Data</th><th className="px-4 py-2 text-gray-900">Cód. Venda</th><th className="px-4 py-2 text-gray-900">Item</th><th className="px-4 py-2 text-right text-gray-900">Valor</th></tr>
                                                                 </thead>
                                                                 <tbody className="divide-y divide-gray-50">
                                                                     {f.items.map((item, idx) => (
                                                                         <tr key={idx}>
-                                                                            <td className="px-4 py-2 text-blue-950">{new Date(item.createdAt).toLocaleDateString('pt-BR')}</td>
+                                                                            <td className="px-4 py-2 text-gray-900">{new Date(item.createdAt).toLocaleDateString('pt-BR')}</td>
                                                                             <td className="px-4 py-2 text-blue-900 font-black">#{item.saleCode}</td>
                                                                             <td className="px-4 py-2 uppercase italic text-blue-950 font-black">{item.productName}</td>
-                                                                            <td className="px-4 py-2 text-right text-red-700 font-black">{formatCurrency(item.totalValue)}</td>
+                                                                            <td className="px-4 py-2 text-right text-red-600 font-black">{formatCurrency(item.totalValue)}</td>
                                                                         </tr>
                                                                     ))}
                                                                 </tbody>
@@ -819,9 +691,7 @@ const IceCreamModule: React.FC<IceCreamModuleProps> = ({
                                             )}
                                         </React.Fragment>
                                     ))}
-                                    {monthFiadoGrouped.length === 0 && (
-                                        <tr><td colSpan={2} className="p-16 text-center text-gray-400 uppercase tracking-[0.3em] italic">Nenhuma compra no fiado registrada neste período</td></tr>
-                                    )}
+                                    {monthFiadoGrouped.length === 0 && (<tr><td colSpan={2} className="p-16 text-center text-gray-400 uppercase tracking-[0.3em] italic">Nenhuma compra no fiado</td></tr>)}
                                 </tbody>
                             </table>
                         </div>
@@ -829,6 +699,22 @@ const IceCreamModule: React.FC<IceCreamModuleProps> = ({
                 </div>
             )}
 
+            {activeTab === 'estoque' && (
+                <div className="p-4 md:p-8 space-y-6 animate-in fade-in duration-300 max-w-6xl mx-auto pb-20">
+                    <div className="bg-white p-8 rounded-[40px] shadow-sm border border-gray-100 flex flex-col md:flex-row justify-between items-center gap-6">
+                        <div className="flex items-center gap-4"><div className="p-4 bg-orange-50 text-orange-600 rounded-3xl"><Warehouse size={32}/></div><div><h3 className="text-2xl font-black uppercase italic text-blue-950 tracking-tighter">Controle de <span className="text-orange-600">Insumos</span></h3></div></div>
+                        <div className="flex flex-wrap gap-2">
+                          <button onClick={() => setShowNewInsumoModal(true)} className="px-4 py-2 bg-gray-900 text-white rounded-xl font-black uppercase text-[9px] shadow-lg flex items-center gap-2 border-b-2 border-black active:scale-95"><Plus size={14}/> Novo Insumo</button>
+                          <button onClick={() => { setPurchaseForm({}); setShowPurchaseModal(true); }} className="px-4 py-2 bg-blue-600 text-white rounded-xl font-black uppercase text-[9px] shadow-lg flex items-center gap-2 border-b-2 border-blue-900 active:scale-95"><Truck size={14}/> Lançar Compra</button>
+                          <button onClick={() => { const initialInv: Record<string, string> = {}; filteredStock.forEach(s => initialInv[s.id] = s.stock_current.toString()); setInventoryForm(initialInv); setShowInventoryModal(true); }} className="px-4 py-2 bg-orange-600 text-white rounded-xl font-black uppercase text-[9px] shadow-lg flex items-center gap-2 border-b-2 border-orange-900 active:scale-95"><PencilLine size={14}/> Inventário</button>
+                        </div>
+                    </div>
+                    <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+                        {filteredStock.map(st => <div key={st.id} className="bg-white p-6 rounded-[32px] shadow-sm border border-gray-100 relative group overflow-hidden"><div className={`p-2 rounded-xl text-white w-fit mb-4 ${st.stock_current <= 5 ? 'bg-red-500 animate-pulse' : 'bg-orange-500'}`}><Package size={16}/></div><h4 className="text-[10px] font-black text-blue-950 uppercase italic leading-none mb-2 truncate">{st.product_base}</h4><div className="flex items-baseline gap-1"><span className={`text-2xl font-black italic tracking-tighter ${st.stock_current <= 5 ? 'text-red-600' : 'text-gray-900'}`}>{st.stock_current}</span><span className="text-[8px] font-bold text-gray-400 uppercase tracking-widest">{st.unit}</span></div></div>)}
+                    </div>
+                </div>
+            )}
+            
             {activeTab === 'audit' && (
                 <div className="p-4 md:p-8 space-y-6 animate-in fade-in duration-300 max-w-6xl mx-auto pb-20">
                     <div className="bg-white p-6 rounded-[40px] shadow-sm border border-gray-100 flex flex-col gap-6">
@@ -859,20 +745,154 @@ const IceCreamModule: React.FC<IceCreamModuleProps> = ({
                 </div>
             )}
 
-            {activeTab === 'estoque' && (
+            {activeTab === 'produtos' && (
                 <div className="p-4 md:p-8 space-y-6 animate-in fade-in duration-300 max-w-6xl mx-auto pb-20">
                     <div className="bg-white p-8 rounded-[40px] shadow-sm border border-gray-100 flex flex-col md:flex-row justify-between items-center gap-6">
-                        <div className="flex items-center gap-4"><div className="p-4 bg-orange-50 text-orange-600 rounded-3xl"><Warehouse size={32}/></div><div><h3 className="text-2xl font-black uppercase italic text-blue-950 tracking-tighter">Controle de <span className="text-orange-600">Insumos</span></h3></div></div>
-                        <div className="flex flex-wrap gap-2"><button onClick={() => setShowNewInsumoModal(true)} className="px-4 py-2 bg-gray-900 text-white rounded-xl font-black uppercase text-[9px] shadow-lg flex items-center gap-2 border-b-2 border-black active:scale-95"><Plus size={14}/> Novo Insumo</button><button onClick={() => { setPurchaseForm({}); setShowPurchaseModal(true); }} className="px-4 py-2 bg-blue-600 text-white rounded-xl font-black uppercase text-[9px] shadow-lg flex items-center gap-2 border-b-2 border-blue-900 active:scale-95"><Truck size={14}/> Lançar Compra</button><button onClick={() => { const initialInv: Record<string, string> = {}; filteredStock.forEach(s => initialInv[s.id] = s.stock_current.toString()); setInventoryForm(initialInv); setShowInventoryModal(true); }} className="px-4 py-2 bg-orange-600 text-white rounded-xl font-black uppercase text-[9px] shadow-lg flex items-center gap-2 border-b-2 border-orange-900 active:scale-95"><PencilLine size={14}/> Inventário</button></div>
+                        <div className="flex items-center gap-4">
+                            <div className="p-4 bg-blue-50 text-blue-700 rounded-3xl"><PackagePlus size={32}/></div>
+                            <div>
+                                <h3 className="text-2xl font-black uppercase italic text-blue-950 tracking-tighter">Gestão de <span className="text-blue-700">Produtos</span></h3>
+                                <p className="text-[10px] font-bold text-gray-400 uppercase mt-1">Configuração de preços e composição</p>
+                            </div>
+                        </div>
+                        <button onClick={() => { setEditingProduct(null); setProductForm({ name: '', category: 'Copinho', price: 0, active: true, recipe: [] }); setShowProductModal(true); }} className="px-6 py-3 bg-gray-900 text-white rounded-xl font-black uppercase text-[10px] shadow-lg flex items-center gap-2 border-b-4 border-red-600 active:scale-95">
+                            <Plus size={16}/> Novo Produto
+                        </button>
                     </div>
-                    <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
-                        {filteredStock.map(st => <div key={st.id} className="bg-white p-6 rounded-[32px] shadow-sm border border-gray-100 relative group overflow-hidden"><div className={`p-2 rounded-xl text-white w-fit mb-4 ${st.stock_current <= 5 ? 'bg-red-500 animate-pulse' : 'bg-orange-500'}`}><Package size={16}/></div><h4 className="text-[10px] font-black text-blue-950 uppercase italic leading-none mb-2 truncate">{st.product_base}</h4><div className="flex items-baseline gap-1"><span className={`text-2xl font-black italic tracking-tighter ${st.stock_current <= 5 ? 'text-red-600' : 'text-gray-900'}`}>{st.stock_current}</span><span className="text-[8px] font-bold text-gray-400 uppercase tracking-widest">{st.unit}</span></div></div>)}
+                    <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4">
+                        {filteredItems.map(item => (
+                            <div key={item.id} className="bg-white p-6 rounded-[32px] shadow-sm border border-gray-100 group relative flex flex-col">
+                                <div className="absolute top-4 right-4 flex gap-1 opacity-0 group-hover:opacity-100 transition-all">
+                                    <button onClick={() => { setEditingProduct(item); setProductForm(item); setShowProductModal(true); }} className="p-2 bg-blue-50 text-blue-600 rounded-lg hover:bg-blue-100"><Edit3 size={14}/></button>
+                                    <button onClick={() => onDeleteItem(item.id)} className="p-2 bg-red-50 text-red-600 rounded-lg hover:bg-red-100"><Trash size={14}/></button>
+                                </div>
+                                <div className="w-16 h-16 bg-gray-50 rounded-2xl mb-4 flex items-center justify-center overflow-hidden shrink-0">
+                                    <img src={item.image_url || getCategoryImage(item.category, item.name)} className="w-full h-full object-cover p-2" />
+                                </div>
+                                <h4 className="text-xs font-black text-blue-950 uppercase italic tracking-tighter mb-1 truncate pr-16">{item.name}</h4>
+                                <p className="text-[9px] font-bold text-gray-400 uppercase mb-3">{item.category}</p>
+                                <div className="mt-auto pt-3 border-t flex justify-between items-center">
+                                    <span className="text-lg font-black text-blue-900 italic">{formatCurrency(item.price)}</span>
+                                    <span className={`px-2 py-0.5 rounded text-[8px] font-black uppercase border ${item.active ? 'bg-green-50 text-green-700 border-green-100' : 'bg-red-50 text-red-700 border-red-100'}`}>
+                                        {item.active ? 'Ativo' : 'Inativo'}
+                                    </span>
+                                </div>
+                            </div>
+                        ))}
                     </div>
                 </div>
             )}
         </div>
 
-        {/* MODAL TRANSAÇÃO (SANGRIAS) */}
+        {/* MODAL NOVO INSUMO */}
+        {showNewInsumoModal && (
+            <div className="fixed inset-0 bg-black/80 backdrop-blur-md flex items-center justify-center z-[130] p-4">
+                <div className="bg-white rounded-[40px] w-full max-w-md shadow-2xl animate-in zoom-in duration-300 border-t-8 border-orange-600 overflow-hidden">
+                    <div className="p-8 border-b bg-gray-50/50 flex justify-between items-center"><h3 className="text-xl font-black uppercase italic text-blue-950 flex items-center gap-3"><Plus className="text-orange-600" /> Novo <span className="text-orange-600">Insumo</span></h3><button onClick={() => setShowNewInsumoModal(false)} className="text-gray-400 hover:text-red-600"><X size={24}/></button></div>
+                    <div className="p-10 space-y-6">
+                        <div className="space-y-2"><label className="text-[10px] font-black text-gray-400 uppercase ml-2">Nome do Insumo (EX: COPO 300ML)</label><input value={newInsumo.name} onChange={e => setNewInsumo({...newInsumo, name: e.target.value})} className="w-full p-4 bg-gray-50 rounded-2xl font-black text-gray-900 uppercase shadow-inner outline-none" /></div>
+                        <div className="grid grid-cols-2 gap-4">
+                            <div className="space-y-2"><label className="text-[10px] font-black text-gray-400 uppercase ml-2">Unidade</label><select value={newInsumo.unit} onChange={e => setNewInsumo({...newInsumo, unit: e.target.value})} className="w-full p-4 bg-gray-50 rounded-2xl font-black outline-none"><option value="un">un</option><option value="kg">kg</option><option value="ml">ml</option></select></div>
+                            <div className="space-y-2"><label className="text-[10px] font-black text-gray-400 uppercase ml-2">Qtd Inicial</label><input value={newInsumo.initial} onChange={e => setNewInsumo({...newInsumo, initial: e.target.value})} className="w-full p-4 bg-gray-50 rounded-2xl font-black text-center outline-none" placeholder="0" /></div>
+                        </div>
+                        <button onClick={handleSaveSupplies} disabled={isSubmitting} className="w-full py-5 bg-orange-600 text-white rounded-[28px] font-black uppercase text-xs shadow-xl active:scale-95 transition-all border-b-4 border-orange-900 flex items-center justify-center gap-3">{isSubmitting ? <Loader2 className="animate-spin" /> : <Save size={18}/>} SALVAR INSUMO</button>
+                    </div>
+                </div>
+            </div>
+        )}
+
+        {/* MODAL LANÇAR COMPRA */}
+        {showPurchaseModal && (
+            <div className="fixed inset-0 bg-black/80 backdrop-blur-md flex items-center justify-center z-[130] p-4">
+                <div className="bg-white rounded-[40px] w-full max-w-2xl max-h-[90vh] shadow-2xl animate-in zoom-in duration-300 border-t-8 border-blue-600 flex flex-col overflow-hidden">
+                    <div className="p-8 border-b bg-gray-50/50 flex justify-between items-center shrink-0"><h3 className="text-xl font-black uppercase italic text-blue-950 flex items-center gap-3"><Truck className="text-blue-600" /> Lançar <span className="text-blue-600">Compras</span></h3><button onClick={() => setShowPurchaseModal(false)} className="text-gray-400 hover:text-red-600"><X size={24}/></button></div>
+                    <div className="flex-1 overflow-y-auto p-10 space-y-4 no-scrollbar">
+                        {filteredStock.map(s => (
+                            <div key={s.id} className="flex items-center gap-4 bg-gray-50 p-4 rounded-2xl border border-gray-100">
+                                <div className="flex-1"><p className="text-[10px] font-black text-blue-950 uppercase italic leading-none">{s.product_base}</p><p className="text-[8px] font-bold text-gray-400 uppercase mt-1">Atual: {s.stock_current} {s.unit}</p></div>
+                                <div className="w-32 relative"><input value={purchaseForm[s.id] || ''} onChange={e => setPurchaseForm({...purchaseForm, [s.id]: e.target.value})} className="w-full p-3 bg-white border border-blue-100 rounded-xl font-black text-blue-900 text-center text-sm outline-none focus:ring-4 focus:ring-blue-50" placeholder="0" /><span className="absolute right-3 top-1/2 -translate-y-1/2 text-[8px] font-black text-blue-300 uppercase">{s.unit}</span></div>
+                            </div>
+                        ))}
+                    </div>
+                    <div className="p-10 border-t bg-gray-50 flex justify-center shrink-0"><button onClick={handleSavePurchase} disabled={isSubmitting} className="w-full py-5 bg-blue-900 text-white rounded-[28px] font-black uppercase text-xs shadow-xl active:scale-95 transition-all border-b-4 border-blue-950 flex items-center justify-center gap-3">{isSubmitting ? <Loader2 className="animate-spin" /> : <Save size={18}/>} EFETIVAR COMPRAS</button></div>
+                </div>
+            </div>
+        )}
+
+        {/* MODAL INVENTÁRIO */}
+        {showInventoryModal && (
+            <div className="fixed inset-0 bg-black/80 backdrop-blur-md flex items-center justify-center z-[130] p-4">
+                <div className="bg-white rounded-[40px] w-full max-w-2xl max-h-[90vh] shadow-2xl animate-in zoom-in duration-300 border-t-8 border-orange-600 flex flex-col overflow-hidden">
+                    <div className="p-8 border-b bg-gray-50/50 flex justify-between items-center shrink-0"><h3 className="text-xl font-black uppercase italic text-blue-950 flex items-center gap-3"><PencilLine className="text-orange-600" /> Atualizar <span className="text-orange-600">Inventário</span></h3><button onClick={() => setShowInventoryModal(false)} className="text-gray-400 hover:text-red-600"><X size={24}/></button></div>
+                    <div className="flex-1 overflow-y-auto p-10 space-y-4 no-scrollbar">
+                        {filteredStock.map(s => (
+                            <div key={s.id} className="flex items-center gap-4 bg-gray-50 p-4 rounded-2xl border border-gray-100">
+                                <div className="flex-1"><p className="text-[10px] font-black text-blue-950 uppercase italic leading-none">{s.product_base}</p><p className="text-[8px] font-bold text-gray-400 uppercase mt-1">Atual em Banco: {s.stock_current} {s.unit}</p></div>
+                                <div className="w-32 relative"><input value={inventoryForm[s.id] || ''} onChange={e => setInventoryForm({...inventoryForm, [s.id]: e.target.value})} className="w-full p-3 bg-white border border-orange-100 rounded-xl font-black text-orange-700 text-center text-sm outline-none focus:ring-4 focus:ring-orange-50" placeholder="0" /><span className="absolute right-3 top-1/2 -translate-y-1/2 text-[8px] font-black text-orange-300 uppercase">{s.unit}</span></div>
+                            </div>
+                        ))}
+                    </div>
+                    <div className="p-10 border-t bg-gray-50 flex justify-center shrink-0"><button onClick={handleSaveInventory} disabled={isSubmitting} className="w-full py-5 bg-orange-600 text-white rounded-[28px] font-black uppercase text-xs shadow-xl active:scale-95 transition-all border-b-4 border-orange-900 flex items-center justify-center gap-3">{isSubmitting ? <Loader2 className="animate-spin" /> : <Save size={18}/>} EFETIVAR INVENTÁRIO</button></div>
+                </div>
+            </div>
+        )}
+
+        {/* MODAL GESTÃO DE PRODUTO & RECEITA */}
+        {showProductModal && (
+            <div className="fixed inset-0 bg-black/80 backdrop-blur-md flex items-center justify-center z-[130] p-4">
+                <div className="bg-white rounded-[40px] w-full max-w-4xl max-h-[90vh] shadow-2xl animate-in zoom-in duration-300 border-t-8 border-blue-600 flex flex-col overflow-hidden">
+                    <div className="p-8 border-b bg-gray-50/50 flex justify-between items-center shrink-0">
+                        <h3 className="text-xl font-black uppercase italic text-blue-950 flex items-center gap-3">
+                            <PackagePlus className="text-blue-600" /> {editingProduct ? 'Editar' : 'Novo'} <span className="text-blue-600">Produto</span>
+                        </h3>
+                        <button onClick={() => setShowProductModal(false)} className="text-gray-400 hover:text-red-600 transition-all"><X size={24}/></button>
+                    </div>
+                    <div className="flex-1 overflow-y-auto no-scrollbar">
+                        <form onSubmit={handleSaveProductForm} className="p-10 space-y-10">
+                            <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
+                                <div className="space-y-6">
+                                    <h4 className="text-[10px] font-black text-gray-400 uppercase tracking-widest border-b pb-2">Informações Gerais</h4>
+                                    <div className="space-y-2"><label className="text-[9px] font-black text-gray-500 uppercase ml-2">Nome do Produto</label><input required value={productForm.name} onChange={e => setProductForm({...productForm, name: e.target.value})} className="w-full p-4 bg-gray-50 border-none rounded-2xl font-black uppercase italic outline-none focus:ring-4 focus:ring-blue-50" /></div>
+                                    <div className="grid grid-cols-2 gap-4">
+                                        <div className="space-y-2"><label className="text-[9px] font-black text-gray-500 uppercase ml-2">Categoria</label><select value={productForm.category} onChange={e => setProductForm({...productForm, category: e.target.value as IceCreamCategory})} className="w-full p-4 bg-gray-50 rounded-2xl font-black uppercase outline-none">{PRODUCT_CATEGORIES.map(c => <option key={c} value={c}>{c}</option>)}</select></div>
+                                        <div className="space-y-2"><label className="text-[9px] font-black text-gray-500 uppercase ml-2">Preço de Venda</label><input required value={productForm.price} onChange={e => setProductForm({...productForm, price: parseFloat(e.target.value) || 0})} className="w-full p-4 bg-blue-50 border-none rounded-2xl font-black text-blue-700 outline-none text-xl shadow-inner" /></div>
+                                    </div>
+                                    <div className="flex items-center gap-4 p-4 bg-gray-50 rounded-2xl">
+                                        <label className="text-[10px] font-black text-gray-500 uppercase">Status:</label>
+                                        <button type="button" onClick={() => setProductForm({...productForm, active: !productForm.active})} className={`px-4 py-2 rounded-xl text-[10px] font-black uppercase transition-all ${productForm.active ? 'bg-green-500 text-white shadow-lg' : 'bg-red-500 text-white'}`}>{productForm.active ? 'Visível no PDV' : 'Oculto no PDV'}</button>
+                                    </div>
+                                </div>
+                                <div className="space-y-6">
+                                    <h4 className="text-[10px] font-black text-gray-400 uppercase tracking-widest border-b pb-2">Receita / Baixa Automática</h4>
+                                    <div className="p-6 bg-gray-950 rounded-3xl space-y-4 shadow-xl">
+                                        <div className="grid grid-cols-2 gap-3">
+                                            <select value={newRecipeItem.stock_base_name} onChange={e => setNewRecipeItem({...newRecipeItem, stock_base_name: e.target.value})} className="bg-white/10 border-none rounded-xl p-3 text-xs font-black text-white outline-none">
+                                                <option value="" className="text-black">SELECIONE INSUMO...</option>
+                                                {stock.filter(s => s.store_id === effectiveStoreId).map(s => <option key={s.id} value={s.product_base} className="text-black">{s.product_base}</option>)}
+                                            </select>
+                                            <input value={newRecipeItem.quantity} onChange={e => setNewRecipeItem({...newRecipeItem, quantity: e.target.value})} placeholder="QTD" className="bg-white/10 border-none rounded-xl p-3 text-xs font-black text-white text-center outline-none" />
+                                        </div>
+                                        <button type="button" onClick={() => { if(!newRecipeItem.stock_base_name || !newRecipeItem.quantity) return; const updatedRecipe = [...(productForm.recipe || []), { stock_base_name: newRecipeItem.stock_base_name, quantity: parseFloat(newRecipeItem.quantity.replace(',', '.')) }]; setProductForm({...productForm, recipe: updatedRecipe}); setNewRecipeItem({stock_base_name: '', quantity: '1'}); }} className="w-full py-3 bg-blue-600 text-white rounded-xl font-black uppercase text-[10px] shadow-lg border-b-2 border-blue-900 active:scale-95 transition-all">Vincular p/ Baixa</button>
+                                    </div>
+                                    <div className="space-y-2 max-h-[150px] overflow-y-auto no-scrollbar">
+                                        {(productForm.recipe || []).map((r, i) => (
+                                            <div key={i} className="flex justify-between items-center bg-white p-3 rounded-xl border border-gray-100 shadow-sm">
+                                                <div className="flex flex-col"><span className="text-[10px] font-black text-blue-900 uppercase italic">{r.stock_base_name}</span><span className="text-[9px] font-bold text-gray-400 uppercase">Abate: {r.quantity} por venda</span></div>
+                                                <button type="button" onClick={() => setProductForm({...productForm, recipe: (productForm.recipe || []).filter((_, idx) => idx !== i)})} className="p-2 text-red-300 hover:text-red-600"><Trash2 size={16}/></button>
+                                            </div>
+                                        ))}
+                                    </div>
+                                </div>
+                            </div>
+                            <button type="submit" disabled={isSubmitting} className="w-full py-5 bg-blue-900 text-white rounded-[28px] font-black uppercase text-xs shadow-2xl active:scale-95 transition-all border-b-4 border-blue-950 flex items-center justify-center gap-3">
+                                {isSubmitting ? <Loader2 className="animate-spin" /> : <Save size={18}/>} EFETIVAR CADASTRO
+                            </button>
+                        </form>
+                    </div>
+                </div>
+            </div>
+        )}
+
         {showTransactionModal && (
             <div className="fixed inset-0 bg-black/80 backdrop-blur-md flex items-center justify-center z-[130] p-4">
                 <div className="bg-white rounded-[40px] w-full max-w-md shadow-2xl animate-in zoom-in duration-300 border-t-8 border-red-600 overflow-hidden">
@@ -880,15 +900,43 @@ const IceCreamModule: React.FC<IceCreamModuleProps> = ({
                     <div className="p-10 space-y-6">
                         <div className="space-y-2"><label className="text-[10px] font-black text-gray-400 uppercase ml-2 tracking-widest">Valor (R$)</label><input value={txForm.value} onChange={e => setTxForm({...txForm, value: e.target.value})} className="w-full p-5 bg-red-50 rounded-[24px] font-black text-red-700 text-2xl shadow-inner outline-none border-none text-center" placeholder="0,00" /></div>
                         <div className="space-y-2"><label className="text-[10px] font-black text-gray-400 uppercase ml-2 tracking-widest">Descrição / Motivo</label><input value={txForm.description} onChange={e => setTxForm({...txForm, description: e.target.value.toUpperCase()})} className="w-full p-4 bg-gray-50 rounded-2xl font-black text-gray-900 uppercase shadow-inner outline-none" placeholder="EX: COMPRA DE LEITE, LIMP." /></div>
-                        <div className="space-y-2"><label className="text-[10px] font-black text-gray-400 uppercase ml-2 tracking-widest">Categoria</label><select value={txForm.category} onChange={e => setTxForm({...txForm, category: e.target.value})} className="w-full p-4 bg-gray-50 rounded-2xl font-black outline-none border-none shadow-inner">
-                            <option value="Despesa Operacional">Despesa Operacional</option>
-                            <option value="Material Limpeza">Material Limpeza</option>
-                            <option value="Material Sorvete">Material Sorvete</option>
-                            <option value="Fornecedor">Fornecedor</option>
-                            <option value="Clientes">Clientes</option>
-                            <option value="Divisão">Divisão</option>
-                        </select></div>
-                        <button onClick={handleSaveTransaction} disabled={isSubmitting} className="w-full py-5 bg-red-600 text-white rounded-[28px] font-black uppercase text-xs shadow-xl active:scale-95 transition-all border-b-4 border-red-900 flex items-center justify-center gap-3">{isSubmitting ? <Loader2 className="animate-spin" /> : <Save size={18}/>} EFETIVAR LANÇAMENTO</button>
+                        <div className="space-y-2">
+                            <div className="flex justify-between items-center ml-2">
+                                <label className="text-[10px] font-black text-gray-400 uppercase tracking-widest">Categoria</label>
+                                <button onClick={() => setShowCategoryManager(true)} className="text-gray-400 hover:text-blue-600 transition-all"><Settings size={14}/></button>
+                            </div>
+                            <select value={txForm.category} onChange={e => setTxForm({...txForm, category: e.target.value})} className="w-full p-4 bg-gray-50 rounded-2xl font-black outline-none border-none shadow-inner">
+                                <option value="">SELECIONE...</option>
+                                {expenseCategories.map(cat => (
+                                    <option key={cat.id} value={cat.name}>{cat.name}</option>
+                                ))}
+                            </select>
+                        </div>
+                        <button onClick={handleSaveTransaction} disabled={isSubmitting || !txForm.category} className="w-full py-5 bg-red-600 text-white rounded-[28px] font-black uppercase text-xs shadow-xl active:scale-95 transition-all border-b-4 border-red-900 flex items-center justify-center gap-3">{isSubmitting ? <Loader2 className="animate-spin" /> : <Save size={18}/>} EFETIVAR LANÇAMENTO</button>
+                    </div>
+                </div>
+            </div>
+        )}
+
+        {/* MODAL GERENCIADOR DE CATEGORIAS */}
+        {showCategoryManager && (
+            <div className="fixed inset-0 bg-black/80 backdrop-blur-md flex items-center justify-center z-[150] p-4">
+                <div className="bg-white rounded-[40px] w-full max-w-sm shadow-2xl animate-in zoom-in duration-300 border-t-8 border-blue-600 overflow-hidden">
+                    <div className="p-6 border-b bg-gray-50/50 flex justify-between items-center"><h3 className="text-lg font-black uppercase italic text-blue-950 flex items-center gap-3"><Settings className="text-blue-600" /> Categorias</h3><button onClick={() => setShowCategoryManager(false)} className="text-gray-400 hover:text-red-600"><X size={20}/></button></div>
+                    <div className="p-8 space-y-6">
+                        <div className="flex gap-2">
+                            <input value={newCategoryName} onChange={e => setNewCategoryName(e.target.value)} placeholder="NOVA CATEGORIA..." className="flex-1 p-3 bg-gray-50 rounded-xl font-black uppercase text-[10px] outline-none border border-gray-200" />
+                            <button onClick={handleAddCategory} className="bg-blue-600 text-white p-3 rounded-xl"><Plus size={18}/></button>
+                        </div>
+                        <div className="space-y-2 max-h-[300px] overflow-y-auto no-scrollbar">
+                            {expenseCategories.map(cat => (
+                                <div key={cat.id} className="flex justify-between items-center p-3 bg-gray-50 rounded-xl border border-gray-100">
+                                    <span className="text-[10px] font-black text-gray-700 uppercase">{cat.name}</span>
+                                    <button onClick={() => handleDeleteCategory(cat.id)} className="text-red-300 hover:text-red-600"><Trash2 size={14}/></button>
+                                </div>
+                            ))}
+                            {expenseCategories.length === 0 && <p className="text-[9px] text-gray-400 text-center py-4 uppercase font-bold italic">Nenhuma categoria configurada</p>}
+                        </div>
                     </div>
                 </div>
             </div>
