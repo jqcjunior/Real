@@ -71,7 +71,6 @@ const IceCreamModule: React.FC<IceCreamModuleProps> = ({
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [cart, setCart] = useState<IceCreamDailySale[]>([]);
   const [selectedCategory, setSelectedCategory] = useState<IceCreamCategory | null>(null);
-  // Fix: Use IceCreamPaymentMethod directly as 'Misto' is now supported in the type.
   const [paymentMethod, setPaymentMethod] = useState<IceCreamPaymentMethod | null>(null);
   const [mistoValues, setMistoValues] = useState<Record<string, string>>({ 'Pix': '', 'Dinheiro': '', 'Cartão': '' });
   const [buyerName, setBuyerName] = useState('');
@@ -132,42 +131,70 @@ const IceCreamModule: React.FC<IceCreamModuleProps> = ({
   const filteredItems = useMemo(() => (items ?? []).filter(i => i.storeId === effectiveStoreId), [items, effectiveStoreId]);
   const filteredStock = useMemo(() => (stock ?? []).filter(s => s.store_id === effectiveStoreId).sort((a,b) => a.product_base.localeCompare(b.product_base)), [stock, effectiveStoreId]);
   
-  const todayKey = new Date().toLocaleDateString('en-CA');
+  // Robust day key generation (ISO local)
+  const todayDate = new Date();
+  const todayKey = `${todayDate.getFullYear()}-${String(todayDate.getMonth() + 1).padStart(2, '0')}-${String(todayDate.getDate()).padStart(2, '0')}`;
   const periodKey = `${selectedYear}-${String(selectedMonth).padStart(2, '0')}`;
 
   const dreStats = useMemo(() => {
-      const dayFinances = (finances ?? []).filter(f => f.date === todayKey && f.storeId === effectiveStoreId);
-      const dayIn = dayFinances.filter(f => f.type === 'entry').reduce((a, b) => a + Number(b.value), 0);
+      // 1. Filtrar Vendas Operacionais do dia (Fonte Primária)
+      const daySales = (sales ?? []).filter(s => 
+          s.createdAt?.startsWith(todayKey) && 
+          s.status !== 'canceled' && 
+          s.storeId === effectiveStoreId
+      );
+
+      // 2. Filtrar Finanças do dia (Saídas e Rateio)
+      const dayFinances = (finances ?? []).filter(f => 
+          f.date?.startsWith(todayKey) && 
+          f.storeId === effectiveStoreId
+      );
+
+      // 3. Resumo de Entradas via Sales (Garante que se salvou no PDV, aparece no DRE)
+      let dayIn = 0;
+      const dayMethods = { pix: 0, money: 0, card: 0, fiado: 0 };
+
+      daySales.forEach(s => {
+          dayIn += Number(s.totalValue);
+          if (s.paymentMethod === 'Pix') dayMethods.pix += Number(s.totalValue);
+          else if (s.paymentMethod === 'Dinheiro') dayMethods.money += Number(s.totalValue);
+          else if (s.paymentMethod === 'Cartão') dayMethods.card += Number(s.totalValue);
+          else if (s.paymentMethod === 'Fiado') dayMethods.fiado += Number(s.totalValue);
+          else if (s.paymentMethod === 'Misto') {
+              // Se for misto, buscamos o rateio real gravado nas finanças para esta venda
+              const relatedFinances = dayFinances.filter(f => f.type === 'entry' && f.description?.includes(s.saleCode || ''));
+              relatedFinances.forEach(f => {
+                  if (f.description?.includes('via Pix')) dayMethods.pix += Number(f.value);
+                  else if (f.description?.includes('via Dinheiro')) dayMethods.money += Number(f.value);
+                  else if (f.description?.includes('via Cartão')) dayMethods.card += Number(f.value);
+              });
+          }
+      });
+
       const dayOut = dayFinances.filter(f => f.type === 'exit').reduce((a, b) => a + Number(b.value), 0);
 
+      // 4. Estatísticas Mensais (Mantendo via Finanças para consistência contábil)
       const monthFinances = (finances ?? []).filter(f => f.date?.startsWith(periodKey) && f.storeId === effectiveStoreId);
       const monthIn = monthFinances.filter(f => f.type === 'entry').reduce((a, b) => a + Number(b.value), 0);
       const monthOut = monthFinances.filter(f => f.type === 'exit').reduce((a, b) => a + Number(b.value), 0);
       const profit = monthIn - monthOut;
 
-      const getMethodTotal = (list: IceCreamTransaction[], method: string) => 
+      const getMethodTotalMonth = (list: IceCreamTransaction[], method: string) => 
         list.filter(f => f.type === 'entry' && f.description?.toLowerCase().includes(`via ${method.toLowerCase()}`)).reduce((a, b) => a + Number(b.value), 0);
 
-      const dayMethods = {
-          pix: getMethodTotal(dayFinances, 'Pix'),
-          money: getMethodTotal(dayFinances, 'Dinheiro'),
-          card: getMethodTotal(dayFinances, 'Cartão'),
-          fiado: getMethodTotal(dayFinances, 'Fiado')
-      };
-
       const monthMethods = {
-          pix: getMethodTotal(monthFinances, 'Pix'),
-          money: getMethodTotal(monthFinances, 'Dinheiro'),
-          card: getMethodTotal(monthFinances, 'Cartão'),
-          fiado: getMethodTotal(monthFinances, 'Fiado')
+          pix: getMethodTotalMonth(monthFinances, 'Pix'),
+          money: getMethodTotalMonth(monthFinances, 'Dinheiro'),
+          card: getMethodTotalMonth(monthFinances, 'Cartão'),
+          fiado: getMethodTotalMonth(monthFinances, 'Fiado')
       };
-
-      const monthExits = monthFinances.filter(f => f.type === 'exit').sort((a,b) => b.date.localeCompare(a.date));
-      const daySales = (sales ?? []).filter(s => s.createdAt?.startsWith(todayKey) && s.status !== 'canceled' && s.storeId === effectiveStoreId);
 
       return {
-          dayIn, dayOut, dayMethods, daySales: daySales.sort((a,b) => (b.createdAt || '').localeCompare(a.createdAt || '')),
-          monthMethods, monthIn, monthOut, profit, monthExits,
+          dayIn, 
+          dayOut, 
+          dayMethods, 
+          daySales: daySales.sort((a,b) => (b.createdAt || '').localeCompare(a.createdAt || '')),
+          monthMethods, monthIn, monthOut, profit,
       };
   }, [sales, finances, todayKey, periodKey, effectiveStoreId]);
 
@@ -250,7 +277,6 @@ const IceCreamModule: React.FC<IceCreamModuleProps> = ({
       try {
           const operationalSales = cart.map(item => ({
               ...item,
-              // Fix: Explicitly cast paymentMethod and status to avoid string widening and align with IceCreamDailySale interface.
               paymentMethod: (isMisto ? 'Misto' : paymentMethod) as IceCreamPaymentMethod,
               buyer_name: (paymentMethod === 'Fiado' || (isMisto && mistoValues['Fiado'])) ? buyerName.toUpperCase() : undefined,
               saleCode,
@@ -262,7 +288,7 @@ const IceCreamModule: React.FC<IceCreamModuleProps> = ({
               onAddTransaction({
                   id: '0',
                   storeId: effectiveStoreId,
-                  date: new Date().toLocaleDateString('en-CA'),
+                  date: new Date().toISOString().split('T')[0],
                   type: 'entry',
                   category: 'RECEITA DE VENDA PDV',
                   value: payment.amount,
@@ -335,7 +361,8 @@ const IceCreamModule: React.FC<IceCreamModuleProps> = ({
       setIsSubmitting(true);
       try {
           for (const [stockId, valueStr] of Object.entries(purchaseForm)) {
-              const val = parseFloat(valueStr.replace(',', '.'));
+              // Fix: Added string cast to valueStr to ensure 'replace' method is available (fixes unknown type error)
+              const val = parseFloat((valueStr as string).replace(',', '.'));
               const stockItem = stock.find(s => s.id === stockId);
               if (!isNaN(val) && val > 0 && stockItem) {
                   await onUpdateStock(effectiveStoreId, stockItem.product_base, val, stockItem.unit, 'purchase');
@@ -351,7 +378,8 @@ const IceCreamModule: React.FC<IceCreamModuleProps> = ({
       setIsSubmitting(true);
       try {
           for (const [stockId, valueStr] of Object.entries(inventoryForm)) {
-              const newVal = parseFloat(valueStr.replace(',', '.'));
+              // Fix: Added string cast to valueStr to ensure 'replace' method is available (fixes unknown type error)
+              const newVal = parseFloat((valueStr as string).replace(',', '.'));
               const stockItem = stock.find(s => s.id === stockId);
               if (!isNaN(newVal) && stockItem) {
                   const diff = newVal - stockItem.stock_current;
@@ -495,7 +523,7 @@ const IceCreamModule: React.FC<IceCreamModuleProps> = ({
                         <div className="flex items-center gap-4"><div className="p-4 bg-blue-50 text-blue-700 rounded-3xl"><Clock size={32}/></div><div><h3 className="text-2xl font-black uppercase italic text-blue-950 tracking-tighter">Fluxo de Caixa <span className="text-blue-700">Diário</span></h3><div className="flex bg-gray-100 p-1 rounded-lg mt-2"><button onClick={() => setDreSubTab('resumo')} className={`px-4 py-1.5 rounded-md text-[9px] font-black uppercase transition-all ${dreSubTab === 'resumo' ? 'bg-white text-blue-700 shadow-sm' : 'text-gray-400'}`}>Resumo</button><button onClick={() => setDreSubTab('detalhado')} className={`px-4 py-1.5 rounded-md text-[9px] font-black uppercase transition-all ${dreSubTab === 'detalhado' ? 'bg-white text-blue-700 shadow-sm' : 'text-gray-400'}`}>Detalhado</button></div></div></div>
                         <div className="flex flex-col items-end gap-2">
                              <button onClick={() => setShowTransactionModal(true)} className="px-6 py-2.5 bg-red-600 text-white rounded-xl font-black uppercase text-[10px] shadow-lg flex items-center gap-2 border-b-4 border-red-900 active:scale-95"><DollarSign size={14}/> Lançar Saída (Sangria)</button>
-                             <div className="text-right"><p className="text-[9px] font-black text-gray-400 uppercase">Apuração</p><p className="text-lg font-black text-blue-950">{new Date().toLocaleDateString('pt-BR')}</p></div>
+                             <div className="text-right"><p className="text-[9px] font-black text-gray-400 uppercase">Apuração</p><p className="text-lg font-black text-blue-950">{todayKey.split('-').reverse().join('/')}</p></div>
                         </div>
                     </div>
                     {dreSubTab === 'resumo' ? (
@@ -657,7 +685,7 @@ const IceCreamModule: React.FC<IceCreamModuleProps> = ({
                     </div>
                     <div className="flex-1 overflow-y-auto p-8 space-y-4 no-scrollbar">
                         {filteredStock.map(st => (
-                            <div key={st.id} className="flex items-center gap-4 bg-gray-50 p-4 rounded-2xl border border-gray-100 group hover:border-blue-200 transition-all">
+                            <div key={st.id} className="flex items-center gap-4 bg-gray-50 p-4 rounded-2xl border border-gray-100 group hover:border-orange-200 transition-all">
                                 <div className="flex-1"><p className="text-[10px] font-black text-gray-900 uppercase">{st.product_base}</p><p className="text-[8px] text-gray-400 font-bold uppercase">Sistema: {st.stock_current} {st.unit}</p></div>
                                 <div className="w-32 relative"><input value={inventoryForm[st.id] || ''} onChange={e => setInventoryForm({...inventoryForm, [st.id]: e.target.value})} className="w-full p-3 bg-white rounded-xl font-black text-orange-600 text-center shadow-sm border-none outline-none" placeholder="0" /><span className="absolute right-3 top-1/2 -translate-y-1/2 text-[8px] font-black text-gray-300 uppercase">{st.unit}</span></div>
                             </div>
