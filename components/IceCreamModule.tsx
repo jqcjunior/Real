@@ -6,7 +6,7 @@ import {
     IceCream, Plus, Package, ShoppingCart, CheckCircle2, 
     Trash2, X, History, PieChart, ArrowDownCircle, ArrowUpCircle, 
     Loader2, Search, Trash, ChevronRight, Calculator, FileText, Ban, UserCheck, Save, Image as ImageIcon, Sliders, Settings, Calendar, BarChart3, ListChecks, TrendingUp, TrendingDown, DollarSign, Wallet, CreditCard, Banknote, PackagePlus, Printer, ClipboardList, AlertCircle, Info, ToggleLeft, ToggleRight, Receipt, ArrowRight,
-    Users as UsersIcon, ShieldCheck, UserCog, Clock, FileBarChart, Users, Handshake, AlertTriangle, Zap, Beaker, Layers, Clipboard, Edit3, Filter, ChevronDown, FilePieChart, Briefcase, Warehouse, PencilLine, Truck
+    Users as UsersIcon, ShieldCheck, UserCog, Clock, FileBarChart, Users, Handshake, AlertTriangle, Zap, Beaker, Layers, Clipboard, Edit3, Filter, ChevronDown, FilePieChart, Briefcase, Warehouse, PencilLine, Truck, ChevronUp
 } from 'lucide-react';
 import PDVMobileView from './PDVMobileView';
 import { supabase } from '../services/supabaseClient';
@@ -72,7 +72,7 @@ const IceCreamModule: React.FC<IceCreamModuleProps> = ({
   const [cart, setCart] = useState<IceCreamDailySale[]>([]);
   const [selectedCategory, setSelectedCategory] = useState<IceCreamCategory | null>(null);
   const [paymentMethod, setPaymentMethod] = useState<IceCreamPaymentMethod | null>(null);
-  const [mistoValues, setMistoValues] = useState<Record<string, string>>({ 'Pix': '', 'Dinheiro': '', 'Cartão': '' });
+  const [mistoValues, setMistoValues] = useState<Record<string, string>>({ 'Pix': '', 'Dinheiro': '', 'Cartão': '', 'Fiado': '' });
   const [buyerName, setBuyerName] = useState('');
   const [amountReceived, setAmountReceived] = useState('');
   
@@ -95,6 +95,7 @@ const IceCreamModule: React.FC<IceCreamModuleProps> = ({
   const [showInventoryModal, setShowInventoryModal] = useState(false);
 
   const [partners, setPartners] = useState<StoreProfitPartner[]>([]);
+  const [expandedEmployee, setExpandedEmployee] = useState<string | null>(null);
   
   const [newInsumo, setNewInsumo] = useState({ name: '', unit: 'un', initial: '' });
   const [purchaseForm, setPurchaseForm] = useState<Record<string, string>>({}); 
@@ -136,7 +137,6 @@ const IceCreamModule: React.FC<IceCreamModuleProps> = ({
   const periodKey = `${selectedYear}-${String(selectedMonth).padStart(2, '0')}`;
 
   const dreStats = useMemo(() => {
-      // 1. Filtrar Vendas Operacionais (Hoje e Período Mensal)
       const daySales = (sales ?? []).filter(s => 
           s.createdAt?.startsWith(todayKey) && 
           s.status !== 'canceled' && 
@@ -149,7 +149,6 @@ const IceCreamModule: React.FC<IceCreamModuleProps> = ({
           s.storeId === effectiveStoreId
       );
 
-      // 2. Filtrar Finanças (Hoje e Período Mensal)
       const dayFinances = (finances ?? []).filter(f => 
           f.date?.startsWith(todayKey) && 
           f.storeId === effectiveStoreId
@@ -160,7 +159,6 @@ const IceCreamModule: React.FC<IceCreamModuleProps> = ({
           f.storeId === effectiveStoreId
       );
 
-      // 3. Resumo Diário
       let dayIn = 0;
       const dayMethods = { pix: 0, money: 0, card: 0, fiado: 0 };
 
@@ -177,22 +175,26 @@ const IceCreamModule: React.FC<IceCreamModuleProps> = ({
                   if (desc.includes('via pix')) dayMethods.pix += Number(f.value);
                   else if (desc.includes('via dinheiro')) dayMethods.money += Number(f.value);
                   else if (desc.includes('via cartão')) dayMethods.card += Number(f.value);
+                  else if (desc.includes('via fiado')) dayMethods.fiado += Number(f.value);
               });
           }
       });
 
       const dayOut = dayFinances.filter(f => f.type === 'exit').reduce((a, b) => a + Number(b.value), 0);
 
-      // 4. Resumo Mensal (Fonte Primária: Vendas Operacionais para os métodos)
       let monthIn = 0;
       const monthMethods = { pix: 0, money: 0, card: 0, fiado: 0 };
+      const monthFiadoDetails: any[] = [];
 
       monthSales.forEach(s => {
           monthIn += Number(s.totalValue);
           if (s.paymentMethod === 'Pix') monthMethods.pix += Number(s.totalValue);
           else if (s.paymentMethod === 'Dinheiro') monthMethods.money += Number(s.totalValue);
           else if (s.paymentMethod === 'Cartão') monthMethods.card += Number(s.totalValue);
-          else if (s.paymentMethod === 'Fiado') monthMethods.fiado += Number(s.totalValue);
+          else if (s.paymentMethod === 'Fiado') {
+              monthMethods.fiado += Number(s.totalValue);
+              monthFiadoDetails.push(s);
+          }
           else if (s.paymentMethod === 'Misto') {
               const relatedFinances = monthFinances.filter(f => f.type === 'entry' && f.description?.includes(s.saleCode || ''));
               relatedFinances.forEach(f => {
@@ -200,6 +202,10 @@ const IceCreamModule: React.FC<IceCreamModuleProps> = ({
                   if (desc.includes('via pix')) monthMethods.pix += Number(f.value);
                   else if (desc.includes('via dinheiro')) monthMethods.money += Number(f.value);
                   else if (desc.includes('via cartão')) monthMethods.card += Number(f.value);
+                  else if (desc.includes('via fiado')) {
+                      monthMethods.fiado += Number(f.value);
+                      monthFiadoDetails.push({ ...s, totalValue: f.value, paymentMethod: 'Fiado' });
+                  }
               });
           }
       });
@@ -208,73 +214,275 @@ const IceCreamModule: React.FC<IceCreamModuleProps> = ({
       const profit = monthIn - monthOut;
 
       return {
-          dayIn, dayOut, dayMethods, 
+          dayIn, dayOut, dayMethods,
           daySales: daySales.sort((a,b) => (b.createdAt || '').localeCompare(a.createdAt || '')),
-          monthMethods, monthIn, monthOut, profit,
+          monthMethods, monthIn, monthOut, profit, monthFiadoDetails: monthFiadoDetails.sort((a,b) => (b.createdAt || '').localeCompare(a.createdAt || '')),
       };
   }, [sales, finances, todayKey, periodKey, effectiveStoreId]);
 
+  // Lógica de Agrupamento Mensal de Fiado por Funcionário
+  const monthFiadoGrouped = useMemo(() => {
+    const groups: Record<string, { name: string, total: number, items: any[] }> = {};
+    dreStats.monthFiadoDetails.forEach(f => {
+        const name = f.buyer_name || 'NÃO INFORMADO';
+        if (!groups[name]) groups[name] = { name, total: 0, items: [] };
+        groups[name].total += Number(f.totalValue);
+        groups[name].items.push(f);
+    });
+    return Object.values(groups).sort((a, b) => b.total - a.total);
+  }, [dreStats.monthFiadoDetails]);
+
+  const handlePrintDreMensal = () => {
+      const printWindow = window.open('', '_blank');
+      if (!printWindow) return;
+
+      const store = stores.find(s => s.id === effectiveStoreId);
+      const monthLabel = MONTHS.find(m => m.value === selectedMonth)?.label;
+
+      const html = `
+        <!DOCTYPE html>
+        <html>
+        <head>
+            <title>DRE Mensal - Gelateria Real</title>
+            <style>
+                @page { size: portrait; margin: 10mm; }
+                body { font-family: sans-serif; padding: 20px; color: #1e293b; line-height: 1.4; max-width: 800px; margin: auto; }
+                .header { text-align: center; border-bottom: 3px solid #1e3a8a; padding-bottom: 15px; margin-bottom: 25px; }
+                .title { font-size: 26px; font-weight: 900; color: #1e3a8a; text-transform: uppercase; margin: 0; letter-spacing: -1px; }
+                .subtitle { font-size: 13px; color: #64748b; font-weight: 700; margin-top: 4px; text-transform: uppercase; }
+                
+                .section { margin-bottom: 20px; background: #fff; }
+                .section-title { font-size: 11px; font-weight: 900; text-transform: uppercase; color: #475569; letter-spacing: 1.5px; margin-bottom: 12px; border-left: 5px solid #1e3a8a; padding-left: 10px; background: #f8fafc; padding-top: 5px; padding-bottom: 5px; }
+                
+                .vertical-stats { display: flex; flex-direction: column; gap: 10px; }
+                .kpi-row { display: flex; justify-content: space-between; align-items: center; padding: 12px 20px; border: 1px solid #e2e8f0; border-radius: 12px; }
+                .kpi-label { font-size: 12px; font-weight: 800; color: #64748b; text-transform: uppercase; }
+                .kpi-value { font-size: 16px; font-weight: 900; }
+                
+                .profit-row { background: #1e3a8a; color: white; border: none; }
+                .profit-row .kpi-label { color: #94a3b8; }
+                
+                table { width: 100%; border-collapse: collapse; margin-top: 5px; }
+                th { text-align: left; font-size: 10px; text-transform: uppercase; color: #64748b; padding: 12px; border-bottom: 2px solid #e2e8f0; }
+                td { padding: 12px; font-size: 12px; border-bottom: 1px solid #f1f5f9; }
+                .text-right { text-align: right; }
+                .bold { font-weight: 800; }
+                
+                .footer { margin-top: 30px; text-align: center; font-size: 9px; color: #94a3b8; font-weight: 700; text-transform: uppercase; border-top: 1px solid #e2e8f0; padding-top: 15px; }
+                
+                @media print {
+                    body { padding: 0; }
+                    .no-print { display: none; }
+                }
+            </style>
+        </head>
+        <body>
+            <div class="header">
+                <p class="title">GELATERIA REAL</p>
+                <p class="subtitle">RELATÓRIO MENSAL - UNIDADE: ${store?.number} | ${monthLabel} / ${selectedYear}</p>
+            </div>
+
+            <div class="section">
+                <p class="section-title">Fluxo Financeiro Consolidado</p>
+                <div class="vertical-stats">
+                    <div class="kpi-row">
+                        <div class="kpi-label">Faturamento de Vendas (+)</div>
+                        <div class="kpi-value" style="color: #059669;">${formatCurrency(dreStats.monthIn)}</div>
+                    </div>
+                    <div class="kpi-row">
+                        <div class="kpi-label">Total Saídas e Sangrias (-)</div>
+                        <div class="kpi-value" style="color: #dc2626;">${formatCurrency(dreStats.monthOut)}</div>
+                    </div>
+                    <div class="kpi-row profit-row">
+                        <div class="kpi-label">Resultado Líquido do Mês (=)</div>
+                        <div class="kpi-value">${formatCurrency(dreStats.profit)}</div>
+                    </div>
+                </div>
+            </div>
+
+            <div class="section">
+                <p class="section-title">Detalhamento por Meio de Recebimento</p>
+                <table>
+                    <thead>
+                        <tr>
+                            <th>Modalidade</th>
+                            <th class="text-right">Valor Acumulado</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        <tr><td class="bold">PIX</td><td class="text-right bold">${formatCurrency(dreStats.monthMethods.pix)}</td></tr>
+                        <tr><td class="bold">DINHEIRO EM ESPÉCIE</td><td class="text-right bold">${formatCurrency(dreStats.monthMethods.money)}</td></tr>
+                        <tr><td class="bold">CARTÕES (DÉBITO/CRÉDITO)</td><td class="text-right bold">${formatCurrency(dreStats.monthMethods.card)}</td></tr>
+                        <tr><td class="bold">FIADO (CRÉDITO FUNCIONÁRIO)</td><td class="text-right bold" style="color: #dc2626;">${formatCurrency(dreStats.monthMethods.fiado)}</td></tr>
+                    </tbody>
+                </table>
+            </div>
+
+            <div class="section">
+                <p class="section-title">Relação de Débitos por Colaborador</p>
+                <table>
+                    <thead>
+                        <tr>
+                            <th>Funcionário</th>
+                            <th class="text-right">Total a Descontar</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        ${monthFiadoGrouped.map(f => `
+                            <tr>
+                                <td class="bold" style="text-transform: uppercase;">${f.name}</td>
+                                <td class="text-right bold" style="color: #dc2626;">${formatCurrency(f.total)}</td>
+                            </tr>
+                        `).join('')}
+                        ${monthFiadoGrouped.length === 0 ? '<tr><td colspan="2" style="text-align:center; color:#94a3b8; padding: 30px;">Nenhum débito pendente para este período</td></tr>' : ''}
+                    </tbody>
+                </table>
+            </div>
+
+            <div class="footer">
+                Documento Oficial de Conferência - Gerado em ${new Date().toLocaleString('pt-BR')}
+            </div>
+
+            <script>
+                window.onload = () => {
+                    window.print();
+                    setTimeout(() => window.close(), 1000);
+                }
+            </script>
+        </body>
+        </html>
+      `;
+
+      printWindow.document.write(html);
+      printWindow.document.close();
+  };
+
   const groupedAuditSales = useMemo(() => {
-      const filtered = (sales ?? []).filter(s => {
-          if (s.storeId !== effectiveStoreId) return false;
-          if (!s.createdAt) return false;
-          const sDate = new Date(s.createdAt);
-          const matchDay = auditDay === '' || auditDay === sDate.getDate().toString();
-          const matchMonth = auditMonth === '' || auditMonth === (sDate.getMonth() + 1).toString();
-          const matchYear = auditYear === '' || auditYear === sDate.getFullYear().toString();
-          const matchSearch = auditSearch === '' || 
-              s.productName.toLowerCase().includes(auditSearch.toLowerCase()) || 
-              s.saleCode?.toLowerCase().includes(auditSearch.toLowerCase()) ||
-              s.buyer_name?.toLowerCase().includes(auditSearch.toLowerCase());
-          return matchDay && matchMonth && matchYear && matchSearch;
-      });
+    const filtered = (sales ?? []).filter(s => {
+      if (s.storeId !== effectiveStoreId) return false;
+      
+      if (auditSearch) {
+        const term = auditSearch.toLowerCase();
+        const match = s.productName.toLowerCase().includes(term) ||
+                      s.saleCode?.toLowerCase().includes(term) ||
+                      s.buyer_name?.toLowerCase().includes(term);
+        if (!match) return false;
+      }
 
-      const groups: Record<string, any> = {};
+      if (s.createdAt) {
+        const d = new Date(s.createdAt);
+        if (auditYear && d.getFullYear().toString() !== auditYear) return false;
+        if (auditMonth && (d.getMonth() + 1).toString() !== auditMonth) return false;
+        if (auditDay && d.getDate().toString() !== auditDay) return false;
+      }
+      
+      return true;
+    });
 
-      filtered.forEach(s => {
-          const code = s.saleCode || 'GEL-000';
-          if (!groups[code]) {
-              const relatedFinances = (finances ?? []).filter(f => f.storeId === effectiveStoreId && f.description?.includes(code));
-              const methodsSet = new Set<string>();
-              relatedFinances.forEach(f => {
-                  const mMatch = f.description?.match(/via (.*?) -/);
-                  if (mMatch) methodsSet.add(mMatch[1]);
-              });
-              if (methodsSet.size === 0) methodsSet.add(s.paymentMethod);
+    const groups: Record<string, any> = {};
+    filtered.forEach(s => {
+      const code = s.saleCode || 'GEL-000';
+      if (!groups[code]) {
+        groups[code] = {
+          saleCode: code,
+          createdAt: s.createdAt,
+          buyer_name: s.buyer_name,
+          status: s.status,
+          items: [],
+          totalValue: 0,
+          paymentMethods: new Set()
+        };
+      }
+      groups[code].items.push(s);
+      groups[code].totalValue += Number(s.totalValue);
+      groups[code].paymentMethods.add(s.paymentMethod);
+    });
 
-              groups[code] = {
-                  saleCode: code,
-                  createdAt: s.createdAt || '',
-                  paymentMethods: Array.from(methodsSet),
-                  buyer_name: s.buyer_name,
-                  status: s.status || 'active',
-                  totalValue: 0,
-                  items: {}
-              };
+    return Object.values(groups)
+      .map(g => ({ ...g, paymentMethods: Array.from(g.paymentMethods) }))
+      .sort((a: any, b: any) => (b.createdAt || '').localeCompare(a.createdAt || ''));
+  }, [sales, effectiveStoreId, auditDay, auditMonth, auditYear, auditSearch]);
+
+  const handlePrintTicket = (items: IceCreamDailySale[], saleCode: string, method: string, buyer?: string) => {
+    const printWindow = window.open('', '_blank');
+    if (!printWindow) return;
+
+    const store = stores.find(s => s.id === effectiveStoreId);
+    const dateStr = new Date().toLocaleString('pt-BR');
+    const total = items.reduce((a, b) => a + b.totalValue, 0);
+    const isFiado = method === 'Fiado' || method === 'Misto';
+
+    const html = `
+      <!DOCTYPE html>
+      <html>
+      <head>
+          <style>
+              @media print {
+                  @page { margin: 0; }
+                  body { margin: 0; padding: 10px; width: 100%; max-width: 300px; font-family: monospace; font-size: 12px; }
+              }
+              body { font-family: monospace; font-size: 12px; line-height: 1.2; width: 280px; margin: auto; padding: 20px 0; }
+              .center { text-align: center; }
+              .divider { border-bottom: 1px dashed #000; margin: 8px 0; }
+              .bold { font-weight: bold; }
+              .table { width: 100%; border-collapse: collapse; }
+              .right { text-align: right; }
+              .sig { border-top: 1px solid #000; margin-top: 40px; padding-top: 5px; font-size: 10px; }
+          </style>
+      </head>
+      <body>
+          <div class="center">
+              <img src="${BRAND_LOGO}" width="80" style="margin-bottom: 5px;">
+              <div class="bold">GELATERIA REAL</div>
+              <div>UNIDADE: ${store?.number || 'REDE'}</div>
+              <div>DATA: ${dateStr}</div>
+              <div class="divider"></div>
+              <div class="bold italic">CUPOM NÃO FISCAL</div>
+              <div class="divider"></div>
+          </div>
+          <table class="table">
+              ${items.map(i => `
+                  <tr>
+                      <td colspan="2">${i.productName}</td>
+                  </tr>
+                  <tr>
+                      <td>${i.unitsSold}x ${formatCurrency(i.unitPrice)}</td>
+                      <td class="right">${formatCurrency(i.totalValue)}</td>
+                  </tr>
+              `).join('')}
+          </table>
+          <div class="divider"></div>
+          <div class="bold" style="display: flex; justify-content: space-between;">
+              <span>TOTAL:</span>
+              <span>${formatCurrency(total)}</span>
+          </div>
+          <div style="margin-top: 5px;">MÉTODO: ${method}</div>
+          <div style="margin-top: 2px;">CÓDIGO: #${saleCode}</div>
+          
+          ${isFiado && buyer ? `
+            <div class="center" style="margin-top: 30px;">
+                <div class="sig">
+                    ASSINATURA DO FUNCIONÁRIO
+                    <br><span class="bold">${buyer.toUpperCase()}</span>
+                </div>
+            </div>
+          ` : ''}
+
+          <div class="center" style="margin-top: 20px;">
+              OBRIGADO PELA PREFERÊNCIA!
+          </div>
+      </body>
+      <script>
+          window.onload = () => {
+              window.print();
+              setTimeout(() => window.close(), 1000);
           }
-          const itemKey = `${s.itemId}-${s.flavor}`;
-          if (!groups[code].items[itemKey]) {
-              groups[code].items[itemKey] = { productName: s.productName, unitsSold: 1, flavor: s.flavor };
-              groups[code].totalValue += s.totalValue;
-          }
-      });
+      </script>
+      </html>
+    `;
 
-      return Object.values(groups).sort((a: any, b: any) => b.createdAt.localeCompare(a.createdAt));
-  }, [sales, effectiveStoreId, auditDay, auditMonth, auditYear, auditSearch, finances]);
-
-  const handleAddToCart = (item: IceCreamItem) => {
-      setCart([...cart, { 
-          id: `temp-${Date.now()}-${Math.random()}`, 
-          storeId: effectiveStoreId, 
-          itemId: item.id, 
-          productName: item.name, 
-          category: item.category, 
-          flavor: item.flavor || 'Padrão', 
-          unitsSold: 1, 
-          unitPrice: item.price, 
-          totalValue: item.price, 
-          paymentMethod: 'Dinheiro' 
-      }]);
+    printWindow.document.write(html);
+    printWindow.document.close();
   };
 
   const finalizeSale = async () => {
@@ -318,6 +526,8 @@ const IceCreamModule: React.FC<IceCreamModuleProps> = ({
               ...financialPromises
           ]);
 
+          handlePrintTicket(operationalSales, saleCode, isMisto ? 'Misto' : paymentMethod, buyerName);
+
           for (const c of cart) {
               const itemDef = items.find(it => it.id === c.itemId);
               if (itemDef?.recipe) {
@@ -327,7 +537,7 @@ const IceCreamModule: React.FC<IceCreamModuleProps> = ({
               }
           }
 
-          setCart([]); setPaymentMethod(null); setBuyerName(''); setAmountReceived(''); setMistoValues({ 'Pix': '', 'Dinheiro': '', 'Cartão': '' });
+          setCart([]); setPaymentMethod(null); setBuyerName(''); setAmountReceived(''); setMistoValues({ 'Pix': '', 'Dinheiro': '', 'Cartão': '', 'Fiado': '' });
           alert("Venda realizada!");
       } catch (e) { alert("Falha ao registrar."); } finally { setIsSubmitting(false); }
   };
@@ -377,7 +587,7 @@ const IceCreamModule: React.FC<IceCreamModuleProps> = ({
       setIsSubmitting(true);
       try {
           for (const [stockId, valueStr] of Object.entries(purchaseForm)) {
-              const val = parseFloat((valueStr as string).replace(',', '.'));
+              const val = parseFloat((valueStr as string).replace(',', '.')) || 0;
               const stockItem = stock.find(s => s.id === stockId);
               if (!isNaN(val) && val > 0 && stockItem) {
                   await onUpdateStock(effectiveStoreId, stockItem.product_base, val, stockItem.unit, 'purchase');
@@ -393,7 +603,7 @@ const IceCreamModule: React.FC<IceCreamModuleProps> = ({
       setIsSubmitting(true);
       try {
           for (const [stockId, valueStr] of Object.entries(inventoryForm)) {
-              const newVal = parseFloat((valueStr as string).replace(',', '.'));
+              const newVal = parseFloat((valueStr as string).replace(',', '.')) || 0;
               const stockItem = stock.find(s => s.id === stockId);
               if (!isNaN(newVal) && stockItem) {
                   const diff = newVal - stockItem.stock_current;
@@ -438,7 +648,7 @@ const IceCreamModule: React.FC<IceCreamModuleProps> = ({
         <div className="flex-1 overflow-y-auto no-scrollbar relative">
             {activeTab === 'pdv' && (
                 <div className="h-full">
-                    <div className="lg:hidden h-full"><PDVMobileView user={user} items={filteredItems} cart={cart} setCart={setCart} selectedCategory={selectedCategory} setSelectedCategory={setSelectedCategory} selectedProductName={null} setSelectedProductName={() => {}} selectedItem={null} setSelectedItem={() => {}} selectedMl="" setSelectedMl={() => {}} quantity={1} setQuantity={() => {}} paymentMethod={paymentMethod} setPaymentMethod={setPaymentMethod} buyerName={buyerName} setBuyerName={setBuyerName} mistoValues={mistoValues} setMistoValues={setMistoValues} onAddSales={onAddSales} onCancelSale={async (code) => { await onCancelSale(code); }} onAddTransaction={onAddTransaction} onUpdateStock={onUpdateStock} dailyData={dreStats} handlePrintTicket={() => {}} isSubmitting={isSubmitting} setIsSubmitting={setIsSubmitting} effectiveStoreId={effectiveStoreId} /></div>
+                    <div className="lg:hidden h-full"><PDVMobileView user={user} items={filteredItems} cart={cart} setCart={setCart} selectedCategory={selectedCategory} setSelectedCategory={setSelectedCategory} selectedProductName={null} setSelectedProductName={() => {}} selectedItem={null} setSelectedItem={() => {}} selectedMl="" setSelectedMl={() => {}} quantity={1} setQuantity={() => {}} paymentMethod={paymentMethod} setPaymentMethod={setPaymentMethod} buyerName={buyerName} setBuyerName={setBuyerName} mistoValues={mistoValues} setMistoValues={setMistoValues} onAddSales={onAddSales} onCancelSale={async (code) => { await onCancelSale(code); }} onAddTransaction={onAddTransaction} onUpdateStock={onUpdateStock} dailyData={dreStats} handlePrintTicket={handlePrintTicket} isSubmitting={isSubmitting} setIsSubmitting={setIsSubmitting} effectiveStoreId={effectiveStoreId} /></div>
                     <div className="hidden lg:grid grid-cols-12 gap-4 p-6 max-w-[1500px] mx-auto h-full overflow-hidden">
                         <div className="col-span-8 flex flex-col h-full overflow-hidden">
                             <div className="flex gap-1.5 overflow-x-auto no-scrollbar pb-3">
@@ -447,7 +657,7 @@ const IceCreamModule: React.FC<IceCreamModuleProps> = ({
                             </div>
                             <div className="grid grid-cols-3 xl:grid-cols-4 gap-4 overflow-y-auto no-scrollbar pr-2 pb-10">
                                 {filteredItems.filter(i => (!selectedCategory || i.category === selectedCategory) && i.active).map(item => (
-                                    <button key={item.id} onClick={() => handleAddToCart(item)} className="bg-white p-4 rounded-[32px] border-2 border-gray-100 hover:border-blue-600 transition-all flex flex-col items-center text-center group shadow-sm">
+                                    <button key={item.id} onClick={() => { setCart([...cart, { id: `temp-${Date.now()}-${Math.random()}`, storeId: effectiveStoreId, itemId: item.id, productName: item.name, category: item.category, flavor: item.flavor || 'Padrão', unitsSold: 1, unitPrice: item.price, totalValue: item.price, paymentMethod: 'Dinheiro' }]); }} className="bg-white p-4 rounded-[32px] border-2 border-gray-100 hover:border-blue-600 transition-all flex flex-col items-center text-center group shadow-sm">
                                         <div className="w-full aspect-square bg-gray-50 rounded-[24px] mb-3 flex items-center justify-center overflow-hidden"><img src={item.image_url || getCategoryImage(item.category, item.name)} className="w-full h-full object-cover p-2" /></div>
                                         <h4 className="font-black text-gray-900 uppercase text-[10px] truncate w-full mb-1">{item.name}</h4>
                                         <p className="text-lg font-black text-blue-900 italic leading-none">{formatCurrency(item.price)}</p>
@@ -468,7 +678,7 @@ const IceCreamModule: React.FC<IceCreamModuleProps> = ({
                             <div className="pt-4 border-t space-y-4">
                                 <div className="flex justify-between items-baseline"><span className="text-[9px] font-black text-gray-400 uppercase tracking-widest">Subtotal</span><span className="text-3xl font-black text-blue-950 italic">{formatCurrency(cartTotal)}</span></div>
                                 <div className="grid grid-cols-2 gap-2">
-                                    {['Pix', 'Dinheiro', 'Cartão', 'Fiado', 'Misto'].map(m => <button key={m} onClick={() => { setPaymentMethod(m as any); if(m !== 'Dinheiro' && m !== 'Misto') setAmountReceived(''); }} className={`py-3 rounded-xl font-black uppercase text-[10px] border-2 transition-all ${paymentMethod === m ? 'bg-blue-900 text-white border-blue-900 shadow-xl' : 'bg-white border-gray-200 text-gray-400'}`}>{m}</button>)}
+                                    {['Pix', 'Dinheiro', 'Cartão', 'Fiado', 'Misto'].map(m => <button key={m} onClick={() => { setPaymentMethod(m as any); if(m !== 'Dinheiro' && m !== 'Misto' && m !== 'Fiado') setAmountReceived(''); }} className={`py-3 rounded-xl font-black uppercase text-[10px] border-2 transition-all ${paymentMethod === m ? 'bg-blue-900 text-white border-blue-900 shadow-xl' : 'bg-white border-gray-200 text-gray-400'}`}>{m}</button>)}
                                 </div>
                                 {paymentMethod === 'Dinheiro' && (
                                     <div className="bg-green-50 p-4 rounded-2xl border-2 border-green-200 space-y-3">
@@ -478,12 +688,142 @@ const IceCreamModule: React.FC<IceCreamModuleProps> = ({
                                 )}
                                 {paymentMethod === 'Misto' && (
                                     <div className="bg-blue-50 p-4 rounded-2xl border-2 border-blue-200 space-y-2">
-                                        {['Pix', 'Dinheiro', 'Cartão'].map(m => <div key={m} className="flex justify-between items-center bg-white px-3 py-2 rounded-lg border border-blue-50"><label className="text-[10px] font-black text-gray-500 uppercase">{m}</label><input value={mistoValues[m]} onChange={e => setMistoValues({...mistoValues, [m]: e.target.value})} placeholder="0,00" className="w-20 text-right font-black text-blue-900 text-xs outline-none bg-transparent" /></div>)}
+                                        {['Pix', 'Dinheiro', 'Cartão', 'Fiado'].map(m => <div key={m} className="flex justify-between items-center bg-white px-3 py-2 rounded-lg border border-blue-50"><label className="text-[10px] font-black text-gray-500 uppercase">{m}</label><input value={mistoValues[m]} onChange={e => setMistoValues({...mistoValues, [m]: e.target.value})} placeholder="0,00" className="w-20 text-right font-black text-blue-900 text-xs outline-none bg-transparent" /></div>)}
                                     </div>
                                 )}
                                 {(paymentMethod === 'Fiado' || (paymentMethod === 'Misto' && mistoValues['Fiado'])) && <input value={buyerName} onChange={e => setBuyerName(e.target.value.toUpperCase())} className="w-full p-4 bg-red-50 border-2 border-red-100 rounded-2xl font-black uppercase text-sm outline-none" placeholder="NOME DO FUNCIONÁRIO..." />}
                                 <button onClick={finalizeSale} disabled={isSubmitting || cart.length === 0 || !paymentMethod} className="w-full py-5 bg-red-600 hover:bg-red-700 text-white rounded-[24px] font-black uppercase text-xs shadow-2xl flex items-center justify-center gap-3 transition-all border-b-4 border-red-900">{isSubmitting ? <Loader2 className="animate-spin" /> : <CheckCircle2 size={18}/>} Finalizar Venda</button>
                             </div>
+                        </div>
+                    </div>
+                </div>
+            )}
+
+            {activeTab === 'dre_diario' && (
+                <div className="p-4 md:p-8 space-y-6 animate-in fade-in duration-300 max-w-5xl mx-auto pb-20">
+                    <div className="bg-white p-8 rounded-[40px] shadow-sm border border-gray-100 flex flex-col md:flex-row justify-between items-center gap-6">
+                        <div className="flex items-center gap-4"><div className="p-4 bg-blue-50 text-blue-700 rounded-3xl"><Clock size={32}/></div><div><h3 className="text-2xl font-black uppercase italic text-blue-950 tracking-tighter">Fluxo de Caixa <span className="text-blue-700">Diário</span></h3><div className="flex bg-gray-100 p-1 rounded-lg mt-2"><button onClick={() => setDreSubTab('resumo')} className={`px-4 py-1.5 rounded-md text-[9px] font-black uppercase transition-all ${dreSubTab === 'resumo' ? 'bg-white text-blue-700 shadow-sm' : 'text-gray-400'}`}>Resumo</button><button onClick={() => setDreSubTab('detalhado')} className={`px-4 py-1.5 rounded-md text-[9px] font-black uppercase transition-all ${dreSubTab === 'detalhado' ? 'bg-white text-blue-700 shadow-sm' : 'text-gray-400'}`}>Detalhado</button></div></div></div>
+                        <div className="flex flex-col items-end gap-2">
+                             <button onClick={() => setShowTransactionModal(true)} className="px-6 py-2.5 bg-red-600 text-white rounded-xl font-black uppercase text-[10px] shadow-lg flex items-center gap-2 border-b-4 border-red-900 active:scale-95"><DollarSign size={14}/> Lançar Saída (Sangria)</button>
+                             <div className="text-right"><p className="text-[9px] font-black text-gray-400 uppercase">Apuração</p><p className="text-lg font-black text-blue-950">{todayKey.split('-').reverse().join('/')}</p></div>
+                        </div>
+                    </div>
+                    {dreSubTab === 'resumo' && (
+                        <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+                            <div className="bg-white p-6 rounded-[32px] border-2 border-green-100 shadow-sm space-y-4"><span className="text-[9px] font-black text-green-600 uppercase tracking-widest">Resumo Entradas (+)</span><div className="space-y-2">
+                                <div className="flex justify-between items-center text-[10px] font-black border-b border-gray-50 pb-1"><span className="text-gray-400 uppercase">Pix</span><span className="text-gray-900">{formatCurrency(dreStats.dayMethods.pix)}</span></div>
+                                <div className="flex justify-between items-center text-[10px] font-black border-b border-gray-50 pb-1"><span className="text-gray-400 uppercase">Dinheiro</span><span className="text-gray-900">{formatCurrency(dreStats.dayMethods.money)}</span></div>
+                                <div className="flex justify-between items-center text-[10px] font-black border-b border-gray-50 pb-1"><span className="text-gray-400 uppercase">Cartão</span><span className="text-gray-900">{formatCurrency(dreStats.dayMethods.card)}</span></div>
+                                <div className="flex justify-between items-center text-[10px] font-black border-b border-gray-50 pb-1"><span className="text-gray-400 uppercase">Fiado</span><span className="text-gray-900">{formatCurrency(dreStats.dayMethods.fiado)}</span></div>
+                            </div><div className="pt-2 border-t-2 border-green-50"><p className="text-2xl font-black text-green-700 italic">{formatCurrency(dreStats.dayIn)}</p></div></div>
+                            <div className="bg-white p-6 rounded-[32px] border-2 border-red-100 shadow-sm flex flex-col justify-between"><div><span className="text-[9px] font-black text-red-600 uppercase tracking-widest">Resumo Saídas (-)</span><p className="text-3xl font-black text-red-700 italic mt-4">{formatCurrency(dreStats.dayOut)}</p></div></div>
+                            <div className="bg-gray-950 p-6 rounded-[32px] text-white shadow-xl flex flex-col justify-between"><div><span className="text-[9px] font-black text-blue-400 uppercase tracking-widest">Saldo Líquido</span><p className="text-3xl font-black italic mt-4">{formatCurrency(dreStats.dayIn - dreStats.dayOut)}</p></div></div>
+                        </div>
+                    )}
+                    {dreSubTab === 'detalhado' && (
+                        <div className="bg-white rounded-[40px] shadow-xl border border-gray-100 overflow-hidden"><table className="w-full text-left"><thead className="bg-gray-50 text-[9px] font-black text-gray-400 uppercase tracking-widest border-b"><tr><th className="px-6 py-4">Horário / Código</th><th className="px-6 py-4">Operação</th><th className="px-6 py-4 text-right">Valor</th></tr></thead><tbody className="divide-y divide-gray-50 font-bold text-[10px]">{dreStats.daySales.map(s => <tr key={s.id} className="hover:bg-green-50/20"><td className="px-6 py-3 text-gray-400">#{s.saleCode} <span className="block">{new Date(s.createdAt!).toLocaleTimeString()}</span></td><td className="px-6 py-3 uppercase text-gray-900">VENDA: {s.productName}</td><td className="px-6 py-3 text-right text-green-600">{formatCurrency(s.totalValue)}</td></tr>)}</tbody></table></div>
+                    )}
+                </div>
+            )}
+
+            {activeTab === 'dre_mensal' && (
+                <div className="p-4 md:p-8 space-y-8 animate-in fade-in duration-300 max-w-6xl mx-auto pb-20">
+                    <div className="bg-white p-8 rounded-[40px] shadow-sm border border-gray-100 flex flex-col md:flex-row justify-between items-center gap-6">
+                        <div className="flex items-center gap-4"><div className="p-4 bg-purple-50 text-purple-700 rounded-3xl"><FilePieChart size={32}/></div><div><h3 className="text-2xl font-black uppercase italic text-blue-950 tracking-tighter">DRE <span className="text-purple-700">Mensal</span></h3></div></div>
+                        <div className="flex flex-col sm:flex-row items-center gap-3">
+                            <div className="flex items-center gap-2 bg-gray-50 p-2 rounded-2xl border"><select value={selectedMonth} onChange={e => setSelectedMonth(Number(e.target.value))} className="bg-transparent border-none text-xs font-black uppercase outline-none">{MONTHS.map(m => <option key={m.value} value={m.value}>{m.label}</option>)}</select><select value={selectedYear} onChange={e => setSelectedYear(Number(e.target.value))} className="bg-transparent border-none text-xs font-black outline-none">{[2024, 2025, 2026].map(y => <option key={y} value={y}>{y}</option>)}</select></div>
+                            <button onClick={handlePrintDreMensal} className="px-6 py-2.5 bg-gray-900 text-white rounded-xl font-black uppercase text-[10px] shadow-lg flex items-center gap-2 border-b-4 border-gray-700 active:scale-95"><Printer size={14}/> Imprimir Relatório</button>
+                        </div>
+                    </div>
+                    <div className="grid grid-cols-1 lg:grid-cols-12 gap-8">
+                        <div className="lg:col-span-8 space-y-6">
+                            <div className="bg-white p-8 rounded-[40px] shadow-sm border border-gray-100"><h4 className="text-[10px] font-black text-gray-400 uppercase tracking-[0.2em] mb-6 flex items-center gap-2"><Briefcase size={14}/> Demonstrativo de Resultado</h4><div className="space-y-4">
+                                <div className="flex justify-between items-center pb-4 border-b"><span className="font-bold text-gray-600 uppercase text-xs">Faturamento (+)</span><span className="font-black text-green-600 text-lg">{formatCurrency(dreStats.monthIn)}</span></div>
+                                <div className="flex justify-between items-center pb-4 border-b"><span className="font-bold text-gray-600 uppercase text-xs">Saídas (-)</span><span className="font-black text-red-600 text-lg">{formatCurrency(dreStats.monthOut)}</span></div>
+                                <div className="flex justify-between items-center pt-2"><span className="font-black text-blue-950 uppercase text-sm">Lucro Líquido (=)</span><span className="font-black text-blue-900 text-2xl italic">{formatCurrency(dreStats.profit)}</span></div>
+                            </div></div>
+                            <div className="bg-white p-8 rounded-[40px] shadow-sm border border-gray-100">
+                                <h4 className="text-[10px] font-black text-gray-400 uppercase tracking-[0.2em] mb-4">Detalhamento por Método</h4>
+                                <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+                                    <div className="p-4 bg-gray-50 rounded-2xl"><p className="text-[8px] font-black text-gray-400 uppercase">Pix</p><p className="font-black text-blue-900">{formatCurrency(dreStats.monthMethods.pix)}</p></div>
+                                    <div className="p-4 bg-gray-50 rounded-2xl"><p className="text-[8px] font-black text-gray-400 uppercase">Dinheiro</p><p className="font-black text-green-700">{formatCurrency(dreStats.monthMethods.money)}</p></div>
+                                    <div className="p-4 bg-gray-50 rounded-2xl"><p className="text-[8px] font-black text-gray-400 uppercase">Cartão</p><p className="font-black text-orange-600">{formatCurrency(dreStats.monthMethods.card)}</p></div>
+                                    <div className="p-4 bg-gray-50 rounded-2xl"><p className="text-[8px] font-black text-gray-400 uppercase">Fiado</p><p className="font-black text-red-600">{formatCurrency(dreStats.monthMethods.fiado)}</p></div>
+                                </div>
+                            </div>
+                        </div>
+                        <div className="lg:col-span-4 bg-gray-950 p-8 rounded-[40px] text-white shadow-2xl flex flex-col h-fit">
+                            <h4 className="text-[10px] font-black text-blue-400 uppercase tracking-[0.2em] mb-6 flex items-center gap-2"><UsersIcon size={16}/> Partilha de Lucros</h4>
+                            <div className="space-y-4">{partners.map(p => <div key={p.id} className="border-b border-white/5 pb-4 last:border-0"><div className="flex justify-between items-baseline mb-1"><span className="text-[10px] font-black uppercase italic tracking-tighter">{p.partner_name}</span><span className="text-[9px] font-bold text-blue-400">{p.percentage}%</span></div><p className="text-xl font-black italic tracking-tighter text-blue-100">{formatCurrency((dreStats.profit * p.percentage) / 100)}</p></div>)}</div>
+                            {partners.length === 0 && <p className="text-[9px] text-gray-600 uppercase text-center py-10 italic">Nenhuma partilha configurada</p>}
+                        </div>
+                    </div>
+
+                    <div className="bg-white rounded-[40px] shadow-xl border border-gray-100 overflow-hidden">
+                        <div className="p-6 bg-red-50 border-b border-red-100 flex justify-between items-center">
+                            <div>
+                                <h4 className="text-xs font-black uppercase text-red-700 flex items-center gap-2"><ClipboardList size={16}/> Débito Funcionário - Resumo Mensal</h4>
+                                <p className="text-[9px] font-bold text-red-400 uppercase mt-1">Soma total por colaborador (Clique para ver detalhes)</p>
+                            </div>
+                            <span className="text-lg font-black text-red-700 italic">{formatCurrency(dreStats.monthMethods.fiado)}</span>
+                        </div>
+                        <div className="overflow-x-auto">
+                            <table className="w-full text-left">
+                                <thead className="bg-gray-50 text-[9px] font-black text-gray-400 uppercase tracking-widest border-b">
+                                    <tr>
+                                        <th className="px-8 py-4">Colaborador / Profissional</th>
+                                        <th className="px-8 py-4 text-right">Total Acumulado (R$)</th>
+                                    </tr>
+                                </thead>
+                                <tbody className="divide-y divide-gray-50 font-bold text-[10px]">
+                                    {monthFiadoGrouped.map((f, i) => (
+                                        <React.Fragment key={f.name}>
+                                            <tr 
+                                                onClick={() => setExpandedEmployee(expandedEmployee === f.name ? null : f.name)}
+                                                className={`hover:bg-red-50/20 cursor-pointer transition-all ${expandedEmployee === f.name ? 'bg-red-50/40' : ''}`}
+                                            >
+                                                <td className="px-8 py-4 flex items-center gap-3">
+                                                    {expandedEmployee === f.name ? <ChevronUp size={14} className="text-red-500" /> : <ChevronDown size={14} className="text-gray-400" />}
+                                                    <span className="text-blue-900 uppercase italic text-xs tracking-tighter">{f.name}</span>
+                                                </td>
+                                                <td className="px-8 py-4 text-right text-red-700 text-sm font-black italic">{formatCurrency(f.total)}</td>
+                                            </tr>
+                                            {expandedEmployee === f.name && (
+                                                <tr className="bg-gray-50/50">
+                                                    <td colSpan={2} className="px-12 py-6">
+                                                        <div className="bg-white rounded-2xl border border-red-100 shadow-sm overflow-hidden">
+                                                            <div className="p-3 bg-red-600 text-white text-[8px] font-black uppercase tracking-widest">Histórico Detalhado: {f.name}</div>
+                                                            <table className="w-full text-[9px] font-bold">
+                                                                <thead className="bg-gray-50 border-b border-gray-100 text-gray-400 uppercase">
+                                                                    <tr>
+                                                                        <th className="px-4 py-2">Data</th>
+                                                                        <th className="px-4 py-2">Cód. Venda</th>
+                                                                        <th className="px-4 py-2">Item</th>
+                                                                        <th className="px-4 py-2 text-right">Valor</th>
+                                                                    </tr>
+                                                                </thead>
+                                                                <tbody className="divide-y divide-gray-50">
+                                                                    {f.items.map((item, idx) => (
+                                                                        <tr key={idx}>
+                                                                            <td className="px-4 py-2 text-blue-950">{new Date(item.createdAt).toLocaleDateString('pt-BR')}</td>
+                                                                            <td className="px-4 py-2 text-blue-900 font-black">#{item.saleCode}</td>
+                                                                            <td className="px-4 py-2 uppercase italic text-blue-950 font-black">{item.productName}</td>
+                                                                            <td className="px-4 py-2 text-right text-red-700 font-black">{formatCurrency(item.totalValue)}</td>
+                                                                        </tr>
+                                                                    ))}
+                                                                </tbody>
+                                                            </table>
+                                                        </div>
+                                                    </td>
+                                                </tr>
+                                            )}
+                                        </React.Fragment>
+                                    ))}
+                                    {monthFiadoGrouped.length === 0 && (
+                                        <tr><td colSpan={2} className="p-16 text-center text-gray-400 uppercase tracking-[0.3em] italic">Nenhuma compra no fiado registrada neste período</td></tr>
+                                    )}
+                                </tbody>
+                            </table>
                         </div>
                     </div>
                 </div>
@@ -530,187 +870,7 @@ const IceCreamModule: React.FC<IceCreamModuleProps> = ({
                     </div>
                 </div>
             )}
-
-            {activeTab === 'dre_diario' && (
-                <div className="p-4 md:p-8 space-y-6 animate-in fade-in duration-300 max-w-5xl mx-auto pb-20">
-                    <div className="bg-white p-8 rounded-[40px] shadow-sm border border-gray-100 flex flex-col md:flex-row justify-between items-center gap-6">
-                        <div className="flex items-center gap-4"><div className="p-4 bg-blue-50 text-blue-700 rounded-3xl"><Clock size={32}/></div><div><h3 className="text-2xl font-black uppercase italic text-blue-950 tracking-tighter">Fluxo de Caixa <span className="text-blue-700">Diário</span></h3><div className="flex bg-gray-100 p-1 rounded-lg mt-2"><button onClick={() => setDreSubTab('resumo')} className={`px-4 py-1.5 rounded-md text-[9px] font-black uppercase transition-all ${dreSubTab === 'resumo' ? 'bg-white text-blue-700 shadow-sm' : 'text-gray-400'}`}>Resumo</button><button onClick={() => setDreSubTab('detalhado')} className={`px-4 py-1.5 rounded-md text-[9px] font-black uppercase transition-all ${dreSubTab === 'detalhado' ? 'bg-white text-blue-700 shadow-sm' : 'text-gray-400'}`}>Detalhado</button></div></div></div>
-                        <div className="flex flex-col items-end gap-2">
-                             <button onClick={() => setShowTransactionModal(true)} className="px-6 py-2.5 bg-red-600 text-white rounded-xl font-black uppercase text-[10px] shadow-lg flex items-center gap-2 border-b-4 border-red-900 active:scale-95"><DollarSign size={14}/> Lançar Saída (Sangria)</button>
-                             <div className="text-right"><p className="text-[9px] font-black text-gray-400 uppercase">Apuração</p><p className="text-lg font-black text-blue-950">{todayKey.split('-').reverse().join('/')}</p></div>
-                        </div>
-                    </div>
-                    {dreSubTab === 'resumo' ? (
-                        <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-                            <div className="bg-white p-6 rounded-[32px] border-2 border-green-100 shadow-sm space-y-4"><span className="text-[9px] font-black text-green-600 uppercase tracking-widest">Resumo Entradas (+)</span><div className="space-y-2">
-                                <div className="flex justify-between items-center text-[10px] font-black border-b border-gray-50 pb-1"><span className="text-gray-400 uppercase">Pix</span><span className="text-gray-900">{formatCurrency(dreStats.dayMethods.pix)}</span></div>
-                                <div className="flex justify-between items-center text-[10px] font-black border-b border-gray-50 pb-1"><span className="text-gray-400 uppercase">Dinheiro</span><span className="text-gray-900">{formatCurrency(dreStats.dayMethods.money)}</span></div>
-                                <div className="flex justify-between items-center text-[10px] font-black border-b border-gray-50 pb-1"><span className="text-gray-400 uppercase">Cartão</span><span className="text-gray-900">{formatCurrency(dreStats.dayMethods.card)}</span></div>
-                                <div className="flex justify-between items-center text-[10px] font-black border-b border-gray-50 pb-1"><span className="text-gray-400 uppercase">Fiado</span><span className="text-gray-900">{formatCurrency(dreStats.dayMethods.fiado)}</span></div>
-                            </div><div className="pt-2 border-t-2 border-green-50"><p className="text-2xl font-black text-green-700 italic">{formatCurrency(dreStats.dayIn)}</p></div></div>
-                            <div className="bg-white p-6 rounded-[32px] border-2 border-red-100 shadow-sm flex flex-col justify-between"><div><span className="text-[9px] font-black text-red-600 uppercase tracking-widest">Resumo Saídas (-)</span><p className="text-3xl font-black text-red-700 italic mt-4">{formatCurrency(dreStats.dayOut)}</p></div></div>
-                            <div className="bg-gray-950 p-6 rounded-[32px] text-white shadow-xl flex flex-col justify-between"><div><span className="text-[9px] font-black text-blue-400 uppercase tracking-widest">Saldo Líquido</span><p className="text-3xl font-black italic mt-4">{formatCurrency(dreStats.dayIn - dreStats.dayOut)}</p></div></div>
-                        </div>
-                    ) : (
-                        <div className="bg-white rounded-[40px] shadow-xl border border-gray-100 overflow-hidden"><table className="w-full text-left"><thead className="bg-gray-50 text-[9px] font-black text-gray-400 uppercase tracking-widest border-b"><tr><th className="px-6 py-4">Horário / Código</th><th className="px-6 py-4">Operação</th><th className="px-6 py-4 text-right">Valor</th></tr></thead><tbody className="divide-y divide-gray-50 font-bold text-[10px]">{dreStats.daySales.map(s => <tr key={s.id} className="hover:bg-green-50/20"><td className="px-6 py-3 text-gray-400">#{s.saleCode} <span className="block">{new Date(s.createdAt!).toLocaleTimeString()}</span></td><td className="px-6 py-3 uppercase text-gray-900">VENDA: {s.productName}</td><td className="px-6 py-3 text-right text-green-600">{formatCurrency(s.totalValue)}</td></tr>)}</tbody></table></div>
-                    )}
-                </div>
-            )}
-
-            {activeTab === 'dre_mensal' && (
-                <div className="p-4 md:p-8 space-y-6 animate-in fade-in duration-300 max-w-6xl mx-auto pb-20">
-                    <div className="bg-white p-8 rounded-[40px] shadow-sm border border-gray-100 flex flex-col md:flex-row justify-between items-center gap-6">
-                        <div className="flex items-center gap-4"><div className="p-4 bg-purple-50 text-purple-700 rounded-3xl"><FilePieChart size={32}/></div><div><h3 className="text-2xl font-black uppercase italic text-blue-950 tracking-tighter">DRE <span className="text-purple-700">Mensal</span></h3></div></div>
-                        <div className="flex items-center gap-2 bg-gray-50 p-2 rounded-2xl border"><select value={selectedMonth} onChange={e => setSelectedMonth(Number(e.target.value))} className="bg-transparent border-none text-xs font-black uppercase outline-none">{MONTHS.map(m => <option key={m.value} value={m.value}>{m.label}</option>)}</select><select value={selectedYear} onChange={e => setSelectedYear(Number(e.target.value))} className="bg-transparent border-none text-xs font-black outline-none">{[2024, 2025, 2026].map(y => <option key={y} value={y}>{y}</option>)}</select></div>
-                    </div>
-                    <div className="grid grid-cols-1 lg:grid-cols-12 gap-8">
-                        <div className="lg:col-span-8 space-y-6">
-                            <div className="bg-white p-8 rounded-[40px] shadow-sm border border-gray-100"><h4 className="text-[10px] font-black text-gray-400 uppercase tracking-[0.2em] mb-6 flex items-center gap-2"><Briefcase size={14}/> Demonstrativo de Resultado</h4><div className="space-y-4">
-                                <div className="flex justify-between items-center pb-4 border-b"><span className="font-bold text-gray-600 uppercase text-xs">Faturamento (+)</span><span className="font-black text-green-600 text-lg">{formatCurrency(dreStats.monthIn)}</span></div>
-                                <div className="flex justify-between items-center pb-4 border-b"><span className="font-bold text-gray-600 uppercase text-xs">Saídas (-)</span><span className="font-black text-red-600 text-lg">{formatCurrency(dreStats.monthOut)}</span></div>
-                                <div className="flex justify-between items-center pt-2"><span className="font-black text-blue-950 uppercase text-sm">Lucro Líquido (=)</span><span className="font-black text-blue-900 text-2xl italic">{formatCurrency(dreStats.profit)}</span></div>
-                            </div></div>
-                            <div className="bg-white p-8 rounded-[40px] shadow-sm border border-gray-100">
-                                <h4 className="text-[10px] font-black text-gray-400 uppercase tracking-[0.2em] mb-4">Detalhamento por Método</h4>
-                                <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-                                    <div className="p-4 bg-gray-50 rounded-2xl"><p className="text-[8px] font-black text-gray-400 uppercase">Pix</p><p className="font-black text-blue-900">{formatCurrency(dreStats.monthMethods.pix)}</p></div>
-                                    <div className="p-4 bg-gray-50 rounded-2xl"><p className="text-[8px] font-black text-gray-400 uppercase">Dinheiro</p><p className="font-black text-green-700">{formatCurrency(dreStats.monthMethods.money)}</p></div>
-                                    <div className="p-4 bg-gray-50 rounded-2xl"><p className="text-[8px] font-black text-gray-400 uppercase">Cartão</p><p className="font-black text-orange-600">{formatCurrency(dreStats.monthMethods.card)}</p></div>
-                                    <div className="p-4 bg-gray-50 rounded-2xl"><p className="text-[8px] font-black text-gray-400 uppercase">Fiado</p><p className="font-black text-red-600">{formatCurrency(dreStats.monthMethods.fiado)}</p></div>
-                                </div>
-                            </div>
-                        </div>
-                        <div className="lg:col-span-4 bg-gray-950 p-8 rounded-[40px] text-white shadow-2xl flex flex-col h-fit">
-                            <h4 className="text-[10px] font-black text-blue-400 uppercase tracking-[0.2em] mb-6 flex items-center gap-2"><UsersIcon size={16}/> Partilha de Lucros</h4>
-                            <div className="space-y-4">{partners.map(p => <div key={p.id} className="border-b border-white/5 pb-4 last:border-0"><div className="flex justify-between items-baseline mb-1"><span className="text-[10px] font-black uppercase italic tracking-tighter">{p.partner_name}</span><span className="text-[9px] font-bold text-blue-400">{p.percentage}%</span></div><p className="text-xl font-black italic tracking-tighter text-blue-100">{formatCurrency((dreStats.profit * p.percentage) / 100)}</p></div>)}</div>
-                            {partners.length === 0 && <p className="text-[9px] text-gray-600 uppercase text-center py-10 italic">Nenhuma partilha configurada</p>}
-                        </div>
-                    </div>
-                </div>
-            )}
-
-            {activeTab === 'produtos' && (
-                <div className="p-4 md:p-8 space-y-6 animate-in fade-in duration-300 max-w-6xl mx-auto pb-20">
-                    <div className="bg-white p-8 rounded-[40px] shadow-sm border border-gray-100 flex flex-col md:flex-row justify-between items-center gap-6">
-                        <div className="flex items-center gap-4"><div className="p-4 bg-orange-50 text-orange-600 rounded-3xl"><PackagePlus size={32}/></div><div><h3 className="text-2xl font-black uppercase italic text-blue-950 tracking-tighter">Gestão de <span className="text-orange-600">Cardápio</span></h3></div></div>
-                        <button onClick={() => { setEditingProduct(null); setNewProd({name: '', category: 'Copinho', price: '', flavor: ''}); setTempRecipe([]); setShowProductModal(true); }} className="px-8 py-3 bg-orange-600 text-white rounded-2xl font-black uppercase text-[10px] shadow-lg border-b-4 border-orange-900 flex items-center gap-2"><Plus size={16}/> Novo Item</button>
-                    </div>
-                    <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4">
-                        {filteredItems.map(item => <div key={item.id} className="bg-white p-6 rounded-[32px] shadow-sm border border-gray-100 flex flex-col group hover:border-blue-600 transition-all"><div className="w-full aspect-square bg-gray-50 rounded-[24px] mb-4 overflow-hidden flex items-center justify-center"><img src={item.image_url || getCategoryImage(item.category, item.name)} className="w-full h-full object-cover p-2" /></div><h4 className="text-[10px] font-black text-gray-400 uppercase tracking-widest mb-1">{item.category}</h4><p className="font-black text-blue-950 uppercase italic text-xs mb-1">{item.name}</p><div className="flex justify-between items-baseline mt-auto"><span className="text-xl font-black text-blue-900 italic">{formatCurrency(item.price)}</span><div className="flex gap-1"><button onClick={() => { setEditingProduct(item); setNewProd({name: item.name, category: item.category, price: item.price.toString().replace('.', ','), flavor: item.flavor || ''}); setTempRecipe(item.recipe || []); setShowProductModal(true); }} className="p-2 bg-gray-50 text-gray-400 hover:text-blue-600 rounded-xl transition-all"><Edit3 size={14}/></button><button onClick={async () => { if(window.confirm("Excluir?")) { await onDeleteItem(item.id); alert("Removido"); } }} className="p-2 bg-gray-50 text-gray-400 hover:text-red-600 rounded-xl transition-all"><Trash2 size={14}/></button></div></div></div>)}
-                    </div>
-                </div>
-            )}
         </div>
-
-        {/* MODAL DE PRODUTO / CARDÁPIO */}
-        {showProductModal && (
-            <div className="fixed inset-0 bg-black/80 backdrop-blur-md flex items-center justify-center z-[130] p-4">
-                <div className="bg-white rounded-[40px] w-full max-w-2xl max-h-[90vh] shadow-2xl animate-in zoom-in duration-300 overflow-hidden flex flex-col">
-                    <div className="p-8 border-b flex justify-between items-center bg-gray-50/50">
-                        <h3 className="text-xl font-black uppercase italic text-blue-950 flex items-center gap-3"><Plus className="text-orange-600" /> {editingProduct ? 'Editar' : 'Novo'} <span className="text-orange-600">Produto</span></h3>
-                        <button onClick={() => setShowProductModal(false)} className="text-gray-400 hover:text-red-600"><X size={24}/></button>
-                    </div>
-                    <div className="flex-1 overflow-y-auto p-10 space-y-8 no-scrollbar">
-                        <div className="grid grid-cols-2 gap-6">
-                            <div className="space-y-2"><label className="text-[10px] font-black text-gray-400 uppercase ml-2">Nome do Produto</label><input value={newProd.name} onChange={e => setNewProd({...newProd, name: e.target.value})} className="w-full p-4 bg-gray-50 rounded-2xl font-black uppercase italic outline-none shadow-inner" placeholder="EX: MILKSHAKE GRANDE" /></div>
-                            <div className="space-y-2"><label className="text-[10px] font-black text-gray-400 uppercase ml-2">Categoria</label><select value={newProd.category} onChange={e => setNewProd({...newProd, category: e.target.value as any})} className="w-full p-4 bg-gray-50 rounded-2xl font-black outline-none shadow-inner">{PRODUCT_CATEGORIES.map(c => <option key={c} value={c}>{c}</option>)}</select></div>
-                        </div>
-                        <div className="grid grid-cols-2 gap-6">
-                            <div className="space-y-2"><label className="text-[10px] font-black text-gray-400 uppercase ml-2">Preço de Venda (R$)</label><input value={newProd.price} onChange={e => setNewProd({...newProd, price: e.target.value})} className="w-full p-4 bg-gray-50 rounded-2xl font-black text-blue-900 shadow-inner outline-none" placeholder="0,00" /></div>
-                            <div className="space-y-2"><label className="text-[10px] font-black text-gray-400 uppercase ml-2">Sabor Padrão</label><input value={newProd.flavor} onChange={e => setNewProd({...newProd, flavor: e.target.value})} className="w-full p-4 bg-gray-50 rounded-2xl font-black uppercase shadow-inner outline-none" placeholder="OPCIONAL" /></div>
-                        </div>
-
-                        <div className="pt-6 border-t">
-                            <h4 className="text-xs font-black text-blue-900 uppercase italic mb-4 flex items-center gap-2"><Beaker size={14}/> Engenharia de Receita (Baixa de Estoque)</h4>
-                            <div className="bg-gray-50 p-6 rounded-[32px] border space-y-4">
-                                <div className="flex gap-2">
-                                    <select value={newRecipeItem.stock_base_name} onChange={e => setNewRecipeItem({...newRecipeItem, stock_base_name: e.target.value})} className="flex-1 p-4 bg-white rounded-2xl font-black uppercase text-[10px] outline-none border-none shadow-sm"><option value="">SELECIONE INSUMO...</option>{filteredStock.map(s => <option key={s.id} value={s.product_base}>{s.product_base}</option>)}</select>
-                                    <input value={newRecipeItem.quantity} onChange={e => setNewRecipeItem({...newRecipeItem, quantity: e.target.value})} className="w-24 p-4 bg-white rounded-2xl font-black text-center outline-none border-none shadow-sm" placeholder="QTD" />
-                                    <button onClick={() => { if(!newRecipeItem.stock_base_name) return; setTempRecipe([...tempRecipe, { stock_base_name: newRecipeItem.stock_base_name, quantity: parseFloat(newRecipeItem.quantity.replace(',', '.')) || 0 }]); setNewRecipeItem({stock_base_name: '', quantity: '1'}); }} className="p-4 bg-blue-900 text-white rounded-2xl shadow-lg active:scale-95"><Plus size={20}/></button>
-                                </div>
-                                <div className="space-y-2 max-h-40 overflow-y-auto no-scrollbar">
-                                    {tempRecipe.map((ri, idx) => <div key={idx} className="flex justify-between items-center bg-white p-3 rounded-xl border border-gray-100 shadow-sm"><span className="text-[10px] font-black uppercase">{ri.stock_base_name}</span><div className="flex items-center gap-4"><span className="text-[10px] font-black text-blue-600">{ri.quantity} un/g</span><button onClick={() => setTempRecipe(tempRecipe.filter((_, i) => i !== idx))} className="text-red-300 hover:text-red-600"><Trash2 size={14}/></button></div></div>)}
-                                </div>
-                            </div>
-                        </div>
-                    </div>
-                    <div className="p-8 bg-gray-50 border-t flex justify-center">
-                        <button onClick={async () => {
-                            const val = parseFloat(newProd.price.replace(',', '.')) || 0;
-                            await onSaveProduct({ ...editingProduct, storeId: effectiveStoreId, name: newProd.name, category: newProd.category, price: val, flavor: newProd.flavor, recipe: tempRecipe });
-                            setShowProductModal(false);
-                            alert("Produto salvo!");
-                        }} disabled={isSubmitting} className="w-full max-w-sm py-5 bg-orange-600 text-white rounded-[28px] font-black uppercase text-xs shadow-xl transition-all border-b-4 border-orange-900 flex items-center justify-center gap-3">{isSubmitting ? <Loader2 className="animate-spin" /> : <Save size={18}/>} CONFIRMAR PRODUTO</button>
-                    </div>
-                </div>
-            </div>
-        )}
-
-        {/* MODAL NOVO INSUMO */}
-        {showNewInsumoModal && (
-            <div className="fixed inset-0 bg-black/80 backdrop-blur-md flex items-center justify-center z-[130] p-4">
-                <div className="bg-white rounded-[40px] w-full max-w-md shadow-2xl animate-in zoom-in duration-300 overflow-hidden border-t-8 border-gray-900">
-                    <div className="p-8 border-b bg-gray-50/50 flex justify-between items-center">
-                        <h3 className="text-xl font-black uppercase italic text-blue-950 flex items-center gap-3"><Package className="text-blue-900" /> Novo <span className="text-blue-900">Insumo</span></h3>
-                        <button onClick={() => setShowNewInsumoModal(false)} className="text-gray-400 hover:text-red-600"><X size={24}/></button>
-                    </div>
-                    <div className="p-10 space-y-6">
-                        <div className="space-y-2"><label className="text-[10px] font-black text-gray-400 uppercase ml-2 tracking-widest">Nome do Material</label><input value={newInsumo.name} onChange={e => setNewInsumo({...newInsumo, name: e.target.value.toUpperCase()})} className="w-full p-4 bg-gray-50 rounded-2xl font-black text-gray-900 uppercase shadow-inner outline-none" placeholder="EX: LEITE CONDENSADO" /></div>
-                        <div className="grid grid-cols-2 gap-4">
-                            <div className="space-y-2"><label className="text-[10px] font-black text-gray-400 uppercase ml-2 tracking-widest">Unidade</label><select value={newInsumo.unit} onChange={e => setNewInsumo({...newInsumo, unit: e.target.value})} className="w-full p-4 bg-gray-50 rounded-2xl font-black outline-none border-none shadow-inner"><option value="un">un</option><option value="kg">kg</option><option value="l">litros</option><option value="g">gramas</option></select></div>
-                            <div className="space-y-2"><label className="text-[10px] font-black text-gray-400 uppercase ml-2 tracking-widest">Saldo Inicial</label><input value={newInsumo.initial} onChange={e => setNewInsumo({...newInsumo, initial: e.target.value})} className="w-full p-4 bg-gray-50 rounded-2xl font-black text-center shadow-inner outline-none" placeholder="0" /></div>
-                        </div>
-                        <button onClick={handleSaveSupplies} disabled={isSubmitting} className="w-full py-5 bg-gray-950 text-white rounded-[28px] font-black uppercase text-xs shadow-xl active:scale-95 transition-all border-b-4 border-gray-700 flex items-center justify-center gap-3">{isSubmitting ? <Loader2 className="animate-spin" /> : <Save size={18}/>} CADASTRAR NO ESTOQUE</button>
-                    </div>
-                </div>
-            </div>
-        )}
-
-        {/* MODAL LANÇAR COMPRA */}
-        {showPurchaseModal && (
-            <div className="fixed inset-0 bg-black/80 backdrop-blur-md flex items-center justify-center z-[130] p-4">
-                <div className="bg-white rounded-[40px] w-full max-w-xl shadow-2xl animate-in zoom-in duration-300 overflow-hidden border-t-8 border-blue-600 max-h-[90vh] flex flex-col">
-                    <div className="p-8 border-b bg-gray-50/50 flex justify-between items-center shrink-0">
-                        <h3 className="text-xl font-black uppercase italic text-blue-950 flex items-center gap-3"><Truck className="text-blue-600" /> Lançar <span className="text-blue-600">Compra / Entrada</span></h3>
-                        <button onClick={() => setShowPurchaseModal(false)} className="text-gray-400 hover:text-red-600"><X size={24}/></button>
-                    </div>
-                    <div className="flex-1 overflow-y-auto p-8 space-y-4 no-scrollbar">
-                        {filteredStock.map(st => (
-                            <div key={st.id} className="flex items-center gap-4 bg-gray-50 p-4 rounded-2xl border border-gray-100 group hover:border-blue-200 transition-all">
-                                <div className="flex-1"><p className="text-[10px] font-black text-gray-900 uppercase">{st.product_base}</p><p className="text-[8px] text-gray-400 font-bold uppercase">Saldo Atual: {st.stock_current} {st.unit}</p></div>
-                                <div className="w-32 relative"><input value={purchaseForm[st.id] || ''} onChange={e => setPurchaseForm({...purchaseForm, [st.id]: e.target.value})} className="w-full p-3 bg-white rounded-xl font-black text-blue-600 text-center shadow-sm border-none outline-none" placeholder="0" /><span className="absolute right-3 top-1/2 -translate-y-1/2 text-[8px] font-black text-gray-300 uppercase">{st.unit}</span></div>
-                            </div>
-                        ))}
-                    </div>
-                    <div className="p-8 bg-gray-50 border-t shrink-0">
-                        <button onClick={handleSavePurchase} disabled={isSubmitting} className="w-full py-5 bg-blue-600 text-white rounded-[28px] font-black uppercase text-xs shadow-xl active:scale-95 transition-all border-b-4 border-blue-900 flex items-center justify-center gap-3">{isSubmitting ? <Loader2 className="animate-spin" /> : <Save size={18}/>} EFETIVAR COMPRAS</button>
-                    </div>
-                </div>
-            </div>
-        )}
-
-        {/* MODAL INVENTÁRIO */}
-        {showInventoryModal && (
-            <div className="fixed inset-0 bg-black/80 backdrop-blur-md flex items-center justify-center z-[130] p-4">
-                <div className="bg-white rounded-[40px] w-full max-w-xl shadow-2xl animate-in zoom-in duration-300 overflow-hidden border-t-8 border-orange-600 max-h-[90vh] flex flex-col">
-                    <div className="p-8 border-b bg-gray-50/50 flex justify-between items-center shrink-0">
-                        <h3 className="text-xl font-black uppercase italic text-blue-950 flex items-center gap-3"><PencilLine className="text-orange-600" /> Ajustar <span className="text-orange-600">Inventário</span></h3>
-                        <button onClick={() => setShowInventoryModal(false)} className="text-gray-400 hover:text-red-600"><X size={24}/></button>
-                    </div>
-                    <div className="flex-1 overflow-y-auto p-8 space-y-4 no-scrollbar">
-                        {filteredStock.map(st => (
-                            <div key={st.id} className="flex items-center gap-4 bg-gray-50 p-4 rounded-2xl border border-gray-100 group hover:border-orange-200 transition-all">
-                                <div className="flex-1"><p className="text-[10px] font-black text-gray-900 uppercase">{st.product_base}</p><p className="text-[8px] text-gray-400 font-bold uppercase">Sistema: {st.stock_current} {st.unit}</p></div>
-                                <div className="w-32 relative"><input value={inventoryForm[st.id] || ''} onChange={e => setInventoryForm({...inventoryForm, [st.id]: e.target.value})} className="w-full p-3 bg-white rounded-xl font-black text-orange-600 text-center shadow-sm border-none outline-none" placeholder="0" /><span className="absolute right-3 top-1/2 -translate-y-1/2 text-[8px] font-black text-gray-300 uppercase">{st.unit}</span></div>
-                            </div>
-                        ))}
-                    </div>
-                    <div className="p-8 bg-gray-50 border-t shrink-0">
-                        <button onClick={handleSaveInventory} disabled={isSubmitting} className="w-full py-5 bg-orange-600 text-white rounded-[28px] font-black uppercase text-xs shadow-xl active:scale-95 transition-all border-b-4 border-orange-900 flex items-center justify-center gap-3">{isSubmitting ? <Loader2 className="animate-spin" /> : <Save size={18}/>} ATUALIZAR ESTOQUE REAL</button>
-                    </div>
-                </div>
-            </div>
-        )}
 
         {/* MODAL TRANSAÇÃO (SANGRIAS) */}
         {showTransactionModal && (

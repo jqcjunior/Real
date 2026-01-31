@@ -38,7 +38,7 @@ interface PDVMobileViewProps {
   onAddTransaction: (tx: IceCreamTransaction) => Promise<void>;
   onUpdateStock: (storeId: string, base: string, value: number, unit: string, type: 'production' | 'adjustment' | 'purchase') => Promise<void>;
   dailyData: any;
-  handlePrintTicket: (items: IceCreamDailySale[], saleCode: string, isFiado: boolean, buyer?: string) => void;
+  handlePrintTicket: (items: IceCreamDailySale[], saleCode: string, method: string, buyer?: string) => void;
   isSubmitting: boolean;
   setIsSubmitting: (s: boolean) => void;
   effectiveStoreId: string; 
@@ -117,23 +117,20 @@ const PDVMobileView: React.FC<PDVMobileViewProps> = (props) => {
     const saleCode = `GEL-M${Date.now().toString().slice(-5)}`;
     
     try {
-        // 1. REGISTRO OPERACIONAL: Itens com unidades INTEIRAS
         const operationalSales = props.cart.map(item => ({
             ...item,
-            // Fix: Explicitly cast paymentMethod and status to avoid string widening and align with IceCreamDailySale interface.
             paymentMethod: (isMisto ? 'Misto' : props.paymentMethod) as IceCreamPaymentMethod,
             buyer_name: (props.paymentMethod === 'Fiado' || (isMisto && props.mistoValues['Fiado'])) ? props.buyerName.toUpperCase() : undefined,
             saleCode,
-            unitsSold: Math.round(item.unitsSold), // GARANTIA DE INTEIRO
+            unitsSold: Math.round(item.unitsSold),
             status: 'active' as const
         }));
 
-        // 2. REGISTRO FINANCEIRO: Rateio real disparado individualmente para o DRE
         const financialPromises = splitData.map(payment => 
             props.onAddTransaction({
                 id: '0',
                 storeId: props.effectiveStoreId,
-                date: new Date().toLocaleDateString('en-CA'),
+                date: new Date().toISOString().split('T')[0],
                 type: 'entry',
                 category: 'RECEITA DE VENDA PDV',
                 value: payment.amount,
@@ -142,13 +139,14 @@ const PDVMobileView: React.FC<PDVMobileViewProps> = (props) => {
             })
         );
 
-        // Processamento paralelo para agilizar conclusão
         await Promise.all([
             props.onAddSales(operationalSales),
             ...financialPromises
         ]);
 
-        // Baixa de estoque paralela
+        // Dispara a impressão do cupom no mobile
+        props.handlePrintTicket(operationalSales, saleCode, isMisto ? 'Misto' : (props.paymentMethod as string), props.buyerName);
+
         for (const c of props.cart) {
             const itemDef = props.items.find(it => it.id === c.itemId);
             if (itemDef?.recipe) {
@@ -158,9 +156,8 @@ const PDVMobileView: React.FC<PDVMobileViewProps> = (props) => {
             }
         }
 
-        // Limpeza instantânea da interface
         props.setCart([]); props.setPaymentMethod(null); props.setBuyerName(''); setAmountPaid('');
-        props.setMistoValues({ 'Pix': '', 'Dinheiro': '', 'Cartão': '' });
+        props.setMistoValues({ 'Pix': '', 'Dinheiro': '', 'Cartão': '', 'Fiado': '' });
         setStep('categories');
         alert("Venda registrada!");
     } catch (e) { alert("Erro ao finalizar."); } finally { props.setIsSubmitting(false); }
@@ -243,7 +240,7 @@ const PDVMobileView: React.FC<PDVMobileViewProps> = (props) => {
                 <p className="text-[10px] font-black text-blue-900 uppercase tracking-widest border-b border-blue-100 pb-2">FECHAMENTO</p>
                 <div className="grid grid-cols-2 gap-2">
                     {(['Pix', 'Dinheiro', 'Cartão', 'Fiado', 'Misto'] as const).map(pm => (
-                        <button key={pm} onClick={() => { props.setPaymentMethod(pm); if(pm !== 'Dinheiro' && pm !== 'Misto') setAmountPaid(''); }} className={`py-4 rounded-2xl font-black uppercase text-[10px] border-2 transition-all ${props.paymentMethod === pm ? 'bg-blue-900 border-blue-900 text-white shadow-xl scale-[1.02]' : 'bg-white border-gray-200 text-gray-400'}`}>{pm}</button>
+                        <button key={pm} onClick={() => { props.setPaymentMethod(pm); if(pm !== 'Dinheiro' && pm !== 'Misto' && pm !== 'Fiado') setAmountPaid(''); }} className={`py-4 rounded-2xl font-black uppercase text-[10px] border-2 transition-all ${props.paymentMethod === pm ? 'bg-blue-900 border-blue-900 text-white shadow-xl scale-[1.02]' : 'bg-white border-gray-200 text-gray-400'}`}>{pm}</button>
                     ))}
                 </div>
                 {props.paymentMethod === 'Dinheiro' && (
@@ -261,7 +258,7 @@ const PDVMobileView: React.FC<PDVMobileViewProps> = (props) => {
                 {props.paymentMethod === 'Misto' && (
                     <div className="bg-white p-5 rounded-2xl shadow-xl space-y-3 animate-in zoom-in border-2 border-blue-500">
                         <p className="text-[9px] font-black text-blue-700 uppercase italic border-b pb-1">Distribuição Mista</p>
-                        {['Pix', 'Dinheiro', 'Cartão'].map(m => (
+                        {['Pix', 'Dinheiro', 'Cartão', 'Fiado'].map(m => (
                             <div key={m} className="flex justify-between items-center bg-gray-50 p-2 rounded-xl border border-gray-100">
                                 <label className="text-[10px] font-black text-gray-400 uppercase">{m}</label>
                                 <input 
