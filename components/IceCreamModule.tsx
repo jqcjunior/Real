@@ -1,4 +1,3 @@
-
 import React, { useState, useMemo, useEffect } from 'react';
 import { IceCreamItem, IceCreamDailySale, IceCreamTransaction, IceCreamCategory, IceCreamPaymentMethod, User, UserRole, Store, IceCreamStock, IceCreamPromissoryNote, IceCreamRecipeItem, StoreProfitPartner } from '../types';
 import { formatCurrency, BRAND_LOGO } from '../constants';
@@ -9,6 +8,7 @@ import {
     Users as UsersIcon, ShieldCheck, UserCog, Clock, FileBarChart, Users, Handshake, AlertTriangle, Zap, Beaker, Layers, Clipboard, Edit3, Filter, ChevronDown, FilePieChart, Briefcase, Warehouse, PencilLine, Truck, ChevronUp
 } from 'lucide-react';
 import PDVMobileView from './PDVMobileView';
+import { ProductGrid } from './ProductGrid'; // <--- Importando o componente novo
 import { supabase } from '../services/supabaseClient';
 import { PermissionKey } from '../security/permissions';
 
@@ -28,30 +28,19 @@ interface IceCreamModuleProps {
   onAddItem: (name: string, category: string, price: number, flavor?: string, stockInitial?: number, unit?: string, consumptionPerSale?: number, targetStoreId?: string, recipe?: IceCreamRecipeItem[]) => Promise<void>;
   onSaveProduct: (product: Partial<IceCreamItem>) => Promise<void>;
   onDeleteItem: (id: string) => Promise<void>;
-  onUpdateStock: (storeId: string, base: string, value: number, unit: string, type: 'production' | 'adjustment' | 'purchase') => Promise<void>;
+  onUpdateStock: (storeId: string, base: string, value: number, unit: string, type: 'production' | 'adjustment' | 'purchase' | 'inventory', stockId?: string) => Promise<void>;
   liquidatePromissory: (id: string) => Promise<void>;
+  onDeleteStockItem: (id: string) => Promise<void>;
 }
 
 const PRODUCT_CATEGORIES: IceCreamCategory[] = ['Sundae', 'Milkshake', 'Casquinha', 'Cascão', 'Cascão Trufado', 'Copinho', 'Bebidas', 'Adicionais'].sort() as IceCreamCategory[];
 
-const getCategoryImage = (category: IceCreamCategory, name: string) => {
-    const itemName = name.toLowerCase();
-    if (['Sundae', 'Casquinha', 'Cascão', 'Cascão Trufado'].includes(category)) {
-        return 'https://img.icons8.com/color/144/ice-cream-cone.png';
-    }
-    if (itemName.includes('nutella') || itemName.includes('calda') || itemName.includes('chocolate')) {
-        return 'https://img.icons8.com/color/144/chocolate-spread.png';
-    }
-    if (itemName.includes('água') || itemName.includes('agua')) {
-        return 'https://img.icons8.com/color/144/water-bottle.png';
-    }
-    const icons: Record<string, string> = {
-        'Milkshake': 'https://img.icons8.com/color/144/milkshake.png',
-        'Copinho': 'https://img.icons8.com/color/144/ice-cream-bowl.png',
-        'Bebidas': 'https://img.icons8.com/color/144/natural-food.png',
-        'Adicionais': 'https://img.icons8.com/color/144/sugar-bowl.png'
-    };
-    return icons[category] || 'https://img.icons8.com/color/144/ice-cream.png';
+// A função getCategoryImage foi removida daqui pois agora vive dentro do ProductGrid.tsx
+// mas mantemos uma versão simplificada para a lista de edição de produtos se necessário,
+// ou usamos o import do ProductGrid se quiséssemos. Para simplificar, deixo a lógica local para a lista de edição.
+const getCategoryIconEdit = (category: string) => {
+    if (['Sundae', 'Casquinha', 'Cascão'].includes(category)) return 'https://img.icons8.com/color/144/ice-cream-cone.png';
+    return 'https://img.icons8.com/color/144/ice-cream.png';
 };
 
 const MONTHS = [
@@ -64,14 +53,14 @@ const MONTHS = [
 const IceCreamModule: React.FC<IceCreamModuleProps> = ({ 
     user, stores = [], items = [], stock = [], sales = [], finances = [], promissories = [], can,
     onAddSales, onCancelSale, onUpdatePrice, onAddTransaction, onAddItem, onSaveProduct, onDeleteItem, onUpdateStock,
-    liquidatePromissory
+    liquidatePromissory, onDeleteStockItem
 }) => {
   const [activeTab, setActiveTab] = useState<'pdv' | 'estoque' | 'dre_diario' | 'dre_mensal' | 'audit' | 'produtos'>('pdv');
   const [dreSubTab, setDreSubTab] = useState<'resumo' | 'detalhado'>('resumo');
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [cart, setCart] = useState<IceCreamDailySale[]>([]);
   const [selectedCategory, setSelectedCategory] = useState<IceCreamCategory | null>(null);
-  const [paymentMethod, setPaymentMethod] = useState<IceCreamPaymentMethod | null>(null);
+  const [paymentMethod, setPaymentMethod] = useState<IceCreamPaymentMethod | 'Misto' | null>(null);
   const [mistoValues, setMistoValues] = useState<Record<string, string>>({ 'Pix': '', 'Dinheiro': '', 'Cartão': '', 'Fiado': '' });
   const [buyerName, setBuyerName] = useState('');
   const [amountReceived, setAmountReceived] = useState('');
@@ -161,7 +150,8 @@ const IceCreamModule: React.FC<IceCreamModuleProps> = ({
   };
 
   const filteredItems = useMemo(() => (items ?? []).filter(i => i.storeId === effectiveStoreId), [items, effectiveStoreId]);
-  const filteredStock = useMemo(() => (stock ?? []).filter(s => s.store_id === effectiveStoreId).sort((a,b) => a.product_base.localeCompare(b.product_base)), [stock, effectiveStoreId]);
+  
+  const filteredStock = useMemo(() => (stock ?? []).filter(s => s.store_id === effectiveStoreId && (s.is_active !== false)).sort((a,b) => a.product_base.localeCompare(b.product_base)), [stock, effectiveStoreId]);
   
   const todayKey = new Date().toLocaleDateString('en-CA'); 
   const periodKey = `${selectedYear}-${String(selectedMonth).padStart(2, '0')}`;
@@ -428,9 +418,10 @@ const IceCreamModule: React.FC<IceCreamModuleProps> = ({
       try {
           const operationalSales = cart.map(item => ({ ...item, paymentMethod: (isMisto ? 'Misto' : paymentMethod) as IceCreamPaymentMethod, buyer_name: (paymentMethod === 'Fiado' || (isMisto && mistoValues['Fiado'])) ? buyerName.toUpperCase() : undefined, saleCode, unitsSold: Math.round(item.unitsSold), status: 'active' as const }));
           const financialPromises = splitData.map(payment => onAddTransaction({ id: '0', storeId: effectiveStoreId, date: new Date().toISOString().split('T')[0], type: 'entry', category: 'RECEITA DE VENDA PDV', value: payment.amount, description: `Pagamento via ${payment.method} - Ref. ${saleCode}`, createdAt: new Date() }));
-          await Promise.all([onAddSales(operationalSales), ...financialPromises]);
-          handlePrintTicket(operationalSales, saleCode, isMisto ? 'Misto' : paymentMethod, buyerName);
           
+          await Promise.all([onAddSales(operationalSales), ...financialPromises]);
+          
+          // Baixa de Estoque
           for (const c of cart) {
               const itemDef = items.find(it => it.id === c.itemId);
               if (itemDef?.recipe && itemDef.recipe.length > 0) {
@@ -441,6 +432,12 @@ const IceCreamModule: React.FC<IceCreamModuleProps> = ({
               }
           }
           
+          try {
+            handlePrintTicket(operationalSales, saleCode, isMisto ? 'Misto' : (paymentMethod as string), buyerName);
+          } catch (printErr) {
+            console.warn("Erro na impressão automática:", printErr);
+          }
+          
           setCart([]); setPaymentMethod(null); setBuyerName(''); setAmountReceived(''); setMistoValues({ 'Pix': '', 'Dinheiro': '', 'Cartão': '', 'Fiado': '' });
           alert("Venda registrada e estoque abatido!");
       } catch (e) { alert("Falha ao registrar venda."); } finally { setIsSubmitting(false); }
@@ -448,13 +445,56 @@ const IceCreamModule: React.FC<IceCreamModuleProps> = ({
 
   const handleCancelSale = async () => {
       if (!showCancelModal) return;
+
+      const targetSales = sales.filter(s => s.saleCode === showCancelModal.code);
+      if (targetSales.length === 0) {
+          alert("Erro: Venda não localizada nos registros.");
+          return;
+      }
+
+      // SEGURANÇA: Verificar se a venda é de HOJE
+      const saleDateStr = targetSales[0].createdAt ? new Date(targetSales[0].createdAt).toLocaleDateString('en-CA') : '';
+      const todayStr = new Date().toLocaleDateString('en-CA');
+
+      if (saleDateStr !== todayStr) {
+          alert("BLOQUEIO DE SEGURANÇA: \n\nNão é permitido estornar vendas de dias anteriores.\nIsso alteraria o fechamento de caixa (DRE) e a apuração de lucros passados.");
+          return;
+      }
+
       setIsSubmitting(true);
       try {
+          // Devolver Estoque
+          for (const soldItem of targetSales) {
+              const itemDef = items.find(it => it.id === soldItem.itemId) || items.find(it => it.name === soldItem.productName);
+
+              if (itemDef?.recipe && itemDef.recipe.length > 0) {
+                  for (const ingredient of itemDef.recipe) {
+                      const normalizedIngredientName = String(ingredient.stock_base_name || '').trim().toUpperCase();
+                      const quantityReturn = ingredient.quantity * soldItem.unitsSold;
+
+                      await onUpdateStock(
+                          effectiveStoreId,
+                          normalizedIngredientName,
+                          quantityReturn,
+                          '',
+                          'adjustment'
+                      );
+                  }
+              }
+          }
+
           await onCancelSale(showCancelModal.code, cancelReason);
+          
           setShowCancelModal(null);
           setCancelReason('');
-          alert("Venda estornada!");
-      } catch (e) { alert("Falha ao processar."); } finally { setIsSubmitting(false); }
+          alert("Venda estornada e itens devolvidos ao estoque!");
+
+      } catch (e) { 
+          console.error("Erro no estorno:", e);
+          alert("Falha ao processar o estorno. Verifique sua conexão."); 
+      } finally { 
+          setIsSubmitting(false); 
+      }
   };
 
   const handleSaveProductForm = async (e: React.FormEvent) => {
@@ -470,33 +510,70 @@ const IceCreamModule: React.FC<IceCreamModuleProps> = ({
   };
 
   const handleSaveSupplies = async () => {
-      if (!newInsumo.name || !newInsumo.initial) return;
+      if (!newInsumo.name.trim() || !effectiveStoreId) {
+          alert("Informe o nome do insumo.");
+          return;
+      }
       setIsSubmitting(true);
-      try { await onUpdateStock(effectiveStoreId, newInsumo.name.toUpperCase(), parseFloat(newInsumo.initial.replace(',', '.')), newInsumo.unit, 'adjustment'); setNewInsumo({ name: '', unit: 'un', initial: '' }); setShowNewInsumoModal(false); alert("Insumo cadastrado!"); } catch (e) { alert("Erro."); } finally { setIsSubmitting(false); }
+      try { 
+          const val = parseFloat((newInsumo.initial || '0').replace(',', '.'));
+          await onUpdateStock(effectiveStoreId, newInsumo.name.toUpperCase().trim(), val, newInsumo.unit, 'adjustment'); 
+          setNewInsumo({ name: '', unit: 'un', initial: '' }); 
+          setShowNewInsumoModal(false); 
+          alert("Insumo cadastrado!"); 
+      } catch (e) { alert("Erro ao cadastrar insumo."); } finally { setIsSubmitting(false); }
   };
 
   const handleSavePurchase = async () => {
       setIsSubmitting(true);
       try {
           for (const [stockId, valueStr] of Object.entries(purchaseForm)) {
-              const val = parseFloat((valueStr as string).replace(',', '.'));
-              const stockItem = stock.find(s => s.id === stockId);
-              if (!isNaN(val) && val > 0 && stockItem) await onUpdateStock(effectiveStoreId, stockItem.product_base, val, stockItem.unit, 'purchase');
+              const val = parseFloat((String(valueStr || '')).replace(',', '.'));
+              if (Number.isNaN(val) || val === 0) continue;
+
+              const stockItem = stock.find(s => s.stock_id === stockId);
+              if (stockItem) {
+                  await onUpdateStock(effectiveStoreId, stockItem.product_base, val, stockItem.unit, 'purchase', stockItem.stock_id);
+              }
           }
           setPurchaseForm({}); setShowPurchaseModal(false); alert("Estoque abastecido!");
-      } catch (e) { alert("Erro."); } finally { setIsSubmitting(false); }
+      } catch (e) { alert("Erro ao lançar compra."); } finally { setIsSubmitting(false); }
   };
 
   const handleSaveInventory = async () => {
       setIsSubmitting(true);
       try {
           for (const [stockId, valueStr] of Object.entries(inventoryForm)) {
-              const newVal = parseFloat((valueStr as string).replace(',', '.'));
-              const stockItem = stock.find(s => s.id === stockId);
-              if (stockItem && !isNaN(newVal)) { const diff = newVal - stockItem.stock_current; if (diff !== 0) await onUpdateStock(effectiveStoreId, stockItem.product_base, diff, stockItem.unit, 'adjustment'); }
+              const parsed = parseFloat((String(valueStr || '')).replace(',', '.'));
+              
+              if (!Number.isFinite(parsed)) continue;
+
+              const stockItem = stock.find(s => s.stock_id === stockId);
+              if (stockItem) { 
+                  const currentStockVal = Number(stockItem.stock_current || 0);
+                  if (parsed === currentStockVal) continue;
+                  await onUpdateStock(effectiveStoreId, stockItem.product_base, parsed, stockItem.unit, 'inventory', stockItem.stock_id); 
+              }
           }
           setInventoryForm({}); setShowInventoryModal(false); alert("Inventário atualizado!");
-      } catch (e) { alert("Erro."); } finally { setIsSubmitting(false); }
+      } catch (e) { alert("Erro ao atualizar inventário."); } finally { setIsSubmitting(false); }
+  };
+
+  const handleToggleFreezeStock = async (st: IceCreamStock) => {
+      if (!isAdmin) {
+          alert("Apenas administradores podem congelar insumos.");
+          return;
+      }
+
+      const isUsedInRecipe = items.some(it => it.recipe?.some(r => String(r.stock_base_name).toUpperCase() === String(st.product_base).toUpperCase()));
+      const warningMsg = isUsedInRecipe 
+        ? `ATENÇÃO: O insumo "${st.product_base}" está vinculado à receita de um ou mais produtos ativos.\n\nCongelá-lo impedirá o abatimento automático e pode gerar inconsistências no controle de custos.\n\nDeseja continuar com o CONGELAMENTO mesmo assim?`
+        : `Deseja CONGELAR o insumo "${st.product_base}"?\n\nEle não poderá mais ser usado em novas vendas ou compras, mas os dados antigos serão mantidos.`;
+
+      if (window.confirm(warningMsg)) {
+          await onDeleteStockItem(st.stock_id);
+          alert("Insumo congelado com sucesso!");
+      }
   };
 
   return (
@@ -536,15 +613,27 @@ const IceCreamModule: React.FC<IceCreamModuleProps> = ({
                                 <button onClick={() => setSelectedCategory(null)} className={`px-5 py-2 rounded-xl font-black uppercase text-[10px] border-2 transition-all ${!selectedCategory ? 'bg-blue-900 text-white border-blue-900 shadow-lg' : 'bg-white text-gray-400 border-gray-100'}`}>Tudo</button>
                                 {PRODUCT_CATEGORIES.map(cat => <button key={cat} onClick={() => setSelectedCategory(cat)} className={`px-5 py-2 rounded-xl font-black uppercase text-[10px] border-2 transition-all whitespace-nowrap ${selectedCategory === cat ? 'bg-blue-900 text-white border-blue-900 shadow-lg' : 'bg-white text-gray-400 border-gray-100'}`}>{cat}</button>)}
                             </div>
-                            <div className="grid grid-cols-3 xl:grid-cols-4 gap-4 overflow-y-auto no-scrollbar pr-2 pb-10">
-                                {filteredItems.filter(i => (!selectedCategory || i.category === selectedCategory) && i.active).map(item => (
-                                    <button key={item.id} onClick={() => { setCart([...cart, { id: `temp-${Date.now()}-${Math.random()}`, storeId: effectiveStoreId, itemId: item.id, productName: item.name, category: item.category, flavor: item.flavor || 'Padrão', unitsSold: 1, unitPrice: item.price, totalValue: item.price, paymentMethod: 'Dinheiro' }]); }} className="bg-white p-4 rounded-[32px] border-2 border-gray-100 hover:border-blue-600 transition-all flex flex-col items-center text-center group shadow-sm">
-                                        <div className="w-full aspect-square bg-gray-50 rounded-[24px] mb-3 flex items-center justify-center overflow-hidden"><img src={item.image_url || getCategoryImage(item.category, item.name)} className="w-full h-full object-cover p-2" /></div>
-                                        <h4 className="font-black text-gray-900 uppercase text-[10px] truncate w-full mb-1">{item.name}</h4>
-                                        <p className="text-lg font-black text-blue-900 italic leading-none">{formatCurrency(item.price)}</p>
-                                    </button>
-                                ))}
-                            </div>
+                            
+                            {/* Componente ProductGrid Importado e Usado Aqui */}
+                            <ProductGrid 
+                                items={filteredItems} 
+                                selectedCategory={selectedCategory}
+                                onAddToCart={(item) => {
+                                    setCart([...cart, { 
+                                        id: `temp-${Date.now()}-${Math.random()}`, 
+                                        storeId: effectiveStoreId, 
+                                        itemId: item.id, 
+                                        productName: item.name, 
+                                        category: item.category, 
+                                        flavor: item.flavor || 'Padrão', 
+                                        unitsSold: 1, 
+                                        unitPrice: item.price, 
+                                        totalValue: item.price, 
+                                        paymentMethod: 'Dinheiro' 
+                                    }]); 
+                                }}
+                            />
+
                         </div>
                         <div className="col-span-4 bg-white rounded-[40px] shadow-2xl border border-gray-100 p-8 flex flex-col h-full overflow-hidden">
                             <h3 className="text-lg font-black uppercase italic mb-6 flex items-center gap-3 border-b pb-4"><ShoppingCart className="text-red-600" size={20} /> Venda <span className="text-gray-300 ml-auto font-bold text-xs">{cart.length} ITENS</span></h3>
@@ -580,6 +669,7 @@ const IceCreamModule: React.FC<IceCreamModuleProps> = ({
                 </div>
             )}
 
+            {/* Resto das abas (DRE Diário, DRE Mensal, Estoque, Auditoria, Produtos) mantidas iguais */}
             {activeTab === 'dre_diario' && (
                 <div className="p-4 md:p-8 space-y-6 animate-in fade-in duration-300 max-w-5xl mx-auto pb-20">
                     <div className="bg-white p-8 rounded-[40px] shadow-sm border border-gray-100 flex flex-col md:flex-row justify-between items-center gap-6">
@@ -706,11 +796,37 @@ const IceCreamModule: React.FC<IceCreamModuleProps> = ({
                         <div className="flex flex-wrap gap-2">
                           <button onClick={() => setShowNewInsumoModal(true)} className="px-4 py-2 bg-gray-900 text-white rounded-xl font-black uppercase text-[9px] shadow-lg flex items-center gap-2 border-b-2 border-black active:scale-95"><Plus size={14}/> Novo Insumo</button>
                           <button onClick={() => { setPurchaseForm({}); setShowPurchaseModal(true); }} className="px-4 py-2 bg-blue-600 text-white rounded-xl font-black uppercase text-[9px] shadow-lg flex items-center gap-2 border-b-2 border-blue-900 active:scale-95"><Truck size={14}/> Lançar Compra</button>
-                          <button onClick={() => { const initialInv: Record<string, string> = {}; filteredStock.forEach(s => initialInv[s.id] = s.stock_current.toString()); setInventoryForm(initialInv); setShowInventoryModal(true); }} className="px-4 py-2 bg-orange-600 text-white rounded-xl font-black uppercase text-[9px] shadow-lg flex items-center gap-2 border-b-2 border-orange-900 active:scale-95"><PencilLine size={14}/> Inventário</button>
+                          <button onClick={() => { const initialInv: Record<string, string> = {}; filteredStock.forEach(s => initialInv[s.stock_id] = s.stock_current.toString()); setInventoryForm(initialInv); setShowInventoryModal(true); }} className="px-4 py-2 bg-orange-600 text-white rounded-xl font-black uppercase text-[9px] shadow-lg flex items-center gap-2 border-b-2 border-orange-900 active:scale-95"><PencilLine size={14}/> Inventário</button>
                         </div>
                     </div>
                     <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
-                        {filteredStock.map(st => <div key={st.id} className="bg-white p-6 rounded-[32px] shadow-sm border border-gray-100 relative group overflow-hidden"><div className={`p-2 rounded-xl text-white w-fit mb-4 ${st.stock_current <= 5 ? 'bg-red-500 animate-pulse' : 'bg-orange-500'}`}><Package size={16}/></div><h4 className="text-[10px] font-black text-blue-950 uppercase italic leading-none mb-2 truncate">{st.product_base}</h4><div className="flex items-baseline gap-1"><span className={`text-2xl font-black italic tracking-tighter ${st.stock_current <= 5 ? 'text-red-600' : 'text-gray-900'}`}>{st.stock_current}</span><span className="text-[8px] font-bold text-gray-400 uppercase tracking-widest">{st.unit}</span></div></div>)}
+                        {filteredStock.map(st => (
+                            <div key={st.stock_id} className={`bg-white p-6 rounded-[32px] shadow-sm border border-gray-100 relative group overflow-hidden ${st.is_active === false ? 'opacity-40 grayscale' : ''}`}>
+                                {isAdmin && (
+                                    <button 
+                                        onClick={() => handleToggleFreezeStock(st)} 
+                                        className="absolute top-4 right-4 p-2 text-gray-300 hover:text-red-600 opacity-0 group-hover:opacity-100 transition-all z-10"
+                                        title="Congelar Insumo"
+                                    >
+                                        <Trash2 size={16}/>
+                                    </button>
+                                )}
+                                <div className={`p-2 rounded-xl text-white w-fit mb-4 ${st.stock_current <= 5 ? 'bg-red-500 animate-pulse' : 'bg-orange-500'}`}>
+                                    <Package size={16}/>
+                                </div>
+                                <h4 className="text-[10px] font-black text-blue-950 uppercase italic leading-none mb-2 truncate pr-6">{st.product_base}</h4>
+                                <div className="flex items-baseline gap-1">
+                                    <span className={`text-2xl font-black italic tracking-tighter ${st.stock_current <= 5 ? 'text-red-600' : 'text-gray-900'}`}>{st.stock_current}</span>
+                                    <span className="text-[8px] font-bold text-gray-400 uppercase tracking-widest">{st.unit}</span>
+                                </div>
+                            </div>
+                        ))}
+                        {filteredStock.length === 0 && (
+                            <div className="col-span-full py-20 text-center bg-gray-50 border-2 border-dashed border-gray-200 rounded-[32px]">
+                                <Info className="mx-auto text-gray-300 mb-3" size={40}/>
+                                <p className="text-[10px] font-black text-gray-400 uppercase tracking-widest">Nenhum insumo ativo no momento</p>
+                            </div>
+                        )}
                     </div>
                 </div>
             )}
@@ -767,7 +883,7 @@ const IceCreamModule: React.FC<IceCreamModuleProps> = ({
                                     <button onClick={() => onDeleteItem(item.id)} className="p-2 bg-red-50 text-red-600 rounded-lg hover:bg-red-100"><Trash size={14}/></button>
                                 </div>
                                 <div className="w-16 h-16 bg-gray-50 rounded-2xl mb-4 flex items-center justify-center overflow-hidden shrink-0">
-                                    <img src={item.image_url || getCategoryImage(item.category, item.name)} className="w-full h-full object-cover p-2" />
+                                    <img src={item.image_url || getCategoryIconEdit(item.category)} className="w-full h-full object-cover p-2" />
                                 </div>
                                 <h4 className="text-xs font-black text-blue-950 uppercase italic tracking-tighter mb-1 truncate pr-16">{item.name}</h4>
                                 <p className="text-[9px] font-bold text-gray-400 uppercase mb-3">{item.category}</p>
@@ -784,7 +900,6 @@ const IceCreamModule: React.FC<IceCreamModuleProps> = ({
             )}
         </div>
 
-        {/* MODAL NOVO INSUMO */}
         {showNewInsumoModal && (
             <div className="fixed inset-0 bg-black/80 backdrop-blur-md flex items-center justify-center z-[130] p-4">
                 <div className="bg-white rounded-[40px] w-full max-w-md shadow-2xl animate-in zoom-in duration-300 border-t-8 border-orange-600 overflow-hidden">
@@ -801,16 +916,15 @@ const IceCreamModule: React.FC<IceCreamModuleProps> = ({
             </div>
         )}
 
-        {/* MODAL LANÇAR COMPRA */}
         {showPurchaseModal && (
             <div className="fixed inset-0 bg-black/80 backdrop-blur-md flex items-center justify-center z-[130] p-4">
                 <div className="bg-white rounded-[40px] w-full max-w-2xl max-h-[90vh] shadow-2xl animate-in zoom-in duration-300 border-t-8 border-blue-600 flex flex-col overflow-hidden">
                     <div className="p-8 border-b bg-gray-50/50 flex justify-between items-center shrink-0"><h3 className="text-xl font-black uppercase italic text-blue-950 flex items-center gap-3"><Truck className="text-blue-600" /> Lançar <span className="text-blue-600">Compras</span></h3><button onClick={() => setShowPurchaseModal(false)} className="text-gray-400 hover:text-red-600"><X size={24}/></button></div>
                     <div className="flex-1 overflow-y-auto p-10 space-y-4 no-scrollbar">
                         {filteredStock.map(s => (
-                            <div key={s.id} className="flex items-center gap-4 bg-gray-50 p-4 rounded-2xl border border-gray-100">
+                            <div key={s.stock_id} className="flex items-center gap-4 bg-gray-50 p-4 rounded-2xl border border-gray-100">
                                 <div className="flex-1"><p className="text-[10px] font-black text-blue-950 uppercase italic leading-none">{s.product_base}</p><p className="text-[8px] font-bold text-gray-400 uppercase mt-1">Atual: {s.stock_current} {s.unit}</p></div>
-                                <div className="w-32 relative"><input value={purchaseForm[s.id] || ''} onChange={e => setPurchaseForm({...purchaseForm, [s.id]: e.target.value})} className="w-full p-3 bg-white border border-blue-100 rounded-xl font-black text-blue-900 text-center text-sm outline-none focus:ring-4 focus:ring-blue-50" placeholder="0" /><span className="absolute right-3 top-1/2 -translate-y-1/2 text-[8px] font-black text-blue-300 uppercase">{s.unit}</span></div>
+                                <div className="w-32 relative"><input value={purchaseForm[s.stock_id] || ''} onChange={e => setPurchaseForm({...purchaseForm, [s.stock_id]: e.target.value})} className="w-full p-3 bg-white border border-blue-100 rounded-xl font-black text-blue-900 text-center text-sm outline-none focus:ring-4 focus:ring-blue-50" placeholder="0" /><span className="absolute right-3 top-1/2 -translate-y-1/2 text-[8px] font-black text-blue-300 uppercase">{s.unit}</span></div>
                             </div>
                         ))}
                     </div>
@@ -819,16 +933,15 @@ const IceCreamModule: React.FC<IceCreamModuleProps> = ({
             </div>
         )}
 
-        {/* MODAL INVENTÁRIO */}
         {showInventoryModal && (
             <div className="fixed inset-0 bg-black/80 backdrop-blur-md flex items-center justify-center z-[130] p-4">
                 <div className="bg-white rounded-[40px] w-full max-w-2xl max-h-[90vh] shadow-2xl animate-in zoom-in duration-300 border-t-8 border-orange-600 flex flex-col overflow-hidden">
                     <div className="p-8 border-b bg-gray-50/50 flex justify-between items-center shrink-0"><h3 className="text-xl font-black uppercase italic text-blue-950 flex items-center gap-3"><PencilLine className="text-orange-600" /> Atualizar <span className="text-orange-600">Inventário</span></h3><button onClick={() => setShowInventoryModal(false)} className="text-gray-400 hover:text-red-600"><X size={24}/></button></div>
                     <div className="flex-1 overflow-y-auto p-10 space-y-4 no-scrollbar">
                         {filteredStock.map(s => (
-                            <div key={s.id} className="flex items-center gap-4 bg-gray-50 p-4 rounded-2xl border border-gray-100">
+                            <div key={s.stock_id} className="flex items-center gap-4 bg-gray-50 p-4 rounded-2xl border border-gray-100">
                                 <div className="flex-1"><p className="text-[10px] font-black text-blue-950 uppercase italic leading-none">{s.product_base}</p><p className="text-[8px] font-bold text-gray-400 uppercase mt-1">Atual em Banco: {s.stock_current} {s.unit}</p></div>
-                                <div className="w-32 relative"><input value={inventoryForm[s.id] || ''} onChange={e => setInventoryForm({...inventoryForm, [s.id]: e.target.value})} className="w-full p-3 bg-white border border-orange-100 rounded-xl font-black text-orange-700 text-center text-sm outline-none focus:ring-4 focus:ring-orange-50" placeholder="0" /><span className="absolute right-3 top-1/2 -translate-y-1/2 text-[8px] font-black text-orange-300 uppercase">{s.unit}</span></div>
+                                <div className="w-32 relative"><input value={inventoryForm[s.stock_id] || ''} onChange={e => setInventoryForm({...inventoryForm, [s.stock_id]: e.target.value})} className="w-full p-3 bg-white border border-orange-100 rounded-xl font-black text-orange-700 text-center text-sm outline-none focus:ring-4 focus:ring-orange-50" placeholder="0" /><span className="absolute right-3 top-1/2 -translate-y-1/2 text-[8px] font-black text-orange-300 uppercase">{s.unit}</span></div>
                             </div>
                         ))}
                     </div>
@@ -837,7 +950,6 @@ const IceCreamModule: React.FC<IceCreamModuleProps> = ({
             </div>
         )}
 
-        {/* MODAL GESTÃO DE PRODUTO & RECEITA */}
         {showProductModal && (
             <div className="fixed inset-0 bg-black/80 backdrop-blur-md flex items-center justify-center z-[130] p-4">
                 <div className="bg-white rounded-[40px] w-full max-w-4xl max-h-[90vh] shadow-2xl animate-in zoom-in duration-300 border-t-8 border-blue-600 flex flex-col overflow-hidden">
@@ -859,7 +971,7 @@ const IceCreamModule: React.FC<IceCreamModuleProps> = ({
                                     </div>
                                     <div className="flex items-center gap-4 p-4 bg-gray-50 rounded-2xl">
                                         <label className="text-[10px] font-black text-gray-500 uppercase">Status:</label>
-                                        <button type="button" onClick={() => setProductForm({...productForm, active: !productForm.active})} className={`px-4 py-2 rounded-xl text-[10px] font-black uppercase transition-all ${productForm.active ? 'bg-green-500 text-white shadow-lg' : 'bg-red-500 text-white'}`}>{productForm.active ? 'Visível no PDV' : 'Oculto no PDV'}</button>
+                                        <button type="button" onClick={() => setProductForm({...productForm, active: !productForm.active})} className={`px-4 py-2 rounded-xl text-[10px] font-black uppercase transition-all ${productForm.active ? 'bg-green-50 text-white shadow-lg' : 'bg-red-50 text-white'}`}>{productForm.active ? 'Visível no PDV' : 'Oculto no PDV'}</button>
                                     </div>
                                 </div>
                                 <div className="space-y-6">
@@ -868,7 +980,7 @@ const IceCreamModule: React.FC<IceCreamModuleProps> = ({
                                         <div className="grid grid-cols-2 gap-3">
                                             <select value={newRecipeItem.stock_base_name} onChange={e => setNewRecipeItem({...newRecipeItem, stock_base_name: e.target.value})} className="bg-white/10 border-none rounded-xl p-3 text-xs font-black text-white outline-none">
                                                 <option value="" className="text-black">SELECIONE INSUMO...</option>
-                                                {stock.filter(s => s.store_id === effectiveStoreId).map(s => <option key={s.id} value={s.product_base} className="text-black">{s.product_base}</option>)}
+                                                {stock.filter(s => s.store_id === effectiveStoreId && s.is_active !== false).map(s => <option key={s.stock_id} value={s.product_base} className="text-black">{s.product_base}</option>)}
                                             </select>
                                             <input value={newRecipeItem.quantity} onChange={e => setNewRecipeItem({...newRecipeItem, quantity: e.target.value})} placeholder="QTD" className="bg-white/10 border-none rounded-xl p-3 text-xs font-black text-white text-center outline-none" />
                                         </div>
@@ -918,7 +1030,6 @@ const IceCreamModule: React.FC<IceCreamModuleProps> = ({
             </div>
         )}
 
-        {/* MODAL GERENCIADOR DE CATEGORIAS */}
         {showCategoryManager && (
             <div className="fixed inset-0 bg-black/80 backdrop-blur-md flex items-center justify-center z-[150] p-4">
                 <div className="bg-white rounded-[40px] w-full max-w-sm shadow-2xl animate-in zoom-in duration-300 border-t-8 border-blue-600 overflow-hidden">

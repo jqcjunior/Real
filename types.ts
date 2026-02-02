@@ -1,3 +1,4 @@
+
 /* =========================
    ROLES / USUÁRIOS
 ========================= */
@@ -42,11 +43,13 @@ export interface QuotaMixParameter {
 ========================= */
 export interface IceCreamStock {
   id: string;
+  stock_id: string; // UUID real da tabela ice_cream_stock
   store_id: string;
   product_base: string;
   stock_initial: number;
   stock_current: number;
   unit: string;
+  is_active: boolean;
   created_at?: string;
 }
 
@@ -173,6 +176,7 @@ export interface MonthlyGoal {
   itemsTarget: number;
   paTarget: number;
   puTarget: number;
+  ticketTarget: number;
   delinquencyTarget: number;
 
   businessDays: number;

@@ -309,3 +309,4 @@ const PDVMobileView: React.FC<PDVMobileViewProps> = (props) => {
 };
 
 export default PDVMobileView;
+
