@@ -1,79 +1,113 @@
-
-import React, { useState, useMemo, useRef } from 'react';
-import { Store, UserRole } from '../types';
-import { Plus, Edit, Trash2, Save, X, Store as StoreIcon, User, MapPin, Phone, Mail, AlertTriangle, Lock, Eye, EyeOff, CheckCircle, XCircle, Power, Shield, User as UserIcon, Wallet, ChevronDown, ChevronRight, Upload, FileSpreadsheet, Loader2, IceCream } from 'lucide-react';
-import * as XLSX from 'xlsx';
+import React, { useState } from 'react';
+import { Store } from '../types';
+import { Settings, Plus, Save, Trash2, CheckCircle, XCircle, IceCream } from 'lucide-react';
+import { supabase } from '../services/supabaseClient';
 
 interface AdminSettingsProps {
-  stores: Store[];
-  onAddStore: (store: Store) => Promise<void>;
-  onUpdateStore: (store: Store) => Promise<void>;
-  onDeleteStore: (id: string) => Promise<void>;
+    stores: Store[];
+    onAddStore: (store: any) => Promise<void>;
+    onUpdateStore: (store: any) => Promise<void>;
+    onDeleteStore: (id: string) => Promise<void>;
 }
 
 const AdminSettings: React.FC<AdminSettingsProps> = ({ stores, onAddStore, onUpdateStore, onDeleteStore }) => {
-  const [isModalOpen, setIsModalOpen] = useState(false);
-  const [editingStore, setEditingStore] = useState<Partial<Store>>({});
-  const [isEditing, setIsEditing] = useState(false);
+    const [newStore, setNewStore] = useState({ number: '', city: '', state: 'BA', status: 'active', has_gelateria: false });
+    const [isSubmitting, setIsSubmitting] = useState(false);
 
-  return (
-    <div className="p-4 md:p-8 max-w-6xl mx-auto space-y-6 md:space-y-8 animate-in fade-in duration-500">
-      <div className="flex flex-col md:flex-row justify-between items-center gap-4">
-          <h2 className="text-2xl md:text-3xl font-black text-gray-800 uppercase italic tracking-tighter leading-none">Unidades <span className="text-red-600">Operacionais</span></h2>
-          <button onClick={() => { setEditingStore({}); setIsEditing(false); setIsModalOpen(true); }} className="w-full md:w-auto bg-gray-950 text-white px-6 py-3 rounded-xl flex items-center justify-center gap-2 hover:bg-black font-black uppercase text-[10px] tracking-widest border-b-4 border-red-600 active:scale-95">
-              <Plus size={16} /> Novo Cadastro
-          </button>
-      </div>
+    const handleAdd = async (e: React.FormEvent) => {
+        e.preventDefault();
+        setIsSubmitting(true);
+        try {
+            await onAddStore(newStore);
+            setNewStore({ number: '', city: '', state: 'BA', status: 'active', has_gelateria: false });
+            alert('Loja adicionada!');
+        } catch (error) { alert('Erro ao adicionar.'); }
+        finally { setIsSubmitting(false); }
+    };
 
-      <div className="bg-white rounded-3xl shadow-sm border border-gray-100 overflow-hidden">
-          <div className="overflow-x-auto no-scrollbar">
-              <table className="w-full text-left min-w-[800px]">
-                <thead className="bg-gray-50 text-gray-500 text-[9px] font-black uppercase tracking-widest border-b">
-                    <tr><th className="p-4">Status</th><th className="p-4">Nº</th><th className="p-4">Unidade</th><th className="p-4">Responsável</th><th className="p-4 text-right">Ações</th></tr>
-                </thead>
-                <tbody className="divide-y divide-gray-100 text-[11px] font-bold">
-                    {stores.map(s => (
-                        <tr key={s.id} className="hover:bg-gray-50 transition-all">
-                            <td className="p-4">
-                                <div className={`w-3 h-3 rounded-full ${s.status === 'active' ? 'bg-green-500' : 'bg-gray-300'}`}></div>
-                            </td>
-                            <td className="p-4 text-blue-900">{s.number}</td>
-                            <td className="p-4 uppercase italic">{s.name} <span className="block text-[8px] text-gray-400 not-italic font-bold">{s.city}</span></td>
-                            <td className="p-4 uppercase text-gray-500">{s.managerName}</td>
-                            <td className="p-4 text-right">
-                                <div className="flex justify-end gap-1">
-                                    <button className="p-2 text-blue-600 hover:bg-blue-50 rounded-lg"><Edit size={16}/></button>
-                                    <button className="p-2 text-red-300 hover:text-red-500 rounded-lg"><Trash2 size={16}/></button>
-                                </div>
-                            </td>
-                        </tr>
-                    ))}
-                </tbody>
-              </table>
-          </div>
-      </div>
+    const toggleStatus = async (store: Store) => {
+        const newStatus = store.status === 'active' ? 'inactive' : 'active';
+        await onUpdateStore({ ...store, status: newStatus });
+    };
 
-      {isModalOpen && (
-          <div className="fixed inset-0 bg-black/80 backdrop-blur-md z-[200] flex items-center justify-center p-3 md:p-6">
-              <div className="bg-white rounded-[40px] w-full max-w-xl max-h-[90vh] overflow-y-auto no-scrollbar shadow-2xl animate-in zoom-in duration-300 border-t-8 border-blue-600">
-                  <div className="p-6 md:p-8 border-b flex justify-between items-center">
-                      <h3 className="text-xl font-black uppercase italic text-blue-900 leading-none">Unidade <span className="text-red-600">Real</span></h3>
-                      <button onClick={() => setIsModalOpen(false)} className="p-2 text-gray-400 hover:text-red-600 transition-all"><X size={24}/></button>
-                  </div>
-                  <div className="p-6 md:p-10 space-y-6">
-                      {/* Form simplificado responsivo */}
-                      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                          <div className="space-y-1"><label className="text-[9px] font-black text-gray-400 uppercase ml-2">Nº Loja</label><input className="w-full p-4 bg-gray-50 rounded-2xl font-black outline-none border-none shadow-inner" placeholder="01" /></div>
-                          <div className="space-y-1"><label className="text-[9px] font-black text-gray-400 uppercase ml-2">Cidade</label><input className="w-full p-4 bg-gray-50 rounded-2xl font-black outline-none border-none shadow-inner" placeholder="Salvador" /></div>
-                      </div>
-                      <div className="space-y-1"><label className="text-[9px] font-black text-gray-400 uppercase ml-2">Responsável</label><input className="w-full p-4 bg-gray-50 rounded-2xl font-black outline-none border-none shadow-inner" placeholder="Nome do Gerente" /></div>
-                      <button className="w-full py-5 bg-blue-900 text-white rounded-[28px] font-black uppercase text-xs shadow-xl active:scale-95 transition-all border-b-4 border-blue-950">Efetivar Operação</button>
-                  </div>
-              </div>
-          </div>
-      )}
-    </div>
-  );
+    const toggleGelateria = async (store: Store) => {
+        const newValue = !store.has_gelateria;
+        // Atualiza direto no banco para garantir
+        const { error } = await supabase.from('stores').update({ has_gelateria: newValue }).eq('id', store.id);
+        if (!error) {
+            // Recarrega a página para atualizar o menu lateral
+            window.location.reload(); 
+        } else {
+            alert("Erro ao atualizar status da Gelateria");
+        }
+    };
+
+    return (
+        <div className="p-8 max-w-6xl mx-auto space-y-8 animate-in fade-in">
+            <div className="flex items-center gap-4 mb-8">
+                <div className="p-3 bg-gray-900 text-white rounded-2xl shadow-lg">
+                    <Settings size={28} />
+                </div>
+                <div>
+                    <h2 className="text-2xl font-black text-blue-950 uppercase italic tracking-tighter">Configuração de Lojas</h2>
+                    <p className="text-xs font-bold text-gray-400 uppercase tracking-widest">Cadastro e Ativação de Recursos</p>
+                </div>
+            </div>
+
+            <div className="bg-white p-8 rounded-[32px] shadow-sm border border-gray-100">
+                <h3 className="text-sm font-black text-gray-400 uppercase tracking-widest mb-6 flex items-center gap-2">
+                    <Plus size={16} /> Nova Unidade
+                </h3>
+                <form onSubmit={handleAdd} className="flex gap-4 items-end">
+                    <div className="space-y-1">
+                        <label className="text-[10px] font-bold text-gray-400 uppercase ml-2">Número</label>
+                        <input required value={newStore.number} onChange={e => setNewStore({...newStore, number: e.target.value})} className="p-3 bg-gray-50 rounded-xl font-bold text-blue-900 w-24 outline-none" placeholder="00" />
+                    </div>
+                    <div className="space-y-1 flex-1">
+                        <label className="text-[10px] font-bold text-gray-400 uppercase ml-2">Cidade</label>
+                        <input required value={newStore.city} onChange={e => setNewStore({...newStore, city: e.target.value})} className="w-full p-3 bg-gray-50 rounded-xl font-bold text-blue-900 outline-none" placeholder="Nome da Cidade" />
+                    </div>
+                    <div className="space-y-1">
+                        <label className="text-[10px] font-bold text-gray-400 uppercase ml-2">Estado</label>
+                        <input required value={newStore.state} onChange={e => setNewStore({...newStore, state: e.target.value})} className="p-3 bg-gray-50 rounded-xl font-bold text-blue-900 w-20 outline-none" />
+                    </div>
+                    <button type="submit" disabled={isSubmitting} className="p-3 bg-blue-900 text-white rounded-xl shadow-lg hover:bg-black transition-all">
+                        <Save size={20} />
+                    </button>
+                </form>
+            </div>
+
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+                {stores.sort((a,b) => parseInt(a.number) - parseInt(b.number)).map(store => (
+                    <div key={store.id} className={`p-6 rounded-[24px] border transition-all ${store.status === 'active' ? 'bg-white border-gray-100' : 'bg-gray-50 border-gray-200 opacity-75'}`}>
+                        <div className="flex justify-between items-start mb-4">
+                            <div>
+                                <h4 className="text-xl font-black text-blue-950 italic">LOJA {store.number}</h4>
+                                <p className="text-xs font-bold text-gray-400 uppercase">{store.city} - {store.state}</p>
+                            </div>
+                            <button onClick={() => toggleStatus(store)} className={`p-2 rounded-lg transition-all ${store.status === 'active' ? 'text-green-600 bg-green-50 hover:bg-green-100' : 'text-gray-400 bg-gray-200 hover:bg-gray-300'}`}>
+                                {store.status === 'active' ? <CheckCircle size={20} /> : <XCircle size={20} />}
+                            </button>
+                        </div>
+                        
+                        <div className="pt-4 border-t border-gray-50 flex justify-between items-center">
+                            <button 
+                                onClick={() => toggleGelateria(store)}
+                                className={`flex items-center gap-2 px-3 py-2 rounded-xl text-[10px] font-black uppercase transition-all border-2 ${store.has_gelateria ? 'bg-purple-50 text-purple-700 border-purple-200' : 'bg-gray-50 text-gray-400 border-transparent grayscale'}`}
+                            >
+                                <IceCream size={16} /> 
+                                {store.has_gelateria ? 'Gelateria Ativa' : 'Sem Gelateria'}
+                            </button>
+
+                            <button onClick={() => onDeleteStore(store.id)} className="text-gray-300 hover:text-red-500 transition-colors">
+                                <Trash2 size={18} />
+                            </button>
+                        </div>
+                    </div>
+                ))}
+            </div>
+        </div>
+    );
 };
 
 export default AdminSettings;

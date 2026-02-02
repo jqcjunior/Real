@@ -234,12 +234,12 @@ const App: React.FC = () => {
                         { title: 'Documentos', items: [ { id: 'autoriz_compra', label: 'Autoriz. Compra', icon: FileSignature, perm: 'MODULE_AUTORIZ_COMPRA' }, { id: 'termo_condicional', label: 'Termo Condicional', icon: FileText, perm: 'MODULE_TERMO_CONDICIONAL' }, { id: 'downloads', label: 'Downloads', icon: Download, perm: 'MODULE_DOWNLOADS' } ] },
                         { title: 'Administração', items: [ { id: 'users', label: 'Usuários', icon: Users, perm: 'MODULE_ADMIN_USERS' }, { id: 'access', label: 'Acessos', icon: ShieldAlert, perm: 'MODULE_ACCESS_CONTROL' }, { id: 'audit', label: 'Auditoria', icon: Shield, perm: 'MODULE_AUDIT' }, { id: 'settings', label: 'Configurações', icon: Settings, perm: 'MODULE_SETTINGS' } ] }
                     ].map(section => {
-                        const visibleItems = section.items.filter(i => can(i.id as any));
+             const visibleItems = section.items.filter(i => can(i.perm as any));
                         if (visibleItems.length === 0) return null;
                         return (
                             <div key={section.title} className="space-y-1">
                                 <h3 className="px-4 text-[10px] font-black uppercase text-gray-600 tracking-[0.4em] mb-2">{section.title}</h3>
-                                {section.items.map(item => can(item.perm as any) && (
+                                {visibleItems.map(item => can(item.perm as any) && (
                                     <button key={item.id} onClick={() => { setCurrentView(item.id); setIsSidebarOpen(false); }} className={`w-full text-left py-2.5 px-4 rounded-xl font-black uppercase text-[10px] tracking-widest flex items-center gap-4 transition-all duration-300 ${currentView === item.id ? 'bg-blue-600 text-white shadow-[0_15px_30px_rgba(37,99,235,0.3)]' : 'text-gray-500 hover:text-white hover:bg-white/5'}`}><item.icon size={20} /> {item.label}</button>
                                 ))}
                             </div>

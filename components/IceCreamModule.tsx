@@ -8,7 +8,7 @@ import {
     Users as UsersIcon, ShieldCheck, UserCog, Clock, FileBarChart, Users, Handshake, AlertTriangle, Zap, Beaker, Layers, Clipboard, Edit3, Filter, ChevronDown, FilePieChart, Briefcase, Warehouse, PencilLine, Truck, ChevronUp
 } from 'lucide-react';
 import PDVMobileView from './PDVMobileView';
-import { ProductGrid } from './ProductGrid'; // <--- Importando o componente novo
+import { ProductGrid } from './ProductGrid';
 import { supabase } from '../services/supabaseClient';
 import { PermissionKey } from '../security/permissions';
 
@@ -35,9 +35,6 @@ interface IceCreamModuleProps {
 
 const PRODUCT_CATEGORIES: IceCreamCategory[] = ['Sundae', 'Milkshake', 'Casquinha', 'Cascão', 'Cascão Trufado', 'Copinho', 'Bebidas', 'Adicionais'].sort() as IceCreamCategory[];
 
-// A função getCategoryImage foi removida daqui pois agora vive dentro do ProductGrid.tsx
-// mas mantemos uma versão simplificada para a lista de edição de produtos se necessário,
-// ou usamos o import do ProductGrid se quiséssemos. Para simplificar, deixo a lógica local para a lista de edição.
 const getCategoryIconEdit = (category: string) => {
     if (['Sundae', 'Casquinha', 'Cascão'].includes(category)) return 'https://img.icons8.com/color/144/ice-cream-cone.png';
     return 'https://img.icons8.com/color/144/ice-cream.png';
@@ -51,17 +48,35 @@ const MONTHS = [
 ];
 
 const IceCreamModule: React.FC<IceCreamModuleProps> = ({ 
-    user, stores = [], items = [], stock = [], sales = [], finances = [], promissories = [], can,
-    onAddSales, onCancelSale, onUpdatePrice, onAddTransaction, onAddItem, onSaveProduct, onDeleteItem, onUpdateStock,
-    liquidatePromissory, onDeleteStockItem
+  user, stores = [], items = [], stock = [], sales = [], finances = [], promissories = [], can,
+  onAddSales, onCancelSale, onUpdatePrice, onAddTransaction, onAddItem, onSaveProduct, onDeleteItem, onUpdateStock,
+  liquidatePromissory, onDeleteStockItem
 }) => {
-  const [activeTab, setActiveTab] = useState<'pdv' | 'estoque' | 'dre_diario' | 'dre_mensal' | 'audit' | 'produtos'>('pdv');
+
+  /* =====================================================
+      🔐 CONTROLE REAL DE ABAS POR PERMISSÃO
+  ===================================================== */
+  const TAB_CONFIG = [
+    { id: 'pdv', label: 'PDV', perm: 'MODULE_GELATERIA_PDV' },
+    { id: 'estoque', label: 'Estoque', perm: 'MODULE_GELATERIA_ESTOQUE' },
+    { id: 'dre_diario', label: 'DRE Diário', perm: 'MODULE_GELATERIA_DRE_DIARIO' },
+    { id: 'dre_mensal', label: 'DRE Mensal', perm: 'MODULE_GELATERIA_DRE_MENSAL' },
+    { id: 'audit', label: 'Auditoria', perm: 'MODULE_GELATERIA_AUDIT' },
+    { id: 'produtos', label: 'Produtos', perm: 'MODULE_GELATERIA_CONFIG' }
+  ];
+
+  const allowedTabs = TAB_CONFIG.filter(tab => can(tab.perm as any));
+
+  const [activeTab, setActiveTab] = useState<string>(allowedTabs[0]?.id || 'pdv');
+
   const [dreSubTab, setDreSubTab] = useState<'resumo' | 'detalhado'>('resumo');
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [cart, setCart] = useState<IceCreamDailySale[]>([]);
   const [selectedCategory, setSelectedCategory] = useState<IceCreamCategory | null>(null);
   const [paymentMethod, setPaymentMethod] = useState<IceCreamPaymentMethod | 'Misto' | null>(null);
-  const [mistoValues, setMistoValues] = useState<Record<string, string>>({ 'Pix': '', 'Dinheiro': '', 'Cartão': '', 'Fiado': '' });
+  const [mistoValues, setMistoValues] = useState<Record<string, string>>({
+    'Pix': '', 'Dinheiro': '', 'Cartão': '', 'Fiado': ''
+  });
   const [buyerName, setBuyerName] = useState('');
   const [amountReceived, setAmountReceived] = useState('');
   
@@ -95,18 +110,28 @@ const IceCreamModule: React.FC<IceCreamModuleProps> = ({
   const [inventoryForm, setInventoryForm] = useState<Record<string, string>>({});
 
   const [editingProduct, setEditingProduct] = useState<IceCreamItem | null>(null);
-  const [productForm, setProductForm] = useState<Partial<IceCreamItem>>({ name: '', category: 'Copinho', price: 0, active: true, recipe: [] });
+  const [productForm, setProductForm] = useState<Partial<IceCreamItem>>({
+    name: '', category: 'Copinho', price: 0, active: true, recipe: []
+  });
   const [newRecipeItem, setNewRecipeItem] = useState({ stock_base_name: '', quantity: '1' });
 
-  const [txForm, setTxForm] = useState({ date: new Date().toLocaleDateString('en-CA'), category: '', value: '', description: '' });
-  
+  const [txForm, setTxForm] = useState({
+    date: new Date().toLocaleDateString('en-CA'),
+    category: '',
+    value: '',
+    description: ''
+  });
+
   const [manualStoreId, setManualStoreId] = useState('');
   const isAdmin = user.role === UserRole.ADMIN;
   const effectiveStoreId = isAdmin 
     ? (manualStoreId || user.storeId || (stores.length > 0 ? stores[0].id : ''))
     : (user.storeId || (stores.length > 0 ? stores[0].id : ''));
-  
-  const cartTotal = useMemo(() => cart.reduce((acc, curr) => acc + curr.totalValue, 0), [cart]);
+
+  const cartTotal = useMemo(
+    () => cart.reduce((acc, curr) => acc + curr.totalValue, 0),
+    [cart]
+  );
 
   const changeDue = useMemo(() => {
     const paid = parseFloat((amountReceived as string).replace(',', '.')) || 0;
@@ -115,18 +140,27 @@ const IceCreamModule: React.FC<IceCreamModuleProps> = ({
 
   const fetchPartners = async () => {
     if (!effectiveStoreId) return;
-    const { data } = await supabase.from('store_profit_distribution').select('*').eq('store_id', effectiveStoreId).eq('active', true).order('created_at', { ascending: true });
+    const { data } = await supabase
+      .from('store_profit_distribution')
+      .select('*')
+      .eq('store_id', effectiveStoreId)
+      .eq('active', true)
+      .order('created_at', { ascending: true });
     if (data) setPartners(data);
   };
 
   const fetchExpenseCategories = async () => {
     if (!effectiveStoreId) return;
-    const { data } = await supabase.from('ice_cream_expense_categories').select('*').eq('store_id', effectiveStoreId).order('name', { ascending: true });
+    const { data } = await supabase
+      .from('ice_cream_expense_categories')
+      .select('*')
+      .eq('store_id', effectiveStoreId)
+      .order('name', { ascending: true });
     if (data) {
-        setExpenseCategories(data);
-        if (data.length > 0 && !txForm.category) {
-            setTxForm(prev => ({ ...prev, category: data[0].name }));
-        }
+      setExpenseCategories(data);
+      if (data.length > 0 && !txForm.category) {
+        setTxForm(prev => ({ ...prev, category: data[0].name }));
+      }
     }
   };
 
@@ -452,7 +486,6 @@ const IceCreamModule: React.FC<IceCreamModuleProps> = ({
           return;
       }
 
-      // SEGURANÇA: Verificar se a venda é de HOJE
       const saleDateStr = targetSales[0].createdAt ? new Date(targetSales[0].createdAt).toLocaleDateString('en-CA') : '';
       const todayStr = new Date().toLocaleDateString('en-CA');
 
@@ -463,7 +496,6 @@ const IceCreamModule: React.FC<IceCreamModuleProps> = ({
 
       setIsSubmitting(true);
       try {
-          // Devolver Estoque
           for (const soldItem of targetSales) {
               const itemDef = items.find(it => it.id === soldItem.itemId) || items.find(it => it.name === soldItem.productName);
 
@@ -593,13 +625,21 @@ const IceCreamModule: React.FC<IceCreamModuleProps> = ({
                     </div>
                 </div>
             </div>
+            
             <div className="flex bg-gray-100 p-0.5 rounded-xl overflow-x-auto no-scrollbar w-full md:w-auto max-w-full">
-                <button onClick={() => setActiveTab('pdv')} className={`flex-1 md:flex-none px-3 py-2 rounded-lg text-[8px] md:text-[9px] font-black uppercase transition-all flex items-center justify-center gap-1.5 whitespace-nowrap ${activeTab === 'pdv' ? 'bg-white text-blue-900 shadow-sm border border-blue-100' : 'text-gray-500 hover:text-blue-900 hover:bg-white/50'}`}><ShoppingCart size={12}/> PDV</button>
-                <button onClick={() => setActiveTab('estoque')} className={`flex-1 md:flex-none px-3 py-2 rounded-lg text-[8px] md:text-[9px] font-black uppercase transition-all flex items-center justify-center gap-1.5 whitespace-nowrap ${activeTab === 'estoque' ? 'bg-white text-blue-900 shadow-sm border border-blue-100' : 'text-gray-500 hover:text-blue-900 hover:bg-white/50'}`}><Package size={12}/> Estoque</button>
-                <button onClick={() => setActiveTab('dre_diario')} className={`flex-1 md:flex-none px-3 py-2 rounded-lg text-[8px] md:text-[9px] font-black uppercase transition-all flex items-center justify-center gap-1.5 whitespace-nowrap ${activeTab === 'dre_diario' ? 'bg-white text-blue-900 shadow-sm border border-blue-100' : 'text-gray-500 hover:text-blue-900 hover:bg-white/50'}`}><Clock size={12}/> DRE Diário</button>
-                <button onClick={() => setActiveTab('dre_mensal')} className={`flex-1 md:flex-none px-3 py-2 rounded-lg text-[8px] md:text-[9px] font-black uppercase transition-all flex items-center justify-center gap-1.5 whitespace-nowrap ${activeTab === 'dre_mensal' ? 'bg-white text-purple-900 shadow-sm border border-purple-100' : 'text-gray-500 hover:text-purple-900 hover:bg-white/50'}`}><FileBarChart size={12}/> DRE Mensal</button>
-                <button onClick={() => setActiveTab('audit')} className={`flex-1 md:flex-none px-3 py-2 rounded-lg text-[8px] md:text-[9px] font-black uppercase transition-all flex items-center justify-center gap-1.5 whitespace-nowrap ${activeTab === 'audit' ? 'bg-white text-blue-900 shadow-sm border border-blue-100' : 'text-gray-500 hover:text-blue-900 hover:bg-white/50'}`}><History size={12}/> Auditoria</button>
-                <button onClick={() => setActiveTab('produtos')} className={`flex-1 md:flex-none px-3 py-2 rounded-lg text-[8px] md:text-[9px] font-black uppercase transition-all flex items-center justify-center gap-1.5 whitespace-nowrap ${activeTab === 'produtos' ? 'bg-white text-blue-900 shadow-sm border border-blue-100' : 'text-gray-500 hover:text-blue-900 hover:bg-white/50'}`}><PackagePlus size={12}/> Produtos</button>
+              {allowedTabs.map(tab => (
+                  <button
+                    key={tab.id}
+                    onClick={() => setActiveTab(tab.id)}
+                    className={`flex-1 md:flex-none px-3 py-2 rounded-lg text-[8px] md:text-[9px] font-black uppercase transition-all flex items-center justify-center gap-1.5 whitespace-nowrap ${
+                      activeTab === tab.id
+                        ? 'bg-white text-blue-900 shadow-sm border border-blue-100'
+                        : 'text-gray-500 hover:text-blue-900 hover:bg-white/50'
+                    }`}
+                  >
+                    {tab.label}
+                  </button>
+                ))}
             </div>
         </div>
 
@@ -614,7 +654,6 @@ const IceCreamModule: React.FC<IceCreamModuleProps> = ({
                                 {PRODUCT_CATEGORIES.map(cat => <button key={cat} onClick={() => setSelectedCategory(cat)} className={`px-5 py-2 rounded-xl font-black uppercase text-[10px] border-2 transition-all whitespace-nowrap ${selectedCategory === cat ? 'bg-blue-900 text-white border-blue-900 shadow-lg' : 'bg-white text-gray-400 border-gray-100'}`}>{cat}</button>)}
                             </div>
                             
-                            {/* Componente ProductGrid Importado e Usado Aqui */}
                             <ProductGrid 
                                 items={filteredItems} 
                                 selectedCategory={selectedCategory}
@@ -669,7 +708,6 @@ const IceCreamModule: React.FC<IceCreamModuleProps> = ({
                 </div>
             )}
 
-            {/* Resto das abas (DRE Diário, DRE Mensal, Estoque, Auditoria, Produtos) mantidas iguais */}
             {activeTab === 'dre_diario' && (
                 <div className="p-4 md:p-8 space-y-6 animate-in fade-in duration-300 max-w-5xl mx-auto pb-20">
                     <div className="bg-white p-8 rounded-[40px] shadow-sm border border-gray-100 flex flex-col md:flex-row justify-between items-center gap-6">

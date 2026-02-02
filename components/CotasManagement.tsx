@@ -6,7 +6,8 @@ import {
     History, CheckCircle, BadgeCheck, FileBarChart, Printer, Check,
     LayoutGrid, UserCheck, Briefcase, Layers, TrendingDown, Info, Calendar,
     AlertTriangle, ArrowUpRight, ArrowDownRight, Target, PieChart, ChevronRight, Settings,
-    Activity, ArrowRight, ChevronDown, ChevronUp, Lightbulb
+    Activity, ArrowRight, ChevronDown, ChevronUp, Lightbulb, Wallet, Filter, User as UserIcon, CalendarDays,
+    ShoppingBag, Shirt, Smile, Watch, Sparkles // Ícones novos
 } from 'lucide-react';
 
 const FULL_MONTH_NAMES = ["JANEIRO", "FEVEREIRO", "MARÇO", "ABRIL", "MAIO", "JUNHO", "JULHO", "AGOSTO", "SETEMBRO", "OUTUBRO", "NOVEMBRO", "DEZEMBRO"];
@@ -20,21 +21,25 @@ const getMonthNameFromKey = (key: string) => {
     return FULL_MONTH_NAMES[monthIndex] || key;
 };
 
-const generateTimeline = (): { label: string, key: string }[] => {
-    const months: { label: string, key: string }[] = [];
+// Gera 12 meses a partir da data de HOJE automaticamente
+const generateTimeline = (): { label: string, key: string, monthIndex: number }[] => {
+    const months: { label: string, key: string, monthIndex: number }[] = [];
     const now = new Date();
-    const currentMonth = now.getMonth(); 
-    const currentYear = now.getFullYear();
+    
+    const startMonth = now.getMonth(); 
+    const startYear = now.getFullYear();
 
     for (let i = 0; i < 12; i++) {
-        const monthIndex = (currentMonth + i) % 12;
-        const yearOffset = Math.floor((currentMonth + i) / 12);
-        const targetYear = currentYear + yearOffset;
-        const yearSuffix = String(targetYear).slice(-2);
+        const d = new Date(startYear, startMonth + i, 1);
         
-        const label = `${SHORT_MONTHS_DISPLAY[monthIndex]}-${yearSuffix}`;
-        const key = `${targetYear}-${String(monthIndex + 1).padStart(2, '0')}`;
-        months.push({ label, key });
+        const mIndex = d.getMonth();
+        const year = d.getFullYear();
+        const yearSuffix = String(year).slice(-2);
+        
+        const label = `${SHORT_MONTHS_DISPLAY[mIndex]}-${yearSuffix}`;
+        const key = `${year}-${String(mIndex + 1).padStart(2, '0')}`;
+        
+        months.push({ label, key, monthIndex: mIndex });
     }
     return months;
 };
@@ -71,6 +76,23 @@ const calculateInstallmentsMap = (shipmentMonthKey: string, terms: string, total
     return installments;
 };
 
+const normalizeText = (text: string) => {
+    return String(text || '')
+        .normalize("NFD").replace(/[\u0300-\u036f]/g, "") 
+        .toUpperCase()
+        .trim();
+};
+
+// --- ÍCONES POR CATEGORIA ---
+const getCategoryIcon = (category: string) => {
+    const norm = normalizeText(category);
+    if (norm.includes('FEMININO')) return <ShoppingBag size={14} />;
+    if (norm.includes('MASCULINO')) return <Shirt size={14} />;
+    if (norm.includes('INFANTIL')) return <Smile size={14} />;
+    if (norm.includes('ACESSORIO')) return <Watch size={14} />;
+    return <Layers size={14} />;
+};
+
 interface CotasManagementProps {
   user: User;
   stores: Store[];
@@ -86,7 +108,7 @@ interface CotasManagementProps {
   onSaveSettings: (settings: CotaSettings) => Promise<void>;
   onSaveDebts: (debt: CotaDebts) => Promise<void>;
   onDeleteDebt: (id: string) => Promise<void>;
-  onUpdateMixParameter?: (id: string | null, category: string, percent: number) => Promise<void>;
+  onUpdateMixParameter?: (id: string | null, storeId: string, category: string, percent: number) => Promise<void>;
 }
 
 export const CotasManagement: React.FC<CotasManagementProps> = ({ 
@@ -94,6 +116,7 @@ export const CotasManagement: React.FC<CotasManagementProps> = ({
     onAddCota, onUpdateCota, onDeleteCota, onSaveSettings, onSaveDebts, onDeleteDebt, onUpdateMixParameter
 }) => {
   const timeline = useMemo(() => generateTimeline(), []);
+  
   const isAdmin = user.role === UserRole.ADMIN;
   const [manualStoreId, setManualStoreId] = useState<string>('');
   const activeStores = useMemo(() => (stores || []).filter(s => s.status === 'active').sort((a, b) => (parseInt(a.number) || 0) - (parseInt(b.number) || 0)), [stores]);
@@ -102,8 +125,11 @@ export const CotasManagement: React.FC<CotasManagementProps> = ({
   const [activeForm, setActiveForm] = useState<'order' | 'expense' | 'cota_config' | 'validated_orders' | 'mix_view' | null>(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [isEditingMix, setIsEditingMix] = useState(false);
+  
+  const [mixFilterSemester, setMixFilterSemester] = useState<'all' | '1' | '2'>('all');
 
-  // Form states
+  const [selectedMobileMonth, setSelectedMobileMonth] = useState(timeline[0].key);
+
   const [brand, setBrand] = useState('');
   const [selectedCategoryId, setSelectedCategoryId] = useState('');
   const [shipmentMonth, setShipmentMonth] = useState(timeline[0].key);
@@ -112,14 +138,19 @@ export const CotasManagement: React.FC<CotasManagementProps> = ({
   const [pairs, setPairs] = useState('');
   const [selectedStoresForOrder, setSelectedStoresForOrder] = useState<string[]>([]);
   const [orderCreatedByRole, setOrderCreatedByRole] = useState<'COMPRADOR' | 'GERENTE'>('COMPRADOR');
-  const [expandedEmployee, setExpandedEmployee] = useState<string | null>(null);
-
-  // Simulation State
+  
   const [simStartMonth, setSimStartMonth] = useState(timeline[0].key);
   const [simInstallments, setSimInstallments] = useState(3);
 
-  // Multi-month Expense Form States
   const [semesterDebts, setSemesterDebts] = useState<Record<string, string>>({});
+
+  useEffect(() => {
+      if (timeline.length > 0) {
+          setShipmentMonth(timeline[0].key);
+          setSimStartMonth(timeline[0].key);
+          setSelectedMobileMonth(timeline[0].key);
+      }
+  }, [timeline]);
 
   useEffect(() => {
     if (activeForm === 'expense') {
@@ -132,7 +163,6 @@ export const CotasManagement: React.FC<CotasManagementProps> = ({
     }
   }, [activeForm, cotaDebts, viewStoreId, timeline]);
 
-  // Cota Settings States
   const storeSettings = useMemo(() => cotaSettings.find(s => s.storeId === viewStoreId), [cotaSettings, viewStoreId]);
   const [budgetVal, setBudgetVal] = useState('');
   const [managerPct, setManagerPct] = useState('');
@@ -144,28 +174,26 @@ export const CotasManagement: React.FC<CotasManagementProps> = ({
     }
   }, [storeSettings, activeForm]);
 
-  // --- LÓGICA PRINCIPAL DE CÁLCULO ---
   const consolidated = useMemo(() => {
     const storeOrders = cotas.filter(p => p.storeId === viewStoreId);
     const storeDebts = cotaDebts.filter(d => d.storeId === viewStoreId);
     const settings = cotaSettings.find(s => s.storeId === viewStoreId);
     const stats: Record<string, any> = {};
 
+    let totalDebtsGlobal = 0;
+    let totalBuyerValidGlobal = 0;
+    let totalManagerValidGlobal = 0;
+
     timeline.forEach(m => {
-        // 1. Dados Básicos
         const budgetTotal = Number(settings?.budgetValue || 0);
         const monthlyFixedExpenses = storeDebts.filter(d => d.month === m.key).reduce((a, b) => a + Number(b.value), 0);
+        totalDebtsGlobal += monthlyFixedExpenses;
+        
         const managerPercentDecimal = (settings?.managerPercent || 0) / 100;
 
-        // 2. Cálculo dos Limites (Cotas)
-        // Regra: Gerente é % sobre o total bruto.
         const limitManager = budgetTotal * managerPercentDecimal;
-        
-        // Regra: Comprador é o que sobra DEPOIS de tirar Gasto Fixo e Cota Gerente
-        // Comprador = (Total - GastoFixo - CotaGerente)
         const limitBuyer = Math.max(0, budgetTotal - monthlyFixedExpenses - limitManager);
 
-        // 3. Cálculo do Utilizado (Pedidos)
         let usedBuyer = 0;
         let usedManager = 0;
         let pendingInstallmentSum = 0;
@@ -174,23 +202,21 @@ export const CotasManagement: React.FC<CotasManagementProps> = ({
             const val = getInstallmentValueForMonth(p, m.key);
             const role = String(p.createdByRole || '').toUpperCase();
             
-            // Validado ou Fechado conta como consumido
             if (p.status === 'VALIDADO' || p.status === 'validated' || p.status === 'FECHADA') {
                 if (role === 'GERENTE') { 
                     usedManager += val; 
+                    totalManagerValidGlobal += val;
                 } else { 
                     usedBuyer += val; 
+                    totalBuyerValidGlobal += val;
                 }
             } 
-            // Aberto/Pendente conta como "Pendente" mas tecnicamente já consome o OTB visualmente
             else if (p.status === 'ABERTA' || p.status === 'pending') {
                 pendingInstallmentSum += val;
-                // Opcional: Se quiser que o pendente já abata do saldo disponível imediatamente:
                 if (role === 'GERENTE') { usedManager += val; } else { usedBuyer += val; }
             }
         });
 
-        // 4. Saldos Disponíveis
         const balanceManager = limitManager - usedManager;
         const balanceBuyer = limitBuyer - usedBuyer;
 
@@ -205,56 +231,193 @@ export const CotasManagement: React.FC<CotasManagementProps> = ({
             pendingInstallmentSum 
         };
     });
-    return { orders: storeOrders, stats, debts: storeDebts };
+    return { orders: storeOrders, stats, debts: storeDebts, totalBuyerValidGlobal, totalManagerValidGlobal, totalDebtsGlobal };
   }, [cotas, cotaSettings, cotaDebts, viewStoreId, timeline]);
 
-  // --- LÓGICA DE SUGESTÃO DE COMPRA (SIMULADOR) ---
-  
   const simulationResult = useMemo(() => {
       if (!simStartMonth || simInstallments <= 0) return { maxPurchase: 0, limitingMonth: '' };
 
-      // Encontrar o índice do mês de início
       const startIndex = timeline.findIndex(t => t.key === simStartMonth);
       if (startIndex === -1) return { maxPurchase: 0, limitingMonth: '' };
 
-      // Vamos olhar os próximos X meses (parcelas)
       let minAvailable = Infinity;
       let limitingMonthLabel = '';
 
-      // Assumindo que a compra será feita pelo COMPRADOR (Geral)
-      // Se quiser simular para gerente, teria que ter um toggle.
-      // Aqui usamos o saldo do COMPRADOR.
-      
       for (let i = 0; i < simInstallments; i++) {
           const targetIndex = startIndex + i;
-          if (targetIndex < timeline.length) {
-              const monthKey = timeline[targetIndex].key;
-              const available = consolidated.stats[monthKey]?.balanceBuyer || 0;
-              
-              if (available < minAvailable) {
-                  minAvailable = available;
-                  limitingMonthLabel = timeline[targetIndex].label;
-              }
+          if (targetIndex >= timeline.length) continue;
+
+          const monthKey = timeline[targetIndex].key;
+          const monthStats = consolidated.stats[monthKey];
+          const available = monthStats ? monthStats.balanceBuyer : 0;
+          
+          if (available < minAvailable) {
+              minAvailable = available;
+              limitingMonthLabel = timeline[targetIndex].label;
           }
       }
 
-      // Se o saldo disponível for negativo em algum mês, não pode comprar nada
       if (minAvailable < 0) minAvailable = 0;
-
-      // Capacidade de Compra = (Menor Saldo Mensal) * (Numero de Parcelas)
-      // Ex: Se em Julho (pior mês) tenho 50k, e vou dividir em 3x, posso comprar 150k.
-      // Pois 150k / 3 = 50k por mês, que cabe no pior mês.
       const maxPurchase = minAvailable * simInstallments;
 
       return { maxPurchase, limitingMonth: limitingMonthLabel };
   }, [consolidated, simStartMonth, simInstallments, timeline]);
 
+  const calculatedShipmentLabel = useMemo(() => {
+      if (!simStartMonth) return '';
+      const [year, month] = simStartMonth.split('-').map(Number);
+      const d30 = new Date(year, month - 2, 1);
+      const label30 = SHORT_MONTHS_DISPLAY[d30.getMonth()];
+      const d90 = new Date(year, month - 4, 1);
+      const label90 = SHORT_MONTHS_DISPLAY[d90.getMonth()];
 
+      return (
+          <div className="flex flex-col leading-none ml-2">
+              <span className="text-[9px] font-black text-blue-800 uppercase">EMBARQUE:</span>
+              <div className="flex gap-2 text-[10px]">
+                  <span className="text-gray-400 font-bold">{label30} (30d)</span>
+                  <span className="text-orange-600 font-black">{label90} (90d)</span>
+              </div>
+          </div>
+      );
+  }, [simStartMonth]);
+
+  const mixHierarchyData = useMemo(() => {
+      const budget = Number(storeSettings?.budgetValue || 0);
+      const segments = ['FEMININO', 'MASCULINO', 'INFANTIL', 'ACESSÓRIO'];
+      
+      const mixRelevantOrders = cotas.filter(o => {
+          if (o.storeId !== viewStoreId) return false;
+          if (mixFilterSemester === 'all') return true; 
+          const month = parseInt(o.shipmentDate.split('-')[1]); 
+          if (mixFilterSemester === '1') return month >= 1 && month <= 6;
+          if (mixFilterSemester === '2') return month >= 7 && month <= 12;
+          return true;
+      });
+
+      return segments.map(segName => {
+          const segParam = mixParameters.find(m => 
+              (m.store_id === viewStoreId || m.storeId === viewStoreId) &&
+              normalizeText(m.category_name) === normalizeText(segName)
+          );
+          const metaPercent = segParam?.percentage || 0;
+
+          const subCats = (productCategories || []).filter(c => {
+              const pName = normalizeText(c.parent_category);
+              const target = normalizeText(segName);
+              return pName === target || pName.includes(target) || target.includes(pName);
+          });
+
+          let segUtilizedValueTotal = 0;
+
+          const details = subCats.map(cat => {
+              const utilizedValue = mixRelevantOrders
+                .filter(o => {
+                    const orderCatId = String(o.category_id || '');
+                    const orderCatName = normalizeText(o.category_name || '');
+                    const orderClass = normalizeText(o.classification || '');
+                    const targetCatName = normalizeText(cat.category_name);
+                    const targetCatId = String(cat.id);
+                    const parentName = normalizeText(cat.parent_category);
+
+                    return orderCatId === targetCatId || 
+                           orderCatName === targetCatName || 
+                           orderClass === targetCatName ||
+                           (orderCatName === '' && parentName === normalizeText(segName));
+                })
+                .reduce((acc, curr) => acc + Number(curr.totalValue || 0), 0);
+              
+              segUtilizedValueTotal += utilizedValue;
+
+              return {
+                  id: cat.id,
+                  category_name: cat.category_name,
+                  utilizedValue
+              };
+          });
+
+          // ORDENAÇÃO INTELIGENTE (Valor > 0 primeiro)
+          details.sort((a, b) => {
+              if (a.utilizedValue > 0 && b.utilizedValue === 0) return -1;
+              if (a.utilizedValue === 0 && b.utilizedValue > 0) return 1;
+              if (a.utilizedValue > 0 && b.utilizedValue > 0) return b.utilizedValue - a.utilizedValue;
+              return a.category_name.localeCompare(b.category_name);
+          });
+
+          const genericOrdersValue = mixRelevantOrders
+            .filter(o => {
+                const catName = normalizeText(o.category_name || o.classification);
+                return catName === normalizeText(segName) && 
+                       !subCats.some(sc => normalizeText(sc.category_name) === catName);
+            })
+            .reduce((acc, curr) => acc + Number(curr.totalValue || 0), 0);
+
+          segUtilizedValueTotal += genericOrdersValue;
+
+          // % do Orçamento Global
+          const utilizedPercentGlobal = budget > 0 ? (segUtilizedValueTotal / budget) * 100 : 0;
+
+          // % de Uso da PRÓPRIA Categoria (Equilíbrio)
+          // Se a meta é 40% e eu usei 40% do total, então usei 100% da minha verba
+          const utilizationOfQuota = metaPercent > 0 ? (utilizedPercentGlobal / metaPercent) * 100 : 0;
+
+          return {
+              segment: segName,
+              metaPercent,
+              utilizedValue: segUtilizedValueTotal,
+              utilizedPercent: utilizedPercentGlobal,
+              utilizationOfQuota, // Nova métrica para a barra de progresso e cor
+              subcategories: details
+          };
+      });
+  }, [productCategories, mixParameters, cotas, viewStoreId, storeSettings, mixFilterSemester]);
+
+  const handleUpdateMix = async (category: string, value: string) => {
+      if (!onUpdateMixParameter) return;
+      const percent = parseFloat(value.replace(',', '.')) || 0;
+      const existing = mixParameters.find(p => 
+          (p.store_id === viewStoreId || p.storeId === viewStoreId) &&
+          normalizeText(p.category_name) === normalizeText(category)
+      );
+      await onUpdateMixParameter(existing?.id || null, viewStoreId, category, percent);
+  };
+
+  const groupedCategories = useMemo(() => {
+      const groups: Record<string, QuotaCategory[]> = {};
+      (productCategories || []).forEach(c => {
+          const parent = c.parent_category || 'OUTROS';
+          if (!groups[parent]) groups[parent] = [];
+          groups[parent].push(c);
+      });
+      return groups;
+  }, [productCategories]);
+
+  // --- LÓGICA DE CORES REFINADA (Correção 100% = Vermelho) ---
+  const getTrafficLightStyle = (utilizationRatio: number, isActiveItem: boolean = false) => {
+      // Se não tem valor, fica cinza (neutro)
+      if (!isActiveItem) {
+          return { text: 'text-gray-400', bar: 'bg-gray-300' };
+      }
+
+      // Se passou de 99% da cota da categoria, é VERMELHO (Crítico)
+      if (utilizationRatio >= 99) { 
+          return { text: 'text-red-600', bar: 'bg-red-500' };
+      } 
+      // Se passou de 70%, é AMARELO (Atenção)
+      else if (utilizationRatio >= 70) {
+          return { text: 'text-amber-600', bar: 'bg-amber-500' };
+      } 
+      // Abaixo de 70%, é VERDE (Tranquilo)
+      else {
+          return { text: 'text-emerald-600', bar: 'bg-emerald-500' };
+      }
+  };
+
+  // -- HANDLERS --
   const handleSaveOrder = async (e: React.FormEvent) => {
       e.preventDefault();
       const val = parseFloat((totalValue as string).replace(',', '.'));
       if (!brand || !selectedCategoryId || isNaN(val) || selectedStoresForOrder.length === 0) return;
-      
       setIsSubmitting(true);
       try {
           const installmentsMap = calculateInstallmentsMap(shipmentMonth, paymentTerms, val);
@@ -278,9 +441,7 @@ export const CotasManagement: React.FC<CotasManagementProps> = ({
           }
           setBrand(''); setTotalValue(''); setPairs(''); setActiveForm(null);
           alert("Pedido(s) registrado(s) com sucesso!");
-      } catch (err: any) {
-          alert("Erro: " + err.message);
-      } finally { setIsSubmitting(false); }
+      } catch (err: any) { alert("Erro: " + err.message); } finally { setIsSubmitting(false); }
   };
 
   const handleSaveAllExpenses = async (e: React.FormEvent) => {
@@ -289,17 +450,11 @@ export const CotasManagement: React.FC<CotasManagementProps> = ({
     try {
         for (const [month, valueStr] of Object.entries(semesterDebts)) {
             const val = parseFloat((valueStr as string).replace(',', '.'));
-            if (!isNaN(val)) {
-                await onSaveDebts({ storeId: viewStoreId, month: month, value: val });
-            }
+            if (!isNaN(val)) { await onSaveDebts({ storeId: viewStoreId, month: month, value: val }); }
         }
         setActiveForm(null);
         alert("Despesas atualizadas com sucesso!");
-    } catch (e) {
-        alert("Erro ao salvar despesas.");
-    } finally {
-        setIsSubmitting(false);
-    }
+    } catch (e) { alert("Erro ao salvar despesas."); } finally { setIsSubmitting(false); }
   };
 
   const handleSaveCotaSettings = async (e: React.FormEvent) => {
@@ -314,18 +469,15 @@ export const CotasManagement: React.FC<CotasManagementProps> = ({
     alert("Cota configurada com sucesso!");
   };
 
-  // ... (handlePrintValidated, groupedCategories, mixHierarchyData, handleUpdateMix mantidos iguais) ...
   const handlePrintValidated = () => {
     const printWindow = window.open('', '_blank', 'width=1000,height=1200');
     if (!printWindow) return;
     const store = stores.find(s => s.id === viewStoreId);
-    
     const grouped: Record<string, Cota[]> = {};
     consolidated.orders.filter(o => o.status === 'VALIDADO' || o.status === 'validated' || o.status === 'FECHADA').forEach(o => {
         if (!grouped[o.shipmentDate]) grouped[o.shipmentDate] = [];
         grouped[o.shipmentDate].push(o);
     });
-
     const rows = Object.entries(grouped).map(([date, items]) => {
         const monthLabel = getMonthNameFromKey(date);
         return `
@@ -335,6 +487,7 @@ export const CotasManagement: React.FC<CotasManagementProps> = ({
                     <thead>
                         <tr style="border-bottom: 2px solid #000; text-align:left; background:#f4f4f4;">
                             <th style="padding:8px;">MARCA</th>
+                            <th style="padding:8px; text-align:center;">GESTOR</th>
                             <th style="padding:8px;">CLASSIFICAÇÃO</th>
                             <th style="padding:8px; text-align:center;">QTD</th>
                             <th style="padding:8px; text-align:right;">VALOR TOTAL</th>
@@ -344,6 +497,7 @@ export const CotasManagement: React.FC<CotasManagementProps> = ({
                         ${items.map(i => `
                             <tr style="border-bottom: 1px solid #eee;">
                                 <td style="padding:8px;"><b>${i.brand}</b></td>
+                                <td style="padding:8px; text-align:center; font-size:9px;">${String(i.createdByRole || 'COMPRADOR').toUpperCase()}</td>
                                 <td style="padding:8px;">${i.category_name || i.classification}</td>
                                 <td style="padding:8px; text-align:center;">${i.pairs}</td>
                                 <td style="padding:8px; text-align:right; font-weight:bold;">${formatCurrency(i.totalValue)}</td>
@@ -354,7 +508,6 @@ export const CotasManagement: React.FC<CotasManagementProps> = ({
             </div>
         `;
     }).join('');
-
     const html = `<html><head><style>body { font-family: sans-serif; padding: 30px; } h1 { color: #1e3a8a; }</style></head><body>
         <div style="display:flex; justify-content:space-between; align-items:center; border-bottom:4px solid #1e3a8a; padding-bottom:15px; margin-bottom:20px;">
             <div>
@@ -371,79 +524,23 @@ export const CotasManagement: React.FC<CotasManagementProps> = ({
     printWindow.document.close();
   };
 
-  const groupedCategories = useMemo(() => {
-      const groups: Record<string, QuotaCategory[]> = {};
-      (productCategories || []).forEach(c => {
-          if (!groups[c.parent_category]) groups[c.parent_category] = [];
-          groups[c.parent_category].push(c);
-      });
-      return groups;
-  }, [productCategories]);
-
-  const mixHierarchyData = useMemo(() => {
-      const budget = Number(storeSettings?.budgetValue || 0);
-      const segments = ['FEMININO', 'MASCULINO', 'INFANTIL', 'ACESSÓRIO'];
-      
-      return segments.map(segName => {
-          const subCats = (productCategories || []).filter(c => c.parent_category === segName);
-          let segMetaPercentTotal = 0;
-          let segUtilizedValueTotal = 0;
-
-          const details = subCats.map(cat => {
-              const param = mixParameters.find(m => m.category_name === cat.category_name);
-              const metaPercent = param?.percentage || 0;
-              
-              const utilizedValue = cotas
-                .filter(o => o.storeId === viewStoreId && (o.category_id === cat.id || o.category_name === cat.category_name || o.classification === cat.category_name))
-                .reduce((acc, curr) => acc + Number(curr.totalValue || 0), 0);
-              
-              segMetaPercentTotal += metaPercent;
-              segUtilizedValueTotal += utilizedValue;
-
-              return {
-                  id: cat.id,
-                  category_name: cat.category_name,
-                  metaPercent,
-                  utilizedValue,
-                  utilizedPercent: budget > 0 ? (utilizedValue / budget) * 100 : 0
-              };
-          });
-
-          return {
-              segment: segName,
-              metaPercent: segMetaPercentTotal,
-              utilizedValue: segUtilizedValueTotal,
-              utilizedPercent: budget > 0 ? (segUtilizedValueTotal / budget) * 100 : 0,
-              subcategories: details
-          };
-      });
-  }, [productCategories, mixParameters, cotas, viewStoreId, storeSettings]);
-
-  const handleUpdateMix = async (category: string, value: string) => {
-      if (!onUpdateMixParameter) return;
-      const percent = parseFloat(value.replace(',', '.')) || 0;
-      const existing = mixParameters.find(p => p.category_name === category);
-      await onUpdateMixParameter(existing?.id || null, category, percent);
-  };
-
-
   return (
     <div className="flex flex-col h-screen bg-[#f3f4f6] overflow-hidden text-blue-950 font-sans">
         {/* TOP BAR */}
-        <div className="bg-white px-4 py-1.5 flex flex-col md:flex-row justify-between items-center gap-3 z-50 shadow-sm border-b shrink-0">
-            <div className="flex items-center gap-3">
-                <div className="bg-blue-900 text-white p-1.5 rounded-lg shadow-md shrink-0"><Building2 size={18}/></div>
-                <div>
+        <div className="bg-white px-4 py-3 flex flex-col lg:flex-row justify-between items-center gap-4 z-50 shadow-sm border-b shrink-0">
+            <div className="flex items-center gap-3 w-full lg:w-auto">
+                <div className="bg-blue-900 text-white p-2 rounded-lg shadow-md shrink-0"><Building2 size={20}/></div>
+                <div className="flex-1">
                     <h1 className="text-sm font-black uppercase italic leading-none tracking-tight text-blue-900">Engenharia <span className="text-blue-800 font-black">de Compras</span></h1>
-                    <div className="flex items-center gap-2 mt-0.5">
+                    <div className="flex items-center gap-2 mt-1">
                         {isAdmin ? (
-                            <select value={viewStoreId} onChange={e => setManualStoreId(e.target.value)} className="bg-white border border-gray-200 rounded px-1 py-0 text-[8px] font-black uppercase text-blue-900 outline-none shadow-sm">
+                            <select value={viewStoreId} onChange={e => setManualStoreId(e.target.value)} className="bg-white border border-gray-200 rounded px-2 py-1 text-[10px] font-black uppercase text-blue-900 outline-none shadow-sm w-full lg:w-auto">
                                 {activeStores.map(s => (
                                   <option key={s.id} value={s.id}>Loja {s.number} - {s.city}</option>
                                 ))}
                             </select>
                         ) : (
-                            <span className="text-[9px] font-black text-blue-800 uppercase tracking-widest">
+                            <span className="text-[10px] font-black text-blue-800 uppercase tracking-widest">
                               Loja {stores.find(s => s.id === viewStoreId)?.number} - {stores.find(s => s.id === viewStoreId)?.city}
                             </span>
                         )}
@@ -451,42 +548,121 @@ export const CotasManagement: React.FC<CotasManagementProps> = ({
                 </div>
             </div>
             
-            <div className="flex flex-wrap gap-1">
-                <button onClick={() => { setSelectedStoresForOrder([viewStoreId]); setActiveForm('order'); }} className="bg-blue-900 text-white px-2.5 py-1.5 rounded-lg font-black uppercase text-[8px] shadow-sm hover:bg-black transition-all flex items-center gap-1.5 border-b-2 border-blue-950"><Plus size={10}/> Novo Pedido</button>
-                <button onClick={() => setActiveForm('validated_orders')} className="bg-green-600 text-white px-2.5 py-1.5 rounded-lg font-black uppercase text-[8px] shadow-sm hover:bg-green-700 transition-all flex items-center gap-1.5 border-b-2 border-green-800"><BadgeCheck size={10}/> Validados</button>
-                <button onClick={() => setActiveForm('mix_view')} className="bg-purple-600 text-white px-2.5 py-1.5 rounded-lg font-black uppercase text-[8px] shadow-sm hover:bg-purple-700 transition-all flex items-center gap-1.5 border-b-2 border-purple-800"><FileBarChart size={10}/> Mix</button>
-                <button onClick={() => setActiveForm('expense')} className="bg-orange-600 text-white px-2.5 py-1.5 rounded-lg font-black uppercase text-[8px] shadow-sm hover:bg-orange-700 transition-all flex items-center gap-1.5 border-b-2 border-orange-800"><DollarSign size={10}/> Despesa</button>
-                <button onClick={() => setActiveForm('cota_config')} className="bg-yellow-500 text-blue-950 px-2.5 py-1.5 rounded-lg font-black uppercase text-[8px] shadow-sm hover:bg-yellow-600 transition-all flex items-center gap-1.5 border-b-2 border-yellow-700"><Calculator size={10}/> Cota</button>
+            <div className="grid grid-cols-3 lg:flex gap-2 w-full lg:w-auto">
+                <button onClick={() => { setSelectedStoresForOrder([viewStoreId]); setActiveForm('order'); }} className="bg-blue-900 text-white px-3 py-2 rounded-lg font-black uppercase text-[9px] shadow-sm hover:bg-black transition-all flex items-center justify-center gap-1.5 border-b-2 border-blue-950"><Plus size={12}/> <span className="hidden sm:inline">Novo</span> Pedido</button>
+                <button onClick={() => setActiveForm('validated_orders')} className="bg-green-600 text-white px-3 py-2 rounded-lg font-black uppercase text-[9px] shadow-sm hover:bg-green-700 transition-all flex items-center justify-center gap-1.5 border-b-2 border-green-800"><BadgeCheck size={12}/> Validados</button>
+                <button onClick={() => setActiveForm('mix_view')} className="bg-purple-600 text-white px-3 py-2 rounded-lg font-black uppercase text-[9px] shadow-sm hover:bg-purple-700 transition-all flex items-center justify-center gap-1.5 border-b-2 border-purple-800"><FileBarChart size={12}/> Mix</button>
+                <button onClick={() => setActiveForm('expense')} className="bg-orange-600 text-white px-3 py-2 rounded-lg font-black uppercase text-[9px] shadow-sm hover:bg-orange-700 transition-all flex items-center justify-center gap-1.5 border-b-2 border-orange-800"><DollarSign size={12}/> Despesa</button>
+                <button onClick={() => setActiveForm('cota_config')} className="bg-yellow-500 text-blue-950 px-3 py-2 rounded-lg font-black uppercase text-[9px] shadow-sm hover:bg-yellow-600 transition-all flex items-center justify-center gap-1.5 border-b-2 border-yellow-700"><Calculator size={12}/> Cota</button>
             </div>
         </div>
 
         {/* SUGESTÃO DE COMPRA (SIMULADOR) */}
-        <div className="bg-blue-50 px-4 py-2 border-b border-blue-100 shrink-0">
-            <div className="flex items-center gap-4">
+        <div className="bg-blue-50 px-4 py-3 border-b border-blue-100 shrink-0">
+            <div className="flex flex-col lg:flex-row items-start lg:items-center gap-4">
                 <div className="flex items-center gap-2">
-                    <Lightbulb size={16} className="text-yellow-600" />
-                    <span className="text-[10px] font-black uppercase text-blue-900">Sugestão de Compra (OTB):</span>
+                    <Lightbulb size={18} className="text-yellow-600" />
+                    <span className="text-xs font-black uppercase text-blue-900">Sugestão (OTB):</span>
                 </div>
-                <div className="flex items-center gap-2">
-                    <span className="text-[9px] font-bold text-gray-500 uppercase">Inicio Pagto:</span>
-                    <select value={simStartMonth} onChange={e => setSimStartMonth(e.target.value)} className="bg-white border rounded px-1 py-0.5 text-[9px] font-black uppercase">
-                        {timeline.map(m => <option key={m.key} value={m.key}>{m.label}</option>)}
-                    </select>
+                <div className="grid grid-cols-2 lg:flex items-center gap-3 w-full lg:w-auto">
+                    <div className="flex items-center gap-2">
+                        <span className="text-[9px] font-bold text-gray-500 uppercase">Inicio:</span>
+                        <select value={simStartMonth} onChange={e => setSimStartMonth(e.target.value)} className="bg-white border rounded px-2 py-1 text-[9px] font-black uppercase outline-none flex-1 lg:w-auto">
+                            {timeline.map(m => <option key={m.key} value={m.key}>{m.label}</option>)}
+                        </select>
+                    </div>
+                    <div className="flex items-center gap-2">
+                        <span className="text-[9px] font-bold text-gray-500 uppercase">Vezes:</span>
+                        <input type="number" value={simInstallments} onChange={e => setSimInstallments(Math.max(1, parseInt(e.target.value)))} className="w-12 bg-white border rounded px-2 py-1 text-[9px] font-black text-center" />
+                    </div>
                 </div>
-                <div className="flex items-center gap-2">
-                    <span className="text-[9px] font-bold text-gray-500 uppercase">Parcelas:</span>
-                    <input type="number" value={simInstallments} onChange={e => setSimInstallments(Math.max(1, parseInt(e.target.value)))} className="w-10 bg-white border rounded px-1 py-0.5 text-[9px] font-black text-center" />
-                </div>
-                <div className="ml-4 flex items-center gap-2 bg-white px-3 py-1 rounded-lg border border-blue-100">
-                    <span className="text-[9px] font-bold text-gray-400 uppercase">Pode comprar hoje:</span>
-                    <span className="text-sm font-black text-green-600">{formatCurrency(simulationResult.maxPurchase)}</span>
-                    {simulationResult.limitingMonth && <span className="text-[8px] text-red-400 font-bold uppercase">(Limitado por: {simulationResult.limitingMonth})</span>}
+                
+                {/* DISPLAY DA ENGENHARIA REVERSA */}
+                {calculatedShipmentLabel}
+
+                <div className="w-full lg:w-auto lg:ml-4 flex flex-col lg:flex-row items-start lg:items-center gap-2 bg-white px-3 py-2 rounded-lg border border-blue-100 shadow-sm ml-auto">
+                    <div className="flex justify-between w-full lg:w-auto gap-4">
+                        <span className="text-[9px] font-bold text-gray-400 uppercase">Pode comprar hoje:</span>
+                        <span className="text-sm font-black text-green-600">{formatCurrency(simulationResult.maxPurchase)}</span>
+                    </div>
+                    {simulationResult.limitingMonth && <span className="text-[8px] text-red-400 font-bold uppercase">(Travado em: {simulationResult.limitingMonth})</span>}
                 </div>
             </div>
         </div>
 
-        {/* TIMELINE TABLE */}
-        <div className="flex-1 overflow-auto bg-white border-t border-gray-100 no-scrollbar">
+        {/* --- MOBILE VIEW (CARDS) --- */}
+        <div className="lg:hidden flex-1 overflow-y-auto bg-gray-50 p-4 space-y-4">
+            
+            {/* Seletor de Mês Mobile */}
+            <div className="flex gap-2 overflow-x-auto pb-2 no-scrollbar">
+                {timeline.map(m => (
+                    <button 
+                        key={m.key} 
+                        onClick={() => setSelectedMobileMonth(m.key)}
+                        className={`px-4 py-2 rounded-xl text-[10px] font-black uppercase whitespace-nowrap border transition-all ${selectedMobileMonth === m.key ? 'bg-blue-900 text-white border-blue-900 shadow-lg' : 'bg-white text-gray-400 border-gray-200'}`}
+                    >
+                        {m.label}
+                    </button>
+                ))}
+            </div>
+
+            {/* Resumo do Mês Selecionado */}
+            <div className="bg-white p-6 rounded-[24px] shadow-sm border border-gray-100">
+                <h4 className="text-[10px] font-black text-gray-400 uppercase tracking-widest mb-4 flex items-center gap-2">
+                    <Calendar size={14}/> Resumo de {getMonthNameFromKey(selectedMobileMonth)}
+                </h4>
+                <div className="grid grid-cols-2 gap-4">
+                    <div className="p-3 bg-blue-50 rounded-xl">
+                        <p className="text-[8px] font-bold text-blue-400 uppercase">Saldo Comprador</p>
+                        <p className={`text-xl font-black italic ${consolidated.stats[selectedMobileMonth]?.balanceBuyer < 0 ? 'text-red-600' : 'text-blue-900'}`}>
+                            {formatCurrency(consolidated.stats[selectedMobileMonth]?.balanceBuyer || 0)}
+                        </p>
+                    </div>
+                    <div className="p-3 bg-orange-50 rounded-xl">
+                        <p className="text-[8px] font-bold text-orange-400 uppercase">Saldo Gerente</p>
+                        <p className={`text-xl font-black italic ${consolidated.stats[selectedMobileMonth]?.balanceManager < 0 ? 'text-red-600' : 'text-orange-700'}`}>
+                            {formatCurrency(consolidated.stats[selectedMobileMonth]?.balanceManager || 0)}
+                        </p>
+                    </div>
+                </div>
+                <div className="mt-4 pt-4 border-t border-gray-100 flex justify-between items-center">
+                    <span className="text-[9px] font-bold text-red-400 uppercase">Dívidas Fixas</span>
+                    <span className="text-sm font-black text-red-600">{formatCurrency(consolidated.stats[selectedMobileMonth]?.debts || 0)}</span>
+                </div>
+            </div>
+
+            {/* Grid de Pedidos do Mês (ou todos) */}
+            <h4 className="text-[10px] font-black text-gray-400 uppercase tracking-widest pl-2">Pedidos em Aberto</h4>
+            <div className="grid grid-cols-2 gap-3">
+                {consolidated.orders.filter(o => (o.status === 'ABERTA' || o.status === 'pending')).map(order => (
+                    <div key={order.id} className="bg-white p-4 rounded-2xl shadow-sm border border-gray-100 flex flex-col justify-between">
+                        <div>
+                            <div className="flex justify-between items-start mb-2">
+                                <span className={`text-[8px] font-black px-2 py-0.5 rounded uppercase ${String(order.createdByRole).toUpperCase() === 'GERENTE' ? 'bg-orange-100 text-orange-700' : 'bg-blue-100 text-blue-700'}`}>
+                                    {String(order.createdByRole).substring(0,3)}
+                                </span>
+                                <div className="flex gap-1">
+                                    <button onClick={() => onUpdateCota(order.id, { status: 'VALIDADO' })} className="text-green-500"><CheckCircle size={14}/></button>
+                                    <button onClick={() => onDeleteCota(order.id)} className="text-red-300"><Trash2 size={14}/></button>
+                                </div>
+                            </div>
+                            <h4 className="text-xs font-black text-blue-950 uppercase italic leading-tight mb-1">{order.brand}</h4>
+                            <p className="text-[8px] text-gray-400 font-bold uppercase mb-2">{order.classification || 'Geral'}</p>
+                        </div>
+                        <div className="border-t pt-2 mt-2">
+                            <p className="text-[8px] text-gray-400 font-bold uppercase">Total</p>
+                            <p className="text-sm font-black text-blue-900">{formatCurrency(order.totalValue)}</p>
+                            <div className="mt-2 text-[8px] text-gray-400 bg-gray-50 p-1 rounded text-center">
+                                Embarque: {getMonthNameFromKey(order.shipmentDate)}
+                            </div>
+                        </div>
+                    </div>
+                ))}
+            </div>
+        </div>
+
+        {/* --- DESKTOP VIEW (TABLE) --- */}
+        <div className="hidden lg:block flex-1 overflow-auto bg-white border-t border-gray-100 no-scrollbar">
             <table className="w-full text-center border-separate border-spacing-0 table-fixed min-w-[1500px]">
                 <thead className="sticky top-0 z-40">
                     <tr className="bg-blue-900 text-white text-[8px] font-black uppercase h-8">
@@ -578,7 +754,7 @@ export const CotasManagement: React.FC<CotasManagementProps> = ({
             </table>
         </div>
 
-        {/* MODAL: MIX DE PRODUTOS */}
+        {/* MODAL: MIX */}
         {activeForm === 'mix_view' && (
             <div className="fixed inset-0 bg-black/80 backdrop-blur-md flex items-center justify-center z-[100] p-4">
                 <div className="bg-[#f8fafc] rounded-[24px] w-full max-w-6xl shadow-2xl overflow-hidden border-t-4 border-purple-600 max-h-[90vh] flex flex-col">
@@ -587,6 +763,12 @@ export const CotasManagement: React.FC<CotasManagementProps> = ({
                             <Activity className="text-purple-600" size={16} /> Dashboard <span className="text-purple-600">Mix OTB</span>
                         </h3>
                         <div className="flex items-center gap-2">
+                             {/* FILTRO DE SEMESTRE NO MODAL */}
+                             <div className="flex bg-gray-100 p-0.5 rounded-lg">
+                                <button onClick={() => setMixFilterSemester('all')} className={`px-2 py-1 rounded-md text-[8px] font-black uppercase ${mixFilterSemester === 'all' ? 'bg-white text-purple-900 shadow-sm' : 'text-gray-400'}`}>Tudo</button>
+                                <button onClick={() => setMixFilterSemester('1')} className={`px-2 py-1 rounded-md text-[8px] font-black uppercase ${mixFilterSemester === '1' ? 'bg-white text-purple-900 shadow-sm' : 'text-gray-400'}`}>1º Sem</button>
+                                <button onClick={() => setMixFilterSemester('2')} className={`px-2 py-1 rounded-md text-[8px] font-black uppercase ${mixFilterSemester === '2' ? 'bg-white text-purple-900 shadow-sm' : 'text-gray-400'}`}>2º Sem</button>
+                             </div>
                              {isAdmin && (
                                 <button onClick={() => setIsEditingMix(!isEditingMix)} className={`p-1.5 rounded-lg transition-all shadow-sm ${isEditingMix ? 'bg-purple-600 text-white' : 'bg-white text-purple-600 border border-purple-100 hover:bg-purple-50'}`}>
                                     {isEditingMix ? <Save size={14} /> : <Settings size={14} />}
@@ -596,63 +778,97 @@ export const CotasManagement: React.FC<CotasManagementProps> = ({
                         </div>
                     </div>
                     <div className="flex-1 overflow-y-auto p-4 space-y-4 no-scrollbar">
+                        {/* CARDS PRINCIPAIS: SEGMENTOS */}
                         <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
-                            {mixHierarchyData.map(seg => (
-                                <div key={seg.segment} className="bg-white p-3 rounded-2xl shadow-sm border border-gray-100 flex flex-col justify-between hover:border-purple-200 transition-all">
+                            {mixHierarchyData.map(seg => {
+                                // AQUI ESTÁ A CORREÇÃO DA LÓGICA DE COR (SEMÁFORO)
+                                const styles = getTrafficLightStyle(seg.utilizationOfQuota, true);
+                                
+                                return (
+                                <div key={seg.segment} className={`p-3 rounded-2xl shadow-sm border border-gray-100 flex flex-col justify-between transition-all bg-white`}>
                                     <div className="flex justify-between items-start mb-2">
-                                        <div className="p-1.5 bg-purple-50 text-purple-600 rounded-lg"><Layers size={14}/></div>
+                                        <div className={`p-1.5 rounded-lg bg-gray-50 text-gray-600`}>{getCategoryIcon(seg.segment)}</div>
                                         <div className="text-right">
                                             <p className="text-[7px] font-black text-gray-400 uppercase tracking-widest leading-none mb-0.5">Meta</p>
-                                            <span className="text-sm font-black text-purple-600 italic tracking-tighter">{seg.metaPercent.toFixed(1)}%</span>
+                                            {isEditingMix ? (
+                                                <input 
+                                                    key={`input-${seg.segment}-${seg.metaPercent}`}
+                                                    type="text" 
+                                                    defaultValue={seg.metaPercent} 
+                                                    onBlur={(e) => handleUpdateMix(seg.segment, e.target.value)} 
+                                                    onKeyDown={(e) => {
+                                                        if(e.key === 'Enter') {
+                                                            handleUpdateMix(seg.segment, (e.target as HTMLInputElement).value);
+                                                            (e.target as HTMLInputElement).blur();
+                                                        }
+                                                    }}
+                                                    className="w-10 p-0.5 bg-white border border-purple-200 rounded text-center text-sm font-black text-purple-600 outline-none" 
+                                                />
+                                            ) : (
+                                                <span className={`text-sm font-black italic tracking-tighter text-blue-900`}>{seg.metaPercent.toFixed(1)}%</span>
+                                            )}
                                         </div>
                                     </div>
                                     <div>
-                                        <h4 className="text-[10px] font-black text-blue-950 uppercase italic tracking-tighter mb-1">{seg.segment}</h4>
+                                        <h4 className={`text-[10px] font-black text-blue-950 uppercase italic tracking-tighter mb-1`}>{seg.segment}</h4>
                                         <div className="space-y-1">
                                             <div className="flex justify-between items-end">
                                                 <span className="text-[7px] font-black text-gray-400 uppercase">{formatCurrency(seg.utilizedValue)}</span>
-                                                <span className={`text-[8px] font-black italic ${seg.utilizedPercent > seg.metaPercent ? 'text-red-600' : 'text-green-600'}`}>{seg.utilizedPercent.toFixed(1)}%</span>
+                                                {/* CORREÇÃO DO PERCENTUAL: Mostra o percentual DA COTA usada */}
+                                                <span className={`text-[8px] font-black italic ${styles.text}`}>{seg.utilizationOfQuota.toFixed(1)}% Usado</span>
                                             </div>
                                             <div className="w-full bg-gray-100 rounded-full h-1 overflow-hidden">
-                                                <div className={`h-full rounded-full transition-all duration-1000 ${seg.utilizedPercent > seg.metaPercent ? 'bg-red-500' : 'bg-purple-600'}`} style={{width: `${Math.min((seg.utilizedPercent / Math.max(seg.metaPercent, 1)) * 100, 100)}%`}} />
+                                                <div className={`h-full rounded-full transition-all duration-1000 ${styles.bar}`} style={{width: `${Math.min(seg.utilizationOfQuota, 100)}%`}} />
                                             </div>
                                         </div>
                                     </div>
                                 </div>
-                            ))}
+                            )})}
                         </div>
+
+                        {/* LISTA DETALHADA: SUBCATEGORIAS */}
                         <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
-                            {mixHierarchyData.map(seg => (
+                            {mixHierarchyData.map(seg => {
+                                const parentStyles = getTrafficLightStyle(seg.utilizationOfQuota, true);
+                                
+                                return (
                                 <div key={seg.segment} className="bg-white rounded-2xl shadow-sm border border-gray-100 overflow-hidden flex flex-col">
-                                    <div className="p-2.5 bg-gray-950 text-white flex justify-between items-center">
-                                        <h4 className="font-black uppercase italic tracking-widest text-[8px] flex items-center gap-1.5">
-                                            <div className="w-1 h-3 bg-purple-500 rounded-full"></div> {seg.segment}
+                                    <div className={`p-2.5 flex justify-between items-center bg-gray-50 border-b border-gray-100`}>
+                                        <h4 className={`font-black uppercase italic tracking-widest text-[8px] flex items-center gap-1.5 text-blue-950`}>
+                                            <div className={`w-1 h-3 rounded-full ${parentStyles.bar}`}></div> {seg.segment}
                                         </h4>
-                                        <span className="text-[8px] font-black text-purple-400 uppercase tracking-widest">Soma: {seg.metaPercent.toFixed(1)}%</span>
+                                        <span className={`text-[8px] font-black uppercase tracking-widest text-gray-400`}>
+                                            Share Global: {seg.utilizedPercent.toFixed(1)}%
+                                        </span>
                                     </div>
                                     <div className="p-2.5 space-y-1.5">
-                                        {seg.subcategories.map(sub => (
-                                            <div key={sub.id} className="flex items-center gap-2 p-2 bg-gray-50 rounded-xl border border-transparent hover:border-purple-100 transition-all">
-                                                <div className="flex-1 min-w-0">
-                                                    <p className="text-[9px] font-black text-blue-950 uppercase italic leading-none mb-0.5 truncate">{sub.category_name}</p>
-                                                    <p className="text-[7px] font-bold text-gray-400 uppercase tracking-widest">{formatCurrency(sub.utilizedValue)}</p>
-                                                </div>
-                                                <div className="flex items-center gap-2">
-                                                    <span className="text-[9px] font-black text-blue-900 italic">{sub.utilizedPercent.toFixed(1)}%</span>
-                                                    <div className="w-px h-3.5 bg-gray-200"></div>
-                                                    <div className="w-14">
-                                                        {isEditingMix ? (
-                                                            <input type="text" defaultValue={sub.metaPercent} onBlur={(e) => handleUpdateMix(sub.category_name, e.target.value)} className="w-full p-0.5 bg-white border border-purple-200 rounded text-center text-[9px] font-black text-purple-600 outline-none" />
-                                                        ) : (
-                                                            <span className="text-[9px] font-black text-purple-600 italic">{sub.metaPercent.toFixed(1)}%</span>
-                                                        )}
+                                        {seg.subcategories.map(sub => {
+                                            // Calcula a contribuição DESTE item para a meta do pai
+                                            const subContribution = seg.utilizedValue > 0 ? (sub.utilizedValue / seg.utilizedValue) * 100 : 0;
+                                            
+                                            // Se tem valor, usa o estilo do Pai (para mostrar alerta se o pai estourou)
+                                            // Se não tem valor, fica cinza
+                                            const subStyle = sub.utilizedValue > 0 ? parentStyles : { text: 'text-gray-400', bar: 'bg-gray-200' };
+                                            
+                                            return (
+                                                <div key={sub.id} className={`flex items-center gap-2 p-2 rounded-xl border border-transparent transition-all hover:bg-gray-50`}>
+                                                    <div className="flex-1 min-w-0">
+                                                        <p className={`text-[9px] font-black uppercase italic leading-none mb-0.5 truncate text-blue-950`}>{sub.category_name}</p>
+                                                        <p className="text-[7px] font-bold text-gray-400 uppercase tracking-widest">{formatCurrency(sub.utilizedValue)}</p>
+                                                    </div>
+                                                    <div className="flex items-center gap-2">
+                                                        <span className="text-[8px] font-black text-gray-400 uppercase">Share:</span>
+                                                        <span className={`text-[9px] font-black italic ${subStyle.text}`}>{subContribution.toFixed(1)}%</span>
                                                     </div>
                                                 </div>
-                                            </div>
-                                        ))}
+                                            );
+                                        })}
+                                        {seg.subcategories.length === 0 && (
+                                            <p className="text-[8px] text-gray-400 text-center italic py-2">Nenhuma subcategoria vinculada</p>
+                                        )}
                                     </div>
                                 </div>
-                            ))}
+                            )})}
                         </div>
                     </div>
                 </div>
@@ -821,6 +1037,7 @@ export const CotasManagement: React.FC<CotasManagementProps> = ({
                             <thead className="bg-white sticky top-0 z-10 border-b border-gray-100 text-[9px] font-black text-gray-400 uppercase tracking-widest">
                                 <tr>
                                     <th className="px-4 py-3">Identificação</th>
+                                    <th className="px-4 py-3 text-center">Gestor</th>
                                     <th className="px-4 py-3">Embarque</th>
                                     <th className="px-4 py-3 text-right">Valor Total</th>
                                     <th className="px-4 py-3 text-center">Ações</th>
@@ -832,6 +1049,11 @@ export const CotasManagement: React.FC<CotasManagementProps> = ({
                                         <td className="px-4 py-2">
                                             <div className="font-black text-gray-900 uppercase italic tracking-tighter leading-none">{order.brand}</div>
                                             <div className="text-[8px] text-gray-400 uppercase mt-0.5 italic">{order.classification || order.category_name}</div>
+                                        </td>
+                                        <td className="px-4 py-2 text-center">
+                                            <span className={`text-[9px] font-black px-2 py-1 rounded uppercase ${String(order.createdByRole).toUpperCase() === 'GERENTE' ? 'bg-orange-100 text-orange-700' : 'bg-blue-100 text-blue-700'}`}>
+                                                {String(order.createdByRole || 'COMPRADOR').toUpperCase()}
+                                            </span>
                                         </td>
                                         <td className="px-4 py-2"><span className="text-[9px] font-black text-blue-600 bg-blue-50 px-2 py-0.5 rounded-full uppercase">{getMonthNameFromKey(order.shipmentDate)}</span></td>
                                         <td className="px-4 py-2 text-right font-black text-blue-950 text-xs italic">{formatCurrency(order.totalValue)}</td>
