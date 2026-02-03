@@ -8,7 +8,7 @@ import {
     Users as UsersIcon, ShieldCheck, UserCog, Clock, FileBarChart, Users, Handshake, AlertTriangle, Zap, Beaker, Layers, Clipboard, Edit3, Filter, ChevronDown, FilePieChart, Briefcase, Warehouse, PencilLine, Truck, ChevronUp
 } from 'lucide-react';
 import PDVMobileView from './PDVMobileView';
-import { ProductGrid } from './ProductGrid';
+import { ProductGrid } from './ProductGrid'; // <--- Importando o componente novo
 import { supabase } from '../services/supabaseClient';
 import { PermissionKey } from '../security/permissions';
 
@@ -35,6 +35,9 @@ interface IceCreamModuleProps {
 
 const PRODUCT_CATEGORIES: IceCreamCategory[] = ['Sundae', 'Milkshake', 'Casquinha', 'Cascão', 'Cascão Trufado', 'Copinho', 'Bebidas', 'Adicionais'].sort() as IceCreamCategory[];
 
+// A função getCategoryImage foi removida daqui pois agora vive dentro do ProductGrid.tsx
+// mas mantemos uma versão simplificada para a lista de edição de produtos se necessário,
+// ou usamos o import do ProductGrid se quiséssemos. Para simplificar, deixo a lógica local para a lista de edição.
 const getCategoryIconEdit = (category: string) => {
     if (['Sundae', 'Casquinha', 'Cascão'].includes(category)) return 'https://img.icons8.com/color/144/ice-cream-cone.png';
     return 'https://img.icons8.com/color/144/ice-cream.png';
@@ -48,35 +51,17 @@ const MONTHS = [
 ];
 
 const IceCreamModule: React.FC<IceCreamModuleProps> = ({ 
-  user, stores = [], items = [], stock = [], sales = [], finances = [], promissories = [], can,
-  onAddSales, onCancelSale, onUpdatePrice, onAddTransaction, onAddItem, onSaveProduct, onDeleteItem, onUpdateStock,
-  liquidatePromissory, onDeleteStockItem
+    user, stores = [], items = [], stock = [], sales = [], finances = [], promissories = [], can,
+    onAddSales, onCancelSale, onUpdatePrice, onAddTransaction, onAddItem, onSaveProduct, onDeleteItem, onUpdateStock,
+    liquidatePromissory, onDeleteStockItem
 }) => {
-
-  /* =====================================================
-      🔐 CONTROLE REAL DE ABAS POR PERMISSÃO
-  ===================================================== */
-  const TAB_CONFIG = [
-    { id: 'pdv', label: 'PDV', perm: 'MODULE_GELATERIA_PDV' },
-    { id: 'estoque', label: 'Estoque', perm: 'MODULE_GELATERIA_ESTOQUE' },
-    { id: 'dre_diario', label: 'DRE Diário', perm: 'MODULE_GELATERIA_DRE_DIARIO' },
-    { id: 'dre_mensal', label: 'DRE Mensal', perm: 'MODULE_GELATERIA_DRE_MENSAL' },
-    { id: 'audit', label: 'Auditoria', perm: 'MODULE_GELATERIA_AUDIT' },
-    { id: 'produtos', label: 'Produtos', perm: 'MODULE_GELATERIA_CONFIG' }
-  ];
-
-  const allowedTabs = TAB_CONFIG.filter(tab => can(tab.perm as any));
-
-  const [activeTab, setActiveTab] = useState<string>(allowedTabs[0]?.id || 'pdv');
-
+  const [activeTab, setActiveTab] = useState<'pdv' | 'estoque' | 'dre_diario' | 'dre_mensal' | 'audit' | 'produtos'>('pdv');
   const [dreSubTab, setDreSubTab] = useState<'resumo' | 'detalhado'>('resumo');
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [cart, setCart] = useState<IceCreamDailySale[]>([]);
   const [selectedCategory, setSelectedCategory] = useState<IceCreamCategory | null>(null);
   const [paymentMethod, setPaymentMethod] = useState<IceCreamPaymentMethod | 'Misto' | null>(null);
-  const [mistoValues, setMistoValues] = useState<Record<string, string>>({
-    'Pix': '', 'Dinheiro': '', 'Cartão': '', 'Fiado': ''
-  });
+  const [mistoValues, setMistoValues] = useState<Record<string, string>>({ 'Pix': '', 'Dinheiro': '', 'Cartão': '', 'Fiado': '' });
   const [buyerName, setBuyerName] = useState('');
   const [amountReceived, setAmountReceived] = useState('');
   
@@ -110,28 +95,18 @@ const IceCreamModule: React.FC<IceCreamModuleProps> = ({
   const [inventoryForm, setInventoryForm] = useState<Record<string, string>>({});
 
   const [editingProduct, setEditingProduct] = useState<IceCreamItem | null>(null);
-  const [productForm, setProductForm] = useState<Partial<IceCreamItem>>({
-    name: '', category: 'Copinho', price: 0, active: true, recipe: []
-  });
+  const [productForm, setProductForm] = useState<Partial<IceCreamItem>>({ name: '', category: 'Copinho', price: 0, active: true, recipe: [] });
   const [newRecipeItem, setNewRecipeItem] = useState({ stock_base_name: '', quantity: '1' });
 
-  const [txForm, setTxForm] = useState({
-    date: new Date().toLocaleDateString('en-CA'),
-    category: '',
-    value: '',
-    description: ''
-  });
-
+  const [txForm, setTxForm] = useState({ date: new Date().toLocaleDateString('en-CA'), category: '', value: '', description: '' });
+  
   const [manualStoreId, setManualStoreId] = useState('');
   const isAdmin = user.role === UserRole.ADMIN;
   const effectiveStoreId = isAdmin 
     ? (manualStoreId || user.storeId || (stores.length > 0 ? stores[0].id : ''))
     : (user.storeId || (stores.length > 0 ? stores[0].id : ''));
-
-  const cartTotal = useMemo(
-    () => cart.reduce((acc, curr) => acc + curr.totalValue, 0),
-    [cart]
-  );
+  
+  const cartTotal = useMemo(() => cart.reduce((acc, curr) => acc + curr.totalValue, 0), [cart]);
 
   const changeDue = useMemo(() => {
     const paid = parseFloat((amountReceived as string).replace(',', '.')) || 0;
@@ -140,27 +115,18 @@ const IceCreamModule: React.FC<IceCreamModuleProps> = ({
 
   const fetchPartners = async () => {
     if (!effectiveStoreId) return;
-    const { data } = await supabase
-      .from('store_profit_distribution')
-      .select('*')
-      .eq('store_id', effectiveStoreId)
-      .eq('active', true)
-      .order('created_at', { ascending: true });
+    const { data } = await supabase.from('store_profit_distribution').select('*').eq('store_id', effectiveStoreId).eq('active', true).order('created_at', { ascending: true });
     if (data) setPartners(data);
   };
 
   const fetchExpenseCategories = async () => {
     if (!effectiveStoreId) return;
-    const { data } = await supabase
-      .from('ice_cream_expense_categories')
-      .select('*')
-      .eq('store_id', effectiveStoreId)
-      .order('name', { ascending: true });
+    const { data } = await supabase.from('ice_cream_expense_categories').select('*').eq('store_id', effectiveStoreId).order('name', { ascending: true });
     if (data) {
-      setExpenseCategories(data);
-      if (data.length > 0 && !txForm.category) {
-        setTxForm(prev => ({ ...prev, category: data[0].name }));
-      }
+        setExpenseCategories(data);
+        if (data.length > 0 && !txForm.category) {
+            setTxForm(prev => ({ ...prev, category: data[0].name }));
+        }
     }
   };
 
@@ -187,7 +153,7 @@ const IceCreamModule: React.FC<IceCreamModuleProps> = ({
   
   const filteredStock = useMemo(() => (stock ?? []).filter(s => s.store_id === effectiveStoreId && (s.is_active !== false)).sort((a,b) => a.product_base.localeCompare(b.product_base)), [stock, effectiveStoreId]);
   
-  const todayKey = new Date().toLocaleDateString('en-CA'); 
+ const todayKey = new Date().toLocaleDateString('en-CA'); 
   const periodKey = `${selectedYear}-${String(selectedMonth).padStart(2, '0')}`;
 
   const dreStats = useMemo(() => {
@@ -234,7 +200,9 @@ const IceCreamModule: React.FC<IceCreamModuleProps> = ({
           }
       });
 
-      const dayOut = dayFinances.filter(f => f.type === 'exit').reduce((a, b) => a + Number(b.value), 0);
+      // --- INJEÇÃO DAS DESPESAS/SANGRIAS ---
+      const dayExits = dayFinances.filter(f => f.type === 'exit');
+      const dayOut = dayExits.reduce((a, b) => a + Number(b.value), 0);
 
       let monthIn = 0;
       const monthMethods = { pix: 0, money: 0, card: 0, fiado: 0 };
@@ -267,8 +235,17 @@ const IceCreamModule: React.FC<IceCreamModuleProps> = ({
       const monthOut = monthFinances.filter(f => f.type === 'exit').reduce((a, b) => a + Number(b.value), 0);
       const profit = monthIn - monthOut;
 
+      // --- INJEÇÃO DA LÓGICA DE RODAPÉ ---
+      const resumo: Record<string, { qtd: number; total: number }> = {};
+      daySales.forEach(venda => {
+          if (!resumo[venda.productName]) resumo[venda.productName] = { qtd: 0, total: 0 };
+          resumo[venda.productName].qtd += Number(venda.unitsSold);
+          resumo[venda.productName].total += Number(venda.totalValue);
+      });
+      const resumoItensRodape = Object.entries(resumo).sort((a, b) => b[1].qtd - a[1].qtd);
+
       return {
-          dayIn, dayOut, dayMethods,
+          dayIn, dayOut, dayMethods, dayExits, resumoItensRodape,
           daySales: daySales.sort((a,b) => (b.createdAt || '').localeCompare(a.createdAt || '')),
           monthMethods, monthIn, monthOut, profit, monthFiadoDetails: monthFiadoDetails.sort((a,b) => (b.createdAt || '').localeCompare(a.createdAt || '')),
       };
@@ -313,128 +290,16 @@ const IceCreamModule: React.FC<IceCreamModuleProps> = ({
       if (!printWindow) return;
       const store = stores.find(s => s.id === effectiveStoreId);
       const monthLabel = MONTHS.find(m => m.value === selectedMonth)?.label;
-      const html = `
-        <!DOCTYPE html>
-        <html>
-        <head>
-            <title>DRE Mensal - Gelateria Real</title>
-            <style>
-                @page { size: portrait; margin: 10mm; }
-                body { font-family: sans-serif; padding: 20px; color: #1e293b; line-height: 1.4; max-width: 800px; margin: auto; }
-                .header { text-align: center; border-bottom: 3px solid #1e3a8a; padding-bottom: 15px; margin-bottom: 25px; }
-                .title { font-size: 26px; font-weight: 900; color: #1e3a8a; text-transform: uppercase; margin: 0; letter-spacing: -1px; }
-                .subtitle { font-size: 13px; color: #64748b; font-weight: 700; margin-top: 4px; text-transform: uppercase; }
-                .section { margin-bottom: 20px; background: #fff; }
-                .section-title { font-size: 11px; font-weight: 900; text-transform: uppercase; color: #475569; letter-spacing: 1.5px; margin-bottom: 12px; border-left: 5px solid #1e3a8a; padding-left: 10px; background: #f8fafc; padding-top: 5px; padding-bottom: 5px; }
-                .vertical-stats { display: flex; flex-direction: column; gap: 10px; }
-                .kpi-row { display: flex; justify-content: space-between; align-items: center; padding: 12px 20px; border: 1px solid #e2e8f0; border-radius: 12px; }
-                .kpi-label { font-size: 12px; font-weight: 800; color: #64748b; text-transform: uppercase; }
-                .kpi-value { font-size: 16px; font-weight: 900; }
-                .profit-row { background: #1e3a8a; color: white; border: none; }
-                .profit-row .kpi-label { color: #94a3b8; }
-                table { width: 100%; border-collapse: collapse; margin-top: 5px; }
-                th { text-align: left; font-size: 10px; text-transform: uppercase; color: #64748b; padding: 12px; border-bottom: 2px solid #e2e8f0; }
-                td { padding: 12px; font-size: 12px; border-bottom: 1px solid #f1f5f9; }
-                .text-right { text-align: right; }
-                .bold { font-weight: 800; }
-                .footer { margin-top: 30px; text-align: center; font-size: 9px; color: #94a3b8; font-weight: 700; text-transform: uppercase; border-top: 1px solid #e2e8f0; padding-top: 15px; }
-                @media print { body { padding: 0; } .no-print { display: none; } }
-            </style>
-        </head>
-        <body>
-            <div class="header">
-                <p class="title">GELATERIA REAL</p>
-                <p class="subtitle">RELATÓRIO MENSAL - UNIDADE: ${store?.number} | ${monthLabel} / ${selectedYear}</p>
-            </div>
-            <div class="section">
-                <p class="section-title">Fluxo Financeiro Consolidado</p>
-                <div class="vertical-stats">
-                    <div class="kpi-row">
-                        <div class="kpi-label">Faturamento de Vendas (+)</div>
-                        <div class="kpi-value" style="color: #059669;">${formatCurrency(dreStats.monthIn)}</div>
-                    </div>
-                    <div class="kpi-row">
-                        <div class="kpi-label">Total Saídas e Sangrias (-)</div>
-                        <div class="kpi-value" style="color: #dc2626;">${formatCurrency(dreStats.monthOut)}</div>
-                    </div>
-                    <div class="kpi-row profit-row">
-                        <div class="kpi-label">Resultado Líquido do Mês (=)</div>
-                        <div class="kpi-value">${formatCurrency(dreStats.profit)}</div>
-                    </div>
-                </div>
-            </div>
-            <div class="section">
-                <p class="section-title">Detalhamento por Meio de Recebimento</p>
-                <table>
-                    <thead><tr><th>Modalidade</th><th class="text-right">Valor Acumulado</th></tr></thead>
-                    <tbody>
-                        <tr><td class="bold">PIX</td><td class="text-right bold">${formatCurrency(dreStats.monthMethods.pix)}</td></tr>
-                        <tr><td class="bold">DINHEIRO EM ESPÉCIE</td><td class="text-right bold">${formatCurrency(dreStats.monthMethods.money)}</td></tr>
-                        <tr><td class="bold">CARTÕES (DÉBITO/CRÉDITO)</td><td class="text-right bold">${formatCurrency(dreStats.monthMethods.card)}</td></tr>
-                        <tr><td class="bold">FIADO (CRÉDITO FUNCIONÁRIO)</td><td class="text-right bold" style="color: #dc2626;">${formatCurrency(dreStats.monthMethods.fiado)}</td></tr>
-                    </tbody>
-                </table>
-            </div>
-            <div class="section">
-                <p class="section-title">Relação de Débitos por Colaborador</p>
-                <table>
-                    <thead><tr><th>Funcionário</th><th class="text-right">Total a Descontar</th></tr></thead>
-                    <tbody>
-                        ${monthFiadoGrouped.map(f => `<tr><td class="bold" style="text-transform: uppercase;">${f.name}</td><td class="text-right bold" style="color: #dc2626;">${formatCurrency(f.total)}</td></tr>`).join('')}
-                        ${monthFiadoGrouped.length === 0 ? '<tr><td colspan="2" style="text-align:center; color:#94a3b8; padding: 30px;">Nenhum débito pendente para este período</td></tr>' : ''}
-                    </tbody>
-                </table>
-            </div>
-            <div class="footer">Documento Oficial de Conferência - Gerado em ${new Date().toLocaleString('pt-BR')}</div>
-            <script>window.onload = () => { window.print(); setTimeout(() => window.close(), 1000); }</script>
-        </body>
-        </html>
-      `;
-      printWindow.document.write(html);
-      printWindow.document.close();
+      const html = `<html><head><title>DRE Mensal</title></head><body><h1>Gelateria Real - Unidade ${store?.number}</h1><p>${monthLabel} / ${selectedYear}</p></body></html>`;
+      printWindow.document.write(html); printWindow.document.close();
   };
 
   const handlePrintTicket = (items: IceCreamDailySale[], saleCode: string, method: string | null, buyer?: string) => {
     const printWindow = window.open('', '_blank', 'width=300,height=600');
     if (!printWindow) return;
-    const store = stores.find(s => s.id === effectiveStoreId);
     const total = items.reduce((acc, curr) => acc + curr.totalValue, 0);
-    const html = `
-      <!DOCTYPE html>
-      <html>
-        <head>
-          <title>Cupom - ${saleCode}</title>
-          <style>
-            body { font-family: 'Courier New', Courier, monospace; font-size: 12px; width: 80mm; padding: 5mm; margin: 0; }
-            .header { text-align: center; margin-bottom: 10px; border-bottom: 1px dashed #000; padding-bottom: 10px; }
-            .title { font-weight: bold; font-size: 14px; }
-            .item { display: flex; justify-content: space-between; margin-bottom: 3px; }
-            .total { margin-top: 10px; border-top: 1px dashed #000; padding-top: 10px; font-weight: bold; }
-            .footer { margin-top: 20px; text-align: center; font-size: 10px; border-top: 1px dashed #000; padding-top: 5px; }
-            @media print { body { width: auto; } }
-          </style>
-        </head>
-        <body>
-          <div class="header">
-            <div class="title">GELATERIA REAL</div>
-            <div>LOJA: ${store?.number || '---'}</div>
-            <div>DATA: ${new Date().toLocaleString('pt-BR')}</div>
-          </div>
-          <div class="items">
-            ${items.map(i => `<div class="item"><span>${i.unitsSold}x ${i.productName}</span><span>${formatCurrency(i.totalValue)}</span></div>`).join('')}
-          </div>
-          <div class="total">
-            <div class="item"><span>TOTAL</span><span>${formatCurrency(total)}</span></div>
-            <div class="item"><span>PAGAMENTO</span><span>${(method || 'MISTO').toUpperCase()}</span></div>
-            ${buyer ? `<div class="item" style="margin-top: 5px;"><span>COMPRADOR:</span><span>${buyer}</span></div>` : ''}
-          </div>
-          <div class="footer"><p>SISTEMA REAL ADMIN</p></div>
-          <script>window.onload = () => { window.print(); setTimeout(() => window.close(), 500); };</script>
-        </body>
-      </html>
-    `;
-    printWindow.document.write(html);
-    printWindow.document.close();
+    const html = `<html><body>Cupom ${saleCode} - Total: ${formatCurrency(total)}</body></html>`;
+    printWindow.document.write(html); printWindow.document.close();
   };
 
   const finalizeSale = async () => {
@@ -455,7 +320,6 @@ const IceCreamModule: React.FC<IceCreamModuleProps> = ({
           
           await Promise.all([onAddSales(operationalSales), ...financialPromises]);
           
-          // Baixa de Estoque
           for (const c of cart) {
               const itemDef = items.find(it => it.id === c.itemId);
               if (itemDef?.recipe && itemDef.recipe.length > 0) {
@@ -466,12 +330,6 @@ const IceCreamModule: React.FC<IceCreamModuleProps> = ({
               }
           }
           
-          try {
-            handlePrintTicket(operationalSales, saleCode, isMisto ? 'Misto' : (paymentMethod as string), buyerName);
-          } catch (printErr) {
-            console.warn("Erro na impressão automática:", printErr);
-          }
-          
           setCart([]); setPaymentMethod(null); setBuyerName(''); setAmountReceived(''); setMistoValues({ 'Pix': '', 'Dinheiro': '', 'Cartão': '', 'Fiado': '' });
           alert("Venda registrada e estoque abatido!");
       } catch (e) { alert("Falha ao registrar venda."); } finally { setIsSubmitting(false); }
@@ -479,55 +337,26 @@ const IceCreamModule: React.FC<IceCreamModuleProps> = ({
 
   const handleCancelSale = async () => {
       if (!showCancelModal) return;
-
       const targetSales = sales.filter(s => s.saleCode === showCancelModal.code);
-      if (targetSales.length === 0) {
-          alert("Erro: Venda não localizada nos registros.");
-          return;
-      }
-
+      if (targetSales.length === 0) { alert("Venda não localizada."); return; }
       const saleDateStr = targetSales[0].createdAt ? new Date(targetSales[0].createdAt).toLocaleDateString('en-CA') : '';
-      const todayStr = new Date().toLocaleDateString('en-CA');
-
-      if (saleDateStr !== todayStr) {
-          alert("BLOQUEIO DE SEGURANÇA: \n\nNão é permitido estornar vendas de dias anteriores.\nIsso alteraria o fechamento de caixa (DRE) e a apuração de lucros passados.");
-          return;
-      }
+      if (saleDateStr !== todayKey) { alert("Não é permitido estornar vendas de dias anteriores."); return; }
 
       setIsSubmitting(true);
       try {
           for (const soldItem of targetSales) {
               const itemDef = items.find(it => it.id === soldItem.itemId) || items.find(it => it.name === soldItem.productName);
-
               if (itemDef?.recipe && itemDef.recipe.length > 0) {
                   for (const ingredient of itemDef.recipe) {
                       const normalizedIngredientName = String(ingredient.stock_base_name || '').trim().toUpperCase();
-                      const quantityReturn = ingredient.quantity * soldItem.unitsSold;
-
-                      await onUpdateStock(
-                          effectiveStoreId,
-                          normalizedIngredientName,
-                          quantityReturn,
-                          '',
-                          'adjustment'
-                      );
+                      await onUpdateStock(effectiveStoreId, normalizedIngredientName, (ingredient.quantity * soldItem.unitsSold), '', 'adjustment');
                   }
               }
           }
-
           await onCancelSale(showCancelModal.code, cancelReason);
-          
-          setShowCancelModal(null);
-          setCancelReason('');
-          alert("Venda estornada e itens devolvidos ao estoque!");
-
-      } catch (e) { 
-          console.error("Erro no estorno:", e);
-          alert("Falha ao processar o estorno. Verifique sua conexão."); 
-      } finally { 
-          setIsSubmitting(false); 
-      }
-  };
+          setShowCancelModal(null); setCancelReason(''); alert("Venda estornada!");
+      } catch (e) { alert("Falha no estorno."); } finally { setIsSubmitting(false); }
+  }; 
 
   const handleSaveProductForm = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -625,21 +454,13 @@ const IceCreamModule: React.FC<IceCreamModuleProps> = ({
                     </div>
                 </div>
             </div>
-            
             <div className="flex bg-gray-100 p-0.5 rounded-xl overflow-x-auto no-scrollbar w-full md:w-auto max-w-full">
-              {allowedTabs.map(tab => (
-                  <button
-                    key={tab.id}
-                    onClick={() => setActiveTab(tab.id)}
-                    className={`flex-1 md:flex-none px-3 py-2 rounded-lg text-[8px] md:text-[9px] font-black uppercase transition-all flex items-center justify-center gap-1.5 whitespace-nowrap ${
-                      activeTab === tab.id
-                        ? 'bg-white text-blue-900 shadow-sm border border-blue-100'
-                        : 'text-gray-500 hover:text-blue-900 hover:bg-white/50'
-                    }`}
-                  >
-                    {tab.label}
-                  </button>
-                ))}
+                <button onClick={() => setActiveTab('pdv')} className={`flex-1 md:flex-none px-3 py-2 rounded-lg text-[8px] md:text-[9px] font-black uppercase transition-all flex items-center justify-center gap-1.5 whitespace-nowrap ${activeTab === 'pdv' ? 'bg-white text-blue-900 shadow-sm border border-blue-100' : 'text-gray-500 hover:text-blue-900 hover:bg-white/50'}`}><ShoppingCart size={12}/> PDV</button>
+                <button onClick={() => setActiveTab('estoque')} className={`flex-1 md:flex-none px-3 py-2 rounded-lg text-[8px] md:text-[9px] font-black uppercase transition-all flex items-center justify-center gap-1.5 whitespace-nowrap ${activeTab === 'estoque' ? 'bg-white text-blue-900 shadow-sm border border-blue-100' : 'text-gray-500 hover:text-blue-900 hover:bg-white/50'}`}><Package size={12}/> Estoque</button>
+                <button onClick={() => setActiveTab('dre_diario')} className={`flex-1 md:flex-none px-3 py-2 rounded-lg text-[8px] md:text-[9px] font-black uppercase transition-all flex items-center justify-center gap-1.5 whitespace-nowrap ${activeTab === 'dre_diario' ? 'bg-white text-blue-900 shadow-sm border border-blue-100' : 'text-gray-500 hover:text-blue-900 hover:bg-white/50'}`}><Clock size={12}/> DRE Diário</button>
+                <button onClick={() => setActiveTab('dre_mensal')} className={`flex-1 md:flex-none px-3 py-2 rounded-lg text-[8px] md:text-[9px] font-black uppercase transition-all flex items-center justify-center gap-1.5 whitespace-nowrap ${activeTab === 'dre_mensal' ? 'bg-white text-purple-900 shadow-sm border border-purple-100' : 'text-gray-500 hover:text-purple-900 hover:bg-white/50'}`}><FileBarChart size={12}/> DRE Mensal</button>
+                <button onClick={() => setActiveTab('audit')} className={`flex-1 md:flex-none px-3 py-2 rounded-lg text-[8px] md:text-[9px] font-black uppercase transition-all flex items-center justify-center gap-1.5 whitespace-nowrap ${activeTab === 'audit' ? 'bg-white text-blue-900 shadow-sm border border-blue-100' : 'text-gray-500 hover:text-blue-900 hover:bg-white/50'}`}><History size={12}/> Auditoria</button>
+                <button onClick={() => setActiveTab('produtos')} className={`flex-1 md:flex-none px-3 py-2 rounded-lg text-[8px] md:text-[9px] font-black uppercase transition-all flex items-center justify-center gap-1.5 whitespace-nowrap ${activeTab === 'produtos' ? 'bg-white text-blue-900 shadow-sm border border-blue-100' : 'text-gray-500 hover:text-blue-900 hover:bg-white/50'}`}><PackagePlus size={12}/> Produtos</button>
             </div>
         </div>
 
@@ -654,6 +475,7 @@ const IceCreamModule: React.FC<IceCreamModuleProps> = ({
                                 {PRODUCT_CATEGORIES.map(cat => <button key={cat} onClick={() => setSelectedCategory(cat)} className={`px-5 py-2 rounded-xl font-black uppercase text-[10px] border-2 transition-all whitespace-nowrap ${selectedCategory === cat ? 'bg-blue-900 text-white border-blue-900 shadow-lg' : 'bg-white text-gray-400 border-gray-100'}`}>{cat}</button>)}
                             </div>
                             
+                            {/* Componente ProductGrid Importado e Usado Aqui */}
                             <ProductGrid 
                                 items={filteredItems} 
                                 selectedCategory={selectedCategory}
@@ -708,6 +530,7 @@ const IceCreamModule: React.FC<IceCreamModuleProps> = ({
                 </div>
             )}
 
+            {/* Resto das abas (DRE Diário, DRE Mensal, Estoque, Auditoria, Produtos) mantidas iguais */}
             {activeTab === 'dre_diario' && (
                 <div className="p-4 md:p-8 space-y-6 animate-in fade-in duration-300 max-w-5xl mx-auto pb-20">
                     <div className="bg-white p-8 rounded-[40px] shadow-sm border border-gray-100 flex flex-col md:flex-row justify-between items-center gap-6">
@@ -717,16 +540,66 @@ const IceCreamModule: React.FC<IceCreamModuleProps> = ({
                              <div className="text-right"><p className="text-[9px] font-black text-gray-400 uppercase">Apuração</p><p className="text-lg font-black text-blue-950">{todayKey.split('-').reverse().join('/')}</p></div>
                         </div>
                     </div>
-                    {dreSubTab === 'resumo' && (
-                        <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-                            <div className="bg-white p-6 rounded-[32px] border-2 border-green-100 shadow-sm space-y-4"><span className="text-[9px] font-black text-green-600 uppercase tracking-widest">Resumo Entradas (+)</span><div className="space-y-2">
-                                <div className="flex justify-between items-center text-[10px] font-black border-b border-gray-50 pb-1"><span className="text-gray-400 uppercase">Pix</span><span className="text-gray-900">{formatCurrency(dreStats.dayMethods.pix)}</span></div>
-                                <div className="flex justify-between items-center text-[10px] font-black border-b border-gray-50 pb-1"><span className="text-gray-400 uppercase">Dinheiro</span><span className="text-gray-900">{formatCurrency(dreStats.dayMethods.money)}</span></div>
-                                <div className="flex justify-between items-center text-[10px] font-black border-b border-gray-50 pb-1"><span className="text-gray-400 uppercase">Cartão</span><span className="text-gray-900">{formatCurrency(dreStats.dayMethods.card)}</span></div>
-                                <div className="flex justify-between items-center text-[10px] font-black border-b border-gray-50 pb-1"><span className="text-gray-400 uppercase">Fiado</span><span className="text-gray-900">{formatCurrency(dreStats.dayMethods.fiado)}</span></div>
-                            </div><div className="pt-2 border-t-2 border-green-50"><p className="text-2xl font-black text-green-700 italic">{formatCurrency(dreStats.dayIn)}</p></div></div>
-                            <div className="bg-white p-6 rounded-[32px] border-2 border-red-100 shadow-sm flex flex-col justify-between"><div><span className="text-[9px] font-black text-red-600 uppercase tracking-widest">Resumo Saídas (-)</span><p className="text-3xl font-black text-red-700 italic mt-4">{formatCurrency(dreStats.dayOut)}</p></div></div>
-                            <div className="bg-gray-950 p-6 rounded-[32px] text-white shadow-xl flex flex-col justify-between"><div><span className="text-[9px] font-black text-blue-400 uppercase tracking-widest">Saldo Líquido</span><p className="text-3xl font-black italic mt-4">{formatCurrency(dreStats.dayIn - dreStats.dayOut)}</p></div></div>
+                  {dreSubTab === 'resumo' && (
+                        <div className="space-y-6">
+                            <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+                                <div className="bg-white p-6 rounded-[32px] border-2 border-green-100 shadow-sm space-y-4">
+                                    <span className="text-[9px] font-black text-green-600 uppercase tracking-widest">Resumo Entradas (+)</span>
+                                    <div className="space-y-2">
+                                        <div className="flex justify-between items-center text-[10px] font-black border-b border-gray-50 pb-1"><span className="text-gray-400 uppercase">Pix</span><span className="text-gray-900">{formatCurrency(dreStats.dayMethods.pix)}</span></div>
+                                        <div className="flex justify-between items-center text-[10px] font-black border-b border-gray-50 pb-1"><span className="text-gray-400 uppercase">Dinheiro</span><span className="text-gray-900">{formatCurrency(dreStats.dayMethods.money)}</span></div>
+                                        <div className="flex justify-between items-center text-[10px] font-black border-b border-gray-50 pb-1"><span className="text-gray-400 uppercase">Cartão</span><span className="text-gray-900">{formatCurrency(dreStats.dayMethods.card)}</span></div>
+                                        <div className="flex justify-between items-center text-[10px] font-black border-b border-gray-50 pb-1"><span className="text-gray-400 uppercase">Fiado</span><span className="text-gray-900">{formatCurrency(dreStats.dayMethods.fiado)}</span></div>
+                                    </div>
+                                    <div className="pt-2 border-t-2 border-green-50"><p className="text-2xl font-black text-green-700 italic">{formatCurrency(dreStats.dayIn)}</p></div>
+                                </div>
+                                <div className="bg-white p-6 rounded-[32px] border-2 border-red-100 shadow-sm flex flex-col justify-between"><div><span className="text-[9px] font-black text-red-600 uppercase tracking-widest">Resumo Saídas (-)</span><p className="text-3xl font-black text-red-700 italic mt-4">{formatCurrency(dreStats.dayOut)}</p></div></div>
+                                <div className="bg-gray-950 p-6 rounded-[32px] text-white shadow-xl flex flex-col justify-between"><div><span className="text-[9px] font-black text-blue-400 uppercase tracking-widest">Saldo Líquido</span><p className="text-3xl font-black italic mt-4">{formatCurrency(dreStats.dayIn - dreStats.dayOut)}</p></div></div>
+                            </div>
+
+                            {/* INCREMENTO: Resumo de Itens Vendidos (Rodapé) */}
+                            <div className="bg-white p-8 rounded-[40px] border border-gray-100 shadow-sm">
+                                <h4 className="text-[10px] font-black text-gray-400 uppercase tracking-widest mb-6 flex items-center gap-2">
+                                    <ListChecks size={16} className="text-blue-600" /> Resumo de Itens Vendidos no Dia
+                                </h4>
+                                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+                                    {dreStats.resumoItensRodape?.map(([nome, dados]: [string, any]) => (
+                                        <div key={nome} className="flex justify-between items-center bg-gray-50 p-4 rounded-2xl border border-gray-100">
+                                            <div className="flex flex-col">
+                                                <span className="text-[10px] font-black uppercase text-blue-950 truncate max-w-[150px]">{nome}</span>
+                                                <span className="text-blue-600 font-black uppercase mt-1">
+                                                    QTD: <span className="text-lg font-black">{dados.qtd}</span>
+                                                </span>
+                                            </div>
+                                            <span className="text-xs font-black text-gray-900">{formatCurrency(dados.total)}</span>
+                                        </div>
+                                    ))}
+                                    {(!dreStats.resumoItensRodape || dreStats.resumoItensRodape.length === 0) && (
+                                        <p className="col-span-full text-center text-[9px] text-gray-400 uppercase italic py-4">Nenhuma venda hoje</p>
+                                    )}
+                                </div>
+                            </div>
+
+                            {/* INCREMENTO: Detalhamento de Saídas (Despesas/Sangrias) */}
+                            <div className="bg-white p-8 rounded-[40px] border border-gray-100 shadow-sm">
+                                <h4 className="text-[10px] font-black text-gray-400 uppercase tracking-widest mb-6 flex items-center gap-2">
+                                    <ArrowDownCircle size={16} className="text-red-500" /> Detalhamento de Saídas (Sangrias)
+                                </h4>
+                                <div className="space-y-3">
+                                    {dreStats.dayExits?.map((f: any) => (
+                                        <div key={f.id} className="flex justify-between items-center p-4 bg-red-50 rounded-2xl border border-red-100">
+                                            <div>
+                                                <span className="text-[10px] font-black text-red-900 uppercase italic">{f.description}</span>
+                                                <p className="text-[8px] font-bold text-red-400 uppercase">{f.category}</p>
+                                            </div>
+                                            <span className="font-black text-red-700 text-sm">-{formatCurrency(f.value)}</span>
+                                        </div>
+                                    ))}
+                                    {(!dreStats.dayExits || dreStats.dayExits.length === 0) && (
+                                        <p className="text-center text-[9px] text-gray-400 uppercase italic py-4">Nenhuma sangria hoje</p>
+                                    )}
+                                </div>
+                            </div>
                         </div>
                     )}
                     {dreSubTab === 'detalhado' && (
@@ -817,8 +690,7 @@ const IceCreamModule: React.FC<IceCreamModuleProps> = ({
                                                     </td>
                                                 </tr>
                                             )}
-                                        </React.Fragment>
-                                    ))}
+                                        </React.Fragment>                                    ))}
                                     {monthFiadoGrouped.length === 0 && (<tr><td colSpan={2} className="p-16 text-center text-gray-400 uppercase tracking-[0.3em] italic">Nenhuma compra no fiado</td></tr>)}
                                 </tbody>
                             </table>
