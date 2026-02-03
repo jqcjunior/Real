@@ -285,141 +285,208 @@ const IceCreamModule: React.FC<IceCreamModuleProps> = ({
     return Object.values(grouped).sort((a: any, b: any) => (b.createdAt || '').localeCompare(a.createdAt || '')).map((g: any) => ({ ...g, paymentMethods: Array.from(g.paymentMethods) }));
   }, [sales, effectiveStoreId, auditDay, auditMonth, auditYear, auditSearch]);
 
-  const handlePrintDreMensal = () => {
-      const printWindow = window.open('', '_blank');
-      if (!printWindow) return;
-      const store = stores.find(s => s.id === effectiveStoreId);
-      const monthLabel = MONTHS.find(m => m.value === selectedMonth)?.label;
-      const html = `<html><head><title>DRE Mensal</title></head><body><h1>Gelateria Real - Unidade ${store?.number}</h1><p>${monthLabel} / ${selectedYear}</p></body></html>`;
-      printWindow.document.write(html); printWindow.document.close();
+const handlePrintDreMensal = () => {
+    const printWindow = window.open('', '_blank');
+    if (!printWindow) {
+      alert("Pop-up bloqueado! Autorize pop-ups para imprimir.");
+      return;
+    }
+
+    const store = stores.find(s => s.id === effectiveStoreId);
+    const monthLabel = MONTHS.find(m => m.value === selectedMonth)?.label;
+
+    const html = `
+      <html>
+      <head>
+        <title>DRE Mensal - Gelateria Real</title>
+        <style>
+          body { font-family: sans-serif; padding: 30px; color: #1e293b; }
+          .header { text-align: center; border-bottom: 3px solid #1e3a8a; margin-bottom: 20px; }
+          .section { margin-bottom: 20px; border: 1px solid #e2e8f0; padding: 15px; border-radius: 12px; }
+          .kpi { display: flex; justify-content: space-between; font-weight: bold; font-size: 16px; }
+          table { width: 100%; border-collapse: collapse; margin-top: 10px; }
+          th, td { text-align: left; padding: 8px; border-bottom: 1px solid #f1f5f9; font-size: 12px; }
+        </style>
+      </head>
+      <body>
+        <div class="header">
+          <h2>GELATERIA REAL</h2>
+          <p>UNIDADE: ${store?.number || '---'} | ${monthLabel} / ${selectedYear}</p>
+        </div>
+        <div class="section">
+          <div class="kpi"><span>Faturamento (+)</span> <span style="color:green">${formatCurrency(dreStats.monthIn)}</span></div>
+          <div class="kpi"><span>Despesas (-)</span> <span style="color:red">${formatCurrency(dreStats.monthOut)}</span></div>
+          <hr/>
+          <div class="kpi"><span>LUCRO LÍQUIDO</span> <span>${formatCurrency(dreStats.profit)}</span></div>
+        </div>
+        <div class="section">
+          <p><b>DÉBITOS DE FUNCIONÁRIOS</b></p>
+          <table>
+            <thead><tr><th>Nome</th><th style="text-align:right">Total</th></tr></thead>
+            <tbody>
+              ${monthFiadoGrouped.map(f => `<tr><td>${f.name}</td><td style="text-align:right">${formatCurrency(f.total)}</td></tr>`).join('')}
+            </tbody>
+          </table>
+        </div>
+        <script>window.onload = () => { window.print(); setTimeout(() => window.close(), 500); };</script>
+      </body>
+      </html>
+    `;
+    printWindow.document.write(html);
+    printWindow.document.close();
   };
 
   const handlePrintTicket = (items: IceCreamDailySale[], saleCode: string, method: string | null, buyer?: string) => {
     const printWindow = window.open('', '_blank', 'width=300,height=600');
     if (!printWindow) return;
     const total = items.reduce((acc, curr) => acc + curr.totalValue, 0);
-    const html = `<html><body>Cupom ${saleCode} - Total: ${formatCurrency(total)}</body></html>`;
-    printWindow.document.write(html); printWindow.document.close();
+    const html = `
+      <body style="font-family:monospace; width:80mm; padding:5mm; font-size:12px;">
+        <div style="text-align:center; font-weight:bold;">GELATERIA REAL</div>
+        <hr/>
+        ${items.map(i => `<div style="display:flex; justify-content:space-between;"><span>${i.unitsSold}x ${i.productName}</span><span>${formatCurrency(i.totalValue)}</span></div>`).join('')}
+        <hr/>
+        <div style="display:flex; justify-content:space-between; font-weight:bold;"><span>TOTAL</span><span>${formatCurrency(total)}</span></div>
+        <div>PAGTO: ${(method || 'MISTO').toUpperCase()}</div>
+        ${buyer ? `<div>FUNC: ${buyer}</div>` : ''}
+        <script>window.onload = () => { window.print(); setTimeout(() => window.close(), 500); };</script>
+      </body>
+    `;
+    printWindow.document.write(html);
+    printWindow.document.close();
   };
 
   const finalizeSale = async () => {
-      if (cart.length === 0 || !paymentMethod) return;
-      const isMisto = paymentMethod === 'Misto';
-      const splitData = isMisto ? Object.entries(mistoValues).map(([method, val]) => ({
-          method: method as IceCreamPaymentMethod,
-          amount: parseFloat((val as string).replace(',', '.')) || 0
-      })).filter(p => p.amount > 0) : [{ method: paymentMethod as IceCreamPaymentMethod, amount: cartTotal }];
+    if (cart.length === 0 || !paymentMethod) return;
+    const isMisto = paymentMethod === 'Misto';
+    const splitData = isMisto ? Object.entries(mistoValues).map(([method, val]) => ({
+      method: method as IceCreamPaymentMethod,
+      amount: parseFloat((val as string).replace(',', '.')) || 0
+    })).filter(p => p.amount > 0) : [{ method: paymentMethod as IceCreamPaymentMethod, amount: cartTotal }];
 
-      if (isMisto && Math.abs(splitData.reduce((a, b) => a + b.amount, 0) - cartTotal) > 0.05) { alert("Total divergente."); return; }
+    if (isMisto && Math.abs(splitData.reduce((a, b) => a + b.amount, 0) - cartTotal) > 0.05) {
+      alert("Total divergente.");
+      return;
+    }
 
-      setIsSubmitting(true);
-      const saleCode = `GEL-${Date.now().toString().slice(-6)}`;
-      try {
-          const operationalSales = cart.map(item => ({ ...item, paymentMethod: (isMisto ? 'Misto' : paymentMethod) as IceCreamPaymentMethod, buyer_name: (paymentMethod === 'Fiado' || (isMisto && mistoValues['Fiado'])) ? buyerName.toUpperCase() : undefined, saleCode, unitsSold: Math.round(item.unitsSold), status: 'active' as const }));
-          const financialPromises = splitData.map(payment => onAddTransaction({ id: '0', storeId: effectiveStoreId, date: new Date().toISOString().split('T')[0], type: 'entry', category: 'RECEITA DE VENDA PDV', value: payment.amount, description: `Pagamento via ${payment.method} - Ref. ${saleCode}`, createdAt: new Date() }));
-          
-          await Promise.all([onAddSales(operationalSales), ...financialPromises]);
-          
-          for (const c of cart) {
-              const itemDef = items.find(it => it.id === c.itemId);
-              if (itemDef?.recipe && itemDef.recipe.length > 0) {
-                  for (const ingredient of itemDef.recipe) {
-                      const normalizedIngredientName = String(ingredient.stock_base_name || '').trim().toUpperCase();
-                      await onUpdateStock(effectiveStoreId, normalizedIngredientName, -(ingredient.quantity * c.unitsSold), '', 'adjustment');
-                  }
-              }
+    setIsSubmitting(true);
+    const saleCode = `GEL-${Date.now().toString().slice(-6)}`;
+    try {
+      const operationalSales = cart.map(item => ({ 
+        ...item, 
+        paymentMethod: (isMisto ? 'Misto' : paymentMethod) as IceCreamPaymentMethod, 
+        buyer_name: (paymentMethod === 'Fiado' || (isMisto && mistoValues['Fiado'])) ? buyerName.toUpperCase() : undefined, 
+        saleCode, 
+        unitsSold: Math.round(item.unitsSold), 
+        status: 'active' as const 
+      }));
+
+      const financialPromises = splitData.map(payment => onAddTransaction({ 
+        id: '0', storeId: effectiveStoreId, date: new Date().toISOString().split('T')[0], 
+        type: 'entry', category: 'RECEITA DE VENDA PDV', value: payment.amount, 
+        description: `Pagamento via ${payment.method} - Ref. ${saleCode}`, createdAt: new Date() 
+      }));
+
+      await Promise.all([onAddSales(operationalSales), ...financialPromises]);
+
+      for (const c of cart) {
+        const itemDef = items.find(it => it.id === c.itemId);
+        if (itemDef?.recipe) {
+          for (const ingredient of itemDef.recipe) {
+            await onUpdateStock(effectiveStoreId, String(ingredient.stock_base_name).toUpperCase(), -(ingredient.quantity * c.unitsSold), '', 'adjustment');
           }
-          
-          setCart([]); setPaymentMethod(null); setBuyerName(''); setAmountReceived(''); setMistoValues({ 'Pix': '', 'Dinheiro': '', 'Cartão': '', 'Fiado': '' });
-          alert("Venda registrada e estoque abatido!");
-      } catch (e) { alert("Falha ao registrar venda."); } finally { setIsSubmitting(false); }
+        }
+      }
+
+      handlePrintTicket(operationalSales, saleCode, isMisto ? 'Misto' : (paymentMethod as string), buyerName);
+      setCart([]); setPaymentMethod(null); setBuyerName(''); setAmountReceived(''); 
+      setMistoValues({ 'Pix': '', 'Dinheiro': '', 'Cartão': '', 'Fiado': '' });
+      alert("Venda registrada!");
+    } catch (e) { alert("Falha ao registrar venda."); } finally { setIsSubmitting(false); }
   };
 
   const handleCancelSale = async () => {
-      if (!showCancelModal) return;
-      const targetSales = sales.filter(s => s.saleCode === showCancelModal.code);
-      if (targetSales.length === 0) { alert("Venda não localizada."); return; }
-      const saleDateStr = targetSales[0].createdAt ? new Date(targetSales[0].createdAt).toLocaleDateString('en-CA') : '';
-      if (saleDateStr !== todayKey) { alert("Não é permitido estornar vendas de dias anteriores."); return; }
-
-      setIsSubmitting(true);
-      try {
-          for (const soldItem of targetSales) {
-              const itemDef = items.find(it => it.id === soldItem.itemId) || items.find(it => it.name === soldItem.productName);
-              if (itemDef?.recipe && itemDef.recipe.length > 0) {
-                  for (const ingredient of itemDef.recipe) {
-                      const normalizedIngredientName = String(ingredient.stock_base_name || '').trim().toUpperCase();
-                      await onUpdateStock(effectiveStoreId, normalizedIngredientName, (ingredient.quantity * soldItem.unitsSold), '', 'adjustment');
-                  }
-              }
+    if (!showCancelModal) return;
+    const targetSales = sales.filter(s => s.saleCode === showCancelModal.code);
+    if (targetSales.length === 0) return;
+    
+    setIsSubmitting(true);
+    try {
+      for (const soldItem of targetSales) {
+        const itemDef = items.find(it => it.id === soldItem.itemId) || items.find(it => it.name === soldItem.productName);
+        if (itemDef?.recipe) {
+          for (const ingredient of itemDef.recipe) {
+            await onUpdateStock(effectiveStoreId, String(ingredient.stock_base_name).toUpperCase(), (ingredient.quantity * soldItem.unitsSold), '', 'adjustment');
           }
-          await onCancelSale(showCancelModal.code, cancelReason);
-          setShowCancelModal(null); setCancelReason(''); alert("Venda estornada!");
-      } catch (e) { alert("Falha no estorno."); } finally { setIsSubmitting(false); }
-  }; 
+        }
+      }
+      await onCancelSale(showCancelModal.code, cancelReason);
+      setShowCancelModal(null); setCancelReason(''); alert("Estorno realizado!");
+    } catch (e) { alert("Erro no estorno."); } finally { setIsSubmitting(false); }
+  };
 
   const handleSaveProductForm = async (e: React.FormEvent) => {
     e.preventDefault();
     setIsSubmitting(true);
-    try { await onSaveProduct({ ...productForm, storeId: effectiveStoreId }); setShowProductModal(false); setEditingProduct(null); alert("Produto salvo!"); } catch (e) { alert("Erro ao salvar."); } finally { setIsSubmitting(false); }
+    try { 
+      await onSaveProduct({ ...productForm, storeId: effectiveStoreId }); 
+      setShowProductModal(false); setEditingProduct(null); 
+      alert("Produto salvo!"); 
+    } catch (e) { alert("Erro ao salvar."); } finally { setIsSubmitting(false); }
   };
 
   const handleSaveTransaction = async () => {
     if (!txForm.value || !txForm.description || !txForm.category) return;
     setIsSubmitting(true);
-    try { await onAddTransaction({ id: '0', storeId: effectiveStoreId, date: txForm.date, type: 'exit', category: txForm.category, value: parseFloat(txForm.value.replace(',', '.')), description: txForm.description, createdAt: new Date() }); setShowTransactionModal(false); setTxForm({ date: new Date().toLocaleDateString('en-CA'), category: expenseCategories[0]?.name || '', value: '', description: '' }); alert("Saída lançada!"); } catch (e) { alert("Erro ao lançar."); } finally { setIsSubmitting(false); }
+    try { 
+      await onAddTransaction({ 
+        id: '0', storeId: effectiveStoreId, date: txForm.date, type: 'exit', 
+        category: txForm.category, value: parseFloat(txForm.value.replace(',', '.')), 
+        description: txForm.description, createdAt: new Date() 
+      }); 
+      setShowTransactionModal(false); 
+      setTxForm({ date: new Date().toLocaleDateString('en-CA'), category: expenseCategories[0]?.name || '', value: '', description: '' }); 
+      alert("Saída lançada!"); 
+    } catch (e) { alert("Erro ao lançar."); } finally { setIsSubmitting(false); }
   };
 
   const handleSaveSupplies = async () => {
-      if (!newInsumo.name.trim() || !effectiveStoreId) {
-          alert("Informe o nome do insumo.");
-          return;
-      }
-      setIsSubmitting(true);
-      try { 
-          const val = parseFloat((newInsumo.initial || '0').replace(',', '.'));
-          await onUpdateStock(effectiveStoreId, newInsumo.name.toUpperCase().trim(), val, newInsumo.unit, 'adjustment'); 
-          setNewInsumo({ name: '', unit: 'un', initial: '' }); 
-          setShowNewInsumoModal(false); 
-          alert("Insumo cadastrado!"); 
-      } catch (e) { alert("Erro ao cadastrar insumo."); } finally { setIsSubmitting(false); }
+    if (!newInsumo.name.trim() || !effectiveStoreId) return;
+    setIsSubmitting(true);
+    try {
+      const val = parseFloat((newInsumo.initial || '0').replace(',', '.'));
+      await onUpdateStock(effectiveStoreId, newInsumo.name.toUpperCase().trim(), val, newInsumo.unit, 'adjustment');
+      setNewInsumo({ name: '', unit: 'un', initial: '' });
+      setShowNewInsumoModal(false);
+      alert("Insumo cadastrado!");
+    } catch (e) { alert("Erro."); } finally { setIsSubmitting(false); }
   };
 
   const handleSavePurchase = async () => {
-      setIsSubmitting(true);
-      try {
-          for (const [stockId, valueStr] of Object.entries(purchaseForm)) {
-              const val = parseFloat((String(valueStr || '')).replace(',', '.'));
-              if (Number.isNaN(val) || val === 0) continue;
-
-              const stockItem = stock.find(s => s.stock_id === stockId);
-              if (stockItem) {
-                  await onUpdateStock(effectiveStoreId, stockItem.product_base, val, stockItem.unit, 'purchase', stockItem.stock_id);
-              }
-          }
-          setPurchaseForm({}); setShowPurchaseModal(false); alert("Estoque abastecido!");
-      } catch (e) { alert("Erro ao lançar compra."); } finally { setIsSubmitting(false); }
+    setIsSubmitting(true);
+    try {
+      for (const [stockId, valueStr] of Object.entries(purchaseForm)) {
+        const val = parseFloat((String(valueStr || '')).replace(',', '.'));
+        if (Number.isNaN(val) || val === 0) continue;
+        const stockItem = stock.find(s => s.stock_id === stockId);
+        if (stockItem) await onUpdateStock(effectiveStoreId, stockItem.product_base, val, stockItem.unit, 'purchase', stockItem.stock_id);
+      }
+      setPurchaseForm({}); setShowPurchaseModal(false); alert("Estoque abastecido!");
+    } catch (e) { alert("Erro."); } finally { setIsSubmitting(false); }
   };
 
   const handleSaveInventory = async () => {
-      setIsSubmitting(true);
-      try {
-          for (const [stockId, valueStr] of Object.entries(inventoryForm)) {
-              const parsed = parseFloat((String(valueStr || '')).replace(',', '.'));
-              
-              if (!Number.isFinite(parsed)) continue;
-
-              const stockItem = stock.find(s => s.stock_id === stockId);
-              if (stockItem) { 
-                  const currentStockVal = Number(stockItem.stock_current || 0);
-                  if (parsed === currentStockVal) continue;
-                  await onUpdateStock(effectiveStoreId, stockItem.product_base, parsed, stockItem.unit, 'inventory', stockItem.stock_id); 
-              }
-          }
-          setInventoryForm({}); setShowInventoryModal(false); alert("Inventário atualizado!");
-      } catch (e) { alert("Erro ao atualizar inventário."); } finally { setIsSubmitting(false); }
+    setIsSubmitting(true);
+    try {
+      for (const [stockId, valueStr] of Object.entries(inventoryForm)) {
+        const parsed = parseFloat((String(valueStr || '')).replace(',', '.'));
+        if (!Number.isFinite(parsed)) continue;
+        const stockItem = stock.find(s => s.stock_id === stockId);
+        if (stockItem) await onUpdateStock(effectiveStoreId, stockItem.product_base, parsed, stockItem.unit, 'inventory', stockItem.stock_id);
+      }
+      setInventoryForm({}); setShowInventoryModal(false); alert("Inventário atualizado!");
+    } catch (e) { alert("Erro."); } finally { setIsSubmitting(false); }
   };
-
   const handleToggleFreezeStock = async (st: IceCreamStock) => {
       if (!isAdmin) {
           alert("Apenas administradores podem congelar insumos.");
@@ -754,12 +821,29 @@ const IceCreamModule: React.FC<IceCreamModuleProps> = ({
                     </div>
                     <div className="bg-white rounded-[40px] shadow-xl border border-gray-100 overflow-hidden">
                         <table className="w-full text-left">
-                            <thead className="bg-gray-50 text-[9px] font-black text-gray-400 uppercase border-b"><tr><th className="px-8 py-5">Cod / Data</th><th className="px-8 py-5">Produtos</th><th className="px-8 py-5">Pagamento</th><th className="px-8 py-5 text-right">Total</th><th className="px-8 py-5 text-center">Ações</th></tr></thead>
+                            <thead className="bg-gray-50 text-[9px] font-black text-gray-400 uppercase border-b"><tr><th className="px-8 py-5">Cod / Data</th><th className="px-8 py-5">Produtos / Baixas</th><th className="px-8 py-5">Pagamento</th><th className="px-8 py-5 text-right">Total</th><th className="px-8 py-5 text-center">Ações</th></tr></thead>
                             <tbody className="divide-y divide-gray-50 font-bold text-[10px]">
                                 {groupedAuditSales.map((saleGroup: any) => (
                                     <tr key={saleGroup.saleCode} className={`hover:bg-blue-50/30 transition-all ${saleGroup.status === 'canceled' ? 'opacity-50 grayscale italic line-through' : ''}`}>
                                         <td className="px-8 py-5"><div className="text-xs font-black text-blue-950">#{saleGroup.saleCode}</div><div className="text-[8px] text-gray-400 uppercase mt-0.5">{new Date(saleGroup.createdAt).toLocaleString('pt-BR')}</div></td>
-                                        <td className="px-8 py-5">{Object.values(saleGroup.items).map((item: any, idx: number) => <div key={idx} className="mb-1 last:mb-0"><div className="text-[10px] font-black text-gray-900 uppercase italic tracking-tighter">{item.unitsSold}x {item.productName}</div></div>)}</td>
+                                        
+                                        {/* CÉLULA INCREMENTADA COM BAIXAS DE ESTOQUE VINCULADAS */}
+                                        <td className="px-8 py-5">
+                                            {saleGroup.items.map((item: any, idx: number) => {
+                                                const itemDef = items.find(it => it.id === item.itemId) || items.find(it => it.name === item.productName);
+                                                return (
+                                                    <div key={idx} className="mb-3 last:mb-0">
+                                                        <div className="text-[10px] font-black text-gray-900 uppercase italic tracking-tighter">{item.unitsSold}x {item.productName}</div>
+                                                        {itemDef?.recipe?.map((r: any, i: number) => (
+                                                            <div key={i} className="text-[8px] text-orange-600 font-black flex items-center gap-1 ml-2 uppercase">
+                                                                <Zap size={8} /> Abate: {(r.quantity * item.unitsSold).toFixed(3)} - {r.stock_base_name}
+                                                            </div>
+                                                        ))}
+                                                    </div>
+                                                );
+                                            })}
+                                        </td>
+
                                         <td className="px-8 py-5"><div className="flex flex-wrap gap-1">{saleGroup.paymentMethods.map((pm: any, idx: number) => <span key={idx} className="px-2 py-0.5 rounded text-[8px] font-black uppercase border bg-green-50 text-green-700 border-green-100">{pm}</span>)}</div>{saleGroup.buyer_name && <div className="text-[8px] text-gray-400 uppercase mt-1 truncate">Comprador: {saleGroup.buyer_name}</div>}</td>
                                         <td className="px-8 py-5 text-right font-black text-sm">{formatCurrency(saleGroup.totalValue)}</td>
                                         <td className="px-8 py-5 text-center">{saleGroup.status === 'canceled' ? <span className="bg-red-100 text-red-700 px-3 py-1 rounded-full text-[8px] font-black uppercase border border-red-200">ESTORNADA</span> : <button onClick={() => setShowCancelModal({id: '0', code: saleGroup.saleCode})} className="p-2 text-gray-300 hover:text-red-600 transition-all"><Ban size={18}/></button>}</td>
