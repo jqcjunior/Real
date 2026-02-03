@@ -68,7 +68,7 @@ const IceCreamModule: React.FC<IceCreamModuleProps> = ({
   const [selectedMonth, setSelectedMonth] = useState(new Date().getMonth() + 1);
   const [selectedYear, setSelectedYear] = useState(new Date().getFullYear());
 
-  const [auditDay, setAuditDay] = useState<string>(new Date().getDate().toString());
+ const [auditDay, setAuditDay] = useState<string>(new Date().getDate().toString());
   const [auditMonth, setAuditMonth] = useState<string>((new Date().getMonth() + 1).toString());
   const [auditYear, setAuditYear] = useState<string>(new Date().getFullYear().toString());
   const [auditSearch, setAuditSearch] = useState('');
@@ -138,7 +138,7 @@ const IceCreamModule: React.FC<IceCreamModuleProps> = ({
   const handleAddCategory = async () => {
       if (!newCategoryName.trim()) return;
       const { error } = await supabase.from('ice_cream_expense_categories').insert([{ store_id: effectiveStoreId, name: newCategoryName.toUpperCase().trim() }]);
-      if (error) { alert("Erro ao adicionar categoria ou nome duplicado."); }
+      if (error) { alert("Erro ao adicionar categoria."); }
       else { setNewCategoryName(''); fetchExpenseCategories(); }
   };
 
@@ -150,38 +150,19 @@ const IceCreamModule: React.FC<IceCreamModuleProps> = ({
   };
 
   const filteredItems = useMemo(() => (items ?? []).filter(i => i.storeId === effectiveStoreId), [items, effectiveStoreId]);
-  
   const filteredStock = useMemo(() => (stock ?? []).filter(s => s.store_id === effectiveStoreId && (s.is_active !== false)).sort((a,b) => a.product_base.localeCompare(b.product_base)), [stock, effectiveStoreId]);
   
- const todayKey = new Date().toLocaleDateString('en-CA'); 
+  const todayKey = new Date().toLocaleDateString('en-CA'); 
   const periodKey = `${selectedYear}-${String(selectedMonth).padStart(2, '0')}`;
 
   const dreStats = useMemo(() => {
-      const daySales = (sales ?? []).filter(s => 
-          s.createdAt?.startsWith(todayKey) && 
-          s.status !== 'canceled' && 
-          s.storeId === effectiveStoreId
-      );
-
-      const monthSales = (sales ?? []).filter(s => 
-          s.createdAt?.startsWith(periodKey) && 
-          s.status !== 'canceled' && 
-          s.storeId === effectiveStoreId
-      );
-
-      const dayFinances = (finances ?? []).filter(f => 
-          f.date === todayKey && 
-          f.storeId === effectiveStoreId
-      );
-
-      const monthFinances = (finances ?? []).filter(f => 
-          f.date?.startsWith(periodKey) && 
-          f.storeId === effectiveStoreId
-      );
+      const daySales = (sales ?? []).filter(s => s.createdAt?.startsWith(todayKey) && s.status !== 'canceled' && s.storeId === effectiveStoreId);
+      const monthSales = (sales ?? []).filter(s => s.createdAt?.startsWith(periodKey) && s.status !== 'canceled' && s.storeId === effectiveStoreId);
+      const dayFinances = (finances ?? []).filter(f => f.date === todayKey && f.storeId === effectiveStoreId);
+      const monthFinances = (finances ?? []).filter(f => f.date?.startsWith(periodKey) && f.storeId === effectiveStoreId);
 
       let dayIn = 0;
       const dayMethods = { pix: 0, money: 0, card: 0, fiado: 0 };
-
       daySales.forEach(s => {
           dayIn += Number(s.totalValue);
           if (s.paymentMethod === 'Pix') dayMethods.pix += Number(s.totalValue);
@@ -200,10 +181,8 @@ const IceCreamModule: React.FC<IceCreamModuleProps> = ({
           }
       });
 
-      // --- INJEÇÃO DAS DESPESAS/SANGRIAS ---
       const dayExits = dayFinances.filter(f => f.type === 'exit');
       const dayOut = dayExits.reduce((a, b) => a + Number(b.value), 0);
-
       let monthIn = 0;
       const monthMethods = { pix: 0, money: 0, card: 0, fiado: 0 };
       const monthFiadoDetails: any[] = [];
@@ -213,10 +192,7 @@ const IceCreamModule: React.FC<IceCreamModuleProps> = ({
           if (s.paymentMethod === 'Pix') monthMethods.pix += Number(s.totalValue);
           else if (s.paymentMethod === 'Dinheiro') monthMethods.money += Number(s.totalValue);
           else if (s.paymentMethod === 'Cartão') monthMethods.card += Number(s.totalValue);
-          else if (s.paymentMethod === 'Fiado') {
-              monthMethods.fiado += Number(s.totalValue);
-              monthFiadoDetails.push(s);
-          }
+          else if (s.paymentMethod === 'Fiado') { monthMethods.fiado += Number(s.totalValue); monthFiadoDetails.push(s); }
           else if (s.paymentMethod === 'Misto') {
               const relatedFinances = monthFinances.filter(f => f.type === 'entry' && f.description?.includes(s.saleCode || ''));
               relatedFinances.forEach(f => {
@@ -224,28 +200,22 @@ const IceCreamModule: React.FC<IceCreamModuleProps> = ({
                   if (desc.includes('via pix')) monthMethods.pix += Number(f.value);
                   else if (desc.includes('via dinheiro')) monthMethods.money += Number(f.value);
                   else if (desc.includes('via cartão')) monthMethods.card += Number(f.value);
-                  else if (desc.includes('via fiado')) {
-                      monthMethods.fiado += Number(f.value);
-                      monthFiadoDetails.push({ ...s, totalValue: f.value, paymentMethod: 'Fiado' });
-                  }
+                  else if (desc.includes('via fiado')) { monthMethods.fiado += Number(f.value); monthFiadoDetails.push({ ...s, totalValue: f.value, paymentMethod: 'Fiado' }); }
               });
           }
       });
 
       const monthOut = monthFinances.filter(f => f.type === 'exit').reduce((a, b) => a + Number(b.value), 0);
       const profit = monthIn - monthOut;
-
-      // --- INJEÇÃO DA LÓGICA DE RODAPÉ ---
       const resumo: Record<string, { qtd: number; total: number }> = {};
       daySales.forEach(venda => {
           if (!resumo[venda.productName]) resumo[venda.productName] = { qtd: 0, total: 0 };
           resumo[venda.productName].qtd += Number(venda.unitsSold);
           resumo[venda.productName].total += Number(venda.totalValue);
       });
-      const resumoItensRodape = Object.entries(resumo).sort((a, b) => b[1].qtd - a[1].qtd);
 
       return {
-          dayIn, dayOut, dayMethods, dayExits, resumoItensRodape,
+          dayIn, dayOut, dayMethods, dayExits, resumoItensRodape: Object.entries(resumo).sort((a, b) => b[1].qtd - a[1].qtd),
           daySales: daySales.sort((a,b) => (b.createdAt || '').localeCompare(a.createdAt || '')),
           monthMethods, monthIn, monthOut, profit, monthFiadoDetails: monthFiadoDetails.sort((a,b) => (b.createdAt || '').localeCompare(a.createdAt || '')),
       };
@@ -285,122 +255,42 @@ const IceCreamModule: React.FC<IceCreamModuleProps> = ({
     return Object.values(grouped).sort((a: any, b: any) => (b.createdAt || '').localeCompare(a.createdAt || '')).map((g: any) => ({ ...g, paymentMethods: Array.from(g.paymentMethods) }));
   }, [sales, effectiveStoreId, auditDay, auditMonth, auditYear, auditSearch]);
 
-const handlePrintDreMensal = () => {
+  const handlePrintDreMensal = () => {
     const printWindow = window.open('', '_blank');
-    if (!printWindow) {
-      alert("Pop-up bloqueado! Autorize pop-ups para imprimir.");
-      return;
-    }
-
+    if (!printWindow) { alert("Pop-up bloqueado!"); return; }
     const store = stores.find(s => s.id === effectiveStoreId);
     const monthLabel = MONTHS.find(m => m.value === selectedMonth)?.label;
-
-    const html = `
-      <html>
-      <head>
-        <title>DRE Mensal - Gelateria Real</title>
-        <style>
-          body { font-family: sans-serif; padding: 30px; color: #1e293b; }
-          .header { text-align: center; border-bottom: 3px solid #1e3a8a; margin-bottom: 20px; }
-          .section { margin-bottom: 20px; border: 1px solid #e2e8f0; padding: 15px; border-radius: 12px; }
-          .kpi { display: flex; justify-content: space-between; font-weight: bold; font-size: 16px; }
-          table { width: 100%; border-collapse: collapse; margin-top: 10px; }
-          th, td { text-align: left; padding: 8px; border-bottom: 1px solid #f1f5f9; font-size: 12px; }
-        </style>
-      </head>
-      <body>
-        <div class="header">
-          <h2>GELATERIA REAL</h2>
-          <p>UNIDADE: ${store?.number || '---'} | ${monthLabel} / ${selectedYear}</p>
-        </div>
-        <div class="section">
-          <div class="kpi"><span>Faturamento (+)</span> <span style="color:green">${formatCurrency(dreStats.monthIn)}</span></div>
-          <div class="kpi"><span>Despesas (-)</span> <span style="color:red">${formatCurrency(dreStats.monthOut)}</span></div>
-          <hr/>
-          <div class="kpi"><span>LUCRO LÍQUIDO</span> <span>${formatCurrency(dreStats.profit)}</span></div>
-        </div>
-        <div class="section">
-          <p><b>DÉBITOS DE FUNCIONÁRIOS</b></p>
-          <table>
-            <thead><tr><th>Nome</th><th style="text-align:right">Total</th></tr></thead>
-            <tbody>
-              ${monthFiadoGrouped.map(f => `<tr><td>${f.name}</td><td style="text-align:right">${formatCurrency(f.total)}</td></tr>`).join('')}
-            </tbody>
-          </table>
-        </div>
-        <script>window.onload = () => { window.print(); setTimeout(() => window.close(), 500); };</script>
-      </body>
-      </html>
-    `;
-    printWindow.document.write(html);
-    printWindow.document.close();
+    const html = `<html><head><title>DRE Mensal</title><style>body{font-family:sans-serif;padding:30px;color:#1e293b;}h2{color:#1e3a8a;border-bottom:2px solid #1e3a8a;padding-bottom:10px;}.section{margin-bottom:20px;padding:15px;border:1px solid #e2e8f0;border-radius:10px;}.kpi{display:flex;justify-content:space-between;font-weight:bold;}table{width:100%;border-collapse:collapse;}th,td{text-align:left;padding:8px;border-bottom:1px solid #f1f5f9;font-size:12px;}</style></head><body><div class="header"><h2>GELATERIA REAL</h2><p>UNIDADE: ${store?.number || '---'} | ${monthLabel} / ${selectedYear}</p></div><div class="section"><div class="kpi"><span>Faturamento (+)</span> <span style="color:green">${formatCurrency(dreStats.monthIn)}</span></div><div class="kpi"><span>Despesas (-)</span> <span style="color:red">${formatCurrency(dreStats.monthOut)}</span></div><hr/><div class="kpi"><span>LUCRO LÍQUIDO</span> <span>${formatCurrency(dreStats.profit)}</span></div></div><div class="section"><p><b>DÉBITOS DE FUNCIONÁRIOS</b></p><table><thead><tr><th>Nome</th><th style="text-align:right">Total</th></tr></thead><tbody>${monthFiadoGrouped.map(f => `<tr><td>${f.name}</td><td style="text-align:right">${formatCurrency(f.total)}</td></tr>`).join('')}</tbody></table></div><script>window.onload=()=>{window.print();setTimeout(()=>window.close(),500);};</script></body></html>`;
+    printWindow.document.write(html); printWindow.document.close();
   };
 
   const handlePrintTicket = (items: IceCreamDailySale[], saleCode: string, method: string | null, buyer?: string) => {
     const printWindow = window.open('', '_blank', 'width=300,height=600');
     if (!printWindow) return;
     const total = items.reduce((acc, curr) => acc + curr.totalValue, 0);
-    const html = `
-      <body style="font-family:monospace; width:80mm; padding:5mm; font-size:12px;">
-        <div style="text-align:center; font-weight:bold;">GELATERIA REAL</div>
-        <hr/>
-        ${items.map(i => `<div style="display:flex; justify-content:space-between;"><span>${i.unitsSold}x ${i.productName}</span><span>${formatCurrency(i.totalValue)}</span></div>`).join('')}
-        <hr/>
-        <div style="display:flex; justify-content:space-between; font-weight:bold;"><span>TOTAL</span><span>${formatCurrency(total)}</span></div>
-        <div>PAGTO: ${(method || 'MISTO').toUpperCase()}</div>
-        ${buyer ? `<div>FUNC: ${buyer}</div>` : ''}
-        <script>window.onload = () => { window.print(); setTimeout(() => window.close(), 500); };</script>
-      </body>
-    `;
-    printWindow.document.write(html);
-    printWindow.document.close();
+    const html = `<body style="font-family:monospace;width:80mm;padding:5mm;font-size:12px;"><div style="text-align:center;font-weight:bold;">GELATERIA REAL</div><hr/>${items.map(i => `<div style="display:flex;justify-content:space-between;"><span>${i.unitsSold}x ${i.productName}</span><span>${formatCurrency(i.totalValue)}</span></div>`).join('')}<hr/><div style="display:flex;justify-content:space-between;font-weight:bold;"><span>TOTAL</span><span>${formatCurrency(total)}</span></div><div>PAGTO: ${(method || 'MISTO').toUpperCase()}</div>${buyer ? `<div>FUNC: ${buyer}</div>` : ''}<script>window.onload=()=>{window.print();setTimeout(()=>window.close(),500);};</script></body>`;
+    printWindow.document.write(html); printWindow.document.close();
   };
 
   const finalizeSale = async () => {
     if (cart.length === 0 || !paymentMethod) return;
     const isMisto = paymentMethod === 'Misto';
-    const splitData = isMisto ? Object.entries(mistoValues).map(([method, val]) => ({
-      method: method as IceCreamPaymentMethod,
-      amount: parseFloat((val as string).replace(',', '.')) || 0
-    })).filter(p => p.amount > 0) : [{ method: paymentMethod as IceCreamPaymentMethod, amount: cartTotal }];
-
-    if (isMisto && Math.abs(splitData.reduce((a, b) => a + b.amount, 0) - cartTotal) > 0.05) {
-      alert("Total divergente.");
-      return;
-    }
-
+    const splitData = isMisto ? Object.entries(mistoValues).map(([method, val]) => ({ method: method as IceCreamPaymentMethod, amount: parseFloat((val as string).replace(',', '.')) || 0 })).filter(p => p.amount > 0) : [{ method: paymentMethod as IceCreamPaymentMethod, amount: cartTotal }];
+    if (isMisto && Math.abs(splitData.reduce((a, b) => a + b.amount, 0) - cartTotal) > 0.05) { alert("Total divergente."); return; }
     setIsSubmitting(true);
     const saleCode = `GEL-${Date.now().toString().slice(-6)}`;
     try {
-      const operationalSales = cart.map(item => ({ 
-        ...item, 
-        paymentMethod: (isMisto ? 'Misto' : paymentMethod) as IceCreamPaymentMethod, 
-        buyer_name: (paymentMethod === 'Fiado' || (isMisto && mistoValues['Fiado'])) ? buyerName.toUpperCase() : undefined, 
-        saleCode, 
-        unitsSold: Math.round(item.unitsSold), 
-        status: 'active' as const 
-      }));
-
-      const financialPromises = splitData.map(payment => onAddTransaction({ 
-        id: '0', storeId: effectiveStoreId, date: new Date().toISOString().split('T')[0], 
-        type: 'entry', category: 'RECEITA DE VENDA PDV', value: payment.amount, 
-        description: `Pagamento via ${payment.method} - Ref. ${saleCode}`, createdAt: new Date() 
-      }));
-
+      const operationalSales = cart.map(item => ({ ...item, paymentMethod: (isMisto ? 'Misto' : paymentMethod) as IceCreamPaymentMethod, buyer_name: (paymentMethod === 'Fiado' || (isMisto && mistoValues['Fiado'])) ? buyerName.toUpperCase() : undefined, saleCode, unitsSold: Math.round(item.unitsSold), status: 'active' as const }));
+      const financialPromises = splitData.map(payment => onAddTransaction({ id: '0', storeId: effectiveStoreId, date: new Date().toISOString().split('T')[0], type: 'entry', category: 'RECEITA DE VENDA PDV', value: payment.amount, description: `Pagamento via ${payment.method} - Ref. ${saleCode}`, createdAt: new Date() }));
       await Promise.all([onAddSales(operationalSales), ...financialPromises]);
-
       for (const c of cart) {
         const itemDef = items.find(it => it.id === c.itemId);
         if (itemDef?.recipe) {
-          for (const ingredient of itemDef.recipe) {
-            await onUpdateStock(effectiveStoreId, String(ingredient.stock_base_name).toUpperCase(), -(ingredient.quantity * c.unitsSold), '', 'adjustment');
-          }
+          for (const ingredient of itemDef.recipe) { await onUpdateStock(effectiveStoreId, String(ingredient.stock_base_name).toUpperCase(), -(ingredient.quantity * c.unitsSold), '', 'adjustment'); }
         }
       }
-
       handlePrintTicket(operationalSales, saleCode, isMisto ? 'Misto' : (paymentMethod as string), buyerName);
-      setCart([]); setPaymentMethod(null); setBuyerName(''); setAmountReceived(''); 
-      setMistoValues({ 'Pix': '', 'Dinheiro': '', 'Cartão': '', 'Fiado': '' });
+      setCart([]); setPaymentMethod(null); setBuyerName(''); setAmountReceived(''); setMistoValues({ 'Pix': '', 'Dinheiro': '', 'Cartão': '', 'Fiado': '' });
       alert("Venda registrada!");
     } catch (e) { alert("Falha ao registrar venda."); } finally { setIsSubmitting(false); }
   };
@@ -409,15 +299,12 @@ const handlePrintDreMensal = () => {
     if (!showCancelModal) return;
     const targetSales = sales.filter(s => s.saleCode === showCancelModal.code);
     if (targetSales.length === 0) return;
-    
     setIsSubmitting(true);
     try {
       for (const soldItem of targetSales) {
         const itemDef = items.find(it => it.id === soldItem.itemId) || items.find(it => it.name === soldItem.productName);
         if (itemDef?.recipe) {
-          for (const ingredient of itemDef.recipe) {
-            await onUpdateStock(effectiveStoreId, String(ingredient.stock_base_name).toUpperCase(), (ingredient.quantity * soldItem.unitsSold), '', 'adjustment');
-          }
+          for (const ingredient of itemDef.recipe) { await onUpdateStock(effectiveStoreId, String(ingredient.stock_base_name).toUpperCase(), (ingredient.quantity * soldItem.unitsSold), '', 'adjustment'); }
         }
       }
       await onCancelSale(showCancelModal.code, cancelReason);
@@ -428,22 +315,14 @@ const handlePrintDreMensal = () => {
   const handleSaveProductForm = async (e: React.FormEvent) => {
     e.preventDefault();
     setIsSubmitting(true);
-    try { 
-      await onSaveProduct({ ...productForm, storeId: effectiveStoreId }); 
-      setShowProductModal(false); setEditingProduct(null); 
-      alert("Produto salvo!"); 
-    } catch (e) { alert("Erro ao salvar."); } finally { setIsSubmitting(false); }
+    try { await onSaveProduct({ ...productForm, storeId: effectiveStoreId }); setShowProductModal(false); setEditingProduct(null); alert("Produto salvo!"); } catch (e) { alert("Erro ao salvar."); } finally { setIsSubmitting(false); }
   };
 
   const handleSaveTransaction = async () => {
     if (!txForm.value || !txForm.description || !txForm.category) return;
     setIsSubmitting(true);
     try { 
-      await onAddTransaction({ 
-        id: '0', storeId: effectiveStoreId, date: txForm.date, type: 'exit', 
-        category: txForm.category, value: parseFloat(txForm.value.replace(',', '.')), 
-        description: txForm.description, createdAt: new Date() 
-      }); 
+      await onAddTransaction({ id: '0', storeId: effectiveStoreId, date: txForm.date, type: 'exit', category: txForm.category, value: parseFloat(txForm.value.replace(',', '.')), description: txForm.description, createdAt: new Date() }); 
       setShowTransactionModal(false); 
       setTxForm({ date: new Date().toLocaleDateString('en-CA'), category: expenseCategories[0]?.name || '', value: '', description: '' }); 
       alert("Saída lançada!"); 
@@ -457,8 +336,7 @@ const handlePrintDreMensal = () => {
       const val = parseFloat((newInsumo.initial || '0').replace(',', '.'));
       await onUpdateStock(effectiveStoreId, newInsumo.name.toUpperCase().trim(), val, newInsumo.unit, 'adjustment');
       setNewInsumo({ name: '', unit: 'un', initial: '' });
-      setShowNewInsumoModal(false);
-      alert("Insumo cadastrado!");
+      setShowNewInsumoModal(false); alert("Insumo cadastrado!");
     } catch (e) { alert("Erro."); } finally { setIsSubmitting(false); }
   };
 
@@ -487,6 +365,7 @@ const handlePrintDreMensal = () => {
       setInventoryForm({}); setShowInventoryModal(false); alert("Inventário atualizado!");
     } catch (e) { alert("Erro."); } finally { setIsSubmitting(false); }
   };
+
   const handleToggleFreezeStock = async (st: IceCreamStock) => {
       if (!isAdmin) {
           alert("Apenas administradores podem congelar insumos.");
