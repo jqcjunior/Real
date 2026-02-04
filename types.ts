@@ -1,5 +1,6 @@
 
 
+
 /* =========================
    ROLES / USUÁRIOS
 ========================= */
@@ -317,12 +318,6 @@ export interface Cota {
   category_id?: string;
   category_name?: string;
   parent_category?: string;
-}
-
-export interface CotaSettings {
-  storeId: string;
-  budgetValue: number;
-  managerPercent: number;
 }
 
 export interface CotaSettings {
