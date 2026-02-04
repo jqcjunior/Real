@@ -38,8 +38,16 @@ interface IceCreamModuleProps {
 
 const PRODUCT_CATEGORIES: IceCreamCategory[] = ['Sundae', 'Milkshake', 'Casquinha', 'Cascão', 'Cascão Trufado', 'Copinho', 'Bebidas', 'Adicionais'].sort() as IceCreamCategory[];
 
-const getCategoryIconEdit = (category: string) => {
-    if (['Sundae', 'Casquinha', 'Cascão'].includes(category)) return 'https://img.icons8.com/color/144/ice-cream-cone.png';
+const getCategoryIconEdit = (category: string, name: string = '') => {
+    const itemName = (name || '').toLowerCase();
+    // Sundae agora usa a mesma imagem do Copinho
+    if (category === 'Sundae') return 'https://img.icons8.com/color/144/ice-cream-bowl.png';
+    if (['Casquinha', 'Cascão', 'Cascão Trufado'].includes(category)) return 'https://img.icons8.com/color/144/ice-cream-cone.png';
+    if (category === 'Milkshake') return 'https://img.icons8.com/color/144/milkshake.png';
+    if (category === 'Copinho') return 'https://img.icons8.com/color/144/ice-cream-bowl.png';
+    if (category === 'Bebidas') return 'https://img.icons8.com/color/144/soda-bottle.png';
+    // Adicionais agora usa a mesma imagem da Nutella
+    if (category === 'Adicionais' || itemName.includes('nutella') || itemName.includes('chocolate')) return 'https://img.icons8.com/color/144/chocolate-spread.png';
     return 'https://img.icons8.com/color/144/ice-cream.png';
 };
 
@@ -414,7 +422,7 @@ const IceCreamModule: React.FC<IceCreamModuleProps> = ({
                     <div className="flex items-center gap-1 mt-0.5">
                         <p className="text-[7px] font-black text-gray-400 uppercase tracking-widest leading-none">Unidade</p>
                         {isAdmin ? (
-                            <select value={effectiveStoreId} onChange={(e) => setManualStoreId(e.target.value)} className="bg-transparent border-none text-[8px] font-black text-blue-600 uppercase outline-none cursor-pointer focus:ring-0 p-0 h-auto min-h-0">
+                            <select value={effectiveStoreId} onChange={(e) => setManualStoreId(e.target.value)} className="bg-transparent border-none text-[8px] font-black text-blue-600 uppercase outline-none focus:ring-0 p-0 h-auto min-h-0">
                                 {[...stores].sort((a, b) => parseInt(a.number || '0') - parseInt(b.number || '0')).map(s => <option key={s.id} value={s.id}>{s.number} - {s.city}</option>)}
                             </select>
                         ) : <span className="text-[8px] font-black text-blue-600 uppercase">{stores.find(s => s.id === effectiveStoreId)?.number} - {stores.find(s => s.id === effectiveStoreId)?.city}</span>}
@@ -798,7 +806,7 @@ const IceCreamModule: React.FC<IceCreamModuleProps> = ({
                                     <button onClick={() => onDeleteItem(item.id)} className="p-2 bg-red-50 text-red-600 rounded-lg hover:bg-red-100"><Trash size={14}/></button>
                                 </div>
                                 <div className="w-16 h-16 bg-gray-50 rounded-2xl mb-4 flex items-center justify-center overflow-hidden shrink-0">
-                                    <img src={item.image_url || getCategoryIconEdit(item.category)} className="w-full h-full object-cover p-2" />
+                                    <img src={item.image_url || getCategoryIconEdit(item.category, item.name)} className="w-full h-full object-contain p-2" />
                                 </div>
                                 <h4 className="text-xs font-black text-blue-950 uppercase italic tracking-tighter mb-1 truncate pr-16">{item.name}</h4>
                                 <p className="text-[9px] font-bold text-gray-400 uppercase mb-3">{item.category}</p>

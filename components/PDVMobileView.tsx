@@ -37,20 +37,19 @@ const PDVMobileView: React.FC<PDVMobileViewProps> = (props) => {
     const [step, setStep] = useState<'categories' | 'products' | 'cart'>('categories');
     const [amountPaid, setAmountPaid] = useState('');
 
-    // Ícones Dinâmicos com Fallback
+    // Ícones Dinâmicos Profissionais
     const getCategoryImage = (category: string, name: string) => {
         const itemName = (name || '').toLowerCase();
-        if (['Sundae', 'Casquinha', 'Cascão', 'Cascão Trufado'].includes(category)) return 'https://img.icons8.com/color/144/ice-cream-cone.png';
-        if (itemName.includes('nutella') || itemName.includes('chocolate')) return 'https://img.icons8.com/color/144/chocolate-spread.png';
+        // Sundae agora usa a mesma imagem do Copinho
+        if (category === 'Sundae') return 'https://img.icons8.com/color/144/ice-cream-bowl.png';
+        if (['Casquinha', 'Cascão', 'Cascão Trufado'].includes(category)) return 'https://img.icons8.com/color/144/ice-cream-cone.png';
+        if (category === 'Milkshake') return 'https://img.icons8.com/color/144/milkshake.png';
+        if (category === 'Copinho') return 'https://img.icons8.com/color/144/ice-cream-bowl.png';
+        if (category === 'Bebidas') return 'https://img.icons8.com/color/144/soda-bottle.png';
+        // Adicionais agora usa a mesma imagem da Nutella
+        if (category === 'Adicionais' || itemName.includes('nutella') || itemName.includes('chocolate')) return 'https://img.icons8.com/color/144/chocolate-spread.png';
         if (itemName.includes('água')) return 'https://img.icons8.com/color/144/water-bottle.png';
-        
-        const icons: Record<string, string> = {
-            'Milkshake': 'https://img.icons8.com/color/144/milkshake.png',
-            'Copinho': 'https://img.icons8.com/color/144/ice-cream-bowl.png',
-            'Bebidas': 'https://img.icons8.com/color/144/natural-food.png',
-            'Adicionais': 'https://img.icons8.com/color/144/sugar-bowl.png'
-        };
-        return icons[category] || 'https://img.icons8.com/color/144/ice-cream.png';
+        return 'https://img.icons8.com/color/144/ice-cream.png';
     };
 
     const handleMobileAddToCart = (item: IceCreamItem) => {
@@ -157,7 +156,9 @@ const PDVMobileView: React.FC<PDVMobileViewProps> = (props) => {
                                 onClick={() => { props.setSelectedCategory(cat as any); setStep('products'); }} 
                                 className="bg-white rounded-[28px] p-6 shadow-[4px_4px_10px_rgba(0,0,0,0.03)] border border-gray-50 flex flex-col items-center gap-3 active:scale-95 transition-all"
                             >
-                                <img src={getCategoryImage(cat, cat)} className="w-14 h-14 object-contain" alt={cat} />
+                                <div className="w-16 h-16 flex items-center justify-center">
+                                    <img src={getCategoryImage(cat, cat)} className="w-full h-full object-contain" alt={cat} />
+                                </div>
                                 <span className="font-black uppercase text-[10px] text-blue-950 tracking-tighter">{cat}</span>
                             </button>
                         ))}
@@ -172,11 +173,11 @@ const PDVMobileView: React.FC<PDVMobileViewProps> = (props) => {
                                 onClick={() => handleMobileAddToCart(item)} 
                                 className="w-full bg-white p-4 rounded-[24px] shadow-sm border border-gray-100 flex items-center gap-4 active:scale-95 transition-all"
                             >
-                                <div className="w-16 h-16 bg-[#F1F3F6] rounded-2xl flex items-center justify-center shrink-0">
-                                    <img src={item.image_url || getCategoryImage(item.category, item.name)} className="w-10 h-10 object-contain" alt={item.name} />
+                                <div className="w-16 h-16 bg-[#F1F3F6] rounded-2xl flex items-center justify-center shrink-0 overflow-hidden">
+                                    <img src={item.image_url || getCategoryImage(item.category, item.name)} className="w-full h-full object-contain p-2" alt={item.name} />
                                 </div>
                                 <div className="text-left flex-1">
-                                    <p className="font-black uppercase italic text-xs text-blue-950">{item.name}</p>
+                                    <p className="font-black uppercase italic text-xs text-blue-950 leading-tight">{item.name}</p>
                                     <p className="text-[11px] font-bold text-blue-600 mt-1">{formatCurrency(item.price)}</p>
                                 </div>
                                 <div className="bg-[#F8F9FA] p-2 rounded-xl border border-gray-100"><Plus size={18} className="text-blue-900" /></div>

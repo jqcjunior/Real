@@ -2,25 +2,19 @@
 import React from 'react';
 import { formatCurrency } from '../constants';
 
-// Lógica de imagens trazida para cá para ficar independente
+// Lógica de imagens otimizada para alta resolução e fidelidade visual
 const getCategoryImage = (category: string, name: string) => {
     const itemName = name.toLowerCase();
-    if (['Sundae', 'Casquinha', 'Cascão', 'Cascão Trufado'].includes(category)) {
-        return 'https://img.icons8.com/color/144/ice-cream-cone.png';
-    }
-    if (itemName.includes('nutella') || itemName.includes('calda') || itemName.includes('chocolate')) {
-        return 'https://img.icons8.com/color/144/chocolate-spread.png';
-    }
-    if (itemName.includes('água') || itemName.includes('agua')) {
-        return 'https://img.icons8.com/color/144/water-bottle.png';
-    }
-    const icons: Record<string, string> = {
-        'Milkshake': 'https://img.icons8.com/color/144/milkshake.png',
-        'Copinho': 'https://img.icons8.com/color/144/ice-cream-bowl.png',
-        'Bebidas': 'https://img.icons8.com/color/144/natural-food.png',
-        'Adicionais': 'https://img.icons8.com/color/144/sugar-bowl.png'
-    };
-    return icons[category] || 'https://img.icons8.com/color/144/ice-cream.png';
+    // Sundae agora usa a mesma imagem do Copinho
+    if (category === 'Sundae') return 'https://img.icons8.com/color/144/ice-cream-bowl.png';
+    if (['Casquinha', 'Cascão', 'Cascão Trufado'].includes(category)) return 'https://img.icons8.com/color/144/ice-cream-cone.png';
+    if (category === 'Milkshake') return 'https://img.icons8.com/color/144/milkshake.png';
+    if (category === 'Copinho') return 'https://img.icons8.com/color/144/ice-cream-bowl.png';
+    if (category === 'Bebidas') return 'https://img.icons8.com/color/144/soda-bottle.png';
+    // Adicionais agora usa a mesma imagem da Nutella
+    if (category === 'Adicionais' || itemName.includes('nutella') || itemName.includes('chocolate')) return 'https://img.icons8.com/color/144/chocolate-spread.png';
+    if (itemName.includes('água') || itemName.includes('agua')) return 'https://img.icons8.com/color/144/water-bottle.png';
+    return 'https://img.icons8.com/color/144/ice-cream.png';
 };
 
 interface ProductGridProps {
@@ -34,7 +28,7 @@ export const ProductGrid: React.FC<ProductGridProps> = ({ items, selectedCategor
     const displayItems = items.filter(i => (!selectedCategory || i.category === selectedCategory) && i.active);
 
     return (
-        // AQUI ESTÁ A MÁGICA DA RESPONSIVIDADE (2 colunas no celular -> até 7 em telas gigantes)
+        // MÁGICA DA RESPONSIVIDADE COM GRID ADAPTATIVO
         <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6 2xl:grid-cols-7 gap-3 overflow-y-auto no-scrollbar pr-2 pb-10 content-start">
             {displayItems.map(item => (
                 <button 
@@ -45,7 +39,7 @@ export const ProductGrid: React.FC<ProductGridProps> = ({ items, selectedCategor
                     <div className="w-full aspect-square bg-gray-50 rounded-xl mb-2 flex items-center justify-center overflow-hidden relative">
                         <img 
                             src={item.image_url || getCategoryImage(item.category, item.name)} 
-                            className="w-full h-full object-contain p-1 transition-transform duration-300 group-hover:scale-110" 
+                            className="w-full h-full object-contain p-2 transition-transform duration-300 group-hover:scale-110" 
                             alt={item.name}
                             onError={(e) => {
                                 (e.target as HTMLImageElement).src = 'https://img.icons8.com/color/144/ice-cream.png';
