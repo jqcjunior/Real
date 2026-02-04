@@ -1,3 +1,4 @@
+
 import React, { useState, useMemo } from 'react';
 import { User, UserRole } from '../types';
 import { X, FileSpreadsheet, DollarSign, ChevronRight, Loader2, Download, Package, ArrowLeft, Send, CheckCircle2, Building2, Layers } from 'lucide-react';
@@ -61,7 +62,8 @@ const SpreadsheetOrderModule: React.FC<SpreadsheetOrderModuleProps> = ({ user, o
   }, [itemData.cost, headerData.discount, headerData.markup]);
 
   const totalPairsPerStore = useMemo(() => {
-    return Object.values(grade).reduce((acc, val) => acc + (val || 0), 0);
+    // Fix: Explicitly type acc and val as numbers to avoid "unknown" type errors in reduce
+    return Object.values(grade).reduce((acc: number, val: number) => acc + (val || 0), 0);
   }, [grade]);
 
   const totalOrderPairs = useMemo(() => {

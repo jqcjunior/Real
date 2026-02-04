@@ -57,7 +57,8 @@ const GoalRegistration: React.FC<GoalRegistrationProps> = ({
   );
 
   const networkTotals = useMemo(() => {
-    return Object.values(formData).reduce((acc, curr) => ({
+    // Fix: Explicitly type acc and curr to resolve "unknown" type errors in reduce
+    return Object.values(formData).reduce((acc: { revenue: number; items: number }, curr: any) => ({
       revenue: acc.revenue + (Number(curr.revenueTarget) || 0),
       items: acc.items + (Number(curr.itemsTarget) || 0)
     }), { revenue: 0, items: 0 });
@@ -117,7 +118,8 @@ const GoalRegistration: React.FC<GoalRegistrationProps> = ({
     setSaveStatus('saving');
     try {
       // Parseamos os valores de volta para número antes de enviar ao banco
-      const dataToSave = Object.values(formData).map(item => ({
+      // Fix: Explicitly type item as any to avoid "unknown" type errors and allow spreading
+      const dataToSave = Object.values(formData).map((item: any) => ({
           ...item,
           paTarget: parseFloat(String(item.paTarget).replace(',', '.')) || 0,
           revenueTarget: Number(item.revenueTarget) || 0,

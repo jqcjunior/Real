@@ -235,6 +235,22 @@ const PDVMobileView: React.FC<PDVMobileViewProps> = (props) => {
                                 </div>
                             )}
 
+                            {props.paymentMethod === 'Misto' && (
+                                <div className="p-4 bg-blue-50 rounded-2xl space-y-2 animate-in zoom-in duration-200 border border-blue-100">
+                                    {(['Pix', 'Dinheiro', 'Cartão', 'Fiado'] as const).map(m => (
+                                        <div key={m} className="flex justify-between items-center bg-white px-3 py-2 rounded-xl border border-blue-50 shadow-sm">
+                                            <label className="text-[10px] font-black text-gray-400 uppercase">{m}</label>
+                                            <input 
+                                                value={props.mistoValues[m] || ''} 
+                                                onChange={e => props.setMistoValues({...props.mistoValues, [m]: e.target.value})} 
+                                                placeholder="0,00" 
+                                                className="w-24 text-right font-black text-blue-900 text-xs outline-none bg-transparent" 
+                                            />
+                                        </div>
+                                    ))}
+                                </div>
+                            )}
+
                             {(props.paymentMethod === 'Fiado' || (props.paymentMethod === 'Misto' && props.mistoValues?.['Fiado'])) && (
                                 <div className="space-y-2 animate-in slide-in-from-top-2 duration-200">
                                     <label className="text-[9px] font-black text-red-500 uppercase ml-1">Colaborador</label>
