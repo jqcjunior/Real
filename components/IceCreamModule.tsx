@@ -8,9 +8,11 @@ import {
     Users as UsersIcon, ShieldCheck, UserCog, Clock, FileBarChart, Users, Handshake, AlertTriangle, Zap, Beaker, Layers, Clipboard, Edit3, Filter, ChevronDown, FilePieChart, Briefcase, Warehouse, PencilLine, Truck, ChevronUp
 } from 'lucide-react';
 import PDVMobileView from './PDVMobileView';
-import { ProductGrid } from './ProductGrid'; // <--- Importando o componente novo
+import { ProductGrid } from './ProductGrid'; 
 import { supabase } from '../services/supabaseClient';
 import { PermissionKey } from '../security/permissions';
+import { getPermissionColumn } from '../permissions.utils';
+import { GELATERIA_PERMISSIONS_MAP, getVisibleTabs } from '../gelateria.permissions';
 
 interface IceCreamModuleProps {
   user: User;
@@ -20,7 +22,8 @@ interface IceCreamModuleProps {
   sales: IceCreamDailySale[];
   finances: IceCreamTransaction[];
   promissories: IceCreamPromissoryNote[];
-  can: (p: PermissionKey) => boolean;
+  can: (p: PermissionKey | string | string[]) => boolean;
+  pagePermissions?: any[];
   onAddSales: (sale: IceCreamDailySale[]) => Promise<void>;
   onCancelSale: (id: string, reason?: string) => Promise<void>;
   onUpdatePrice: (id: string, price: number) => Promise<void>;
@@ -35,9 +38,6 @@ interface IceCreamModuleProps {
 
 const PRODUCT_CATEGORIES: IceCreamCategory[] = ['Sundae', 'Milkshake', 'Casquinha', 'Cascão', 'Cascão Trufado', 'Copinho', 'Bebidas', 'Adicionais'].sort() as IceCreamCategory[];
 
-// A função getCategoryImage foi removida daqui pois agora vive dentro do ProductGrid.tsx
-// mas mantemos uma versão simplificada para a lista de edição de produtos se necessário,
-// ou usamos o import do ProductGrid se quiséssemos. Para simplificar, deixo a lógica local para a lista de edição.
 const getCategoryIconEdit = (category: string) => {
     if (['Sundae', 'Casquinha', 'Cascão'].includes(category)) return 'https://img.icons8.com/color/144/ice-cream-cone.png';
     return 'https://img.icons8.com/color/144/ice-cream.png';
@@ -51,7 +51,7 @@ const MONTHS = [
 ];
 
 const IceCreamModule: React.FC<IceCreamModuleProps> = ({ 
-    user, stores = [], items = [], stock = [], sales = [], finances = [], promissories = [], can,
+    user, stores = [], items = [], stock = [], sales = [], finances = [], promissories = [], can, pagePermissions = [],
     onAddSales, onCancelSale, onUpdatePrice, onAddTransaction, onAddItem, onSaveProduct, onDeleteItem, onUpdateStock,
     liquidatePromissory, onDeleteStockItem
 }) => {
@@ -106,6 +106,27 @@ const IceCreamModule: React.FC<IceCreamModuleProps> = ({
     ? (manualStoreId || user.storeId || (stores.length > 0 ? stores[0].id : ''))
     : (user.storeId || (stores.length > 0 ? stores[0].id : ''));
   
+  const visibleTabs = useMemo(() => {
+    const tabs = [
+      { id: 'PDV', label: 'PDV', icon: ShoppingCart, view: 'pdv' },
+      { id: 'ESTOQUE', label: 'Estoque', icon: Package, view: 'estoque' },
+      { id: 'DRE_DIARIO', label: 'DRE Diário', icon: Clock, view: 'dre_diario' },
+      { id: 'DRE_MENSAL', label: 'DRE Mensal', icon: FileBarChart, view: 'dre_mensal' },
+      { id: 'AUDIT', label: 'Auditoria', icon: History, view: 'audit' },
+      { id: 'CONFIG', label: 'Produtos', icon: PackagePlus, view: 'produtos' }
+    ];
+    const allowedIds = getVisibleTabs(pagePermissions, user.role);
+    return tabs.filter(tab => allowedIds.includes(tab.id));
+  }, [pagePermissions, user.role]);
+
+  const existingBuyerNames = useMemo(() => {
+    const names = new Set<string>();
+    (sales || []).forEach(s => {
+      if (s.buyer_name) names.add(s.buyer_name);
+    });
+    return Array.from(names);
+  }, [sales]);
+
   const cartTotal = useMemo(() => cart.reduce((acc, curr) => acc + curr.totalValue, 0), [cart]);
 
   const changeDue = useMemo(() => {
@@ -199,7 +220,7 @@ const IceCreamModule: React.FC<IceCreamModuleProps> = ({
                   const desc = f.description?.toLowerCase() || '';
                   if (desc.includes('via pix')) monthMethods.pix += Number(f.value);
                   else if (desc.includes('via dinheiro')) monthMethods.money += Number(f.value);
-                  else if (desc.includes('via cartão')) monthMethods.card += Number(f.value);
+                  else if (desc.includes('via cartão')) dayMethods.card += Number(f.value);
                   else if (desc.includes('via fiado')) { monthMethods.fiado += Number(f.value); monthFiadoDetails.push({ ...s, totalValue: f.value, paymentMethod: 'Fiado' }); }
               });
           }
@@ -401,19 +422,45 @@ const IceCreamModule: React.FC<IceCreamModuleProps> = ({
                 </div>
             </div>
             <div className="flex bg-gray-100 p-0.5 rounded-xl overflow-x-auto no-scrollbar w-full md:w-auto max-w-full">
-                <button onClick={() => setActiveTab('pdv')} className={`flex-1 md:flex-none px-3 py-2 rounded-lg text-[8px] md:text-[9px] font-black uppercase transition-all flex items-center justify-center gap-1.5 whitespace-nowrap ${activeTab === 'pdv' ? 'bg-white text-blue-900 shadow-sm border border-blue-100' : 'text-gray-500 hover:text-blue-900 hover:bg-white/50'}`}><ShoppingCart size={12}/> PDV</button>
-                <button onClick={() => setActiveTab('estoque')} className={`flex-1 md:flex-none px-3 py-2 rounded-lg text-[8px] md:text-[9px] font-black uppercase transition-all flex items-center justify-center gap-1.5 whitespace-nowrap ${activeTab === 'estoque' ? 'bg-white text-blue-900 shadow-sm border border-blue-100' : 'text-gray-500 hover:text-blue-900 hover:bg-white/50'}`}><Package size={12}/> Estoque</button>
-                <button onClick={() => setActiveTab('dre_diario')} className={`flex-1 md:flex-none px-3 py-2 rounded-lg text-[8px] md:text-[9px] font-black uppercase transition-all flex items-center justify-center gap-1.5 whitespace-nowrap ${activeTab === 'dre_diario' ? 'bg-white text-blue-900 shadow-sm border border-blue-100' : 'text-gray-500 hover:text-blue-900 hover:bg-white/50'}`}><Clock size={12}/> DRE Diário</button>
-                <button onClick={() => setActiveTab('dre_mensal')} className={`flex-1 md:flex-none px-3 py-2 rounded-lg text-[8px] md:text-[9px] font-black uppercase transition-all flex items-center justify-center gap-1.5 whitespace-nowrap ${activeTab === 'dre_mensal' ? 'bg-white text-purple-900 shadow-sm border border-purple-100' : 'text-gray-500 hover:text-purple-900 hover:bg-white/50'}`}><FileBarChart size={12}/> DRE Mensal</button>
-                <button onClick={() => setActiveTab('audit')} className={`flex-1 md:flex-none px-3 py-2 rounded-lg text-[8px] md:text-[9px] font-black uppercase transition-all flex items-center justify-center gap-1.5 whitespace-nowrap ${activeTab === 'audit' ? 'bg-white text-blue-900 shadow-sm border border-blue-100' : 'text-gray-500 hover:text-blue-900 hover:bg-white/50'}`}><History size={12}/> Auditoria</button>
-                <button onClick={() => setActiveTab('produtos')} className={`flex-1 md:flex-none px-3 py-2 rounded-lg text-[8px] md:text-[9px] font-black uppercase transition-all flex items-center justify-center gap-1.5 whitespace-nowrap ${activeTab === 'produtos' ? 'bg-white text-blue-900 shadow-sm border border-blue-100' : 'text-gray-500 hover:text-blue-900 hover:bg-white/50'}`}><PackagePlus size={12}/> Produtos</button>
+                {visibleTabs.map(tab => (
+                    <button 
+                        key={tab.id} 
+                        onClick={() => setActiveTab(tab.view as any)} 
+                        className={`flex-1 md:flex-none px-3 py-2 rounded-lg text-[8px] md:text-[9px] font-black uppercase transition-all flex items-center justify-center gap-1.5 whitespace-nowrap ${activeTab === tab.view ? 'bg-white text-blue-900 shadow-sm border border-blue-100' : 'text-gray-400 hover:text-blue-900 hover:bg-white/50'}`}
+                    >
+                        <tab.icon size={12}/> {tab.label}
+                    </button>
+                ))}
             </div>
         </div>
 
         <div className="flex-1 overflow-y-auto no-scrollbar relative">
             {activeTab === 'pdv' && (
                 <div className="h-full">
-                    <div className="lg:hidden h-full"><PDVMobileView user={user} items={filteredItems} cart={cart} setCart={setCart} selectedCategory={selectedCategory} setSelectedCategory={setSelectedCategory} selectedProductName={null} setSelectedProductName={() => {}} selectedItem={null} setSelectedItem={() => {}} selectedMl="" setSelectedMl={() => {}} quantity={1} setQuantity={() => {}} paymentMethod={paymentMethod} setPaymentMethod={setPaymentMethod} buyerName={buyerName} setBuyerName={setBuyerName} mistoValues={mistoValues} setMistoValues={setMistoValues} onAddSales={onAddSales} onCancelSale={async (code) => { await onCancelSale(code); }} onAddTransaction={onAddTransaction} onUpdateStock={onUpdateStock} dailyData={dreStats} handlePrintTicket={handlePrintTicket} isSubmitting={isSubmitting} setIsSubmitting={setIsSubmitting} effectiveStoreId={effectiveStoreId} /></div>
+                    <div className="lg:hidden h-full">
+                        <PDVMobileView 
+                            user={user} 
+                            items={filteredItems} 
+                            cart={cart} 
+                            setCart={setCart} 
+                            selectedCategory={selectedCategory} 
+                            setSelectedCategory={setSelectedCategory} 
+                            paymentMethod={paymentMethod} 
+                            setPaymentMethod={setPaymentMethod} 
+                            buyerName={buyerName} 
+                            setBuyerName={setBuyerName} 
+                            mistoValues={mistoValues} 
+                            setMistoValues={setMistoValues} 
+                            onAddSales={onAddSales} 
+                            onAddTransaction={onAddTransaction} 
+                            onUpdateStock={onUpdateStock} 
+                            handlePrintTicket={handlePrintTicket} 
+                            isSubmitting={isSubmitting} 
+                            setIsSubmitting={setIsSubmitting} 
+                            effectiveStoreId={effectiveStoreId} 
+                            existingBuyerNames={existingBuyerNames}
+                        />
+                    </div>
                     <div className="hidden lg:grid grid-cols-12 gap-4 p-6 max-w-[1500px] mx-auto h-full overflow-hidden">
                         <div className="col-span-8 flex flex-col h-full overflow-hidden">
                             <div className="flex gap-1.5 overflow-x-auto no-scrollbar pb-3">
@@ -421,7 +468,6 @@ const IceCreamModule: React.FC<IceCreamModuleProps> = ({
                                 {PRODUCT_CATEGORIES.map(cat => <button key={cat} onClick={() => setSelectedCategory(cat)} className={`px-5 py-2 rounded-xl font-black uppercase text-[10px] border-2 transition-all whitespace-nowrap ${selectedCategory === cat ? 'bg-blue-900 text-white border-blue-900 shadow-lg' : 'bg-white text-gray-400 border-gray-100'}`}>{cat}</button>)}
                             </div>
                             
-                            {/* Componente ProductGrid Importado e Usado Aqui */}
                             <ProductGrid 
                                 items={filteredItems} 
                                 selectedCategory={selectedCategory}
@@ -460,7 +506,7 @@ const IceCreamModule: React.FC<IceCreamModuleProps> = ({
                                 {paymentMethod === 'Dinheiro' && (
                                     <div className="bg-green-50 p-4 rounded-2xl border-2 border-green-200 space-y-3">
                                         <div className="flex justify-between items-center"><label className="text-[10px] font-black text-green-700 uppercase">Valor Recebido</label><input value={amountReceived} onChange={e => setAmountReceived(e.target.value)} placeholder="0,00" className="w-32 text-right bg-white border-none rounded-xl p-3 font-black text-green-700 outline-none text-lg shadow-inner" /></div>
-                                        <div className="flex justify-between items-baseline border-t border-green-100 pt-2"><span className="text-[10px] font-black text-green-600 uppercase">Troco</span><span className="text-2xl font-black text-green-700 italic">{formatCurrency(changeDue)}</span></div>
+                                        <div className="flex justify-between items-baseline border-t border-green-100 pt-2"><span className="text-[10px] font-black text-green-700 uppercase">Troco</span><span className="text-2xl font-black text-green-700 italic">{formatCurrency(changeDue)}</span></div>
                                     </div>
                                 )}
                                 {paymentMethod === 'Misto' && (
@@ -476,7 +522,6 @@ const IceCreamModule: React.FC<IceCreamModuleProps> = ({
                 </div>
             )}
 
-            {/* Resto das abas (DRE Diário, DRE Mensal, Estoque, Auditoria, Produtos) mantidas iguais */}
             {activeTab === 'dre_diario' && (
                 <div className="p-4 md:p-8 space-y-6 animate-in fade-in duration-300 max-w-5xl mx-auto pb-20">
                     <div className="bg-white p-8 rounded-[40px] shadow-sm border border-gray-100 flex flex-col md:flex-row justify-between items-center gap-6">
@@ -503,7 +548,6 @@ const IceCreamModule: React.FC<IceCreamModuleProps> = ({
                                 <div className="bg-gray-950 p-6 rounded-[32px] text-white shadow-xl flex flex-col justify-between"><div><span className="text-[9px] font-black text-blue-400 uppercase tracking-widest">Saldo Líquido</span><p className="text-3xl font-black italic mt-4">{formatCurrency(dreStats.dayIn - dreStats.dayOut)}</p></div></div>
                             </div>
 
-                            {/* INCREMENTO: Resumo de Itens Vendidos (Rodapé) */}
                             <div className="bg-white p-8 rounded-[40px] border border-gray-100 shadow-sm">
                                 <h4 className="text-[10px] font-black text-gray-400 uppercase tracking-widest mb-6 flex items-center gap-2">
                                     <ListChecks size={16} className="text-blue-600" /> Resumo de Itens Vendidos no Dia
@@ -526,7 +570,6 @@ const IceCreamModule: React.FC<IceCreamModuleProps> = ({
                                 </div>
                             </div>
 
-                            {/* INCREMENTO: Detalhamento de Saídas (Despesas/Sangrias) */}
                             <div className="bg-white p-8 rounded-[40px] border border-gray-100 shadow-sm">
                                 <h4 className="text-[10px] font-black text-gray-400 uppercase tracking-widest mb-6 flex items-center gap-2">
                                     <ArrowDownCircle size={16} className="text-red-500" /> Detalhamento de Saídas (Sangrias)
@@ -581,7 +624,7 @@ const IceCreamModule: React.FC<IceCreamModuleProps> = ({
                             </div>
                         </div>
                         <div className="lg:col-span-4 bg-gray-950 p-8 rounded-[40px] text-white shadow-2xl flex flex-col h-fit">
-                            <h4 className="text-[10px] font-black text-blue-400 uppercase tracking-[0.2em] mb-6 flex items-center gap-2"><UsersIcon size={16}/> Partilha de Lucros</h4>
+                            <h4 className="text-[10px] font-black text-blue-400 uppercase tracking-[0.2em] mb-6 flex items-center gap-3"><UsersIcon size={16}/> Partilha de Lucros</h4>
                             <div className="space-y-4">{partners.map(p => <div key={p.id} className="border-b border-white/5 pb-4 last:border-0"><div className="flex justify-between items-baseline mb-1"><span className="text-[10px] font-black uppercase italic tracking-tighter">{p.partner_name}</span><span className="text-[9px] font-bold text-blue-400">{p.percentage}%</span></div><p className="text-xl font-black italic tracking-tighter text-blue-100">{formatCurrency((dreStats.profit * p.percentage) / 100)}</p></div>)}</div>
                             {partners.length === 0 && <p className="text-[9px] text-gray-600 uppercase text-center py-10 italic">Nenhuma partilha configurada</p>}
                         </div>
@@ -706,7 +749,6 @@ const IceCreamModule: React.FC<IceCreamModuleProps> = ({
                                     <tr key={saleGroup.saleCode} className={`hover:bg-blue-50/30 transition-all ${saleGroup.status === 'canceled' ? 'opacity-50 grayscale italic line-through' : ''}`}>
                                         <td className="px-8 py-5"><div className="text-xs font-black text-blue-950">#{saleGroup.saleCode}</div><div className="text-[8px] text-gray-400 uppercase mt-0.5">{new Date(saleGroup.createdAt).toLocaleString('pt-BR')}</div></td>
                                         
-                                        {/* CÉLULA INCREMENTADA COM BAIXAS DE ESTOQUE VINCULADAS */}
                                         <td className="px-8 py-5">
                                             {saleGroup.items.map((item: any, idx: number) => {
                                                 const itemDef = items.find(it => it.id === item.itemId) || items.find(it => it.name === item.productName);

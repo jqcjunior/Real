@@ -108,7 +108,13 @@ interface CotasManagementProps {
   onSaveSettings: (settings: CotaSettings) => Promise<void>;
   onSaveDebts: (debt: CotaDebts) => Promise<void>;
   onDeleteDebt: (id: string) => Promise<void>;
-  onUpdateMixParameter?: (id: string | null, storeId: string, category: string, percent: number) => Promise<void>;
+  onUpdateMixParameter?: (
+  id: string | null,
+  storeId: string,
+  category: string,
+  percent: number,
+  semester: number
+) => Promise<void>;
 }
 
 export const CotasManagement: React.FC<CotasManagementProps> = ({ 
@@ -296,10 +302,14 @@ export const CotasManagement: React.FC<CotasManagementProps> = ({
       });
 
       return segments.map(segName => {
-          const segParam = mixParameters.find(m => 
-              (m.store_id === viewStoreId || m.storeId === viewStoreId) &&
-              normalizeText(m.category_name) === normalizeText(segName)
-          );
+        const segParam = mixParameters.find(m => {
+    if (m.store_id !== viewStoreId && m.storeId !== viewStoreId) return false;
+    if (normalizeText(m.category_name) !== normalizeText(segName)) return false;
+
+    if (mixFilterSemester === 'all') return true;
+    return m.semester === Number(mixFilterSemester);
+});
+
           const metaPercent = segParam?.percentage || 0;
 
           const subCats = (productCategories || []).filter(c => {
@@ -372,15 +382,32 @@ export const CotasManagement: React.FC<CotasManagementProps> = ({
       });
   }, [productCategories, mixParameters, cotas, viewStoreId, storeSettings, mixFilterSemester]);
 
-  const handleUpdateMix = async (category: string, value: string) => {
-      if (!onUpdateMixParameter) return;
-      const percent = parseFloat(value.replace(',', '.')) || 0;
-      const existing = mixParameters.find(p => 
-          (p.store_id === viewStoreId || p.storeId === viewStoreId) &&
-          normalizeText(p.category_name) === normalizeText(category)
-      );
-      await onUpdateMixParameter(existing?.id || null, viewStoreId, category, percent);
-  };
+const handleUpdateMix = async (category: string, value: string) => {
+    if (!onUpdateMixParameter) return;
+
+    // Impede salvar quando estiver em "Tudo"
+    if (mixFilterSemester === 'all') {
+        alert('Selecione um semestre para editar o mix');
+        return;
+    }
+
+    const percent = parseFloat(value.replace(',', '.')) || 0;
+    const currentSemester = Number(mixFilterSemester);
+
+    const existing = mixParameters.find(p => 
+        (p.store_id === viewStoreId || p.storeId === viewStoreId) &&
+        normalizeText(p.category_name) === normalizeText(category) &&
+        p.semester === currentSemester
+    );
+
+    await onUpdateMixParameter(
+        existing?.id || null,
+        viewStoreId,
+        category,
+        percent,
+        currentSemester
+    );
+};
 
   const groupedCategories = useMemo(() => {
       const groups: Record<string, QuotaCategory[]> = {};
@@ -449,7 +476,7 @@ export const CotasManagement: React.FC<CotasManagementProps> = ({
     setIsSubmitting(true);
     try {
         for (const [month, valueStr] of Object.entries(semesterDebts)) {
-            const val = parseFloat((valueStr as string).replace(',', '.'));
+            const val = parseFloat((valueStr as string).replace(',', '.')) || 0;
             if (!isNaN(val)) { await onSaveDebts({ storeId: viewStoreId, month: month, value: val }); }
         }
         setActiveForm(null);
@@ -716,9 +743,9 @@ export const CotasManagement: React.FC<CotasManagementProps> = ({
                         ))}
                     </tr>
 
-                    {/* LISTA DE PEDIDOS */}
+                 {/* LISTA DE PEDIDOS */}
                     {consolidated.orders.filter(o => o.status === 'ABERTA' || o.status === 'pending').map(order => {
-                        const role = String(order.createdByRole || '').toUpperCase();
+                        const role = String(order.createdByRole || '').trim().toUpperCase();
                         const isManagerOrder = role === 'GERENTE';
                         const isAcessorio = (order.classification || order.category_name)?.toUpperCase().includes('ACESSÓRIO');
                         const qtyType = isAcessorio ? 'UN' : 'PR';
@@ -727,8 +754,10 @@ export const CotasManagement: React.FC<CotasManagementProps> = ({
                             <tr key={order.id} className="hover:bg-blue-50/50 transition-colors border-b group h-10">
                                 <td className="px-2 text-left sticky left-0 bg-white group-hover:bg-blue-50/50 z-30 shadow-sm overflow-hidden">
                                     <div className="flex items-center gap-1.5">
+                                        {/* BOLINHA: LARANJA SE FOR GERENTE */}
                                         <div className={`w-2 h-2 rounded-full shrink-0 ${isManagerOrder ? 'bg-orange-500' : 'bg-blue-600'} shadow-sm`}></div>
                                         <div className="flex-1 min-w-0">
+                                            {/* TEXTO: LARANJA SE FOR GERENTE */}
                                             <div className={`text-[9px] font-black uppercase italic leading-none mb-0.5 truncate ${isManagerOrder ? 'text-orange-700' : 'text-blue-800'}`}>{order.brand}</div>
                                             <div className="text-[7px] text-gray-900 font-bold uppercase leading-none truncate">
                                                 {order.classification || order.category_name || 'GERAL'} | {order.pairs || 0}{qtyType}
@@ -741,11 +770,15 @@ export const CotasManagement: React.FC<CotasManagementProps> = ({
                                     </div>
                                 </td>
                                 <td className="bg-white sticky left-[160px] z-30 group-hover:bg-blue-50/50 shadow-sm text-center">
-                                    <div className="text-[9px] font-black text-gray-900 italic">{formatCurrency(order.totalValue)}</div>
+                                    <div className={`text-[9px] font-black italic ${isManagerOrder ? 'text-orange-700' : 'text-gray-900'}`}>{formatCurrency(order.totalValue)}</div>
                                 </td>
                                 {timeline.map(m => {
                                     const val = getInstallmentValueForMonth(order, m.key);
-                                    return <td key={m.key} className={`p-0.5 border-r border-gray-50 font-black text-[9px] ${val > 0 ? (isManagerOrder ? 'text-orange-600' : 'text-blue-600') : 'text-gray-100'}`}>{val > 0 ? formatCurrency(val) : ''}</td>;
+                                    return (
+                                        <td key={m.key} className={`p-0.5 border-r border-gray-50 font-black text-[9px] ${val > 0 ? (isManagerOrder ? 'text-orange-600 bg-orange-50/30' : 'text-blue-600') : 'text-gray-100'}`}>
+                                            {val > 0 ? formatCurrency(val) : ''}
+                                        </td>
+                                    );
                                 })}
                             </tr>
                         );

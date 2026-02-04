@@ -1,4 +1,5 @@
 
+
 /* =========================
    ROLES / USUÁRIOS
 ========================= */
@@ -36,6 +37,9 @@ export interface QuotaMixParameter {
   percentage: number;
   semester?: 1 | 2;
   created_at?: string;
+  // Fix: Add store_id and storeId to QuotaMixParameter interface
+  store_id?: string;
+  storeId?: string;
 }
 
 /* =========================
@@ -160,6 +164,9 @@ export interface Store {
   role?: UserRole;
   password?: string;
   passwordResetRequested?: boolean;
+  // Fix: Add missing properties to Store interface
+  has_gelateria?: boolean;
+  state?: string;
 }
 
 /* =========================
@@ -310,6 +317,12 @@ export interface Cota {
   category_id?: string;
   category_name?: string;
   parent_category?: string;
+}
+
+export interface CotaSettings {
+  storeId: string;
+  budgetValue: number;
+  managerPercent: number;
 }
 
 export interface CotaSettings {

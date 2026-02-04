@@ -4,7 +4,6 @@ import {
     IceCreamItem, IceCreamDailySale, IceCreamDailySale as IceCreamSale, IceCreamTransaction, CashRegisterClosure, ProductPerformance, Receipt, IceCreamStock, IceCreamPromissoryNote, AgendaItem, DownloadItem, CashError, SystemLog, MonthlyGoal
 } from './types';
 import { supabase } from './services/supabaseClient';
-import { useAuthorization } from './security/useAuthorization';
 import { BRAND_LOGO } from './constants';
 
 // Módulos
@@ -14,14 +13,12 @@ import DashboardManager from './components/DashboardManager';
 import GoalRegistration from './components/GoalRegistration';
 import DashboardPurchases from './components/DashboardPurchases';
 import IceCreamModule from './components/IceCreamModule';
-import FinancialModule from './components/FinancialModule';
-import CashErrorsModule from './components/CashErrorsModule';
+import CashRegisterModule from './components/CashRegisterModule';
 import AgendaSystem from './components/AgendaSystem';
 import DownloadsModule from './components/DownloadsModule';
 import AdminSettings from './components/AdminSettings';
 import AdminUsersManagement from './components/AdminUsersManagement';
 import AccessControlManagement from './components/AccessControlManagement';
-import CashRegisterModule from './components/CashRegisterModule';
 import PurchaseAuthorization from './components/PurchaseAuthorization';
 import TermoAutorizacao from './components/TermoAutorizacao';
 import SystemAudit from './components/SystemAudit';
@@ -39,8 +36,69 @@ const App: React.FC = () => {
     const [currentView, setCurrentView] = useState<string>(''); 
     const [isLoading, setIsLoading] = useState(true);
     const [isSidebarOpen, setIsSidebarOpen] = useState(false);
+    const [userPermissions, setUserPermissions] = useState<string[]>([]);
+    const [pagePermissions, setPagePermissions] = useState<any[]>([]);
 
-    // States de Dados Consolidados
+    // Função de verificação de permissão aprimorada
+    const can = (perm: string | string[]) => {
+        if (user?.role === UserRole.ADMIN) return true;
+        if (!userPermissions || userPermissions.length === 0) return false;
+        
+        if (Array.isArray(perm)) {
+            return perm.some(p => userPermissions.includes(p));
+        }
+        return userPermissions.includes(perm);
+    };
+
+    const fetchPermissions = async (role: UserRole) => {
+        // Busca permissões brutas para governança de abas
+        const { data: rawPerms } = await supabase.from('page_permissions').select('*');
+        if (rawPerms) setPagePermissions(rawPerms);
+
+        if (role === UserRole.ADMIN) {
+            setUserPermissions([]); 
+            return;
+        }
+        
+        let columnToCheck = '';
+        if (role === UserRole.MANAGER) columnToCheck = 'allow_manager';
+        else if (role === UserRole.CASHIER) columnToCheck = 'allow_cashier';
+        else if (role === UserRole.ICE_CREAM) columnToCheck = 'allow_sorvete';
+        
+        if (!columnToCheck) return;
+
+        const { data, error } = await supabase
+            .from('page_permissions')
+            .select('page_key')
+            .eq(columnToCheck, true);
+
+        if (error) {
+            console.error("Erro ao carregar governança:", error);
+            return;
+        }
+
+        if (data) {
+            setUserPermissions(data.map(p => p.page_key));
+        }
+    };
+
+    useEffect(() => {
+        if (!user) return;
+        const channel = supabase
+            .channel('realtime-permissions')
+            .on(
+                'postgres_changes',
+                { event: '*', schema: 'public', table: 'page_permissions' },
+                () => fetchPermissions(user.role)
+            )
+            .subscribe();
+
+        return () => {
+            supabase.removeChannel(channel);
+        };
+    }, [user]);
+
+    // States de Dados
     const [stores, setStores] = useState<Store[]>([]);
     const [performanceData, setPerformanceData] = useState<MonthlyPerformance[]>([]);
     const [goalsData, setGoalsData] = useState<MonthlyGoal[]>([]);
@@ -61,8 +119,6 @@ const App: React.FC = () => {
     const [downloads, setDownloads] = useState<DownloadItem[]>([]);
     const [closures, setClosures] = useState<CashRegisterClosure[]>([]);
     const [logs, setLogs] = useState<SystemLog[]>([]);
-
-    const { can } = useAuthorization(user?.role);
 
     const fetchData = async () => {
         try {
@@ -94,74 +150,29 @@ const App: React.FC = () => {
             ]);
 
             if(s) setStores(s);
-            
-            if(p) setPerformanceData(p.map(x => ({ 
-                ...x, 
-                storeId: x.store_id, 
-                revenueTarget: Number(x.revenue_target || 0), 
-                revenueActual: Number(x.revenue_actual || 0), 
-                paTarget: Number(x.pa_target || 0), 
-                ticketTarget: Number(x.ticket_target || 0), 
-                puTarget: Number(x.pu_target || 0), 
-                delinquencyTarget: Number(x.delinquency_target || 2.0), 
-                itemsTarget: Number(x.items_target || 0), 
-                itemsActual: Number(x.items_actual || 0), 
-                itemsPerTicket: Number(x.items_per_ticket || 0), 
-                unitPriceAverage: Number(x.unit_price_average || 0), 
-                averageTicket: Number(x.average_ticket || 0), 
-                delinquencyRate: Number(x.delinquency_rate || 0), 
-                businessDays: Number(x.business_days || 26), 
-                percentMeta: Number(x.percent_meta || 0) 
-            })));
-
-            if(g) setGoalsData(g.map(x => ({ 
-                id: x.id, 
-                storeId: x.store_id, 
-                year: Number(x.year), 
-                month: Number(x.month), 
-                revenueTarget: Number(x.revenue_target || 0), 
-                itemsTarget: Number(x.items_target || 0), 
-                paTarget: Number(x.pa_target || 0), 
-                puTarget: Number(x.pu_target || 0), 
-                ticketTarget: Number(x.ticket_target || 0), 
-                delinquencyTarget: Number(x.delinquency_target || 2.0), 
-                businessDays: Number(x.business_days || 26), 
-                trend: x.trend || 'stable' 
-            })));
-
+            if(p) setPerformanceData(p.map(x => ({ ...x, storeId: x.store_id, revenueTarget: Number(x.revenue_target || 0), revenueActual: Number(x.revenue_actual || 0), paTarget: Number(x.pa_target || 0), ticketTarget: Number(x.ticket_target || 0), puTarget: Number(x.pu_target || 0), delinquencyTarget: Number(x.delinquency_target || 2.0), itemsTarget: Number(x.items_target || 0), itemsActual: Number(x.items_actual || 0), itemsPerTicket: Number(x.items_per_ticket || 0), unitPriceAverage: Number(x.unit_price_average || 0), averageTicket: Number(x.average_ticket || 0), delinquencyRate: Number(x.delinquency_rate || 0), businessDays: Number(x.business_days || 26), percentMeta: Number(x.percent_meta || 0) })));
+            if(g) setGoalsData(g.map(x => ({ id: x.id, storeId: x.store_id, year: Number(x.year), month: Number(x.month), revenueTarget: Number(x.revenue_target || 0), itemsTarget: Number(x.items_target || 0), paTarget: Number(x.pa_target || 0), puTarget: Number(x.pu_target || 0), ticketTarget: Number(x.ticket_target || 0), delinquencyTarget: Number(x.delinquency_target || 2.0), businessDays: Number(x.business_days || 26), trend: x.trend || 'stable' })));
             if(pur) setPurchasingData(pur.map(x => ({...x, storeId: x.store_id, pairsSold: x.pairs_sold})));
             if(c) setCotas(c.map(x => ({ ...x, id: x.id, storeId: x.store_id, totalValue: Number(x.total_value || 0), shipmentDate: x.shipment_date, paymentTerms: x.payment_terms, createdByRole: x.created_by_role, category_id: x.category_id, category_name: x.category_name || x.classification, createdAt: new Date(x.created_at) })));
             if(cs) setCotaSettings(cs.map(x => ({...x, storeId: x.store_id, budgetValue: x.budget_value, managerPercent: x.manager_percent})));
             if(cd) setCotaDebts(cd.map(x => ({...x, storeId: x.store_id})));
             if(cat) setQuotaCategories(cat);
-            if(mix) setQuotaMixParams(mix);
+            if(mix) setQuotaMixParams(mix.map(x => ({ ...x, storeId: x.store_id, category_name: x.parent_category, percentage: Number(x.mix_percentage || 0) })));
+            
             if(ici) setIceCreamItems(ici.map(x => ({ id: x.id, storeId: x.store_id, name: x.name, category: x.category, price: Number(x.price || 0), flavor: x.flavor, active: x.active, consumption_per_sale: x.consumption_per_sale || 0, recipe: typeof x.recipe === 'string' ? JSON.parse(x.recipe) : (x.recipe || []), image_url: x.image_url })));
-            if(ics) setIceCreamSales(ics.map(x => ({ 
-                id: x.id, 
-                storeId: x.store_id, 
-                itemId: x.item_id, 
-                productName: x.product_name, 
-                category: x.category, 
-                flavor: x.flavor, 
-                unitsSold: Number(x.units_sold || 0), 
-                unitPrice: Number(x.unit_price || 0), 
-                totalValue: Number(x.total_value || 0), 
-                paymentMethod: x.payment_method, 
-                saleCode: x.sale_code, 
-                buyer_name: x.buyer_name, 
-                createdAt: x.created_at, 
-                status: x.status 
-            })));
+
+            if(ics) setIceCreamSales(ics.map(x => ({ id: x.id, storeId: x.store_id, itemId: x.item_id, productName: x.product_name, category: x.category, flavor: x.flavor, units_sold: Number(x.units_sold || 0), unit_price: Number(x.unit_price || 0), total_value: Number(x.total_value || 0), payment_method: x.payment_method, sale_code: x.sale_code, buyer_name: x.buyer_name, createdAt: x.created_at, status: x.status })));
+
             if(icf) setIceCreamFinances(icf.map(x => ({ id: x.id, storeId: x.store_id, date: x.date ? x.date.split('T')[0] : '', type: x.type, category: x.category, value: Number(x.value || 0), description: x.description, createdAt: new Date(x.created_at) })));
             
-            if(icst) setIceCreamStock(icst.map(x => ({ ...x, stock_id: x.id, is_active: x.is_active !== false })));
-            
+            if(icst) setIceCreamStock(icst.map(item => ({ ...item, id: item.id, stock_id: item.id, store_id: item.store_id, product_base: item.product_base, stock_current: Number(item.stock_current || 0), unit: item.unit, is_active: item.is_active ?? true })));
+
             if(icp) setIcPromissories(icp);
-            if(r) setReceipts(r.map(x => ({...x, storeId: x.store_id, issuerName: x.issuer_name, payer: x.payer, recipient: x.recipient, value: x.value, valueInWords: x.value_in_words})));
+            if(r) setReceipts(r.map(x => ({...x, storeId: x.store_id, issuerName: x.issuer_name, payer: x.payer, recipient: x.recipient, value: x.value, valueInWords: x.value_in_words, reference: x.reference, date: x.date, createdAt: new Date(x.created_at)})));
             if(ce) setCashErrors(ce.map(x => ({...x, id: x.id, storeId: x.store_id, userId: x.user_id, userName: x.user_name || 'Usuário', date: x.error_date || x.date, value: Number(x.value || 0), type: x.type, reason: x.reason, createdAt: new Date(x.created_at)})));
-            if(ag) setAgenda(ag.map(x => ({...x, userId: x.user_id, dueDate: x.due_date, dueTime: x.due_time, isCompleted: x.is_completed})));
-            if(dl) setDownloads(dl.map(x => ({...x, fileName: x.file_name, createdBy: x.created_by})));
-            if(cl) setClosures(cl.map(x => ({...x, storeId: x.store_id, closedBy: x.closed_by})));
+            if(ag) setAgenda(ag.map(x => ({...x, id: x.id, userId: x.user_id, title: x.title, description: x.description, dueDate: x.due_date, dueTime: x.due_time, priority: x.priority, isCompleted: x.is_completed, createdAt: new Date(x.created_at)})));
+            if(dl) setDownloads(dl.map(x => ({...x, fileName: x.file_name, createdBy: x.created_by, createdAt: new Date(x.created_at)})));
+            if(cl) setClosures(cl.map(x => ({...x, storeId: x.store_id, closedBy: x.closed_by, createdAt: x.created_at})));
             if(lg) setLogs(lg);
         } catch (err) { console.error("Erro Sincronismo:", err); }
         finally { setIsLoading(false); }
@@ -171,10 +182,23 @@ const App: React.FC = () => {
         try {
             const { data, error } = await supabase.from('admin_users').select('*').eq('email', email).eq('password', pass).eq('status', 'active').single();
             if (error || !data) return { success: false, error: 'Credenciais inválidas ou acesso inativo.' };
-            const loggedUser: User = { id: data.id, name: data.name, role: data.role_level.toUpperCase() as UserRole, email: data.email, storeId: data.store_id };
+            
+            const rawRole = data.role_level.toUpperCase();
+
+            let mappedRole: UserRole = UserRole.MANAGER;
+            if (rawRole === 'ADMIN') mappedRole = UserRole.ADMIN;
+            else if (rawRole === 'CASHIER' || rawRole === 'CAIXA') mappedRole = UserRole.CASHIER;
+            else if (rawRole === 'SORVETE' || rawRole === 'ICE_CREAM' || rawRole === 'SORVETERIA') mappedRole = UserRole.ICE_CREAM;
+
+            await fetchPermissions(mappedRole);
+
+            const loggedUser: User = { id: data.id, name: data.name, role: mappedRole, email: data.email, storeId: data.store_id };
             setUser(loggedUser);
-            if (loggedUser.role === UserRole.ADMIN) setCurrentView('dashboard_rede');
+            
+            if (mappedRole === UserRole.ADMIN) setCurrentView('dashboard_rede');
+            else if (mappedRole === UserRole.ICE_CREAM) setCurrentView('pdv_gelateria');
             else setCurrentView('dashboard_loja');
+            
             return { success: true, user: loggedUser };
         } catch (err) { return { success: false, error: 'Falha na conexão.' }; }
     };
@@ -186,27 +210,15 @@ const App: React.FC = () => {
             setPerformanceData([]);
             for (const row of data) {
                 const { error } = await supabase.from('monthly_performance_actual').upsert({
-                    store_id: row.storeId,
-                    month: row.month,
-                    revenue_actual: row.revenueActual,
-                    items_actual: row.itemsActual,
-                    items_per_ticket: row.itemsPerTicket,
-                    unit_price_average: row.unitPriceAverage,
-                    average_ticket: row.averageTicket,
-                    delinquency_rate: row.delinquencyRate,
-                    business_days: row.businessDays
+                    store_id: row.storeId, month: row.month, revenue_actual: row.revenueActual,
+                    items_actual: row.itemsActual, items_per_ticket: row.itemsPerTicket,
+                    unit_price_average: row.unitPriceAverage, average_ticket: row.averageTicket,
+                    delinquency_rate: row.delinquencyRate, business_days: row.businessDays
                 }, { onConflict: 'store_id, month' });
-
-                if (error) {
-                    console.error(`Falha no upsert da loja ${row.storeId}:`, error.message);
-                    throw new Error(`Erro ao salvar loja ${row.storeId}: ${error.message}`);
-                }
+                if (error) throw error;
             }
             await fetchData();
-        } catch (err: any) { 
-            console.error("Falha na persistência dos dados importados:", err);
-            alert("Erro ao gravar dados no servidor: " + err.message); 
-        }
+        } catch (err: any) { alert("Erro ao gravar dados: " + err.message); }
     };
 
     const handleSaveIceCreamProduct = async (product: Partial<IceCreamItem>) => {
@@ -216,7 +228,25 @@ const App: React.FC = () => {
         await fetchData();
     };
 
+    const handleUpdateMixParameter = async (id: string | null, storeId: string, category: string, percent: number) => {
+        if (!storeId) { alert("ERRO: ID da loja não identificado."); return; }
+        try {
+            const normalizedCategory = category.normalize("NFD").replace(/[\u0300-\u036f]/g, "").toUpperCase().trim();
+            const { data: existingData } = await supabase.from('quota_mix_parameters').select('id').eq('store_id', storeId).eq('parent_category', normalizedCategory).maybeSingle();
+            if (existingData && existingData.id) {
+                await supabase.from('quota_mix_parameters').update({ mix_percentage: percent }).eq('id', existingData.id);
+            } else {
+                await supabase.from('quota_mix_parameters').insert([{ store_id: storeId, parent_category: normalizedCategory, mix_percentage: percent, is_active: true }]);
+            }
+            await fetchData(); 
+        } catch (error: any) { alert('Erro ao salvar meta do Mix: ' + error.message); }
+    };
+
     if (!user) return <LoginScreen onLoginAttempt={handleLogin} />;
+
+    const currentUserStore = stores.find(s => s.id === user.storeId);
+    const isIceCream = user.role === UserRole.ICE_CREAM;
+    const hasGelateria = isIceCream ? true : (currentUserStore?.has_gelateria || false);
 
     return (
         <div className="flex h-screen bg-gray-950 text-white overflow-hidden font-sans relative">
@@ -230,16 +260,20 @@ const App: React.FC = () => {
                 <nav className="flex-1 space-y-6">
                     {[
                         { title: 'Inteligência', items: [ { id: 'dashboard_rede', label: 'Dashboard Rede', icon: LayoutDashboard, perm: 'MODULE_DASHBOARD_ADMIN' }, { id: 'dashboard_loja', label: 'Dashboard Loja', icon: LayoutDashboard, perm: 'MODULE_DASHBOARD_MANAGER' }, { id: 'metas', label: 'Metas', icon: Target, perm: 'MODULE_METAS' }, { id: 'cotas', label: 'Cotas OTB', icon: Calculator, perm: 'MODULE_COTAS' }, { id: 'compras', label: 'Compras', icon: ShoppingBag, perm: 'MODULE_PURCHASES' } ] },
-                        { title: 'Operacional', items: [ { id: 'pdv_gelateria', label: 'PDV Gelateria', icon: IceCreamIcon, perm: 'MODULE_ICECREAM' }, { id: 'caixa', label: 'Caixa', icon: ClipboardList, perm: 'MODULE_CASH_REGISTER' }, { id: 'financeiro', label: 'Financeiro', icon: DollarSign, perm: 'MODULE_FINANCIAL' }, { id: 'quebras', label: 'Quebras', icon: AlertCircle, perm: 'MODULE_CASH_ERRORS' }, { id: 'agenda', label: 'Agenda Semanal', icon: Calendar, perm: 'MODULE_AGENDA' } ] },
+                        { title: 'Operacional', items: [ 
+                            { id: 'pdv_gelateria', label: 'Sorveteria', icon: IceCreamIcon, perm: ['MODULE_GELATERIA_PDV', 'MODULE_GELATERIA_ESTOQUE', 'MODULE_GELATERIA_DRE_DIARIO'], requiredFeature: hasGelateria }, 
+                            { id: 'caixa', label: 'Caixa', icon: ClipboardList, perm: 'MODULE_CASH_REGISTER' }, 
+                            { id: 'agenda', label: 'Agenda Semanal', icon: Calendar, perm: 'MODULE_AGENDA' } 
+                        ] },
                         { title: 'Documentos', items: [ { id: 'autoriz_compra', label: 'Autoriz. Compra', icon: FileSignature, perm: 'MODULE_AUTORIZ_COMPRA' }, { id: 'termo_condicional', label: 'Termo Condicional', icon: FileText, perm: 'MODULE_TERMO_CONDICIONAL' }, { id: 'downloads', label: 'Downloads', icon: Download, perm: 'MODULE_DOWNLOADS' } ] },
                         { title: 'Administração', items: [ { id: 'users', label: 'Usuários', icon: Users, perm: 'MODULE_ADMIN_USERS' }, { id: 'access', label: 'Acessos', icon: ShieldAlert, perm: 'MODULE_ACCESS_CONTROL' }, { id: 'audit', label: 'Auditoria', icon: Shield, perm: 'MODULE_AUDIT' }, { id: 'settings', label: 'Configurações', icon: Settings, perm: 'MODULE_SETTINGS' } ] }
                     ].map(section => {
-             const visibleItems = section.items.filter(i => can(i.perm as any));
+                        const visibleItems = section.items.filter(i => can(i.perm) && (i.requiredFeature === undefined || i.requiredFeature === true));
                         if (visibleItems.length === 0) return null;
                         return (
                             <div key={section.title} className="space-y-1">
                                 <h3 className="px-4 text-[10px] font-black uppercase text-gray-600 tracking-[0.4em] mb-2">{section.title}</h3>
-                                {visibleItems.map(item => can(item.perm as any) && (
+                                {visibleItems.map(item => (
                                     <button key={item.id} onClick={() => { setCurrentView(item.id); setIsSidebarOpen(false); }} className={`w-full text-left py-2.5 px-4 rounded-xl font-black uppercase text-[10px] tracking-widest flex items-center gap-4 transition-all duration-300 ${currentView === item.id ? 'bg-blue-600 text-white shadow-[0_15px_30px_rgba(37,99,235,0.3)]' : 'text-gray-500 hover:text-white hover:bg-white/5'}`}><item.icon size={20} /> {item.label}</button>
                                 ))}
                             </div>
@@ -257,105 +291,140 @@ const App: React.FC = () => {
                 </header>
                 <main className="flex-1 overflow-y-auto relative no-scrollbar">
                     {(() => {
-                        if (currentView === 'dashboard_rede') return <DashboardAdmin stores={stores} performanceData={performanceData} goalsData={goalsData} onImportData={handleImportPerformance} />;
-                        if (currentView === 'dashboard_loja') return <DashboardManager user={user!} stores={stores} performanceData={performanceData} purchasingData={purchasingData} />;
-                        if (currentView === 'metas') return <GoalRegistration stores={stores} goalsData={goalsData} onSaveGoals={async (data) => { 
-                            for(const row of data) { 
-                                await supabase.from('monthly_goals').upsert({ 
-                                    store_id: row.storeId, 
-                                    year: row.year, 
-                                    month: row.month, 
-                                    revenue_target: row.revenueTarget, 
-                                    pa_target: row.paTarget, 
-                                    pu_target: row.puTarget, 
-                                    ticket_target: row.ticketTarget, 
-                                    items_target: row.itemsTarget, 
-                                    business_days: row.businessDays, 
-                                    delinquency_target: row.delinquencyTarget,
-                                    trend: row.trend 
-                                }, { onConflict: 'store_id, year, month' }); 
-                            } 
-                            fetchData(); 
-                        }} />;
-                        if (currentView === 'cotas') return <CotasManagement user={user!} stores={stores} cotas={cotas} cotaSettings={cotaSettings} cotaDebts={cotaDebts} performanceData={performanceData} productCategories={quotaCategories} mixParameters={quotaMixParams} onAddCota={async (c) => { await supabase.from('cotas').insert([{ store_id: c.storeId, brand: c.brand, category_id: c.category_id, total_value: c.totalValue, shipment_date: `${c.shipmentDate}-01`, payment_terms: c.paymentTerms, pairs: c.pairs, installments: c.installments, status: 'ABERTA' }]); fetchData(); }} onUpdateCota={async (id, u) => { await supabase.from('cotas').update(u).eq('id', id); fetchData(); }} onDeleteCota={async (id) => { await supabase.from('cotas').delete().eq('id', id); fetchData(); }} onSaveSettings={async (s) => { await supabase.from('cota_settings').upsert({ store_id: s.storeId, budget_value: s.budgetValue, manager_percent: s.managerPercent }, { onConflict: 'store_id' }); fetchData(); }} onSaveDebts={async (d) => { await supabase.from('cota_debts').upsert({ store_id: d.storeId, month: d.month, value: d.value }, { onConflict: 'store_id, month' }); fetchData(); }} onDeleteDebt={async (id) => { await supabase.from('cota_debts').delete().eq('id', id); fetchData(); }} />;
-                        if (currentView === 'compras') return <DashboardPurchases user={user!} stores={stores} data={purchasingData} onImport={async (d) => { await supabase.from('product_performance').insert(d.map(x => ({ store_id: x.storeId, month: x.month, brand: x.brand, category: x.category, pairs_sold: x.pairsSold, revenue: x.revenue }))); fetchData(); }} onOpenSpreadsheetModule={() => setCurrentView('spreadsheet_order')} />;
-                        if (currentView === 'pdv_gelateria') return <IceCreamModule 
-                            user={user!} 
-                            stores={stores} 
-                            items={iceCreamItems} 
-                            sales={iceCreamSales} 
-                            finances={iceCreamFinances} 
-                            stock={iceCreamStock} 
-                            promissories={icPromissories} 
-                            can={can} 
-                            onAddSales={async (s) => { await supabase.from('ice_cream_daily_sales').insert(s.map(x => ({ store_id: x.storeId, item_id: x.itemId, product_name: x.productName, category: x.category, flavor: x.flavor, units_sold: Math.round(x.unitsSold), unit_price: x.unitPrice, total_value: x.totalValue, payment_method: x.paymentMethod, sale_code: x.saleCode, buyer_name: x.buyer_name, status: 'active' }))); fetchData(); }} 
-                            onCancelSale={async (code, reason) => { await supabase.from('ice_cream_daily_sales').update({ status: 'canceled', cancel_reason: reason }).eq('sale_code', code); await fetchData(); }} 
-                            onUpdatePrice={async (id, p) => { await supabase.from('ice_cream_items').update({ price: p }).eq('id', id); await fetchData(); }} 
-                            onAddTransaction={async (t) => { await supabase.from('ice_cream_finances').insert([{ store_id: t.storeId, date: t.date, type: t.type, category: t.category, value: t.value, description: t.description }]); await fetchData(); }} 
-                            onAddItem={async (n, c, p, f, si, u, cps, tsId, r) => { await handleSaveIceCreamProduct({ storeId: tsId, name: n, category: c as any, price: p, flavor: f, recipe: r }); }} 
-                            onSaveProduct={handleSaveIceCreamProduct} 
-                            onDeleteItem={async (id) => { await supabase.from('ice_cream_items').delete().eq('id', id); await fetchData(); }} 
-                            onUpdateStock={async (sId, b, v, u, type, id) => { 
-                                try {
-                                    if (!Number.isFinite(v)) return;
+                        if (currentView === 'dashboard_rede' && can('MODULE_DASHBOARD_ADMIN')) return <DashboardAdmin stores={stores} performanceData={performanceData} goalsData={goalsData} onImportData={handleImportPerformance} />;
+                        if (currentView === 'dashboard_loja' && can('MODULE_DASHBOARD_MANAGER')) return <DashboardManager user={user!} stores={stores} performanceData={performanceData} purchasingData={purchasingData} />;
+                        if (currentView === 'metas' && can('MODULE_METAS')) return <GoalRegistration stores={stores} goalsData={goalsData} onSaveGoals={async (data) => { for(const row of data) { await supabase.from('monthly_goals').upsert({ store_id: row.storeId, year: row.year, month: row.month, revenue_target: row.revenueTarget, pa_target: row.paTarget, pu_target: row.puTarget, ticket_target: row.ticketTarget, items_target: row.itemsTarget, business_days: row.businessDays, delinquency_target: row.delinquencyTarget, trend: row.trend }, { onConflict: 'store_id, year, month' }); } fetchData(); }} />;
+                        if (currentView === 'cotas' && can('MODULE_COTAS')) return <CotasManagement user={user!} stores={stores} cotas={cotas} cotaSettings={cotaSettings} cotaDebts={cotaDebts} performanceData={performanceData} productCategories={quotaCategories} mixParameters={quotaMixParams} onUpdateMixParameter={handleUpdateMixParameter} onAddCota={async (c) => { await supabase.from('cotas').insert([{ store_id: c.storeId, brand: c.brand, category_id: c.category_id, total_value: c.totalValue, shipment_date: `${c.shipmentDate}-01`, payment_terms: c.paymentTerms, pairs: c.pairs, installments: c.installments, status: 'ABERTA', created_by_role: c.createdByRole }]); fetchData(); }} onUpdateCota={async (id, u) => { await supabase.from('cotas').update(u).eq('id', id); fetchData(); }} onDeleteCota={async (id) => { await supabase.from('cotas').delete().eq('id', id); fetchData(); }} onSaveSettings={async (s) => { await supabase.from('cota_settings').upsert({ store_id: s.storeId, budget_value: s.budgetValue, manager_percent: s.manager_percent }, { onConflict: 'store_id' }); fetchData(); }} onSaveDebts={async (d) => { await supabase.from('cota_debts').upsert({ store_id: d.storeId, month: d.month, value: d.value }, { onConflict: 'store_id, month' }); fetchData(); }} onDeleteDebt={async (id) => { await supabase.from('cota_debts').delete().eq('id', id); fetchData(); }} />;
+                        if (currentView === 'compras' && can('MODULE_PURCHASES')) return <DashboardPurchases user={user!} stores={stores} data={purchasingData} onImport={async (d) => { await supabase.from('product_performance').insert(d.map(x => ({ store_id: x.storeId, month: x.month, brand: x.brand, category: x.category, pairs_sold: x.pairsSold, revenue: x.revenue }))); fetchData(); }} onOpenSpreadsheetModule={() => setCurrentView('spreadsheet_order')} />;
+                        
+                        if (
+                          currentView === 'pdv_gelateria' &&
+                          can([
+                            'MODULE_GELATERIA_PDV',
+                            'MODULE_GELATERIA_ESTOQUE',
+                            'MODULE_GELATERIA_DRE_DIARIO'
+                          ])
+                        ) {
+                          return (
+                            <IceCreamModule
+                              user={user!}
+                              stores={stores}
+                              items={iceCreamItems}
+                              sales={iceCreamSales}
+                              finances={iceCreamFinances}
+                              stock={iceCreamStock}
+                              promissories={icPromissories}
+                              can={can}
+                              pagePermissions={pagePermissions}
+                              onAddSales={async (s) => {
+                                await supabase.from('ice_cream_daily_sales').insert(
+                                  s.map(x => ({
+                                    store_id: x.storeId,
+                                    item_id: x.itemId,
+                                    product_name: x.productName,
+                                    category: x.category,
+                                    flavor: x.flavor,
+                                    units_sold: Math.round(x.unitsSold),
+                                    unit_price: x.unitPrice,
+                                    total_value: x.totalValue,
+                                    payment_method: x.paymentMethod,
+                                    sale_code: x.saleCode,
+                                    buyer_name: x.buyer_name,
+                                    status: 'active'
+                                  }))
+                                );
+                                fetchData();
+                              }}
+                              onCancelSale={async (code, reason) => {
+                                await supabase
+                                  .from('ice_cream_daily_sales')
+                                  .update({ status: 'canceled', cancel_reason: reason })
+                                  .eq('sale_code', code);
+                                fetchData();
+                              }}
+                              onUpdatePrice={async (id, p) => {
+                                await supabase.from('ice_cream_items').update({ price: p }).eq('id', id);
+                                fetchData();
+                              }}
+                              onAddTransaction={async (t) => {
+                                await supabase.from('ice_cream_finances').insert([{
+                                  store_id: t.storeId,
+                                  date: t.date,
+                                  type: t.type,
+                                  category: t.category,
+                                  value: t.value,
+                                  description: t.description
+                                }]);
+                                fetchData();
+                              }}
+                              // Fix: Adding missing onAddItem prop to IceCreamModule
+                              onAddItem={async (n, c, p, f, si, u, cps, tsId, r) => {
+                                await handleSaveIceCreamProduct({
+                                  storeId: tsId,
+                                  name: n,
+                                  category: c as any,
+                                  price: p,
+                                  flavor: f,
+                                  recipe: r
+                                });
+                              }}
+                              onSaveProduct={handleSaveIceCreamProduct}
+                              onDeleteItem={async (id) => {
+                                await supabase.from('ice_cream_items').delete().eq('id', id);
+                                fetchData();
+                              }}
+                              onUpdateStock={async (sId, b, v, u, type) => {
+                                const { data: current } = await supabase
+                                  .from('ice_cream_stock')
+                                  .select('stock_current')
+                                  .eq('store_id', sId)
+                                  .eq('product_base', b)
+                                  .maybeSingle();
 
-                                    let query = supabase.from('ice_cream_stock').select('id, stock_current');
-                                    if (id) {
-                                        query = query.eq('id', id);
-                                    } else {
-                                        query = query.eq('store_id', sId).eq('product_base', b);
-                                    }
-                                    
-                                    const { data: current, error: fetchError } = await query.maybeSingle();
-                                    if (fetchError) throw fetchError;
-
-                                    if (current) {
-                                        const currentStock = Number(current.stock_current || 0);
-                                        // Regra: se for inventário, v é absoluto. Se for compra/ajuste, é incremental.
-                                        let finalValue = (type === 'inventory') ? v : (currentStock + v);
-                                        finalValue = parseFloat(finalValue.toFixed(4));
-                                        
-                                        // REGRA ABSOLUTA: Aborta se não houver mudança para evitar erro 400
-                                        if (finalValue === currentStock) return;
-
-                                        const { error: updateError } = await supabase.from('ice_cream_stock')
-                                            .update({ stock_current: finalValue, is_active: true })
-                                            .eq('id', current.id);
-                                        if (updateError) throw updateError;
-
-                                    } else if (type !== 'inventory') {
-                                        const { error: insertError } = await supabase.from('ice_cream_stock').insert([{ 
-                                            store_id: sId, product_base: b, stock_current: v, unit: u, is_active: true 
-                                        }]);
-                                        if (insertError) throw insertError;
-                                    }
-                                    await fetchData();
-                                } catch (err: any) {
-                                    console.error("ERRO NO ESTOQUE:", err);
-                                    alert(`Falha ao atualizar estoque: ${err.message || 'Erro de conexão'}`);
+                                let finalVal = v;
+                                if (current && ['purchase', 'adjustment', 'production'].includes(type)) {
+                                  finalVal = Number(current.stock_current || 0) + v;
                                 }
-                            }} 
-                            liquidatePromissory={async (id) => { await supabase.from('ice_cream_promissory_notes').update({ status: 'paid' }).eq('id', id); await fetchData(); }} 
-                            onDeleteStockItem={async (id) => { 
+
+                                await supabase.from('ice_cream_stock').upsert(
+                                  { store_id: sId, product_base: b, stock_current: finalVal, unit: u, is_active: true },
+                                  { onConflict: 'store_id, product_base' }
+                                );
+                                fetchData();
+                              }}
+                              liquidatePromissory={async (id) => {
+                                await supabase.from('ice_cream_promissory_notes')
+                                  .update({ status: 'paid' })
+                                  .eq('id', id);
+                                fetchData();
+                              }}
+                              onDeleteStockItem={async (id) => {
                                 if (user?.role === UserRole.ADMIN) {
-                                    await supabase.from('ice_cream_stock').update({ is_active: false }).eq('id', id); 
-                                    await fetchData(); 
+                                  await supabase.from('ice_cream_stock')
+                                    .update({ is_active: false })
+                                    .eq('id', id);
+                                  fetchData();
                                 }
-                            }}
-                        />;
-                        if (currentView === 'caixa') return <CashRegisterModule user={user!} sales={iceCreamSales} finances={iceCreamFinances} closures={closures} onAddClosure={async (c) => { await supabase.from('cash_register_closures').insert([{ store_id: user?.storeId, closed_by: user?.name, total_sales: c.totalSales, total_expenses: c.totalExpenses, balance: c.balance, notes: c.notes, date: c.date }]); fetchData(); }} />;
-                        if (currentView === 'financeiro') return <FinancialModule user={user!} store={stores.find(s => s.id === user?.storeId)} sales={[]} receipts={receipts} onAddSale={async (s) => {}} onDeleteSale={async (id) => {}} onAddReceipt={async (r) => { await supabase.from('receipts').insert([{ store_id: r.storeId, issuer_name: r.issuerName, payer: r.payer, recipient: r.recipient, value: r.value, value_in_words: r.valueInWords, reference: r.reference, date: r.date }]); fetchData(); }} />;
-                        if (currentView === 'quebras') return <CashErrorsModule user={user!} stores={stores} store={stores.find(s => s.id === user?.storeId)} errors={cashErrors} onAddError={async (e) => { await supabase.from('cash_errors').insert([e]); fetchData(); }} onUpdateError={async (e) => { await supabase.from('cash_errors').update(e).eq('id', e.id); fetchData(); }} onDeleteError={async (id) => { await supabase.from('cash_errors').delete().eq('id', id); fetchData(); }} />;
-                        if (currentView === 'agenda') return <AgendaSystem user={user!} tasks={agenda} onAddTask={async (t) => { await supabase.from('agenda_items').insert([{ user_id: user?.id, title: t.title, description: t.description, due_date: t.dueDate, due_time: t.dueTime, priority: t.priority, is_completed: false }]); fetchData(); }} onUpdateTask={async (t) => { await supabase.from('agenda_items').update({ is_completed: t.isCompleted }).eq('id', t.id); fetchData(); }} onDeleteTask={async (id) => { await supabase.from('agenda_items').delete().eq('id', id); fetchData(); }} />;
-                        if (currentView === 'autoriz_compra') return <PurchaseAuthorization />;
-                        if (currentView === 'termo_condicional') return <TermoAutorizacao user={user!} store={stores.find(s => s.id === user?.storeId)} />;
-                        if (currentView === 'downloads') return <DownloadsModule user={user!} items={downloads} onUpload={async (i) => { await supabase.from('downloads').insert([i]); fetchData(); }} onDelete={async (id) => { await supabase.from('downloads').delete().eq('id', id); fetchData(); }} />;
-                        if (currentView === 'users') return <AdminUsersManagement currentUser={user} stores={stores} />;
-                        if (currentView === 'access') return <AccessControlManagement />;
-                        if (currentView === 'audit') return <SystemAudit logs={logs} receipts={receipts} cashErrors={cashErrors} iceCreamSales={iceCreamSales} icPromissories={icPromissories} />;
-                        if (currentView === 'settings') return <AdminSettings stores={stores} onAddStore={async (s) => {}} onUpdateStore={async (s) => {}} onDeleteStore={async (id) => {}} />;
-                        if (currentView === 'spreadsheet_order') return <SpreadsheetOrderModule user={user!} onClose={() => setCurrentView('compras')} />;
-                        return <DashboardAdmin stores={stores} performanceData={performanceData} goalsData={goalsData} onImportData={handleImportPerformance} />;
+                              }}
+                            />
+                          );
+                        }
+                        
+                        if (currentView === 'caixa' && can('MODULE_CASH_REGISTER')) return <CashRegisterModule user={user!} sales={iceCreamSales} finances={iceCreamFinances} closures={closures} receipts={receipts} errors={cashErrors} onAddClosure={async (c) => { await supabase.from('cash_register_closures').insert([{ store_id: user?.storeId, closed_by: user?.name, total_sales: c.totalSales, total_expenses: c.totalExpenses, balance: c.balance, notes: c.notes, date: c.date }]); fetchData(); }} onAddReceipt={async (r) => { await supabase.from('receipts').insert([{ store_id: r.storeId, issuer_name: r.issuer, payer: r.payer, recipient: r.recipient, value: r.value, value_in_words: r.value_in_words, reference: r.reference, date: r.date }]); fetchData(); }} onAddError={async (e) => { await supabase.from('cash_errors').insert([e]); fetchData(); }} onDeleteError={async (id) => { await supabase.from('cash_errors').delete().eq('id', id); fetchData(); }} />;
+                        if (currentView === 'agenda' && can('MODULE_AGENDA')) return <AgendaSystem user={user!} tasks={agenda} onAddTask={async (t) => { await supabase.from('agenda_items').insert([{ user_id: user?.id, title: t.title, description: t.description, due_date: t.dueDate, due_time: t.dueTime, priority: t.priority, is_completed: false }]); fetchData(); }} onUpdateTask={async (t) => { await supabase.from('agenda_items').update({ is_completed: t.isCompleted }).eq('id', t.id); fetchData(); }} onDeleteTask={async (id) => { await supabase.from('agenda_items').delete().eq('id', id); fetchData(); }} />;
+                        if (currentView === 'autoriz_compra' && can('MODULE_AUTORIZ_COMPRA')) return <PurchaseAuthorization />;
+                        if (currentView === 'termo_condicional' && can('MODULE_TERMO_CONDICIONAL')) return <TermoAutorizacao user={user!} store={stores.find(s => s.id === user?.storeId)} />;
+                        if (currentView === 'downloads' && can('MODULE_DOWNLOADS')) return <DownloadsModule user={user!} items={downloads} onUpload={async (i) => { await supabase.from('downloads').insert([i]); fetchData(); }} onDelete={async (id) => { await supabase.from('downloads').delete().eq('id', id); fetchData(); }} />;
+                        if (currentView === 'users' && can('MODULE_ADMIN_USERS')) return <AdminUsersManagement currentUser={user} stores={stores} />;
+                        if (currentView === 'access' && can('MODULE_ACCESS_CONTROL')) return <AccessControlManagement />;
+                        if (currentView === 'audit' && can('MODULE_AUDIT')) return <SystemAudit logs={logs} receipts={receipts} cashErrors={cashErrors} iceCreamSales={iceCreamSales} icPromissories={icPromissories} />;
+                        if (currentView === 'settings' && can('MODULE_SETTINGS')) return <AdminSettings stores={stores} onAddStore={async (s) => { await supabase.from('stores').insert([s]); fetchData(); }} onUpdateStore={async (s) => { await supabase.from('stores').update(s).eq('id', s.id); fetchData(); }} onDeleteStore={async (id) => { await supabase.from('stores').delete().eq('id', id); fetchData(); }} />;
+                        if (currentView === 'spreadsheet_order' && can('MODULE_PURCHASES')) return <SpreadsheetOrderModule user={user!} onClose={() => setCurrentView('compras')} />;
+                        
+                        if (user.role === UserRole.ADMIN) return <DashboardAdmin stores={stores} performanceData={performanceData} goalsData={goalsData} onImportData={handleImportPerformance} />;
+                        if (can('MODULE_DASHBOARD_MANAGER')) return <DashboardManager user={user!} stores={stores} performanceData={performanceData} purchasingData={purchasingData} />;
+                        
+                        return <div className="flex items-center justify-center h-full text-gray-400 uppercase tracking-widest font-black text-sm">Selecione um módulo no menu</div>;
                     })()}
                 </main>
             </div>

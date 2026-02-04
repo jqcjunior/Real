@@ -31,14 +31,15 @@ const CashRegisterModule: React.FC<CashRegisterModuleProps> = ({
     const [receiptForm, setReceiptForm] = useState({ issuer: '', payer: '', recipient: '', value: '', valueInWords: '', reference: '' });
 
     // --- STATES PARA QUEBRAS ---
-    const [errorForm, setErrorForm] = useState({ value: '', reason: '', type: 'lack' });
+    const [errorForm, setErrorForm] = useState({ value: '', reason: '', type: 'shortage' as const });
 
     // --- CÁLCULOS DO CAIXA DO DIA ---
     const dailyStats = useMemo(() => {
         const daySales = sales.filter(s => s.createdAt?.startsWith(selectedDate) && s.status !== 'canceled' && s.storeId === user.storeId);
         const dayFinances = finances.filter(f => f.date === selectedDate && f.storeId === user.storeId);
         
-        const totalSales = daySales.reduce((acc, curr) => acc + Number(curr.total_value), 0);
+        // Fix: Changed total_value to totalValue
+        const totalSales = daySales.reduce((acc, curr) => acc + Number(curr.totalValue), 0);
         
         // Entradas manuais no financeiro (suprimentos)
         const totalEntries = dayFinances.filter(f => f.type === 'entry').reduce((acc, curr) => acc + Number(curr.value), 0);
@@ -47,7 +48,8 @@ const CashRegisterModule: React.FC<CashRegisterModuleProps> = ({
         const totalExits = dayFinances.filter(f => f.type === 'exit').reduce((acc, curr) => acc + Number(curr.value), 0);
 
         // Dinheiro em espécie (aproximado)
-        const moneySales = daySales.filter(s => s.payment_method === 'Dinheiro').reduce((acc, curr) => acc + Number(curr.total_value), 0);
+        // Fix: Changed payment_method to paymentMethod and total_value to totalValue
+        const moneySales = daySales.filter(s => s.paymentMethod === 'Dinheiro').reduce((acc, curr) => acc + Number(curr.totalValue), 0);
 
         return { totalSales, totalEntries, totalExits, moneySales, finalBalance: (moneySales + totalEntries) - totalExits };
     }, [sales, finances, selectedDate, user.storeId]);
@@ -58,9 +60,10 @@ const CashRegisterModule: React.FC<CashRegisterModuleProps> = ({
         const currentMonth = selectedDate.substring(0, 7); 
         const monthSales = sales.filter(s => s.createdAt?.startsWith(currentMonth) && s.status !== 'canceled' && s.storeId === user.storeId);
         
-        const credit = monthSales.filter(s => s.payment_method === 'Cartão' || s.payment_method === 'Crédito').reduce((acc, s) => acc + Number(s.total_value), 0);
-        const debit = monthSales.filter(s => s.payment_method === 'Débito').reduce((acc, s) => acc + Number(s.total_value), 0);
-        const pix = monthSales.filter(s => s.payment_method === 'Pix').reduce((acc, s) => acc + Number(s.total_value), 0);
+        // Fix: Changed payment_method and total_value properties
+        const credit = monthSales.filter(s => s.paymentMethod === 'Cartão' || s.paymentMethod === 'Crédito' as any).reduce((acc, s) => acc + Number(s.totalValue), 0);
+        const debit = monthSales.filter(s => s.paymentMethod === 'Débito' as any).reduce((acc, s) => acc + Number(s.totalValue), 0);
+        const pix = monthSales.filter(s => s.paymentMethod === 'Pix').reduce((acc, s) => acc + Number(s.totalValue), 0);
 
         return { credit, debit, pix, total: credit + debit + pix };
     }, [sales, selectedDate, user.storeId]);
@@ -110,7 +113,7 @@ const CashRegisterModule: React.FC<CashRegisterModuleProps> = ({
                 type: errorForm.type,
                 reason: errorForm.reason
             });
-            setErrorForm({ value: '', reason: '', type: 'lack' });
+            setErrorForm({ value: '', reason: '', type: 'shortage' as const });
             alert("Quebra registrada!");
         } catch (error) { alert("Erro ao registrar quebra."); }
         finally { setIsSubmitting(false); }
@@ -332,8 +335,8 @@ const CashRegisterModule: React.FC<CashRegisterModuleProps> = ({
                             <form onSubmit={handleSaveError} className="grid grid-cols-1 md:grid-cols-4 gap-4 items-end">
                                 <div className="space-y-1">
                                     <label className="text-[10px] font-bold text-gray-400 uppercase ml-2">Tipo</label>
-                                    <select value={errorForm.type} onChange={e => setErrorForm({...errorForm, type: e.target.value})} className="w-full p-3 bg-gray-50 rounded-xl font-bold text-gray-700 outline-none">
-                                        <option value="lack">Falta (Quebra)</option>
+                                    <select value={errorForm.type} onChange={e => setErrorForm({...errorForm, type: e.target.value as any})} className="w-full p-3 bg-gray-50 rounded-xl font-bold text-gray-700 outline-none">
+                                        <option value="shortage">Falta (Quebra)</option>
                                         <option value="surplus">Sobra</option>
                                     </select>
                                 </div>
@@ -367,12 +370,14 @@ const CashRegisterModule: React.FC<CashRegisterModuleProps> = ({
                                         <tr key={err.id}>
                                             <td className="px-6 py-4 font-bold text-gray-700">{new Date(err.date).toLocaleDateString()}</td>
                                             <td className="px-6 py-4">
-                                                <span className={`px-2 py-1 rounded text-[10px] uppercase font-black ${err.type === 'lack' ? 'bg-red-50 text-red-600' : 'bg-blue-50 text-blue-600'}`}>
-                                                    {err.type === 'lack' ? 'Falta' : 'Sobra'}
+                                                {/* Fix: Changed lack to shortage */}
+                                                <span className={`px-2 py-1 rounded text-[10px] uppercase font-black ${err.type === 'shortage' ? 'bg-red-50 text-red-600' : 'bg-blue-50 text-blue-600'}`}>
+                                                    {err.type === 'shortage' ? 'Falta' : 'Sobra'}
                                                 </span>
                                             </td>
                                             <td className="px-6 py-4 text-gray-500 uppercase italic">{err.reason}</td>
-                                            <td className={`px-6 py-4 text-right font-black ${err.type === 'lack' ? 'text-red-600' : 'text-blue-600'}`}>{formatCurrency(err.value)}</td>
+                                            {/* Fix: Changed lack to shortage */}
+                                            <td className={`px-6 py-4 text-right font-black ${err.type === 'shortage' ? 'text-red-600' : 'text-blue-600'}`}>{formatCurrency(err.value)}</td>
                                             <td className="px-6 py-4 text-center">
                                                 <button onClick={() => onDeleteError(err.id)} className="text-gray-300 hover:text-red-500 transition-colors"><Trash2 size={16}/></button>
                                             </td>
