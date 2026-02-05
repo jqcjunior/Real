@@ -1,357 +1,332 @@
+import React, { useState, useEffect, useMemo } from "react";
+import * as XLSX from "xlsx";
+import { 
+  ChevronRight, Download, Trash2, X, ShoppingBag, CheckCircle2, ListFilter, LogOut, Edit3, Layers
+} from "lucide-react";
 
-import React, { useState, useMemo } from 'react';
-import { User, UserRole } from '../types';
-import { X, FileSpreadsheet, DollarSign, ChevronRight, Loader2, Download, Package, ArrowLeft, Send, CheckCircle2, Building2, Layers } from 'lucide-react';
-import * as XLSX from 'xlsx';
-import { formatCurrency } from '../constants';
+/* --- CONSTANTES FISCAIS --- */
+const FISCAL_PADRAO = {
+  ESTACAO: "VERÃO", REF_TIPO: "NUMERICO", IPPT: "T", NCM: "64042000",
+  CEST: "2805900", UNIDADE: "UN", IPI: "49", PIS: "70", COFINS: "70", ICMS: "000"
+};
 
-interface SpreadsheetOrderModuleProps {
-  user: User;
-  onClose: () => void;
-}
+const SUBGRUPO_LOJAS = ["05","08","09","26","31","34","40","43","44","45","50","56","72","88","96","100","102","109"];
+const TAMANHOS = {
+  Fem: ["33","34","35","36","37","38","39","40","41","42"],
+  Masc: ["36","37","38","39","40","41","42","43","44","45","46","47","48","49"],
+  Inf: ["15","16","17","18","19","20","21","22","23","24","25","26","27","28","29","30","31","32","33","34","35","36"],
+  Acess: ["UN","P","M","G","G1"]
+};
+const LETRAS = "ABCDEFGHIJKLMNOPQRSTUVWXYZ".split("");
 
-// Definição de Grades (15-49 + P, M, G, GG)
-const SIZE_LABELS = [
-  '15', '16', '17', '18', '19', '20', '21', '22', '23', '24', '25', '26', '27', '28', '29', '30', '31', '32', '33', '34', '35', '36', '37', '38', '39', '40', '41', '42', '43', '44', '45', '46', '47', '48', '49', 
-  'P', 'M', 'G', 'GG'
-];
+const SpreadsheetOrderModule = ({ user, onClose }: { user: any, onClose: () => void }) => {
+  const [etapa, setEtapa] = useState(1);
+  const [verLotes, setVerLotes] = useState(false);
+  const [pedido, setPedido] = useState({ marca: "", fornecedor: "", fatInicio: "", fatFim: "", desconto: 0, markup: 2.6, prazo1: 90, prazo2: 120, prazo3: 150 });
+  const [itens, setItens] = useState<any[]>([]);
+  const [itemAtual, setItemAtual] = useState({ referencia: "", tipo: "", cor1: "", cor2: "", cor3: "", modelo: "Fem" as keyof typeof TAMANHOS, valorCompra: 0, precoVenda: 0 });
+  const [gradeEditando, setGradeEditando] = useState<Record<string, number>>({});
+  const [gradesSalvas, setGradesSalvas] = useState<any[]>([]);
+  const [lotesFinalizados, setLotesFinalizados] = useState<any[]>([]);
+  const [modoLojas, setModoLojas] = useState<'subgrupo' | 'todas'>('subgrupo');
+  const [selecaoLote, setSelecaoLote] = useState({ itensIds: [] as string[], gradeLetra: "", lojasIds: [] as string[] });
 
-const SpreadsheetOrderModule: React.FC<SpreadsheetOrderModuleProps> = ({ user, onClose }) => {
-  const [step, setStep] = useState<1 | 2 | 3>(1);
-  const [isExporting, setIsExporting] = useState(false);
+  /* --- UTILITÁRIOS EXCEL DINÂMICO --- */
+  const setCell = (sheet: XLSX.WorkSheet, r: number, c: number, value: any, type: "s" | "n" = "s") => {
+    if (c === undefined) return;
+    const ref = XLSX.utils.encode_cell({ r, c });
+    sheet[ref] = { t: type, v: value };
+  };
 
-  // Step 1: Cabeçalho (Header)
-  const [headerData, setHeaderData] = useState({
-    provider: '',
-    brand: '',
-    billingDate: new Date().toISOString().split('T')[0],
-    deadlineDate: new Date().toISOString().split('T')[0],
-    discount: '0',
-    markup: '2.6',
-    collection: 'Verão'
-  });
-
-  // Step 2: Detalhes do Item
-  const [itemData, setItemData] = useState({
-    ref: '',
-    type: 'SAPATO',
-    model: '',
-    color1: '',
-    color2: '',
-    color3: '',
-    cost: '0'
-  });
-
-  // Step 3: Grade e Lojas
-  const [grade, setGrade] = useState<Record<string, number>>({});
-  const [selectedStores, setSelectedStores] = useState<number[]>([]);
-
-  // Regra de Cálculo OBRIGATÓRIA
-  const suggestedPrice = useMemo(() => {
-    const cost = parseFloat(String(itemData.cost).replace(',', '.')) || 0;
-    const disc = parseFloat(String(headerData.discount).replace(',', '.')) || 0;
-    const mkp = parseFloat(String(headerData.markup).replace(',', '.')) || 1;
-    
-    if (cost <= 0) return 0;
-    
-    const custoFinal = cost - (cost * disc / 100);
-    const valorBase = custoFinal * mkp;
-    
-    // Arredondar para terminar em 9,99 (Ex: 130.00 -> 129.99)
-    return Math.floor(valorBase - 0.01) + 0.99;
-  }, [itemData.cost, headerData.discount, headerData.markup]);
-
-  const totalPairsPerStore = useMemo(() => {
-    // Fix: Explicitly type acc and val as numbers to avoid "unknown" type errors in reduce
-    return Object.values(grade).reduce((acc: number, val: number) => acc + (val || 0), 0);
-  }, [grade]);
-
-  const totalOrderPairs = useMemo(() => {
-    return totalPairsPerStore * selectedStores.length;
-  }, [totalPairsPerStore, selectedStores]);
-
-  const handleFinalize = async () => {
-    if (user.role === UserRole.ADMIN) {
-      handleExport();
-    } else {
-      handleSendEmail();
+  const criarMapaColunas = (sheet: XLSX.WorkSheet) => {
+    const mapa: Record<string, number> = {};
+    if (!sheet["!ref"]) return mapa;
+    const range = XLSX.utils.decode_range(sheet["!ref"]);
+    for (let c = range.s.c; c <= range.e.c; c++) {
+      const cell = sheet[XLSX.utils.encode_cell({ r: 0, c })];
+      if (cell?.v) mapa[String(cell.v).toUpperCase().trim()] = c;
     }
+    return mapa;
   };
 
-  const handleSendEmail = () => {
-    const subject = encodeURIComponent(`Loja ${user.storeId || 'UNID'} – Marca ${headerData.brand}`);
-    const body = encodeURIComponent(`Pedido finalizado por ${user.name}.\nTotal de Pares: ${totalOrderPairs}\nMarca: ${headerData.brand}`);
-    window.location.href = `mailto:subpedido@gmail.com?subject=${subject}&body=${body}`;
-    alert("Solicitação de finalização enviada para a central.");
-    onClose();
-  };
-
-  const handleExport = () => {
-    setIsExporting(true);
+  const exportarPlanilhaFinal = async () => {
+    if (lotesFinalizados.length === 0) return alert("Vincule itens primeiro!");
     try {
-      const wb = XLSX.utils.book_new();
-      const ws_data: any[][] = [];
+      const response = await fetch("/Pedido_Sub_R2J_.xlsx");
+      const buffer = await response.arrayBuffer();
+      const workbook = XLSX.read(buffer, { type: "array" });
+      const sheet = workbook.Sheets[workbook.SheetNames[0]];
+      const COL = criarMapaColunas(sheet);
+      const numPedidoUnico = Math.floor(1000 + Math.random() * 9000);
+      let linhaExcel = 1;
 
-      // Criar cabeçalho da planilha se necessário (usando AOA para precisão de colunas)
-      const row: any[] = [];
-      row[0] = `PED-${Date.now().toString().slice(-6)}`; // A: Pedido
-      row[1] = headerData.provider.toUpperCase(); // B: Fornecedor
-      row[2] = user.name.toUpperCase(); // C: Comprador
-      row[3] = headerData.billingDate; // D: Data Fat
-      row[4] = headerData.deadlineDate; // E: Data Limite
-      row[5] = totalOrderPairs; // F: Itens
-      row[6] = `${headerData.brand} ${itemData.type} ${itemData.ref}`.toUpperCase(); // G: Descrição
-      row[7] = itemData.ref; // H: Referência
-      row[8] = itemData.type; // I: Tipo
-      row[9] = itemData.model.toUpperCase(); // J: Modelo
-      row[10] = headerData.brand.toUpperCase(); // K: Marca
-      row[11] = itemData.color1.toUpperCase(); // L: Cor 1
-      row[12] = itemData.color2.toUpperCase(); // M: Cor 2
-      row[13] = itemData.color3.toUpperCase(); // N: Cor 3
-      row[14] = headerData.collection; // O: Coleção
-      row[15] = "NUMERICO"; // P: Tipo Grade
-      row[16] = "T"; // Q: IPPT
-      row[19] = "64042000"; // T: NCM
-      row[20] = "2805900"; // U: CEST
-      row[21] = "UN"; // V: Unidade
-      row[24] = "49"; // Y: IPI
-      row[25] = "70"; // Z: PIS
-      row[26] = "70"; // AA: COFINS
-      row[27] = "000"; // AB: ICMS
-      row[29] = parseFloat(itemData.cost.replace(',', '.')); // AD: Valor Compra
-      row[38] = suggestedPrice; // AM: Preço Venda
+      lotesFinalizados.forEach((lote, idx) => {
+        const r = linhaExcel;
+        setCell(sheet, r, COL["PED. FORNECEDOR"], numPedidoUnico, "n");
+        setCell(sheet, r, COL["FORNECEDOR"], pedido.fornecedor);
+        setCell(sheet, r, COL["COMPRADOR"], user.name);
+        setCell(sheet, r, COL["PREVISÃO"], pedido.fatInicio);
+        setCell(sheet, r, COL["LIMITE ENTREGA"], pedido.fatFim);
+        setCell(sheet, r, COL["ITEM"], idx + 1, "n");
+        setCell(sheet, r, COL["DESCRICAO"], `${pedido.marca} ${lote.tipo} ${lote.referencia}`.toUpperCase());
+        setCell(sheet, r, COL["REFERENCIA"], lote.referencia);
+        setCell(sheet, r, COL["TIPO"], lote.tipo);
+        setCell(sheet, r, COL["MODELO"], lote.modelo);
+        setCell(sheet, r, COL["MARCA"], pedido.marca);
+        setCell(sheet, r, COL["COR 1"], lote.cor1);
+        setCell(sheet, r, COL["VALOR COMPRA"], Number(lote.valorCompra), "n");
+        setCell(sheet, r, COL["PREÇO VENDA"], Number(lote.precoVenda), "n");
 
-      // Lojas (AT a FE) -> Colunas 45 a 160
-      selectedStores.forEach(storeNum => {
-        const colIdx = 45 + (storeNum - 1);
-        if (colIdx <= 160) {
-          row[colIdx] = totalPairsPerStore;
-        }
+        const colLoja = COL[parseInt(lote.loja).toString()];
+        if (colLoja !== undefined) setCell(sheet, r, colLoja, lote.gradeLetra);
+        linhaExcel++;
       });
 
-      ws_data.push(row);
-
-      const ws = XLSX.utils.aoa_to_sheet(ws_data);
-      XLSX.utils.book_append_sheet(wb, ws, "PEDIDO");
-
-      const fileName = `Pedido_Sub_R2JR_${headerData.brand.replace(/\s/g, '_')}.xlsx`;
-      XLSX.writeFile(wb, fileName);
-      alert("Planilha exportada com sucesso!");
-    } catch (error) {
-      alert("Erro ao gerar arquivo.");
-    } finally {
-      setIsExporting(false);
-    }
+      sheet["!ref"] = XLSX.utils.encode_range({ s: { r: 0, c: 0 }, e: { r: linhaExcel + 5, c: 200 } });
+      sheet["!views"] = [{ state: "frozen", ySplit: 1 }];
+      XLSX.writeFile(workbook, `OTB_R2J_${pedido.marca}_${numPedidoUnico}.xlsx`);
+    } catch (e) { alert("Erro ao exportar planilha."); }
   };
 
-  const toggleStore = (num: number) => {
-    setSelectedStores(prev => prev.includes(num) ? prev.filter(n => n !== num) : [...prev, num]);
+  /* --- LOGICA UI --- */
+  const paresGradeAtual = useMemo(() => Object.values(gradeEditando).reduce((a, b) => a + (Number(b) || 0), 0), [gradeEditando]);
+  const getMesPrazo = (dias: number) => {
+    if (!pedido.fatFim) return "MÊS";
+    const data = new Date(pedido.fatFim);
+    data.setDate(data.getDate() + (Number(dias) || 0));
+    return data.toLocaleDateString('pt-BR', { month: 'short' }).toUpperCase();
   };
+
+  useEffect(() => {
+    const custo = Number(itemAtual.valorCompra) * (1 - (pedido.desconto || 0) / 100);
+    const dezena = Math.floor((custo * (pedido.markup || 2.6)) / 10) * 10;
+    setItemAtual(prev => ({ ...prev, precoVenda: dezena + 9.99 }));
+  }, [itemAtual.valorCompra, pedido.desconto, pedido.markup]);
+
+  const resumoPorLote = useMemo(() => {
+    const grupos: Record<string, any> = {};
+    lotesFinalizados.forEach(l => {
+      if (!grupos[l.idVinculo]) grupos[l.idVinculo] = { idVinculo: l.idVinculo, gradeLetra: l.gradeLetra, lojas: [], valor: 0, pares: 0, itemIds: [] };
+      const grade = gradesSalvas.find(g => g.letra === l.gradeLetra);
+      if (!grupos[l.idVinculo].lojas.includes(l.loja)) grupos[l.idVinculo].lojas.push(l.loja);
+      if (!grupos[l.idVinculo].itemIds.includes(l.id)) grupos[l.idVinculo].itemIds.push(l.id);
+      grupos[l.idVinculo].pares += grade?.total || 0;
+      grupos[l.idVinculo].valor += (grade?.total || 0) * (l.valorCompra * (1 - (pedido.desconto || 0) / 100));
+    });
+    return grupos;
+  }, [lotesFinalizados, gradesSalvas, pedido.desconto]);
 
   return (
-    <div className="fixed inset-0 bg-gray-950/95 backdrop-blur-xl z-[100] flex items-center justify-center p-4 font-sans overflow-hidden">
-      <div className="bg-white rounded-[48px] w-full max-w-6xl h-[90vh] shadow-2xl flex flex-col overflow-hidden border border-white/20">
+    <div className="fixed inset-0 bg-slate-200/60 backdrop-blur-xl flex items-center justify-center p-0 md:p-6 z-[100] font-sans text-slate-700 text-[13px]">
+      <div className="bg-[#F0F4F8] w-full max-w-5xl h-full md:h-[94vh] md:rounded-[50px] shadow-2xl flex flex-col overflow-hidden border border-white/50 relative">
         
-        {/* Step Header */}
-        <div className="p-8 border-b bg-gray-50/50 flex justify-between items-center shrink-0">
-          <div className="flex items-center gap-6">
-            <div className="p-4 bg-blue-900 text-white rounded-3xl shadow-xl shadow-blue-100">
-              <FileSpreadsheet size={32} />
-            </div>
-            <div>
-              <h2 className="text-3xl font-black text-blue-950 uppercase italic tracking-tighter leading-none">
-                Máscara <span className="text-red-600">de Pedido</span>
-              </h2>
-              <div className="flex items-center gap-3 mt-2">
-                {[1, 2, 3].map(s => (
-                  <div key={s} className="flex items-center gap-2">
-                    <span className={`w-3 h-3 rounded-full transition-all duration-500 ${step >= s ? 'bg-blue-600 scale-110 shadow-[0_0_10px_rgba(37,99,235,0.5)]' : 'bg-gray-200'}`}></span>
-                    {s < 3 && <div className={`w-8 h-0.5 rounded-full ${step > s ? 'bg-blue-600' : 'bg-gray-200'}`}></div>}
+        {/* HEADER */}
+        <div className="px-8 py-4 flex justify-between items-center bg-white/30 shrink-0">
+          <div className="flex items-center gap-3">
+            <div className="w-10 h-10 bg-blue-600 rounded-xl flex items-center justify-center shadow-lg"><ShoppingBag className="text-white" size={20} /></div>
+            <h1 className="text-lg font-black text-slate-900 uppercase italic">Real Admin</h1>
+          </div>
+          <button onClick={onClose} className="w-8 h-8 flex items-center justify-center bg-white rounded-full shadow-md"><X size={18} /></button>
+        </div>
+
+        {/* PROGRESSO */}
+        <div className="flex px-8 gap-2 shrink-0 pb-2">
+          {[1, 2, 3, 4].map(n => (
+            <button key={n} onClick={() => setEtapa(n)} className={`flex-1 py-2 rounded-xl text-[9px] font-black uppercase transition-all ${etapa === n ? 'bg-blue-600 text-white shadow-md' : 'bg-white/50 text-slate-400'}`}>Passo 0{n}</button>
+          ))}
+        </div>
+
+        <div className="flex-1 overflow-y-auto p-4 md:p-8 space-y-6 custom-scrollbar">
+          
+          {/* PASSO 1 */}
+          {etapa === 1 && (
+            <div className="max-w-xl mx-auto space-y-6 animate-in fade-in">
+              <div className="bg-white/80 p-6 rounded-[35px] shadow-sm border border-white space-y-4">
+                <input className="w-full p-4 bg-slate-50 border border-slate-200 rounded-2xl font-black text-slate-900 outline-none uppercase" placeholder="MARCA" value={pedido.marca} onChange={e => setPedido({...pedido, marca: e.target.value.toUpperCase()})} />
+                <input className="w-full p-4 bg-slate-50 border border-slate-200 rounded-2xl font-black text-slate-900 outline-none uppercase" placeholder="FORNECEDOR" value={pedido.fornecedor} onChange={e => setPedido({...pedido, fornecedor: e.target.value.toUpperCase()})} />
+                <div className="grid grid-cols-2 gap-4">
+                  <div className="bg-blue-50/50 p-2 rounded-[20px] border border-blue-100 text-center"><span className="text-[8px] font-black text-blue-400 uppercase">Desc %</span><input type="number" className="w-full text-center bg-transparent font-black text-xl outline-none" value={pedido.desconto || ""} onChange={e => setPedido({...pedido, desconto: Number(e.target.value)})} /></div>
+                  <div className="bg-blue-50/50 p-2 rounded-[20px] border border-blue-100 text-center"><span className="text-[8px] font-black text-blue-400 uppercase">Markup</span><input type="number" step="0.1" className="w-full text-center bg-transparent font-black text-xl outline-none" value={pedido.markup || ""} onChange={e => setPedido({...pedido, markup: Number(e.target.value)})} /></div>
+                </div>
+                <div className="flex gap-4 pt-2 border-t border-slate-100 justify-center">
+                  <div className="text-center flex-1"><span className="text-[7px] font-black text-slate-400 uppercase mb-1 block">Início</span><input type="date" className="w-full p-3 bg-slate-50 rounded-2xl font-bold text-xs outline-none text-center" value={pedido.fatInicio} onChange={e => setPedido({...pedido, fatInicio: e.target.value})} /></div>
+                  <div className="text-center flex-1"><span className="text-[7px] font-black text-slate-400 uppercase mb-1 block">Limite</span><input type="date" className="w-full p-3 bg-slate-50 rounded-2xl font-bold text-xs outline-none text-center" value={pedido.fatFim} onChange={e => setPedido({...pedido, fatFim: e.target.value})} /></div>
+                </div>
+              </div>
+              <div className="grid grid-cols-3 gap-3">
+                {[1, 2, 3].map(i => (
+                  <div key={i} className="bg-white p-4 rounded-[25px] shadow-sm border border-white text-center">
+                    <input type="number" className="w-full text-center bg-transparent font-black text-xl text-blue-600 outline-none" value={pedido[`prazo${i}` as keyof typeof pedido]} onChange={e => setPedido({...pedido, [`prazo${i}`]: Number(e.target.value)})} />
+                    <p className="text-[8px] font-bold text-slate-400 uppercase">{getMesPrazo(Number(pedido[`prazo${i}` as keyof typeof pedido]))}</p>
                   </div>
                 ))}
-                <span className="text-[10px] font-black text-gray-400 uppercase tracking-widest ml-4">Etapa {step} de 3</span>
-              </div>
-            </div>
-          </div>
-          <button onClick={onClose} className="p-4 bg-white text-gray-400 hover:text-red-600 rounded-full shadow-lg border border-gray-100 transition-all active:scale-90"><X size={24} /></button>
-        </div>
-
-        {/* Form Content */}
-        <div className="flex-1 overflow-y-auto p-10 md:p-14 no-scrollbar">
-          
-          {step === 1 && (
-            <div className="max-w-4xl mx-auto space-y-12 animate-in fade-in duration-700">
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-10">
-                <div className="space-y-2">
-                  <label className="text-[10px] font-black text-gray-400 uppercase tracking-[0.2em] ml-2">Fornecedor (Razão Social)</label>
-                  <input value={headerData.provider} onChange={e => setHeaderData({...headerData, provider: e.target.value.toUpperCase()})} className="w-full p-6 bg-gray-50 border-2 border-transparent focus:border-blue-500 focus:bg-white rounded-3xl font-black text-blue-950 outline-none shadow-inner transition-all uppercase" placeholder="EX: CALCADOS BEIRA RIO S.A." />
-                </div>
-                <div className="space-y-2">
-                  <label className="text-[10px] font-black text-gray-400 uppercase tracking-[0.2em] ml-2">Marca</label>
-                  <input value={headerData.brand} onChange={e => setHeaderData({...headerData, brand: e.target.value.toUpperCase()})} className="w-full p-6 bg-gray-50 border-2 border-transparent focus:border-blue-500 focus:bg-white rounded-3xl font-black text-blue-950 outline-none shadow-inner transition-all uppercase" placeholder="EX: VIZZANO" />
-                </div>
-                <div className="space-y-2">
-                  <label className="text-[10px] font-black text-gray-400 uppercase tracking-[0.2em] ml-2">Data Faturamento Inicial</label>
-                  <input type="date" value={headerData.billingDate} onChange={e => setHeaderData({...headerData, billingDate: e.target.value})} className="w-full p-6 bg-gray-50 border-2 border-transparent focus:border-blue-500 rounded-3xl font-black text-blue-950 outline-none shadow-inner transition-all" />
-                </div>
-                <div className="space-y-2">
-                  <label className="text-[10px] font-black text-gray-400 uppercase tracking-[0.2em] ml-2">Data Limite</label>
-                  <input type="date" value={headerData.deadlineDate} onChange={e => setHeaderData({...headerData, deadlineDate: e.target.value})} className="w-full p-6 bg-gray-50 border-2 border-transparent focus:border-blue-500 rounded-3xl font-black text-blue-950 outline-none shadow-inner transition-all" />
-                </div>
-                <div className="space-y-2">
-                  <label className="text-[10px] font-black text-gray-400 uppercase tracking-[0.2em] ml-2">Desconto (%)</label>
-                  <input type="number" value={headerData.discount} onChange={e => setHeaderData({...headerData, discount: e.target.value})} className="w-full p-6 bg-blue-50/50 border-2 border-transparent focus:border-blue-500 rounded-3xl font-black text-blue-900 outline-none shadow-inner" />
-                </div>
-                <div className="space-y-2">
-                  <label className="text-[10px] font-black text-gray-400 uppercase tracking-[0.2em] ml-2">Markup</label>
-                  <input type="number" step="0.1" value={headerData.markup} onChange={e => setHeaderData({...headerData, markup: e.target.value})} className="w-full p-6 bg-blue-50/50 border-2 border-transparent focus:border-blue-500 rounded-3xl font-black text-blue-900 outline-none shadow-inner" />
-                </div>
-              </div>
-              <div className="flex justify-end">
-                <button onClick={() => setStep(2)} className="bg-blue-900 text-white px-14 py-6 rounded-[32px] font-black uppercase text-xs shadow-2xl hover:bg-black transition-all flex items-center gap-4 border-b-8 border-blue-950 active:scale-95 group">
-                  Dados do Produto <ChevronRight size={20} className="group-hover:translate-x-2 transition-transform" />
-                </button>
               </div>
             </div>
           )}
 
-          {step === 2 && (
-            <div className="max-w-4xl mx-auto space-y-12 animate-in slide-in-from-right duration-700">
-               <div className="bg-blue-950 p-12 rounded-[56px] text-white shadow-2xl relative overflow-hidden group">
-                  <div className="absolute -top-10 -right-10 opacity-5 group-hover:opacity-10 transition-opacity"><DollarSign size={240} /></div>
-                  <div className="relative z-10 grid grid-cols-1 md:grid-cols-2 gap-12">
-                    <div className="space-y-8">
-                        <div className="space-y-2">
-                          <label className="text-[10px] font-black text-blue-300 uppercase tracking-[0.2em] ml-2">Referência de Fábrica</label>
-                          <input value={itemData.ref} onChange={e => setItemData({...itemData, ref: e.target.value.toUpperCase()})} className="w-full bg-white/10 border-2 border-white/10 focus:border-blue-400 focus:bg-white/20 rounded-3xl p-6 font-black text-white outline-none transition-all placeholder-white/20 text-xl" placeholder="EX: 1234.567" />
-                        </div>
-                        <div className="grid grid-cols-2 gap-6">
-                          <div className="space-y-2">
-                            <label className="text-[10px] font-black text-blue-300 uppercase tracking-[0.2em] ml-2">Tipo</label>
-                            <select value={itemData.type} onChange={e => setItemData({...itemData, type: e.target.value})} className="w-full bg-white/10 border-none rounded-3xl p-6 font-black text-white outline-none appearance-none cursor-pointer">
-                              {['SAPATO', 'SANDALIA', 'TENIS', 'BOTA', 'CHINELO', 'BOLSA', 'OUTROS'].map(t => <option key={t} value={t} className="bg-blue-900">{t}</option>)}
-                            </select>
-                          </div>
-                          <div className="space-y-2">
-                            <label className="text-[10px] font-black text-blue-300 uppercase tracking-[0.2em] ml-2">Modelo</label>
-                            <input value={itemData.model} onChange={e => setItemData({...itemData, model: e.target.value.toUpperCase()})} className="w-full bg-white/10 border-none rounded-3xl p-6 font-black text-white outline-none" placeholder="EX: SALTO BLOCO" />
-                          </div>
-                        </div>
-                        <div className="space-y-2">
-                          <label className="text-[10px] font-black text-blue-300 uppercase tracking-[0.2em] ml-2">Valor de Compra (Custo)</label>
-                          <input value={itemData.cost} onChange={e => setItemData({...itemData, cost: e.target.value})} className="w-full bg-white border-none rounded-3xl p-6 font-black text-blue-950 text-4xl outline-none shadow-2xl" placeholder="0,00" />
-                        </div>
+          {/* PASSO 2 */}
+          {etapa === 2 && (
+            <div className="max-w-xl mx-auto space-y-4 animate-in slide-in-from-right">
+              <div className="bg-white p-6 rounded-[40px] shadow-sm border border-white space-y-4">
+                <div className="grid grid-cols-2 gap-3">
+                   <input className="p-4 bg-slate-50 rounded-2xl font-black text-xl outline-none shadow-inner" placeholder="REFERÊNCIA" value={itemAtual.referencia} onChange={e => setItemAtual({...itemAtual, referencia: e.target.value.toUpperCase()})} />
+                   <select className="p-4 bg-slate-50 rounded-2xl font-black text-xs outline-none uppercase" value={itemAtual.modelo} onChange={e => setItemAtual({...itemAtual, modelo: e.target.value as any})}>
+                      <option value="Fem">Feminino</option><option value="Inf">Infantil</option><option value="Masc">Masculino</option><option value="Acess">Acessório</option>
+                   </select>
+                </div>
+                <input className="w-full p-3 bg-slate-50 rounded-xl font-bold text-xs outline-none uppercase" placeholder="TIPO / DESCRIÇÃO" value={itemAtual.tipo} onChange={e => setItemAtual({...itemAtual, tipo: e.target.value.toUpperCase()})} />
+                <div className="grid grid-cols-3 gap-2">
+                   {["cor1", "cor2", "cor3"].map(c => (
+                     <input key={c} className="p-3 bg-slate-50 rounded-xl font-bold text-[9px] outline-none uppercase" placeholder={c.toUpperCase()} value={itemAtual[c as keyof typeof itemAtual]} onChange={e => setItemAtual({...itemAtual, [c]: e.target.value.toUpperCase()})} />
+                   ))}
+                </div>
+                <div className="bg-slate-900 p-5 rounded-[30px] text-white flex justify-between items-center shadow-xl border-b-4 border-blue-600">
+                  <div className="text-center"><span className="text-[7px] font-black text-slate-500 uppercase">CUSTO</span><input type="number" className="bg-white/10 p-2 rounded-xl font-black text-xl outline-none w-20 text-center" value={itemAtual.valorCompra || ""} onChange={e => setItemAtual({...itemAtual, valorCompra: Number(e.target.value)})} /></div>
+                  <div className="text-right text-yellow-400 font-black"><span className="text-[8px] text-blue-400 block uppercase">Venda Sugerida</span>R$ {itemAtual.precoVenda.toFixed(2)}</div>
+                </div>
+                <button onClick={() => { if(!itemAtual.referencia) return; setItens([...itens, {...itemAtual, id: crypto.randomUUID()}]); setItemAtual({...itemAtual, referencia: "", valorCompra: 0, cor1: "", cor2: "", cor3: ""}); }} className="w-full bg-blue-600 text-white p-4 rounded-[25px] font-black text-[10px] uppercase shadow-lg hover:bg-blue-700">+ ADICIONAR ITEM</button>
+              </div>
+              <div className="space-y-2">
+                {itens.map(it => (
+                  <div key={it.id} className="bg-white/80 p-3 rounded-[20px] border border-white flex justify-between items-center shadow-sm uppercase">
+                    <div className="flex flex-col"><span className="font-black text-xs text-slate-800">{it.referencia} • {it.tipo}</span><span className="text-[8px] text-blue-500 font-bold italic">Custo R$ {it.valorCompra.toFixed(2)} | Venda R$ {it.precoVenda.toFixed(2)}</span></div>
+                    <button onClick={() => setItens(itens.filter(x => x.id !== it.id))} className="text-red-400 p-2"><Trash2 size={16}/></button>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+
+          {/* PASSO 3 */}
+          {etapa === 3 && (
+            <div className="max-w-2xl mx-auto space-y-6 animate-in zoom-in text-center">
+              <div className="bg-white p-8 rounded-[40px] shadow-sm border border-slate-100 space-y-6 relative">
+                <div className="absolute -top-4 right-8 bg-red-600 text-white px-4 py-2 rounded-full font-black text-xs shadow-xl animate-pulse">{paresGradeAtual} PARES</div>
+                <h3 className="text-sm font-black text-slate-800 uppercase italic">Montando Grade <span className="text-blue-600">{LETRAS[gradesSalvas.length]}</span></h3>
+                <div className="grid grid-cols-5 md:grid-cols-8 gap-2">
+                  {(TAMANHOS[itemAtual.modelo] || []).map(tam => (
+                    <div key={tam} className="text-center bg-slate-50 rounded-xl p-2 border border-slate-100">
+                      <label className="text-[8px] font-black text-slate-400 block mb-1">{tam}</label>
+                      <input type="number" className="w-full text-center bg-transparent font-black text-sm outline-none" value={gradeEditando[tam] || ""} onChange={e => setGradeEditando({...gradeEditando, [tam]: Number(e.target.value)})} />
                     </div>
-                    <div className="flex flex-col justify-center items-center text-center p-10 bg-white/5 rounded-[48px] border border-white/10 backdrop-blur-sm">
-                        <div className="p-4 bg-blue-500/20 text-blue-400 rounded-full mb-6"><Package size={40}/></div>
-                        <p className="text-[10px] font-black text-blue-300 uppercase tracking-[0.4em] mb-4">Engenharia de Venda</p>
-                        <h3 className="text-7xl font-black italic tracking-tighter text-white drop-shadow-2xl">{formatCurrency(suggestedPrice)}</h3>
-                        <div className="mt-8 flex gap-4">
-                           <div className="bg-white/10 px-4 py-2 rounded-xl text-[9px] font-black uppercase tracking-widest text-blue-200">Markup: {headerData.markup}</div>
-                           <div className="bg-white/10 px-4 py-2 rounded-xl text-[9px] font-black uppercase tracking-widest text-blue-200">Arred: .99</div>
-                        </div>
+                  ))}
+                </div>
+                <button onClick={() => { 
+                  if(paresGradeAtual === 0) return alert("Insira as quantidades!");
+                  setGradesSalvas([...gradesSalvas, { letra: LETRAS[gradesSalvas.length], modelo: itemAtual.modelo, valores: {...gradeEditando}, total: paresGradeAtual }]); 
+                  setGradeEditando({}); alert("Grade salva!"); 
+                }} className="w-full bg-blue-700 text-white p-4 rounded-[25px] font-black shadow-lg uppercase text-[10px]">Confirmar Grade {LETRAS[gradesSalvas.length]}</button>
+              </div>
+              <div className="flex flex-wrap gap-2 justify-center">
+                {gradesSalvas.map(g => <div key={g.letra} className="bg-blue-900 text-white p-2 px-4 rounded-full text-[10px] font-black flex items-center gap-2">GRADE {g.letra} ({g.total} PR) <CheckCircle2 size={12}/></div>)}
+              </div>
+            </div>
+          )}
+
+          {/* PASSO 4: MESA DE DISTRIBUIÇÃO AJUSTADA */}
+          {etapa === 4 && (
+            <div className="max-w-6xl mx-auto space-y-4 animate-in slide-in-from-bottom">
+               <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
+                  {/* COLUNA 1: ITENS COM DESCRIÇÃO RICA */}
+                  <div className="bg-white p-4 rounded-[35px] shadow-sm border border-slate-100 space-y-3">
+                    <span className="text-[9px] font-black text-slate-300 uppercase block text-center">1. Selecionar Itens</span>
+                    <div className="space-y-1.5 max-h-64 overflow-y-auto no-scrollbar">
+                      {itens.map(it => (
+                        <label key={it.id} className={`flex flex-col p-2 rounded-xl border-2 transition-all cursor-pointer text-left ${selecaoLote.itensIds.includes(it.id) ? 'bg-blue-600 border-blue-600 text-white shadow-md' : 'bg-slate-50'}`}>
+                          <input type="checkbox" className="hidden" checked={selecaoLote.itensIds.includes(it.id)} onChange={() => setSelecaoLote({...selecaoLote, itensIds: selecaoLote.itensIds.includes(it.id) ? selecaoLote.itensIds.filter(x => x !== it.id) : [...selecaoLote.itensIds, it.id]})} />
+                          <span className="text-[9px] font-black uppercase leading-tight">{pedido.marca} {it.tipo}</span>
+                          <div className="flex justify-between items-center mt-1">
+                            <span className="text-[8px] font-bold opacity-80 uppercase italic">{it.referencia}</span>
+                            <span className="text-[9px] font-black text-yellow-500">R$ {it.precoVenda.toFixed(2)}</span>
+                          </div>
+                        </label>
+                      ))}
+                    </div>
+                  </div>
+
+                  {/* COLUNA 2: GRADE MENOR E ELEGANTE */}
+                  <div className="bg-white p-4 rounded-[35px] shadow-sm border border-slate-100 space-y-3 text-center">
+                    <span className="text-[9px] font-black text-slate-300 uppercase block">2. Escolher Grade</span>
+                    <div className="grid grid-cols-2 gap-2">
+                      {gradesSalvas.map(gr => (
+                        <label key={gr.letra} className={`flex items-center gap-2 p-2 rounded-xl border-2 transition-all cursor-pointer ${selecaoLote.gradeLetra === gr.letra ? 'bg-red-600 border-red-600 text-white shadow-md' : 'bg-slate-50'}`}>
+                          <input type="radio" name="gr" className="hidden" checked={selecaoLote.gradeLetra === gr.letra} onChange={() => setSelecaoLote({...selecaoLote, gradeLetra: gr.letra})} />
+                          <span className="text-lg font-black italic">{gr.letra}</span>
+                          <div className="flex flex-col items-start leading-none">
+                             <span className="text-[8px] font-black uppercase">{gr.modelo}</span>
+                             <span className="text-[7px] font-bold opacity-70">{gr.total} pares</span>
+                          </div>
+                        </label>
+                      ))}
+                    </div>
+                  </div>
+
+                  {/* COLUNA 3: LOJAS */}
+                  <div className="bg-white p-4 rounded-[35px] shadow-sm border border-slate-100 space-y-3 text-center">
+                    <div className="flex bg-slate-50 rounded-xl p-1 mb-2">
+                       <button onClick={() => setModoLojas('subgrupo')} className={`flex-1 py-1 text-[8px] font-black uppercase rounded-lg transition-all ${modoLojas === 'subgrupo' ? 'bg-blue-600 text-white shadow-sm' : 'text-slate-400'}`}>Subgrupo</button>
+                       <button onClick={() => setModoLojas('todas')} className={`flex-1 py-1 text-[8px] font-black uppercase rounded-lg transition-all ${modoLojas === 'todas' ? 'bg-blue-600 text-white shadow-sm' : 'text-slate-400'}`}>Todas</button>
+                    </div>
+                    <div className="grid grid-cols-4 gap-1 max-h-48 overflow-y-auto no-scrollbar">
+                      {(modoLojas === 'subgrupo' ? SUBGRUPO_LOJAS : Array.from({length: 120}, (_, i) => (i+1).toString().padStart(2, '0'))).map(loja => (
+                        <button key={loja} onClick={() => setSelecaoLote({...selecaoLote, lojasIds: selecaoLote.lojasIds.includes(loja) ? selecaoLote.lojasIds.filter(x => x !== loja) : [...selecaoLote.lojasIds, loja]})} className={`p-1.5 rounded-lg text-[9px] font-black transition-all ${selecaoLote.lojasIds.includes(loja) ? 'bg-blue-700 text-white' : 'bg-slate-50 text-slate-400'}`}>{loja}</button>
+                      ))}
                     </div>
                   </div>
                </div>
-               <div className="flex justify-between items-center">
-                  <button onClick={() => setStep(1)} className="text-gray-400 hover:text-blue-950 font-black uppercase text-xs flex items-center gap-3 transition-all"><ArrowLeft size={20}/> Voltar ao Cabeçalho</button>
-                  <button onClick={() => setStep(3)} className="bg-blue-900 text-white px-14 py-6 rounded-[32px] font-black uppercase text-xs shadow-2xl hover:bg-black transition-all flex items-center gap-4 border-b-8 border-blue-950 active:scale-95">Definir Grade e Lojas <ChevronRight size={20}/></button>
-               </div>
+               
+               {/* BOTÃO DE VINCULO AJUSTADO */}
+               <button onClick={() => {
+                 if (!selecaoLote.gradeLetra || selecaoLote.itensIds.length === 0 || selecaoLote.lojasIds.length === 0) return alert("Selecione tudo!");
+                 const idVinculo = crypto.randomUUID();
+                 const novos = selecaoLote.itensIds.flatMap(id => {
+                   const it = itens.find(i => i.id === id);
+                   return selecaoLote.lojasIds.map(loja => ({ ...it, loja, gradeLetra: selecaoLote.gradeLetra, idVinculo }));
+                 });
+                 setLotesFinalizados([...lotesFinalizados, ...novos]);
+                 setSelecaoLote({ itensIds: [], gradeLetra: "", lojasIds: [] });
+               }} className="w-full bg-blue-700 text-white p-4 rounded-[25px] font-black shadow-xl uppercase active:scale-95 transition-all flex items-center justify-center gap-3">
+                 <Layers size={18}/> VINCULAR LOTE AO PEDIDO FINAL
+               </button>
             </div>
           )}
+        </div>
 
-          {step === 3 && (
-            <div className="max-w-6xl mx-auto space-y-10 animate-in slide-in-from-bottom duration-700 h-full flex flex-col">
-                <div className="grid grid-cols-1 lg:grid-cols-12 gap-8 flex-1">
-                   
-                   {/* Grade Selection */}
-                   <div className="lg:col-span-8 space-y-6">
-                      <div className="bg-white rounded-[40px] border border-gray-100 shadow-xl overflow-hidden flex flex-col">
-                         <div className="p-6 bg-gray-50 border-b flex justify-between items-center">
-                            <h3 className="text-[11px] font-black uppercase tracking-[0.3em] text-gray-500 flex items-center gap-4"><Layers size={18} className="text-blue-600"/> Composição da Grade de Tamanhos</h3>
-                            <div className="bg-blue-900 text-white px-5 py-2 rounded-2xl text-[10px] font-black uppercase italic tracking-tighter shadow-lg shadow-blue-100">Pares / Loja: {totalPairsPerStore}</div>
-                         </div>
-                         <div className="p-8 grid grid-cols-4 sm:grid-cols-6 md:grid-cols-10 gap-3 max-h-[300px] overflow-y-auto no-scrollbar">
-                            {SIZE_LABELS.map(s => (
-                              <div key={s} className="space-y-1.5 flex flex-col items-center">
-                                <label className="text-[9px] font-black text-gray-400">{s}</label>
-                                <input 
-                                  type="number" 
-                                  min="0"
-                                  value={grade[s] || ''} 
-                                  onChange={e => setGrade({...grade, [s]: parseInt(e.target.value) || 0})}
-                                  className="w-12 h-12 bg-gray-50 border-2 border-transparent focus:border-blue-500 focus:bg-white rounded-2xl text-center font-black text-blue-950 outline-none transition-all shadow-inner" 
-                                />
-                              </div>
-                            ))}
-                         </div>
-                      </div>
-
-                      <div className="bg-white rounded-[40px] border border-gray-100 shadow-xl p-8 flex justify-between items-center">
-                         <div className="flex items-center gap-6">
-                            <div className="p-5 bg-red-50 text-red-600 rounded-[32px]"><Package size={28}/></div>
-                            <div>
-                               <p className="text-[10px] font-black text-gray-400 uppercase tracking-widest">Resumo Consolidado do Pedido</p>
-                               <h4 className="text-3xl font-black text-blue-950 italic tracking-tighter">{totalOrderPairs} <span className="text-sm not-italic uppercase font-black text-gray-300 ml-2">Pares Totais</span></h4>
-                            </div>
-                         </div>
-                         <div className="text-right">
-                            <p className="text-[10px] font-black text-gray-400 uppercase tracking-widest">Distribuição</p>
-                            <h4 className="text-xl font-black text-blue-900 uppercase italic tracking-tighter">{selectedStores.length} Lojas Atendidas</h4>
-                         </div>
-                      </div>
-                   </div>
-
-                   {/* Store Selection */}
-                   <div className="lg:col-span-4 bg-blue-950 rounded-[48px] p-8 flex flex-col shadow-2xl relative overflow-hidden">
-                      <div className="absolute top-0 right-0 p-8 opacity-10"><Building2 size={100} /></div>
-                      <h3 className="text-sm font-black text-blue-300 uppercase tracking-[0.3em] mb-6 flex items-center gap-3"><CheckCircle2 size={18}/> Selecionar Unidades</h3>
-                      <div className="flex-1 overflow-y-auto pr-2 space-y-2 no-scrollbar">
-                         <div className="grid grid-cols-4 gap-2">
-                           {Array.from({length: 120}, (_, i) => i + 1).map(num => (
-                             <button 
-                                key={num}
-                                onClick={() => toggleStore(num)}
-                                className={`h-10 rounded-xl font-black text-[10px] flex items-center justify-center transition-all ${selectedStores.includes(num) ? 'bg-blue-400 text-white shadow-lg' : 'bg-white/5 text-blue-300 hover:bg-white/10'}`}
-                             >
-                                {String(num).padStart(2, '0')}
-                             </button>
-                           ))}
-                         </div>
-                      </div>
-                   </div>
-
-                </div>
-
-                <div className="mt-10 flex flex-col md:flex-row justify-between items-center gap-8 shrink-0 pb-10">
-                    <button onClick={() => setStep(2)} className="text-gray-400 hover:text-blue-950 font-black uppercase text-xs flex items-center gap-3 transition-all"><ArrowLeft size={20}/> Voltar ao Produto</button>
-                    
-                    <div className="flex gap-6 w-full md:w-auto">
-                        {user.role === UserRole.ADMIN ? (
-                          <button 
-                            onClick={handleFinalize} 
-                            disabled={isExporting || totalOrderPairs === 0} 
-                            className="flex-1 md:flex-none px-16 py-6 bg-green-600 text-white rounded-[32px] font-black uppercase text-xs shadow-2xl flex items-center justify-center gap-4 hover:bg-green-700 transition-all active:scale-95 border-b-8 border-green-800 disabled:opacity-30 disabled:grayscale"
-                          >
-                            {isExporting ? <Loader2 className="animate-spin" size={24}/> : <Download size={24} />} 
-                            Gerar Planilha OTB
-                          </button>
-                        ) : (
-                          <button 
-                            onClick={handleFinalize}
-                            disabled={totalOrderPairs === 0}
-                            className="flex-1 md:flex-none px-16 py-6 bg-blue-600 text-white rounded-[32px] font-black uppercase text-xs shadow-2xl flex items-center justify-center gap-4 hover:bg-blue-700 transition-all active:scale-95 border-b-8 border-blue-800 disabled:opacity-30"
-                          >
-                            <Send size={24} /> Finalizar Pedido
-                          </button>
-                        )}
+        {/* GAVETA DE LOTES COM EDIÇÃO/EXCLUSÃO */}
+        {verLotes && (
+          <div className="absolute bottom-20 left-6 right-6 bg-white rounded-[40px] shadow-2xl border border-slate-100 z-50 animate-in slide-in-from-bottom max-h-[50vh] flex flex-col">
+            <div className="p-6 border-b flex justify-between items-center"><h3 className="font-black text-blue-900 uppercase italic tracking-tighter">Resumo Lotes</h3><button onClick={() => setVerLotes(false)} className="p-2 bg-slate-100 rounded-full"><X size={16}/></button></div>
+            <div className="p-6 overflow-y-auto space-y-4 custom-scrollbar">
+              {Object.entries(resumoPorLote).map(([chave, grupo]: [string, any]) => (
+                <div key={chave} className="bg-slate-50 p-4 rounded-3xl border border-slate-100 relative">
+                  <div className="flex justify-between items-start mb-2">
+                    <div className="flex flex-col">
+                      <span className="text-lg font-black italic text-red-600 uppercase leading-none">Grade {grupo.gradeLetra}</span>
+                      <span className="text-[10px] font-bold text-slate-400 mt-1 uppercase">{grupo.pares} PR TOTAL</span>
                     </div>
+                    <div className="flex gap-2">
+                      <button onClick={() => { setSelecaoLote({ itensIds: grupo.itemIds, gradeLetra: grupo.gradeLetra, lojasIds: grupo.lojas }); setLotesFinalizados(prev => prev.filter(l => l.idVinculo !== grupo.idVinculo)); setVerLotes(false); setEtapa(4); }} className="p-2 bg-blue-100 text-blue-700 rounded-xl"><Edit3 size={16}/></button>
+                      <button onClick={() => { if(confirm("Remover lote?")) setLotesFinalizados(prev => prev.filter(l => l.idVinculo !== grupo.idVinculo)); }} className="p-2 bg-red-100 text-red-700 rounded-xl"><Trash2 size={16}/></button>
+                    </div>
+                  </div>
+                  <div className="text-[11px] font-bold text-slate-500 mb-2">Lojas: <span className="text-blue-900 font-black">{grupo.lojas.join(', ')}</span></div>
+                  <div className="text-right font-black text-green-600 text-lg italic leading-none">R$ {grupo.valor.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}</div>
                 </div>
+              ))}
             </div>
-          )}
+          </div>
+        )}
 
+        {/* RODAPÉ */}
+        <div className="p-4 md:px-8 bg-white border-t flex justify-between items-center shrink-0">
+          <button onClick={() => setVerLotes(!verLotes)} className="bg-blue-50 text-blue-700 px-6 py-3 rounded-2xl font-black text-[10px] uppercase flex items-center gap-2 hover:bg-blue-100 transition-all"><ListFilter size={16}/> VEJA LOTES ({Object.keys(resumoPorLote).length})</button>
+          <div className="flex items-center gap-3">
+            <button onClick={exportarPlanilhaFinal} className="bg-red-600 text-white px-8 py-3 rounded-2xl font-black text-[10px] uppercase shadow-lg flex items-center gap-2 active:scale-95 animate-pulse"><Download size={16}/> EXPORTAR</button>
+            <button onClick={onClose} className="bg-slate-900 text-white px-6 py-3 rounded-2xl font-black text-[10px] uppercase flex items-center gap-2 hover:bg-black transition-all"><LogOut size={16}/> FINALIZAR</button>
+          </div>
         </div>
       </div>
+      <style dangerouslySetInnerHTML={{ __html: `.custom-scrollbar::-webkit-scrollbar { width: 3px; } .custom-scrollbar::-webkit-scrollbar-thumb { background: #cbd5e1; border-radius: 10px; } .no-scrollbar::-webkit-scrollbar { display: none; } input[type=number]::-webkit-inner-spin-button, input[type=number]::-webkit-outer-spin-button { -webkit-appearance: none; margin: 0; } @keyframes fadeIn { from { opacity: 0; transform: translateY(5px); } to { opacity: 1; transform: translateY(0); } } .animate-in { animation: fadeIn 0.3s ease-out; }`}} />
     </div>
   );
 };
