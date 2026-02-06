@@ -93,6 +93,10 @@ const IceCreamModule: React.FC<IceCreamModuleProps> = ({
   const [showPurchaseModal, setShowPurchaseModal] = useState(false);
   const [showInventoryModal, setShowInventoryModal] = useState(false);
 
+  // Estados para Prévia do Ticket
+  const [showTicketModal, setShowTicketModal] = useState(false);
+  const [ticketData, setTicketData] = useState<{ items: IceCreamDailySale[], saleCode: string, method: string | null, buyer?: string } | null>(null);
+
   const [partners, setPartners] = useState<StoreProfitPartner[]>([]);
   const [expandedEmployee, setExpandedEmployee] = useState<string | null>(null);
   
@@ -292,6 +296,11 @@ const IceCreamModule: React.FC<IceCreamModuleProps> = ({
     printWindow.document.write(html); printWindow.document.close();
   };
 
+  const handleOpenPrintPreview = (items: IceCreamDailySale[], saleCode: string, method: string | null, buyer?: string) => {
+    setTicketData({ items, saleCode, method, buyer });
+    setShowTicketModal(true);
+  };
+
   const handlePrintTicket = (items: IceCreamDailySale[], saleCode: string, method: string | null, buyer?: string) => {
     const printWindow = window.open('', '_blank', 'width=300,height=600');
     if (!printWindow) {
@@ -354,7 +363,7 @@ const IceCreamModule: React.FC<IceCreamModuleProps> = ({
                     setTimeout(() => {
                         window.print();
                         setTimeout(() => window.close(), 1000);
-                    }, 1000);
+                    }, 800);
                 };
             </script>
         </body>
@@ -381,9 +390,8 @@ const IceCreamModule: React.FC<IceCreamModuleProps> = ({
           for (const ingredient of itemDef.recipe) { await onUpdateStock(effectiveStoreId, String(ingredient.stock_base_name).toUpperCase(), -(ingredient.quantity * c.unitsSold), '', 'adjustment'); }
         }
       }
-      handlePrintTicket(operationalSales, saleCode, isMisto ? 'Misto' : (paymentMethod as string), (paymentMethod === 'Fiado' || (isMisto && mistoValues['Fiado'])) ? buyerName : undefined);
+      handleOpenPrintPreview(operationalSales, saleCode, isMisto ? 'Misto' : (paymentMethod as string), (paymentMethod === 'Fiado' || (isMisto && mistoValues['Fiado'])) ? buyerName : undefined);
       setCart([]); setPaymentMethod(null); setBuyerName(''); setAmountReceived(''); setMistoValues({ 'Pix': '', 'Dinheiro': '', 'Cartão': '', 'Fiado': '' });
-      alert("Venda registrada!");
     } catch (e) { alert("Falha ao registrar venda."); } finally { setIsSubmitting(false); }
   };
 
@@ -552,7 +560,7 @@ const IceCreamModule: React.FC<IceCreamModuleProps> = ({
                             onAddSales={onAddSales} 
                             onAddTransaction={onAddTransaction} 
                             onUpdateStock={onUpdateStock} 
-                            handlePrintTicket={handlePrintTicket} 
+                            handlePrintTicket={handleOpenPrintPreview} 
                             isSubmitting={isSubmitting} 
                             setIsSubmitting={setIsSubmitting} 
                             effectiveStoreId={effectiveStoreId} 
@@ -872,7 +880,7 @@ const IceCreamModule: React.FC<IceCreamModuleProps> = ({
                                             <div className="flex items-center justify-center gap-2">
                                                 {saleGroup.status !== 'canceled' && (
                                                     <button 
-                                                        onClick={() => handlePrintTicket(saleGroup.items, saleGroup.saleCode, saleGroup.paymentMethods.join(' + '), saleGroup.buyer_name)} 
+                                                        onClick={() => handleOpenPrintPreview(saleGroup.items, saleGroup.saleCode, saleGroup.paymentMethods.join(' + '), saleGroup.buyer_name)} 
                                                         className="p-2 text-blue-400 hover:text-blue-600 transition-all"
                                                         title="Reimprimir Ticket"
                                                     >
@@ -934,6 +942,83 @@ const IceCreamModule: React.FC<IceCreamModuleProps> = ({
                 </div>
             )}
         </div>
+
+        {/* MODAL: PRÉVIA DO TICKET (58mm) */}
+        {showTicketModal && ticketData && (
+            <div className="fixed inset-0 bg-black/80 backdrop-blur-md flex items-center justify-center z-[200] p-4">
+                <div className="bg-white rounded-[40px] w-full max-w-sm max-h-[90vh] shadow-2xl animate-in zoom-in duration-300 overflow-hidden flex flex-col">
+                    <div className="p-5 border-b flex justify-between items-center bg-gray-50/50 shrink-0">
+                        <h3 className="font-black text-blue-950 uppercase italic text-xs flex items-center gap-2"><Printer size={16} className="text-blue-600"/> Prévia do Ticket</h3>
+                        <button onClick={() => setShowTicketModal(false)} className="text-gray-400 hover:text-red-600 p-1"><X size={24}/></button>
+                    </div>
+                    
+                    <div className="flex-1 overflow-y-auto p-4 flex justify-center bg-gray-100 no-scrollbar">
+                        {/* Papel Simulado Calibrado para 58mm (48mm área útil) */}
+                        <div className="bg-white w-[58mm] min-h-[100mm] h-fit shadow-lg p-3 text-black font-mono text-[9px] relative border-l border-r border-gray-200 mx-auto">
+                            <div className="text-center font-black text-[11px] mb-2">GELATERIA REAL</div>
+                            <div className="border-t border-dashed border-black my-2"></div>
+                            
+                            <div className="flex justify-between">
+                                <span className="font-black uppercase">CÓDIGO:</span>
+                                <span className="font-black">#{ticketData.saleCode}</span>
+                            </div>
+                            <div className="flex justify-between">
+                                <span className="uppercase">DATA:</span>
+                                <span>{new Date().toLocaleString('pt-BR', { day: '2-digit', month: '2-digit', year: '2-digit', hour: '2-digit', minute: '2-digit' })}</span>
+                            </div>
+                            
+                            <div className="border-t border-dashed border-black my-2"></div>
+                            <div className="font-black mb-1 uppercase">ITENS:</div>
+                            {ticketData.items.map((i, idx) => (
+                                <div key={idx} className="flex justify-between mb-0.5">
+                                    <span className="flex-1 truncate pr-1">{i.unitsSold}x {i.productName}</span>
+                                    <span className="shrink-0">{formatCurrency(i.totalValue)}</span>
+                                </div>
+                            ))}
+                            
+                            <div className="border-t border-dashed border-black my-2"></div>
+                            <div className="flex justify-between font-black text-[10px]">
+                                <span className="uppercase">TOTAL</span>
+                                <span>{formatCurrency(ticketData.items.reduce((acc, c) => acc + c.totalValue, 0))}</span>
+                            </div>
+                            
+                            <div className="mt-3 flex justify-between">
+                                <span className="uppercase">PAGTO:</span>
+                                <span className="font-black">{(ticketData.method || 'MISTO').toUpperCase()}</span>
+                            </div>
+                            {ticketData.buyer && (
+                                <div className="flex justify-between">
+                                    <span className="uppercase">FUNC:</span>
+                                    <span className="font-black truncate max-w-[30mm]">{ticketData.buyer}</span>
+                                </div>
+                            )}
+                            
+                            <div className="border-t border-dashed border-black my-2"></div>
+                            <div className="text-center mt-3 leading-tight opacity-70 italic" style={{ fontSize: '8px' }}>
+                                Aguarde ser atendido<br/>
+                                Real Admin v6.5<br/>
+                                Unid: {stores.find(s => s.id === effectiveStoreId)?.number || '---'}
+                            </div>
+                        </div>
+                    </div>
+
+                    <div className="p-4 bg-white border-t flex flex-col gap-2 shrink-0">
+                        <button 
+                            onClick={() => handlePrintTicket(ticketData.items, ticketData.saleCode, ticketData.method, ticketData.buyer)}
+                            className="w-full py-4 bg-blue-900 text-white rounded-[20px] font-black uppercase text-[10px] shadow-xl active:scale-95 border-b-4 border-blue-950 flex items-center justify-center gap-2 transition-all"
+                        >
+                            <Printer size={16}/> Imprimir Agora
+                        </button>
+                        <button 
+                            onClick={() => setShowTicketModal(false)}
+                            className="w-full py-3 bg-gray-100 text-gray-500 rounded-[20px] font-black uppercase text-[9px] active:scale-95"
+                        >
+                            Fechar Prévia
+                        </button>
+                    </div>
+                </div>
+            </div>
+        )}
 
         {showWastageModal && (
             <div className="fixed inset-0 bg-black/80 backdrop-blur-md flex items-center justify-center z-[130] p-4">
