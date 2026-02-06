@@ -40,13 +40,11 @@ const PRODUCT_CATEGORIES: IceCreamCategory[] = ['Sundae', 'Milkshake', 'Casquinh
 
 const getCategoryIconEdit = (category: string, name: string = '') => {
     const itemName = (name || '').toLowerCase();
-    // Sundae agora usa a mesma imagem do Copinho
     if (category === 'Sundae') return 'https://img.icons8.com/color/144/ice-cream-bowl.png';
     if (['Casquinha', 'Cascão', 'Cascão Trufado'].includes(category)) return 'https://img.icons8.com/color/144/ice-cream-cone.png';
     if (category === 'Milkshake') return 'https://img.icons8.com/color/144/milkshake.png';
     if (category === 'Copinho') return 'https://img.icons8.com/color/144/ice-cream-bowl.png';
     if (category === 'Bebidas') return 'https://img.icons8.com/color/144/soda-bottle.png';
-    // Adicionais agora usa a mesma imagem da Nutella
     if (category === 'Adicionais' || itemName.includes('nutella') || itemName.includes('chocolate')) return 'https://img.icons8.com/color/144/chocolate-spread.png';
     return 'https://img.icons8.com/color/144/ice-cream.png';
 };
@@ -76,13 +74,14 @@ const IceCreamModule: React.FC<IceCreamModuleProps> = ({
   const [selectedMonth, setSelectedMonth] = useState(new Date().getMonth() + 1);
   const [selectedYear, setSelectedYear] = useState(new Date().getFullYear());
 
- const [auditDay, setAuditDay] = useState<string>(new Date().getDate().toString());
+  const [auditDay, setAuditDay] = useState<string>(new Date().getDate().toString());
   const [auditMonth, setAuditMonth] = useState<string>((new Date().getMonth() + 1).toString());
   const [auditYear, setAuditYear] = useState<string>(new Date().getFullYear().toString());
   const [auditSearch, setAuditSearch] = useState('');
 
   const [showProductModal, setShowProductModal] = useState(false);
   const [showTransactionModal, setShowTransactionModal] = useState(false);
+  const [showWastageModal, setShowWastageModal] = useState(false);
   const [showCategoryManager, setShowCategoryManager] = useState(false);
   const [expenseCategories, setExpenseCategories] = useState<{id: string, name: string}[]>([]);
   const [newCategoryName, setNewCategoryName] = useState('');
@@ -101,6 +100,7 @@ const IceCreamModule: React.FC<IceCreamModuleProps> = ({
   const [newInsumo, setNewInsumo] = useState({ name: '', unit: 'un', initial: '' });
   const [purchaseForm, setPurchaseForm] = useState<Record<string, string>>({}); 
   const [inventoryForm, setInventoryForm] = useState<Record<string, string>>({});
+  const [wastageForm, setWastageForm] = useState({ stockId: '', quantity: '', reason: 'DEFEITO / AVARIA' });
 
   const [editingProduct, setEditingProduct] = useState<IceCreamItem | null>(null);
   const [productForm, setProductForm] = useState<Partial<IceCreamItem>>({ name: '', category: 'Copinho', price: 0, active: true, recipe: [] });
@@ -295,10 +295,71 @@ const IceCreamModule: React.FC<IceCreamModuleProps> = ({
 
   const handlePrintTicket = (items: IceCreamDailySale[], saleCode: string, method: string | null, buyer?: string) => {
     const printWindow = window.open('', '_blank', 'width=300,height=600');
-    if (!printWindow) return;
+    if (!printWindow) {
+        alert("O navegador bloqueou a abertura do ticket. Por favor, permita pop-ups para esta página.");
+        return;
+    }
     const total = items.reduce((acc, curr) => acc + curr.totalValue, 0);
-    const html = `<body style="font-family:monospace;width:80mm;padding:5mm;font-size:12px;"><div style="text-align:center;font-weight:bold;">GELATERIA REAL</div><hr/>${items.map(i => `<div style="display:flex;justify-content:space-between;"><span>${i.unitsSold}x ${i.productName}</span><span>${formatCurrency(i.totalValue)}</span></div>`).join('')}<hr/><div style="display:flex;justify-content:space-between;font-weight:bold;"><span>TOTAL</span><span>${formatCurrency(total)}</span></div><div>PAGTO: ${(method || 'MISTO').toUpperCase()}</div>${buyer ? `<div>FUNC: ${buyer}</div>` : ''}<script>window.onload=()=>{window.print();setTimeout(()=>window.close(),500);};</script></body>`;
-    printWindow.document.write(html); printWindow.document.close();
+    const html = `
+        <!DOCTYPE html>
+        <html>
+        <head>
+            <style>
+                @page { margin: 0; }
+                body { 
+                    font-family: 'Courier New', Courier, monospace; 
+                    width: 72mm; 
+                    padding: 4mm; 
+                    font-size: 11px; 
+                    color: #000;
+                    background: #fff;
+                    margin: 0;
+                }
+                .text-center { text-align: center; }
+                .bold { font-weight: bold; }
+                hr { border: 0; border-top: 1px dashed #000; margin: 2mm 0; }
+                .flex { display: flex; justify-content: space-between; }
+                .mt-2 { margin-top: 2mm; }
+                .footer { font-size: 9px; margin-top: 5mm; }
+            </style>
+        </head>
+        <body>
+            <div class="text-center bold" style="font-size: 14px;">GELATERIA REAL</div>
+            <div class="text-center" style="font-size: 9px;">Comprovante de Venda</div>
+            <hr/>
+            <div class="flex"><span class="bold">COD:</span> <span>#${saleCode}</span></div>
+            <div class="flex"><span>DATA:</span> <span>${new Date().toLocaleString('pt-BR')}</span></div>
+            <hr/>
+            <div class="bold">ITENS:</div>
+            ${items.map(i => `
+                <div class="flex" style="margin-top: 1mm;">
+                    <span>${i.unitsSold}x ${i.productName}</span>
+                    <span>${formatCurrency(i.totalValue)}</span>
+                </div>
+            `).join('')}
+            <hr/>
+            <div class="flex bold" style="font-size: 13px;">
+                <span>TOTAL</span>
+                <span>${formatCurrency(total)}</span>
+            </div>
+            <div class="mt-2 flex"><span>PAGTO:</span> <span class="bold">${(method || 'MISTO').toUpperCase()}</span></div>
+            ${buyer ? `<div class="flex"><span>FUNC:</span> <span class="bold">${buyer}</span></div>` : ''}
+            <hr/>
+            <div class="text-center footer">
+                Obrigado pela preferência!<br/>
+                Real Admin v6.5
+            </div>
+            <script>
+                window.onload = () => {
+                    window.print();
+                    setTimeout(() => window.close(), 1000);
+                };
+            </script>
+        </body>
+        </html>
+    `;
+    printWindow.document.write(html); 
+    printWindow.document.close();
   };
 
   const finalizeSale = async () => {
@@ -318,7 +379,7 @@ const IceCreamModule: React.FC<IceCreamModuleProps> = ({
           for (const ingredient of itemDef.recipe) { await onUpdateStock(effectiveStoreId, String(ingredient.stock_base_name).toUpperCase(), -(ingredient.quantity * c.unitsSold), '', 'adjustment'); }
         }
       }
-      handlePrintTicket(operationalSales, saleCode, isMisto ? 'Misto' : (paymentMethod as string), buyerName);
+      handlePrintTicket(operationalSales, saleCode, isMisto ? 'Misto' : (paymentMethod as string), (paymentMethod === 'Fiado' || (isMisto && mistoValues['Fiado'])) ? buyerName : undefined);
       setCart([]); setPaymentMethod(null); setBuyerName(''); setAmountReceived(''); setMistoValues({ 'Pix': '', 'Dinheiro': '', 'Cartão': '', 'Fiado': '' });
       alert("Venda registrada!");
     } catch (e) { alert("Falha ao registrar venda."); } finally { setIsSubmitting(false); }
@@ -356,6 +417,35 @@ const IceCreamModule: React.FC<IceCreamModuleProps> = ({
       setTxForm({ date: new Date().toLocaleDateString('en-CA'), category: expenseCategories[0]?.name || '', value: '', description: '' }); 
       alert("Saída lançada!"); 
     } catch (e) { alert("Erro ao lançar."); } finally { setIsSubmitting(false); }
+  };
+
+  const handleSaveWastage = async () => {
+      if (!wastageForm.stockId || !wastageForm.quantity || !effectiveStoreId) return;
+      setIsSubmitting(true);
+      try {
+          const stItem = stock.find(s => s.stock_id === wastageForm.stockId);
+          if (!stItem) throw new Error("Insumo não encontrado");
+          
+          const val = parseFloat(wastageForm.quantity.replace(',', '.'));
+          // Salva como saída no financeiro se houver custo (opcional, aqui foca no estoque)
+          await onUpdateStock(effectiveStoreId, stItem.product_base, -val, stItem.unit, 'adjustment', stItem.stock_id);
+          
+          // Registra como despesa de operação no financeiro
+          await onAddTransaction({
+              id: '0', storeId: effectiveStoreId, date: new Date().toISOString().split('T')[0],
+              type: 'exit', category: 'AVARIA / DEFEITO PRODUTO', value: 0, // Valor zero pois é perda física
+              description: `Baixa de Avaria: ${val}${stItem.unit} de ${stItem.product_base}. Motivo: ${wastageForm.reason}`,
+              createdAt: new Date()
+          });
+
+          setWastageForm({ stockId: '', quantity: '', reason: 'DEFEITO / AVARIA' });
+          setShowWastageModal(false);
+          alert("Baixa de avaria realizada com sucesso!");
+      } catch (e) {
+          alert("Erro ao realizar baixa.");
+      } finally {
+          setIsSubmitting(false);
+      }
   };
 
   const handleSaveSupplies = async () => {
@@ -535,7 +625,10 @@ const IceCreamModule: React.FC<IceCreamModuleProps> = ({
                     <div className="bg-white p-8 rounded-[40px] shadow-sm border border-gray-100 flex flex-col md:flex-row justify-between items-center gap-6">
                         <div className="flex items-center gap-4"><div className="p-4 bg-blue-50 text-blue-700 rounded-3xl"><Clock size={32}/></div><div><h3 className="text-2xl font-black uppercase italic text-blue-950 tracking-tighter">Fluxo de Caixa <span className="text-blue-700">Diário</span></h3><div className="flex bg-gray-100 p-1 rounded-lg mt-2"><button onClick={() => setDreSubTab('resumo')} className={`px-4 py-1.5 rounded-md text-[9px] font-black uppercase transition-all ${dreSubTab === 'resumo' ? 'bg-white text-blue-700 shadow-sm' : 'text-gray-400'}`}>Resumo</button><button onClick={() => setDreSubTab('detalhado')} className={`px-4 py-1.5 rounded-md text-[9px] font-black uppercase transition-all ${dreSubTab === 'detalhado' ? 'bg-white text-blue-700 shadow-sm' : 'text-gray-400'}`}>Detalhado</button></div></div></div>
                         <div className="flex flex-col items-end gap-2">
-                             <button onClick={() => setShowTransactionModal(true)} className="px-6 py-2.5 bg-red-600 text-white rounded-xl font-black uppercase text-[10px] shadow-lg flex items-center gap-2 border-b-4 border-red-900 active:scale-95"><DollarSign size={14}/> Lançar Saída (Sangria)</button>
+                             <div className="flex gap-2">
+                                <button onClick={() => setShowWastageModal(true)} className="px-6 py-2.5 bg-orange-500 text-white rounded-xl font-black uppercase text-[10px] shadow-lg flex items-center gap-2 border-b-4 border-orange-700 active:scale-95"><AlertTriangle size={14}/> Baixa Avaria</button>
+                                <button onClick={() => setShowTransactionModal(true)} className="px-6 py-2.5 bg-red-600 text-white rounded-xl font-black uppercase text-[10px] shadow-lg flex items-center gap-2 border-b-4 border-red-900 active:scale-95"><DollarSign size={14}/> Lançar Saída (Sangria)</button>
+                             </div>
                              <div className="text-right"><p className="text-[9px] font-black text-gray-400 uppercase">Apuração</p><p className="text-lg font-black text-blue-950">{todayKey.split('-').reverse().join('/')}</p></div>
                         </div>
                     </div>
@@ -618,7 +711,7 @@ const IceCreamModule: React.FC<IceCreamModuleProps> = ({
                         <div className="lg:col-span-8 space-y-6">
                             <div className="bg-white p-8 rounded-[40px] shadow-sm border border-gray-100"><h4 className="text-[10px] font-black text-gray-400 uppercase tracking-[0.2em] mb-6 flex items-center gap-2"><Briefcase size={14}/> Demonstrativo de Resultado</h4><div className="space-y-4">
                                 <div className="flex justify-between items-center pb-4 border-b"><span className="font-bold text-gray-600 uppercase text-xs">Faturamento (+)</span><span className="font-black text-green-600 text-lg">{formatCurrency(dreStats.monthIn)}</span></div>
-                                <div className="flex justify-between items-center pb-4 border-b"><span className="font-bold text-gray-600 uppercase text-xs">Saídas (-)</span><span className="font-black text-red-600 text-lg">{formatCurrency(dreStats.monthOut)}</span></div>
+                                <div className="flex justify-between items-center pb-4 border-b"><span className="font-bold text-gray-600 uppercase text-xs">Despesas / Saídas (-)</span><span className="font-black text-red-600 text-lg">{formatCurrency(dreStats.monthOut)}</span></div>
                                 <div className="flex justify-between items-center pt-2"><span className="font-black text-blue-950 uppercase text-sm">Lucro Líquido (=)</span><span className="font-black text-blue-900 text-2xl italic">{formatCurrency(dreStats.profit)}</span></div>
                             </div></div>
                             <div className="bg-white p-8 rounded-[40px] shadow-sm border border-gray-100">
@@ -775,7 +868,26 @@ const IceCreamModule: React.FC<IceCreamModuleProps> = ({
 
                                         <td className="px-8 py-5"><div className="flex flex-wrap gap-1">{saleGroup.paymentMethods.map((pm: any, idx: number) => <span key={idx} className="px-2 py-0.5 rounded text-[8px] font-black uppercase border bg-green-50 text-green-700 border-green-100">{pm}</span>)}</div>{saleGroup.buyer_name && <div className="text-[8px] text-gray-400 uppercase mt-1 truncate">Comprador: {saleGroup.buyer_name}</div>}</td>
                                         <td className="px-8 py-5 text-right font-black text-sm">{formatCurrency(saleGroup.totalValue)}</td>
-                                        <td className="px-8 py-5 text-center">{saleGroup.status === 'canceled' ? <span className="bg-red-100 text-red-700 px-3 py-1 rounded-full text-[8px] font-black uppercase border border-red-200">ESTORNADA</span> : <button onClick={() => setShowCancelModal({id: '0', code: saleGroup.saleCode})} className="p-2 text-gray-300 hover:text-red-600 transition-all"><Ban size={18}/></button>}</td>
+                                        <td className="px-8 py-5 text-center">
+                                            <div className="flex items-center justify-center gap-2">
+                                                {saleGroup.status !== 'canceled' && (
+                                                    <button 
+                                                        onClick={() => handlePrintTicket(saleGroup.items, saleGroup.saleCode, saleGroup.paymentMethods.join(' + '), saleGroup.buyer_name)} 
+                                                        className="p-2 text-blue-400 hover:text-blue-600 transition-all"
+                                                        title="Reimprimir Ticket"
+                                                    >
+                                                        <Printer size={18}/>
+                                                    </button>
+                                                )}
+                                                {saleGroup.status === 'canceled' ? (
+                                                    <span className="bg-red-100 text-red-700 px-3 py-1 rounded-full text-[8px] font-black uppercase border border-red-200">ESTORNADA</span>
+                                                ) : (
+                                                    <button onClick={() => setShowCancelModal({id: '0', code: saleGroup.saleCode})} className="p-2 text-gray-300 hover:text-red-600 transition-all">
+                                                        <Ban size={18}/>
+                                                    </button>
+                                                )}
+                                            </div>
+                                        </td>
                                     </tr>
                                 ))}
                             </tbody>
@@ -822,6 +934,50 @@ const IceCreamModule: React.FC<IceCreamModuleProps> = ({
                 </div>
             )}
         </div>
+
+        {showWastageModal && (
+            <div className="fixed inset-0 bg-black/80 backdrop-blur-md flex items-center justify-center z-[130] p-4">
+                <div className="bg-white rounded-[40px] w-full max-w-md shadow-2xl animate-in zoom-in duration-300 border-t-8 border-orange-500 overflow-hidden">
+                    <div className="p-8 border-b bg-gray-50/50 flex justify-between items-center">
+                        <h3 className="text-xl font-black uppercase italic text-blue-950 flex items-center gap-3"><AlertTriangle className="text-orange-500" /> Baixa <span className="text-orange-600">por Avaria</span></h3>
+                        <button onClick={() => setShowWastageModal(false)} className="text-gray-400 hover:text-red-600"><X size={24}/></button>
+                    </div>
+                    <div className="p-10 space-y-6">
+                        <div className="space-y-2">
+                            <label className="text-[10px] font-black text-gray-400 uppercase ml-2">Insumo do Estoque</label>
+                            <select 
+                                value={wastageForm.stockId} 
+                                onChange={e => setWastageForm({...wastageForm, stockId: e.target.value})} 
+                                className="w-full p-4 bg-gray-50 rounded-2xl font-black uppercase outline-none shadow-inner border border-gray-100"
+                            >
+                                <option value="">SELECIONE O INSUMO...</option>
+                                {filteredStock.map(s => <option key={s.stock_id} value={s.stock_id}>{s.product_base} (Disponível: {s.stock_current} {s.unit})</option>)}
+                            </select>
+                        </div>
+                        <div className="space-y-2">
+                            <label className="text-[10px] font-black text-gray-400 uppercase ml-2">Quantidade Perdida</label>
+                            <input 
+                                value={wastageForm.quantity} 
+                                onChange={e => setWastageForm({...wastageForm, quantity: e.target.value})} 
+                                className="w-full p-4 bg-gray-50 rounded-2xl font-black text-center text-xl outline-none shadow-inner border border-orange-100" 
+                                placeholder="0,00" 
+                            />
+                        </div>
+                        <div className="space-y-2">
+                            <label className="text-[10px] font-black text-gray-400 uppercase ml-2">Justificativa / Motivo</label>
+                            <textarea 
+                                value={wastageForm.reason} 
+                                onChange={e => setWastageForm({...wastageForm, reason: e.target.value.toUpperCase()})} 
+                                className="w-full p-4 bg-gray-50 rounded-2xl font-black uppercase text-[10px] shadow-inner outline-none border border-gray-100 h-24"
+                            />
+                        </div>
+                        <button onClick={handleSaveWastage} disabled={isSubmitting || !wastageForm.stockId || !wastageForm.quantity} className="w-full py-5 bg-orange-600 text-white rounded-[28px] font-black uppercase text-xs shadow-xl active:scale-95 transition-all border-b-4 border-orange-900 flex items-center justify-center gap-3">
+                            {isSubmitting ? <Loader2 className="animate-spin" /> : <Trash size={18}/>} EFETIVAR BAIXA
+                        </button>
+                    </div>
+                </div>
+            </div>
+        )}
 
         {showNewInsumoModal && (
             <div className="fixed inset-0 bg-black/80 backdrop-blur-md flex items-center justify-center z-[130] p-4">

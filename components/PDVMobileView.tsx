@@ -123,11 +123,16 @@ const PDVMobileView: React.FC<PDVMobileViewProps> = (props) => {
                 }
             }
 
-            props.handlePrintTicket(operationalSales, saleCode, isMisto ? 'Misto' : (props.paymentMethod as string), props.buyerName);
-            props.setCart([]); props.setPaymentMethod(null); props.setBuyerName(''); setStep('categories');
-            alert("Venda registrada!");
+            // Dispara impressão ANTES de limpar o estado para garantir que os dados estejam disponíveis
+            props.handlePrintTicket(operationalSales, saleCode, isMisto ? 'Misto' : (props.paymentMethod as string), (props.paymentMethod === 'Fiado' || (isMisto && props.mistoValues['Fiado'])) ? props.buyerName : undefined);
+            
+            props.setCart([]); 
+            props.setPaymentMethod(null); 
+            props.setBuyerName(''); 
+            setStep('categories');
+            alert("Venda registrada com sucesso!");
         } catch (e) { 
-            alert("Erro ao finalizar."); 
+            alert("Erro ao finalizar venda."); 
         } finally { 
             props.setIsSubmitting(false); 
         }

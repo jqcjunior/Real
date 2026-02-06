@@ -89,7 +89,8 @@ const SpreadsheetOrderModule = ({ user, onClose }: { user: any, onClose: () => v
   };
 
   /* --- LOGICA UI --- */
-  const paresGradeAtual = useMemo(() => Object.values(gradeEditando).reduce((a, b) => a + (Number(b) || 0), 0), [gradeEditando]);
+  // Fix: Explicitly type accumulator as number and current value as any to resolve "unknown" type errors in reduce
+  const paresGradeAtual = useMemo(() => Object.values(gradeEditando).reduce((a: number, b: any) => a + (Number(b) || 0), 0), [gradeEditando]);
   const getMesPrazo = (dias: number) => {
     if (!pedido.fatFim) return "MÊS";
     const data = new Date(pedido.fatFim);
