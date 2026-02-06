@@ -86,7 +86,6 @@ const IceCreamModule: React.FC<IceCreamModuleProps> = ({
   const [expenseCategories, setExpenseCategories] = useState<{id: string, name: string}[]>([]);
   const [newCategoryName, setNewCategoryName] = useState('');
 
-  const [showPartnersModal, setShowPartnersModal] = useState(false);
   const [showCancelModal, setShowCancelModal] = useState<{id: string, code: string} | null>(null);
   const [cancelReason, setCancelReason] = useState('');
   
@@ -305,40 +304,41 @@ const IceCreamModule: React.FC<IceCreamModuleProps> = ({
         <html>
         <head>
             <style>
-                @page { margin: 0; }
+                @page { size: 58mm auto; margin: 0; }
                 body { 
                     font-family: 'Courier New', Courier, monospace; 
-                    width: 72mm; 
-                    padding: 4mm; 
-                    font-size: 11px; 
+                    width: 48mm; 
+                    padding: 2mm; 
+                    font-size: 10px; 
                     color: #000;
                     background: #fff;
                     margin: 0;
+                    -webkit-print-color-adjust: exact;
                 }
                 .text-center { text-align: center; }
                 .bold { font-weight: bold; }
                 hr { border: 0; border-top: 1px dashed #000; margin: 2mm 0; }
-                .flex { display: flex; justify-content: space-between; }
+                .flex { display: flex; justify-content: space-between; gap: 2px; }
                 .mt-2 { margin-top: 2mm; }
-                .footer { font-size: 9px; margin-top: 5mm; }
+                .footer { font-size: 8px; margin-top: 4mm; line-height: 1.2; }
+                .item-name { flex: 1; text-align: left; }
             </style>
         </head>
         <body>
-            <div class="text-center bold" style="font-size: 14px;">GELATERIA REAL</div>
-            <div class="text-center" style="font-size: 9px;">Comprovante de Venda</div>
+            <div class="text-center bold" style="font-size: 12px;">GELATERIA REAL</div>
             <hr/>
-            <div class="flex"><span class="bold">COD:</span> <span>#${saleCode}</span></div>
-            <div class="flex"><span>DATA:</span> <span>${new Date().toLocaleString('pt-BR')}</span></div>
+            <div class="flex"><span class="bold">CÓDIGO:</span> <span class="bold">#${saleCode}</span></div>
+            <div class="flex"><span>DATA:</span> <span>${new Date().toLocaleString('pt-BR', { day: '2-digit', month: '2-digit', year: '2-digit', hour: '2-digit', minute: '2-digit' })}</span></div>
             <hr/>
             <div class="bold">ITENS:</div>
             ${items.map(i => `
                 <div class="flex" style="margin-top: 1mm;">
-                    <span>${i.unitsSold}x ${i.productName}</span>
+                    <span class="item-name">${i.unitsSold}x ${i.productName.substring(0, 20)}</span>
                     <span>${formatCurrency(i.totalValue)}</span>
                 </div>
             `).join('')}
             <hr/>
-            <div class="flex bold" style="font-size: 13px;">
+            <div class="flex bold" style="font-size: 11px;">
                 <span>TOTAL</span>
                 <span>${formatCurrency(total)}</span>
             </div>
@@ -346,13 +346,15 @@ const IceCreamModule: React.FC<IceCreamModuleProps> = ({
             ${buyer ? `<div class="flex"><span>FUNC:</span> <span class="bold">${buyer}</span></div>` : ''}
             <hr/>
             <div class="text-center footer">
-                Obrigado pela preferência!<br/>
-                Real Admin v6.5
+                Aguarde ser atendido<br/>
+                Real Admin v6.5 - Unid: ${stores.find(s => s.id === effectiveStoreId)?.number || '---'}
             </div>
             <script>
                 window.onload = () => {
-                    window.print();
-                    setTimeout(() => window.close(), 1000);
+                    setTimeout(() => {
+                        window.print();
+                        setTimeout(() => window.close(), 1000);
+                    }, 1000);
                 };
             </script>
         </body>
@@ -427,13 +429,11 @@ const IceCreamModule: React.FC<IceCreamModuleProps> = ({
           if (!stItem) throw new Error("Insumo não encontrado");
           
           const val = parseFloat(wastageForm.quantity.replace(',', '.'));
-          // Salva como saída no financeiro se houver custo (opcional, aqui foca no estoque)
           await onUpdateStock(effectiveStoreId, stItem.product_base, -val, stItem.unit, 'adjustment', stItem.stock_id);
           
-          // Registra como despesa de operação no financeiro
           await onAddTransaction({
               id: '0', storeId: effectiveStoreId, date: new Date().toISOString().split('T')[0],
-              type: 'exit', category: 'AVARIA / DEFEITO PRODUTO', value: 0, // Valor zero pois é perda física
+              type: 'exit', category: 'AVARIA / DEFEITO PRODUTO', value: 0,
               description: `Baixa de Avaria: ${val}${stItem.unit} de ${stItem.product_base}. Motivo: ${wastageForm.reason}`,
               createdAt: new Date()
           });
