@@ -292,7 +292,79 @@ const IceCreamModule: React.FC<IceCreamModuleProps> = ({
     if (!printWindow) { alert("Pop-up bloqueado!"); return; }
     const store = stores.find(s => s.id === effectiveStoreId);
     const monthLabel = MONTHS.find(m => m.value === selectedMonth)?.label;
-    const html = `<html><head><title>DRE Mensal</title><style>body{font-family:sans-serif;padding:30px;color:#1e293b;}h2{color:#1e3a8a;border-bottom:2px solid #1e3a8a;padding-bottom:10px;}.section{margin-bottom:20px;padding:15px;border:1px solid #e2e8f0;border-radius:10px;}.kpi{display:flex;justify-content:space-between;font-weight:bold;}table{width:100%;border-collapse:collapse;}th,td{text-align:left;padding:8px;border-bottom:1px solid #f1f5f9;font-size:12px;}</style></head><body><div class="header"><h2>GELATERIA REAL</h2><p>UNIDADE: ${store?.number || '---'} | ${monthLabel} / ${selectedYear}</p></div><div class="section"><div class="kpi"><span>Faturamento (+)</span> <span style="color:green">${formatCurrency(dreStats.monthIn)}</span></div><div class="kpi"><span>Despesas (-)</span> <span style="color:red">${formatCurrency(dreStats.monthOut)}</span></div><hr/><div class="kpi"><span>LUCRO LÍQUIDO</span> <span>${formatCurrency(dreStats.profit)}</span></div></div><div class="section"><p><b>DÉBITOS DE FUNCIONÁRIOS</b></p><table><thead><tr><th>Nome</th><th style="text-align:right">Total</th></tr></thead><tbody>${monthFiadoGrouped.map(f => `<tr><td>${f.name}</td><td style="text-align:right">${formatCurrency(f.total)}</td></tr>`).join('')}</tbody></table></div><script>window.onload=()=>{window.print();setTimeout(()=>window.close(),500);};</script></body></html>`;
+    const html = `
+        <!DOCTYPE html>
+        <html>
+        <head>
+            <title>DRE Mensal - Gelateria Real</title>
+            <style>
+                @page { size: A4; margin: 20mm; }
+                body { font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; padding: 0; color: #1e293b; line-height: 1.5; }
+                .header { border-bottom: 3px solid #1e3a8a; padding-bottom: 15px; margin-bottom: 30px; display: flex; justify-content: space-between; align-items: flex-end; }
+                .header h2 { color: #1e3a8a; margin: 0; text-transform: uppercase; font-style: italic; font-weight: 900; }
+                .header p { margin: 0; font-size: 14px; font-weight: bold; color: #64748b; }
+                .section { margin-bottom: 30px; padding: 20px; border: 1px solid #e2e8f0; border-radius: 12px; background: #f8fafc; }
+                .section-title { font-size: 12px; font-weight: 900; color: #64748b; text-transform: uppercase; letter-spacing: 0.1em; margin-bottom: 15px; border-bottom: 1px solid #e2e8f0; padding-bottom: 5px; }
+                .kpi-grid { display: grid; grid-cols: 1fr 1fr; gap: 10px; }
+                .kpi { display: flex; justify-content: space-between; font-weight: bold; font-size: 16px; padding: 8px 0; }
+                .total-row { border-top: 2px solid #1e3a8a; margin-top: 10px; padding-top: 10px; font-size: 20px; color: #1e3a8a; }
+                table { width: 100%; border-collapse: collapse; margin-top: 10px; }
+                th { text-align: left; padding: 12px; border-bottom: 2px solid #cbd5e1; font-size: 11px; text-transform: uppercase; color: #64748b; }
+                td { padding: 12px; border-bottom: 1px solid #f1f5f9; font-size: 13px; font-weight: 600; }
+                .text-right { text-align: right; }
+                .footer { margin-top: 50px; text-align: center; font-size: 10px; color: #94a3b8; border-top: 1px solid #e2e8f0; padding-top: 20px; }
+            </style>
+        </head>
+        <body>
+            <div class="header">
+                <div>
+                    <h2>GELATERIA REAL</h2>
+                    <p>Relatório Gerencial de Resultados</p>
+                </div>
+                <div class="text-right">
+                    <p>UNIDADE: ${store?.number || '---'} | ${store?.city || ''}</p>
+                    <p>REFERÊNCIA: ${monthLabel} / ${selectedYear}</p>
+                </div>
+            </div>
+
+            <div class="section">
+                <div class="section-title">Resumo Financeiro</div>
+                <div class="kpi"><span>Faturamento Bruto (+)</span> <span style="color:#059669">${formatCurrency(dreStats.monthIn)}</span></div>
+                <div class="kpi"><span>Despesas Operacionais (-)</span> <span style="color:#dc2626">${formatCurrency(dreStats.monthOut)}</span></div>
+                <div class="kpi total-row"><span>LUCRO LÍQUIDO (=)</span> <span>${formatCurrency(dreStats.profit)}</span></div>
+            </div>
+
+            <div class="section">
+                <div class="section-title">Débitos de Funcionários</div>
+                <table>
+                    <thead>
+                        <tr>
+                            <th>Colaborador</th>
+                            <th class="text-right">Total Acumulado</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        ${monthFiadoGrouped.length > 0 
+                            ? monthFiadoGrouped.map(f => `<tr><td>${f.name}</td><td class="text-right">${formatCurrency(f.total)}</td></tr>`).join('')
+                            : '<tr><td colspan="2" style="text-align:center; color:#94a3b8; font-style:italic; padding:30px;">Nenhum débito registrado no período</td></tr>'
+                        }
+                    </tbody>
+                </table>
+            </div>
+
+            <div class="footer">
+                Documento gerado em ${new Date().toLocaleString('pt-BR')} por Real Admin v6.5
+            </div>
+
+            <script>
+                window.onload = () => {
+                    window.print();
+                    setTimeout(() => window.close(), 1000);
+                };
+            </script>
+        </body>
+        </html>
+    `;
     printWindow.document.write(html); printWindow.document.close();
   };
 
@@ -712,7 +784,7 @@ const IceCreamModule: React.FC<IceCreamModuleProps> = ({
                         <div className="flex items-center gap-4"><div className="p-4 bg-purple-50 text-purple-700 rounded-3xl"><FilePieChart size={32}/></div><div><h3 className="text-2xl font-black uppercase italic text-blue-950 tracking-tighter">DRE <span className="text-purple-700">Mensal</span></h3></div></div>
                         <div className="flex flex-col sm:flex-row items-center gap-3">
                             <div className="flex items-center gap-2 bg-gray-50 p-2 rounded-2xl border"><select value={selectedMonth} onChange={e => setSelectedMonth(Number(e.target.value))} className="bg-transparent border-none text-xs font-black uppercase outline-none">{MONTHS.map(m => <option key={m.value} value={m.value}>{m.label}</option>)}</select><select value={selectedYear} onChange={e => setSelectedYear(Number(e.target.value))} className="bg-transparent border-none text-xs font-black outline-none">{[2024, 2025, 2026].map(y => <option key={y} value={y}>{y}</option>)}</select></div>
-                            <button onClick={handlePrintDreMensal} className="px-6 py-2.5 bg-gray-900 text-white rounded-xl font-black uppercase text-[10px] shadow-lg flex items-center gap-2 border-b-4 border-gray-700 active:scale-95"><Printer size={14}/> Imprimir Relatório</button>
+                            <button onClick={handlePrintDreMensal} className="px-6 py-2.5 bg-gray-900 text-white rounded-xl font-black uppercase text-[10px] shadow-lg flex items-center gap-2 border-b-4 border-gray-700 active:scale-95"><Printer size={14}/> Imprimir Relatório (A4)</button>
                         </div>
                     </div>
                     <div className="grid grid-cols-1 lg:grid-cols-12 gap-8">
