@@ -63,6 +63,7 @@ const IceCreamModule: React.FC<IceCreamModuleProps> = ({
 }) => {
   const [activeTab, setActiveTab] = useState<'pdv' | 'estoque' | 'dre_diario' | 'dre_mensal' | 'audit' | 'produtos'>('pdv');
   const [dreSubTab, setDreSubTab] = useState<'resumo' | 'detalhado'>('resumo');
+  const [auditSubTab, setAuditSubTab] = useState<'vendas' | 'avarias'>('vendas');
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [cart, setCart] = useState<IceCreamDailySale[]>([]);
   const [selectedCategory, setSelectedCategory] = useState<IceCreamCategory | null>(null);
@@ -287,6 +288,24 @@ const IceCreamModule: React.FC<IceCreamModuleProps> = ({
     return Object.values(grouped).sort((a: any, b: any) => (b.createdAt || '').localeCompare(a.createdAt || '')).map((g: any) => ({ ...g, paymentMethods: Array.from(g.paymentMethods) }));
   }, [sales, effectiveStoreId, auditDay, auditMonth, auditYear, auditSearch]);
 
+  const filteredAuditWastage = useMemo(() => {
+      return (finances || []).filter(f => {
+          if (f.storeId !== effectiveStoreId) return false;
+          if (f.category !== 'AVARIA / DEFEITO PRODUTO') return false;
+          if (!f.date) return false;
+          
+          const date = new Date(f.date + 'T12:00:00');
+          const dMatch = auditDay ? date.getDate() === parseInt(auditDay) : true;
+          const mMatch = auditMonth ? (date.getMonth() + 1) === parseInt(auditMonth) : true;
+          const yMatch = auditYear ? date.getFullYear() === parseInt(auditYear) : true;
+          
+          const search = auditSearch.toLowerCase();
+          const sMatch = search ? (f.description?.toLowerCase().includes(search)) : true;
+          
+          return dMatch && mMatch && yMatch && sMatch;
+      }).sort((a, b) => b.date.localeCompare(a.date));
+  }, [finances, effectiveStoreId, auditDay, auditMonth, auditYear, auditSearch]);
+
   const handlePrintDreMensal = () => {
     const printWindow = window.open('', '_blank');
     if (!printWindow) { alert("Pop-up bloqueado!"); return; }
@@ -298,21 +317,20 @@ const IceCreamModule: React.FC<IceCreamModuleProps> = ({
         <head>
             <title>DRE Mensal - Gelateria Real</title>
             <style>
-                @page { size: A4; margin: 20mm; }
-                body { font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; padding: 0; color: #1e293b; line-height: 1.5; }
-                .header { border-bottom: 3px solid #1e3a8a; padding-bottom: 15px; margin-bottom: 30px; display: flex; justify-content: space-between; align-items: flex-end; }
-                .header h2 { color: #1e3a8a; margin: 0; text-transform: uppercase; font-style: italic; font-weight: 900; }
-                .header p { margin: 0; font-size: 14px; font-weight: bold; color: #64748b; }
-                .section { margin-bottom: 30px; padding: 20px; border: 1px solid #e2e8f0; border-radius: 12px; background: #f8fafc; }
-                .section-title { font-size: 12px; font-weight: 900; color: #64748b; text-transform: uppercase; letter-spacing: 0.1em; margin-bottom: 15px; border-bottom: 1px solid #e2e8f0; padding-bottom: 5px; }
-                .kpi-grid { display: grid; grid-cols: 1fr 1fr; gap: 10px; }
-                .kpi { display: flex; justify-content: space-between; font-weight: bold; font-size: 16px; padding: 8px 0; }
-                .total-row { border-top: 2px solid #1e3a8a; margin-top: 10px; padding-top: 10px; font-size: 20px; color: #1e3a8a; }
-                table { width: 100%; border-collapse: collapse; margin-top: 10px; }
-                th { text-align: left; padding: 12px; border-bottom: 2px solid #cbd5e1; font-size: 11px; text-transform: uppercase; color: #64748b; }
-                td { padding: 12px; border-bottom: 1px solid #f1f5f9; font-size: 13px; font-weight: 600; }
+                @page { size: A4; margin: 15mm; }
+                body { font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; padding: 0; color: #1e293b; line-height: 1.4; }
+                .header { border-bottom: 3px solid #1e3a8a; padding-bottom: 10px; margin-bottom: 20px; display: flex; justify-content: space-between; align-items: flex-end; }
+                .header h2 { color: #1e3a8a; margin: 0; text-transform: uppercase; font-style: italic; font-weight: 900; font-size: 24px; }
+                .header p { margin: 0; font-size: 12px; font-weight: bold; color: #64748b; }
+                .section { margin-bottom: 20px; padding: 15px; border: 1px solid #e2e8f0; border-radius: 12px; background: #fff; }
+                .section-title { font-size: 11px; font-weight: 900; color: #1e3a8a; text-transform: uppercase; letter-spacing: 0.1em; margin-bottom: 10px; border-bottom: 1px solid #e2e8f0; padding-bottom: 5px; }
+                .kpi { display: flex; justify-content: space-between; font-weight: bold; font-size: 14px; padding: 5px 0; }
+                .total-row { border-top: 2px solid #1e3a8a; margin-top: 5px; padding-top: 5px; font-size: 18px; color: #1e3a8a; }
+                table { width: 100%; border-collapse: collapse; margin-top: 5px; }
+                th { text-align: left; padding: 8px; border-bottom: 2px solid #cbd5e1; font-size: 10px; text-transform: uppercase; color: #64748b; }
+                td { padding: 8px; border-bottom: 1px solid #f1f5f9; font-size: 11px; font-weight: 600; }
                 .text-right { text-align: right; }
-                .footer { margin-top: 50px; text-align: center; font-size: 10px; color: #94a3b8; border-top: 1px solid #e2e8f0; padding-top: 20px; }
+                .footer { margin-top: 30px; text-align: center; font-size: 9px; color: #94a3b8; border-top: 1px solid #e2e8f0; padding-top: 10px; }
             </style>
         </head>
         <body>
@@ -335,7 +353,22 @@ const IceCreamModule: React.FC<IceCreamModuleProps> = ({
             </div>
 
             <div class="section">
-                <div class="section-title">Débitos de Funcionários</div>
+                <div class="section-title">Partilha de Lucros (Sócios/Parceiros)</div>
+                <table>
+                    <thead>
+                        <tr><th>Nome do Parceiro</th><th>Porcentagem</th><th class="text-right">Valor Repasse</th></tr>
+                    </thead>
+                    <tbody>
+                        ${partners.length > 0 
+                            ? partners.map(p => `<tr><td>${p.partner_name}</td><td>${p.percentage}%</td><td class="text-right">${formatCurrency((dreStats.profit * p.percentage) / 100)}</td></tr>`).join('')
+                            : '<tr><td colspan="3" style="text-align:center; color:#94a3b8; font-style:italic;">Nenhuma partilha configurada</td></tr>'
+                        }
+                    </tbody>
+                </table>
+            </div>
+
+            <div class="section">
+                <div class="section-title">Débitos de Funcionários (Vendas Fiado)</div>
                 <table>
                     <thead>
                         <tr>
@@ -346,7 +379,7 @@ const IceCreamModule: React.FC<IceCreamModuleProps> = ({
                     <tbody>
                         ${monthFiadoGrouped.length > 0 
                             ? monthFiadoGrouped.map(f => `<tr><td>${f.name}</td><td class="text-right">${formatCurrency(f.total)}</td></tr>`).join('')
-                            : '<tr><td colspan="2" style="text-align:center; color:#94a3b8; font-style:italic; padding:30px;">Nenhum débito registrado no período</td></tr>'
+                            : '<tr><td colspan="2" style="text-align:center; color:#94a3b8; font-style:italic;">Nenhum débito registrado no período</td></tr>'
                         }
                     </tbody>
                 </table>
@@ -380,6 +413,8 @@ const IceCreamModule: React.FC<IceCreamModuleProps> = ({
         return;
     }
     const total = items.reduce((acc, curr) => acc + curr.totalValue, 0);
+    const isFiado = method?.toUpperCase().includes('FIADO') || buyer;
+    
     const html = `
         <!DOCTYPE html>
         <html>
@@ -403,6 +438,7 @@ const IceCreamModule: React.FC<IceCreamModuleProps> = ({
                 .mt-2 { margin-top: 2mm; }
                 .footer { font-size: 8px; margin-top: 4mm; line-height: 1.2; }
                 .item-name { flex: 1; text-align: left; }
+                .signature-line { border-top: 1px solid #000; margin-top: 10mm; text-align: center; font-size: 8px; font-weight: bold; width: 100%; }
             </style>
         </head>
         <body>
@@ -425,6 +461,14 @@ const IceCreamModule: React.FC<IceCreamModuleProps> = ({
             </div>
             <div class="mt-2 flex"><span>PAGTO:</span> <span class="bold">${(method || 'MISTO').toUpperCase()}</span></div>
             ${buyer ? `<div class="flex"><span>FUNC:</span> <span class="bold">${buyer}</span></div>` : ''}
+            
+            ${isFiado ? `
+                <div class="mt-4">
+                    <div class="signature-line">ASSINATURA DO CLIENTE</div>
+                    <div class="text-center" style="font-size: 7px; margin-top: 2px;">AUTORIZO O LANÇAMENTO NO MEU DÉBITO</div>
+                </div>
+            ` : ''}
+
             <hr/>
             <div class="text-center footer">
                 Aguarde ser atendido<br/>
@@ -914,7 +958,15 @@ const IceCreamModule: React.FC<IceCreamModuleProps> = ({
             {activeTab === 'audit' && (
                 <div className="p-4 md:p-8 space-y-6 animate-in fade-in duration-300 max-w-6xl mx-auto pb-20">
                     <div className="bg-white p-6 rounded-[40px] shadow-sm border border-gray-100 flex flex-col gap-6">
-                        <h3 className="text-xl font-black uppercase italic text-blue-950 tracking-tighter flex items-center gap-3"><History className="text-blue-700" size={28}/> Auditoria de <span className="text-red-600">Vendas Operacionais</span></h3>
+                        <div className="flex flex-col md:flex-row justify-between items-center gap-4">
+                            <div>
+                                <h3 className="text-xl font-black uppercase italic text-blue-950 tracking-tighter flex items-center gap-3"><History className="text-blue-700" size={28}/> Auditoria <span className="text-red-600">Geral</span></h3>
+                                <div className="flex bg-gray-100 p-1 rounded-xl mt-3">
+                                    <button onClick={() => setAuditSubTab('vendas')} className={`px-4 py-1.5 rounded-lg text-[9px] font-black uppercase transition-all ${auditSubTab === 'vendas' ? 'bg-white text-blue-900 shadow-sm' : 'text-gray-400'}`}>Vendas Operacionais</button>
+                                    <button onClick={() => setAuditSubTab('avarias')} className={`px-4 py-1.5 rounded-lg text-[9px] font-black uppercase transition-all ${auditSubTab === 'avarias' ? 'bg-white text-blue-900 shadow-sm' : 'text-gray-400'}`}>Baixas / Avarias</button>
+                                </div>
+                            </div>
+                        </div>
                         <div className="grid grid-cols-2 md:grid-cols-5 gap-4">
                             <select value={auditDay} onChange={e => setAuditDay(e.target.value)} className="bg-gray-50 border-none rounded-xl p-3 text-[10px] font-black uppercase outline-none shadow-inner"><option value="">DIA</option>{Array.from({length: 31}, (_, i) => <option key={i+1} value={i+1}>{i+1}</option>)}</select>
                             <select value={auditMonth} onChange={e => setAuditMonth(e.target.value)} className="bg-gray-50 border-none rounded-xl p-3 text-[10px] font-black uppercase outline-none shadow-inner"><option value="">MÊS</option>{MONTHS.map(m => <option key={m.value} value={m.value}>{m.label}</option>)}</select>
@@ -922,57 +974,90 @@ const IceCreamModule: React.FC<IceCreamModuleProps> = ({
                             <div className="col-span-2 relative"><Search className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-300" size={14}/><input value={auditSearch} onChange={e => setAuditSearch(e.target.value)} placeholder="PRODUTO, CÓDIGO OU FUNCIONÁRIO..." className="w-full bg-gray-50 border-none rounded-xl pl-10 pr-4 py-3 text-[10px] font-black uppercase outline-none shadow-inner" /></div>
                         </div>
                     </div>
-                    <div className="bg-white rounded-[40px] shadow-xl border border-gray-100 overflow-hidden">
-                        <table className="w-full text-left">
-                            <thead className="bg-gray-50 text-[9px] font-black text-gray-400 uppercase border-b"><tr><th className="px-8 py-5">Cod / Data</th><th className="px-8 py-5">Produtos / Baixas</th><th className="px-8 py-5">Pagamento</th><th className="px-8 py-5 text-right">Total</th><th className="px-8 py-5 text-center">Ações</th></tr></thead>
-                            <tbody className="divide-y divide-gray-50 font-bold text-[10px]">
-                                {groupedAuditSales.map((saleGroup: any) => (
-                                    <tr key={saleGroup.saleCode} className={`hover:bg-blue-50/30 transition-all ${saleGroup.status === 'canceled' ? 'opacity-50 grayscale italic line-through' : ''}`}>
-                                        <td className="px-8 py-5"><div className="text-xs font-black text-blue-950">#{saleGroup.saleCode}</div><div className="text-[8px] text-gray-400 uppercase mt-0.5">{new Date(saleGroup.createdAt).toLocaleString('pt-BR')}</div></td>
-                                        
-                                        <td className="px-8 py-5">
-                                            {saleGroup.items.map((item: any, idx: number) => {
-                                                const itemDef = items.find(it => it.id === item.itemId) || items.find(it => it.name === item.productName);
-                                                return (
-                                                    <div key={idx} className="mb-3 last:mb-0">
-                                                        <div className="text-[10px] font-black text-gray-900 uppercase italic tracking-tighter">{item.unitsSold}x {item.productName}</div>
-                                                        {itemDef?.recipe?.map((r: any, i: number) => (
-                                                            <div key={i} className="text-[8px] text-orange-600 font-black flex items-center gap-1 ml-2 uppercase">
-                                                                <Zap size={8} /> Abate: {(r.quantity * item.unitsSold).toFixed(3)} - {r.stock_base_name}
-                                                            </div>
-                                                        ))}
-                                                    </div>
-                                                );
-                                            })}
-                                        </td>
 
-                                        <td className="px-8 py-5"><div className="flex flex-wrap gap-1">{saleGroup.paymentMethods.map((pm: any, idx: number) => <span key={idx} className="px-2 py-0.5 rounded text-[8px] font-black uppercase border bg-green-50 text-green-700 border-green-100">{pm}</span>)}</div>{saleGroup.buyer_name && <div className="text-[8px] text-gray-400 uppercase mt-1 truncate">Comprador: {saleGroup.buyer_name}</div>}</td>
-                                        <td className="px-8 py-5 text-right font-black text-sm">{formatCurrency(saleGroup.totalValue)}</td>
-                                        <td className="px-8 py-5 text-center">
-                                            <div className="flex items-center justify-center gap-2">
-                                                {saleGroup.status !== 'canceled' && (
-                                                    <button 
-                                                        onClick={() => handleOpenPrintPreview(saleGroup.items, saleGroup.saleCode, saleGroup.paymentMethods.join(' + '), saleGroup.buyer_name)} 
-                                                        className="p-2 text-blue-400 hover:text-blue-600 transition-all"
-                                                        title="Reimprimir Ticket"
-                                                    >
-                                                        <Printer size={18}/>
-                                                    </button>
-                                                )}
-                                                {saleGroup.status === 'canceled' ? (
-                                                    <span className="bg-red-100 text-red-700 px-3 py-1 rounded-full text-[8px] font-black uppercase border border-red-200">ESTORNADA</span>
-                                                ) : (
-                                                    <button onClick={() => setShowCancelModal({id: '0', code: saleGroup.saleCode})} className="p-2 text-gray-300 hover:text-red-600 transition-all">
-                                                        <Ban size={18}/>
-                                                    </button>
-                                                )}
-                                            </div>
-                                        </td>
+                    {auditSubTab === 'vendas' ? (
+                        <div className="bg-white rounded-[40px] shadow-xl border border-gray-100 overflow-hidden">
+                            <table className="w-full text-left">
+                                <thead className="bg-gray-50 text-[9px] font-black text-gray-400 uppercase border-b"><tr><th className="px-8 py-5">Cod / Data</th><th className="px-8 py-5">Produtos / Baixas</th><th className="px-8 py-5">Pagamento</th><th className="px-8 py-5 text-right">Total</th><th className="px-8 py-5 text-center">Ações</th></tr></thead>
+                                <tbody className="divide-y divide-gray-50 font-bold text-[10px]">
+                                    {groupedAuditSales.map((saleGroup: any) => (
+                                        <tr key={saleGroup.saleCode} className={`hover:bg-blue-50/30 transition-all ${saleGroup.status === 'canceled' ? 'opacity-50 grayscale italic line-through' : ''}`}>
+                                            <td className="px-8 py-5"><div className="text-xs font-black text-blue-950">#{saleGroup.saleCode}</div><div className="text-[8px] text-gray-400 uppercase mt-0.5">{new Date(saleGroup.createdAt).toLocaleString('pt-BR')}</div></td>
+                                            <td className="px-8 py-5">
+                                                {saleGroup.items.map((item: any, idx: number) => {
+                                                    const itemDef = items.find(it => it.id === item.itemId) || items.find(it => it.name === item.productName);
+                                                    return (
+                                                        <div key={idx} className="mb-3 last:mb-0">
+                                                            <div className="text-[10px] font-black text-gray-900 uppercase italic tracking-tighter">{item.unitsSold}x {item.productName}</div>
+                                                            {itemDef?.recipe?.map((r: any, i: number) => (
+                                                                <div key={i} className="text-[8px] text-orange-600 font-black flex items-center gap-1 ml-2 uppercase">
+                                                                    <Zap size={8} /> Abate: {(r.quantity * item.unitsSold).toFixed(3)} - {r.stock_base_name}
+                                                                </div>
+                                                            ))}
+                                                        </div>
+                                                    );
+                                                })}
+                                            </td>
+                                            <td className="px-8 py-5"><div className="flex flex-wrap gap-1">{saleGroup.paymentMethods.map((pm: any, idx: number) => <span key={idx} className="px-2 py-0.5 rounded text-[8px] font-black uppercase border bg-green-50 text-green-700 border-green-100">{pm}</span>)}</div>{saleGroup.buyer_name && <div className="text-[8px] text-gray-400 uppercase mt-1 truncate">Comprador: {saleGroup.buyer_name}</div>}</td>
+                                            <td className="px-8 py-5 text-right font-black text-sm">{formatCurrency(saleGroup.totalValue)}</td>
+                                            <td className="px-8 py-5 text-center">
+                                                <div className="flex items-center justify-center gap-2">
+                                                    {saleGroup.status !== 'canceled' && (
+                                                        <button 
+                                                            onClick={() => handleOpenPrintPreview(saleGroup.items, saleGroup.saleCode, saleGroup.paymentMethods.join(' + '), saleGroup.buyer_name)} 
+                                                            className="p-2 text-blue-400 hover:text-blue-600 transition-all"
+                                                            title="Reimprimir Ticket"
+                                                        >
+                                                            <Printer size={18}/>
+                                                        </button>
+                                                    )}
+                                                    {saleGroup.status === 'canceled' ? (
+                                                        <span className="bg-red-100 text-red-700 px-3 py-1 rounded-full text-[8px] font-black uppercase border border-red-200">ESTORNADA</span>
+                                                    ) : (
+                                                        <button onClick={() => setShowCancelModal({id: '0', code: saleGroup.saleCode})} className="p-2 text-gray-300 hover:text-red-600 transition-all">
+                                                            <Ban size={18}/>
+                                                        </button>
+                                                    )}
+                                                </div>
+                                            </td>
+                                        </tr>
+                                    ))}
+                                </tbody>
+                            </table>
+                        </div>
+                    ) : (
+                        <div className="bg-white rounded-[40px] shadow-xl border border-gray-100 overflow-hidden">
+                            <table className="w-full text-left">
+                                <thead className="bg-gray-50 text-[9px] font-black text-gray-400 uppercase border-b">
+                                    <tr>
+                                        <th className="px-8 py-5">Data / Hora</th>
+                                        <th className="px-8 py-5">Detalhes do Ajuste de Estoque</th>
+                                        <th className="px-8 py-5 text-right">Ação</th>
                                     </tr>
-                                ))}
-                            </tbody>
-                        </table>
-                    </div>
+                                </thead>
+                                <tbody className="divide-y divide-gray-50 font-bold text-[10px]">
+                                    {filteredAuditWastage.map((f: IceCreamTransaction) => (
+                                        <tr key={f.id} className="hover:bg-orange-50/20 transition-all">
+                                            <td className="px-8 py-5">
+                                                <div className="text-[10px] font-black text-gray-900 uppercase">{new Date(f.date + 'T12:00:00').toLocaleDateString('pt-BR')}</div>
+                                                <div className="text-[8px] text-gray-400 uppercase mt-0.5">{new Date(f.createdAt).toLocaleTimeString('pt-BR')}</div>
+                                            </td>
+                                            <td className="px-8 py-5">
+                                                <div className="text-[10px] font-black text-orange-700 uppercase italic tracking-tighter">BAIXA DE AVARIA / DEFEITO</div>
+                                                <div className="text-[9px] text-gray-600 font-medium uppercase mt-1 leading-relaxed">{f.description}</div>
+                                            </td>
+                                            <td className="px-8 py-5 text-right">
+                                                <span className="px-3 py-1 rounded-full text-[8px] font-black uppercase border bg-red-50 text-red-700 border-red-100">STOCK_OUT</span>
+                                            </td>
+                                        </tr>
+                                    ))}
+                                    {filteredAuditWastage.length === 0 && (
+                                        <tr><td colSpan={3} className="px-8 py-10 text-center text-gray-400 uppercase font-black tracking-widest italic">Nenhuma baixa de avaria encontrada para os filtros selecionados</td></tr>
+                                    )}
+                                </tbody>
+                            </table>
+                        </div>
+                    )}
                 </div>
             )}
 
@@ -1062,6 +1147,13 @@ const IceCreamModule: React.FC<IceCreamModuleProps> = ({
                                 <div className="flex justify-between">
                                     <span className="uppercase">FUNC:</span>
                                     <span className="font-black truncate max-w-[30mm]">{ticketData.buyer}</span>
+                                </div>
+                            )}
+
+                            {(ticketData.method?.toUpperCase().includes('FIADO') || ticketData.buyer) && (
+                                <div className="mt-4">
+                                    <div className="border-t border-black pt-1 text-center font-bold" style={{ fontSize: '7px' }}>ASSINATURA DO CLIENTE</div>
+                                    <div className="text-center" style={{ fontSize: '6px' }}>AUTORIZO O LANÇAMENTO NO MEU DÉBITO</div>
                                 </div>
                             )}
                             
