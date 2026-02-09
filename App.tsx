@@ -60,7 +60,6 @@ const App: React.FC = () => {
     const [logs, setLogs] = useState<SystemLog[]>([]);
 
     const can = (permissionKey: string) => {
-        // Fix: Simplified admin check to avoid unintentional type mismatch warnings
         if (user?.role === UserRole.ADMIN) return true;
         if (!userPermissions || userPermissions.length === 0) return false;
         return userPermissions.includes(permissionKey);
@@ -105,7 +104,7 @@ const App: React.FC = () => {
                 supabase.from('cash_errors').select('*'),
                 supabase.from('agenda_items').select('*').order('due_time', { ascending: true }),
                 supabase.from('downloads').select('*'),
-                supabase.from('cache_register_closures').select('*'),
+                supabase.from('cash_register_closures').select('*'),
                 supabase.from('system_logs').select('*').order('created_at', { ascending: false }).limit(200),
                 supabase.from('monthly_goals').select('*')
             ]);
@@ -128,11 +127,11 @@ const App: React.FC = () => {
             if(cd) setCotaDebts(cd.map(x => ({...x, storeId: x.store_id})));
             if(cat) setQuotaCategories(cat);
             if(mix) setQuotaMixParams(mix.map(x => ({ ...x, storeId: x.store_id, category_name: x.parent_category, percentage: Number(x.mix_percentage || 0) })));
-            if(ici) setIceCreamItems(ici.map(x => ({ id: x.id, storeId: x.store_id, name: x.name, category: x.category, price: Number(x.price || 0), flavor: x.flavor, active: x.active, consumptionPerSale: x.consumption_per_sale || 0, recipe: typeof x.recipe === 'string' ? JSON.parse(x.recipe) : (x.recipe || []), image_url: x.image_url })));
+            if(ici) setIceCreamItems(ici.map(x => ({ id: x.id, storeId: x.store_id, name: x.name, category: x.category, price: Number(x.price || 0), flavor: x.flavor, active: x.active, consumption_per_sale: x.consumption_per_sale || 0, recipe: typeof x.recipe === 'string' ? JSON.parse(x.recipe) : (x.recipe || []), image_url: x.image_url })));
             
             if(ics) setIceCreamSales(ics.map(x => ({ 
                 id: x.id, storeId: x.store_id, itemId: x.item_id, productName: x.product_name, category: x.category, flavor: x.flavor, unitsSold: Number(x.units_sold || 0), 
-                unitPrice: Number(x.unit_price || 0), totalValue: Number(x.total_value || 0), paymentMethod: x.payment_method, sale_code: x.sale_code, buyer_name: x.buyer_name, createdAt: x.created_at, status: x.status 
+                unitPrice: Number(x.unit_price || 0), totalValue: Number(x.total_value || 0), paymentMethod: x.payment_method, saleCode: x.sale_code, buyer_name: x.buyer_name, createdAt: x.created_at, status: x.status 
             })));
 
             if(icf) setIceCreamFinances(icf.map(x => ({ id: x.id, storeId: x.store_id, date: x.date ? x.date.split('T')[0] : '', type: x.type, category: x.category, value: Number(x.value || 0), description: x.description, createdAt: new Date(x.created_at) })));
@@ -165,7 +164,6 @@ const App: React.FC = () => {
         return () => { supabase.removeChannel(channel); };
     }, []);
 
-    // Fix: Added missing handleSaveIceCreamProduct function used inpdv_gelateria view
     const handleSaveIceCreamProduct = async (product: Partial<IceCreamItem>) => {
         const payload = { 
             store_id: product.storeId, 
@@ -189,14 +187,12 @@ const App: React.FC = () => {
             if (error || !data) return { success: false, error: 'Credenciais inválidas ou acesso inativo.' };
             
             const rawRole = data.role_level.toUpperCase();
-            // Fix: Map 'SORVETE' to 'ICE_CREAM' role correctly for UserRole compatibility
             const mappedRole = rawRole === 'SORVETE' ? 'ICE_CREAM' : rawRole;
             await fetchPermissions(mappedRole);
             
             const loggedUser: User = { id: data.id, name: data.name, role: mappedRole as UserRole, email: data.email, storeId: data.store_id };
             setUser(loggedUser);
             
-            // Fix: Cleaned up role checks to avoid unintentional type mismatch warnings
             if (loggedUser.role === UserRole.ADMIN) setCurrentView('dashboard_rede');
             else if (loggedUser.role === UserRole.ICE_CREAM) setCurrentView('pdv_gelateria');
             else setCurrentView('dashboard_loja');
