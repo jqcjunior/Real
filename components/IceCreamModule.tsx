@@ -265,45 +265,74 @@ const IceCreamModule: React.FC<IceCreamModuleProps> = ({
     return Object.values(groups).sort((a, b) => b.total - a.total);
   }, [dreStats.monthFiadoDetails]);
 
+  // Fix: Added missing groupedAuditSales for audit tab
   const groupedAuditSales = useMemo(() => {
-    const grouped: Record<string, any> = {};
-    const filtered = (sales || []).filter(s => {
-        if (s.storeId !== effectiveStoreId) return false;
-        if (!s.createdAt) return false;
-        const date = new Date(s.createdAt);
-        const dMatch = auditDay ? date.getDate() === parseInt(auditDay) : true;
-        const mMatch = auditMonth ? (date.getMonth() + 1) === parseInt(auditMonth) : true;
-        const yMatch = auditYear ? date.getFullYear() === parseInt(auditYear) : true;
+    const groups: Record<string, any> = {};
+    const filtered = sales.filter(s => {
+      if (s.storeId !== effectiveStoreId) return false;
+      const date = new Date(s.createdAt || '');
+      const day = date.getDate().toString();
+      const month = (date.getMonth() + 1).toString();
+      const year = date.getFullYear().toString();
+      
+      if (auditDay && day !== auditDay) return false;
+      if (auditMonth && month !== auditMonth) return false;
+      if (auditYear && year !== auditYear) return false;
+      
+      if (auditSearch) {
         const search = auditSearch.toLowerCase();
-        const sMatch = search ? (s.productName.toLowerCase().includes(search) || s.saleCode?.toLowerCase().includes(search) || s.buyer_name?.toLowerCase().includes(search)) : true;
-        return dMatch && mMatch && yMatch && sMatch;
+        return (
+          s.productName.toLowerCase().includes(search) ||
+          s.saleCode?.toLowerCase().includes(search) ||
+          s.buyer_name?.toLowerCase().includes(search)
+        );
+      }
+      return true;
     });
+
     filtered.forEach(s => {
-      const code = s.saleCode || 'GEL-000';
-      if (!grouped[code]) grouped[code] = { saleCode: code, createdAt: s.createdAt, buyer_name: s.buyer_name, status: s.status, totalValue: 0, paymentMethods: new Set<string>(), items: [] };
-      grouped[code].totalValue += Number(s.totalValue);
-      grouped[code].paymentMethods.add(s.paymentMethod);
-      grouped[code].items.push(s);
+      if (!s.saleCode) return;
+      if (!groups[s.saleCode]) {
+        groups[s.saleCode] = {
+          saleCode: s.saleCode,
+          createdAt: s.createdAt,
+          status: s.status,
+          buyer_name: s.buyer_name,
+          paymentMethods: [],
+          items: [],
+          totalValue: 0
+        };
+      }
+      groups[s.saleCode].items.push(s);
+      groups[s.saleCode].totalValue += Number(s.totalValue);
+      if (s.paymentMethod && !groups[s.saleCode].paymentMethods.includes(s.paymentMethod)) {
+        groups[s.saleCode].paymentMethods.push(s.paymentMethod);
+      }
     });
-    return Object.values(grouped).sort((a: any, b: any) => (b.createdAt || '').localeCompare(a.createdAt || '')).map((g: any) => ({ ...g, paymentMethods: Array.from(g.paymentMethods) }));
+    return Object.values(groups).sort((a: any, b: any) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
   }, [sales, effectiveStoreId, auditDay, auditMonth, auditYear, auditSearch]);
 
+  // Fix: Added missing filteredAuditWastage for audit tab
   const filteredAuditWastage = useMemo(() => {
-      return (finances || []).filter(f => {
-          if (f.storeId !== effectiveStoreId) return false;
-          if (f.category !== 'AVARIA / DEFEITO PRODUTO') return false;
-          if (!f.date) return false;
-          
-          const date = new Date(f.date + 'T12:00:00');
-          const dMatch = auditDay ? date.getDate() === parseInt(auditDay) : true;
-          const mMatch = auditMonth ? (date.getMonth() + 1) === parseInt(auditMonth) : true;
-          const yMatch = auditYear ? date.getFullYear() === parseInt(auditYear) : true;
-          
-          const search = auditSearch.toLowerCase();
-          const sMatch = search ? (f.description?.toLowerCase().includes(search)) : true;
-          
-          return dMatch && mMatch && yMatch && sMatch;
-      }).sort((a, b) => b.date.localeCompare(a.date));
+    return finances.filter(f => {
+      if (f.storeId !== effectiveStoreId) return false;
+      if (f.category !== 'AVARIA / DEFEITO PRODUTO') return false;
+      
+      const date = new Date(f.date + 'T12:00:00');
+      const day = date.getDate().toString();
+      const month = (date.getMonth() + 1).toString();
+      const year = date.getFullYear().toString();
+
+      if (auditDay && day !== auditDay) return false;
+      if (auditMonth && month !== auditMonth) return false;
+      if (auditYear && year !== auditYear) return false;
+
+      if (auditSearch) {
+        const search = auditSearch.toLowerCase();
+        return f.description?.toLowerCase().includes(search);
+      }
+      return true;
+    }).sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
   }, [finances, effectiveStoreId, auditDay, auditMonth, auditYear, auditSearch]);
 
   const handlePrintDreMensal = () => {

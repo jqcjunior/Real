@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useMemo } from "react";
 import * as XLSX from "xlsx";
 import { 
-  ChevronRight, Download, Trash2, X, ShoppingBag, CheckCircle2, ListFilter, LogOut, Edit3, Layers
+  ChevronRight, Download, Trash2, X, ShoppingBag, CheckCircle2, ListFilter, LogOut, Edit3, Layers, Palette, Hash
 } from "lucide-react";
 
 /* --- CONSTANTES FISCAIS --- */
@@ -29,11 +29,21 @@ const SpreadsheetOrderModule = ({ user, onClose }: { user: any, onClose: () => v
   const [gradesSalvas, setGradesSalvas] = useState<any[]>([]);
   const [lotesFinalizados, setLotesFinalizados] = useState<any[]>([]);
   const [modoLojas, setModoLojas] = useState<'subgrupo' | 'todas'>('subgrupo');
-  const [selecaoLote, setSelecaoLote] = useState({ itensIds: [] as string[], gradeLetra: "", lojasIds: [] as string[] });
+  const [selecaoLote, setSelecaoLote] = useState({ itensIds: [] as string[], lojasIds: [] as string[] });
+
+  // Persistência: Memoriza Grade e Cor por Referência
+  const [persistAssignments, setPersistAssignments] = useState<Record<string, { gradeLetra: string, corSelecionada: string }>>(() => {
+    const saved = localStorage.getItem("real_admin_item_assignments");
+    return saved ? JSON.parse(saved) : {};
+  });
+
+  useEffect(() => {
+    localStorage.setItem("real_admin_item_assignments", JSON.stringify(persistAssignments));
+  }, [persistAssignments]);
 
   /* --- UTILITÁRIOS EXCEL DINÂMICO --- */
   const setCell = (sheet: XLSX.WorkSheet, r: number, c: number, value: any, type: "s" | "n" = "s") => {
-    if (c === undefined) return;
+    if (c === undefined || c < 0) return;
     const ref = XLSX.utils.encode_cell({ r, c });
     sheet[ref] = { t: type, v: value };
   };
@@ -42,55 +52,91 @@ const SpreadsheetOrderModule = ({ user, onClose }: { user: any, onClose: () => v
     const mapa: Record<string, number> = {};
     if (!sheet["!ref"]) return mapa;
     const range = XLSX.utils.decode_range(sheet["!ref"]);
+    // Varre a primeira linha (cabeçalho)
     for (let c = range.s.c; c <= range.e.c; c++) {
       const cell = sheet[XLSX.utils.encode_cell({ r: 0, c })];
-      if (cell?.v) mapa[String(cell.v).toUpperCase().trim()] = c;
+      if (cell && cell.v) {
+        const val = String(cell.v).toUpperCase().trim();
+        mapa[val] = c;
+        // Tratamento para números de loja que podem estar como "1" ou "01"
+        if (!isNaN(parseInt(val))) {
+          mapa[parseInt(val).toString()] = c;
+          mapa[parseInt(val).toString().padStart(2, '0')] = c;
+        }
+      }
     }
     return mapa;
   };
 
   const exportarPlanilhaFinal = async () => {
-    if (lotesFinalizados.length === 0) return alert("Vincule itens primeiro!");
+    if (lotesFinalizados.length === 0) return alert("Não há itens vinculados para exportar. Realize o vínculo no Passo 4.");
+    
     try {
       const response = await fetch("/Pedido_Sub_R2J_.xlsx");
+      if (!response.ok) throw new Error("Template não encontrado no servidor.");
+      
       const buffer = await response.arrayBuffer();
       const workbook = XLSX.read(buffer, { type: "array" });
       const sheet = workbook.Sheets[workbook.SheetNames[0]];
       const COL = criarMapaColunas(sheet);
+      
       const numPedidoUnico = Math.floor(1000 + Math.random() * 9000);
       let linhaExcel = 1;
 
+      // Logica de mapeamento flexível
+      const getCol = (names: string[]) => {
+        for (const name of names) {
+          if (COL[name.toUpperCase()] !== undefined) return COL[name.toUpperCase()];
+        }
+        return undefined;
+      };
+
       lotesFinalizados.forEach((lote, idx) => {
         const r = linhaExcel;
-        setCell(sheet, r, COL["PED. FORNECEDOR"], numPedidoUnico, "n");
-        setCell(sheet, r, COL["FORNECEDOR"], pedido.fornecedor);
-        setCell(sheet, r, COL["COMPRADOR"], user.name);
-        setCell(sheet, r, COL["PREVISÃO"], pedido.fatInicio);
-        setCell(sheet, r, COL["LIMITE ENTREGA"], pedido.fatFim);
-        setCell(sheet, r, COL["ITEM"], idx + 1, "n");
-        setCell(sheet, r, COL["DESCRICAO"], `${pedido.marca} ${lote.tipo} ${lote.referencia}`.toUpperCase());
-        setCell(sheet, r, COL["REFERENCIA"], lote.referencia);
-        setCell(sheet, r, COL["TIPO"], lote.tipo);
-        setCell(sheet, r, COL["MODELO"], lote.modelo);
-        setCell(sheet, r, COL["MARCA"], pedido.marca);
-        setCell(sheet, r, COL["COR 1"], lote.cor1);
-        setCell(sheet, r, COL["VALOR COMPRA"], Number(lote.valorCompra), "n");
-        setCell(sheet, r, COL["PREÇO VENDA"], Number(lote.precoVenda), "n");
+        
+        // Dados do Pedido / Fornecedor
+        setCell(sheet, r, getCol(["PED. FORNECEDOR", "PEDIDO"]), numPedidoUnico, "n");
+        setCell(sheet, r, getCol(["FORNECEDOR"]), pedido.fornecedor);
+        setCell(sheet, r, getCol(["COMPRADOR"]), user.name);
+        setCell(sheet, r, getCol(["PREVISÃO", "DATA INICIO"]), pedido.fatInicio);
+        setCell(sheet, r, getCol(["LIMITE ENTREGA", "DATA FIM"]), pedido.fatFim);
+        
+        // Dados do Item Individualizado
+        setCell(sheet, r, getCol(["ITEM"]), idx + 1, "n");
+        setCell(sheet, r, getCol(["DESCRICAO", "DESCRIÇÃO"]), `${pedido.marca} ${lote.tipo} ${lote.referencia}`.toUpperCase());
+        setCell(sheet, r, getCol(["REFERENCIA", "REF"]), lote.referencia);
+        setCell(sheet, r, getCol(["TIPO"]), lote.tipo);
+        setCell(sheet, r, getCol(["MODELO"]), lote.modelo);
+        setCell(sheet, r, getCol(["MARCA"]), pedido.marca);
+        setCell(sheet, r, getCol(["COR 1", "COR"]), lote.corEscolhida || lote.cor1);
+        setCell(sheet, r, getCol(["VALOR COMPRA", "CUSTO"]), Number(lote.valorCompra), "n");
+        setCell(sheet, r, getCol(["PREÇO VENDA", "VENDA"]), Number(lote.precoVenda), "n");
 
-        const colLoja = COL[parseInt(lote.loja).toString()];
-        if (colLoja !== undefined) setCell(sheet, r, colLoja, lote.gradeLetra);
+        // Marcação da Grade na Coluna da Loja específica
+        const colLoja = COL[lote.loja] ?? COL[parseInt(lote.loja).toString()];
+        if (colLoja !== undefined) {
+          setCell(sheet, r, colLoja, lote.gradeLetra);
+        }
+        
         linhaExcel++;
       });
 
-      sheet["!ref"] = XLSX.utils.encode_range({ s: { r: 0, c: 0 }, e: { r: linhaExcel + 5, c: 200 } });
-      sheet["!views"] = [{ state: "frozen", ySplit: 1 }];
-      XLSX.writeFile(workbook, `OTB_R2J_${pedido.marca}_${numPedidoUnico}.xlsx`);
-    } catch (e) { alert("Erro ao exportar planilha."); }
+      // Atualiza o range da planilha para incluir as novas linhas
+      const range = XLSX.utils.decode_range(sheet["!ref"] || "A1:Z100");
+      range.e.r = Math.max(range.e.r, linhaExcel + 2);
+      sheet["!ref"] = XLSX.utils.encode_range(range);
+
+      XLSX.writeFile(workbook, `PEDIDO_${pedido.marca || 'REAL'}_${numPedidoUnico}.xlsx`);
+      alert("Planilha gerada com sucesso!");
+    } catch (e: any) { 
+      console.error(e);
+      alert("Erro ao exportar planilha: " + e.message); 
+    }
   };
 
   /* --- LOGICA UI --- */
-  // Fix: Explicitly type accumulator as number and current value as any to resolve "unknown" type errors in reduce
   const paresGradeAtual = useMemo(() => Object.values(gradeEditando).reduce((a: number, b: any) => a + (Number(b) || 0), 0), [gradeEditando]);
+  
   const getMesPrazo = (dias: number) => {
     if (!pedido.fatFim) return "MÊS";
     const data = new Date(pedido.fatFim);
@@ -116,6 +162,16 @@ const SpreadsheetOrderModule = ({ user, onClose }: { user: any, onClose: () => v
     });
     return grupos;
   }, [lotesFinalizados, gradesSalvas, pedido.desconto]);
+
+  const updateItemAssignment = (ref: string, field: 'gradeLetra' | 'corSelecionada', value: string) => {
+    setPersistAssignments(prev => ({
+      ...prev,
+      [ref]: {
+        ...(prev[ref] || { gradeLetra: "", corSelecionada: "" }),
+        [field]: value
+      }
+    }));
+  };
 
   return (
     <div className="fixed inset-0 bg-slate-200/60 backdrop-blur-xl flex items-center justify-center p-0 md:p-6 z-[100] font-sans text-slate-700 text-[13px]">
@@ -224,41 +280,83 @@ const SpreadsheetOrderModule = ({ user, onClose }: { user: any, onClose: () => v
             </div>
           )}
 
-          {/* PASSO 4: MESA DE DISTRIBUIÇÃO AJUSTADA */}
+          {/* PASSO 4 */}
           {etapa === 4 && (
             <div className="max-w-6xl mx-auto space-y-4 animate-in slide-in-from-bottom">
                <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
-                  {/* COLUNA 1: ITENS COM DESCRIÇÃO RICA */}
-                  <div className="bg-white p-4 rounded-[35px] shadow-sm border border-slate-100 space-y-3">
-                    <span className="text-[9px] font-black text-slate-300 uppercase block text-center">1. Selecionar Itens</span>
-                    <div className="space-y-1.5 max-h-64 overflow-y-auto no-scrollbar">
-                      {itens.map(it => (
-                        <label key={it.id} className={`flex flex-col p-2 rounded-xl border-2 transition-all cursor-pointer text-left ${selecaoLote.itensIds.includes(it.id) ? 'bg-blue-600 border-blue-600 text-white shadow-md' : 'bg-slate-50'}`}>
-                          <input type="checkbox" className="hidden" checked={selecaoLote.itensIds.includes(it.id)} onChange={() => setSelecaoLote({...selecaoLote, itensIds: selecaoLote.itensIds.includes(it.id) ? selecaoLote.itensIds.filter(x => x !== it.id) : [...selecaoLote.itensIds, it.id]})} />
-                          <span className="text-[9px] font-black uppercase leading-tight">{pedido.marca} {it.tipo}</span>
-                          <div className="flex justify-between items-center mt-1">
-                            <span className="text-[8px] font-bold opacity-80 uppercase italic">{it.referencia}</span>
-                            <span className="text-[9px] font-black text-yellow-500">R$ {it.precoVenda.toFixed(2)}</span>
+                  {/* COLUNA 1: ITENS COM GRADE INDIVIDUAL */}
+                  <div className="bg-white p-4 rounded-[35px] shadow-sm border border-slate-100 space-y-3 flex flex-col">
+                    <span className="text-[9px] font-black text-slate-300 uppercase block text-center mb-2">1. Itens & Grades Individuais</span>
+                    <div className="space-y-2 flex-1 max-h-[450px] overflow-y-auto no-scrollbar">
+                      {itens.map(it => {
+                        const isSelected = selecaoLote.itensIds.includes(it.id);
+                        const assignment = persistAssignments[it.referencia] || { gradeLetra: "", corSelecionada: it.cor1 || "" };
+                        
+                        return (
+                          <div key={it.id} className={`flex flex-col p-3 rounded-2xl border-2 transition-all ${isSelected ? 'bg-blue-50 border-blue-600 shadow-sm' : 'bg-slate-50 border-transparent opacity-80'}`}>
+                            <label className="flex items-start gap-3 cursor-pointer mb-1">
+                              <input 
+                                type="checkbox" 
+                                className="w-4 h-4 rounded border-slate-300 text-blue-600 mt-1" 
+                                checked={isSelected} 
+                                onChange={() => setSelecaoLote({...selecaoLote, itensIds: isSelected ? selecaoLote.itensIds.filter(x => x !== it.id) : [...selecaoLote.itensIds, it.id]})} 
+                              />
+                              <div className="flex flex-col flex-1">
+                                <span className="text-[10px] font-black uppercase text-slate-900 leading-tight">{pedido.marca} {it.tipo}</span>
+                                <span className="text-[8px] font-bold text-slate-400 uppercase italic">{it.referencia}</span>
+                              </div>
+                            </label>
+
+                            {isSelected && (
+                              <div className="grid grid-cols-2 gap-2 mt-2 pt-2 border-t border-blue-100 animate-in fade-in zoom-in duration-200">
+                                <div className="space-y-1">
+                                  <label className="text-[7px] font-black text-blue-400 uppercase flex items-center gap-1"><Hash size={8}/> Grade</label>
+                                  <select 
+                                    value={assignment.gradeLetra} 
+                                    onChange={(e) => updateItemAssignment(it.referencia, 'gradeLetra', e.target.value)}
+                                    className="w-full p-1.5 bg-white border border-blue-200 rounded-lg text-[9px] font-black text-blue-700 outline-none"
+                                  >
+                                    <option value="">VINCULAR?</option>
+                                    {gradesSalvas.map(gr => <option key={gr.letra} value={gr.letra}>Grade {gr.letra} ({gr.total}pr)</option>)}
+                                  </select>
+                                </div>
+                                <div className="space-y-1">
+                                  <label className="text-[7px] font-black text-blue-400 uppercase flex items-center gap-1"><Palette size={8}/> Cor</label>
+                                  <select 
+                                    value={assignment.corSelecionada} 
+                                    onChange={(e) => updateItemAssignment(it.referencia, 'corSelecionada', e.target.value)}
+                                    className="w-full p-1.5 bg-white border border-blue-200 rounded-lg text-[9px] font-black text-blue-700 outline-none uppercase"
+                                  >
+                                    <option value={it.cor1}>{it.cor1 || "COR 1"}</option>
+                                    {it.cor2 && <option value={it.cor2}>{it.cor2}</option>}
+                                    {it.cor3 && <option value={it.cor3}>{it.cor3}</option>}
+                                  </select>
+                                </div>
+                              </div>
+                            )}
                           </div>
-                        </label>
-                      ))}
+                        );
+                      })}
+                      {itens.length === 0 && <p className="text-[8px] text-slate-300 uppercase text-center italic py-10">Nenhum item adicionado no Passo 2</p>}
                     </div>
                   </div>
 
-                  {/* COLUNA 2: GRADE MENOR E ELEGANTE */}
-                  <div className="bg-white p-4 rounded-[35px] shadow-sm border border-slate-100 space-y-3 text-center">
-                    <span className="text-[9px] font-black text-slate-300 uppercase block">2. Escolher Grade</span>
-                    <div className="grid grid-cols-2 gap-2">
+                  {/* COLUNA 2: REFERÊNCIA DE GRADES */}
+                  <div className="bg-white p-4 rounded-[35px] shadow-sm border border-slate-100 space-y-3">
+                    <span className="text-[9px] font-black text-slate-300 uppercase block text-center mb-2">2. Resumo das Grades Criadas</span>
+                    <div className="space-y-2 max-h-[450px] overflow-y-auto no-scrollbar">
                       {gradesSalvas.map(gr => (
-                        <label key={gr.letra} className={`flex items-center gap-2 p-2 rounded-xl border-2 transition-all cursor-pointer ${selecaoLote.gradeLetra === gr.letra ? 'bg-red-600 border-red-600 text-white shadow-md' : 'bg-slate-50'}`}>
-                          <input type="radio" name="gr" className="hidden" checked={selecaoLote.gradeLetra === gr.letra} onChange={() => setSelecaoLote({...selecaoLote, gradeLetra: gr.letra})} />
-                          <span className="text-lg font-black italic">{gr.letra}</span>
-                          <div className="flex flex-col items-start leading-none">
-                             <span className="text-[8px] font-black uppercase">{gr.modelo}</span>
-                             <span className="text-[7px] font-bold opacity-70">{gr.total} pares</span>
+                        <div key={gr.letra} className="bg-slate-50 p-3 rounded-2xl border border-slate-100 flex justify-between items-center group hover:bg-blue-50 transition-colors">
+                          <div className="flex items-center gap-3">
+                            <span className="text-xl font-black italic text-blue-600">{gr.letra}</span>
+                            <div className="flex flex-col leading-none">
+                              <span className="text-[8px] font-black uppercase text-slate-400">{gr.modelo}</span>
+                              <span className="text-[10px] font-black text-slate-700">{gr.total} PARES</span>
+                            </div>
                           </div>
-                        </label>
+                        </div>
                       ))}
+                      {gradesSalvas.length === 0 && <p className="text-[8px] text-slate-300 uppercase text-center italic py-10">Crie grades no Passo 3</p>}
                     </div>
                   </div>
 
@@ -268,62 +366,85 @@ const SpreadsheetOrderModule = ({ user, onClose }: { user: any, onClose: () => v
                        <button onClick={() => setModoLojas('subgrupo')} className={`flex-1 py-1 text-[8px] font-black uppercase rounded-lg transition-all ${modoLojas === 'subgrupo' ? 'bg-blue-600 text-white shadow-sm' : 'text-slate-400'}`}>Subgrupo</button>
                        <button onClick={() => setModoLojas('todas')} className={`flex-1 py-1 text-[8px] font-black uppercase rounded-lg transition-all ${modoLojas === 'todas' ? 'bg-blue-600 text-white shadow-sm' : 'text-slate-400'}`}>Todas</button>
                     </div>
-                    <div className="grid grid-cols-4 gap-1 max-h-48 overflow-y-auto no-scrollbar">
+                    <div className="grid grid-cols-4 gap-1 max-h-64 overflow-y-auto no-scrollbar pr-1">
                       {(modoLojas === 'subgrupo' ? SUBGRUPO_LOJAS : Array.from({length: 120}, (_, i) => (i+1).toString().padStart(2, '0'))).map(loja => (
-                        <button key={loja} onClick={() => setSelecaoLote({...selecaoLote, lojasIds: selecaoLote.lojasIds.includes(loja) ? selecaoLote.lojasIds.filter(x => x !== loja) : [...selecaoLote.lojasIds, loja]})} className={`p-1.5 rounded-lg text-[9px] font-black transition-all ${selecaoLote.lojasIds.includes(loja) ? 'bg-blue-700 text-white' : 'bg-slate-50 text-slate-400'}`}>{loja}</button>
+                        <button key={loja} onClick={() => setSelecaoLote({...selecaoLote, lojasIds: selecaoLote.lojasIds.includes(loja) ? selecaoLote.lojasIds.filter(x => x !== loja) : [...selecaoLote.lojasIds, loja]})} className={`p-1.5 rounded-lg text-[9px] font-black transition-all ${selecaoLote.lojasIds.includes(loja) ? 'bg-blue-700 text-white shadow-sm' : 'bg-slate-50 text-slate-400 hover:bg-slate-100'}`}>{loja}</button>
                       ))}
                     </div>
                   </div>
                </div>
                
-               {/* BOTÃO DE VINCULO AJUSTADO */}
+               {/* BOTÃO DE VINCULO */}
                <button onClick={() => {
-                 if (!selecaoLote.gradeLetra || selecaoLote.itensIds.length === 0 || selecaoLote.lojasIds.length === 0) return alert("Selecione tudo!");
+                 // Validação de grade obrigatória para os itens marcados
+                 const invalidItems = selecaoLote.itensIds.filter(id => {
+                   const it = itens.find(i => i.id === id);
+                   return !persistAssignments[it.referencia]?.gradeLetra;
+                 });
+
+                 if (selecaoLote.itensIds.length === 0 || selecaoLote.lojasIds.length === 0) return alert("Selecione pelo menos um item e uma loja!");
+                 if (invalidItems.length > 0) return alert("Todos os itens selecionados devem ter uma grade vinculada!");
+
                  const idVinculo = crypto.randomUUID();
                  const novos = selecaoLote.itensIds.flatMap(id => {
                    const it = itens.find(i => i.id === id);
-                   return selecaoLote.lojasIds.map(loja => ({ ...it, loja, gradeLetra: selecaoLote.gradeLetra, idVinculo }));
+                   const config = persistAssignments[it.referencia];
+                   return selecaoLote.lojasIds.map(loja => ({ 
+                     ...it, 
+                     loja, 
+                     gradeLetra: config.gradeLetra, 
+                     corEscolhida: config.corSelecionada || it.cor1,
+                     idVinculo 
+                   }));
                  });
                  setLotesFinalizados([...lotesFinalizados, ...novos]);
-                 setSelecaoLote({ itensIds: [], gradeLetra: "", lojasIds: [] });
+                 setSelecaoLote({ itensIds: [], lojasIds: [] });
+                 alert("Sucesso! Lote individualizado vinculado ao pedido final.");
                }} className="w-full bg-blue-700 text-white p-4 rounded-[25px] font-black shadow-xl uppercase active:scale-95 transition-all flex items-center justify-center gap-3">
-                 <Layers size={18}/> VINCULAR LOTE AO PEDIDO FINAL
+                 <Layers size={18}/> GERAR VÍNCULOS DE LOTE (INDIVIDUALIZADO)
                </button>
             </div>
           )}
         </div>
 
-        {/* GAVETA DE LOTES COM EDIÇÃO/EXCLUSÃO */}
+        {/* GAVETA DE LOTES */}
         {verLotes && (
-          <div className="absolute bottom-20 left-6 right-6 bg-white rounded-[40px] shadow-2xl border border-slate-100 z-50 animate-in slide-in-from-bottom max-h-[50vh] flex flex-col">
-            <div className="p-6 border-b flex justify-between items-center"><h3 className="font-black text-blue-900 uppercase italic tracking-tighter">Resumo Lotes</h3><button onClick={() => setVerLotes(false)} className="p-2 bg-slate-100 rounded-full"><X size={16}/></button></div>
+          <div className="absolute bottom-20 left-6 right-6 bg-white rounded-[40px] shadow-2xl border border-slate-100 z-50 animate-in slide-in-from-bottom max-h-[50vh] flex flex-col overflow-hidden">
+            <div className="p-6 border-b flex justify-between items-center bg-gray-50/50">
+              <h3 className="font-black text-blue-900 uppercase italic tracking-tighter">Resumo de Lotes Vinculados</h3>
+              <button onClick={() => setVerLotes(false)} className="p-2 bg-white rounded-full shadow-sm hover:text-red-600 transition-colors"><X size={16}/></button>
+            </div>
             <div className="p-6 overflow-y-auto space-y-4 custom-scrollbar">
               {Object.entries(resumoPorLote).map(([chave, grupo]: [string, any]) => (
-                <div key={chave} className="bg-slate-50 p-4 rounded-3xl border border-slate-100 relative">
+                <div key={chave} className="bg-slate-50 p-4 rounded-3xl border border-slate-100 relative group hover:border-blue-200 transition-all">
                   <div className="flex justify-between items-start mb-2">
                     <div className="flex flex-col">
-                      <span className="text-lg font-black italic text-red-600 uppercase leading-none">Grade {grupo.gradeLetra}</span>
-                      <span className="text-[10px] font-bold text-slate-400 mt-1 uppercase">{grupo.pares} PR TOTAL</span>
+                      <span className="text-lg font-black italic text-red-600 uppercase leading-none">LOTE GRADE {grupo.gradeLetra}</span>
+                      <span className="text-[10px] font-bold text-slate-400 mt-1 uppercase tracking-widest">{grupo.pares} PARES POR UNIDADE</span>
                     </div>
                     <div className="flex gap-2">
-                      <button onClick={() => { setSelecaoLote({ itensIds: grupo.itemIds, gradeLetra: grupo.gradeLetra, lojasIds: grupo.lojas }); setLotesFinalizados(prev => prev.filter(l => l.idVinculo !== grupo.idVinculo)); setVerLotes(false); setEtapa(4); }} className="p-2 bg-blue-100 text-blue-700 rounded-xl"><Edit3 size={16}/></button>
-                      <button onClick={() => { if(confirm("Remover lote?")) setLotesFinalizados(prev => prev.filter(l => l.idVinculo !== grupo.idVinculo)); }} className="p-2 bg-red-100 text-red-700 rounded-xl"><Trash2 size={16}/></button>
+                      <button onClick={() => { setLotesFinalizados(prev => prev.filter(l => l.idVinculo !== grupo.idVinculo)); }} className="p-2 bg-red-100 text-red-700 rounded-xl hover:bg-red-600 hover:text-white transition-colors shadow-sm"><Trash2 size={16}/></button>
                     </div>
                   </div>
-                  <div className="text-[11px] font-bold text-slate-500 mb-2">Lojas: <span className="text-blue-900 font-black">{grupo.lojas.join(', ')}</span></div>
-                  <div className="text-right font-black text-green-600 text-lg italic leading-none">R$ {grupo.valor.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}</div>
+                  <div className="text-[11px] font-bold text-slate-500 mb-2 leading-relaxed">
+                    Unidades: <span className="text-blue-900 font-black">{grupo.lojas.sort().join(', ')}</span>
+                  </div>
+                  <div className="text-right font-black text-green-600 text-lg italic leading-none border-t border-slate-200 pt-3 mt-1">
+                    VMD: {formatCurrency(grupo.valor)}
+                  </div>
                 </div>
               ))}
+              {Object.keys(resumoPorLote).length === 0 && <p className="text-center text-slate-300 uppercase font-black py-10">Nenhum lote vinculado ainda</p>}
             </div>
           </div>
         )}
 
         {/* RODAPÉ */}
         <div className="p-4 md:px-8 bg-white border-t flex justify-between items-center shrink-0">
-          <button onClick={() => setVerLotes(!verLotes)} className="bg-blue-50 text-blue-700 px-6 py-3 rounded-2xl font-black text-[10px] uppercase flex items-center gap-2 hover:bg-blue-100 transition-all"><ListFilter size={16}/> VEJA LOTES ({Object.keys(resumoPorLote).length})</button>
+          <button onClick={() => setVerLotes(!verLotes)} className={`px-6 py-3 rounded-2xl font-black text-[10px] uppercase flex items-center gap-2 transition-all ${verLotes ? 'bg-blue-600 text-white shadow-lg' : 'bg-blue-50 text-blue-700 hover:bg-blue-100'}`}><ListFilter size={16}/> VISUALIZAR LOTES ({Object.keys(resumoPorLote).length})</button>
           <div className="flex items-center gap-3">
-            <button onClick={exportarPlanilhaFinal} className="bg-red-600 text-white px-8 py-3 rounded-2xl font-black text-[10px] uppercase shadow-lg flex items-center gap-2 active:scale-95 animate-pulse"><Download size={16}/> EXPORTAR</button>
-            <button onClick={onClose} className="bg-slate-900 text-white px-6 py-3 rounded-2xl font-black text-[10px] uppercase flex items-center gap-2 hover:bg-black transition-all"><LogOut size={16}/> FINALIZAR</button>
+            <button onClick={exportarPlanilhaFinal} className="bg-red-600 text-white px-8 py-3 rounded-2xl font-black text-[10px] uppercase shadow-lg flex items-center gap-2 active:scale-95 animate-pulse hover:bg-red-700 transition-all"><Download size={16}/> EXPORTAR PEDIDO FINAL</button>
+            <button onClick={onClose} className="bg-slate-900 text-white px-6 py-3 rounded-2xl font-black text-[10px] uppercase flex items-center gap-2 hover:bg-black transition-all shadow-md"><LogOut size={16}/> FECHAR</button>
           </div>
         </div>
       </div>
@@ -331,5 +452,7 @@ const SpreadsheetOrderModule = ({ user, onClose }: { user: any, onClose: () => v
     </div>
   );
 };
+
+const formatCurrency = (v: number) => new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(v || 0);
 
 export default SpreadsheetOrderModule;

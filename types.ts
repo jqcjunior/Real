@@ -1,6 +1,5 @@
 
 
-
 /* =========================
    ROLES / USUÁRIOS
 ========================= */
@@ -38,9 +37,41 @@ export interface QuotaMixParameter {
   percentage: number;
   semester?: 1 | 2;
   created_at?: string;
-  // Fix: Add store_id and storeId to QuotaMixParameter interface
   store_id?: string;
   storeId?: string;
+}
+
+// Fixed: Added missing interface Cota
+export interface Cota {
+  id: string;
+  storeId: string;
+  brand: string;
+  category_id: string;
+  category_name?: string;
+  classification?: string;
+  totalValue: number;
+  shipmentDate: string;
+  paymentTerms: string;
+  pairs: number;
+  installments: any;
+  status: string;
+  createdByRole?: string;
+  createdAt: Date;
+}
+
+// Fixed: Added missing interface CotaSettings
+export interface CotaSettings {
+  storeId: string;
+  budgetValue: number;
+  managerPercent: number;
+}
+
+// Fixed: Added missing interface CotaDebts
+export interface CotaDebts {
+  id?: string;
+  storeId: string;
+  month: string;
+  value: number;
 }
 
 /* =========================
@@ -48,7 +79,7 @@ export interface QuotaMixParameter {
 ========================= */
 export interface IceCreamStock {
   id: string;
-  stock_id: string; // UUID real da tabela ice_cream_stock
+  stock_id: string; 
   store_id: string;
   product_base: string;
   stock_initial: number;
@@ -114,6 +145,27 @@ export type IceCreamCategory =
   | 'Bebidas'
   | 'Adicionais';
 
+// Fixed: Added missing interface IceCreamPromissoryNote
+export interface IceCreamPromissoryNote {
+  id: string;
+  storeId: string;
+  buyer_name: string;
+  value: number;
+  date: string;
+  status: 'pending' | 'paid';
+  createdAt: Date;
+}
+
+// Fixed: Added missing interface StoreProfitPartner
+export interface StoreProfitPartner {
+  id: string;
+  store_id: string;
+  partner_name: string;
+  percentage: number;
+  active: boolean;
+  created_at?: string;
+}
+
 /* =========================
    TRANSAÇÕES
 ========================= */
@@ -126,16 +178,6 @@ export interface IceCreamTransaction {
   value: number;
   description?: string;
   createdAt: Date;
-}
-
-export interface IceCreamPromissoryNote {
-  id: string;
-  store_id: string;
-  sale_id: string;
-  buyer_name: string;
-  value: number;
-  status: 'pending' | 'paid';
-  created_at: string;
 }
 
 /* =========================
@@ -165,14 +207,12 @@ export interface Store {
   role?: UserRole;
   password?: string;
   passwordResetRequested?: boolean;
-  // Fix: Add missing properties to Store interface
   has_gelateria?: boolean;
   state?: string;
 }
 
 /* =========================
-   🔹 METAS MENSAIS (NOVO)
-   Tabela: monthly_goals
+   🔹 METAS MENSAIS
 ========================= */
 export interface MonthlyGoal {
   id?: string;
@@ -192,70 +232,39 @@ export interface MonthlyGoal {
 }
 
 /* =========================
-   🔹 PERFORMANCE (VIEW)
-   View: monthly_performance
-========================= */
-export interface MonthlyPerformanceView {
-  storeId: string;
-  year: number;
-  month: number;
-
-  revenueTarget: number;
-  itemsTarget: number;
-  paTarget: number;
-  puTarget: number;
-  delinquencyTarget: number;
-
-  revenueActual: number;
-  itemsActual: number;
-  paActual: number | null;
-  puActual: number | null;
-  delinquencyActual: number | null;
-
-  revenuePercent: number | null;
-  paPercent: number | null;
-  puPercent: number | null;
-
-  businessDays: number | null;
-  trend: 'up' | 'stable' | 'down' | null;
-}
-
-/* =========================
-   ⚠️ PERFORMANCE LEGADO
-   NÃO usar para metas novas
+   🔹 PERFORMANCE ATUALIZADA (OPÇÃO A)
 ========================= */
 export interface MonthlyPerformance {
   id?: string;
   storeId: string;
   month: string;
 
-  revenueTarget: number;
+  // Realizado (Raw Data)
   revenueActual: number;
-  percentMeta: number;
-
-  itemsTarget?: number;
-  itemsActual?: number;
-
-  itemsPerTicket: number;
-  unitPriceAverage: number;
-  averageTicket: number;
-
+  itemsActual: number;
+  salesActual: number; // Qtde Vendas
   delinquencyRate: number;
 
-  paTarget?: number;
-  ticketTarget?: number;
-  puTarget?: number;
-  delinquencyTarget?: number;
+  // Calculados (Vêm da View)
+  itemsPerTicket: number; // P.A.
+  unitPriceAverage: number; // P.U.
+  averageTicket: number; // Ticket Médio
+  percentMeta: number;
+
+  // Metas (Targets)
+  revenueTarget: number;
+  itemsTarget: number;
+  paTarget: number;
+  puTarget: number;
+  ticketTarget: number;
+  delinquencyTarget: number;
 
   trend: 'up' | 'down' | 'stable';
-  correctedDailyGoal: number;
-  businessDays?: number;
-  growthTarget?: number;
-  rewardValue?: number;
+  businessDays: number;
 }
 
 /* =========================
-   OUTROS MÓDULOS
+   OUTROS
 ========================= */
 export interface ProductPerformance {
   storeId: string;
@@ -264,15 +273,6 @@ export interface ProductPerformance {
   category: string;
   pairsSold: number;
   revenue: number;
-}
-
-export interface StoreProfitPartner {
-  id: string;
-  store_id: string;
-  partner_name: string;
-  percentage: number;
-  active: boolean;
-  created_at?: string;
 }
 
 export interface CashRegisterClosure {
@@ -297,43 +297,6 @@ export interface SystemLog {
   details: string;
 }
 
-export interface Installment {
-  n: number;
-  value: number;
-}
-
-export interface Cota {
-  id: string;
-  storeId: string;
-  brand: string;
-  totalValue: number;
-  shipmentDate: string;
-  paymentTerms: string;
-  installments: Record<string, number> | Installment[];
-  createdAt: Date;
-  createdByRole?: string;
-  status?: string;
-  pairs?: number;
-  classification?: string;
-  category_id?: string;
-  category_name?: string;
-  parent_category?: string;
-}
-
-export interface CotaSettings {
-  storeId: string;
-  budgetValue: number;
-  managerPercent: number;
-}
-
-export interface CotaDebts {
-  id?: string;
-  storeId: string;
-  month: string;
-  value: number;
-  description?: string;
-}
-
 export type TaskPriority = 'highest' | 'high' | 'medium' | 'low' | 'lowest';
 
 export interface AgendaItem {
@@ -346,9 +309,6 @@ export interface AgendaItem {
   priority: TaskPriority;
   isCompleted: boolean;
   createdAt: Date;
-  reminder_level: 1 | 2 | 3;
-  reminded_at?: string | null;
-  completed_note?: string;
 }
 
 export type DownloadCategory =
