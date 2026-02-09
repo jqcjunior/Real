@@ -52,13 +52,11 @@ const SpreadsheetOrderModule = ({ user, onClose }: { user: any, onClose: () => v
     const mapa: Record<string, number> = {};
     if (!sheet["!ref"]) return mapa;
     const range = XLSX.utils.decode_range(sheet["!ref"]);
-    // Varre a primeira linha (cabeçalho)
     for (let c = range.s.c; c <= range.e.c; c++) {
       const cell = sheet[XLSX.utils.encode_cell({ r: 0, c })];
       if (cell && cell.v) {
         const val = String(cell.v).toUpperCase().trim();
         mapa[val] = c;
-        // Tratamento para números de loja que podem estar como "1" ou "01"
         if (!isNaN(parseInt(val))) {
           mapa[parseInt(val).toString()] = c;
           mapa[parseInt(val).toString().padStart(2, '0')] = c;
@@ -83,7 +81,6 @@ const SpreadsheetOrderModule = ({ user, onClose }: { user: any, onClose: () => v
       const numPedidoUnico = Math.floor(1000 + Math.random() * 9000);
       let linhaExcel = 1;
 
-      // Logica de mapeamento flexível
       const getCol = (names: string[]) => {
         for (const name of names) {
           if (COL[name.toUpperCase()] !== undefined) return COL[name.toUpperCase()];
@@ -94,14 +91,12 @@ const SpreadsheetOrderModule = ({ user, onClose }: { user: any, onClose: () => v
       lotesFinalizados.forEach((lote, idx) => {
         const r = linhaExcel;
         
-        // Dados do Pedido / Fornecedor
         setCell(sheet, r, getCol(["PED. FORNECEDOR", "PEDIDO"]), numPedidoUnico, "n");
         setCell(sheet, r, getCol(["FORNECEDOR"]), pedido.fornecedor);
         setCell(sheet, r, getCol(["COMPRADOR"]), user.name);
         setCell(sheet, r, getCol(["PREVISÃO", "DATA INICIO"]), pedido.fatInicio);
         setCell(sheet, r, getCol(["LIMITE ENTREGA", "DATA FIM"]), pedido.fatFim);
         
-        // Dados do Item Individualizado
         setCell(sheet, r, getCol(["ITEM"]), idx + 1, "n");
         setCell(sheet, r, getCol(["DESCRICAO", "DESCRIÇÃO"]), `${pedido.marca} ${lote.tipo} ${lote.referencia}`.toUpperCase());
         setCell(sheet, r, getCol(["REFERENCIA", "REF"]), lote.referencia);
@@ -112,7 +107,6 @@ const SpreadsheetOrderModule = ({ user, onClose }: { user: any, onClose: () => v
         setCell(sheet, r, getCol(["VALOR COMPRA", "CUSTO"]), Number(lote.valorCompra), "n");
         setCell(sheet, r, getCol(["PREÇO VENDA", "VENDA"]), Number(lote.precoVenda), "n");
 
-        // Marcação da Grade na Coluna da Loja específica
         const colLoja = COL[lote.loja] ?? COL[parseInt(lote.loja).toString()];
         if (colLoja !== undefined) {
           setCell(sheet, r, colLoja, lote.gradeLetra);
@@ -121,20 +115,17 @@ const SpreadsheetOrderModule = ({ user, onClose }: { user: any, onClose: () => v
         linhaExcel++;
       });
 
-      // Atualiza o range da planilha para incluir as novas linhas
       const range = XLSX.utils.decode_range(sheet["!ref"] || "A1:Z100");
-      range.e.r = Math.max(range.e.r, linhaExcel + 2);
+      range.e.r = Math.max(range.e.r, linhaExcel + 10);
       sheet["!ref"] = XLSX.utils.encode_range(range);
 
       XLSX.writeFile(workbook, `PEDIDO_${pedido.marca || 'REAL'}_${numPedidoUnico}.xlsx`);
       alert("Planilha gerada com sucesso!");
     } catch (e: any) { 
-      console.error(e);
       alert("Erro ao exportar planilha: " + e.message); 
     }
   };
 
-  /* --- LOGICA UI --- */
   const paresGradeAtual = useMemo(() => Object.values(gradeEditando).reduce((a: number, b: any) => a + (Number(b) || 0), 0), [gradeEditando]);
   
   const getMesPrazo = (dias: number) => {
@@ -177,7 +168,6 @@ const SpreadsheetOrderModule = ({ user, onClose }: { user: any, onClose: () => v
     <div className="fixed inset-0 bg-slate-200/60 backdrop-blur-xl flex items-center justify-center p-0 md:p-6 z-[100] font-sans text-slate-700 text-[13px]">
       <div className="bg-[#F0F4F8] w-full max-w-5xl h-full md:h-[94vh] md:rounded-[50px] shadow-2xl flex flex-col overflow-hidden border border-white/50 relative">
         
-        {/* HEADER */}
         <div className="px-8 py-4 flex justify-between items-center bg-white/30 shrink-0">
           <div className="flex items-center gap-3">
             <div className="w-10 h-10 bg-blue-600 rounded-xl flex items-center justify-center shadow-lg"><ShoppingBag className="text-white" size={20} /></div>
@@ -186,7 +176,6 @@ const SpreadsheetOrderModule = ({ user, onClose }: { user: any, onClose: () => v
           <button onClick={onClose} className="w-8 h-8 flex items-center justify-center bg-white rounded-full shadow-md"><X size={18} /></button>
         </div>
 
-        {/* PROGRESSO */}
         <div className="flex px-8 gap-2 shrink-0 pb-2">
           {[1, 2, 3, 4].map(n => (
             <button key={n} onClick={() => setEtapa(n)} className={`flex-1 py-2 rounded-xl text-[9px] font-black uppercase transition-all ${etapa === n ? 'bg-blue-600 text-white shadow-md' : 'bg-white/50 text-slate-400'}`}>Passo 0{n}</button>
@@ -194,8 +183,6 @@ const SpreadsheetOrderModule = ({ user, onClose }: { user: any, onClose: () => v
         </div>
 
         <div className="flex-1 overflow-y-auto p-4 md:p-8 space-y-6 custom-scrollbar">
-          
-          {/* PASSO 1 */}
           {etapa === 1 && (
             <div className="max-w-xl mx-auto space-y-6 animate-in fade-in">
               <div className="bg-white/80 p-6 rounded-[35px] shadow-sm border border-white space-y-4">
@@ -210,18 +197,9 @@ const SpreadsheetOrderModule = ({ user, onClose }: { user: any, onClose: () => v
                   <div className="text-center flex-1"><span className="text-[7px] font-black text-slate-400 uppercase mb-1 block">Limite</span><input type="date" className="w-full p-3 bg-slate-50 rounded-2xl font-bold text-xs outline-none text-center" value={pedido.fatFim} onChange={e => setPedido({...pedido, fatFim: e.target.value})} /></div>
                 </div>
               </div>
-              <div className="grid grid-cols-3 gap-3">
-                {[1, 2, 3].map(i => (
-                  <div key={i} className="bg-white p-4 rounded-[25px] shadow-sm border border-white text-center">
-                    <input type="number" className="w-full text-center bg-transparent font-black text-xl text-blue-600 outline-none" value={pedido[`prazo${i}` as keyof typeof pedido]} onChange={e => setPedido({...pedido, [`prazo${i}`]: Number(e.target.value)})} />
-                    <p className="text-[8px] font-bold text-slate-400 uppercase">{getMesPrazo(Number(pedido[`prazo${i}` as keyof typeof pedido]))}</p>
-                  </div>
-                ))}
-              </div>
             </div>
           )}
 
-          {/* PASSO 2 */}
           {etapa === 2 && (
             <div className="max-w-xl mx-auto space-y-4 animate-in slide-in-from-right">
               <div className="bg-white p-6 rounded-[40px] shadow-sm border border-white space-y-4">
@@ -254,7 +232,6 @@ const SpreadsheetOrderModule = ({ user, onClose }: { user: any, onClose: () => v
             </div>
           )}
 
-          {/* PASSO 3 */}
           {etapa === 3 && (
             <div className="max-w-2xl mx-auto space-y-6 animate-in zoom-in text-center">
               <div className="bg-white p-8 rounded-[40px] shadow-sm border border-slate-100 space-y-6 relative">
@@ -274,181 +251,96 @@ const SpreadsheetOrderModule = ({ user, onClose }: { user: any, onClose: () => v
                   setGradeEditando({}); alert("Grade salva!"); 
                 }} className="w-full bg-blue-700 text-white p-4 rounded-[25px] font-black shadow-lg uppercase text-[10px]">Confirmar Grade {LETRAS[gradesSalvas.length]}</button>
               </div>
-              <div className="flex flex-wrap gap-2 justify-center">
-                {gradesSalvas.map(g => <div key={g.letra} className="bg-blue-900 text-white p-2 px-4 rounded-full text-[10px] font-black flex items-center gap-2">GRADE {g.letra} ({g.total} PR) <CheckCircle2 size={12}/></div>)}
-              </div>
             </div>
           )}
 
-          {/* PASSO 4 */}
           {etapa === 4 && (
             <div className="max-w-6xl mx-auto space-y-4 animate-in slide-in-from-bottom">
                <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
-                  {/* COLUNA 1: ITENS COM GRADE INDIVIDUAL */}
-                  <div className="bg-white p-4 rounded-[35px] shadow-sm border border-slate-100 space-y-3 flex flex-col">
+                  <div className="bg-white p-4 rounded-[35px] shadow-sm border border-slate-100 flex flex-col">
                     <span className="text-[9px] font-black text-slate-300 uppercase block text-center mb-2">1. Itens & Grades Individuais</span>
                     <div className="space-y-2 flex-1 max-h-[450px] overflow-y-auto no-scrollbar">
                       {itens.map(it => {
                         const isSelected = selecaoLote.itensIds.includes(it.id);
                         const assignment = persistAssignments[it.referencia] || { gradeLetra: "", corSelecionada: it.cor1 || "" };
-                        
                         return (
                           <div key={it.id} className={`flex flex-col p-3 rounded-2xl border-2 transition-all ${isSelected ? 'bg-blue-50 border-blue-600 shadow-sm' : 'bg-slate-50 border-transparent opacity-80'}`}>
                             <label className="flex items-start gap-3 cursor-pointer mb-1">
-                              <input 
-                                type="checkbox" 
-                                className="w-4 h-4 rounded border-slate-300 text-blue-600 mt-1" 
-                                checked={isSelected} 
-                                onChange={() => setSelecaoLote({...selecaoLote, itensIds: isSelected ? selecaoLote.itensIds.filter(x => x !== it.id) : [...selecaoLote.itensIds, it.id]})} 
-                              />
+                              <input type="checkbox" className="w-4 h-4 rounded border-slate-300 text-blue-600 mt-1" checked={isSelected} onChange={() => setSelecaoLote({...selecaoLote, itensIds: isSelected ? selecaoLote.itensIds.filter(x => x !== it.id) : [...selecaoLote.itensIds, it.id]})} />
                               <div className="flex flex-col flex-1">
                                 <span className="text-[10px] font-black uppercase text-slate-900 leading-tight">{pedido.marca} {it.tipo}</span>
                                 <span className="text-[8px] font-bold text-slate-400 uppercase italic">{it.referencia}</span>
                               </div>
                             </label>
-
                             {isSelected && (
-                              <div className="grid grid-cols-2 gap-2 mt-2 pt-2 border-t border-blue-100 animate-in fade-in zoom-in duration-200">
-                                <div className="space-y-1">
-                                  <label className="text-[7px] font-black text-blue-400 uppercase flex items-center gap-1"><Hash size={8}/> Grade</label>
-                                  <select 
-                                    value={assignment.gradeLetra} 
-                                    onChange={(e) => updateItemAssignment(it.referencia, 'gradeLetra', e.target.value)}
-                                    className="w-full p-1.5 bg-white border border-blue-200 rounded-lg text-[9px] font-black text-blue-700 outline-none"
-                                  >
-                                    <option value="">VINCULAR?</option>
-                                    {gradesSalvas.map(gr => <option key={gr.letra} value={gr.letra}>Grade {gr.letra} ({gr.total}pr)</option>)}
-                                  </select>
-                                </div>
-                                <div className="space-y-1">
-                                  <label className="text-[7px] font-black text-blue-400 uppercase flex items-center gap-1"><Palette size={8}/> Cor</label>
-                                  <select 
-                                    value={assignment.corSelecionada} 
-                                    onChange={(e) => updateItemAssignment(it.referencia, 'corSelecionada', e.target.value)}
-                                    className="w-full p-1.5 bg-white border border-blue-200 rounded-lg text-[9px] font-black text-blue-700 outline-none uppercase"
-                                  >
-                                    <option value={it.cor1}>{it.cor1 || "COR 1"}</option>
-                                    {it.cor2 && <option value={it.cor2}>{it.cor2}</option>}
-                                    {it.cor3 && <option value={it.cor3}>{it.cor3}</option>}
-                                  </select>
-                                </div>
+                              <div className="grid grid-cols-2 gap-2 mt-2 pt-2 border-t border-blue-100">
+                                <select value={assignment.gradeLetra} onChange={(e) => updateItemAssignment(it.referencia, 'gradeLetra', e.target.value)} className="p-1.5 bg-white border border-blue-200 rounded-lg text-[9px] font-black text-blue-700">
+                                  <option value="">GRADE?</option>
+                                  {gradesSalvas.map(gr => <option key={gr.letra} value={gr.letra}>Grade {gr.letra}</option>)}
+                                </select>
+                                <select value={assignment.corSelecionada} onChange={(e) => updateItemAssignment(it.referencia, 'corSelecionada', e.target.value)} className="p-1.5 bg-white border border-blue-200 rounded-lg text-[9px] font-black text-blue-700 uppercase">
+                                  <option value={it.cor1}>{it.cor1}</option>
+                                  {it.cor2 && <option value={it.cor2}>{it.cor2}</option>}
+                                  {it.cor3 && <option value={it.cor3}>{it.cor3}</option>}
+                                </select>
                               </div>
                             )}
                           </div>
                         );
                       })}
-                      {itens.length === 0 && <p className="text-[8px] text-slate-300 uppercase text-center italic py-10">Nenhum item adicionado no Passo 2</p>}
                     </div>
                   </div>
-
-                  {/* COLUNA 2: REFERÊNCIA DE GRADES */}
                   <div className="bg-white p-4 rounded-[35px] shadow-sm border border-slate-100 space-y-3">
-                    <span className="text-[9px] font-black text-slate-300 uppercase block text-center mb-2">2. Resumo das Grades Criadas</span>
+                    <span className="text-[9px] font-black text-slate-300 uppercase block text-center mb-2">2. Resumo das Grades</span>
                     <div className="space-y-2 max-h-[450px] overflow-y-auto no-scrollbar">
                       {gradesSalvas.map(gr => (
-                        <div key={gr.letra} className="bg-slate-50 p-3 rounded-2xl border border-slate-100 flex justify-between items-center group hover:bg-blue-50 transition-colors">
-                          <div className="flex items-center gap-3">
+                        <div key={gr.letra} className="bg-slate-50 p-3 rounded-2xl border border-slate-100 flex items-center gap-3">
                             <span className="text-xl font-black italic text-blue-600">{gr.letra}</span>
-                            <div className="flex flex-col leading-none">
-                              <span className="text-[8px] font-black uppercase text-slate-400">{gr.modelo}</span>
-                              <span className="text-[10px] font-black text-slate-700">{gr.total} PARES</span>
-                            </div>
-                          </div>
+                            <span className="text-[10px] font-black text-slate-700">{gr.total} PARES</span>
                         </div>
                       ))}
-                      {gradesSalvas.length === 0 && <p className="text-[8px] text-slate-300 uppercase text-center italic py-10">Crie grades no Passo 3</p>}
                     </div>
                   </div>
-
-                  {/* COLUNA 3: LOJAS */}
-                  <div className="bg-white p-4 rounded-[35px] shadow-sm border border-slate-100 space-y-3 text-center">
+                  <div className="bg-white p-4 rounded-[35px] shadow-sm border border-slate-100 text-center">
                     <div className="flex bg-slate-50 rounded-xl p-1 mb-2">
                        <button onClick={() => setModoLojas('subgrupo')} className={`flex-1 py-1 text-[8px] font-black uppercase rounded-lg transition-all ${modoLojas === 'subgrupo' ? 'bg-blue-600 text-white shadow-sm' : 'text-slate-400'}`}>Subgrupo</button>
                        <button onClick={() => setModoLojas('todas')} className={`flex-1 py-1 text-[8px] font-black uppercase rounded-lg transition-all ${modoLojas === 'todas' ? 'bg-blue-600 text-white shadow-sm' : 'text-slate-400'}`}>Todas</button>
                     </div>
-                    <div className="grid grid-cols-4 gap-1 max-h-64 overflow-y-auto no-scrollbar pr-1">
+                    <div className="grid grid-cols-4 gap-1 max-h-64 overflow-y-auto no-scrollbar">
                       {(modoLojas === 'subgrupo' ? SUBGRUPO_LOJAS : Array.from({length: 120}, (_, i) => (i+1).toString().padStart(2, '0'))).map(loja => (
-                        <button key={loja} onClick={() => setSelecaoLote({...selecaoLote, lojasIds: selecaoLote.lojasIds.includes(loja) ? selecaoLote.lojasIds.filter(x => x !== loja) : [...selecaoLote.lojasIds, loja]})} className={`p-1.5 rounded-lg text-[9px] font-black transition-all ${selecaoLote.lojasIds.includes(loja) ? 'bg-blue-700 text-white shadow-sm' : 'bg-slate-50 text-slate-400 hover:bg-slate-100'}`}>{loja}</button>
+                        <button key={loja} onClick={() => setSelecaoLote({...selecaoLote, lojasIds: selecaoLote.lojasIds.includes(loja) ? selecaoLote.lojasIds.filter(x => x !== loja) : [...selecaoLote.lojasIds, loja]})} className={`p-1.5 rounded-lg text-[9px] font-black transition-all ${selecaoLote.lojasIds.includes(loja) ? 'bg-blue-700 text-white' : 'bg-slate-50 text-slate-400'}`}>{loja}</button>
                       ))}
                     </div>
                   </div>
                </div>
-               
-               {/* BOTÃO DE VINCULO */}
                <button onClick={() => {
-                 // Validação de grade obrigatória para os itens marcados
-                 const invalidItems = selecaoLote.itensIds.filter(id => {
-                   const it = itens.find(i => i.id === id);
-                   return !persistAssignments[it.referencia]?.gradeLetra;
-                 });
-
-                 if (selecaoLote.itensIds.length === 0 || selecaoLote.lojasIds.length === 0) return alert("Selecione pelo menos um item e uma loja!");
-                 if (invalidItems.length > 0) return alert("Todos os itens selecionados devem ter uma grade vinculada!");
-
+                 const invalid = selecaoLote.itensIds.some(id => !persistAssignments[itens.find(i => i.id === id).referencia]?.gradeLetra);
+                 if (selecaoLote.itensIds.length === 0 || selecaoLote.lojasIds.length === 0) return alert("Selecione itens e lojas!");
+                 if (invalid) return alert("Vincule uma grade aos itens marcados!");
                  const idVinculo = crypto.randomUUID();
                  const novos = selecaoLote.itensIds.flatMap(id => {
                    const it = itens.find(i => i.id === id);
-                   const config = persistAssignments[it.referencia];
-                   return selecaoLote.lojasIds.map(loja => ({ 
-                     ...it, 
-                     loja, 
-                     gradeLetra: config.gradeLetra, 
-                     corEscolhida: config.corSelecionada || it.cor1,
-                     idVinculo 
-                   }));
+                   const cfg = persistAssignments[it.referencia];
+                   return selecaoLote.lojasIds.map(loja => ({ ...it, loja, gradeLetra: cfg.gradeLetra, corEscolhida: cfg.corSelecionada || it.cor1, idVinculo }));
                  });
                  setLotesFinalizados([...lotesFinalizados, ...novos]);
                  setSelecaoLote({ itensIds: [], lojasIds: [] });
-                 alert("Sucesso! Lote individualizado vinculado ao pedido final.");
-               }} className="w-full bg-blue-700 text-white p-4 rounded-[25px] font-black shadow-xl uppercase active:scale-95 transition-all flex items-center justify-center gap-3">
+                 alert("Lote vinculado!");
+               }} className="w-full bg-blue-700 text-white p-4 rounded-[25px] font-black shadow-xl uppercase flex items-center justify-center gap-3">
                  <Layers size={18}/> GERAR VÍNCULOS DE LOTE (INDIVIDUALIZADO)
                </button>
             </div>
           )}
         </div>
 
-        {/* GAVETA DE LOTES */}
-        {verLotes && (
-          <div className="absolute bottom-20 left-6 right-6 bg-white rounded-[40px] shadow-2xl border border-slate-100 z-50 animate-in slide-in-from-bottom max-h-[50vh] flex flex-col overflow-hidden">
-            <div className="p-6 border-b flex justify-between items-center bg-gray-50/50">
-              <h3 className="font-black text-blue-900 uppercase italic tracking-tighter">Resumo de Lotes Vinculados</h3>
-              <button onClick={() => setVerLotes(false)} className="p-2 bg-white rounded-full shadow-sm hover:text-red-600 transition-colors"><X size={16}/></button>
-            </div>
-            <div className="p-6 overflow-y-auto space-y-4 custom-scrollbar">
-              {Object.entries(resumoPorLote).map(([chave, grupo]: [string, any]) => (
-                <div key={chave} className="bg-slate-50 p-4 rounded-3xl border border-slate-100 relative group hover:border-blue-200 transition-all">
-                  <div className="flex justify-between items-start mb-2">
-                    <div className="flex flex-col">
-                      <span className="text-lg font-black italic text-red-600 uppercase leading-none">LOTE GRADE {grupo.gradeLetra}</span>
-                      <span className="text-[10px] font-bold text-slate-400 mt-1 uppercase tracking-widest">{grupo.pares} PARES POR UNIDADE</span>
-                    </div>
-                    <div className="flex gap-2">
-                      <button onClick={() => { setLotesFinalizados(prev => prev.filter(l => l.idVinculo !== grupo.idVinculo)); }} className="p-2 bg-red-100 text-red-700 rounded-xl hover:bg-red-600 hover:text-white transition-colors shadow-sm"><Trash2 size={16}/></button>
-                    </div>
-                  </div>
-                  <div className="text-[11px] font-bold text-slate-500 mb-2 leading-relaxed">
-                    Unidades: <span className="text-blue-900 font-black">{grupo.lojas.sort().join(', ')}</span>
-                  </div>
-                  <div className="text-right font-black text-green-600 text-lg italic leading-none border-t border-slate-200 pt-3 mt-1">
-                    VMD: {formatCurrency(grupo.valor)}
-                  </div>
-                </div>
-              ))}
-              {Object.keys(resumoPorLote).length === 0 && <p className="text-center text-slate-300 uppercase font-black py-10">Nenhum lote vinculado ainda</p>}
-            </div>
-          </div>
-        )}
-
-        {/* RODAPÉ */}
         <div className="p-4 md:px-8 bg-white border-t flex justify-between items-center shrink-0">
-          <button onClick={() => setVerLotes(!verLotes)} className={`px-6 py-3 rounded-2xl font-black text-[10px] uppercase flex items-center gap-2 transition-all ${verLotes ? 'bg-blue-600 text-white shadow-lg' : 'bg-blue-50 text-blue-700 hover:bg-blue-100'}`}><ListFilter size={16}/> VISUALIZAR LOTES ({Object.keys(resumoPorLote).length})</button>
+          <button onClick={() => setVerLotes(!verLotes)} className={`px-6 py-3 rounded-2xl font-black text-[10px] uppercase flex items-center gap-2 transition-all ${verLotes ? 'bg-blue-600 text-white shadow-lg' : 'bg-blue-50 text-blue-700 hover:bg-blue-100'}`}><ListFilter size={16}/> VER LOTES ({Object.keys(resumoPorLote).length})</button>
           <div className="flex items-center gap-3">
-            <button onClick={exportarPlanilhaFinal} className="bg-red-600 text-white px-8 py-3 rounded-2xl font-black text-[10px] uppercase shadow-lg flex items-center gap-2 active:scale-95 animate-pulse hover:bg-red-700 transition-all"><Download size={16}/> EXPORTAR PEDIDO FINAL</button>
+            <button onClick={exportarPlanilhaFinal} className="bg-red-600 text-white px-8 py-3 rounded-2xl font-black text-[10px] uppercase shadow-lg flex items-center gap-2 animate-pulse"><Download size={16}/> EXPORTAR PEDIDO FINAL</button>
             <button onClick={onClose} className="bg-slate-900 text-white px-6 py-3 rounded-2xl font-black text-[10px] uppercase flex items-center gap-2 hover:bg-black transition-all shadow-md"><LogOut size={16}/> FECHAR</button>
           </div>
         </div>
       </div>
-      <style dangerouslySetInnerHTML={{ __html: `.custom-scrollbar::-webkit-scrollbar { width: 3px; } .custom-scrollbar::-webkit-scrollbar-thumb { background: #cbd5e1; border-radius: 10px; } .no-scrollbar::-webkit-scrollbar { display: none; } input[type=number]::-webkit-inner-spin-button, input[type=number]::-webkit-outer-spin-button { -webkit-appearance: none; margin: 0; } @keyframes fadeIn { from { opacity: 0; transform: translateY(5px); } to { opacity: 1; transform: translateY(0); } } .animate-in { animation: fadeIn 0.3s ease-out; }`}} />
     </div>
   );
 };

@@ -10,9 +10,6 @@ import {
 import PDVMobileView from './PDVMobileView';
 import { ProductGrid } from './ProductGrid'; 
 import { supabase } from '../services/supabaseClient';
-import { PermissionKey } from '../security/permissions';
-import { getPermissionColumn } from '../permissions.utils';
-import { GELATERIA_PERMISSIONS_MAP, getVisibleTabs } from '../gelateria.permissions';
 
 interface IceCreamModuleProps {
   user: User;
@@ -22,8 +19,7 @@ interface IceCreamModuleProps {
   sales: IceCreamDailySale[];
   finances: IceCreamTransaction[];
   promissories: IceCreamPromissoryNote[];
-  can: (p: PermissionKey | string | string[]) => boolean;
-  pagePermissions?: any[];
+  can: (permissionKey: string) => boolean;
   onAddSales: (sale: IceCreamDailySale[]) => Promise<void>;
   onCancelSale: (id: string, reason?: string) => Promise<void>;
   onUpdatePrice: (id: string, price: number) => Promise<void>;
@@ -57,7 +53,7 @@ const MONTHS = [
 ];
 
 const IceCreamModule: React.FC<IceCreamModuleProps> = ({ 
-    user, stores = [], items = [], stock = [], sales = [], finances = [], promissories = [], can, pagePermissions = [],
+    user, stores = [], items = [], stock = [], sales = [], finances = [], promissories = [], can,
     onAddSales, onCancelSale, onUpdatePrice, onAddTransaction, onAddItem, onSaveProduct, onDeleteItem, onUpdateStock,
     liquidatePromissory, onDeleteStockItem
 }) => {
@@ -120,16 +116,15 @@ const IceCreamModule: React.FC<IceCreamModuleProps> = ({
   
   const visibleTabs = useMemo(() => {
     const tabs = [
-      { id: 'PDV', label: 'PDV', icon: ShoppingCart, view: 'pdv' },
-      { id: 'ESTOQUE', label: 'Estoque', icon: Package, view: 'estoque' },
-      { id: 'DRE_DIARIO', label: 'DRE Diário', icon: Clock, view: 'dre_diario' },
-      { id: 'DRE_MENSAL', label: 'DRE Mensal', icon: FileBarChart, view: 'dre_mensal' },
-      { id: 'AUDIT', label: 'Auditoria', icon: History, view: 'audit' },
-      { id: 'CONFIG', label: 'Produtos', icon: PackagePlus, view: 'produtos' }
+      { label: 'PDV', icon: ShoppingCart, view: 'pdv', perm: 'MODULE_GELATERIA_PDV' },
+      { label: 'Estoque', icon: Package, view: 'estoque', perm: 'MODULE_GELATERIA_ESTOQUE' },
+      { label: 'DRE Diário', icon: Clock, view: 'dre_diario', perm: 'MODULE_GELATERIA_DRE_DIARIO' },
+      { label: 'DRE Mensal', icon: FileBarChart, view: 'dre_mensal', perm: 'MODULE_GELATERIA_DRE_MENSAL' },
+      { label: 'Auditoria', icon: History, view: 'audit', perm: 'MODULE_GELATERIA_AUDIT' },
+      { label: 'Produtos', icon: PackagePlus, view: 'produtos', perm: 'MODULE_GELATERIA_CONFIG' }
     ];
-    const allowedIds = getVisibleTabs(pagePermissions, user.role);
-    return tabs.filter(tab => allowedIds.includes(tab.id));
-  }, [pagePermissions, user.role]);
+    return tabs.filter(tab => can(tab.perm));
+  }, [can]);
 
   const existingBuyerNames = useMemo(() => {
     const names = new Set<string>();
@@ -232,7 +227,7 @@ const IceCreamModule: React.FC<IceCreamModuleProps> = ({
                   const desc = f.description?.toLowerCase() || '';
                   if (desc.includes('via pix')) monthMethods.pix += Number(f.value);
                   else if (desc.includes('via dinheiro')) monthMethods.money += Number(f.value);
-                  else if (desc.includes('via cartão')) dayMethods.card += Number(f.value);
+                  else if (desc.includes('via cartão')) monthMethods.card += Number(f.value);
                   else if (desc.includes('via fiado')) { monthMethods.fiado += Number(f.value); monthFiadoDetails.push({ ...s, totalValue: f.value, paymentMethod: 'Fiado' }); }
               });
           }
@@ -265,19 +260,16 @@ const IceCreamModule: React.FC<IceCreamModuleProps> = ({
     return Object.values(groups).sort((a, b) => b.total - a.total);
   }, [dreStats.monthFiadoDetails]);
 
-  // Fix: Added missing groupedAuditSales for audit tab
+  // CORREÇÃO: Lógica de Auditoria usando comparação de data imune a Timezone
   const groupedAuditSales = useMemo(() => {
     const groups: Record<string, any> = {};
+    const filterPrefix = `${auditYear}-${String(auditMonth).padStart(2, '0')}-${String(auditDay).padStart(2, '0')}`;
+
     const filtered = sales.filter(s => {
       if (s.storeId !== effectiveStoreId) return false;
-      const date = new Date(s.createdAt || '');
-      const day = date.getDate().toString();
-      const month = (date.getMonth() + 1).toString();
-      const year = date.getFullYear().toString();
       
-      if (auditDay && day !== auditDay) return false;
-      if (auditMonth && month !== auditMonth) return false;
-      if (auditYear && year !== auditYear) return false;
+      // Filtro de data por prefixo de string (YYYY-MM-DD) para evitar erros de UTC
+      if (filterPrefix && !s.createdAt?.startsWith(filterPrefix)) return false;
       
       if (auditSearch) {
         const search = auditSearch.toLowerCase();
@@ -291,10 +283,11 @@ const IceCreamModule: React.FC<IceCreamModuleProps> = ({
     });
 
     filtered.forEach(s => {
-      if (!s.saleCode) return;
-      if (!groups[s.saleCode]) {
-        groups[s.saleCode] = {
-          saleCode: s.saleCode,
+      // Usa saleCode ou o ID como fallback para agrupar
+      const code = s.saleCode || `ID-${s.id}`;
+      if (!groups[code]) {
+        groups[code] = {
+          saleCode: s.saleCode || 'PDV-AVULSO',
           createdAt: s.createdAt,
           status: s.status,
           buyer_name: s.buyer_name,
@@ -303,29 +296,23 @@ const IceCreamModule: React.FC<IceCreamModuleProps> = ({
           totalValue: 0
         };
       }
-      groups[s.saleCode].items.push(s);
-      groups[s.saleCode].totalValue += Number(s.totalValue);
-      if (s.paymentMethod && !groups[s.saleCode].paymentMethods.includes(s.paymentMethod)) {
-        groups[s.saleCode].paymentMethods.push(s.paymentMethod);
+      groups[code].items.push(s);
+      groups[code].totalValue += Number(s.totalValue);
+      if (s.paymentMethod && !groups[code].paymentMethods.includes(s.paymentMethod)) {
+        groups[code].paymentMethods.push(s.paymentMethod);
       }
     });
     return Object.values(groups).sort((a: any, b: any) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
   }, [sales, effectiveStoreId, auditDay, auditMonth, auditYear, auditSearch]);
 
-  // Fix: Added missing filteredAuditWastage for audit tab
   const filteredAuditWastage = useMemo(() => {
+    const filterPrefix = `${auditYear}-${String(auditMonth).padStart(2, '0')}-${String(auditDay).padStart(2, '0')}`;
+
     return finances.filter(f => {
       if (f.storeId !== effectiveStoreId) return false;
       if (f.category !== 'AVARIA / DEFEITO PRODUTO') return false;
       
-      const date = new Date(f.date + 'T12:00:00');
-      const day = date.getDate().toString();
-      const month = (date.getMonth() + 1).toString();
-      const year = date.getFullYear().toString();
-
-      if (auditDay && day !== auditDay) return false;
-      if (auditMonth && month !== auditMonth) return false;
-      if (auditYear && year !== auditYear) return false;
+      if (filterPrefix && f.date !== filterPrefix) return false;
 
       if (auditSearch) {
         const search = auditSearch.toLowerCase();
@@ -675,7 +662,7 @@ const IceCreamModule: React.FC<IceCreamModuleProps> = ({
             <div className="flex bg-gray-100 p-0.5 rounded-xl overflow-x-auto no-scrollbar w-full md:w-auto max-w-full">
                 {visibleTabs.map(tab => (
                     <button 
-                        key={tab.id} 
+                        key={tab.label} 
                         onClick={() => setActiveTab(tab.view as any)} 
                         className={`flex-1 md:flex-none px-3 py-2 rounded-lg text-[8px] md:text-[9px] font-black uppercase transition-all flex items-center justify-center gap-1.5 whitespace-nowrap ${activeTab === tab.view ? 'bg-white text-blue-900 shadow-sm border border-blue-100' : 'text-gray-400 hover:text-blue-900 hover:bg-white/50'}`}
                     >
@@ -997,9 +984,9 @@ const IceCreamModule: React.FC<IceCreamModuleProps> = ({
                             </div>
                         </div>
                         <div className="grid grid-cols-2 md:grid-cols-5 gap-4">
-                            <select value={auditDay} onChange={e => setAuditDay(e.target.value)} className="bg-gray-50 border-none rounded-xl p-3 text-[10px] font-black uppercase outline-none shadow-inner"><option value="">DIA</option>{Array.from({length: 31}, (_, i) => <option key={i+1} value={i+1}>{i+1}</option>)}</select>
-                            <select value={auditMonth} onChange={e => setAuditMonth(e.target.value)} className="bg-gray-50 border-none rounded-xl p-3 text-[10px] font-black uppercase outline-none shadow-inner"><option value="">MÊS</option>{MONTHS.map(m => <option key={m.value} value={m.value}>{m.label}</option>)}</select>
-                            <select value={auditYear} onChange={e => setAuditYear(e.target.value)} className="bg-gray-50 border-none rounded-xl p-3 text-[10px] font-black uppercase outline-none shadow-inner"><option value="">ANO</option>{[2024, 2025, 2026].map(y => <option key={y} value={y}>{y}</option>)}</select>
+                            <select value={auditDay} onChange={e => setAuditDay(e.target.value)} className="bg-gray-50 border-none rounded-xl p-3 text-[10px] font-black uppercase outline-none shadow-inner"><option value="">DIA</option>{Array.from({length: 31}, (_, i) => <option key={i+1} value={String(i+1)}>{i+1}</option>)}</select>
+                            <select value={auditMonth} onChange={e => setAuditMonth(e.target.value)} className="bg-gray-50 border-none rounded-xl p-3 text-[10px] font-black uppercase outline-none shadow-inner"><option value="">MÊS</option>{MONTHS.map(m => <option key={m.value} value={String(m.value)}>{m.label}</option>)}</select>
+                            <select value={auditYear} onChange={e => setAuditYear(e.target.value)} className="bg-gray-50 border-none rounded-xl p-3 text-[10px] font-black uppercase outline-none shadow-inner"><option value="">ANO</option>{[2024, 2025, 2026].map(y => <option key={y} value={String(y)}>{y}</option>)}</select>
                             <div className="col-span-2 relative"><Search className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-300" size={14}/><input value={auditSearch} onChange={e => setAuditSearch(e.target.value)} placeholder="PRODUTO, CÓDIGO OU FUNCIONÁRIO..." className="w-full bg-gray-50 border-none rounded-xl pl-10 pr-4 py-3 text-[10px] font-black uppercase outline-none shadow-inner" /></div>
                         </div>
                     </div>
@@ -1051,6 +1038,9 @@ const IceCreamModule: React.FC<IceCreamModuleProps> = ({
                                             </td>
                                         </tr>
                                     ))}
+                                    {groupedAuditSales.length === 0 && (
+                                        <tr><td colSpan={5} className="px-8 py-10 text-center text-gray-400 uppercase font-black tracking-widest italic">Nenhuma venda operacional encontrada para os filtros selecionados</td></tr>
+                                    )}
                                 </tbody>
                             </table>
                         </div>
@@ -1132,14 +1122,13 @@ const IceCreamModule: React.FC<IceCreamModuleProps> = ({
         {/* MODAL: PRÉVIA DO TICKET (58mm) */}
         {showTicketModal && ticketData && (
             <div className="fixed inset-0 bg-black/80 backdrop-blur-md flex items-center justify-center z-[200] p-4">
-                <div className="bg-white rounded-[40px] w-full max-w-sm max-h-[90vh] shadow-2xl animate-in zoom-in duration-300 overflow-hidden flex flex-col">
+                <div className="bg-white rounded-[40px] w-full max-sm max-h-[90vh] shadow-2xl animate-in zoom-in duration-300 overflow-hidden flex flex-col">
                     <div className="p-5 border-b flex justify-between items-center bg-gray-50/50 shrink-0">
                         <h3 className="font-black text-blue-950 uppercase italic text-xs flex items-center gap-2"><Printer size={16} className="text-blue-600"/> Prévia do Ticket</h3>
                         <button onClick={() => setShowTicketModal(false)} className="text-gray-400 hover:text-red-600 p-1"><X size={24}/></button>
                     </div>
                     
                     <div className="flex-1 overflow-y-auto p-4 flex justify-center bg-gray-100 no-scrollbar">
-                        {/* Papel Simulado Calibrado para 58mm (48mm área útil) */}
                         <div className="bg-white w-[58mm] min-h-[100mm] h-fit shadow-lg p-3 text-black font-mono text-[9px] relative border-l border-r border-gray-200 mx-auto">
                             <div className="text-center font-black text-[11px] mb-2">GELATERIA REAL</div>
                             <div className="border-t border-dashed border-black my-2"></div>
@@ -1259,7 +1248,7 @@ const IceCreamModule: React.FC<IceCreamModuleProps> = ({
 
         {showNewInsumoModal && (
             <div className="fixed inset-0 bg-black/80 backdrop-blur-md flex items-center justify-center z-[130] p-4">
-                <div className="bg-white rounded-[40px] w-full max-w-md shadow-2xl animate-in zoom-in duration-300 border-t-8 border-orange-600 overflow-hidden">
+                <div className="bg-white rounded-[40px] w-full max-w-md shadow-2xl animate-in zoom-in duration-300 border-t-8 border-orange-500 overflow-hidden">
                     <div className="p-8 border-b bg-gray-50/50 flex justify-between items-center"><h3 className="text-xl font-black uppercase italic text-blue-950 flex items-center gap-3"><Plus className="text-orange-600" /> Novo <span className="text-orange-600">Insumo</span></h3><button onClick={() => setShowNewInsumoModal(false)} className="text-gray-400 hover:text-red-600"><X size={24}/></button></div>
                     <div className="p-10 space-y-6">
                         <div className="space-y-2"><label className="text-[10px] font-black text-gray-400 uppercase ml-2">Nome do Insumo (EX: COPO 300ML)</label><input value={newInsumo.name} onChange={e => setNewInsumo({...newInsumo, name: e.target.value})} className="w-full p-4 bg-gray-50 rounded-2xl font-black text-gray-900 uppercase shadow-inner outline-none" /></div>

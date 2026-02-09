@@ -129,10 +129,29 @@ const App: React.FC = () => {
             if(cd) setCotaDebts(cd.map(x => ({...x, storeId: x.store_id})));
             if(cat) setQuotaCategories(cat);
             if(mix) setQuotaMixParams(mix.map(x => ({ ...x, storeId: x.store_id, category_name: x.parent_category, percentage: Number(x.mix_percentage || 0) })));
-            if(ici) setIceCreamItems(ici.map(x => ({ id: x.id, storeId: x.store_id, name: x.name, category: x.category, price: Number(x.price || 0), flavor: x.flavor, active: x.active, consumption_per_sale: x.consumption_per_sale || 0, recipe: typeof x.recipe === 'string' ? JSON.parse(x.recipe) : (x.recipe || []), image_url: x.image_url })));
-            if(ics) setIceCreamSales(ics.map(x => ({ id: x.id, storeId: x.store_id, itemId: x.item_id, productName: x.product_name, category: x.category, flavor: x.flavor, units_sold: Number(x.units_sold || 0), unit_price: Number(x.unit_price || 0), total_value: Number(x.total_value || 0), payment_method: x.payment_method, sale_code: x.sale_code, buyer_name: x.buyer_name, createdAt: x.created_at, status: x.status })));
+            if(ici) setIceCreamItems(ici.map(x => ({ id: x.id, storeId: x.store_id, name: x.name, category: x.category, price: Number(x.price || 0), flavor: x.flavor, active: x.active, consumptionPerSale: x.consumption_per_sale || 0, recipe: typeof x.recipe === 'string' ? JSON.parse(x.recipe) : (x.recipe || []), image_url: x.image_url })));
+            
+            // CORREÇÃO: Mapeamento camelCase para vendas de sorvete (necessário para DRE e Auditoria)
+            if(ics) setIceCreamSales(ics.map(x => ({ 
+                id: x.id, 
+                storeId: x.store_id, 
+                itemId: x.item_id, 
+                productName: x.product_name, 
+                category: x.category, 
+                flavor: x.flavor, 
+                unitsSold: Number(x.units_sold || 0), 
+                unitPrice: Number(x.unit_price || 0), 
+                totalValue: Number(x.total_value || 0), 
+                paymentMethod: x.payment_method, 
+                saleCode: x.sale_code, 
+                buyer_name: x.buyer_name, 
+                createdAt: x.created_at, 
+                status: x.status 
+            })));
+
             if(icf) setIceCreamFinances(icf.map(x => ({ id: x.id, storeId: x.store_id, date: x.date ? x.date.split('T')[0] : '', type: x.type, category: x.category, value: Number(x.value || 0), description: x.description, createdAt: new Date(x.created_at) })));
             if(icst) setIceCreamStock(icst.map(item => ({ ...item, stock_id: item.id })));
+            if(icp) setIcPromissories(icp);
             if(r) setReceipts(r.map(x => ({...x, storeId: x.store_id, issuerName: x.issuer_name, payer: x.payer, recipient: x.recipient, value: x.value, valueInWords: x.value_in_words})));
             if(ce) setCashErrors(ce.map(x => ({...x, id: x.id, storeId: x.store_id, userId: x.user_id, userName: x.user_name || 'Usuário', date: x.error_date || x.date, value: Number(x.value || 0), type: x.type, reason: x.reason, createdAt: new Date(x.created_at)})));
             if(ag) setAgenda(ag.map(x => ({...x, userId: x.user_id, title: x.title, description: x.description, dueDate: x.due_date, dueTime: x.due_time, priority: x.priority, isCompleted: x.is_completed})));
