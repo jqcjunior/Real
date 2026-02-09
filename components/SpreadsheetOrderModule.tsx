@@ -1,345 +1,384 @@
 import React, { useState, useEffect, useMemo } from "react";
 import * as XLSX from "xlsx";
 import { 
-  ChevronRight, Download, Trash2, X, ShoppingBag, CheckCircle2, ListFilter, LogOut, Edit3, Layers, Palette, Hash
+  Download, Trash2, X, ShoppingBag, ListFilter, Layers, Calendar, Zap, Percent, Hash, Info, Plus, ChevronRight
 } from "lucide-react";
+import { supabase } from "../services/supabaseClient";
 
 /* --- CONSTANTES FISCAIS --- */
-const FISCAL_PADRAO = {
-  ESTACAO: "VERÃO", REF_TIPO: "NUMERICO", IPPT: "T", NCM: "64042000",
-  CEST: "2805900", UNIDADE: "UN", IPI: "49", PIS: "70", COFINS: "70", ICMS: "000"
+const VALORES_FISCAIS = {
+  IPPT: "T", NCM: "64042000", CEST: "2805900", UNIDADE: "UN", IPI: "49", PIS: "70", COFINS: "70", ICMS: "000", FAIXA: "T"
 };
 
+const MAPA_GRADE = { LETRA: 162, UN: 163, NUM_INICIO: 164, P: 199, M: 200, G: 201, GG: 202 };
 const SUBGRUPO_LOJAS = ["05","08","09","26","31","34","40","43","44","45","50","56","72","88","96","100","102","109"];
 const TAMANHOS = {
   Fem: ["33","34","35","36","37","38","39","40","41","42"],
   Masc: ["36","37","38","39","40","41","42","43","44","45","46","47","48","49"],
   Inf: ["15","16","17","18","19","20","21","22","23","24","25","26","27","28","29","30","31","32","33","34","35","36"],
-  Acess: ["UN","P","M","G","G1"]
+  Acess: ["UN","P","M","G","GG"]
 };
 const LETRAS = "ABCDEFGHIJKLMNOPQRSTUVWXYZ".split("");
 
 const SpreadsheetOrderModule = ({ user, onClose }: { user: any, onClose: () => void }) => {
   const [etapa, setEtapa] = useState(1);
   const [verLotes, setVerLotes] = useState(false);
-  const [pedido, setPedido] = useState({ marca: "", fornecedor: "", fatInicio: "", fatFim: "", desconto: 0, markup: 2.6, prazo1: 90, prazo2: 120, prazo3: 150 });
+  
+  // Pedido
+  const [pedido, setPedido] = useState({ 
+    marca: "", fornecedor: "", embarqueInicio: "", embarqueFim: "", desconto: 0, markup: 2.6 
+  });
+
   const [itens, setItens] = useState<any[]>([]);
-  const [itemAtual, setItemAtual] = useState({ referencia: "", tipo: "", cor1: "", cor2: "", cor3: "", modelo: "Fem" as keyof typeof TAMANHOS, valorCompra: 0, precoVenda: 0 });
+  const [itemAtual, setItemAtual] = useState({ 
+    referencia: "", tipo: "", cor1: "", cor2: "", cor3: "", 
+    modelo: "Fem" as keyof typeof TAMANHOS, valorCompra: 0, precoVenda: 0 
+  });
+  
+  const [dbSuggestions, setDbSuggestions] = useState({ tipos: [] as string[], cores: [] as string[] });
   const [gradeEditando, setGradeEditando] = useState<Record<string, number>>({});
   const [gradesSalvas, setGradesSalvas] = useState<any[]>([]);
   const [lotesFinalizados, setLotesFinalizados] = useState<any[]>([]);
   const [modoLojas, setModoLojas] = useState<'subgrupo' | 'todas'>('subgrupo');
   const [selecaoLote, setSelecaoLote] = useState({ itensIds: [] as string[], lojasIds: [] as string[] });
 
-  // Persistência: Memoriza Grade e Cor por Referência
   const [persistAssignments, setPersistAssignments] = useState<Record<string, { gradeLetra: string, corSelecionada: string }>>(() => {
-    const saved = localStorage.getItem("real_admin_item_assignments");
+    const saved = localStorage.getItem("order_assignments_cache");
     return saved ? JSON.parse(saved) : {};
   });
 
   useEffect(() => {
-    localStorage.setItem("real_admin_item_assignments", JSON.stringify(persistAssignments));
-  }, [persistAssignments]);
+    const fetchHistory = async () => {
+      const { data } = await supabase.from('product_performance').select('category, brand').limit(1000);
+      if (data) {
+        const cats = Array.from(new Set(data.map(i => String(i.category || "").toUpperCase()))) as string[];
+        setDbSuggestions(prev => ({ ...prev, tipos: cats }));
+      }
+    };
+    fetchHistory();
+  }, []);
 
-  /* --- UTILITÁRIOS EXCEL DINÂMICO --- */
+  // FÓRMULA DE CÁLCULO .99
+  useEffect(() => {
+    if (itemAtual.valorCompra > 0) {
+      const custoReal = itemAtual.valorCompra * (1 - (pedido.desconto / 100));
+      const precoSugerido = custoReal * pedido.markup;
+      const finalPrice = (Math.floor(precoSugerido / 10) + 1) * 10 + 9.99;
+      setItemAtual(prev => ({ ...prev, precoVenda: finalPrice }));
+    } else {
+      setItemAtual(prev => ({ ...prev, precoVenda: 0 }));
+    }
+  }, [itemAtual.valorCompra, pedido.markup, pedido.desconto]);
+
   const setCell = (sheet: XLSX.WorkSheet, r: number, c: number, value: any, type: "s" | "n" = "s") => {
-    if (c === undefined || c < 0) return;
     const ref = XLSX.utils.encode_cell({ r, c });
     sheet[ref] = { t: type, v: value };
   };
 
-  const criarMapaColunas = (sheet: XLSX.WorkSheet) => {
-    const mapa: Record<string, number> = {};
-    if (!sheet["!ref"]) return mapa;
-    const range = XLSX.utils.decode_range(sheet["!ref"]);
-    for (let c = range.s.c; c <= range.e.c; c++) {
-      const cell = sheet[XLSX.utils.encode_cell({ r: 0, c })];
-      if (cell && cell.v) {
-        const val = String(cell.v).toUpperCase().trim();
-        mapa[val] = c;
-        if (!isNaN(parseInt(val))) {
-          mapa[parseInt(val).toString()] = c;
-          mapa[parseInt(val).toString().padStart(2, '0')] = c;
-        }
-      }
-    }
-    return mapa;
-  };
-
   const exportarPlanilhaFinal = async () => {
-    if (lotesFinalizados.length === 0) return alert("Não há itens vinculados para exportar. Realize o vínculo no Passo 4.");
-    
+    if (lotesFinalizados.length === 0) return alert("Adicione itens e distribua nas lojas primeiro.");
     try {
       const response = await fetch("/Pedido_Sub_R2J_.xlsx");
       if (!response.ok) throw new Error("Template não encontrado no servidor.");
-      
       const buffer = await response.arrayBuffer();
       const workbook = XLSX.read(buffer, { type: "array" });
       const sheet = workbook.Sheets[workbook.SheetNames[0]];
-      const COL = criarMapaColunas(sheet);
       
-      const numPedidoUnico = Math.floor(1000 + Math.random() * 9000);
-      let linhaExcel = 1;
+      setCell(sheet, 1, 3, pedido.embarqueInicio); // Col D
+      setCell(sheet, 1, 4, pedido.embarqueFim);    // Col E
+      setCell(sheet, 2, 8, pedido.marca);          // Col I
 
-      const getCol = (names: string[]) => {
-        for (const name of names) {
-          if (COL[name.toUpperCase()] !== undefined) return COL[name.toUpperCase()];
-        }
-        return undefined;
-      };
-
-      lotesFinalizados.forEach((lote, idx) => {
-        const r = linhaExcel;
-        
-        setCell(sheet, r, getCol(["PED. FORNECEDOR", "PEDIDO"]), numPedidoUnico, "n");
-        setCell(sheet, r, getCol(["FORNECEDOR"]), pedido.fornecedor);
-        setCell(sheet, r, getCol(["COMPRADOR"]), user.name);
-        setCell(sheet, r, getCol(["PREVISÃO", "DATA INICIO"]), pedido.fatInicio);
-        setCell(sheet, r, getCol(["LIMITE ENTREGA", "DATA FIM"]), pedido.fatFim);
-        
-        setCell(sheet, r, getCol(["ITEM"]), idx + 1, "n");
-        setCell(sheet, r, getCol(["DESCRICAO", "DESCRIÇÃO"]), `${pedido.marca} ${lote.tipo} ${lote.referencia}`.toUpperCase());
-        setCell(sheet, r, getCol(["REFERENCIA", "REF"]), lote.referencia);
-        setCell(sheet, r, getCol(["TIPO"]), lote.tipo);
-        setCell(sheet, r, getCol(["MODELO"]), lote.modelo);
-        setCell(sheet, r, getCol(["MARCA"]), pedido.marca);
-        setCell(sheet, r, getCol(["COR 1", "COR"]), lote.corEscolhida || lote.cor1);
-        setCell(sheet, r, getCol(["VALOR COMPRA", "CUSTO"]), Number(lote.valorCompra), "n");
-        setCell(sheet, r, getCol(["PREÇO VENDA", "VENDA"]), Number(lote.precoVenda), "n");
-
-        const colLoja = COL[lote.loja] ?? COL[parseInt(lote.loja).toString()];
-        if (colLoja !== undefined) {
-          setCell(sheet, r, colLoja, lote.gradeLetra);
-        }
-        
-        linhaExcel++;
+      gradesSalvas.forEach((grade, idx) => {
+        const r = 1 + idx;
+        setCell(sheet, r, MAPA_GRADE.LETRA, grade.letra);
+        Object.entries(grade.valores).forEach(([tam, qtd]) => {
+          if (tam === "UN") setCell(sheet, r, MAPA_GRADE.UN, Number(qtd), "n");
+          else if (["P","M","G","GG"].includes(tam)) setCell(sheet, r, MAPA_GRADE[tam as keyof typeof MAPA_GRADE], Number(qtd), "n");
+          else {
+            const num = parseInt(tam);
+            if (!isNaN(num) && num >= 15) setCell(sheet, r, 164 + (num - 15), Number(qtd), "n");
+          }
+        });
       });
 
-      const range = XLSX.utils.decode_range(sheet["!ref"] || "A1:Z100");
-      range.e.r = Math.max(range.e.r, linhaExcel + 10);
-      sheet["!ref"] = XLSX.utils.encode_range(range);
+      const itemsUnicos = Array.from(new Set(lotesFinalizados.map(l => `${l.referencia}-${l.corEscolhida}`)));
+      itemsUnicos.forEach((key, idx) => {
+        const lotes = lotesFinalizados.filter(l => `${l.referencia}-${l.corEscolhida}` === key);
+        const refObj = lotes[0];
+        const r = 25 + idx;
 
-      XLSX.writeFile(workbook, `PEDIDO_${pedido.marca || 'REAL'}_${numPedidoUnico}.xlsx`);
-      alert("Planilha gerada com sucesso!");
-    } catch (e: any) { 
-      alert("Erro ao exportar planilha: " + e.message); 
-    }
+        setCell(sheet, r, 1, idx + 1, "n");
+        setCell(sheet, r, 2, refObj.referencia);
+        setCell(sheet, r, 8, `${pedido.marca} ${refObj.tipo} ${refObj.referencia}`.toUpperCase());
+        setCell(sheet, r, 9, refObj.tipo);
+        setCell(sheet, r, 10, refObj.corEscolhida);
+        setCell(sheet, r, 13, refObj.modelo);
+
+        setCell(sheet, r, 16, VALORES_FISCAIS.IPPT);
+        setCell(sheet, r, 19, VALORES_FISCAIS.NCM);
+        setCell(sheet, r, 20, VALORES_FISCAIS.CEST);
+        setCell(sheet, r, 21, VALORES_FISCAIS.UNIDADE);
+        setCell(sheet, r, 24, VALORES_FISCAIS.IPI);
+        setCell(sheet, r, 25, VALORES_FISCAIS.PIS);
+        setCell(sheet, r, 26, VALORES_FISCAIS.COFINS);
+        setCell(sheet, r, 27, VALORES_FISCAIS.ICMS);
+        setCell(sheet, r, 44, VALORES_FISCAIS.FAIXA);
+
+        setCell(sheet, r, 29, Number(refObj.valorCompra), "n"); // AD
+        setCell(sheet, r, 41, Number(refObj.valorCompra), "n"); // AP
+        setCell(sheet, r, 42, Number(refObj.precoVenda), "n");  // AQ
+
+        lotes.forEach(l => {
+          const col = 44 + parseInt(l.loja);
+          if (col >= 45 && col <= 161) setCell(sheet, r, col, l.gradeLetra);
+        });
+      });
+
+      XLSX.writeFile(workbook, `PEDIDO_${pedido.marca || 'SEM_NOME'}.xlsx`);
+    } catch (e: any) { alert(e.message); }
   };
 
-  const paresGradeAtual = useMemo(() => Object.values(gradeEditando).reduce((a: number, b: any) => a + (Number(b) || 0), 0), [gradeEditando]);
-  
-  const getMesPrazo = (dias: number) => {
-    if (!pedido.fatFim) return "MÊS";
-    const data = new Date(pedido.fatFim);
-    data.setDate(data.getDate() + (Number(dias) || 0));
-    return data.toLocaleDateString('pt-BR', { month: 'short' }).toUpperCase();
-  };
-
-  useEffect(() => {
-    const custo = Number(itemAtual.valorCompra) * (1 - (pedido.desconto || 0) / 100);
-    const dezena = Math.floor((custo * (pedido.markup || 2.6)) / 10) * 10;
-    setItemAtual(prev => ({ ...prev, precoVenda: dezena + 9.99 }));
-  }, [itemAtual.valorCompra, pedido.desconto, pedido.markup]);
-
-  const resumoPorLote = useMemo(() => {
-    const grupos: Record<string, any> = {};
+  const lotesAgrupados = useMemo(() => {
+    const res: Record<string, any> = {};
     lotesFinalizados.forEach(l => {
-      if (!grupos[l.idVinculo]) grupos[l.idVinculo] = { idVinculo: l.idVinculo, gradeLetra: l.gradeLetra, lojas: [], valor: 0, pares: 0, itemIds: [] };
-      const grade = gradesSalvas.find(g => g.letra === l.gradeLetra);
-      if (!grupos[l.idVinculo].lojas.includes(l.loja)) grupos[l.idVinculo].lojas.push(l.loja);
-      if (!grupos[l.idVinculo].itemIds.includes(l.id)) grupos[l.idVinculo].itemIds.push(l.id);
-      grupos[l.idVinculo].pares += grade?.total || 0;
-      grupos[l.idVinculo].valor += (grade?.total || 0) * (l.valorCompra * (1 - (pedido.desconto || 0) / 100));
+      if (!res[l.idVinculo]) res[l.idVinculo] = { grade: l.gradeLetra, items: new Set(), lojas: new Set(), val: 0, pares: 0 };
+      res[l.idVinculo].items.add(l.referencia);
+      res[l.idVinculo].lojas.add(l.loja);
+      const g = gradesSalvas.find(x => x.letra === l.gradeLetra);
+      res[l.idVinculo].pares += g?.total || 0;
+      res[l.idVinculo].val += (g?.total || 0) * (l.valorCompra || 0);
     });
-    return grupos;
-  }, [lotesFinalizados, gradesSalvas, pedido.desconto]);
-
-  const updateItemAssignment = (ref: string, field: 'gradeLetra' | 'corSelecionada', value: string) => {
-    setPersistAssignments(prev => ({
-      ...prev,
-      [ref]: {
-        ...(prev[ref] || { gradeLetra: "", corSelecionada: "" }),
-        [field]: value
-      }
-    }));
-  };
+    return Object.values(res);
+  }, [lotesFinalizados, gradesSalvas]);
 
   return (
-    <div className="fixed inset-0 bg-slate-200/60 backdrop-blur-xl flex items-center justify-center p-0 md:p-6 z-[100] font-sans text-slate-700 text-[13px]">
-      <div className="bg-[#F0F4F8] w-full max-w-5xl h-full md:h-[94vh] md:rounded-[50px] shadow-2xl flex flex-col overflow-hidden border border-white/50 relative">
+    <div className="fixed inset-0 bg-slate-900/40 backdrop-blur-sm flex items-center justify-center p-4 z-[100] font-sans">
+      <div className="bg-[#F8FAFC] w-full max-w-5xl h-[90vh] rounded-3xl shadow-2xl flex flex-col overflow-hidden border border-white">
         
-        <div className="px-8 py-4 flex justify-between items-center bg-white/30 shrink-0">
+        {/* HEADER - CLEAN & MINIMALIST */}
+        <div className="px-6 py-4 flex justify-between items-center bg-white border-b border-slate-100">
           <div className="flex items-center gap-3">
-            <div className="w-10 h-10 bg-blue-600 rounded-xl flex items-center justify-center shadow-lg"><ShoppingBag className="text-white" size={20} /></div>
-            <h1 className="text-lg font-black text-slate-900 uppercase italic">Real Admin</h1>
+            <div className="w-10 h-10 bg-blue-600 rounded-xl flex items-center justify-center text-white shadow-lg"><ShoppingBag size={20} /></div>
+            <div>
+              <h1 className="text-lg font-black text-slate-900 uppercase tracking-tight italic leading-none">Carga de Pedido <span className="text-blue-600">Real</span></h1>
+              <p className="text-[9px] font-bold text-slate-400 uppercase tracking-widest mt-1">Gestão Logística Integrada</p>
+            </div>
           </div>
-          <button onClick={onClose} className="w-8 h-8 flex items-center justify-center bg-white rounded-full shadow-md"><X size={18} /></button>
+          <button onClick={onClose} className="p-2 text-slate-300 hover:text-red-500 hover:bg-red-50 rounded-full transition-all"><X size={20} /></button>
         </div>
 
-        <div className="flex px-8 gap-2 shrink-0 pb-2">
+        {/* STEPPER - TIGHTER */}
+        <div className="flex bg-white px-6 py-2 gap-2 border-b border-slate-100 shrink-0">
           {[1, 2, 3, 4].map(n => (
-            <button key={n} onClick={() => setEtapa(n)} className={`flex-1 py-2 rounded-xl text-[9px] font-black uppercase transition-all ${etapa === n ? 'bg-blue-600 text-white shadow-md' : 'bg-white/50 text-slate-400'}`}>Passo 0{n}</button>
+            <button key={n} onClick={() => setEtapa(n)} className={`flex-1 py-2 rounded-xl text-[10px] font-black uppercase transition-all border-b-2 ${etapa === n ? 'bg-blue-50 text-blue-700 border-blue-600' : 'text-slate-400 border-transparent hover:bg-slate-50'}`}>
+              {n}. {n === 1 ? 'Cabeçalho' : n === 2 ? 'Produtos' : n === 3 ? 'Grades' : 'Distribuição'}
+            </button>
           ))}
         </div>
 
-        <div className="flex-1 overflow-y-auto p-4 md:p-8 space-y-6 custom-scrollbar">
+        <div className="flex-1 overflow-y-auto p-6 no-scrollbar">
           {etapa === 1 && (
-            <div className="max-w-xl mx-auto space-y-6 animate-in fade-in">
-              <div className="bg-white/80 p-6 rounded-[35px] shadow-sm border border-white space-y-4">
-                <input className="w-full p-4 bg-slate-50 border border-slate-200 rounded-2xl font-black text-slate-900 outline-none uppercase" placeholder="MARCA" value={pedido.marca} onChange={e => setPedido({...pedido, marca: e.target.value.toUpperCase()})} />
-                <input className="w-full p-4 bg-slate-50 border border-slate-200 rounded-2xl font-black text-slate-900 outline-none uppercase" placeholder="FORNECEDOR" value={pedido.fornecedor} onChange={e => setPedido({...pedido, fornecedor: e.target.value.toUpperCase()})} />
-                <div className="grid grid-cols-2 gap-4">
-                  <div className="bg-blue-50/50 p-2 rounded-[20px] border border-blue-100 text-center"><span className="text-[8px] font-black text-blue-400 uppercase">Desc %</span><input type="number" className="w-full text-center bg-transparent font-black text-xl outline-none" value={pedido.desconto || ""} onChange={e => setPedido({...pedido, desconto: Number(e.target.value)})} /></div>
-                  <div className="bg-blue-50/50 p-2 rounded-[20px] border border-blue-100 text-center"><span className="text-[8px] font-black text-blue-400 uppercase">Markup</span><input type="number" step="0.1" className="w-full text-center bg-transparent font-black text-xl outline-none" value={pedido.markup || ""} onChange={e => setPedido({...pedido, markup: Number(e.target.value)})} /></div>
+            <div className="max-w-2xl mx-auto space-y-4 animate-in fade-in zoom-in duration-300">
+              <div className="bg-white p-6 rounded-3xl shadow-sm border border-slate-100 grid grid-cols-2 gap-4">
+                <div className="col-span-2 md:col-span-1 space-y-1">
+                  <label className="text-[9px] font-black text-slate-400 uppercase ml-2">Marca</label>
+                  <input className="w-full p-3 bg-slate-50 rounded-xl font-bold uppercase outline-none focus:ring-2 focus:ring-blue-100" value={pedido.marca} onChange={e => setPedido({...pedido, marca: e.target.value.toUpperCase()})} placeholder="EX: BEBECE" />
                 </div>
-                <div className="flex gap-4 pt-2 border-t border-slate-100 justify-center">
-                  <div className="text-center flex-1"><span className="text-[7px] font-black text-slate-400 uppercase mb-1 block">Início</span><input type="date" className="w-full p-3 bg-slate-50 rounded-2xl font-bold text-xs outline-none text-center" value={pedido.fatInicio} onChange={e => setPedido({...pedido, fatInicio: e.target.value})} /></div>
-                  <div className="text-center flex-1"><span className="text-[7px] font-black text-slate-400 uppercase mb-1 block">Limite</span><input type="date" className="w-full p-3 bg-slate-50 rounded-2xl font-bold text-xs outline-none text-center" value={pedido.fatFim} onChange={e => setPedido({...pedido, fatFim: e.target.value})} /></div>
+                <div className="col-span-2 md:col-span-1 space-y-1">
+                  <label className="text-[9px] font-black text-slate-400 uppercase ml-2">Razão Social</label>
+                  <input className="w-full p-3 bg-slate-50 rounded-xl font-bold uppercase outline-none" value={pedido.fornecedor} onChange={e => setPedido({...pedido, fornecedor: e.target.value.toUpperCase()})} placeholder="EX: CALCADOS BEBECE LTDA" />
+                </div>
+                <div className="space-y-1">
+                  <label className="text-[9px] font-black text-orange-500 uppercase ml-2 flex items-center gap-1"><Calendar size={10}/> Embarque Início</label>
+                  <input type="date" className="w-full p-3 bg-orange-50/50 rounded-xl font-bold outline-none" value={pedido.embarqueInicio} onChange={e => setPedido({...pedido, embarqueInicio: e.target.value})} />
+                </div>
+                <div className="space-y-1">
+                  <label className="text-[9px] font-black text-orange-500 uppercase ml-2 flex items-center gap-1"><Calendar size={10}/> Embarque Fim</label>
+                  <input type="date" className="w-full p-3 bg-orange-50/50 rounded-xl font-bold outline-none" value={pedido.embarqueFim} onChange={e => setPedido({...pedido, embarqueFim: e.target.value})} />
+                </div>
+                <div className="space-y-1">
+                  <label className="text-[9px] font-black text-blue-500 uppercase ml-2 flex items-center gap-1"><Zap size={10}/> Markup</label>
+                  <input type="number" step="0.1" className="w-full p-3 bg-blue-50/50 rounded-xl font-black text-center text-blue-900 outline-none" value={pedido.markup || ""} onChange={e => setPedido({...pedido, markup: Number(e.target.value)})} />
+                </div>
+                <div className="space-y-1">
+                  <label className="text-[9px] font-black text-red-500 uppercase ml-2 flex items-center gap-1"><Percent size={10}/> Desconto %</label>
+                  <input type="number" className="w-full p-3 bg-red-50/50 rounded-xl font-black text-center text-red-900 outline-none" value={pedido.desconto || ""} onChange={e => setPedido({...pedido, desconto: Number(e.target.value)})} />
                 </div>
               </div>
             </div>
           )}
 
           {etapa === 2 && (
-            <div className="max-w-xl mx-auto space-y-4 animate-in slide-in-from-right">
-              <div className="bg-white p-6 rounded-[40px] shadow-sm border border-white space-y-4">
+            <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 h-full animate-in slide-in-from-right duration-300">
+              <div className="lg:col-span-7 bg-white p-6 rounded-3xl shadow-sm border border-slate-100 flex flex-col gap-4">
                 <div className="grid grid-cols-2 gap-3">
-                   <input className="p-4 bg-slate-50 rounded-2xl font-black text-xl outline-none shadow-inner" placeholder="REFERÊNCIA" value={itemAtual.referencia} onChange={e => setItemAtual({...itemAtual, referencia: e.target.value.toUpperCase()})} />
-                   <select className="p-4 bg-slate-50 rounded-2xl font-black text-xs outline-none uppercase" value={itemAtual.modelo} onChange={e => setItemAtual({...itemAtual, modelo: e.target.value as any})}>
-                      <option value="Fem">Feminino</option><option value="Inf">Infantil</option><option value="Masc">Masculino</option><option value="Acess">Acessório</option>
-                   </select>
-                </div>
-                <input className="w-full p-3 bg-slate-50 rounded-xl font-bold text-xs outline-none uppercase" placeholder="TIPO / DESCRIÇÃO" value={itemAtual.tipo} onChange={e => setItemAtual({...itemAtual, tipo: e.target.value.toUpperCase()})} />
-                <div className="grid grid-cols-3 gap-2">
-                   {["cor1", "cor2", "cor3"].map(c => (
-                     <input key={c} className="p-3 bg-slate-50 rounded-xl font-bold text-[9px] outline-none uppercase" placeholder={c.toUpperCase()} value={itemAtual[c as keyof typeof itemAtual]} onChange={e => setItemAtual({...itemAtual, [c]: e.target.value.toUpperCase()})} />
-                   ))}
-                </div>
-                <div className="bg-slate-900 p-5 rounded-[30px] text-white flex justify-between items-center shadow-xl border-b-4 border-blue-600">
-                  <div className="text-center"><span className="text-[7px] font-black text-slate-500 uppercase">CUSTO</span><input type="number" className="bg-white/10 p-2 rounded-xl font-black text-xl outline-none w-20 text-center" value={itemAtual.valorCompra || ""} onChange={e => setItemAtual({...itemAtual, valorCompra: Number(e.target.value)})} /></div>
-                  <div className="text-right text-yellow-400 font-black"><span className="text-[8px] text-blue-400 block uppercase">Venda Sugerida</span>R$ {itemAtual.precoVenda.toFixed(2)}</div>
-                </div>
-                <button onClick={() => { if(!itemAtual.referencia) return; setItens([...itens, {...itemAtual, id: crypto.randomUUID()}]); setItemAtual({...itemAtual, referencia: "", valorCompra: 0, cor1: "", cor2: "", cor3: ""}); }} className="w-full bg-blue-600 text-white p-4 rounded-[25px] font-black text-[10px] uppercase shadow-lg hover:bg-blue-700">+ ADICIONAR ITEM</button>
-              </div>
-              <div className="space-y-2">
-                {itens.map(it => (
-                  <div key={it.id} className="bg-white/80 p-3 rounded-[20px] border border-white flex justify-between items-center shadow-sm uppercase">
-                    <div className="flex flex-col"><span className="font-black text-xs text-slate-800">{it.referencia} • {it.tipo}</span><span className="text-[8px] text-blue-500 font-bold italic">Custo R$ {it.valorCompra.toFixed(2)} | Venda R$ {it.precoVenda.toFixed(2)}</span></div>
-                    <button onClick={() => setItens(itens.filter(x => x.id !== it.id))} className="text-red-400 p-2"><Trash2 size={16}/></button>
+                  <div className="space-y-1">
+                    <label className="text-[9px] font-black text-slate-400 uppercase ml-2">Referência</label>
+                    <input className="w-full p-3 bg-slate-50 rounded-xl font-black text-lg outline-none uppercase" value={itemAtual.referencia} onChange={e => setItemAtual({...itemAtual, referencia: e.target.value.toUpperCase()})} placeholder="REF" />
                   </div>
-                ))}
+                  <div className="space-y-1">
+                    <label className="text-[9px] font-black text-slate-400 uppercase ml-2">Público</label>
+                    <select className="w-full p-3 bg-slate-50 rounded-xl font-bold uppercase text-[10px] outline-none" value={itemAtual.modelo} onChange={e => setItemAtual({...itemAtual, modelo: e.target.value as any})}><option value="Fem">Feminino</option><option value="Masc">Masculino</option><option value="Inf">Infantil</option><option value="Acess">Acessório</option></select>
+                  </div>
+                </div>
+                <div className="space-y-1">
+                  <label className="text-[9px] font-black text-slate-400 uppercase ml-2">Tipo de Produto</label>
+                  <input list="types" className="w-full p-3 bg-slate-50 rounded-xl font-bold uppercase text-[10px] outline-none" value={itemAtual.tipo} onChange={e => setItemAtual({...itemAtual, tipo: e.target.value.toUpperCase()})} placeholder="EX: SANDALIA, TENIS" />
+                  <datalist id="types">{dbSuggestions.tipos.map(t => <option key={t} value={t} />)}</datalist>
+                </div>
+                <div className="grid grid-cols-3 gap-2">
+                  {['cor1','cor2','cor3'].map(c => <input key={c} className="p-2.5 bg-slate-50 rounded-xl text-[9px] font-bold uppercase outline-none border border-transparent focus:border-blue-200" placeholder={c.toUpperCase()} value={itemAtual[c as keyof typeof itemAtual] as string} onChange={e => setItemAtual({...itemAtual, [c]: e.target.value.toUpperCase()})} />)}
+                </div>
+                <div className="bg-slate-900 p-6 rounded-3xl text-white flex justify-between items-center shadow-lg border-b-4 border-blue-600">
+                  <div><p className="text-[8px] font-black text-slate-500 uppercase tracking-widest">Custo Fábrica</p><div className="flex items-center font-black text-xl"><span className="text-blue-500 mr-1">R$</span><input type="number" className="bg-transparent w-20 outline-none" value={itemAtual.valorCompra || ""} onChange={e => setItemAtual({...itemAtual, valorCompra: Number(e.target.value)})} /></div></div>
+                  <div className="text-right border-l border-white/10 pl-6"><p className="text-[8px] font-black text-blue-400 uppercase mb-1">Venda Real (.99)</p><p className="text-3xl font-black text-yellow-400 italic leading-none">R$ {itemAtual.precoVenda.toFixed(2)}</p></div>
+                </div>
+                <button onClick={() => { if(!itemAtual.referencia || !itemAtual.valorCompra) return; setItens([...itens, {...itemAtual, id: crypto.randomUUID()}]); setItemAtual({...itemAtual, referencia: "", valorCompra: 0, cor1: "", cor2: "", cor3: ""}); }} className="w-full py-3.5 bg-blue-600 text-white rounded-2xl font-black text-[10px] uppercase shadow-md hover:bg-blue-700 transition-all">+ ADICIONAR ITEM</button>
+              </div>
+              <div className="lg:col-span-5 space-y-3 flex flex-col h-full overflow-hidden">
+                <h4 className="text-[9px] font-black text-slate-400 uppercase tracking-widest px-2">Carrinho ({itens.length})</h4>
+                <div className="flex-1 overflow-y-auto space-y-2 no-scrollbar pr-1">
+                  {itens.map(it => (
+                    <div key={it.id} className="bg-white p-4 rounded-2xl border border-slate-100 flex justify-between items-center group shadow-sm">
+                      <div><p className="text-[10px] font-black text-slate-800 uppercase italic leading-none">{it.referencia} • {it.tipo}</p><p className="text-[8px] font-bold text-blue-500 uppercase mt-1">Venda: {formatCurrency(it.precoVenda)}</p></div>
+                      <button onClick={() => setItens(itens.filter(x => x.id !== it.id))} className="text-slate-300 hover:text-red-500 transition-colors"><Trash2 size={16}/></button>
+                    </div>
+                  ))}
+                  {itens.length === 0 && <div className="h-full flex flex-col items-center justify-center opacity-30 grayscale py-12"><ShoppingBag size={40}/><p className="text-[9px] font-black uppercase mt-2">Vazio</p></div>}
+                </div>
               </div>
             </div>
           )}
 
           {etapa === 3 && (
-            <div className="max-w-2xl mx-auto space-y-6 animate-in zoom-in text-center">
-              <div className="bg-white p-8 rounded-[40px] shadow-sm border border-slate-100 space-y-6 relative">
-                <div className="absolute -top-4 right-8 bg-red-600 text-white px-4 py-2 rounded-full font-black text-xs shadow-xl animate-pulse">{paresGradeAtual} PARES</div>
-                <h3 className="text-sm font-black text-slate-800 uppercase italic">Montando Grade <span className="text-blue-600">{LETRAS[gradesSalvas.length]}</span></h3>
-                <div className="grid grid-cols-5 md:grid-cols-8 gap-2">
+            <div className="max-w-xl mx-auto space-y-4 animate-in zoom-in duration-300 text-center">
+              <div className="bg-white p-8 rounded-3xl shadow-sm border border-slate-100 relative">
+                <div className="absolute -top-3 right-6 bg-red-600 text-white px-4 py-1.5 rounded-full font-black text-[10px] shadow-lg">{Object.values(gradeEditando).reduce((a,b)=>a+Number(b),0)} PARES</div>
+                <h3 className="text-sm font-black text-slate-800 uppercase italic mb-8">Definir Grade <span className="text-blue-600">{LETRAS[gradesSalvas.length]}</span></h3>
+                <div className="grid grid-cols-4 sm:grid-cols-5 gap-3 mb-8">
                   {(TAMANHOS[itemAtual.modelo] || []).map(tam => (
-                    <div key={tam} className="text-center bg-slate-50 rounded-xl p-2 border border-slate-100">
-                      <label className="text-[8px] font-black text-slate-400 block mb-1">{tam}</label>
-                      <input type="number" className="w-full text-center bg-transparent font-black text-sm outline-none" value={gradeEditando[tam] || ""} onChange={e => setGradeEditando({...gradeEditando, [tam]: Number(e.target.value)})} />
+                    <div key={tam} className="bg-slate-50 p-2 rounded-xl border border-slate-100 focus-within:border-blue-400 transition-all">
+                      <label className="text-[9px] font-black text-slate-400 block mb-1">{tam}</label>
+                      <input type="number" className="w-full text-center bg-transparent font-black text-lg outline-none text-blue-950" value={gradeEditando[tam] || ""} onChange={e => setGradeEditando({...gradeEditando, [tam]: Number(e.target.value)})} />
                     </div>
                   ))}
                 </div>
                 <button onClick={() => { 
-                  if(paresGradeAtual === 0) return alert("Insira as quantidades!");
-                  setGradesSalvas([...gradesSalvas, { letra: LETRAS[gradesSalvas.length], modelo: itemAtual.modelo, valores: {...gradeEditando}, total: paresGradeAtual }]); 
-                  setGradeEditando({}); alert("Grade salva!"); 
-                }} className="w-full bg-blue-700 text-white p-4 rounded-[25px] font-black shadow-lg uppercase text-[10px]">Confirmar Grade {LETRAS[gradesSalvas.length]}</button>
+                  const total = Object.values(gradeEditando).reduce((a,b)=>a+Number(b),0);
+                  if(total === 0) return;
+                  setGradesSalvas([...gradesSalvas, { letra: LETRAS[gradesSalvas.length], modelo: itemAtual.modelo, valores: {...gradeEditando}, total }]); 
+                  setGradeEditando({});
+                }} className="w-full py-4 bg-slate-950 text-white rounded-2xl font-black uppercase text-[10px] shadow-lg border-b-4 border-slate-800 hover:bg-blue-600 transition-all">SALVAR GRADE {LETRAS[gradesSalvas.length]}</button>
+              </div>
+              <div className="flex gap-2 overflow-x-auto pb-2 no-scrollbar">
+                {gradesSalvas.map(g => <div key={g.letra} className="bg-white px-4 py-2 rounded-xl border border-blue-100 text-[10px] font-black text-blue-600 shadow-sm">{g.letra}: {g.total}pr</div>)}
               </div>
             </div>
           )}
 
           {etapa === 4 && (
-            <div className="max-w-6xl mx-auto space-y-4 animate-in slide-in-from-bottom">
-               <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
-                  <div className="bg-white p-4 rounded-[35px] shadow-sm border border-slate-100 flex flex-col">
-                    <span className="text-[9px] font-black text-slate-300 uppercase block text-center mb-2">1. Itens & Grades Individuais</span>
-                    <div className="space-y-2 flex-1 max-h-[450px] overflow-y-auto no-scrollbar">
-                      {itens.map(it => {
-                        const isSelected = selecaoLote.itensIds.includes(it.id);
-                        const assignment = persistAssignments[it.referencia] || { gradeLetra: "", corSelecionada: it.cor1 || "" };
-                        return (
-                          <div key={it.id} className={`flex flex-col p-3 rounded-2xl border-2 transition-all ${isSelected ? 'bg-blue-50 border-blue-600 shadow-sm' : 'bg-slate-50 border-transparent opacity-80'}`}>
-                            <label className="flex items-start gap-3 cursor-pointer mb-1">
-                              <input type="checkbox" className="w-4 h-4 rounded border-slate-300 text-blue-600 mt-1" checked={isSelected} onChange={() => setSelecaoLote({...selecaoLote, itensIds: isSelected ? selecaoLote.itensIds.filter(x => x !== it.id) : [...selecaoLote.itensIds, it.id]})} />
-                              <div className="flex flex-col flex-1">
-                                <span className="text-[10px] font-black uppercase text-slate-900 leading-tight">{pedido.marca} {it.tipo}</span>
-                                <span className="text-[8px] font-bold text-slate-400 uppercase italic">{it.referencia}</span>
-                              </div>
-                            </label>
-                            {isSelected && (
-                              <div className="grid grid-cols-2 gap-2 mt-2 pt-2 border-t border-blue-100">
-                                <select value={assignment.gradeLetra} onChange={(e) => updateItemAssignment(it.referencia, 'gradeLetra', e.target.value)} className="p-1.5 bg-white border border-blue-200 rounded-lg text-[9px] font-black text-blue-700">
-                                  <option value="">GRADE?</option>
-                                  {gradesSalvas.map(gr => <option key={gr.letra} value={gr.letra}>Grade {gr.letra}</option>)}
-                                </select>
-                                <select value={assignment.corSelecionada} onChange={(e) => updateItemAssignment(it.referencia, 'corSelecionada', e.target.value)} className="p-1.5 bg-white border border-blue-200 rounded-lg text-[9px] font-black text-blue-700 uppercase">
-                                  <option value={it.cor1}>{it.cor1}</option>
-                                  {it.cor2 && <option value={it.cor2}>{it.cor2}</option>}
-                                  {it.cor3 && <option value={it.cor3}>{it.cor3}</option>}
-                                </select>
-                              </div>
-                            )}
-                          </div>
-                        );
-                      })}
-                    </div>
-                  </div>
-                  <div className="bg-white p-4 rounded-[35px] shadow-sm border border-slate-100 space-y-3">
-                    <span className="text-[9px] font-black text-slate-300 uppercase block text-center mb-2">2. Resumo das Grades</span>
-                    <div className="space-y-2 max-h-[450px] overflow-y-auto no-scrollbar">
-                      {gradesSalvas.map(gr => (
-                        <div key={gr.letra} className="bg-slate-50 p-3 rounded-2xl border border-slate-100 flex items-center gap-3">
-                            <span className="text-xl font-black italic text-blue-600">{gr.letra}</span>
-                            <span className="text-[10px] font-black text-slate-700">{gr.total} PARES</span>
+            <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 h-full animate-in slide-in-from-bottom duration-300">
+               <div className="lg:col-span-4 bg-white p-5 rounded-3xl shadow-sm border border-slate-100 flex flex-col">
+                  <span className="text-[9px] font-black text-blue-600 uppercase mb-4 text-center tracking-widest border-b pb-2">1. Selecionar & Vincular</span>
+                  <div className="flex-1 overflow-y-auto space-y-2 pr-1 no-scrollbar">
+                    {itens.map(it => {
+                      const isSel = selecaoLote.itensIds.includes(it.id);
+                      const assignment = persistAssignments[it.referencia] || { gradeLetra: "", corSelecionada: it.cor1 || "" };
+                      return (
+                        <div key={it.id} className={`p-3 rounded-2xl border transition-all ${isSel ? 'bg-blue-50 border-blue-400 shadow-sm' : 'bg-slate-50 border-transparent opacity-80'}`}>
+                          <label className="flex items-center gap-3 cursor-pointer">
+                            <input type="checkbox" className="w-5 h-5 rounded border-slate-300 text-blue-600" checked={isSel} onChange={() => setSelecaoLote({...selecaoLote, itensIds: isSel ? selecaoLote.itensIds.filter(x => x !== it.id) : [...selecaoLote.itensIds, it.id]})} />
+                            <div className="flex-1"><p className="text-[10px] font-black uppercase text-slate-800 truncate">{it.referencia}</p></div>
+                          </label>
+                          {isSel && (
+                            <div className="grid grid-cols-2 gap-2 mt-3 pt-3 border-t border-blue-100">
+                              <select value={assignment.gradeLetra} onChange={e => setPersistAssignments({...persistAssignments, [it.referencia]: {...assignment, gradeLetra: e.target.value}})} className="p-1.5 bg-white border border-blue-200 rounded-lg text-[9px] font-black text-blue-700 outline-none">
+                                <option value="">GRADE?</option>
+                                {gradesSalvas.map(gr => <option key={gr.letra} value={gr.letra}>{gr.letra} ({gr.total} pr)</option>)}
+                              </select>
+                              <select value={assignment.corSelecionada} onChange={e => setPersistAssignments({...persistAssignments, [it.referencia]: {...assignment, corSelecionada: e.target.value}})} className="p-1.5 bg-white border border-blue-200 rounded-lg text-[9px] font-black text-blue-700 uppercase outline-none">
+                                <option value={it.cor1}>{it.cor1}</option>
+                                {it.cor2 && <option value={it.cor2}>{it.cor2}</option>}
+                                {it.cor3 && <option value={it.cor3}>{it.cor3}</option>}
+                              </select>
+                            </div>
+                          )}
                         </div>
-                      ))}
-                    </div>
-                  </div>
-                  <div className="bg-white p-4 rounded-[35px] shadow-sm border border-slate-100 text-center">
-                    <div className="flex bg-slate-50 rounded-xl p-1 mb-2">
-                       <button onClick={() => setModoLojas('subgrupo')} className={`flex-1 py-1 text-[8px] font-black uppercase rounded-lg transition-all ${modoLojas === 'subgrupo' ? 'bg-blue-600 text-white shadow-sm' : 'text-slate-400'}`}>Subgrupo</button>
-                       <button onClick={() => setModoLojas('todas')} className={`flex-1 py-1 text-[8px] font-black uppercase rounded-lg transition-all ${modoLojas === 'todas' ? 'bg-blue-600 text-white shadow-sm' : 'text-slate-400'}`}>Todas</button>
-                    </div>
-                    <div className="grid grid-cols-4 gap-1 max-h-64 overflow-y-auto no-scrollbar">
-                      {(modoLojas === 'subgrupo' ? SUBGRUPO_LOJAS : Array.from({length: 120}, (_, i) => (i+1).toString().padStart(2, '0'))).map(loja => (
-                        <button key={loja} onClick={() => setSelecaoLote({...selecaoLote, lojasIds: selecaoLote.lojasIds.includes(loja) ? selecaoLote.lojasIds.filter(x => x !== loja) : [...selecaoLote.lojasIds, loja]})} className={`p-1.5 rounded-lg text-[9px] font-black transition-all ${selecaoLote.lojasIds.includes(loja) ? 'bg-blue-700 text-white' : 'bg-slate-50 text-slate-400'}`}>{loja}</button>
-                      ))}
-                    </div>
+                      );
+                    })}
                   </div>
                </div>
-               <button onClick={() => {
-                 const invalid = selecaoLote.itensIds.some(id => !persistAssignments[itens.find(i => i.id === id).referencia]?.gradeLetra);
-                 if (selecaoLote.itensIds.length === 0 || selecaoLote.lojasIds.length === 0) return alert("Selecione itens e lojas!");
-                 if (invalid) return alert("Vincule uma grade aos itens marcados!");
-                 const idVinculo = crypto.randomUUID();
-                 const novos = selecaoLote.itensIds.flatMap(id => {
-                   const it = itens.find(i => i.id === id);
-                   const cfg = persistAssignments[it.referencia];
-                   return selecaoLote.lojasIds.map(loja => ({ ...it, loja, gradeLetra: cfg.gradeLetra, corEscolhida: cfg.corSelecionada || it.cor1, idVinculo }));
-                 });
-                 setLotesFinalizados([...lotesFinalizados, ...novos]);
-                 setSelecaoLote({ itensIds: [], lojasIds: [] });
-                 alert("Lote vinculado!");
-               }} className="w-full bg-blue-700 text-white p-4 rounded-[25px] font-black shadow-xl uppercase flex items-center justify-center gap-3">
-                 <Layers size={18}/> GERAR VÍNCULOS DE LOTE (INDIVIDUALIZADO)
-               </button>
+
+               <div className="lg:col-span-8 flex flex-col gap-4">
+                  <div className="bg-white p-5 rounded-3xl shadow-sm border border-slate-100 flex-1 flex flex-col">
+                    <div className="flex justify-between items-center mb-4 border-b pb-2">
+                       <span className="text-[9px] font-black text-blue-600 uppercase tracking-widest">2. Destinos (01-120)</span>
+                       <div className="flex bg-slate-100 p-0.5 rounded-lg">
+                          <button onClick={() => setModoLojas('subgrupo')} className={`px-3 py-1 rounded-md text-[8px] font-black uppercase transition-all ${modoLojas === 'subgrupo' ? 'bg-white text-blue-600 shadow-sm' : 'text-slate-400'}`}>Especial</button>
+                          <button onClick={() => setModoLojas('todas')} className={`px-3 py-1 rounded-md text-[8px] font-black uppercase transition-all ${modoLojas === 'todas' ? 'bg-white text-blue-600 shadow-sm' : 'text-slate-400'}`}>Tudo</button>
+                       </div>
+                    </div>
+                    <div className="grid grid-cols-6 sm:grid-cols-10 gap-1.5 overflow-y-auto no-scrollbar content-start">
+                      {(modoLojas === 'subgrupo' ? SUBGRUPO_LOJAS : Array.from({length: 120}, (_, i) => (i+1).toString().padStart(2, '0'))).map(loja => (
+                        <button key={loja} onClick={() => setSelecaoLote({...selecaoLote, lojasIds: selecaoLote.lojasIds.includes(loja) ? selecaoLote.lojasIds.filter(x => x !== loja) : [...selecaoLote.lojasIds, loja]})} className={`py-2 rounded-lg text-[10px] font-black transition-all border ${selecaoLote.lojasIds.includes(loja) ? 'bg-blue-600 border-blue-700 text-white shadow-md' : 'bg-slate-50 border-transparent text-slate-400 hover:bg-slate-100'}`}>{loja}</button>
+                      ))}
+                    </div>
+                  </div>
+                  <button onClick={() => {
+                    if (selecaoLote.itensIds.length === 0 || selecaoLote.lojasIds.length === 0) return alert("Faltam itens ou lojas!");
+                    const idVinculo = crypto.randomUUID();
+                    const novos = selecaoLote.itensIds.flatMap(id => {
+                      const it = itens.find(i => i.id === id);
+                      const cfg = persistAssignments[it.referencia];
+                      if (!cfg?.gradeLetra) throw new Error(`Vincule grade para ${it.referencia}`);
+                      return selecaoLote.lojasIds.map(loja => ({ ...it, loja, gradeLetra: cfg.gradeLetra, corEscolhida: cfg.corSelecionada || it.cor1, idVinculo }));
+                    });
+                    setLotesFinalizados([...lotesFinalizados, ...novos]);
+                    setSelecaoLote({ itensIds: [], lojasIds: [] });
+                    alert("Carga gerada com sucesso!");
+                  }} className="w-full py-4 bg-slate-950 text-white rounded-2xl font-black uppercase text-[10px] shadow-xl border-b-4 border-slate-800 hover:bg-blue-600 transition-all flex items-center justify-center gap-2"><Layers size={14}/> GERAR CARGA DE LOTES</button>
+               </div>
             </div>
           )}
         </div>
 
-        <div className="p-4 md:px-8 bg-white border-t flex justify-between items-center shrink-0">
-          <button onClick={() => setVerLotes(!verLotes)} className={`px-6 py-3 rounded-2xl font-black text-[10px] uppercase flex items-center gap-2 transition-all ${verLotes ? 'bg-blue-600 text-white shadow-lg' : 'bg-blue-50 text-blue-700 hover:bg-blue-100'}`}><ListFilter size={16}/> VER LOTES ({Object.keys(resumoPorLote).length})</button>
-          <div className="flex items-center gap-3">
-            <button onClick={exportarPlanilhaFinal} className="bg-red-600 text-white px-8 py-3 rounded-2xl font-black text-[10px] uppercase shadow-lg flex items-center gap-2 animate-pulse"><Download size={16}/> EXPORTAR PEDIDO FINAL</button>
-            <button onClick={onClose} className="bg-slate-900 text-white px-6 py-3 rounded-2xl font-black text-[10px] uppercase flex items-center gap-2 hover:bg-black transition-all shadow-md"><LogOut size={16}/> FECHAR</button>
+        {/* FOOTER - MINIMALIST */}
+        <div className="px-6 py-4 bg-white border-t border-slate-100 flex flex-col md:flex-row justify-between items-center gap-4 shrink-0">
+          <button onClick={() => setVerLotes(!verLotes)} className={`w-full md:w-auto px-6 py-2.5 rounded-xl font-black text-[9px] uppercase transition-all flex items-center justify-center gap-2 border ${verLotes ? 'bg-blue-600 text-white border-blue-700 shadow-md' : 'bg-slate-50 text-blue-700 border-slate-200'}`}>
+            <ListFilter size={16}/> Lotes Ativos ({lotesAgrupados.length})
+          </button>
+          <div className="flex gap-2 w-full md:w-auto">
+            <button onClick={exportarPlanilhaFinal} className="flex-1 md:flex-none bg-red-600 text-white px-8 py-3 rounded-xl font-black text-[9px] uppercase shadow-lg hover:bg-red-700 transition-all border-b-4 border-red-900 active:scale-95 flex items-center justify-center gap-2">
+              <Download size={18}/> Exportar Excel
+            </button>
           </div>
         </div>
+
+        {/* OVERLAY RESUMO LOTES */}
+        {verLotes && (
+            <div className="absolute inset-x-0 bottom-16 bg-white border-t border-slate-200 shadow-2xl p-6 max-h-[50vh] overflow-y-auto animate-in slide-in-from-bottom duration-300 z-50 rounded-t-[32px]">
+                <div className="max-w-4xl mx-auto">
+                    <div className="flex justify-between items-center mb-6">
+                      <h4 className="text-xs font-black uppercase italic text-blue-950">Resumo da Carga</h4>
+                      <button onClick={() => setLotesFinalizados([])} className="text-red-500 text-[9px] font-black uppercase border border-red-100 px-3 py-1.5 rounded-lg hover:bg-red-50 transition-all">Limpar Carga</button>
+                    </div>
+                    <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
+                        {lotesAgrupados.map((l, i) => (
+                            <div key={i} className="bg-slate-50 p-4 rounded-2xl border border-slate-100 relative group">
+                                <div className="flex items-center gap-3 mb-3">
+                                    <div className="w-10 h-10 bg-white rounded-xl flex items-center justify-center font-black text-lg text-blue-600 shadow-sm border border-blue-50">{l.grade}</div>
+                                    <div><p className="text-[10px] font-black text-slate-800 uppercase leading-none">Lote #{i+1}</p><p className="text-[8px] font-bold text-slate-400 uppercase mt-1">{l.items.size} Itens • {l.lojas.size} Lojas</p></div>
+                                </div>
+                                <div className="flex justify-between items-end border-t pt-2 mt-2">
+                                    <div><p className="text-[7px] text-gray-400 font-black uppercase">Pares</p><p className="text-lg font-black text-slate-900 leading-none italic">{l.pares}</p></div>
+                                    <div className="text-right"><p className="text-[7px] text-gray-400 font-black uppercase">Volume</p><p className="text-base font-black text-green-600 leading-none italic">{formatCurrency(l.val)}</p></div>
+                                </div>
+                            </div>
+                        ))}
+                    </div>
+                </div>
+            </div>
+        )}
       </div>
     </div>
   );
