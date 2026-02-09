@@ -139,7 +139,8 @@ const SpreadsheetOrderModule = ({ user, onClose }: { user: any, onClose: () => v
   };
 
   const lotesAgrupados = useMemo(() => {
-    const res: Record<string, any> = {};
+    // Fix: Explicitly typing res to avoid unknown type issues in addition operations
+    const res: Record<string, { grade: string, items: Set<string>, lojas: Set<string>, val: number, pares: number }> = {};
     lotesFinalizados.forEach(l => {
       if (!res[l.idVinculo]) res[l.idVinculo] = { grade: l.gradeLetra, items: new Set(), lojas: new Set(), val: 0, pares: 0 };
       res[l.idVinculo].items.add(l.referencia);
@@ -367,7 +368,7 @@ const SpreadsheetOrderModule = ({ user, onClose }: { user: any, onClose: () => v
                             <div key={i} className="bg-slate-50 p-4 rounded-2xl border border-slate-100 relative group">
                                 <div className="flex items-center gap-3 mb-3">
                                     <div className="w-10 h-10 bg-white rounded-xl flex items-center justify-center font-black text-lg text-blue-600 shadow-sm border border-blue-50">{l.grade}</div>
-                                    <div><p className="text-[10px] font-black text-slate-800 uppercase leading-none">Lote #{i+1}</p><p className="text-[8px] font-bold text-slate-400 uppercase mt-1">{l.items.size} Itens • {l.lojas.size} Lojas</p></div>
+                                    <div><p className="text-[10px] font-black text-slate-800 uppercase leading-none">Lote #{(i as any)+1}</p><p className="text-[8px] font-bold text-slate-400 uppercase mt-1">{l.items.size} Itens • {l.lojas.size} Lojas</p></div>
                                 </div>
                                 <div className="flex justify-between items-end border-t pt-2 mt-2">
                                     <div><p className="text-[7px] text-gray-400 font-black uppercase">Pares</p><p className="text-lg font-black text-slate-900 leading-none italic">{l.pares}</p></div>
