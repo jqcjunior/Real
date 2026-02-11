@@ -260,12 +260,30 @@ const IceCreamModule: React.FC<IceCreamModuleProps> = ({
     return Object.values(groups).sort((a, b) => b.total - a.total);
   }, [dreStats.monthFiadoDetails]);
 
+  // CORREÇÃO: Lógica de Auditoria usando comparação de data imune a Timezone
   const groupedAuditSales = useMemo(() => {
     const groups: Record<string, any> = {};
     const filterPrefix = `${auditYear}-${String(auditMonth).padStart(2, '0')}-${String(auditDay).padStart(2, '0')}`;
 
-    // Primeiro agrupa as vendas do dia
-    sales.filter(s => s.storeId === effectiveStoreId && s.createdAt?.startsWith(filterPrefix)).forEach(s => {
+    const filtered = sales.filter(s => {
+      if (s.storeId !== effectiveStoreId) return false;
+      
+      // Filtro de data por prefixo de string (YYYY-MM-DD) para evitar erros de UTC
+      if (filterPrefix && !s.createdAt?.startsWith(filterPrefix)) return false;
+      
+      if (auditSearch) {
+        const search = auditSearch.toLowerCase();
+        return (
+          s.productName.toLowerCase().includes(search) ||
+          s.saleCode?.toLowerCase().includes(search) ||
+          s.buyer_name?.toLowerCase().includes(search)
+        );
+      }
+      return true;
+    });
+
+    filtered.forEach(s => {
+      // Usa saleCode ou o ID como fallback para agrupar
       const code = s.saleCode || `ID-${s.id}`;
       if (!groups[code]) {
         groups[code] = {
@@ -284,21 +302,7 @@ const IceCreamModule: React.FC<IceCreamModuleProps> = ({
         groups[code].paymentMethods.push(s.paymentMethod);
       }
     });
-
-    let result = Object.values(groups);
-
-    // Filtra a busca globalmente nos grupos
-    if (auditSearch) {
-        const search = auditSearch.toLowerCase();
-        result = result.filter((g: any) => 
-            g.saleCode.toLowerCase().includes(search) ||
-            (g.buyer_name || '').toLowerCase().includes(search) ||
-            g.items.some((it: any) => it.productName.toLowerCase().includes(search)) ||
-            g.paymentMethods.some((m: any) => m.toLowerCase().includes(search))
-        );
-    }
-
-    return result.sort((a: any, b: any) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
+    return Object.values(groups).sort((a: any, b: any) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
   }, [sales, effectiveStoreId, auditDay, auditMonth, auditYear, auditSearch]);
 
   const filteredAuditWastage = useMemo(() => {
@@ -307,7 +311,9 @@ const IceCreamModule: React.FC<IceCreamModuleProps> = ({
     return finances.filter(f => {
       if (f.storeId !== effectiveStoreId) return false;
       if (f.category !== 'AVARIA / DEFEITO PRODUTO') return false;
+      
       if (filterPrefix && f.date !== filterPrefix) return false;
+
       if (auditSearch) {
         const search = auditSearch.toLowerCase();
         return f.description?.toLowerCase().includes(search);
@@ -981,7 +987,7 @@ const IceCreamModule: React.FC<IceCreamModuleProps> = ({
                             <select value={auditDay} onChange={e => setAuditDay(e.target.value)} className="bg-gray-50 border-none rounded-xl p-3 text-[10px] font-black uppercase outline-none shadow-inner"><option value="">DIA</option>{Array.from({length: 31}, (_, i) => <option key={i+1} value={String(i+1)}>{i+1}</option>)}</select>
                             <select value={auditMonth} onChange={e => setAuditMonth(e.target.value)} className="bg-gray-50 border-none rounded-xl p-3 text-[10px] font-black uppercase outline-none shadow-inner"><option value="">MÊS</option>{MONTHS.map(m => <option key={m.value} value={String(m.value)}>{m.label}</option>)}</select>
                             <select value={auditYear} onChange={e => setAuditYear(e.target.value)} className="bg-gray-50 border-none rounded-xl p-3 text-[10px] font-black uppercase outline-none shadow-inner"><option value="">ANO</option>{[2024, 2025, 2026].map(y => <option key={y} value={String(y)}>{y}</option>)}</select>
-                            <div className="col-span-2 relative"><Search className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-300" size={14}/><input value={auditSearch} onChange={e => setAuditSearch(e.target.value)} placeholder="BUSCAR COD, FUNC, PRODUTO OU PAGTO..." className="w-full bg-gray-50 border-none rounded-xl pl-10 pr-4 py-3 text-[10px] font-black uppercase outline-none shadow-inner" /></div>
+                            <div className="col-span-2 relative"><Search className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-300" size={14}/><input value={auditSearch} onChange={e => setAuditSearch(e.target.value)} placeholder="PRODUTO, CÓDIGO OU FUNCIONÁRIO..." className="w-full bg-gray-50 border-none rounded-xl pl-10 pr-4 py-3 text-[10px] font-black uppercase outline-none shadow-inner" /></div>
                         </div>
                     </div>
 
@@ -1033,7 +1039,7 @@ const IceCreamModule: React.FC<IceCreamModuleProps> = ({
                                         </tr>
                                     ))}
                                     {groupedAuditSales.length === 0 && (
-                                        <tr><td colSpan={5} className="px-8 py-10 text-center text-gray-400 uppercase font-black tracking-widest italic">Nenhum registro encontrado para a pesquisa</td></tr>
+                                        <tr><td colSpan={5} className="px-8 py-10 text-center text-gray-400 uppercase font-black tracking-widest italic">Nenhuma venda operacional encontrada para os filtros selecionados</td></tr>
                                     )}
                                 </tbody>
                             </table>
@@ -1065,7 +1071,7 @@ const IceCreamModule: React.FC<IceCreamModuleProps> = ({
                                         </tr>
                                     ))}
                                     {filteredAuditWastage.length === 0 && (
-                                        <tr><td colSpan={3} className="px-8 py-10 text-center text-gray-400 uppercase font-black tracking-widest italic">Nenhuma baixa de avaria encontrada</td></tr>
+                                        <tr><td colSpan={3} className="px-8 py-10 text-center text-gray-400 uppercase font-black tracking-widest italic">Nenhuma baixa de avaria encontrada para os filtros selecionados</td></tr>
                                     )}
                                 </tbody>
                             </table>
@@ -1198,12 +1204,12 @@ const IceCreamModule: React.FC<IceCreamModuleProps> = ({
 
         {showWastageModal && (
             <div className="fixed inset-0 bg-black/80 backdrop-blur-md flex items-center justify-center z-[130] p-4">
-                <div className="bg-white rounded-[40px] w-full max-sm max-h-[90vh] shadow-2xl animate-in zoom-in duration-300 border-t-8 border-orange-500 flex flex-col overflow-hidden">
-                    <div className="p-8 border-b bg-gray-50/50 flex justify-between items-center shrink-0">
+                <div className="bg-white rounded-[40px] w-full max-w-md shadow-2xl animate-in zoom-in duration-300 border-t-8 border-orange-500 overflow-hidden">
+                    <div className="p-8 border-b bg-gray-50/50 flex justify-between items-center">
                         <h3 className="text-xl font-black uppercase italic text-blue-950 flex items-center gap-3"><AlertTriangle className="text-orange-500" /> Baixa <span className="text-orange-600">por Avaria</span></h3>
                         <button onClick={() => setShowWastageModal(false)} className="text-gray-400 hover:text-red-600"><X size={24}/></button>
                     </div>
-                    <div className="flex-1 overflow-y-auto p-10 space-y-6 no-scrollbar">
+                    <div className="p-10 space-y-6">
                         <div className="space-y-2">
                             <label className="text-[10px] font-black text-gray-400 uppercase ml-2">Insumo do Estoque</label>
                             <select 
@@ -1320,9 +1326,7 @@ const IceCreamModule: React.FC<IceCreamModuleProps> = ({
                                         <div className="grid grid-cols-2 gap-3">
                                             <select value={newRecipeItem.stock_base_name} onChange={e => setNewRecipeItem({...newRecipeItem, stock_base_name: e.target.value})} className="bg-white/10 border-none rounded-xl p-3 text-xs font-black text-white outline-none">
                                                 <option value="" className="text-black">SELECIONE INSUMO...</option>
-                                                {stock.filter(s => s.store_id === effectiveStoreId && s.is_active !== false)
-                                                      .sort((a,b) => a.product_base.localeCompare(b.product_base))
-                                                      .map(s => <option key={s.stock_id} value={s.product_base} className="text-black">{s.product_base}</option>)}
+                                                {stock.filter(s => s.store_id === effectiveStoreId && s.is_active !== false).map(s => <option key={s.stock_id} value={s.product_base} className="text-black">{s.product_base}</option>)}
                                             </select>
                                             <input value={newRecipeItem.quantity} onChange={e => setNewRecipeItem({...newRecipeItem, quantity: e.target.value})} placeholder="QTD" className="bg-white/10 border-none rounded-xl p-3 text-xs font-black text-white text-center outline-none" />
                                         </div>
@@ -1350,8 +1354,8 @@ const IceCreamModule: React.FC<IceCreamModuleProps> = ({
         {showTransactionModal && (
             <div className="fixed inset-0 bg-black/80 backdrop-blur-md flex items-center justify-center z-[130] p-4">
                 <div className="bg-white rounded-[40px] w-full max-w-md shadow-2xl animate-in zoom-in duration-300 border-t-8 border-red-600 overflow-hidden">
-                    <div className="p-8 border-b bg-gray-50/50 flex justify-between items-center shrink-0"><h3 className="text-xl font-black uppercase italic text-blue-950 flex items-center gap-3"><DollarSign className="text-red-600" /> Registrar <span className="text-red-600">Despesa</span></h3><button onClick={() => setShowTransactionModal(false)} className="text-gray-400 hover:text-red-600"><X size={24}/></button></div>
-                    <div className="flex-1 overflow-y-auto p-10 space-y-6 no-scrollbar">
+                    <div className="p-8 border-b bg-gray-50/50 flex justify-between items-center"><h3 className="text-xl font-black uppercase italic text-blue-950 flex items-center gap-3"><DollarSign className="text-red-600" /> Registrar <span className="text-red-600">Despesa</span></h3><button onClick={() => setShowTransactionModal(false)} className="text-gray-400 hover:text-red-600"><X size={24}/></button></div>
+                    <div className="p-10 space-y-6">
                         <div className="space-y-2"><label className="text-[10px] font-black text-gray-400 uppercase ml-2 tracking-widest">Valor (R$)</label><input value={txForm.value} onChange={e => setTxForm({...txForm, value: e.target.value})} className="w-full p-5 bg-red-50 rounded-[24px] font-black text-red-700 text-2xl shadow-inner outline-none border-none text-center" placeholder="0,00" /></div>
                         <div className="space-y-2"><label className="text-[10px] font-black text-gray-400 uppercase ml-2 tracking-widest">Descrição / Motivo</label><input value={txForm.description} onChange={e => setTxForm({...txForm, description: e.target.value.toUpperCase()})} className="w-full p-4 bg-gray-50 rounded-2xl font-black text-gray-900 uppercase shadow-inner outline-none" placeholder="EX: COMPRA DE LEITE, LIMP." /></div>
                         <div className="space-y-2">
@@ -1374,9 +1378,9 @@ const IceCreamModule: React.FC<IceCreamModuleProps> = ({
 
         {showCategoryManager && (
             <div className="fixed inset-0 bg-black/80 backdrop-blur-md flex items-center justify-center z-[150] p-4">
-                <div className="bg-white rounded-[40px] w-full max-w-sm shadow-2xl animate-in zoom-in duration-300 border-t-8 border-blue-600 flex flex-col overflow-hidden">
-                    <div className="p-6 border-b bg-gray-50/50 flex justify-between items-center shrink-0"><h3 className="text-lg font-black uppercase italic text-blue-950 flex items-center gap-3"><Settings className="text-blue-600" /> Categorias</h3><button onClick={() => setShowCategoryManager(false)} className="text-gray-400 hover:text-red-600"><X size={20}/></button></div>
-                    <div className="flex-1 overflow-y-auto p-8 space-y-6 no-scrollbar">
+                <div className="bg-white rounded-[40px] w-full max-w-sm shadow-2xl animate-in zoom-in duration-300 border-t-8 border-blue-600 overflow-hidden">
+                    <div className="p-6 border-b bg-gray-50/50 flex justify-between items-center"><h3 className="text-lg font-black uppercase italic text-blue-950 flex items-center gap-3"><Settings className="text-blue-600" /> Categorias</h3><button onClick={() => setShowCategoryManager(false)} className="text-gray-400 hover:text-red-600"><X size={20}/></button></div>
+                    <div className="p-8 space-y-6">
                         <div className="flex gap-2">
                             <input value={newCategoryName} onChange={e => setNewCategoryName(e.target.value)} placeholder="NOVA CATEGORIA..." className="flex-1 p-3 bg-gray-50 rounded-xl font-black uppercase text-[10px] outline-none border border-gray-200" />
                             <button onClick={handleAddCategory} className="bg-blue-600 text-white p-3 rounded-xl"><Plus size={18}/></button>

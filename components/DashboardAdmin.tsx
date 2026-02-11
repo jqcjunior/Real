@@ -9,7 +9,7 @@ import {
 } from 'lucide-react';
 import { 
     BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, 
-    Legend, ResponsiveContainer, LineChart, Line, Cell, PieChart, Pie 
+    Legend, ResponsiveContainer, Cell, PieChart, Pie 
 } from 'recharts';
 
 interface DashboardAdminProps {
@@ -33,10 +33,10 @@ const DashboardAdmin: React.FC<DashboardAdminProps> = ({ stores, performanceData
 
     const stats = useMemo(() => {
         const currentData = performanceData.filter(p => p.month === selectedMonth);
-        const totalRevenue = currentData.reduce((acc, curr) => acc + curr.revenueActual, 0);
-        const totalTarget = currentData.reduce((acc, curr) => acc + curr.revenueTarget, 0);
-        const totalItems = currentData.reduce((acc, curr) => acc + curr.itemsActual, 0);
-        const totalSales = currentData.reduce((acc, curr) => acc + curr.salesActual, 0);
+        const totalRevenue = currentData.reduce((acc, curr) => acc + (Number(curr.revenueActual) || 0), 0);
+        const totalTarget = currentData.reduce((acc, curr) => acc + (Number(curr.revenueTarget) || 0), 0);
+        const totalItems = currentData.reduce((acc, curr) => acc + (Number(curr.itemsActual) || 0), 0);
+        const totalSales = currentData.reduce((acc, curr) => acc + (Number(curr.salesActual) || 0), 0);
 
         const attainment = totalTarget > 0 ? (totalRevenue / totalTarget) * 100 : 0;
         const avgPA = totalSales > 0 ? totalItems / totalSales : 0;
@@ -49,7 +49,7 @@ const DashboardAdmin: React.FC<DashboardAdminProps> = ({ stores, performanceData
             avgPA,
             avgTicket,
             storeCount: stores.length,
-            currentData: currentData.sort((a, b) => b.revenueActual - a.revenueActual)
+            currentData: currentData.sort((a, b) => (b.revenueActual || 0) - (a.revenueActual || 0))
         };
     }, [performanceData, selectedMonth, stores]);
 
@@ -58,8 +58,8 @@ const DashboardAdmin: React.FC<DashboardAdminProps> = ({ stores, performanceData
             const store = stores.find(s => s.id === d.storeId);
             return {
                 name: store ? `Loja ${store.number}` : '---',
-                venda: d.revenueActual,
-                meta: d.revenueTarget
+                venda: d.revenueActual || 0,
+                meta: d.revenueTarget || 0
             };
         });
     }, [stats.currentData, stores]);
@@ -86,6 +86,7 @@ const DashboardAdmin: React.FC<DashboardAdminProps> = ({ stores, performanceData
                     >
                         <option value="2026-02">Fevereiro 2026</option>
                         <option value="2026-01">Janeiro 2026</option>
+                        <option value="2025-12">Dezembro 2025</option>
                     </select>
                     <button 
                         onClick={handleRefresh}
@@ -109,7 +110,7 @@ const DashboardAdmin: React.FC<DashboardAdminProps> = ({ stores, performanceData
                     <div className="mt-4 w-full bg-gray-50 h-1.5 rounded-full overflow-hidden">
                         <div className={`h-full transition-all duration-1000 ${stats.attainment >= 100 ? 'bg-green-500' : 'bg-blue-600'}`} style={{width: `${Math.min(stats.attainment, 100)}%`}} />
                     </div>
-                    <p className="text-[10px] font-black mt-2 text-right text-blue-900">{stats.attainment.toFixed(1)}% da Meta</p>
+                    <p className="text-[10px] font-black mt-2 text-right text-blue-900">{(stats.attainment || 0).toFixed(1)}% da Meta</p>
                 </div>
 
                 <div className="bg-white p-8 rounded-[40px] shadow-sm border border-gray-100">
@@ -118,7 +119,7 @@ const DashboardAdmin: React.FC<DashboardAdminProps> = ({ stores, performanceData
                         <span className="text-[10px] font-black text-orange-500 uppercase">Performance</span>
                     </div>
                     <p className="text-[10px] font-black text-gray-400 uppercase tracking-widest">P.A. Médio</p>
-                    <h3 className="text-3xl font-black text-blue-950 italic tracking-tighter mt-1">{stats.avgPA.toFixed(2)} <span className="text-[10px] not-italic text-gray-300 uppercase">Pares</span></h3>
+                    <h3 className="text-3xl font-black text-blue-950 italic tracking-tighter mt-1">{(stats.avgPA || 0).toFixed(2)} <span className="text-[10px] not-italic text-gray-300 uppercase">Pares</span></h3>
                 </div>
 
                 <div className="bg-white p-8 rounded-[40px] shadow-sm border border-gray-100">
@@ -166,7 +167,8 @@ const DashboardAdmin: React.FC<DashboardAdminProps> = ({ stores, performanceData
                     <div className="flex-1 overflow-y-auto space-y-4 no-scrollbar">
                         {stats.currentData.map(d => {
                             const store = stores.find(s => s.id === d.storeId);
-                            const isOk = d.percentMeta >= 100;
+                            const percent = Number(d.percentMeta) || 0;
+                            const isOk = percent >= 100;
                             return (
                                 <div key={d.storeId} className="flex items-center justify-between p-4 bg-gray-50 rounded-2xl border border-gray-100 group hover:bg-blue-50 transition-all">
                                     <div className="flex items-center gap-3">
@@ -177,7 +179,9 @@ const DashboardAdmin: React.FC<DashboardAdminProps> = ({ stores, performanceData
                                         </div>
                                     </div>
                                     <div className="text-right">
-                                        <p className={`text-sm font-black italic tracking-tighter ${isOk ? 'text-green-600' : 'text-blue-900'}`}>{d.percentMeta.toFixed(1)}%</p>
+                                        <p className={`text-sm font-black italic tracking-tighter ${isOk ? 'text-green-600' : 'text-blue-900'}`}>
+                                            {percent.toFixed(1)}%
+                                        </p>
                                         <p className="text-[8px] font-black text-gray-400 uppercase tracking-widest">{formatCurrency(d.revenueActual)}</p>
                                     </div>
                                 </div>

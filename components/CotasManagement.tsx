@@ -7,7 +7,7 @@ import {
     LayoutGrid, UserCheck, Briefcase, Layers, TrendingDown, Info, Calendar,
     AlertTriangle, ArrowUpRight, ArrowDownRight, Target, PieChart, ChevronRight, Settings,
     Activity, ArrowRight, ChevronDown, ChevronUp, Lightbulb, Wallet, Filter, User as UserIcon, CalendarDays,
-    ShoppingBag, Shirt, Smile, Watch, Sparkles // Ícones novos
+    ShoppingBag, Shirt, Smile, Watch, Sparkles 
 } from 'lucide-react';
 
 const FULL_MONTH_NAMES = ["JANEIRO", "FEVEREIRO", "MARÇO", "ABRIL", "MAIO", "JUNHO", "JULHO", "AGOSTO", "SETEMBRO", "OUTUBRO", "NOVEMBRO", "DEZEMBRO"];
@@ -21,24 +21,19 @@ const getMonthNameFromKey = (key: string) => {
     return FULL_MONTH_NAMES[monthIndex] || key;
 };
 
-// Gera 12 meses a partir da data de HOJE automaticamente
 const generateTimeline = (): { label: string, key: string, monthIndex: number }[] => {
     const months: { label: string, key: string, monthIndex: number }[] = [];
     const now = new Date();
-    
     const startMonth = now.getMonth(); 
     const startYear = now.getFullYear();
 
     for (let i = 0; i < 12; i++) {
         const d = new Date(startYear, startMonth + i, 1);
-        
         const mIndex = d.getMonth();
         const year = d.getFullYear();
         const yearSuffix = String(year).slice(-2);
-        
         const label = `${SHORT_MONTHS_DISPLAY[mIndex]}-${yearSuffix}`;
         const key = `${year}-${String(mIndex + 1).padStart(2, '0')}`;
-        
         months.push({ label, key, monthIndex: mIndex });
     }
     return months;
@@ -65,11 +60,9 @@ const calculateInstallmentsMap = (shipmentMonthKey: string, terms: string, total
         const monthsToAdd = Math.floor(days / 30);
         const d = new Date(year, (month - 1) + monthsToAdd, 1);
         const key = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`;
-        
         const currentVal = (index === termDays.length - 1) 
             ? parseFloat((totalValue - sumAdded).toFixed(2))
             : valuePerInstallment;
-            
         installments[key] = (installments[key] || 0) + currentVal;
         sumAdded += currentVal;
     });
@@ -83,7 +76,6 @@ const normalizeText = (text: string) => {
         .trim();
 };
 
-// --- ÍCONES POR CATEGORIA ---
 const getCategoryIcon = (category: string) => {
     const norm = normalizeText(category);
     if (norm.includes('FEMININO')) return <ShoppingBag size={14} />;
@@ -108,13 +100,7 @@ interface CotasManagementProps {
   onSaveSettings: (settings: CotaSettings) => Promise<void>;
   onSaveDebts: (debt: CotaDebts) => Promise<void>;
   onDeleteDebt: (id: string) => Promise<void>;
-  onUpdateMixParameter?: (
-  id: string | null,
-  storeId: string,
-  category: string,
-  percent: number,
-  semester: number
-) => Promise<void>;
+  onUpdateMixParameter?: (id: string | null, storeId: string, category: string, percent: number, semester: number) => Promise<void>;
 }
 
 export const CotasManagement: React.FC<CotasManagementProps> = ({ 
@@ -122,7 +108,6 @@ export const CotasManagement: React.FC<CotasManagementProps> = ({
     onAddCota, onUpdateCota, onDeleteCota, onSaveSettings, onSaveDebts, onDeleteDebt, onUpdateMixParameter
 }) => {
   const timeline = useMemo(() => generateTimeline(), []);
-  
   const isAdmin = user.role === UserRole.ADMIN;
   const [manualStoreId, setManualStoreId] = useState<string>('');
   const activeStores = useMemo(() => (stores || []).filter(s => s.status === 'active').sort((a, b) => (parseInt(a.number) || 0) - (parseInt(b.number) || 0)), [stores]);
@@ -131,9 +116,7 @@ export const CotasManagement: React.FC<CotasManagementProps> = ({
   const [activeForm, setActiveForm] = useState<'order' | 'expense' | 'cota_config' | 'validated_orders' | 'mix_view' | null>(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [isEditingMix, setIsEditingMix] = useState(false);
-  
   const [mixFilterSemester, setMixFilterSemester] = useState<'all' | '1' | '2'>('all');
-
   const [selectedMobileMonth, setSelectedMobileMonth] = useState(timeline[0].key);
 
   const [brand, setBrand] = useState('');
@@ -147,16 +130,7 @@ export const CotasManagement: React.FC<CotasManagementProps> = ({
   
   const [simStartMonth, setSimStartMonth] = useState(timeline[0].key);
   const [simInstallments, setSimInstallments] = useState(3);
-
   const [semesterDebts, setSemesterDebts] = useState<Record<string, string>>({});
-
-  useEffect(() => {
-      if (timeline.length > 0) {
-          setShipmentMonth(timeline[0].key);
-          setSimStartMonth(timeline[0].key);
-          setSelectedMobileMonth(timeline[0].key);
-      }
-  }, [timeline]);
 
   useEffect(() => {
     if (activeForm === 'expense') {
@@ -194,9 +168,7 @@ export const CotasManagement: React.FC<CotasManagementProps> = ({
         const budgetTotal = Number(settings?.budgetValue || 0);
         const monthlyFixedExpenses = storeDebts.filter(d => d.month === m.key).reduce((a, b) => a + Number(b.value), 0);
         totalDebtsGlobal += monthlyFixedExpenses;
-        
         const managerPercentDecimal = (settings?.managerPercent || 0) / 100;
-
         const limitManager = budgetTotal * managerPercentDecimal;
         const limitBuyer = Math.max(0, budgetTotal - monthlyFixedExpenses - limitManager);
 
@@ -207,240 +179,73 @@ export const CotasManagement: React.FC<CotasManagementProps> = ({
         storeOrders.forEach(p => { 
             const val = getInstallmentValueForMonth(p, m.key);
             const role = String(p.createdByRole || '').toUpperCase();
-            
             if (p.status === 'VALIDADO' || p.status === 'validated' || p.status === 'FECHADA') {
-                if (role === 'GERENTE') { 
-                    usedManager += val; 
-                    totalManagerValidGlobal += val;
-                } else { 
-                    usedBuyer += val; 
-                    totalBuyerValidGlobal += val;
-                }
-            } 
-            else if (p.status === 'ABERTA' || p.status === 'pending') {
+                if (role === 'GERENTE') { usedManager += val; totalManagerValidGlobal += val; } 
+                else { usedBuyer += val; totalBuyerValidGlobal += val; }
+            } else if (p.status === 'ABERTA' || p.status === 'pending') {
                 pendingInstallmentSum += val;
                 if (role === 'GERENTE') { usedManager += val; } else { usedBuyer += val; }
             }
         });
 
-        const balanceManager = limitManager - usedManager;
-        const balanceBuyer = limitBuyer - usedBuyer;
-
-        stats[m.key] = { 
-            limitManager,
-            limitBuyer,
-            usedManager,
-            usedBuyer,
-            balanceManager,
-            balanceBuyer,
-            debts: monthlyFixedExpenses,
-            pendingInstallmentSum 
-        };
+        stats[m.key] = { limitManager, limitBuyer, usedManager, usedBuyer, balanceManager: limitManager - usedManager, balanceBuyer: limitBuyer - usedBuyer, debts: monthlyFixedExpenses, pendingInstallmentSum };
     });
     return { orders: storeOrders, stats, debts: storeDebts, totalBuyerValidGlobal, totalManagerValidGlobal, totalDebtsGlobal };
   }, [cotas, cotaSettings, cotaDebts, viewStoreId, timeline]);
 
   const simulationResult = useMemo(() => {
       if (!simStartMonth || simInstallments <= 0) return { maxPurchase: 0, limitingMonth: '' };
-
       const startIndex = timeline.findIndex(t => t.key === simStartMonth);
       if (startIndex === -1) return { maxPurchase: 0, limitingMonth: '' };
-
       let minAvailable = Infinity;
       let limitingMonthLabel = '';
-
       for (let i = 0; i < simInstallments; i++) {
           const targetIndex = startIndex + i;
           if (targetIndex >= timeline.length) continue;
-
           const monthKey = timeline[targetIndex].key;
-          const monthStats = consolidated.stats[monthKey];
-          const available = monthStats ? monthStats.balanceBuyer : 0;
-          
-          if (available < minAvailable) {
-              minAvailable = available;
-              limitingMonthLabel = timeline[targetIndex].label;
-          }
+          const available = consolidated.stats[monthKey]?.balanceBuyer || 0;
+          if (available < minAvailable) { minAvailable = available; limitingMonthLabel = timeline[targetIndex].label; }
       }
-
-      if (minAvailable < 0) minAvailable = 0;
-      const maxPurchase = minAvailable * simInstallments;
-
-      return { maxPurchase, limitingMonth: limitingMonthLabel };
+      if (minAvailable === Infinity || minAvailable < 0) minAvailable = 0;
+      return { maxPurchase: minAvailable * simInstallments, limitingMonth: limitingMonthLabel };
   }, [consolidated, simStartMonth, simInstallments, timeline]);
-
-  const calculatedShipmentLabel = useMemo(() => {
-      if (!simStartMonth) return '';
-      const [year, month] = simStartMonth.split('-').map(Number);
-      const d30 = new Date(year, month - 2, 1);
-      const label30 = SHORT_MONTHS_DISPLAY[d30.getMonth()];
-      const d90 = new Date(year, month - 4, 1);
-      const label90 = SHORT_MONTHS_DISPLAY[d90.getMonth()];
-
-      return (
-          <div className="flex flex-col leading-none ml-2">
-              <span className="text-[9px] font-black text-blue-800 uppercase">EMBARQUE:</span>
-              <div className="flex gap-2 text-[10px]">
-                  <span className="text-gray-400 font-bold">{label30} (30d)</span>
-                  <span className="text-orange-600 font-black">{label90} (90d)</span>
-              </div>
-          </div>
-      );
-  }, [simStartMonth]);
 
   const mixHierarchyData = useMemo(() => {
       const budget = Number(storeSettings?.budgetValue || 0);
       const segments = ['FEMININO', 'MASCULINO', 'INFANTIL', 'ACESSÓRIO'];
-      
       const mixRelevantOrders = cotas.filter(o => {
           if (o.storeId !== viewStoreId) return false;
           if (mixFilterSemester === 'all') return true; 
           const month = parseInt(o.shipmentDate.split('-')[1]); 
-          if (mixFilterSemester === '1') return month >= 1 && month <= 6;
-          if (mixFilterSemester === '2') return month >= 7 && month <= 12;
-          return true;
+          return mixFilterSemester === '1' ? (month >= 1 && month <= 6) : (month >= 7 && month <= 12);
       });
 
       return segments.map(segName => {
-        const segParam = mixParameters.find(m => {
-    if (m.store_id !== viewStoreId && m.storeId !== viewStoreId) return false;
-    if (normalizeText(m.category_name) !== normalizeText(segName)) return false;
-
-    if (mixFilterSemester === 'all') return true;
-    return m.semester === Number(mixFilterSemester);
-});
-
-          const metaPercent = segParam?.percentage || 0;
-
-          const subCats = (productCategories || []).filter(c => {
-              const pName = normalizeText(c.parent_category);
-              const target = normalizeText(segName);
-              return pName === target || pName.includes(target) || target.includes(pName);
-          });
-
+          const segParam = mixParameters.find(m => (m.store_id === viewStoreId || m.storeId === viewStoreId) && normalizeText(m.category_name) === normalizeText(segName) && (mixFilterSemester === 'all' || m.semester === Number(mixFilterSemester)));
+          const metaPercent = Number(segParam?.percentage || 0);
+          const subCats = (productCategories || []).filter(c => normalizeText(c.parent_category) === normalizeText(segName));
           let segUtilizedValueTotal = 0;
 
           const details = subCats.map(cat => {
-              const utilizedValue = mixRelevantOrders
-                .filter(o => {
-                    const orderCatId = String(o.category_id || '');
-                    const orderCatName = normalizeText(o.category_name || '');
-                    const orderClass = normalizeText(o.classification || '');
-                    const targetCatName = normalizeText(cat.category_name);
-                    const targetCatId = String(cat.id);
-                    const parentName = normalizeText(cat.parent_category);
-
-                    return orderCatId === targetCatId || 
-                           orderCatName === targetCatName || 
-                           orderClass === targetCatName ||
-                           (orderCatName === '' && parentName === normalizeText(segName));
-                })
-                .reduce((acc, curr) => acc + Number(curr.totalValue || 0), 0);
-              
+              const utilizedValue = mixRelevantOrders.filter(o => String(o.category_id) === String(cat.id) || normalizeText(o.category_name) === normalizeText(cat.category_name)).reduce((acc, curr) => acc + Number(curr.totalValue || 0), 0);
               segUtilizedValueTotal += utilizedValue;
-
-              return {
-                  id: cat.id,
-                  category_name: cat.category_name,
-                  utilizedValue
-              };
+              return { id: cat.id, category_name: cat.category_name, utilizedValue };
           });
-
-          // ORDENAÇÃO INTELIGENTE (Valor > 0 primeiro)
-          details.sort((a, b) => {
-              if (a.utilizedValue > 0 && b.utilizedValue === 0) return -1;
-              if (a.utilizedValue === 0 && b.utilizedValue > 0) return 1;
-              if (a.utilizedValue > 0 && b.utilizedValue > 0) return b.utilizedValue - a.utilizedValue;
-              return a.category_name.localeCompare(b.category_name);
-          });
-
-          const genericOrdersValue = mixRelevantOrders
-            .filter(o => {
-                const catName = normalizeText(o.category_name || o.classification);
-                return catName === normalizeText(segName) && 
-                       !subCats.some(sc => normalizeText(sc.category_name) === catName);
-            })
-            .reduce((acc, curr) => acc + Number(curr.totalValue || 0), 0);
-
-          segUtilizedValueTotal += genericOrdersValue;
-
-          // % do Orçamento Global
+          details.sort((a, b) => b.utilizedValue - a.utilizedValue);
           const utilizedPercentGlobal = budget > 0 ? (segUtilizedValueTotal / budget) * 100 : 0;
-
-          // % de Uso da PRÓPRIA Categoria (Equilíbrio)
-          // Se a meta é 40% e eu usei 40% do total, então usei 100% da minha verba
           const utilizationOfQuota = metaPercent > 0 ? (utilizedPercentGlobal / metaPercent) * 100 : 0;
 
-          return {
-              segment: segName,
-              metaPercent,
-              utilizedValue: segUtilizedValueTotal,
-              utilizedPercent: utilizedPercentGlobal,
-              utilizationOfQuota, // Nova métrica para a barra de progresso e cor
-              subcategories: details
-          };
+          return { segment: segName, metaPercent, utilizedValue: segUtilizedValueTotal, utilizedPercent: utilizedPercentGlobal, utilizationOfQuota, subcategories: details };
       });
   }, [productCategories, mixParameters, cotas, viewStoreId, storeSettings, mixFilterSemester]);
 
-const handleUpdateMix = async (category: string, value: string) => {
-    if (!onUpdateMixParameter) return;
-
-    // Impede salvar quando estiver em "Tudo"
-    if (mixFilterSemester === 'all') {
-        alert('Selecione um semestre para editar o mix');
-        return;
-    }
-
-    const percent = parseFloat(value.replace(',', '.')) || 0;
-    const currentSemester = Number(mixFilterSemester);
-
-    const existing = mixParameters.find(p => 
-        (p.store_id === viewStoreId || p.storeId === viewStoreId) &&
-        normalizeText(p.category_name) === normalizeText(category) &&
-        p.semester === currentSemester
-    );
-
-    await onUpdateMixParameter(
-        existing?.id || null,
-        viewStoreId,
-        category,
-        percent,
-        currentSemester
-    );
-};
-
-  const groupedCategories = useMemo(() => {
-      const groups: Record<string, QuotaCategory[]> = {};
-      (productCategories || []).forEach(c => {
-          const parent = c.parent_category || 'OUTROS';
-          if (!groups[parent]) groups[parent] = [];
-          groups[parent].push(c);
-      });
-      return groups;
-  }, [productCategories]);
-
-  // --- LÓGICA DE CORES REFINADA (Correção 100% = Vermelho) ---
   const getTrafficLightStyle = (utilizationRatio: number, isActiveItem: boolean = false) => {
-      // Se não tem valor, fica cinza (neutro)
-      if (!isActiveItem) {
-          return { text: 'text-gray-400', bar: 'bg-gray-300' };
-      }
-
-      // Se passou de 99% da cota da categoria, é VERMELHO (Crítico)
-      if (utilizationRatio >= 99) { 
-          return { text: 'text-red-600', bar: 'bg-red-500' };
-      } 
-      // Se passou de 70%, é AMARELO (Atenção)
-      else if (utilizationRatio >= 70) {
-          return { text: 'text-amber-600', bar: 'bg-amber-500' };
-      } 
-      // Abaixo de 70%, é VERDE (Tranquilo)
-      else {
-          return { text: 'text-emerald-600', bar: 'bg-emerald-500' };
-      }
+      if (!isActiveItem) return { text: 'text-gray-400', bar: 'bg-gray-300' };
+      if (utilizationRatio >= 99) return { text: 'text-red-600', bar: 'bg-red-500' };
+      if (utilizationRatio >= 70) return { text: 'text-amber-600', bar: 'bg-amber-500' };
+      return { text: 'text-emerald-600', bar: 'bg-emerald-500' };
   };
 
-  // -- HANDLERS --
   const handleSaveOrder = async (e: React.FormEvent) => {
       e.preventDefault();
       const val = parseFloat((totalValue as string).replace(',', '.'));
@@ -450,21 +255,7 @@ const handleUpdateMix = async (category: string, value: string) => {
           const installmentsMap = calculateInstallmentsMap(shipmentMonth, paymentTerms, val);
           const category = productCategories.find(c => c.id === selectedCategoryId);
           for (const storeId of selectedStoresForOrder) {
-              await onAddCota({
-                  id: `tmp-${Date.now()}`,
-                  storeId,
-                  brand: brand.toUpperCase().trim(),
-                  category_id: selectedCategoryId,
-                  category_name: category?.category_name || 'GERAL',
-                  totalValue: val,
-                  shipmentDate: shipmentMonth, 
-                  paymentTerms: paymentTerms.trim(),
-                  pairs: parseInt(pairs) || 0,
-                  installments: installmentsMap,
-                  createdByRole: orderCreatedByRole, 
-                  status: 'ABERTA',
-                  createdAt: new Date()
-              });
+              await onAddCota({ id: `tmp-${Date.now()}`, storeId, brand: brand.toUpperCase().trim(), category_id: selectedCategoryId, category_name: category?.category_name || 'GERAL', totalValue: val, shipmentDate: shipmentMonth, paymentTerms: paymentTerms.trim(), pairs: parseInt(pairs) || 0, installments: installmentsMap, createdByRole: orderCreatedByRole, status: 'ABERTA', createdAt: new Date() });
           }
           setBrand(''); setTotalValue(''); setPairs(''); setActiveForm(null);
           alert("Pedido(s) registrado(s) com sucesso!");
@@ -496,64 +287,8 @@ const handleUpdateMix = async (category: string, value: string) => {
     alert("Cota configurada com sucesso!");
   };
 
-  const handlePrintValidated = () => {
-    const printWindow = window.open('', '_blank', 'width=1000,height=1200');
-    if (!printWindow) return;
-    const store = stores.find(s => s.id === viewStoreId);
-    const grouped: Record<string, Cota[]> = {};
-    consolidated.orders.filter(o => o.status === 'VALIDADO' || o.status === 'validated' || o.status === 'FECHADA').forEach(o => {
-        if (!grouped[o.shipmentDate]) grouped[o.shipmentDate] = [];
-        grouped[o.shipmentDate].push(o);
-    });
-    const rows = Object.entries(grouped).map(([date, items]) => {
-        const monthLabel = getMonthNameFromKey(date);
-        return `
-            <div style="margin-bottom: 25px;">
-                <h3 style="background:#1e3a8a; color:white; padding:8px 12px; font-size:12px; font-weight:900; text-transform:uppercase; border-radius:4px;">EMBARQUE: ${monthLabel}</h3>
-                <table style="width:100%; border-collapse: collapse; font-size:11px; margin-top:10px;">
-                    <thead>
-                        <tr style="border-bottom: 2px solid #000; text-align:left; background:#f4f4f4;">
-                            <th style="padding:8px;">MARCA</th>
-                            <th style="padding:8px; text-align:center;">GESTOR</th>
-                            <th style="padding:8px;">CLASSIFICAÇÃO</th>
-                            <th style="padding:8px; text-align:center;">QTD</th>
-                            <th style="padding:8px; text-align:right;">VALOR TOTAL</th>
-                        </tr>
-                    </thead>
-                    <tbody>
-                        ${items.map(i => `
-                            <tr style="border-bottom: 1px solid #eee;">
-                                <td style="padding:8px;"><b>${i.brand}</b></td>
-                                <td style="padding:8px; text-align:center; font-size:9px;">${String(i.createdByRole || 'COMPRADOR').toUpperCase()}</td>
-                                <td style="padding:8px;">${i.category_name || i.classification}</td>
-                                <td style="padding:8px; text-align:center;">${i.pairs}</td>
-                                <td style="padding:8px; text-align:right; font-weight:bold;">${formatCurrency(i.totalValue)}</td>
-                            </tr>
-                        `).join('')}
-                    </tbody>
-                </table>
-            </div>
-        `;
-    }).join('');
-    const html = `<html><head><style>body { font-family: sans-serif; padding: 30px; } h1 { color: #1e3a8a; }</style></head><body>
-        <div style="display:flex; justify-content:space-between; align-items:center; border-bottom:4px solid #1e3a8a; padding-bottom:15px; margin-bottom:20px;">
-            <div>
-                <h1 style="margin:0; font-size:24px; font-weight:900; font-style:italic;">PEDIDOS <span style="color:#dc2626;">VALIDADOS</span></h1>
-                <p style="margin:5px 0 0; font-size:11px; font-weight:bold; color:#666;">UNIDADE ${store?.number} - ${store?.city}</p>
-            </div>
-            <div style="text-align:right; font-size:10px; font-weight:bold; color:#999;">EMISSÃO: ${new Date().toLocaleString('pt-BR')}</div>
-        </div>
-        ${rows}
-        <div style="margin-top:40px; border-top:1px solid #000; padding-top:10px; text-align:center; font-size:10px; font-weight:bold;">REAL ADMIN - ENGENHARIA DE COMPRAS</div>
-        <script>window.onload = function() { window.print(); setTimeout(window.close, 1000); }</script>
-    </body></html>`;
-    printWindow.document.write(html);
-    printWindow.document.close();
-  };
-
   return (
     <div className="flex flex-col h-screen bg-[#f3f4f6] overflow-hidden text-blue-950 font-sans">
-        {/* TOP BAR */}
         <div className="bg-white px-4 py-3 flex flex-col lg:flex-row justify-between items-center gap-4 z-50 shadow-sm border-b shrink-0">
             <div className="flex items-center gap-3 w-full lg:w-auto">
                 <div className="bg-blue-900 text-white p-2 rounded-lg shadow-md shrink-0"><Building2 size={20}/></div>
@@ -562,9 +297,7 @@ const handleUpdateMix = async (category: string, value: string) => {
                     <div className="flex items-center gap-2 mt-1">
                         {isAdmin ? (
                             <select value={viewStoreId} onChange={e => setManualStoreId(e.target.value)} className="bg-white border border-gray-200 rounded px-2 py-1 text-[10px] font-black uppercase text-blue-900 outline-none shadow-sm w-full lg:w-auto">
-                                {activeStores.map(s => (
-                                  <option key={s.id} value={s.id}>Loja {s.number} - {s.city}</option>
-                                ))}
+                                {activeStores.map(s => ( <option key={s.id} value={s.id}>Loja {s.number} - {s.city}</option> ))}
                             </select>
                         ) : (
                             <span className="text-[10px] font-black text-blue-800 uppercase tracking-widest">
@@ -584,7 +317,6 @@ const handleUpdateMix = async (category: string, value: string) => {
             </div>
         </div>
 
-        {/* SUGESTÃO DE COMPRA (SIMULADOR) */}
         <div className="bg-blue-50 px-4 py-3 border-b border-blue-100 shrink-0">
             <div className="flex flex-col lg:flex-row items-start lg:items-center gap-4">
                 <div className="flex items-center gap-2">
@@ -603,9 +335,6 @@ const handleUpdateMix = async (category: string, value: string) => {
                         <input type="number" value={simInstallments} onChange={e => setSimInstallments(Math.max(1, parseInt(e.target.value)))} className="w-12 bg-white border rounded px-2 py-1 text-[9px] font-black text-center" />
                     </div>
                 </div>
-                
-                {/* DISPLAY DA ENGENHARIA REVERSA */}
-                {calculatedShipmentLabel}
 
                 <div className="w-full lg:w-auto lg:ml-4 flex flex-col lg:flex-row items-start lg:items-center gap-2 bg-white px-3 py-2 rounded-lg border border-blue-100 shadow-sm ml-auto">
                     <div className="flex justify-between w-full lg:w-auto gap-4">
@@ -617,78 +346,6 @@ const handleUpdateMix = async (category: string, value: string) => {
             </div>
         </div>
 
-        {/* --- MOBILE VIEW (CARDS) --- */}
-        <div className="lg:hidden flex-1 overflow-y-auto bg-gray-50 p-4 space-y-4">
-            
-            {/* Seletor de Mês Mobile */}
-            <div className="flex gap-2 overflow-x-auto pb-2 no-scrollbar">
-                {timeline.map(m => (
-                    <button 
-                        key={m.key} 
-                        onClick={() => setSelectedMobileMonth(m.key)}
-                        className={`px-4 py-2 rounded-xl text-[10px] font-black uppercase whitespace-nowrap border transition-all ${selectedMobileMonth === m.key ? 'bg-blue-900 text-white border-blue-900 shadow-lg' : 'bg-white text-gray-400 border-gray-200'}`}
-                    >
-                        {m.label}
-                    </button>
-                ))}
-            </div>
-
-            {/* Resumo do Mês Selecionado */}
-            <div className="bg-white p-6 rounded-[24px] shadow-sm border border-gray-100">
-                <h4 className="text-[10px] font-black text-gray-400 uppercase tracking-widest mb-4 flex items-center gap-2">
-                    <Calendar size={14}/> Resumo de {getMonthNameFromKey(selectedMobileMonth)}
-                </h4>
-                <div className="grid grid-cols-2 gap-4">
-                    <div className="p-3 bg-blue-50 rounded-xl">
-                        <p className="text-[8px] font-bold text-blue-400 uppercase">Saldo Comprador</p>
-                        <p className={`text-xl font-black italic ${consolidated.stats[selectedMobileMonth]?.balanceBuyer < 0 ? 'text-red-600' : 'text-blue-900'}`}>
-                            {formatCurrency(consolidated.stats[selectedMobileMonth]?.balanceBuyer || 0)}
-                        </p>
-                    </div>
-                    <div className="p-3 bg-orange-50 rounded-xl">
-                        <p className="text-[8px] font-bold text-orange-400 uppercase">Saldo Gerente</p>
-                        <p className={`text-xl font-black italic ${consolidated.stats[selectedMobileMonth]?.balanceManager < 0 ? 'text-red-600' : 'text-orange-700'}`}>
-                            {formatCurrency(consolidated.stats[selectedMobileMonth]?.balanceManager || 0)}
-                        </p>
-                    </div>
-                </div>
-                <div className="mt-4 pt-4 border-t border-gray-100 flex justify-between items-center">
-                    <span className="text-[9px] font-bold text-red-400 uppercase">Dívidas Fixas</span>
-                    <span className="text-sm font-black text-red-600">{formatCurrency(consolidated.stats[selectedMobileMonth]?.debts || 0)}</span>
-                </div>
-            </div>
-
-            {/* Grid de Pedidos do Mês (ou todos) */}
-            <h4 className="text-[10px] font-black text-gray-400 uppercase tracking-widest pl-2">Pedidos em Aberto</h4>
-            <div className="grid grid-cols-2 gap-3">
-                {consolidated.orders.filter(o => (o.status === 'ABERTA' || o.status === 'pending')).map(order => (
-                    <div key={order.id} className="bg-white p-4 rounded-2xl shadow-sm border border-gray-100 flex flex-col justify-between">
-                        <div>
-                            <div className="flex justify-between items-start mb-2">
-                                <span className={`text-[8px] font-black px-2 py-0.5 rounded uppercase ${String(order.createdByRole).toUpperCase() === 'GERENTE' ? 'bg-orange-100 text-orange-700' : 'bg-blue-100 text-blue-700'}`}>
-                                    {String(order.createdByRole).substring(0,3)}
-                                </span>
-                                <div className="flex gap-1">
-                                    <button onClick={() => onUpdateCota(order.id, { status: 'VALIDADO' })} className="text-green-500"><CheckCircle size={14}/></button>
-                                    <button onClick={() => onDeleteCota(order.id)} className="text-red-300"><Trash2 size={14}/></button>
-                                </div>
-                            </div>
-                            <h4 className="text-xs font-black text-blue-950 uppercase italic leading-tight mb-1">{order.brand}</h4>
-                            <p className="text-[8px] text-gray-400 font-bold uppercase mb-2">{order.classification || 'Geral'}</p>
-                        </div>
-                        <div className="border-t pt-2 mt-2">
-                            <p className="text-[8px] text-gray-400 font-bold uppercase">Total</p>
-                            <p className="text-sm font-black text-blue-900">{formatCurrency(order.totalValue)}</p>
-                            <div className="mt-2 text-[8px] text-gray-400 bg-gray-50 p-1 rounded text-center">
-                                Embarque: {getMonthNameFromKey(order.shipmentDate)}
-                            </div>
-                        </div>
-                    </div>
-                ))}
-            </div>
-        </div>
-
-        {/* --- DESKTOP VIEW (TABLE) --- */}
         <div className="hidden lg:block flex-1 overflow-auto bg-white border-t border-gray-100 no-scrollbar">
             <table className="w-full text-center border-separate border-spacing-0 table-fixed min-w-[1500px]">
                 <thead className="sticky top-0 z-40">
@@ -699,86 +356,35 @@ const handleUpdateMix = async (category: string, value: string) => {
                     </tr>
                 </thead>
                 <tbody className="text-[10px] font-bold uppercase">
-                    
-                    {/* LINHAS DE TOTAIS / OTB */}
                     <tr className="bg-gray-100 border-b h-7">
                         <td className="px-2 text-left sticky left-0 bg-gray-100 z-30 font-black text-gray-500 text-[9px]">META GLOBAL</td>
                         <td className="font-black italic text-gray-500 sticky left-[160px] bg-gray-100 z-30 text-[9px]">{formatCurrency(Number(storeSettings?.budgetValue || 0))}</td>
                         {timeline.map(m => <td key={m.key} className="p-1 text-gray-300">-</td>)}
                     </tr>
-
                     <tr className="bg-red-50 border-b h-7">
                         <td className="px-2 text-left sticky left-0 bg-red-50 z-30 font-black text-red-600 text-[9px]">GASTOS FIXOS (DIVIDAS)</td>
                         <td className="font-black italic text-red-600 sticky left-[160px] bg-red-50 z-30 text-[9px]">{formatCurrency(consolidated.totalDebtsGlobal)}</td>
-                        {timeline.map(m => (
-                            <td key={m.key} className="p-1 font-black text-red-600 text-[9px]">{formatCurrency(consolidated.stats[m.key].debts)}</td>
-                        ))}
+                        {timeline.map(m => ( <td key={m.key} className="p-1 font-black text-red-600 text-[9px]">{formatCurrency(consolidated.stats[m.key].debts)}</td> ))}
                     </tr>
-
-                    {/* COTA GERENTE */}
                     <tr className="bg-orange-50 border-b h-8 border-t-2 border-orange-200">
-                        <td className="px-2 text-left sticky left-0 bg-orange-50 z-30">
-                            <div className="font-black text-orange-700 text-[9px]">COTA GERENTE</div>
-                            <div className="text-[7px] text-orange-400 font-bold">{storeSettings?.managerPercent || 0}% da Meta Bruta</div>
-                        </td>
+                        <td className="px-2 text-left sticky left-0 bg-orange-50 z-30"><div className="font-black text-orange-700 text-[9px]">COTA GERENTE</div><div className="text-[7px] text-orange-400 font-bold">{storeSettings?.managerPercent || 0}% da Meta Bruta</div></td>
                         <td className="font-black italic text-orange-700 sticky left-[160px] bg-orange-50 z-30 text-[9px] text-right pr-2">SALDO:</td>
-                        {timeline.map(m => (
-                            <td key={m.key} className={`p-1 font-black text-[10px] ${consolidated.stats[m.key].balanceManager < 0 ? 'text-red-600' : 'text-orange-700'}`}>
-                                {formatCurrency(consolidated.stats[m.key].balanceManager)}
-                            </td>
-                        ))}
+                        {timeline.map(m => ( <td key={m.key} className={`p-1 font-black text-[10px] ${consolidated.stats[m.key].balanceManager < 0 ? 'text-red-600' : 'text-orange-700'}`}>{formatCurrency(consolidated.stats[m.key].balanceManager)}</td> ))}
                     </tr>
-
-                    {/* COTA COMPRADOR */}
                     <tr className="bg-blue-50 border-b h-8 border-t-2 border-blue-200">
-                        <td className="px-2 text-left sticky left-0 bg-blue-50 z-30">
-                            <div className="font-black text-blue-800 text-[9px]">COTA COMPRADOR</div>
-                            <div className="text-[7px] text-blue-400 font-bold">Sobra Líquida (Meta - Fixos - Gerente)</div>
-                        </td>
+                        <td className="px-2 text-left sticky left-0 bg-blue-50 z-30"><div className="font-black text-blue-800 text-[9px]">COTA COMPRADOR</div><div className="text-[7px] text-blue-400 font-bold">Sobra Líquida</div></td>
                         <td className="font-black italic text-blue-800 sticky left-[160px] bg-blue-50 z-30 text-[9px] text-right pr-2">SALDO:</td>
-                        {timeline.map(m => (
-                            <td key={m.key} className={`p-1 font-black text-[10px] ${consolidated.stats[m.key].balanceBuyer < 0 ? 'text-red-600 animate-pulse' : 'text-blue-800'}`}>
-                                {formatCurrency(consolidated.stats[m.key].balanceBuyer)}
-                            </td>
-                        ))}
+                        {timeline.map(m => ( <td key={m.key} className={`p-1 font-black text-[10px] ${consolidated.stats[m.key].balanceBuyer < 0 ? 'text-red-600 animate-pulse' : 'text-blue-800'}`}>{formatCurrency(consolidated.stats[m.key].balanceBuyer)}</td> ))}
                     </tr>
-
-                 {/* LISTA DE PEDIDOS */}
                     {consolidated.orders.filter(o => o.status === 'ABERTA' || o.status === 'pending').map(order => {
-                        const role = String(order.createdByRole || '').trim().toUpperCase();
-                        const isManagerOrder = role === 'GERENTE';
-                        const isAcessorio = (order.classification || order.category_name)?.toUpperCase().includes('ACESSÓRIO');
-                        const qtyType = isAcessorio ? 'UN' : 'PR';
-
+                        const isManagerOrder = String(order.createdByRole).toUpperCase() === 'GERENTE';
                         return (
                             <tr key={order.id} className="hover:bg-blue-50/50 transition-colors border-b group h-10">
-                                <td className="px-2 text-left sticky left-0 bg-white group-hover:bg-blue-50/50 z-30 shadow-sm overflow-hidden">
-                                    <div className="flex items-center gap-1.5">
-                                        {/* BOLINHA: LARANJA SE FOR GERENTE */}
-                                        <div className={`w-2 h-2 rounded-full shrink-0 ${isManagerOrder ? 'bg-orange-500' : 'bg-blue-600'} shadow-sm`}></div>
-                                        <div className="flex-1 min-w-0">
-                                            {/* TEXTO: LARANJA SE FOR GERENTE */}
-                                            <div className={`text-[9px] font-black uppercase italic leading-none mb-0.5 truncate ${isManagerOrder ? 'text-orange-700' : 'text-blue-800'}`}>{order.brand}</div>
-                                            <div className="text-[7px] text-gray-900 font-bold uppercase leading-none truncate">
-                                                {order.classification || order.category_name || 'GERAL'} | {order.pairs || 0}{qtyType}
-                                            </div>
-                                        </div>
-                                        <div className="flex items-center gap-1 ml-auto opacity-0 group-hover:opacity-100 transition-opacity">
-                                            <button onClick={() => onUpdateCota(order.id, { status: 'VALIDADO' })} className="text-green-500 hover:scale-110"><CheckCircle size={12}/></button>
-                                            <button onClick={() => onDeleteCota(order.id)} className="text-red-300 hover:text-red-600 hover:scale-110"><Trash2 size={12}/></button>
-                                        </div>
-                                    </div>
-                                </td>
-                                <td className="bg-white sticky left-[160px] z-30 group-hover:bg-blue-50/50 shadow-sm text-center">
-                                    <div className={`text-[9px] font-black italic ${isManagerOrder ? 'text-orange-700' : 'text-gray-900'}`}>{formatCurrency(order.totalValue)}</div>
-                                </td>
+                                <td className="px-2 text-left sticky left-0 bg-white group-hover:bg-blue-50/50 z-30 shadow-sm overflow-hidden"><div className="flex items-center gap-1.5"><div className={`w-2 h-2 rounded-full shrink-0 ${isManagerOrder ? 'bg-orange-500' : 'bg-blue-600'} shadow-sm`}></div><div className="flex-1 min-w-0"><div className={`text-[9px] font-black uppercase italic leading-none mb-0.5 truncate ${isManagerOrder ? 'text-orange-700' : 'text-blue-800'}`}>{order.brand}</div><div className="text-[7px] text-gray-900 font-bold uppercase leading-none truncate">{order.category_name || 'GERAL'} | {order.pairs || 0} PR</div></div><div className="flex items-center gap-1 ml-auto opacity-0 group-hover:opacity-100 transition-opacity"><button onClick={() => onUpdateCota(order.id, { status: 'VALIDADO' })} className="text-green-500 hover:scale-110"><CheckCircle size={12}/></button><button onClick={() => onDeleteCota(order.id)} className="text-red-300 hover:text-red-600 hover:scale-110"><Trash2 size={12}/></button></div></div></td>
+                                <td className="bg-white sticky left-[160px] z-30 group-hover:bg-blue-50/50 shadow-sm text-center"><div className={`text-[9px] font-black italic ${isManagerOrder ? 'text-orange-700' : 'text-gray-900'}`}>{formatCurrency(order.totalValue)}</div></td>
                                 {timeline.map(m => {
                                     const val = getInstallmentValueForMonth(order, m.key);
-                                    return (
-                                        <td key={m.key} className={`p-0.5 border-r border-gray-50 font-black text-[9px] ${val > 0 ? (isManagerOrder ? 'text-orange-600 bg-orange-50/30' : 'text-blue-600') : 'text-gray-100'}`}>
-                                            {val > 0 ? formatCurrency(val) : ''}
-                                        </td>
-                                    );
+                                    return ( <td key={m.key} className={`p-0.5 border-r border-gray-50 font-black text-[9px] ${val > 0 ? (isManagerOrder ? 'text-orange-600 bg-orange-50/30' : 'text-blue-600') : 'text-gray-100'}`}>{val > 0 ? formatCurrency(val) : ''}</td> );
                                 })}
                             </tr>
                         );
@@ -787,319 +393,36 @@ const handleUpdateMix = async (category: string, value: string) => {
             </table>
         </div>
 
-        {/* MODAL: MIX */}
         {activeForm === 'mix_view' && (
             <div className="fixed inset-0 bg-black/80 backdrop-blur-md flex items-center justify-center z-[100] p-4">
                 <div className="bg-[#f8fafc] rounded-[24px] w-full max-w-6xl shadow-2xl overflow-hidden border-t-4 border-purple-600 max-h-[90vh] flex flex-col">
                     <div className="p-3 border-b bg-white flex justify-between items-center shrink-0">
-                        <h3 className="text-sm font-black uppercase italic text-blue-950 flex items-center gap-2">
-                            <Activity className="text-purple-600" size={16} /> Dashboard <span className="text-purple-600">Mix OTB</span>
-                        </h3>
-                        <div className="flex items-center gap-2">
-                             {/* FILTRO DE SEMESTRE NO MODAL */}
-                             <div className="flex bg-gray-100 p-0.5 rounded-lg">
-                                <button onClick={() => setMixFilterSemester('all')} className={`px-2 py-1 rounded-md text-[8px] font-black uppercase ${mixFilterSemester === 'all' ? 'bg-white text-purple-900 shadow-sm' : 'text-gray-400'}`}>Tudo</button>
-                                <button onClick={() => setMixFilterSemester('1')} className={`px-2 py-1 rounded-md text-[8px] font-black uppercase ${mixFilterSemester === '1' ? 'bg-white text-purple-900 shadow-sm' : 'text-gray-400'}`}>1º Sem</button>
-                                <button onClick={() => setMixFilterSemester('2')} className={`px-2 py-1 rounded-md text-[8px] font-black uppercase ${mixFilterSemester === '2' ? 'bg-white text-purple-900 shadow-sm' : 'text-gray-400'}`}>2º Sem</button>
-                             </div>
-                             {isAdmin && (
-                                <button onClick={() => setIsEditingMix(!isEditingMix)} className={`p-1.5 rounded-lg transition-all shadow-sm ${isEditingMix ? 'bg-purple-600 text-white' : 'bg-white text-purple-600 border border-purple-100 hover:bg-purple-50'}`}>
-                                    {isEditingMix ? <Save size={14} /> : <Settings size={14} />}
-                                </button>
-                             )}
-                             <button onClick={() => { setActiveForm(null); setIsEditingMix(false); }} className="p-1.5 bg-gray-100 text-gray-400 hover:text-red-600 rounded-lg transition-all"><X size={16}/></button>
-                        </div>
+                        <h3 className="text-sm font-black uppercase italic text-blue-950 flex items-center gap-2"><Activity className="text-purple-600" size={16} /> Dashboard <span className="text-purple-600">Mix OTB</span></h3>
+                        <button onClick={() => setActiveForm(null)} className="p-1.5 bg-gray-100 text-gray-400 hover:text-red-600 rounded-lg transition-all"><X size={16}/></button>
                     </div>
                     <div className="flex-1 overflow-y-auto p-4 space-y-4 no-scrollbar">
-                        {/* CARDS PRINCIPAIS: SEGMENTOS */}
                         <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
                             {mixHierarchyData.map(seg => {
-                                // AQUI ESTÁ A CORREÇÃO DA LÓGICA DE COR (SEMÁFORO)
-                                const styles = getTrafficLightStyle(seg.utilizationOfQuota, true);
-                                
+                                const styles = getTrafficLightStyle(seg.utilizationOfQuota, seg.utilizedValue > 0);
                                 return (
-                                <div key={seg.segment} className={`p-3 rounded-2xl shadow-sm border border-gray-100 flex flex-col justify-between transition-all bg-white`}>
+                                <div key={seg.segment} className="p-3 rounded-2xl shadow-sm border border-gray-100 flex flex-col justify-between bg-white">
                                     <div className="flex justify-between items-start mb-2">
-                                        <div className={`p-1.5 rounded-lg bg-gray-50 text-gray-600`}>{getCategoryIcon(seg.segment)}</div>
+                                        <div className="p-1.5 rounded-lg bg-gray-50 text-gray-600">{getCategoryIcon(seg.segment)}</div>
                                         <div className="text-right">
                                             <p className="text-[7px] font-black text-gray-400 uppercase tracking-widest leading-none mb-0.5">Meta</p>
-                                            {isEditingMix ? (
-                                                <input 
-                                                    key={`input-${seg.segment}-${seg.metaPercent}`}
-                                                    type="text" 
-                                                    defaultValue={seg.metaPercent} 
-                                                    onBlur={(e) => handleUpdateMix(seg.segment, e.target.value)} 
-                                                    onKeyDown={(e) => {
-                                                        if(e.key === 'Enter') {
-                                                            handleUpdateMix(seg.segment, (e.target as HTMLInputElement).value);
-                                                            (e.target as HTMLInputElement).blur();
-                                                        }
-                                                    }}
-                                                    className="w-10 p-0.5 bg-white border border-purple-200 rounded text-center text-sm font-black text-purple-600 outline-none" 
-                                                />
-                                            ) : (
-                                                <span className={`text-sm font-black italic tracking-tighter text-blue-900`}>{seg.metaPercent.toFixed(1)}%</span>
-                                            )}
+                                            <span className="text-sm font-black italic tracking-tighter text-blue-900">{(seg.metaPercent || 0).toFixed(1)}%</span>
                                         </div>
                                     </div>
                                     <div>
-                                        <h4 className={`text-[10px] font-black text-blue-950 uppercase italic tracking-tighter mb-1`}>{seg.segment}</h4>
+                                        <h4 className="text-[10px] font-black text-blue-950 uppercase italic tracking-tighter mb-1">{seg.segment}</h4>
                                         <div className="space-y-1">
-                                            <div className="flex justify-between items-end">
-                                                <span className="text-[7px] font-black text-gray-400 uppercase">{formatCurrency(seg.utilizedValue)}</span>
-                                                {/* CORREÇÃO DO PERCENTUAL: Mostra o percentual DA COTA usada */}
-                                                <span className={`text-[8px] font-black italic ${styles.text}`}>{seg.utilizationOfQuota.toFixed(1)}% Usado</span>
-                                            </div>
-                                            <div className="w-full bg-gray-100 rounded-full h-1 overflow-hidden">
-                                                <div className={`h-full rounded-full transition-all duration-1000 ${styles.bar}`} style={{width: `${Math.min(seg.utilizationOfQuota, 100)}%`}} />
-                                            </div>
+                                            <div className="flex justify-between items-end"><span className="text-[7px] font-black text-gray-400 uppercase">{formatCurrency(seg.utilizedValue)}</span><span className={`text-[8px] font-black italic ${styles.text}`}>{(seg.utilizationOfQuota || 0).toFixed(1)}% Usado</span></div>
+                                            <div className="w-full bg-gray-100 rounded-full h-1 overflow-hidden"><div className={`h-full rounded-full transition-all duration-1000 ${styles.bar}`} style={{width: `${Math.min(seg.utilizationOfQuota || 0, 100)}%`}} /></div>
                                         </div>
                                     </div>
                                 </div>
                             )})}
                         </div>
-
-                        {/* LISTA DETALHADA: SUBCATEGORIAS */}
-                        <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
-                            {mixHierarchyData.map(seg => {
-                                const parentStyles = getTrafficLightStyle(seg.utilizationOfQuota, true);
-                                
-                                return (
-                                <div key={seg.segment} className="bg-white rounded-2xl shadow-sm border border-gray-100 overflow-hidden flex flex-col">
-                                    <div className={`p-2.5 flex justify-between items-center bg-gray-50 border-b border-gray-100`}>
-                                        <h4 className={`font-black uppercase italic tracking-widest text-[8px] flex items-center gap-1.5 text-blue-950`}>
-                                            <div className={`w-1 h-3 rounded-full ${parentStyles.bar}`}></div> {seg.segment}
-                                        </h4>
-                                        <span className={`text-[8px] font-black uppercase tracking-widest text-gray-400`}>
-                                            Share Global: {seg.utilizedPercent.toFixed(1)}%
-                                        </span>
-                                    </div>
-                                    <div className="p-2.5 space-y-1.5">
-                                        {seg.subcategories.map(sub => {
-                                            // Calcula a contribuição DESTE item para a meta do pai
-                                            const subContribution = seg.utilizedValue > 0 ? (sub.utilizedValue / seg.utilizedValue) * 100 : 0;
-                                            
-                                            // Se tem valor, usa o estilo do Pai (para mostrar alerta se o pai estourou)
-                                            // Se não tem valor, fica cinza
-                                            const subStyle = sub.utilizedValue > 0 ? parentStyles : { text: 'text-gray-400', bar: 'bg-gray-200' };
-                                            
-                                            return (
-                                                <div key={sub.id} className={`flex items-center gap-2 p-2 rounded-xl border border-transparent transition-all hover:bg-gray-50`}>
-                                                    <div className="flex-1 min-w-0">
-                                                        <p className={`text-[9px] font-black uppercase italic leading-none mb-0.5 truncate text-blue-950`}>{sub.category_name}</p>
-                                                        <p className="text-[7px] font-bold text-gray-400 uppercase tracking-widest">{formatCurrency(sub.utilizedValue)}</p>
-                                                    </div>
-                                                    <div className="flex items-center gap-2">
-                                                        <span className="text-[8px] font-black text-gray-400 uppercase">Share:</span>
-                                                        <span className={`text-[9px] font-black italic ${subStyle.text}`}>{subContribution.toFixed(1)}%</span>
-                                                    </div>
-                                                </div>
-                                            );
-                                        })}
-                                        {seg.subcategories.length === 0 && (
-                                            <p className="text-[8px] text-gray-400 text-center italic py-2">Nenhuma subcategoria vinculada</p>
-                                        )}
-                                    </div>
-                                </div>
-                            )})}
-                        </div>
-                    </div>
-                </div>
-            </div>
-        )}
-
-        {/* MODAL: NOVO PEDIDO */}
-        {activeForm === 'order' && (
-            <div className="fixed inset-0 bg-black/80 backdrop-blur-md flex items-center justify-center z-[100] p-4">
-                <div className="bg-white rounded-[24px] w-full max-w-xl shadow-2xl overflow-hidden border-t-4 border-blue-900 max-h-[90vh] overflow-y-auto no-scrollbar">
-                    <div className="p-4 border-b bg-gray-50/50 flex justify-between items-center">
-                        <h3 className="text-sm font-black uppercase italic text-blue-950 flex items-center gap-2"><Plus className="text-red-600" size={16} /> Novo <span className="text-red-600">Pedido</span></h3>
-                        <button onClick={() => setActiveForm(null)} className="text-gray-400 hover:text-red-600"><X size={18}/></button>
-                    </div>
-                    <form onSubmit={handleSaveOrder} className="p-4 space-y-3">
-                        <div className="grid grid-cols-2 gap-3">
-                            <div className="space-y-1">
-                                <label className="text-[8px] font-black text-gray-400 uppercase ml-2">Marca</label>
-                                <input required value={brand} onChange={e => setBrand(e.target.value)} className="w-full p-2 bg-gray-50 rounded-xl font-black text-gray-900 uppercase italic shadow-inner outline-none text-[10px]" placeholder="EX: VIZZANO" />
-                            </div>
-                            <div className="space-y-1">
-                                <label className="text-[8px] font-black text-gray-400 uppercase ml-2">Classificação</label>
-                                <select required value={selectedCategoryId} onChange={e => setSelectedCategoryId(e.target.value)} className="w-full p-2 bg-gray-50 rounded-xl font-black text-gray-900 uppercase outline-none text-[9px]">
-                                    <option value="">SELECIONE...</option>
-                                    {(Object.entries(groupedCategories) as [string, QuotaCategory[]][]).map(([parent, cats]) => (
-                                        <optgroup key={parent} label={parent}>
-                                            {cats.map(c => <option key={c.id} value={c.id}>{c.category_name}</option>)}
-                                        </optgroup>
-                                    ))}
-                                </select>
-                            </div>
-                        </div>
-                        <div className="grid grid-cols-3 gap-3">
-                            <div className="space-y-1">
-                                <label className="text-[8px] font-black text-gray-400 uppercase ml-2">Embarque</label>
-                                <select value={shipmentMonth} onChange={e => setShipmentMonth(e.target.value)} className="w-full p-2 bg-gray-50 rounded-xl font-black text-gray-900 outline-none text-[9px]">
-                                    {timeline.map(m => <option key={m.key} value={m.key}>{m.label}</option>)}
-                                </select>
-                            </div>
-                            <div className="space-y-1">
-                                <label className="text-[8px] font-black text-gray-400 uppercase ml-2">Prazos</label>
-                                <input required value={paymentTerms} onChange={e => setPaymentTerms(e.target.value)} className="w-full p-2 bg-gray-50 rounded-xl font-black text-gray-900 text-center outline-none text-[9px]" />
-                            </div>
-                            <div className="space-y-1">
-                                <label className="text-[8px] font-black text-gray-400 uppercase ml-2">Valor (R$)</label>
-                                <input required value={totalValue} onChange={e => setTotalValue(e.target.value)} className="w-full p-2 bg-blue-50/50 rounded-xl font-black text-blue-900 text-xs text-center shadow-inner outline-none" placeholder="0,00" />
-                            </div>
-                        </div>
-                        <div className="grid grid-cols-2 gap-3">
-                            <div className="space-y-1">
-                                <label className="text-[8px] font-black text-gray-400 uppercase ml-2">Qtd</label>
-                                <input value={pairs} onChange={e => setPairs(e.target.value.replace(/\D/g, ''))} className="w-full p-2 bg-gray-50 rounded-xl font-black text-gray-900 text-center outline-none text-[10px]" placeholder="0" />
-                            </div>
-                            <div className="space-y-1">
-                                <label className="text-[8px] font-black text-gray-400 uppercase ml-2">Perfil</label>
-                                <div className="flex bg-gray-100 p-1 rounded-xl">
-                                    <button type="button" onClick={() => setOrderCreatedByRole('COMPRADOR')} className={`flex-1 py-1 rounded-lg font-black text-[8px] uppercase transition-all ${orderCreatedByRole === 'COMPRADOR' ? 'bg-blue-900 text-white' : 'text-gray-400'}`}>Comp</button>
-                                    <button type="button" onClick={() => setOrderCreatedByRole('GERENTE')} className={`flex-1 py-1 rounded-lg font-black text-[8px] uppercase transition-all ${orderCreatedByRole === 'GERENTE' ? 'bg-orange-600 text-white' : 'text-gray-400'}`}>Ger</button>
-                                </div>
-                            </div>
-                        </div>
-                        {isAdmin && (
-                            <div className="bg-gray-50 p-2 rounded-xl border border-gray-100 shadow-inner">
-                                <label className="text-[8px] font-black text-blue-900 uppercase italic ml-2 mb-1 block">Unidades</label>
-                                <div className="grid grid-cols-5 gap-1 max-h-20 overflow-y-auto no-scrollbar">
-                                    {activeStores.map(s => (
-                                        <button key={s.id} type="button" onClick={() => setSelectedStoresForOrder(prev => prev.includes(s.id) ? prev.filter(id => id !== s.id) : [...prev, s.id])} className={`p-1 rounded-lg text-[7px] font-black uppercase border-2 transition-all ${selectedStoresForOrder.includes(s.id) ? 'bg-blue-900 border-blue-900 text-white' : 'bg-white border-gray-100 text-gray-400'}`}>{s.number}</button>
-                                    ))}
-                                </div>
-                            </div>
-                        )}
-                        <button type="submit" disabled={isSubmitting} className="w-full py-2.5 bg-red-600 text-white rounded-xl font-black uppercase text-[9px] shadow-lg active:scale-95 transition-all border-b-4 border-red-900 flex items-center justify-center gap-2">
-                            {isSubmitting ? <Loader2 className="animate-spin" size={12} /> : <Save size={12}/>} SALVAR PEDIDO
-                        </button>
-                    </form>
-                </div>
-            </div>
-        )}
-
-        {/* MODAL: DESPESAS */}
-        {activeForm === 'expense' && (
-            <div className="fixed inset-0 bg-black/80 backdrop-blur-md flex items-center justify-center z-[100] p-4">
-                <div className="bg-white rounded-[24px] w-full max-w-xl shadow-2xl animate-in zoom-in duration-300 overflow-hidden border-t-4 border-orange-600 max-h-[90vh] flex flex-col">
-                    <div className="p-4 border-b bg-gray-50/50 flex justify-between items-center">
-                        <h3 className="text-sm font-black uppercase italic text-blue-950 flex items-center gap-2"><DollarSign className="text-orange-600" size={18} /> Gastos <span className="text-orange-600">Fixos</span></h3>
-                        <button onClick={() => setActiveForm(null)} className="text-gray-400 hover:text-red-600 transition-all"><X size={20}/></button>
-                    </div>
-                    <form onSubmit={handleSaveAllExpenses} className="flex-1 overflow-y-auto no-scrollbar p-4">
-                        <div className="grid grid-cols-2 gap-3 pr-1.5">
-                            {timeline.map(m => (
-                                <div key={m.key} className="bg-gray-50 p-2 rounded-xl border border-gray-100 shadow-sm group hover:border-orange-200 transition-all">
-                                    <label className="text-[7px] font-black text-gray-400 uppercase tracking-widest mb-1 block group-hover:text-orange-600 transition-colors">{m.label}</label>
-                                    <div className="relative">
-                                        <span className="absolute left-2 top-1/2 -translate-y-1/2 text-orange-400 text-[9px] font-black">R$</span>
-                                        <input 
-                                            value={semesterDebts[m.key] || ''} 
-                                            onChange={e => setSemesterDebts({...semesterDebts, [m.key]: e.target.value})} 
-                                            className="w-full pl-6 pr-1.5 py-1.5 bg-white border border-gray-200 rounded-lg text-[10px] font-black text-blue-900 outline-none focus:ring-2 focus:ring-orange-50"
-                                            placeholder="0,00"
-                                        />
-                                    </div>
-                                </div>
-                            ))}
-                        </div>
-                        <button type="submit" disabled={isSubmitting} className="w-full mt-4 py-2.5 bg-orange-600 text-white rounded-xl font-black uppercase text-[9px] shadow-lg active:scale-95 transition-all border-b-4 border-orange-900 flex items-center justify-center gap-2">
-                            {isSubmitting ? <Loader2 className="animate-spin" size={14} /> : <Save size={14}/>} ATUALIZAR DESPESAS
-                        </button>
-                    </form>
-                </div>
-            </div>
-        )}
-
-        {/* MODAL: CONFIGURAÇÃO DE COTA */}
-        {activeForm === 'cota_config' && (
-            <div className="fixed inset-0 bg-black/80 backdrop-blur-md flex items-center justify-center z-[100] p-4">
-                <div className="bg-white rounded-[24px] w-full max-w-sm shadow-2xl animate-in zoom-in duration-300 overflow-hidden border-t-4 border-yellow-500">
-                    <div className="p-4 border-b bg-gray-50/50 flex justify-between items-center">
-                        <h3 className="text-sm font-black uppercase italic text-blue-950 flex items-center gap-2"><Calculator className="text-yellow-500" size={18} /> Configurar <span className="text-yellow-600">OTB</span></h3>
-                        <button onClick={() => setActiveForm(null)} className="text-gray-400 hover:text-red-600 transition-all"><X size={20}/></button>
-                    </div>
-                    <form onSubmit={handleSaveCotaSettings} className="p-6 space-y-4">
-                        <div className="space-y-1.5">
-                            <label className="text-[9px] font-black text-gray-400 uppercase ml-2 tracking-widest">Verba Global</label>
-                            <div className="relative">
-                                <span className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-300 font-black text-[10px]">R$</span>
-                                <input 
-                                    required 
-                                    value={budgetVal} 
-                                    onChange={e => setBudgetVal(e.target.value)} 
-                                    className="w-full pl-8 pr-3 py-3 bg-gray-50 border-none rounded-xl font-black text-blue-950 text-lg shadow-inner outline-none focus:ring-4 focus:ring-yellow-50"
-                                    placeholder="0,00"
-                                />
-                            </div>
-                        </div>
-                        <div className="space-y-1.5">
-                            <label className="text-[9px] font-black text-gray-400 uppercase ml-2 tracking-widest">Partilha Gerente (%)</label>
-                            <input 
-                                required 
-                                value={managerPct} 
-                                onChange={e => setManagerPct(e.target.value)} 
-                                className="w-full p-3 bg-gray-50 border-none rounded-xl font-black text-orange-600 text-lg shadow-inner outline-none text-center focus:ring-4 focus:ring-yellow-50"
-                                placeholder="20"
-                            />
-                        </div>
-                        <button type="submit" disabled={isSubmitting} className="w-full py-3 bg-yellow-500 text-blue-950 rounded-xl font-black uppercase text-[9px] shadow-lg active:scale-95 transition-all border-b-4 border-yellow-700 flex items-center justify-center gap-2">
-                            {isSubmitting ? <Loader2 className="animate-spin" size={14} /> : <Save size={14}/>} SALVAR CONFIGURAÇÃO
-                        </button>
-                    </form>
-                </div>
-            </div>
-        )}
-
-        {/* MODAL: VALIDADOS */}
-        {activeForm === 'validated_orders' && (
-            <div className="fixed inset-0 bg-black/80 backdrop-blur-md flex items-center justify-center z-[100] p-4">
-                <div className="bg-white rounded-[24px] w-full max-w-4xl shadow-2xl animate-in zoom-in duration-300 overflow-hidden border-t-8 border-green-600 max-h-[90vh] flex flex-col">
-                    <div className="p-4 border-b bg-gray-50/50 flex justify-between items-center">
-                        <h3 className="text-sm font-black uppercase italic text-blue-950 flex items-center gap-2"><BadgeCheck className="text-green-600" size={18} /> Pedidos <span className="text-green-600">Validados</span></h3>
-                        <div className="flex gap-2">
-                             <button onClick={handlePrintValidated} className="p-1.5 bg-blue-50 text-blue-700 rounded-lg hover:bg-blue-100 transition-all"><Printer size={16}/></button>
-                             <button onClick={() => setActiveForm(null)} className="p-1.5 bg-gray-50 text-gray-400 hover:text-red-600 rounded-lg transition-all"><X size={16}/></button>
-                        </div>
-                    </div>
-                    <div className="flex-1 overflow-y-auto no-scrollbar">
-                        <table className="w-full text-left">
-                            <thead className="bg-white sticky top-0 z-10 border-b border-gray-100 text-[9px] font-black text-gray-400 uppercase tracking-widest">
-                                <tr>
-                                    <th className="px-4 py-3">Identificação</th>
-                                    <th className="px-4 py-3 text-center">Gestor</th>
-                                    <th className="px-4 py-3">Embarque</th>
-                                    <th className="px-4 py-3 text-right">Valor Total</th>
-                                    <th className="px-4 py-3 text-center">Ações</th>
-                                </tr>
-                            </thead>
-                            <tbody className="divide-y divide-gray-50 font-bold text-[10px]">
-                                {consolidated.orders.filter(o => o.status === 'VALIDADO' || o.status === 'validated' || o.status === 'FECHADA').map(order => (
-                                    <tr key={order.id} className="hover:bg-gray-50 transition-all group">
-                                        <td className="px-4 py-2">
-                                            <div className="font-black text-gray-900 uppercase italic tracking-tighter leading-none">{order.brand}</div>
-                                            <div className="text-[8px] text-gray-400 uppercase mt-0.5 italic">{order.classification || order.category_name}</div>
-                                        </td>
-                                        <td className="px-4 py-2 text-center">
-                                            <span className={`text-[9px] font-black px-2 py-1 rounded uppercase ${String(order.createdByRole).toUpperCase() === 'GERENTE' ? 'bg-orange-100 text-orange-700' : 'bg-blue-100 text-blue-700'}`}>
-                                                {String(order.createdByRole || 'COMPRADOR').toUpperCase()}
-                                            </span>
-                                        </td>
-                                        <td className="px-4 py-2"><span className="text-[9px] font-black text-blue-600 bg-blue-50 px-2 py-0.5 rounded-full uppercase">{getMonthNameFromKey(order.shipmentDate)}</span></td>
-                                        <td className="px-4 py-2 text-right font-black text-blue-950 text-xs italic">{formatCurrency(order.totalValue)}</td>
-                                        <td className="px-4 py-2 text-center">
-                                            <div className="flex justify-center gap-1 opacity-0 group-hover:opacity-100 transition-all">
-                                                <button onClick={() => onUpdateCota(order.id, { status: 'ABERTA' })} className="p-1.5 text-orange-600 hover:bg-orange-50 rounded-lg"><ArrowDownRight size={16}/></button>
-                                                <button onClick={() => onDeleteCota(order.id)} className="p-1.5 text-red-300 hover:text-red-600 rounded-lg"><Trash2 size={16}/></button>
-                                            </div>
-                                        </td>
-                                    </tr>
-                                ))}
-                            </tbody>
-                        </table>
                     </div>
                 </div>
             </div>
