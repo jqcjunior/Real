@@ -1,34 +1,77 @@
-import React, { useState, useMemo } from 'react';
-import { Store, MonthlyPerformance, MonthlyGoal, UserRole } from '../types';
-import { formatCurrency, formatPercent } from '../constants';
+import React, { useState, useMemo, useRef } from 'react';
+import { Store, MonthlyPerformance, MonthlyGoal } from '../types';
+import { formatCurrency } from '../constants';
+import * as XLSX from 'xlsx';
 import { 
-    LayoutDashboard, TrendingUp, TrendingDown, Users, 
-    Target, ShoppingBag, DollarSign, Upload, 
-    BarChart3, PieChart as PieChartIcon, ArrowUpRight, 
-    ArrowDownRight, Loader2, Search, Filter, RefreshCw
+    LayoutDashboard, DollarSign, ShoppingBag, Target, Users, 
+    RefreshCw, Loader2, BarChart3, Upload, FileSpreadsheet, CheckCircle2
 } from 'lucide-react';
 import { 
     BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, 
-    Legend, ResponsiveContainer, Cell, PieChart, Pie 
+    Legend, ResponsiveContainer
 } from 'recharts';
 
 interface DashboardAdminProps {
     stores: Store[];
     performanceData: MonthlyPerformance[];
     goalsData: MonthlyGoal[];
-    onImportData: () => Promise<void>;
+    onImportPerformance: (data: any[]) => Promise<void>;
+    onRefresh: () => Promise<void>;
 }
 
-const COLORS = ['#1e3a8a', '#dc2626', '#fbbf24', '#10b981', '#6366f1', '#ec4899'];
-
-const DashboardAdmin: React.FC<DashboardAdminProps> = ({ stores, performanceData, goalsData, onImportData }) => {
+const DashboardAdmin: React.FC<DashboardAdminProps> = ({ stores, performanceData, goalsData, onImportPerformance, onRefresh }) => {
     const [selectedMonth, setSelectedMonth] = useState('2026-02');
     const [isRefreshing, setIsRefreshing] = useState(false);
+    const [isImporting, setIsImporting] = useState(false);
+    const fileInputRef = useRef<HTMLInputElement>(null);
 
     const handleRefresh = async () => {
         setIsRefreshing(true);
-        await onImportData();
+        await onRefresh();
         setIsRefreshing(false);
+    };
+
+    const handleFileUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+        const file = e.target.files?.[0];
+        if (!file) return;
+
+        setIsImporting(true);
+        try {
+            const data = await file.arrayBuffer();
+            const workbook = XLSX.read(data);
+            const worksheet = workbook.Sheets[workbook.SheetNames[0]];
+            const jsonData = XLSX.utils.sheet_to_json(worksheet) as any[];
+
+            const mappedData = jsonData.map(row => {
+                // Tentativa de encontrar a loja por número ou nome
+                const storeNum = String(row['Loja'] || row['Filial'] || '').replace(/\D/g, '').replace(/^0+/, '');
+                const targetStore = stores.find(s => s.number === storeNum);
+                
+                if (!targetStore) return null;
+
+                return {
+                    storeId: targetStore.id,
+                    month: selectedMonth,
+                    revenueActual: Number(row['Venda'] || row['Faturamento'] || 0),
+                    itemsActual: Number(row['Peças'] || row['Itens'] || 0),
+                    salesActual: Number(row['Atendimentos'] || row['Vendas'] || 0),
+                    delinquencyRate: Number(row['Inadimplencia'] || 0),
+                    businessDays: 26
+                };
+            }).filter(Boolean);
+
+            if (mappedData.length > 0) {
+                await onImportPerformance(mappedData);
+                alert(`${mappedData.length} registros importados com sucesso!`);
+            } else {
+                alert("Nenhuma loja correspondente encontrada na planilha.");
+            }
+        } catch (err) {
+            alert("Erro ao processar planilha. Verifique o formato.");
+        } finally {
+            setIsImporting(false);
+            if (fileInputRef.current) fileInputRef.current.value = '';
+        }
     };
 
     const stats = useMemo(() => {
@@ -49,7 +92,7 @@ const DashboardAdmin: React.FC<DashboardAdminProps> = ({ stores, performanceData
             avgPA,
             avgTicket,
             storeCount: stores.length,
-            currentData: currentData.sort((a, b) => (b.revenueActual || 0) - (a.revenueActual || 0))
+            currentData: currentData.sort((a, b) => (Number(b.revenueActual) || 0) - (Number(a.revenueActual) || 0))
         };
     }, [performanceData, selectedMonth, stores]);
 
@@ -58,16 +101,16 @@ const DashboardAdmin: React.FC<DashboardAdminProps> = ({ stores, performanceData
             const store = stores.find(s => s.id === d.storeId);
             return {
                 name: store ? `Loja ${store.number}` : '---',
-                venda: d.revenueActual || 0,
-                meta: d.revenueTarget || 0
+                venda: Number(d.revenueActual) || 0,
+                meta: Number(d.revenueTarget) || 0
             };
         });
     }, [stats.currentData, stores]);
 
     return (
         <div className="p-4 md:p-8 space-y-6 animate-in fade-in duration-500 pb-20">
-            {/* Header */}
-            <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-6 bg-white p-8 rounded-[40px] shadow-sm border border-gray-100">
+            {/* Header com Botões de Ação */}
+            <div className="flex flex-col lg:flex-row justify-between items-start lg:items-center gap-6 bg-white p-8 rounded-[40px] shadow-sm border border-gray-100">
                 <div className="flex items-center gap-4">
                     <div className="p-4 bg-blue-900 text-white rounded-3xl shadow-xl">
                         <LayoutDashboard size={32} />
@@ -78,16 +121,28 @@ const DashboardAdmin: React.FC<DashboardAdminProps> = ({ stores, performanceData
                     </div>
                 </div>
 
-                <div className="flex items-center gap-3 w-full md:w-auto">
+                <div className="flex flex-wrap items-center gap-3 w-full lg:w-auto">
+                    <input type="file" ref={fileInputRef} onChange={handleFileUpload} accept=".xlsx, .xls" hidden />
+                    
+                    <button 
+                        onClick={() => fileInputRef.current?.click()}
+                        disabled={isImporting}
+                        className="flex-1 lg:flex-none flex items-center justify-center gap-2 bg-green-600 text-white px-6 py-3.5 rounded-2xl font-black uppercase text-[10px] shadow-lg border-b-4 border-green-800 hover:bg-green-700 transition-all active:scale-95 disabled:opacity-50"
+                    >
+                        {isImporting ? <Loader2 size={16} className="animate-spin" /> : <FileSpreadsheet size={16} />}
+                        Importar XLSX
+                    </button>
+
                     <select 
                         value={selectedMonth} 
                         onChange={e => setSelectedMonth(e.target.value)}
-                        className="bg-gray-50 border border-gray-100 rounded-xl px-4 py-3 text-xs font-black uppercase text-blue-900 outline-none focus:ring-4 focus:ring-blue-50 transition-all"
+                        className="flex-1 lg:flex-none bg-gray-50 border border-gray-100 rounded-xl px-4 py-3.5 text-xs font-black uppercase text-blue-900 outline-none focus:ring-4 focus:ring-blue-50 transition-all"
                     >
                         <option value="2026-02">Fevereiro 2026</option>
                         <option value="2026-01">Janeiro 2026</option>
                         <option value="2025-12">Dezembro 2025</option>
                     </select>
+
                     <button 
                         onClick={handleRefresh}
                         disabled={isRefreshing}
@@ -110,7 +165,7 @@ const DashboardAdmin: React.FC<DashboardAdminProps> = ({ stores, performanceData
                     <div className="mt-4 w-full bg-gray-50 h-1.5 rounded-full overflow-hidden">
                         <div className={`h-full transition-all duration-1000 ${stats.attainment >= 100 ? 'bg-green-500' : 'bg-blue-600'}`} style={{width: `${Math.min(stats.attainment, 100)}%`}} />
                     </div>
-                    <p className="text-[10px] font-black mt-2 text-right text-blue-900">{(stats.attainment || 0).toFixed(1)}% da Meta</p>
+                    <p className="text-[10px] font-black mt-2 text-right text-blue-900">{(stats.attainment ?? 0).toFixed(1)}% da Meta</p>
                 </div>
 
                 <div className="bg-white p-8 rounded-[40px] shadow-sm border border-gray-100">
@@ -119,7 +174,7 @@ const DashboardAdmin: React.FC<DashboardAdminProps> = ({ stores, performanceData
                         <span className="text-[10px] font-black text-orange-500 uppercase">Performance</span>
                     </div>
                     <p className="text-[10px] font-black text-gray-400 uppercase tracking-widest">P.A. Médio</p>
-                    <h3 className="text-3xl font-black text-blue-950 italic tracking-tighter mt-1">{(stats.avgPA || 0).toFixed(2)} <span className="text-[10px] not-italic text-gray-300 uppercase">Pares</span></h3>
+                    <h3 className="text-3xl font-black text-blue-950 italic tracking-tighter mt-1">{(stats.avgPA ?? 0).toFixed(2)} <span className="text-[10px] not-italic text-gray-300 uppercase">Pares</span></h3>
                 </div>
 
                 <div className="bg-white p-8 rounded-[40px] shadow-sm border border-gray-100">
@@ -151,8 +206,8 @@ const DashboardAdmin: React.FC<DashboardAdminProps> = ({ stores, performanceData
                         <ResponsiveContainer width="100%" height="100%">
                             <BarChart data={chartData}>
                                 <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#f1f5f9" />
-                                <XAxis dataKey="name" fontSize={10} fontWeight="900" tickLine={false} axisLine={false} />
-                                <YAxis fontSize={10} fontWeight="900" tickFormatter={(val) => `R$${val/1000}k`} />
+                                <XAxis dataKey="name" fontSize={10} font-weight="900" tickLine={false} axisLine={false} />
+                                <YAxis fontSize={10} font-weight="900" tickFormatter={(val) => `R$${val/1000}k`} />
                                 <Tooltip cursor={{fill: '#f8fafc'}} />
                                 <Legend />
                                 <Bar dataKey="venda" name="Realizado" fill="#1e3a8a" radius={[6, 6, 0, 0]} barSize={24} />
@@ -180,9 +235,9 @@ const DashboardAdmin: React.FC<DashboardAdminProps> = ({ stores, performanceData
                                     </div>
                                     <div className="text-right">
                                         <p className={`text-sm font-black italic tracking-tighter ${isOk ? 'text-green-600' : 'text-blue-900'}`}>
-                                            {percent.toFixed(1)}%
+                                            {(percent ?? 0).toFixed(1)}%
                                         </p>
-                                        <p className="text-[8px] font-black text-gray-400 uppercase tracking-widest">{formatCurrency(d.revenueActual)}</p>
+                                        <p className="text-[8px] font-black text-gray-400 uppercase tracking-widest">{formatCurrency(Number(d.revenueActual) || 0)}</p>
                                     </div>
                                 </div>
                             );
