@@ -42,9 +42,10 @@ const FinancialModule: React.FC<FinancialModuleProps> = ({ user, store, sales, r
 
         {activeTab === 'receipt' ? (
             <div className="animate-in fade-in slide-in-from-bottom-4 duration-500">
+                {/* Fix: Error in file components/FinancialModule.tsx on line 47: Changed store={store} to stores={store ? [store] : []} to match ReceiptsModuleProps */}
                 <ReceiptsModule 
                     user={user} 
-                    store={store} 
+                    stores={store ? [store] : []} 
                     receipts={receipts} 
                     onAddReceipt={onAddReceipt} 
                     nextReceiptNumber={receipts.length + 1} 

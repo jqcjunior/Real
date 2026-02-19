@@ -27,14 +27,17 @@ const CreditCardsModule: React.FC<CreditCardsModuleProps> = ({ user, store, sale
       const val = parseFloat(formData.value.replace(/\./g, '').replace(',', '.'));
       
       if (!isNaN(val) && val > 0) {
+          // Fix: Added missing required properties 'userName' and 'saleCode' to satisfy CreditCardSale interface.
           const newSale: CreditCardSale = {
               id: `card-${Date.now()}`,
-              storeId: store?.id,
+              storeId: store?.id || '',
               userId: user.id,
+              userName: user.name,
               date: formData.date,
               brand: formData.brand,
               value: val,
-              authorizationCode: formData.authorizationCode
+              authorizationCode: formData.authorizationCode,
+              saleCode: `CARD-${Date.now().toString().slice(-6)}`
           };
           onAddSale(newSale);
           setFormData(prev => ({ ...prev, value: '', authorizationCode: '' }));

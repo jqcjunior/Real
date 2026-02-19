@@ -1,5 +1,4 @@
 
-
 /* =========================
    ROLES / USUÁRIOS
 ========================= */
@@ -41,7 +40,6 @@ export interface QuotaMixParameter {
   storeId?: string;
 }
 
-// Fixed: Added missing interface Cota
 export interface Cota {
   id: string;
   storeId: string;
@@ -59,14 +57,12 @@ export interface Cota {
   createdAt: Date;
 }
 
-// Fixed: Added missing interface CotaSettings
 export interface CotaSettings {
   storeId: string;
   budgetValue: number;
   managerPercent: number;
 }
 
-// Fixed: Added missing interface CotaDebts
 export interface CotaDebts {
   id?: string;
   storeId: string;
@@ -145,7 +141,6 @@ export type IceCreamCategory =
   | 'Bebidas'
   | 'Adicionais';
 
-// Fixed: Added missing interface IceCreamPromissoryNote
 export interface IceCreamPromissoryNote {
   id: string;
   storeId: string;
@@ -156,7 +151,6 @@ export interface IceCreamPromissoryNote {
   createdAt: Date;
 }
 
-// Fixed: Added missing interface StoreProfitPartner
 export interface StoreProfitPartner {
   id: string;
   store_id: string;
@@ -232,26 +226,23 @@ export interface MonthlyGoal {
 }
 
 /* =========================
-   🔹 PERFORMANCE ATUALIZADA (OPÇÃO A)
+   🔹 PERFORMANCE ATUALIZADA
 ========================= */
 export interface MonthlyPerformance {
   id?: string;
   storeId: string;
   month: string;
 
-  // Realizado (Raw Data)
   revenueActual: number;
   itemsActual: number;
-  salesActual: number; // Qtde Vendas
+  salesActual: number;
   delinquencyRate: number;
 
-  // Calculados (Vêm da View)
-  itemsPerTicket: number; // P.A.
-  unitPriceAverage: number; // P.U.
-  averageTicket: number; // Ticket Médio
+  itemsPerTicket: number;
+  unitPriceAverage: number;
+  averageTicket: number;
   percentMeta: number;
 
-  // Metas (Targets)
   revenueTarget: number;
   itemsTarget: number;
   paTarget: number;
@@ -263,9 +254,6 @@ export interface MonthlyPerformance {
   businessDays: number;
 }
 
-/* =========================
-   OUTROS
-========================= */
 export interface ProductPerformance {
   storeId: string;
   month: string;
@@ -311,13 +299,7 @@ export interface AgendaItem {
   createdAt: Date;
 }
 
-export type DownloadCategory =
-  | 'spreadsheet'
-  | 'media'
-  | 'video'
-  | 'image'
-  | 'audio'
-  | 'other';
+export type DownloadCategory = 'spreadsheet' | 'media' | 'video' | 'image' | 'audio' | 'other';
 
 export interface DownloadItem {
   id: string;
@@ -359,12 +341,15 @@ export interface Receipt {
 
 export interface CreditCardSale {
   id: string;
-  storeId?: string;
+  storeId: string;
   userId: string;
+  userName: string;
   date: string;
   brand: string;
   value: number;
   authorizationCode?: string;
+  saleCode: string;
+  createdAt?: string;
 }
 
 export type AdminRoleLevel = 'admin' | 'manager' | 'cashier' | 'sorvete';

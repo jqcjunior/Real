@@ -90,7 +90,6 @@ const IceCreamModule: React.FC<IceCreamModuleProps> = ({
   const [showPurchaseModal, setShowPurchaseModal] = useState(false);
   const [showInventoryModal, setShowInventoryModal] = useState(false);
 
-  // Estados para Prévia do Ticket
   const [showTicketModal, setShowTicketModal] = useState(false);
   const [ticketData, setTicketData] = useState<{ items: IceCreamDailySale[], saleCode: string, method: string | null, buyer?: string } | null>(null);
 
@@ -184,10 +183,29 @@ const IceCreamModule: React.FC<IceCreamModuleProps> = ({
   const periodKey = `${selectedYear}-${String(selectedMonth).padStart(2, '0')}`;
 
   const dreStats = useMemo(() => {
-      const daySales = (sales ?? []).filter(s => s.createdAt?.startsWith(todayKey) && s.status !== 'canceled' && s.storeId === effectiveStoreId);
-      const monthSales = (sales ?? []).filter(s => s.createdAt?.startsWith(periodKey) && s.status !== 'canceled' && s.storeId === effectiveStoreId);
-      const dayFinances = (finances ?? []).filter(f => f.date === todayKey && f.storeId === effectiveStoreId);
-      const monthFinances = (finances ?? []).filter(f => f.date?.startsWith(periodKey) && f.storeId === effectiveStoreId);
+      // SENIOR FIX: Normalização para fuso horário local (Brasil)
+      // Usamos new Date().toLocaleDateString('en-CA') para garantir YYYY-MM-DD local
+      const daySales = (sales ?? []).filter(s => {
+          if (!s.createdAt) return false;
+          const localDate = new Date(s.createdAt).toLocaleDateString('en-CA');
+          return localDate === todayKey && s.status !== 'canceled' && s.storeId === effectiveStoreId;
+      });
+
+      const monthSales = (sales ?? []).filter(s => {
+          if (!s.createdAt) return false;
+          const localDate = new Date(s.createdAt).toLocaleDateString('en-CA');
+          return localDate.substring(0, 7) === periodKey && s.status !== 'canceled' && s.storeId === effectiveStoreId;
+      });
+      
+      const dayFinances = (finances ?? []).filter(f => {
+          const localDate = new Date(f.date + 'T12:00:00').toLocaleDateString('en-CA');
+          return localDate === todayKey && f.storeId === effectiveStoreId;
+      });
+
+      const monthFinances = (finances ?? []).filter(f => {
+          const localDate = new Date(f.date + 'T12:00:00').toLocaleDateString('en-CA');
+          return localDate.substring(0, 7) === periodKey && f.storeId === effectiveStoreId;
+      });
 
       let dayIn = 0;
       const dayMethods = { pix: 0, money: 0, card: 0, fiado: 0 };
@@ -211,24 +229,39 @@ const IceCreamModule: React.FC<IceCreamModuleProps> = ({
 
       const dayExits = dayFinances.filter(f => f.type === 'exit');
       const dayOut = dayExits.reduce((a, b) => a + Number(b.value), 0);
+      
       let monthIn = 0;
       const monthMethods = { pix: 0, money: 0, card: 0, fiado: 0 };
       const monthFiadoDetails: any[] = [];
 
       monthSales.forEach(s => {
-          monthIn += Number(s.totalValue);
-          if (s.paymentMethod === 'Pix') monthMethods.pix += Number(s.totalValue);
-          else if (s.paymentMethod === 'Dinheiro') monthMethods.money += Number(s.totalValue);
-          else if (s.paymentMethod === 'Cartão') monthMethods.card += Number(s.totalValue);
-          else if (s.paymentMethod === 'Fiado') { monthMethods.fiado += Number(s.totalValue); monthFiadoDetails.push(s); }
+          const saleVal = Number(s.totalValue || 0);
+          monthIn += saleVal;
+          
+          if (s.paymentMethod === 'Pix') monthMethods.pix += saleVal;
+          else if (s.paymentMethod === 'Dinheiro') monthMethods.money += saleVal;
+          else if (s.paymentMethod === 'Cartão') monthMethods.card += saleVal;
+          else if (s.paymentMethod === 'Fiado') { 
+              monthMethods.fiado += saleVal; 
+              monthFiadoDetails.push(s); 
+          }
           else if (s.paymentMethod === 'Misto') {
-              const relatedFinances = monthFinances.filter(f => f.type === 'entry' && f.description?.includes(s.saleCode || ''));
+              const relatedFinances = (finances || []).filter(f => 
+                f.storeId === effectiveStoreId && 
+                f.type === 'entry' && 
+                f.description?.includes(s.saleCode || '')
+              );
+              
               relatedFinances.forEach(f => {
                   const desc = f.description?.toLowerCase() || '';
-                  if (desc.includes('via pix')) monthMethods.pix += Number(f.value);
-                  else if (desc.includes('via dinheiro')) monthMethods.money += Number(f.value);
-                  else if (desc.includes('via cartão')) monthMethods.card += Number(f.value);
-                  else if (desc.includes('via fiado')) { monthMethods.fiado += Number(f.value); monthFiadoDetails.push({ ...s, totalValue: f.value, paymentMethod: 'Fiado' }); }
+                  const partValue = Number(f.value || 0);
+                  if (desc.includes('via pix')) monthMethods.pix += partValue;
+                  else if (desc.includes('via dinheiro')) monthMethods.money += partValue;
+                  else if (desc.includes('via cartão')) monthMethods.card += partValue;
+                  else if (desc.includes('via fiado')) { 
+                      monthMethods.fiado += partValue; 
+                      monthFiadoDetails.push({ ...s, totalValue: partValue, paymentMethod: 'Fiado' }); 
+                  }
               });
           }
       });
@@ -244,15 +277,15 @@ const IceCreamModule: React.FC<IceCreamModuleProps> = ({
 
       return {
           dayIn, dayOut, dayMethods, dayExits, resumoItensRodape: Object.entries(resumo).sort((a, b) => b[1].qtd - a[1].qtd),
-          daySales: daySales.sort((a,b) => (b.createdAt || '').localeCompare(a.createdAt || '')),
-          monthMethods, monthIn, monthOut, profit, monthFiadoDetails: monthFiadoDetails.sort((a,b) => (b.createdAt || '').localeCompare(a.createdAt || '')),
+          daySales: daySales.sort((a,b) => String(b.createdAt || '').localeCompare(String(a.createdAt || ''))),
+          monthMethods, monthIn, monthOut, profit, monthFiadoDetails: monthFiadoDetails.sort((a,b) => String(b.createdAt || '').localeCompare(String(a.createdAt || ''))),
       };
   }, [sales, finances, todayKey, periodKey, effectiveStoreId]);
 
   const monthFiadoGrouped = useMemo(() => {
     const groups: Record<string, { name: string, total: number, items: any[] }> = {};
     dreStats.monthFiadoDetails.forEach(f => {
-        const name = f.buyer_name || 'NÃO INFORMADO';
+        const name = (f.buyer_name || 'NÃO INFORMADO').trim().toUpperCase();
         if (!groups[name]) groups[name] = { name, total: 0, items: [] };
         groups[name].total += Number(f.totalValue);
         groups[name].items.push(f);
@@ -260,17 +293,20 @@ const IceCreamModule: React.FC<IceCreamModuleProps> = ({
     return Object.values(groups).sort((a, b) => b.total - a.total);
   }, [dreStats.monthFiadoDetails]);
 
-  // CORREÇÃO: Lógica de Auditoria usando comparação de data imune a Timezone
   const groupedAuditSales = useMemo(() => {
     const groups: Record<string, any> = {};
-    const filterPrefix = `${auditYear}-${String(auditMonth).padStart(2, '0')}-${String(auditDay).padStart(2, '0')}`;
+    
+    const filterParts = [];
+    if (auditYear) filterParts.push(auditYear);
+    if (auditMonth) filterParts.push(String(auditMonth).padStart(2, '0'));
+    if (auditDay) filterParts.push(String(auditDay).padStart(2, '0'));
+    const filterPrefix = filterParts.join('-');
 
     const filtered = sales.filter(s => {
       if (s.storeId !== effectiveStoreId) return false;
-      
-      // Filtro de data por prefixo de string (YYYY-MM-DD) para evitar erros de UTC
-      if (filterPrefix && !s.createdAt?.startsWith(filterPrefix)) return false;
-      
+      // SENIOR FIX: Conversão para local antes de comparar com o prefixo
+      const localDate = new Date(s.createdAt || '').toLocaleDateString('en-CA');
+      if (filterPrefix && !localDate.startsWith(filterPrefix)) return false;
       if (auditSearch) {
         const search = auditSearch.toLowerCase();
         return (
@@ -283,7 +319,6 @@ const IceCreamModule: React.FC<IceCreamModuleProps> = ({
     });
 
     filtered.forEach(s => {
-      // Usa saleCode ou o ID como fallback para agrupar
       const code = s.saleCode || `ID-${s.id}`;
       if (!groups[code]) {
         groups[code] = {
@@ -306,14 +341,17 @@ const IceCreamModule: React.FC<IceCreamModuleProps> = ({
   }, [sales, effectiveStoreId, auditDay, auditMonth, auditYear, auditSearch]);
 
   const filteredAuditWastage = useMemo(() => {
-    const filterPrefix = `${auditYear}-${String(auditMonth).padStart(2, '0')}-${String(auditDay).padStart(2, '0')}`;
+    const filterParts = [];
+    if (auditYear) filterParts.push(auditYear);
+    if (auditMonth) filterParts.push(String(auditMonth).padStart(2, '0'));
+    if (auditDay) filterParts.push(String(auditDay).padStart(2, '0'));
+    const filterPrefix = filterParts.join('-');
 
     return finances.filter(f => {
       if (f.storeId !== effectiveStoreId) return false;
       if (f.category !== 'AVARIA / DEFEITO PRODUTO') return false;
-      
-      if (filterPrefix && f.date !== filterPrefix) return false;
-
+      const localDate = new Date(f.date + 'T12:00:00').toLocaleDateString('en-CA');
+      if (filterPrefix && !localDate.startsWith(filterPrefix)) return false;
       if (auditSearch) {
         const search = auditSearch.toLowerCase();
         return f.description?.toLowerCase().includes(search);
@@ -595,7 +633,7 @@ const IceCreamModule: React.FC<IceCreamModuleProps> = ({
       const val = parseFloat((newInsumo.initial || '0').replace(',', '.'));
       await onUpdateStock(effectiveStoreId, newInsumo.name.toUpperCase().trim(), val, newInsumo.unit, 'adjustment');
       setNewInsumo({ name: '', unit: 'un', initial: '' });
-      setShowNewInsumoModal(false); alert("Insumo cadastrado!");
+      setShowNewInsumoModal(false) alert("Insumo cadastrado!");
     } catch (e) { alert("Erro."); } finally { setIsSubmitting(false); }
   };
 
@@ -608,7 +646,7 @@ const IceCreamModule: React.FC<IceCreamModuleProps> = ({
         const stockItem = stock.find(s => s.stock_id === stockId);
         if (stockItem) await onUpdateStock(effectiveStoreId, stockItem.product_base, val, stockItem.unit, 'purchase', stockItem.stock_id);
       }
-      setPurchaseForm({}); setShowPurchaseModal(false); alert("Estoque abastecido!");
+      setPurchaseForm({}); setShowPurchaseModal(true); alert("Estoque abastecido!");
     } catch (e) { alert("Erro."); } finally { setIsSubmitting(false); }
   };
 
@@ -920,7 +958,8 @@ const IceCreamModule: React.FC<IceCreamModuleProps> = ({
                                                     </td>
                                                 </tr>
                                             )}
-                                        </React.Fragment>                                    ))}
+                                        </React.Fragment>
+                                    ))}
                                     {monthFiadoGrouped.length === 0 && (<tr><td colSpan={2} className="p-16 text-center text-gray-400 uppercase tracking-[0.3em] italic">Nenhuma compra no fiado</td></tr>)}
                                 </tbody>
                             </table>
@@ -1378,7 +1417,7 @@ const IceCreamModule: React.FC<IceCreamModuleProps> = ({
 
         {showCategoryManager && (
             <div className="fixed inset-0 bg-black/80 backdrop-blur-md flex items-center justify-center z-[150] p-4">
-                <div className="bg-white rounded-[40px] w-full max-w-sm shadow-2xl animate-in zoom-in duration-300 border-t-8 border-blue-600 overflow-hidden">
+                <div className="bg-white rounded-[40px] w-full max-sm shadow-2xl animate-in zoom-in duration-300 border-t-8 border-blue-600 overflow-hidden">
                     <div className="p-6 border-b bg-gray-50/50 flex justify-between items-center"><h3 className="text-lg font-black uppercase italic text-blue-950 flex items-center gap-3"><Settings className="text-blue-600" /> Categorias</h3><button onClick={() => setShowCategoryManager(false)} className="text-gray-400 hover:text-red-600"><X size={20}/></button></div>
                     <div className="p-8 space-y-6">
                         <div className="flex gap-2">
