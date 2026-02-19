@@ -254,7 +254,7 @@ const SpreadsheetOrderModule = ({ user, onClose }: { user: any, onClose: () => v
           {etapa === 3 && (
             <div className="max-w-xl mx-auto space-y-4 animate-in zoom-in duration-300 text-center">
               <div className="bg-white p-8 rounded-3xl shadow-sm border border-slate-100 relative">
-                <div className="absolute -top-3 right-6 bg-red-600 text-white px-4 py-1.5 rounded-full font-black text-[10px] shadow-lg">{Object.values(gradeEditando).reduce((a,b)=>a+Number(b),0)} PARES</div>
+                <div className="absolute -top-3 right-6 bg-red-600 text-white px-4 py-1.5 rounded-full font-black text-[10px] shadow-lg">{Object.values(gradeEditando).reduce((a: number, b) => a + Number(b), 0)} PARES</div>
                 <h3 className="text-sm font-black text-slate-800 uppercase italic mb-8">Definir Grade <span className="text-blue-600">{LETRAS[gradesSalvas.length]}</span></h3>
                 <div className="grid grid-cols-4 sm:grid-cols-5 gap-3 mb-8">
                   {(TAMANHOS[itemAtual.modelo] || []).map(tam => (
@@ -265,7 +265,7 @@ const SpreadsheetOrderModule = ({ user, onClose }: { user: any, onClose: () => v
                   ))}
                 </div>
                 <button onClick={() => { 
-                  const total = Object.values(gradeEditando).reduce((a,b)=>a+Number(b),0);
+                  const total = Object.values(gradeEditando).reduce((a: number, b) => a + Number(b), 0);
                   if(total === 0) return;
                   setGradesSalvas([...gradesSalvas, { letra: LETRAS[gradesSalvas.length], modelo: itemAtual.modelo, valores: {...gradeEditando}, total }]); 
                   setGradeEditando({});

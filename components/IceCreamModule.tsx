@@ -633,7 +633,7 @@ const IceCreamModule: React.FC<IceCreamModuleProps> = ({
       const val = parseFloat((newInsumo.initial || '0').replace(',', '.'));
       await onUpdateStock(effectiveStoreId, newInsumo.name.toUpperCase().trim(), val, newInsumo.unit, 'adjustment');
       setNewInsumo({ name: '', unit: 'un', initial: '' });
-      setShowNewInsumoModal(false) alert("Insumo cadastrado!");
+      setShowNewInsumoModal(false); alert("Insumo cadastrado!");
     } catch (e) { alert("Erro."); } finally { setIsSubmitting(false); }
   };
 

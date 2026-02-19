@@ -408,7 +408,7 @@ const CashRegisterModule: React.FC<CashRegisterModuleProps> = ({
                                     <div className="p-4 bg-blue-50/50 border-t border-blue-50">
                                         <div className="grid grid-cols-2 md:grid-cols-4 gap-2">
                                             {Object.entries(totalsByBrand).map(([brand, val]) => (
-                                                <div key={brand} className="bg-white p-2 rounded-lg border border-blue-50 flex justify-between items-center"><span className="text-[7px] font-black text-gray-400 uppercase truncate pr-1">{brand}</span><span className="text-[9px] font-black text-blue-900">{formatCurrency(val)}</span></div>
+                                                <div key={brand} className="bg-white p-2 rounded-lg border border-blue-50 flex justify-between items-center"><span className="text-[7px] font-black text-gray-400 uppercase truncate pr-1">{brand}</span><span className="text-[9px] font-black text-blue-900">{formatCurrency(val as number)}</span></div>
                                             ))}
                                         </div>
                                     </div>

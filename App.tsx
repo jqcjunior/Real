@@ -37,6 +37,8 @@ const App: React.FC = () => {
     const [isLoading, setIsLoading] = useState(true);
     const [isSidebarOpen, setIsSidebarOpen] = useState(false);
     const [userPermissions, setUserPermissions] = useState<string[]>([]);
+    const [userCount, setUserCount] = useState<number | null>(null);
+    const [connectionError, setConnectionError] = useState<string | null>(null);
 
     const [stores, setStores] = useState<Store[]>([]);
     const [performanceData, setPerformanceData] = useState<MonthlyPerformance[]>([]);
@@ -145,22 +147,118 @@ const App: React.FC = () => {
     }, []);
 
     const handleLogin = async (email: string, pass: string, remember: boolean) => {
+        console.log("Iniciando tentativa de login para:", email);
         try {
-            const { data, error } = await supabase.from('admin_users').select('*').eq('email', email).eq('password', pass).eq('status', 'active').single();
-            if (error || !data) return { success: false, error: 'Credenciais inválidas ou acesso inativo.' };
+            const normalizedEmail = email.trim().toLowerCase();
+            
+            // First check if user exists at all
+            console.log("Verificando existência do usuário...");
+            const { data: userCheck, error: checkError } = await supabase
+                .from('admin_users')
+                .select('id, status, password')
+                .eq('email', normalizedEmail)
+                .maybeSingle();
+
+            if (checkError) {
+                console.error("Erro na verificação inicial:", checkError);
+                return { success: false, error: `Erro de conexão: ${checkError.message}` };
+            }
+
+            if (!userCheck) {
+                console.warn("Usuário não encontrado no banco.");
+                return { success: false, error: 'Usuário não cadastrado.' };
+            }
+
+            console.log("Usuário encontrado. Validando status e senha...");
+            if (userCheck.status !== 'active') {
+                return { success: false, error: 'Este acesso está inativo. Contate o administrador.' };
+            }
+
+            if (userCheck.password !== pass) {
+                console.warn("Senha incorreta fornecida.");
+                return { success: false, error: 'Senha incorreta.' };
+            }
+
+            // If all good, get full data
+            console.log("Credenciais válidas. Recuperando perfil completo...");
+            const { data, error } = await supabase
+                .from('admin_users')
+                .select('*')
+                .eq('id', userCheck.id)
+                .single();
+            
+            if (error || !data) {
+                console.error("Erro ao recuperar perfil:", error);
+                return { success: false, error: 'Erro ao recuperar dados do perfil.' };
+            }
+            
+            console.log("Login bem-sucedido para:", data.name);
             const rawRole = data.role_level.toUpperCase();
             const mappedRole = rawRole === 'SORVETE' ? 'ICE_CREAM' : rawRole;
-            await fetchPermissions(mappedRole);
+            
+            try {
+                await fetchPermissions(mappedRole);
+            } catch (permError: any) {
+                console.error("Permissions Error:", permError);
+                // Don't block login if permissions fail, but log it
+            }
+
             const loggedUser: User = { id: data.id, name: data.name, role: mappedRole as UserRole, email: data.email, storeId: data.store_id };
             setUser(loggedUser);
+            
             if (loggedUser.role === UserRole.ADMIN) setCurrentView('dashboard_rede');
             else if (loggedUser.role === UserRole.ICE_CREAM) setCurrentView('pdv_gelateria');
             else setCurrentView('dashboard_loja');
+            
             return { success: true, user: loggedUser };
-        } catch (err) { return { success: false, error: 'Falha na conexão.' }; }
+        } catch (err: any) { 
+            console.error("Connection Error:", err);
+            return { success: false, error: `Falha na conexão: ${err.message || 'Erro desconhecido'}` }; 
+        }
     };
 
-    useEffect(() => { fetchData(); }, []);
+    useEffect(() => { 
+        fetchData(); 
+        const checkUsers = async () => {
+            try {
+                const { count, error } = await supabase.from('admin_users').select('*', { count: 'exact', head: true });
+                if (error) {
+                    console.error("Supabase Connection Error:", error);
+                    setConnectionError(`Erro de conexão com o banco: ${error.message}`);
+                } else {
+                    setUserCount(count);
+                    setConnectionError(null);
+                }
+            } catch (e: any) {
+                console.error("Error checking users:", e);
+                setConnectionError(`Falha crítica de conexão: ${e.message || 'Erro desconhecido'}`);
+            }
+        };
+        checkUsers();
+    }, []);
+
+    const handleCreateFirstAdmin = async () => {
+        const email = prompt("Digite o e-mail do primeiro administrador:");
+        const password = prompt("Digite a senha:");
+        const name = prompt("Digite o nome:");
+        
+        if (!email || !password || !name) return;
+
+        try {
+            const { error } = await supabase.from('admin_users').insert([{
+                name: name.toUpperCase(),
+                email: email.toLowerCase().trim(),
+                password: password.trim(),
+                role_level: 'admin',
+                status: 'active'
+            }]);
+            if (error) throw error;
+            alert("Administrador criado com sucesso! Agora você pode fazer login.");
+            setUserCount(1);
+        } catch (err: any) {
+            alert("Erro ao criar administrador: " + err.message);
+        }
+    };
 
     // Fix: Added handleSaveIceCreamProduct to solve 'Cannot find name' errors on line 212.
     const handleSaveIceCreamProduct = async (product: Partial<IceCreamItem>) => {
@@ -180,7 +278,95 @@ const App: React.FC = () => {
         await fetchData();
     };
 
-    if (!user) return <LoginScreen onLoginAttempt={handleLogin} />;
+    const handleRegisterRequest = async (store: Partial<Store>) => {
+        try {
+            const { error } = await supabase.from('stores').insert([{
+                number: store.number,
+                name: store.name,
+                city: store.city,
+                manager_name: store.managerName,
+                manager_email: store.managerEmail,
+                manager_phone: store.managerPhone,
+                status: 'pending'
+            }]);
+            if (error) throw error;
+        } catch (err: any) {
+            console.error("Register Error:", err);
+            throw err;
+        }
+    };
+
+    if (!user) return (
+        <div className="relative">
+            {connectionError && (
+                <div className="fixed top-4 left-1/2 -translate-x-1/2 z-[400] w-full max-w-md px-4">
+                    <div className="bg-red-600 text-white p-4 rounded-2xl shadow-2xl border-2 border-white/20 flex flex-col gap-2 animate-in slide-in-from-top duration-500">
+                        <div className="flex items-center gap-3">
+                            <AlertCircle size={24} />
+                            <div>
+                                <p className="text-[10px] font-black uppercase tracking-widest leading-none">Erro de Conexão</p>
+                                <p className="text-xs font-bold mt-1">{connectionError}</p>
+                            </div>
+                        </div>
+                        <p className="text-[9px] opacity-80 font-medium">Verifique se as tabelas existem e se o RLS (Row Level Security) está desativado ou configurado para permitir acesso anônimo.</p>
+                    </div>
+                </div>
+            )}
+            <LoginScreen onLoginAttempt={handleLogin} onRegisterRequest={handleRegisterRequest} />
+            {(userCount === 0 || connectionError) && (
+                <div className="fixed bottom-4 right-4 z-[300] flex flex-col gap-2 items-end">
+                    <button 
+                        onClick={() => {
+                            const sql = `
+-- SCRIPT DE SETUP INICIAL (Execute no SQL Editor do Supabase)
+
+-- 1. Tabela de Usuários
+CREATE TABLE IF NOT EXISTS public.admin_users (
+    id uuid DEFAULT gen_random_uuid() PRIMARY KEY,
+    name text NOT NULL,
+    email text NOT NULL UNIQUE,
+    password text NOT NULL,
+    role_level text NOT NULL DEFAULT 'admin',
+    status text NOT NULL DEFAULT 'active',
+    store_id uuid,
+    created_at timestamptz DEFAULT now()
+);
+
+-- 2. Tabela de Lojas
+CREATE TABLE IF NOT EXISTS public.stores (
+    id uuid DEFAULT gen_random_uuid() PRIMARY KEY,
+    number text,
+    name text,
+    city text,
+    manager_name text,
+    manager_email text,
+    manager_phone text,
+    status text DEFAULT 'active',
+    has_gelateria boolean DEFAULT false,
+    created_at timestamptz DEFAULT now()
+);
+
+-- 3. Desativar RLS para facilitar (OU adicione políticas específicas)
+ALTER TABLE public.admin_users DISABLE ROW LEVEL SECURITY;
+ALTER TABLE public.stores DISABLE ROW LEVEL SECURITY;
+                            `;
+                            console.log(sql);
+                            alert("Script SQL copiado para o console (F12). Execute-o no SQL Editor do seu Supabase para criar as tabelas necessárias.");
+                        }}
+                        className="bg-blue-600 text-white px-4 py-2 rounded-xl font-black uppercase text-[9px] shadow-lg hover:bg-black transition-all border-b-2 border-blue-900"
+                    >
+                        Ver Script SQL de Setup
+                    </button>
+                    <button 
+                        onClick={handleCreateFirstAdmin}
+                        className="bg-red-600 text-white px-6 py-3 rounded-full font-black uppercase text-[10px] shadow-2xl hover:bg-black transition-all border-b-4 border-red-900"
+                    >
+                        Forçar Criação de Admin
+                    </button>
+                </div>
+            )}
+        </div>
+    );
     
     return (
         <div className="flex h-screen bg-gray-950 text-white overflow-hidden font-sans relative">
