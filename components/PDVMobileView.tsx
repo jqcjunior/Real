@@ -108,7 +108,7 @@ const PDVMobileView: React.FC<PDVMobileViewProps> = (props) => {
             
             for (const payment of splitData) {
                 await props.onAddTransaction({
-                    id: '0', storeId: props.effectiveStoreId, date: new Date().toISOString().split('T')[0],
+                    id: '0', storeId: props.effectiveStoreId, date: new Date().toLocaleDateString('en-CA'),
                     type: 'entry', category: 'RECEITA DE VENDA PDV', value: payment.amount,
                     description: `Pagamento via ${payment.method} - Ref. ${saleCode}`, createdAt: new Date()
                 });

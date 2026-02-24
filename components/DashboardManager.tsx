@@ -26,6 +26,11 @@ const KPICard = ({ label, value, target, icon: Icon, type = 'currency', color = 
       </div>
       <div className="mt-4">
         <h3 className={`text-xl font-black italic tracking-tighter leading-none text-slate-900`}>{formattedValue}</h3>
+        {target !== undefined && target > 0 && type === 'currency' && (
+          <p className="text-[9px] font-bold text-slate-400 uppercase mt-1 tracking-tight">
+            Realizado vs Meta: {formatCurrency(value)} / {formatCurrency(target)}
+          </p>
+        )}
         {target !== undefined && target > 0 && (
           <div className="mt-2 flex justify-between items-center">
             <div className="flex-1 bg-slate-100 h-1 rounded-full overflow-hidden mr-3">

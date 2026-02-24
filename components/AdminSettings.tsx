@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
 import { Store } from '../types';
-import { Settings, Plus, Save, Trash2, CheckCircle, XCircle, IceCream, Building2, MapPin, Hash, Info, Loader2, AlertTriangle, X } from 'lucide-react';
+import { Settings, Plus, Save, Trash2, CheckCircle, XCircle, IceCream, Building2, MapPin, Hash, Info, Loader2, AlertTriangle, X, Database, Download } from 'lucide-react';
+import { supabase } from '../services/supabaseClient';
 
 interface AdminSettingsProps {
     stores: Store[];
@@ -14,6 +15,52 @@ const AdminSettings: React.FC<AdminSettingsProps> = ({ stores, onAddStore, onUpd
     const [isSubmitting, setIsSubmitting] = useState(false);
     const [loadingStoreId, setLoadingStoreId] = useState<string | null>(null);
     const [confirmDeleteId, setConfirmDeleteId] = useState<string | null>(null);
+    const [isBackingUp, setIsBackingUp] = useState(false);
+
+    const handleExportBackup = async () => {
+        setIsBackingUp(true);
+        try {
+            const tables = [
+                'admin_users', 'stores', 'monthly_goals', 'monthly_performance_actual',
+                'cotas', 'cota_settings', 'cota_debts', 'product_performance',
+                'ice_cream_items', 'ice_cream_daily_sales', 'ice_cream_finances',
+                'ice_cream_stock', 'ice_cream_promissory_notes', 'cash_register_closures',
+                'financial_receipts', 'cash_errors', 'agenda_tasks', 'downloads',
+                'page_permissions', 'quota_product_categories', 'quota_mix_parameters',
+                'financial_card_brands', 'financial_card_sales'
+            ];
+
+            const backupData: any = {
+                version: '1.0',
+                timestamp: new Date().toISOString(),
+                data: {}
+            };
+
+            for (const table of tables) {
+                const { data, error } = await supabase.from(table).select('*');
+                if (!error) {
+                    backupData.data[table] = data;
+                }
+            }
+
+            const blob = new Blob([JSON.stringify(backupData, null, 2)], { type: 'application/json' });
+            const url = URL.createObjectURL(blob);
+            const link = document.createElement('a');
+            link.href = url;
+            link.download = `backup_real_admin_${new Date().toISOString().split('T')[0]}.json`;
+            document.body.appendChild(link);
+            link.click();
+            document.body.removeChild(link);
+            URL.revokeObjectURL(url);
+            
+            alert("Backup gerado com sucesso!");
+        } catch (error) {
+            console.error("Erro no backup:", error);
+            alert("Erro ao gerar backup.");
+        } finally {
+            setIsBackingUp(false);
+        }
+    };
 
     const handleAdd = async (e: React.FormEvent) => {
         e.preventDefault();
@@ -174,6 +221,29 @@ const AdminSettings: React.FC<AdminSettingsProps> = ({ stores, onAddStore, onUpd
                         <p className="text-sm font-black text-gray-400 uppercase tracking-widest">Nenhuma unidade cadastrada</p>
                     </div>
                 )}
+            </div>
+
+            {/* SEÇÃO DE BACKUP */}
+            <div className="bg-white p-8 rounded-[40px] shadow-sm border border-gray-100">
+                <div className="flex flex-col md:flex-row justify-between items-center gap-6">
+                    <div className="flex items-center gap-4">
+                        <div className="p-4 bg-blue-50 text-blue-600 rounded-3xl">
+                            <Database size={24} />
+                        </div>
+                        <div>
+                            <h3 className="text-lg font-black text-blue-950 uppercase italic tracking-tighter">Backup do Sistema</h3>
+                            <p className="text-[10px] font-black text-gray-400 uppercase tracking-widest mt-1">Exportação de Segurança de Todos os Dados</p>
+                        </div>
+                    </div>
+                    <button 
+                        onClick={handleExportBackup}
+                        disabled={isBackingUp}
+                        className="w-full md:w-auto bg-blue-600 text-white px-8 py-4 rounded-2xl font-black uppercase text-xs shadow-xl hover:bg-black transition-all active:scale-95 border-b-4 border-blue-900 flex items-center justify-center gap-3 disabled:opacity-50"
+                    >
+                        {isBackingUp ? <Loader2 className="animate-spin" size={18} /> : <Download size={18} />}
+                        Gerar Backup Completo (JSON)
+                    </button>
+                </div>
             </div>
         </div>
     );

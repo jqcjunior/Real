@@ -40,11 +40,48 @@ const DashboardAdmin: React.FC<DashboardAdminProps> = ({ stores, performanceData
             const data = await file.arrayBuffer();
             const workbook = XLSX.read(data);
             const worksheet = workbook.Sheets[workbook.SheetNames[0]];
-            const jsonData = XLSX.utils.sheet_to_json(worksheet) as any[];
+            const jsonData = XLSX.utils.sheet_to_json(worksheet, {
+                defval: "",
+                raw: false
+            }) as any[];
 
             const mappedData = jsonData.map(row => {
+                const getValue = (row: any, aliases: string[]) => {
+                    const keys = Object.keys(row);
+                    const foundKey = keys.find(k => 
+                        aliases.some(a => k.trim().toLowerCase() === a.toLowerCase())
+                    );
+                    return foundKey ? row[foundKey] : "";
+                };
+
+                const parseBRL = (value: any) => {
+                    if (value === null || value === undefined || value === "") return 0;
+
+                    // 🔥 Caso o XLSX já tenha retornado número, NÃO mexer
+                    if (typeof value === "number") {
+                        return value;
+                    }
+
+                    const str = String(value).trim();
+
+                    // 🔥 Caso seja formato brasileiro: 498.544,25
+                    if (str.includes(",")) {
+                        const normalized = str
+                            .replace(/\./g, "")   // remove separador de milhar
+                            .replace(",", ".");  // troca decimal
+
+                        const num = Number(normalized);
+                        return isNaN(num) ? 0 : num;
+                    }
+
+                    // 🔥 Caso já esteja em formato válido tipo "245784.55"
+                    const num = Number(str);
+                    return isNaN(num) ? 0 : num;
+                };
+
                 // Tentativa de encontrar a loja por número ou nome
-                const storeNum = String(row['Loja'] || row['Filial'] || '').replace(/\D/g, '').replace(/^0+/, '');
+                const storeRaw = getValue(row, ["loja", "filial"]);
+                const storeNum = String(storeRaw || '').replace(/\D/g, '').replace(/^0+/, '');
                 const targetStore = stores.find(s => s.number === storeNum);
                 
                 if (!targetStore) return null;
@@ -52,10 +89,13 @@ const DashboardAdmin: React.FC<DashboardAdminProps> = ({ stores, performanceData
                 return {
                     storeId: targetStore.id,
                     month: selectedMonth,
-                    revenueActual: Number(row['Venda'] || row['Faturamento'] || 0),
-                    itemsActual: Number(row['Peças'] || row['Itens'] || 0),
-                    salesActual: Number(row['Atendimentos'] || row['Vendas'] || 0),
-                    delinquencyRate: Number(row['Inadimplencia'] || 0),
+                    revenueActual: parseBRL(getValue(row, ["valor vendido", "faturamento", "venda"])),
+                    itemsActual: parseBRL(getValue(row, ["qtde itens", "itens", "peças", "pecas"])),
+                    salesActual: parseBRL(getValue(row, ["atendimentos", "vendas"])),
+                    paActual: parseBRL(getValue(row, ["p.a.", "p.a", "pa"])),
+                    puActual: parseBRL(getValue(row, ["p.u.", "p.u", "pu"])),
+                    averageTicket: parseBRL(getValue(row, ["ticket médio", "ticket medio"])),
+                    delinquencyRate: parseBRL(getValue(row, ["inadimplencia", "inadimplência"])),
                     businessDays: 26
                 };
             }).filter(Boolean);
@@ -206,8 +246,8 @@ const DashboardAdmin: React.FC<DashboardAdminProps> = ({ stores, performanceData
                         <ResponsiveContainer width="100%" height="100%">
                             <BarChart data={chartData}>
                                 <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#f1f5f9" />
-                                <XAxis dataKey="name" fontSize={10} font-weight="900" tickLine={false} axisLine={false} />
-                                <YAxis fontSize={10} font-weight="900" tickFormatter={(val) => `R$${val/1000}k`} />
+                                <XAxis dataKey="name" fontSize={10} fontWeight="900" tickLine={false} axisLine={false} />
+                                <YAxis fontSize={10} fontWeight="900" tickFormatter={(val) => `R$${val/1000}k`} />
                                 <Tooltip cursor={{fill: '#f8fafc'}} />
                                 <Legend />
                                 <Bar dataKey="venda" name="Realizado" fill="#1e3a8a" radius={[6, 6, 0, 0]} barSize={24} />
@@ -237,7 +277,9 @@ const DashboardAdmin: React.FC<DashboardAdminProps> = ({ stores, performanceData
                                         <p className={`text-sm font-black italic tracking-tighter ${isOk ? 'text-green-600' : 'text-blue-900'}`}>
                                             {(percent ?? 0).toFixed(1)}%
                                         </p>
-                                        <p className="text-[8px] font-black text-gray-400 uppercase tracking-widest">{formatCurrency(Number(d.revenueActual) || 0)}</p>
+                                        <p className="text-[8px] font-black text-gray-400 uppercase tracking-widest">
+                                            {formatCurrency(Number(d.revenueActual) || 0)} / {formatCurrency(Number(d.revenueTarget) || 0)}
+                                        </p>
                                     </div>
                                 </div>
                             );

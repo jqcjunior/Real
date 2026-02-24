@@ -234,9 +234,11 @@ const IceCreamModule: React.FC<IceCreamModuleProps> = ({
       const monthMethods = { pix: 0, money: 0, card: 0, fiado: 0 };
       const monthFiadoDetails: any[] = [];
 
+      // SENIOR FIX: monthIn agora vem de TODAS as entradas em finances, garantindo que aportes manuais sejam contados
+      monthIn = monthFinances.filter(f => f.type === 'entry').reduce((a, b) => a + Number(b.value), 0);
+
       monthSales.forEach(s => {
           const saleVal = Number(s.totalValue || 0);
-          monthIn += saleVal;
           
           if (s.paymentMethod === 'Pix') monthMethods.pix += saleVal;
           else if (s.paymentMethod === 'Dinheiro') monthMethods.money += saleVal;
@@ -552,7 +554,7 @@ const IceCreamModule: React.FC<IceCreamModuleProps> = ({
     const saleCode = `GEL-${Date.now().toString().slice(-6)}`;
     try {
       const operationalSales = cart.map(item => ({ ...item, paymentMethod: (isMisto ? 'Misto' : paymentMethod) as IceCreamPaymentMethod, buyer_name: (paymentMethod === 'Fiado' || (isMisto && mistoValues['Fiado'])) ? buyerName.toUpperCase() : undefined, saleCode, unitsSold: Math.round(item.unitsSold), status: 'active' as const }));
-      const financialPromises = splitData.map(payment => onAddTransaction({ id: '0', storeId: effectiveStoreId, date: new Date().toISOString().split('T')[0], type: 'entry', category: 'RECEITA DE VENDA PDV', value: payment.amount, description: `Pagamento via ${payment.method} - Ref. ${saleCode}`, createdAt: new Date() }));
+      const financialPromises = splitData.map(payment => onAddTransaction({ id: '0', storeId: effectiveStoreId, date: new Date().toLocaleDateString('en-CA'), type: 'entry', category: 'RECEITA DE VENDA PDV', value: payment.amount, description: `Pagamento via ${payment.method} - Ref. ${saleCode}`, createdAt: new Date() }));
       await Promise.all([onAddSales(operationalSales), ...financialPromises]);
       for (const c of cart) {
         const itemDef = items.find(it => it.id === c.itemId);
@@ -610,7 +612,7 @@ const IceCreamModule: React.FC<IceCreamModuleProps> = ({
           await onUpdateStock(effectiveStoreId, stItem.product_base, -val, stItem.unit, 'adjustment', stItem.stock_id);
           
           await onAddTransaction({
-              id: '0', storeId: effectiveStoreId, date: new Date().toISOString().split('T')[0],
+              id: '0', storeId: effectiveStoreId, date: new Date().toLocaleDateString('en-CA'),
               type: 'exit', category: 'AVARIA / DEFEITO PRODUTO', value: 0,
               description: `Baixa de Avaria: ${val}${stItem.unit} de ${stItem.product_base}. Motivo: ${wastageForm.reason}`,
               createdAt: new Date()
