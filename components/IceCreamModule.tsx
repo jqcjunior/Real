@@ -1,5 +1,5 @@
 import React, { useState, useMemo, useEffect } from 'react';
-import { IceCreamItem, IceCreamDailySale, IceCreamTransaction, IceCreamCategory, IceCreamPaymentMethod, User, UserRole, Store, IceCreamStock, IceCreamPromissoryNote, IceCreamRecipeItem, StoreProfitPartner } from '../types';
+import { IceCreamItem, IceCreamDailySale, IceCreamCategory, IceCreamPaymentMethod, User, UserRole, Store, IceCreamStock, IceCreamPromissoryNote, IceCreamRecipeItem, StoreProfitPartner, Sale } from '../types';
 import { formatCurrency, BRAND_LOGO } from '../constants';
 import { 
     IceCream, Plus, Package, ShoppingCart, CheckCircle2, 
@@ -17,13 +17,14 @@ interface IceCreamModuleProps {
   items: IceCreamItem[];
   stock: IceCreamStock[];
   sales: IceCreamDailySale[];
-  finances: IceCreamTransaction[];
+  salesHeaders?: Sale[];
+  salePayments: any[];
   promissories: IceCreamPromissoryNote[];
   can: (permissionKey: string) => boolean;
   onAddSales: (sale: IceCreamDailySale[]) => Promise<void>;
+  onAddSaleAtomic: (saleData: any, items: IceCreamDailySale[], payments: { method: IceCreamPaymentMethod, amount: number }[]) => Promise<void>;
   onCancelSale: (id: string, reason?: string) => Promise<void>;
   onUpdatePrice: (id: string, price: number) => Promise<void>;
-  onAddTransaction: (tx: IceCreamTransaction) => Promise<void>;
   onAddItem: (name: string, category: string, price: number, flavor?: string, stockInitial?: number, unit?: string, consumptionPerSale?: number, targetStoreId?: string, recipe?: IceCreamRecipeItem[]) => Promise<void>;
   onSaveProduct: (product: Partial<IceCreamItem>) => Promise<void>;
   onDeleteItem: (id: string) => Promise<void>;
@@ -53,9 +54,9 @@ const MONTHS = [
 ];
 
 const IceCreamModule: React.FC<IceCreamModuleProps> = ({ 
-    user, stores = [], items = [], stock = [], sales = [], finances = [], promissories = [], can,
-    onAddSales, onCancelSale, onUpdatePrice, onAddTransaction, onAddItem, onSaveProduct, onDeleteItem, onUpdateStock,
-    liquidatePromissory, onDeleteStockItem
+    user, stores = [], items = [], stock = [], sales = [], salePayments = [], promissories = [], can,
+    onAddSales, onAddSaleAtomic, onCancelSale, onUpdatePrice, onAddItem, onSaveProduct, onDeleteItem, onUpdateStock,
+    liquidatePromissory, onDeleteStockItem, salesHeaders
 }) => {
   const [activeTab, setActiveTab] = useState<'pdv' | 'estoque' | 'dre_diario' | 'dre_mensal' | 'audit' | 'produtos'>('pdv');
   const [dreSubTab, setDreSubTab] = useState<'resumo' | 'detalhado'>('resumo');
@@ -77,10 +78,8 @@ const IceCreamModule: React.FC<IceCreamModuleProps> = ({
   const [auditSearch, setAuditSearch] = useState('');
 
   const [showProductModal, setShowProductModal] = useState(false);
-  const [showTransactionModal, setShowTransactionModal] = useState(false);
   const [showWastageModal, setShowWastageModal] = useState(false);
   const [showCategoryManager, setShowCategoryManager] = useState(false);
-  const [expenseCategories, setExpenseCategories] = useState<{id: string, name: string}[]>([]);
   const [newCategoryName, setNewCategoryName] = useState('');
 
   const [showCancelModal, setShowCancelModal] = useState<{id: string, code: string} | null>(null);
@@ -104,9 +103,6 @@ const IceCreamModule: React.FC<IceCreamModuleProps> = ({
   const [editingProduct, setEditingProduct] = useState<IceCreamItem | null>(null);
   const [productForm, setProductForm] = useState<Partial<IceCreamItem>>({ name: '', category: 'Copinho', price: 0, active: true, recipe: [] });
   const [newRecipeItem, setNewRecipeItem] = useState({ stock_base_name: '', quantity: '1' });
-
-  const [txForm, setTxForm] = useState({ date: new Date().toLocaleDateString('en-CA'), category: '', value: '', description: '' });
-  
   const [manualStoreId, setManualStoreId] = useState('');
   const isAdmin = user.role === UserRole.ADMIN;
   const effectiveStoreId = isAdmin 
@@ -146,35 +142,9 @@ const IceCreamModule: React.FC<IceCreamModuleProps> = ({
     if (data) setPartners(data);
   };
 
-  const fetchExpenseCategories = async () => {
-    if (!effectiveStoreId) return;
-    const { data } = await supabase.from('ice_cream_expense_categories').select('*').eq('store_id', effectiveStoreId).order('name', { ascending: true });
-    if (data) {
-        setExpenseCategories(data);
-        if (data.length > 0 && !txForm.category) {
-            setTxForm(prev => ({ ...prev, category: data[0].name }));
-        }
-    }
-  };
-
   useEffect(() => { 
       fetchPartners(); 
-      fetchExpenseCategories();
   }, [effectiveStoreId]);
-
-  const handleAddCategory = async () => {
-      if (!newCategoryName.trim()) return;
-      const { error } = await supabase.from('ice_cream_expense_categories').insert([{ store_id: effectiveStoreId, name: newCategoryName.toUpperCase().trim() }]);
-      if (error) { alert("Erro ao adicionar categoria."); }
-      else { setNewCategoryName(''); fetchExpenseCategories(); }
-  };
-
-  const handleDeleteCategory = async (id: string) => {
-      if (!window.confirm("Deseja remover esta categoria?")) return;
-      const { error } = await supabase.from('ice_cream_expense_categories').delete().eq('id', id);
-      if (error) { alert("Erro ao remover."); }
-      else { fetchExpenseCategories(); }
-  };
 
   const filteredItems = useMemo(() => (items ?? []).filter(i => i.storeId === effectiveStoreId), [items, effectiveStoreId]);
   const filteredStock = useMemo(() => (stock ?? []).filter(s => s.store_id === effectiveStoreId && (s.is_active !== false)).sort((a,b) => a.product_base.localeCompare(b.product_base)), [stock, effectiveStoreId]);
@@ -182,107 +152,135 @@ const IceCreamModule: React.FC<IceCreamModuleProps> = ({
   const todayKey = new Date().toLocaleDateString('en-CA'); 
   const periodKey = `${selectedYear}-${String(selectedMonth).padStart(2, '0')}`;
 
-  const dreStats = useMemo(() => {
-      // SENIOR FIX: Normalização para fuso horário local (Brasil)
-      // Usamos new Date().toLocaleDateString('en-CA') para garantir YYYY-MM-DD local
-      const daySales = (sales ?? []).filter(s => {
-          if (!s.createdAt) return false;
-          const localDate = new Date(s.createdAt).toLocaleDateString('en-CA');
-          return localDate === todayKey && s.status !== 'canceled' && s.storeId === effectiveStoreId;
-      });
+const dreStats = useMemo(() => {
+    const now = new Date();
+    const currentUTCFullYear = now.getUTCFullYear();
+    const currentUTCMonth = now.getUTCMonth() + 1;
+    const currentUTCDate = now.getUTCDate();
 
-      const monthSales = (sales ?? []).filter(s => {
-          if (!s.createdAt) return false;
-          const localDate = new Date(s.createdAt).toLocaleDateString('en-CA');
-          return localDate.substring(0, 7) === periodKey && s.status !== 'canceled' && s.storeId === effectiveStoreId;
-      });
-      
-      const dayFinances = (finances ?? []).filter(f => {
-          const localDate = new Date(f.date + 'T12:00:00').toLocaleDateString('en-CA');
-          return localDate === todayKey && f.storeId === effectiveStoreId;
-      });
+    // ===== INTERVALOS SEGUROS EM UTC =====
+    const monthStart = new Date(Date.UTC(Number(selectedYear), Number(selectedMonth) - 1, 1, 0, 0, 0));
+    const monthEnd = new Date(Date.UTC(Number(selectedYear), Number(selectedMonth), 1, 0, 0, 0));
 
-      const monthFinances = (finances ?? []).filter(f => {
-          const localDate = new Date(f.date + 'T12:00:00').toLocaleDateString('en-CA');
-          return localDate.substring(0, 7) === periodKey && f.storeId === effectiveStoreId;
-      });
+    const dayStart = new Date(Date.UTC(currentUTCFullYear, currentUTCMonth - 1, currentUTCDate, 0, 0, 0));
+    const dayEnd = new Date(Date.UTC(currentUTCFullYear, currentUTCMonth - 1, currentUTCDate + 1, 0, 0, 0));
 
-      let dayIn = 0;
-      const dayMethods = { pix: 0, money: 0, card: 0, fiado: 0 };
-      daySales.forEach(s => {
-          dayIn += Number(s.totalValue);
-          if (s.paymentMethod === 'Pix') dayMethods.pix += Number(s.totalValue);
-          else if (s.paymentMethod === 'Dinheiro') dayMethods.money += Number(s.totalValue);
-          else if (s.paymentMethod === 'Cartão') dayMethods.card += Number(s.totalValue);
-          else if (s.paymentMethod === 'Fiado') dayMethods.fiado += Number(s.totalValue);
-          else if (s.paymentMethod === 'Misto') {
-              const relatedFinances = dayFinances.filter(f => f.type === 'entry' && f.description?.includes(s.saleCode || ''));
-              relatedFinances.forEach(f => {
-                  const desc = f.description?.toLowerCase() || '';
-                  if (desc.includes('via pix')) dayMethods.pix += Number(f.value);
-                  else if (desc.includes('via dinheiro')) dayMethods.money += Number(f.value);
-                  else if (desc.includes('via cartão')) dayMethods.card += Number(f.value);
-                  else if (desc.includes('via fiado')) dayMethods.fiado += Number(f.value);
-              });
-          }
-      });
+    // ===== FATURAMENTO MENSAL (USANDO salePayments) =====
+    const monthPaymentsFiltered = (salePayments ?? []).filter(p => {
+        if (!p.created_at) return false;
+        const d = new Date(p.created_at);
 
-      const dayExits = dayFinances.filter(f => f.type === 'exit');
-      const dayOut = dayExits.reduce((a, b) => a + Number(b.value), 0);
-      
-      let monthIn = 0;
-      const monthMethods = { pix: 0, money: 0, card: 0, fiado: 0 };
-      const monthFiadoDetails: any[] = [];
+        // SENIOR FIX: Cruzando com a tabela de vendas para verificar status 'completed'
+        const sale = (salesHeaders ?? []).find(s => s.id === p.sale_id);
+        const isCompleted = sale?.status === 'completed';
 
-      // SENIOR FIX: monthIn agora vem de TODAS as entradas em finances, garantindo que aportes manuais sejam contados
-      monthIn = monthFinances.filter(f => f.type === 'entry').reduce((a, b) => a + Number(b.value), 0);
+        return (
+            d >= monthStart &&
+            d < monthEnd &&
+            isCompleted &&
+            p.store_id === effectiveStoreId
+        );
+    });
 
-      monthSales.forEach(s => {
-          const saleVal = Number(s.totalValue || 0);
-          
-          if (s.paymentMethod === 'Pix') monthMethods.pix += saleVal;
-          else if (s.paymentMethod === 'Dinheiro') monthMethods.money += saleVal;
-          else if (s.paymentMethod === 'Cartão') monthMethods.card += saleVal;
-          else if (s.paymentMethod === 'Fiado') { 
-              monthMethods.fiado += saleVal; 
-              monthFiadoDetails.push(s); 
-          }
-          else if (s.paymentMethod === 'Misto') {
-              const relatedFinances = (finances || []).filter(f => 
-                f.storeId === effectiveStoreId && 
-                f.type === 'entry' && 
-                f.description?.includes(s.saleCode || '')
-              );
-              
-              relatedFinances.forEach(f => {
-                  const desc = f.description?.toLowerCase() || '';
-                  const partValue = Number(f.value || 0);
-                  if (desc.includes('via pix')) monthMethods.pix += partValue;
-                  else if (desc.includes('via dinheiro')) monthMethods.money += partValue;
-                  else if (desc.includes('via cartão')) monthMethods.card += partValue;
-                  else if (desc.includes('via fiado')) { 
-                      monthMethods.fiado += partValue; 
-                      monthFiadoDetails.push({ ...s, totalValue: partValue, paymentMethod: 'Fiado' }); 
-                  }
-              });
-          }
-      });
+    let monthIn = 0;
+    const monthMethods = { pix: 0, money: 0, card: 0, fiado: 0 };
 
-      const monthOut = monthFinances.filter(f => f.type === 'exit').reduce((a, b) => a + Number(b.value), 0);
-      const profit = monthIn - monthOut;
-      const resumo: Record<string, { qtd: number; total: number }> = {};
-      daySales.forEach(venda => {
-          if (!resumo[venda.productName]) resumo[venda.productName] = { qtd: 0, total: 0 };
-          resumo[venda.productName].qtd += Number(venda.unitsSold);
-          resumo[venda.productName].total += Number(venda.totalValue);
-      });
+    monthPaymentsFiltered.forEach(p => {
+        const val = Number(p.amount || 0);
+        monthIn += val;
 
-      return {
-          dayIn, dayOut, dayMethods, dayExits, resumoItensRodape: Object.entries(resumo).sort((a, b) => b[1].qtd - a[1].qtd),
-          daySales: daySales.sort((a,b) => String(b.createdAt || '').localeCompare(String(a.createdAt || ''))),
-          monthMethods, monthIn, monthOut, profit, monthFiadoDetails: monthFiadoDetails.sort((a,b) => String(b.createdAt || '').localeCompare(String(a.createdAt || ''))),
-      };
-  }, [sales, finances, todayKey, periodKey, effectiveStoreId]);
+        const method = p.payment_method?.toLowerCase();
+        if (method === 'pix') monthMethods.pix += val;
+        else if (method === 'dinheiro') monthMethods.money += val;
+        else if (method === 'cartão') monthMethods.card += val;
+        else if (method === 'fiado') monthMethods.fiado += val;
+    });
+
+    const profit = monthIn; // Sem despesas por enquanto
+
+    // ===== VENDAS DO DIA (para resumo) =====
+    const daySales = (sales ?? []).filter(s => {
+        if (!s.createdAt) return false;
+        const d = new Date(s.createdAt);
+
+        return (
+            d >= dayStart &&
+            d < dayEnd &&
+            s.status === 'completed' &&
+            s.storeId === effectiveStoreId
+        );
+    });
+
+    let dayIn = 0;
+    const dayMethods = { pix: 0, money: 0, card: 0, fiado: 0 };
+
+    // SENIOR FIX: dayIn agora vem da tabela de pagamentos filtrada pelo dia
+    const dayPaymentsFiltered = (salePayments ?? []).filter(p => {
+        if (!p.created_at) return false;
+        const d = new Date(p.created_at);
+        const sale = (salesHeaders ?? []).find(s => s.id === p.sale_id);
+        return d >= dayStart && d < dayEnd && sale?.status === 'completed' && p.store_id === effectiveStoreId;
+    });
+
+    dayPaymentsFiltered.forEach(p => {
+        const val = Number(p.amount || 0);
+        dayIn += val;
+
+        const method = p.payment_method?.toLowerCase();
+        if (method === 'pix') dayMethods.pix += val;
+        else if (method === 'dinheiro') dayMethods.money += val;
+        else if (method === 'cartão') dayMethods.card += val;
+        else if (method === 'fiado') dayMethods.fiado += val;
+    });
+
+    // ===== FIADO DETALHADO (CRUZANDO salePayments + sales) =====
+    const monthFiadoPayments = monthPaymentsFiltered.filter(
+        p => p.payment_method?.toLowerCase() === 'fiado'
+    );
+
+    const monthFiadoDetails = monthFiadoPayments.map(p => {
+        const sale = (salesHeaders ?? []).find(s => s.id === p.sale_id);
+        return {
+            buyer_name: sale?.buyer_name || 'NÃO INFORMADO',
+            totalValue: p.amount,
+            saleCode: sale?.sale_code || '---',
+            createdAt: p.created_at,
+            productName: 'Venda Diversa'
+        };
+    });
+
+    // ===== RESUMO DE ITENS (RODAPÉ DRE DIÁRIO) =====
+    const resumo: Record<string, { qtd: number; total: number }> = {};
+
+    daySales.forEach(venda => {
+        if (!resumo[venda.productName]) {
+            resumo[venda.productName] = { qtd: 0, total: 0 };
+        }
+
+        resumo[venda.productName].qtd += Number(venda.unitsSold || 0);
+        resumo[venda.productName].total += Number(venda.totalValue || 0);
+    });
+
+    return {
+        monthIn,
+        monthMethods,
+        monthOut: 0,
+        profit,
+        monthFiadoDetails: monthFiadoDetails.sort((a, b) =>
+            String(b.createdAt || '').localeCompare(String(a.createdAt || ''))
+        ),
+        dayIn,
+        dayOut: 0,
+        dayMethods,
+        dayExits: [],
+        daySales: daySales.sort((a, b) =>
+            String(b.createdAt || '').localeCompare(String(a.createdAt || ''))
+        ),
+        resumoItensRodape: Object.entries(resumo).sort(
+            (a, b) => b[1].qtd - a[1].qtd
+        )
+    };
+}, [sales, salePayments, selectedYear, selectedMonth, effectiveStoreId]);
 
   const monthFiadoGrouped = useMemo(() => {
     const groups: Record<string, { name: string, total: number, items: any[] }> = {};
@@ -304,9 +302,8 @@ const IceCreamModule: React.FC<IceCreamModuleProps> = ({
     if (auditDay) filterParts.push(String(auditDay).padStart(2, '0'));
     const filterPrefix = filterParts.join('-');
 
-    const filtered = sales.filter(s => {
+    const filtered = (sales || []).filter(s => {
       if (s.storeId !== effectiveStoreId) return false;
-      // SENIOR FIX: Conversão para local antes de comparar com o prefixo
       const localDate = new Date(s.createdAt || '').toLocaleDateString('en-CA');
       if (filterPrefix && !localDate.startsWith(filterPrefix)) return false;
       if (auditSearch) {
@@ -343,24 +340,8 @@ const IceCreamModule: React.FC<IceCreamModuleProps> = ({
   }, [sales, effectiveStoreId, auditDay, auditMonth, auditYear, auditSearch]);
 
   const filteredAuditWastage = useMemo(() => {
-    const filterParts = [];
-    if (auditYear) filterParts.push(auditYear);
-    if (auditMonth) filterParts.push(String(auditMonth).padStart(2, '0'));
-    if (auditDay) filterParts.push(String(auditDay).padStart(2, '0'));
-    const filterPrefix = filterParts.join('-');
-
-    return finances.filter(f => {
-      if (f.storeId !== effectiveStoreId) return false;
-      if (f.category !== 'AVARIA / DEFEITO PRODUTO') return false;
-      const localDate = new Date(f.date + 'T12:00:00').toLocaleDateString('en-CA');
-      if (filterPrefix && !localDate.startsWith(filterPrefix)) return false;
-      if (auditSearch) {
-        const search = auditSearch.toLowerCase();
-        return f.description?.toLowerCase().includes(search);
-      }
-      return true;
-    }).sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
-  }, [finances, effectiveStoreId, auditDay, auditMonth, auditYear, auditSearch]);
+    return []; // Auditoria de avarias removida por depender de finances
+  }, []);
 
   const handlePrintDreMensal = () => {
     const printWindow = window.open('', '_blank');
@@ -548,23 +529,65 @@ const IceCreamModule: React.FC<IceCreamModuleProps> = ({
   const finalizeSale = async () => {
     if (cart.length === 0 || !paymentMethod) return;
     const isMisto = paymentMethod === 'Misto';
-    const splitData = isMisto ? Object.entries(mistoValues).map(([method, val]) => ({ method: method as IceCreamPaymentMethod, amount: parseFloat((val as string).replace(',', '.')) || 0 })).filter(p => p.amount > 0) : [{ method: paymentMethod as IceCreamPaymentMethod, amount: cartTotal }];
-    if (isMisto && Math.abs(splitData.reduce((a, b) => a + b.amount, 0) - cartTotal) > 0.05) { alert("Total divergente."); return; }
+    const splitData = isMisto 
+      ? Object.entries(mistoValues)
+          .map(([method, val]) => ({ 
+            method: method as IceCreamPaymentMethod, 
+            amount: parseFloat((val as string).replace(',', '.')) || 0 
+          }))
+          .filter(p => p.amount > 0) 
+      : [{ method: paymentMethod as IceCreamPaymentMethod, amount: cartTotal }];
+
+    if (isMisto && Math.abs(splitData.reduce((a, b) => a + b.amount, 0) - cartTotal) > 0.01) { 
+      alert("A soma dos pagamentos não confere com o total da venda."); 
+      return; 
+    }
+
     setIsSubmitting(true);
     const saleCode = `GEL-${Date.now().toString().slice(-6)}`;
+    
     try {
-      const operationalSales = cart.map(item => ({ ...item, paymentMethod: (isMisto ? 'Misto' : paymentMethod) as IceCreamPaymentMethod, buyer_name: (paymentMethod === 'Fiado' || (isMisto && mistoValues['Fiado'])) ? buyerName.toUpperCase() : undefined, saleCode, unitsSold: Math.round(item.unitsSold), status: 'active' as const }));
-      const financialPromises = splitData.map(payment => onAddTransaction({ id: '0', storeId: effectiveStoreId, date: new Date().toLocaleDateString('en-CA'), type: 'entry', category: 'RECEITA DE VENDA PDV', value: payment.amount, description: `Pagamento via ${payment.method} - Ref. ${saleCode}`, createdAt: new Date() }));
-      await Promise.all([onAddSales(operationalSales), ...financialPromises]);
+      const saleData = {
+        store_id: effectiveStoreId,
+        total: cartTotal,
+        sale_code: saleCode,
+        buyer_name: (paymentMethod === 'Fiado' || (isMisto && mistoValues['Fiado'])) ? buyerName.toUpperCase() : undefined
+      };
+
+      const operationalSales = cart.map(item => ({ 
+        ...item, 
+        paymentMethod: (isMisto ? 'Misto' : paymentMethod) as IceCreamPaymentMethod, 
+        buyer_name: saleData.buyer_name, 
+        saleCode, 
+        unitsSold: Math.round(item.unitsSold), 
+        status: 'completed' as const 
+      }));
+
+      await onAddSaleAtomic(saleData, operationalSales, splitData);
+
+      // Otimização: Atualização de estoque em lote (Promise.all)
+      const stockUpdates: Promise<void>[] = [];
       for (const c of cart) {
         const itemDef = items.find(it => it.id === c.itemId);
         if (itemDef?.recipe) {
-          for (const ingredient of itemDef.recipe) { await onUpdateStock(effectiveStoreId, String(ingredient.stock_base_name).toUpperCase(), -(ingredient.quantity * c.unitsSold), '', 'adjustment'); }
+          for (const ingredient of itemDef.recipe) { 
+            stockUpdates.push(onUpdateStock(effectiveStoreId, String(ingredient.stock_base_name).toUpperCase(), -(ingredient.quantity * c.unitsSold), '', 'adjustment')); 
+          }
         }
       }
-      handleOpenPrintPreview(operationalSales, saleCode, isMisto ? 'Misto' : (paymentMethod as string), (paymentMethod === 'Fiado' || (isMisto && mistoValues['Fiado'])) ? buyerName : undefined);
-      setCart([]); setPaymentMethod(null); setBuyerName(''); setAmountReceived(''); setMistoValues({ 'Pix': '', 'Dinheiro': '', 'Cartão': '', 'Fiado': '' });
-    } catch (e) { alert("Falha ao registrar venda."); } finally { setIsSubmitting(false); }
+      if (stockUpdates.length > 0) await Promise.all(stockUpdates);
+
+      handleOpenPrintPreview(operationalSales, saleCode, isMisto ? 'Misto' : (paymentMethod as string), saleData.buyer_name);
+      setCart([]); 
+      setPaymentMethod(null); 
+      setBuyerName(''); 
+      setAmountReceived(''); 
+      setMistoValues({ 'Pix': '', 'Dinheiro': '', 'Cartão': '', 'Fiado': '' });
+    } catch (e) { 
+      alert("Falha ao registrar venda."); 
+    } finally { 
+      setIsSubmitting(false); 
+    }
   };
 
   const handleCancelSale = async () => {
@@ -590,17 +613,6 @@ const IceCreamModule: React.FC<IceCreamModuleProps> = ({
     try { await onSaveProduct({ ...productForm, storeId: effectiveStoreId }); setShowProductModal(false); setEditingProduct(null); alert("Produto salvo!"); } catch (e) { alert("Erro ao salvar."); } finally { setIsSubmitting(false); }
   };
 
-  const handleSaveTransaction = async () => {
-    if (!txForm.value || !txForm.description || !txForm.category) return;
-    setIsSubmitting(true);
-    try { 
-      await onAddTransaction({ id: '0', storeId: effectiveStoreId, date: txForm.date, type: 'exit', category: txForm.category, value: parseFloat(txForm.value.replace(',', '.')), description: txForm.description, createdAt: new Date() }); 
-      setShowTransactionModal(false); 
-      setTxForm({ date: new Date().toLocaleDateString('en-CA'), category: expenseCategories[0]?.name || '', value: '', description: '' }); 
-      alert("Saída lançada!"); 
-    } catch (e) { alert("Erro ao lançar."); } finally { setIsSubmitting(false); }
-  };
-
   const handleSaveWastage = async () => {
       if (!wastageForm.stockId || !wastageForm.quantity || !effectiveStoreId) return;
       setIsSubmitting(true);
@@ -611,13 +623,6 @@ const IceCreamModule: React.FC<IceCreamModuleProps> = ({
           const val = parseFloat(wastageForm.quantity.replace(',', '.'));
           await onUpdateStock(effectiveStoreId, stItem.product_base, -val, stItem.unit, 'adjustment', stItem.stock_id);
           
-          await onAddTransaction({
-              id: '0', storeId: effectiveStoreId, date: new Date().toLocaleDateString('en-CA'),
-              type: 'exit', category: 'AVARIA / DEFEITO PRODUTO', value: 0,
-              description: `Baixa de Avaria: ${val}${stItem.unit} de ${stItem.product_base}. Motivo: ${wastageForm.reason}`,
-              createdAt: new Date()
-          });
-
           setWastageForm({ stockId: '', quantity: '', reason: 'DEFEITO / AVARIA' });
           setShowWastageModal(false);
           alert("Baixa de avaria realizada com sucesso!");
@@ -704,7 +709,7 @@ const IceCreamModule: React.FC<IceCreamModuleProps> = ({
                     <button 
                         key={tab.label} 
                         onClick={() => setActiveTab(tab.view as any)} 
-                        className={`flex-1 md:flex-none px-3 py-2 rounded-lg text-[8px] md:text-[9px] font-black uppercase transition-all flex items-center justify-center gap-1.5 whitespace-nowrap ${activeTab === tab.view ? 'bg-white text-blue-900 shadow-sm border border-blue-100' : 'text-gray-400 hover:text-blue-900 hover:bg-white/50'}`}
+                        className={`flex-1 md:flex-none px-3 py-2 rounded-lg text-[8px] md:text-[9px] font-black uppercase transition-all flex items-center justify-center gap-1.5 whitespace-nowrap ${activeTab === tab.view ? 'bg-white text-blue-900 shadow-sm' : 'text-gray-400 hover:text-blue-900 hover:bg-white/50'}`}
                     >
                         <tab.icon size={12}/> {tab.label}
                     </button>
@@ -716,28 +721,28 @@ const IceCreamModule: React.FC<IceCreamModuleProps> = ({
             {activeTab === 'pdv' && (
                 <div className="h-full">
                     <div className="lg:hidden h-full">
-                        <PDVMobileView 
-                            user={user} 
-                            items={filteredItems} 
-                            cart={cart} 
-                            setCart={setCart} 
-                            selectedCategory={selectedCategory} 
-                            setSelectedCategory={setSelectedCategory} 
-                            paymentMethod={paymentMethod} 
-                            setPaymentMethod={setPaymentMethod} 
-                            buyerName={buyerName} 
-                            setBuyerName={setBuyerName} 
-                            mistoValues={mistoValues} 
-                            setMistoValues={setMistoValues} 
-                            onAddSales={onAddSales} 
-                            onAddTransaction={onAddTransaction} 
-                            onUpdateStock={onUpdateStock} 
-                            handlePrintTicket={handleOpenPrintPreview} 
-                            isSubmitting={isSubmitting} 
-                            setIsSubmitting={setIsSubmitting} 
-                            effectiveStoreId={effectiveStoreId} 
-                            existingBuyerNames={existingBuyerNames}
-                        />
+                            <PDVMobileView 
+                                user={user} 
+                                items={filteredItems} 
+                                cart={cart} 
+                                setCart={setCart} 
+                                selectedCategory={selectedCategory} 
+                                setSelectedCategory={setSelectedCategory} 
+                                paymentMethod={paymentMethod} 
+                                setPaymentMethod={setPaymentMethod} 
+                                buyerName={buyerName} 
+                                setBuyerName={setBuyerName} 
+                                mistoValues={mistoValues} 
+                                setMistoValues={setMistoValues} 
+                                onAddSales={onAddSales} 
+                                onAddSaleAtomic={onAddSaleAtomic}
+                                onUpdateStock={onUpdateStock} 
+                                handlePrintTicket={handleOpenPrintPreview} 
+                                isSubmitting={isSubmitting} 
+                                setIsSubmitting={setIsSubmitting} 
+                                effectiveStoreId={effectiveStoreId} 
+                                existingBuyerNames={existingBuyerNames}
+                            />
                     </div>
                     <div className="hidden lg:grid grid-cols-12 gap-4 p-6 max-w-[1500px] mx-auto h-full overflow-hidden">
                         <div className="col-span-8 flex flex-col h-full overflow-hidden">
@@ -807,7 +812,6 @@ const IceCreamModule: React.FC<IceCreamModuleProps> = ({
                         <div className="flex flex-col items-end gap-2">
                              <div className="flex gap-2">
                                 <button onClick={() => setShowWastageModal(true)} className="px-6 py-2.5 bg-orange-500 text-white rounded-xl font-black uppercase text-[10px] shadow-lg flex items-center gap-2 border-b-4 border-orange-700 active:scale-95"><AlertTriangle size={14}/> Baixa Avaria</button>
-                                <button onClick={() => setShowTransactionModal(true)} className="px-6 py-2.5 bg-red-600 text-white rounded-xl font-black uppercase text-[10px] shadow-lg flex items-center gap-2 border-b-4 border-red-900 active:scale-95"><DollarSign size={14}/> Lançar Saída (Sangria)</button>
                              </div>
                              <div className="text-right"><p className="text-[9px] font-black text-gray-400 uppercase">Apuração</p><p className="text-lg font-black text-blue-950">{todayKey.split('-').reverse().join('/')}</p></div>
                         </div>
@@ -825,8 +829,8 @@ const IceCreamModule: React.FC<IceCreamModuleProps> = ({
                                     </div>
                                     <div className="pt-2 border-t-2 border-green-50"><p className="text-2xl font-black text-green-700 italic">{formatCurrency(dreStats.dayIn)}</p></div>
                                 </div>
-                                <div className="bg-white p-6 rounded-[32px] border-2 border-red-100 shadow-sm flex flex-col justify-between"><div><span className="text-[9px] font-black text-red-600 uppercase tracking-widest">Resumo Saídas (-)</span><p className="text-3xl font-black text-red-700 italic mt-4">{formatCurrency(dreStats.dayOut)}</p></div></div>
-                                <div className="bg-gray-950 p-6 rounded-[32px] text-white shadow-xl flex flex-col justify-between"><div><span className="text-[9px] font-black text-blue-400 uppercase tracking-widest">Saldo Líquido</span><p className="text-3xl font-black italic mt-4">{formatCurrency(dreStats.dayIn - dreStats.dayOut)}</p></div></div>
+                                <div className="bg-white p-6 rounded-[32px] border-2 border-red-100 shadow-sm flex flex-col justify-between"><div><span className="text-[9px] font-black text-red-600 uppercase tracking-widest">Resumo Saídas (-)</span><p className="text-3xl font-black text-red-700 italic mt-4">{formatCurrency(0)}</p></div></div>
+                                <div className="bg-gray-950 p-6 rounded-[32px] text-white shadow-xl flex flex-col justify-between"><div><span className="text-[9px] font-black text-blue-400 uppercase tracking-widest">Saldo Líquido</span><p className="text-3xl font-black italic mt-4">{formatCurrency(dreStats.dayIn)}</p></div></div>
                             </div>
 
                             <div className="bg-white p-8 rounded-[40px] border border-gray-100 shadow-sm">
@@ -891,7 +895,7 @@ const IceCreamModule: React.FC<IceCreamModuleProps> = ({
                         <div className="lg:col-span-8 space-y-6">
                             <div className="bg-white p-8 rounded-[40px] shadow-sm border border-gray-100"><h4 className="text-[10px] font-black text-gray-400 uppercase tracking-[0.2em] mb-6 flex items-center gap-2"><Briefcase size={14}/> Demonstrativo de Resultado</h4><div className="space-y-4">
                                 <div className="flex justify-between items-center pb-4 border-b"><span className="font-bold text-gray-600 uppercase text-xs">Faturamento (+)</span><span className="font-black text-green-600 text-lg">{formatCurrency(dreStats.monthIn)}</span></div>
-                                <div className="flex justify-between items-center pb-4 border-b"><span className="font-bold text-gray-600 uppercase text-xs">Despesas / Saídas (-)</span><span className="font-black text-red-600 text-lg">{formatCurrency(dreStats.monthOut)}</span></div>
+                                <div className="flex justify-between items-center pb-4 border-b"><span className="font-bold text-gray-600 uppercase text-xs">Despesas / Saídas (-)</span><span className="font-black text-red-600 text-lg">{formatCurrency(0)}</span></div>
                                 <div className="flex justify-between items-center pt-2"><span className="font-black text-blue-950 uppercase text-sm">Lucro Líquido (=)</span><span className="font-black text-blue-900 text-2xl italic">{formatCurrency(dreStats.profit)}</span></div>
                             </div></div>
                             <div className="bg-white p-8 rounded-[40px] shadow-sm border border-gray-100">
@@ -1096,7 +1100,7 @@ const IceCreamModule: React.FC<IceCreamModuleProps> = ({
                                     </tr>
                                 </thead>
                                 <tbody className="divide-y divide-gray-50 font-bold text-[10px]">
-                                    {filteredAuditWastage.map((f: IceCreamTransaction) => (
+                                    {filteredAuditWastage.map((f: any) => (
                                         <tr key={f.id} className="hover:bg-orange-50/20 transition-all">
                                             <td className="px-8 py-5">
                                                 <div className="text-[10px] font-black text-gray-900 uppercase">{new Date(f.date + 'T12:00:00').toLocaleDateString('pt-BR')}</div>
@@ -1387,54 +1391,6 @@ const IceCreamModule: React.FC<IceCreamModuleProps> = ({
                                 {isSubmitting ? <Loader2 className="animate-spin" /> : <Save size={18}/>} EFETIVAR CADASTRO
                             </button>
                         </form>
-                    </div>
-                </div>
-            </div>
-        )}
-
-        {showTransactionModal && (
-            <div className="fixed inset-0 bg-black/80 backdrop-blur-md flex items-center justify-center z-[130] p-4">
-                <div className="bg-white rounded-[40px] w-full max-w-md shadow-2xl animate-in zoom-in duration-300 border-t-8 border-red-600 overflow-hidden">
-                    <div className="p-8 border-b bg-gray-50/50 flex justify-between items-center"><h3 className="text-xl font-black uppercase italic text-blue-950 flex items-center gap-3"><DollarSign className="text-red-600" /> Registrar <span className="text-red-600">Despesa</span></h3><button onClick={() => setShowTransactionModal(false)} className="text-gray-400 hover:text-red-600"><X size={24}/></button></div>
-                    <div className="p-10 space-y-6">
-                        <div className="space-y-2"><label className="text-[10px] font-black text-gray-400 uppercase ml-2 tracking-widest">Valor (R$)</label><input value={txForm.value} onChange={e => setTxForm({...txForm, value: e.target.value})} className="w-full p-5 bg-red-50 rounded-[24px] font-black text-red-700 text-2xl shadow-inner outline-none border-none text-center" placeholder="0,00" /></div>
-                        <div className="space-y-2"><label className="text-[10px] font-black text-gray-400 uppercase ml-2 tracking-widest">Descrição / Motivo</label><input value={txForm.description} onChange={e => setTxForm({...txForm, description: e.target.value.toUpperCase()})} className="w-full p-4 bg-gray-50 rounded-2xl font-black text-gray-900 uppercase shadow-inner outline-none" placeholder="EX: COMPRA DE LEITE, LIMP." /></div>
-                        <div className="space-y-2">
-                            <div className="flex justify-between items-center ml-2">
-                                <label className="text-[10px] font-black text-gray-400 uppercase tracking-widest">Categoria</label>
-                                <button onClick={() => setShowCategoryManager(true)} className="text-gray-400 hover:text-blue-600 transition-all"><Settings size={14}/></button>
-                            </div>
-                            <select value={txForm.category} onChange={e => setTxForm({...txForm, category: e.target.value})} className="w-full p-4 bg-gray-50 rounded-2xl font-black outline-none border-none shadow-inner">
-                                <option value="">SELECIONE...</option>
-                                {expenseCategories.map(cat => (
-                                    <option key={cat.id} value={cat.name}>{cat.name}</option>
-                                ))}
-                            </select>
-                        </div>
-                        <button onClick={handleSaveTransaction} disabled={isSubmitting || !txForm.category} className="w-full py-5 bg-red-600 text-white rounded-[28px] font-black uppercase text-xs shadow-xl active:scale-95 transition-all border-b-4 border-red-900 flex items-center justify-center gap-3">{isSubmitting ? <Loader2 className="animate-spin" /> : <Save size={18}/>} EFETIVAR LANÇAMENTO</button>
-                    </div>
-                </div>
-            </div>
-        )}
-
-        {showCategoryManager && (
-            <div className="fixed inset-0 bg-black/80 backdrop-blur-md flex items-center justify-center z-[150] p-4">
-                <div className="bg-white rounded-[40px] w-full max-sm shadow-2xl animate-in zoom-in duration-300 border-t-8 border-blue-600 overflow-hidden">
-                    <div className="p-6 border-b bg-gray-50/50 flex justify-between items-center"><h3 className="text-lg font-black uppercase italic text-blue-950 flex items-center gap-3"><Settings className="text-blue-600" /> Categorias</h3><button onClick={() => setShowCategoryManager(false)} className="text-gray-400 hover:text-red-600"><X size={20}/></button></div>
-                    <div className="p-8 space-y-6">
-                        <div className="flex gap-2">
-                            <input value={newCategoryName} onChange={e => setNewCategoryName(e.target.value)} placeholder="NOVA CATEGORIA..." className="flex-1 p-3 bg-gray-50 rounded-xl font-black uppercase text-[10px] outline-none border border-gray-200" />
-                            <button onClick={handleAddCategory} className="bg-blue-600 text-white p-3 rounded-xl"><Plus size={18}/></button>
-                        </div>
-                        <div className="space-y-2 max-h-[300px] overflow-y-auto no-scrollbar">
-                            {expenseCategories.map(cat => (
-                                <div key={cat.id} className="flex justify-between items-center p-3 bg-gray-50 rounded-xl border border-gray-100">
-                                    <span className="text-[10px] font-black text-gray-700 uppercase">{cat.name}</span>
-                                    <button onClick={() => handleDeleteCategory(cat.id)} className="text-red-300 hover:text-red-600"><Trash2 size={14}/></button>
-                                </div>
-                            ))}
-                            {expenseCategories.length === 0 && <p className="text-[9px] text-gray-400 text-center py-4 uppercase font-bold italic">Nenhuma categoria configurada</p>}
-                        </div>
                     </div>
                 </div>
             </div>

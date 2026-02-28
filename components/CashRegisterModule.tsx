@@ -204,9 +204,11 @@ export const printCardSummaryDoc = (date: string, storeName: string, cards: Card
 const CashRegisterModule: React.FC<CashRegisterModuleProps> = ({ 
     user, stores, receipts, errors, finances, onAddReceipt, onAddError, onDeleteError 
 }) => {
-    const [activeTab, setActiveTab] = useState<'recibos' | 'cartoes' | 'quebras'>('recibos');
+    const [activeTab, setActiveTab] = useState<'recibos' | 'cartoes' | 'quebras' | 'fechamento'>('recibos');
     const [isSubmitting, setIsSubmitting] = useState(false);
     const [selectedDate, setSelectedDate] = useState(new Date().toISOString().split('T')[0]);
+    const [dailyTotals, setDailyTotals] = useState<Record<string, number>>({});
+    const [isLoadingTotals, setIsLoadingTotals] = useState(false);
     
     const [availableBrands, setAvailableBrands] = useState<CardBrand[]>([]);
     const [stagedCards, setStagedCards] = useState<CardEntry[]>([]);
@@ -241,7 +243,50 @@ const CashRegisterModule: React.FC<CashRegisterModuleProps> = ({
         }
     };
 
-    useEffect(() => { fetchBrands(); }, []);
+    const fetchDailyTotals = async () => {
+        if (!user.storeId) return;
+        setIsLoadingTotals(true);
+        try {
+            // SENIOR FIX: Busca direta na tabela de pagamentos para evitar divergências
+            const { data, error } = await supabase
+                .from('sale_payments')
+                .select('amount, payment_method, sales!inner(store_id, sale_date, status)')
+                .eq('sales.store_id', user.storeId)
+                .eq('sales.sale_date', selectedDate)
+                .eq('sales.status', 'active');
+
+            if (error) throw error;
+
+            const totals: Record<string, number> = {
+                'Pix': 0,
+                'Dinheiro': 0,
+                'Cartão': 0,
+                'Fiado': 0,
+                'Voucher': 0
+            };
+
+            data?.forEach(p => {
+                const method = p.payment_method;
+                if (totals[method] !== undefined) {
+                    totals[method] += Number(p.amount);
+                } else {
+                    totals[method] = Number(p.amount);
+                }
+            });
+
+            setDailyTotals(totals);
+        } catch (e) {
+            console.error("Erro ao buscar totais diários:", e);
+        } finally {
+            setIsLoadingTotals(false);
+        }
+    };
+
+    useEffect(() => {
+        if (activeTab === 'fechamento') {
+            fetchDailyTotals();
+        }
+    }, [activeTab, selectedDate, user.storeId]);
 
     const handleAddBrand = async () => {
         if (!newBrandName.trim()) return;
@@ -331,7 +376,12 @@ const CashRegisterModule: React.FC<CashRegisterModuleProps> = ({
                     <div><h1 className="text-xl font-black text-blue-950 uppercase italic tracking-tighter">Gestão de Caixa</h1><p className="text-[10px] text-gray-400 font-bold uppercase tracking-widest">Finanças e Auditoria Rede Real</p></div>
                 </div>
                 <div className="flex bg-gray-100 p-1 rounded-2xl">
-                    {[{ id: 'recibos', label: 'Recibos', icon: FileText }, { id: 'cartoes', label: 'Cartões', icon: CreditCard }, { id: 'quebras', label: 'Quebra', icon: AlertTriangle }].map(tab => (
+                    {[
+                        { id: 'recibos', label: 'Recibos', icon: FileText }, 
+                        { id: 'cartoes', label: 'Cartões', icon: CreditCard }, 
+                        { id: 'quebras', label: 'Quebra', icon: AlertTriangle },
+                        { id: 'fechamento', label: 'Fechamento', icon: CheckCircle2 }
+                    ].map(tab => (
                         <button key={tab.id} onClick={() => setActiveTab(tab.id as any)} className={`flex items-center gap-2 px-6 py-2.5 rounded-xl text-[10px] font-black uppercase transition-all whitespace-nowrap ${activeTab === tab.id ? 'bg-white text-blue-900 shadow-md border border-blue-50' : 'text-gray-400 hover:text-gray-600'}`}>
                             <tab.icon size={14} /> {tab.label}
                         </button>
@@ -429,6 +479,58 @@ const CashRegisterModule: React.FC<CashRegisterModuleProps> = ({
                                 <div className="space-y-2"><label className="text-[10px] font-black text-gray-400 uppercase ml-2">Motivo</label><textarea required value={errorForm.reason} onChange={e => setErrorForm({...errorForm, reason: e.target.value})} className="w-full p-5 bg-gray-50 border-none rounded-[24px] font-bold text-xs text-gray-700 h-32 shadow-inner no-scrollbar" placeholder="MOTIVO DA DIVERGÊNCIA..." /></div>
                                 <button type="submit" disabled={isSubmitting} className="w-full py-5 bg-gray-950 text-white rounded-[28px] font-black uppercase text-xs shadow-xl active:scale-95 border-b-4 border-slate-700 flex items-center justify-center gap-3">{isSubmitting ? <Loader2 className="animate-spin" /> : <Save size={18}/>} REGISTRAR</button>
                             </form>
+                        </div>
+                    </div>
+                )}
+                {activeTab === 'fechamento' && (
+                    <div className="max-w-4xl mx-auto space-y-6 animate-in fade-in duration-300">
+                        <div className="bg-white p-8 rounded-[40px] shadow-sm border border-gray-100">
+                            <div className="flex justify-between items-center mb-8">
+                                <div>
+                                    <h3 className="text-sm font-black text-gray-900 uppercase italic tracking-tighter flex items-center gap-3">
+                                        <CheckCircle2 className="text-blue-600" size={20} /> Conferência de Caixa Diário
+                                    </h3>
+                                    <p className="text-[10px] text-gray-400 font-bold uppercase mt-1">Valores consolidados por forma de pagamento</p>
+                                </div>
+                                <button 
+                                    onClick={fetchDailyTotals}
+                                    className="p-2 bg-blue-50 text-blue-600 rounded-xl hover:bg-blue-100 transition-all"
+                                >
+                                    <Loader2 className={isLoadingTotals ? 'animate-spin' : ''} size={20} />
+                                </button>
+                            </div>
+
+                            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+                                {Object.entries(dailyTotals).map(([method, total]) => (
+                                    <div key={method} className="bg-gray-50 p-6 rounded-3xl border border-gray-100 flex flex-col gap-2">
+                                        <div className="flex items-center gap-2">
+                                            {method === 'Pix' && <div className="w-2 h-2 rounded-full bg-teal-400" />}
+                                            {method === 'Dinheiro' && <div className="w-2 h-2 rounded-full bg-green-400" />}
+                                            {method === 'Cartão' && <div className="w-2 h-2 rounded-full bg-blue-400" />}
+                                            {method === 'Fiado' && <div className="w-2 h-2 rounded-full bg-red-400" />}
+                                            <span className="text-[10px] font-black text-gray-400 uppercase tracking-widest">{method}</span>
+                                        </div>
+                                        <span className="text-2xl font-black text-blue-950 italic">{formatCurrency(total as number)}</span>
+                                    </div>
+                                ))}
+                                <div className="bg-blue-900 p-6 rounded-3xl border border-blue-950 flex flex-col gap-2 shadow-xl md:col-span-2 lg:col-span-1">
+                                    <span className="text-[10px] font-black text-blue-300 uppercase tracking-widest">Total Geral</span>
+                                    <span className="text-2xl font-black text-white italic">
+                                        {formatCurrency((Object.values(dailyTotals) as number[]).reduce((acc: number, val: number) => acc + val, 0))}
+                                    </span>
+                                </div>
+                            </div>
+
+                            <div className="mt-12 p-6 bg-amber-50 rounded-3xl border border-amber-100 flex gap-4 items-start">
+                                <AlertTriangle className="text-amber-600 shrink-0" size={24} />
+                                <div>
+                                    <p className="text-xs font-black text-amber-900 uppercase italic">Atenção Auditoria</p>
+                                    <p className="text-[10px] text-amber-700 font-medium leading-relaxed mt-1">
+                                        Os valores acima são extraídos diretamente da tabela de pagamentos atômicos. 
+                                        Qualquer divergência com o valor físico deve ser registrada na aba "Quebra" para fins de auditoria.
+                                    </p>
+                                </div>
+                            </div>
                         </div>
                     </div>
                 )}

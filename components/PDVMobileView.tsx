@@ -1,6 +1,6 @@
 import React, { useState, useMemo } from 'react';
 import { 
-    IceCreamItem, IceCreamDailySale, IceCreamTransaction, IceCreamCategory, 
+    IceCreamItem, IceCreamDailySale, IceCreamCategory, 
     IceCreamPaymentMethod, User 
 } from '../types';
 import { formatCurrency } from '../constants';
@@ -25,8 +25,8 @@ interface PDVMobileViewProps {
     setBuyerName: (name: string) => void;
     existingBuyerNames: string[]; 
     onAddSales: (sale: IceCreamDailySale[]) => Promise<void>;
+    onAddSaleAtomic: (saleData: any, items: IceCreamDailySale[], payments: { method: IceCreamPaymentMethod, amount: number }[]) => Promise<void>;
     onUpdateStock: (storeId: string, base: string, value: number, unit: string, type: 'production' | 'adjustment' | 'purchase' | 'inventory') => Promise<void>;
-    onAddTransaction: (tx: IceCreamTransaction) => Promise<void>;
     handlePrintTicket: (items: IceCreamDailySale[], saleCode: string, method: string, buyer?: string) => void;
     isSubmitting: boolean;
     setIsSubmitting: (s: boolean) => void;
@@ -37,16 +37,13 @@ const PDVMobileView: React.FC<PDVMobileViewProps> = (props) => {
     const [step, setStep] = useState<'categories' | 'products' | 'cart'>('categories');
     const [amountPaid, setAmountPaid] = useState('');
 
-    // Ícones Dinâmicos Profissionais
     const getCategoryImage = (category: string, name: string) => {
         const itemName = (name || '').toLowerCase();
-        // Sundae agora usa a mesma imagem do Copinho
         if (category === 'Sundae') return 'https://img.icons8.com/color/144/ice-cream-bowl.png';
         if (['Casquinha', 'Cascão', 'Cascão Trufado'].includes(category)) return 'https://img.icons8.com/color/144/ice-cream-cone.png';
         if (category === 'Milkshake') return 'https://img.icons8.com/color/144/milkshake.png';
         if (category === 'Copinho') return 'https://img.icons8.com/color/144/ice-cream-bowl.png';
         if (category === 'Bebidas') return 'https://img.icons8.com/color/144/soda-bottle.png';
-        // Adicionais agora usa a mesma imagem da Nutella
         if (category === 'Adicionais' || itemName.includes('nutella') || itemName.includes('chocolate')) return 'https://img.icons8.com/color/144/chocolate-spread.png';
         if (itemName.includes('água')) return 'https://img.icons8.com/color/144/water-bottle.png';
         return 'https://img.icons8.com/color/144/ice-cream.png';
@@ -96,34 +93,66 @@ const PDVMobileView: React.FC<PDVMobileViewProps> = (props) => {
         const saleCode = `GEL-M${Date.now().toString().slice(-6)}`;
         
         try {
-            const operationalSales = props.cart.map(item => ({
-                ...item,
-                paymentMethod: (isMisto ? 'Misto' : props.paymentMethod) as IceCreamPaymentMethod,
-                buyer_name: (props.paymentMethod === 'Fiado' || (isMisto && props.mistoValues['Fiado'])) ? props.buyerName?.toUpperCase() : undefined,
-                saleCode,
-                status: 'active' as const
-            }));
+            const saleData = {
+                store_id: props.effectiveStoreId,
+                total: cartTotal,
+                sale_code: saleCode,
+                buyer_name: (props.paymentMethod === 'Fiado' || (isMisto && props.mistoValues['Fiado'])) ? props.buyerName?.toUpperCase() : undefined
+            };
 
-            await props.onAddSales(operationalSales);
-            
-            for (const payment of splitData) {
-                await props.onAddTransaction({
-                    id: '0', storeId: props.effectiveStoreId, date: new Date().toLocaleDateString('en-CA'),
-                    type: 'entry', category: 'RECEITA DE VENDA PDV', value: payment.amount,
-                    description: `Pagamento via ${payment.method} - Ref. ${saleCode}`, createdAt: new Date()
+            let operationalSales: IceCreamDailySale[] = [];
+
+            if (!isMisto) {
+                operationalSales = props.cart.map(item => ({
+                    ...item,
+                    paymentMethod: props.paymentMethod as IceCreamPaymentMethod,
+                    buyer_name: saleData.buyer_name,
+                    saleCode,
+                    status: 'completed' as const
+                }));
+            } else {
+                // VERSÃO SEGURA DA DISTRIBUIÇÃO MISTA
+                let remainingPayments = splitData.map(p => ({ ...p }));
+
+                operationalSales = props.cart.map(item => {
+                    let selectedMethod: IceCreamPaymentMethod | null = null;
+
+                    for (let i = 0; i < remainingPayments.length; i++) {
+                        if (remainingPayments[i].amount >= item.totalValue) {
+                            selectedMethod = remainingPayments[i].method;
+                            remainingPayments[i].amount -= item.totalValue;
+                            break;
+                        }
+                    }
+
+                    if (!selectedMethod) {
+                        throw new Error("Erro na distribuição da venda mista. Valores inconsistentes.");
+                    }
+
+                    return {
+                        ...item,
+                        paymentMethod: selectedMethod,
+                        buyer_name: saleData.buyer_name,
+                        saleCode,
+                        status: 'completed' as const
+                    };
                 });
             }
 
+            await props.onAddSaleAtomic(saleData, operationalSales, splitData);
+            
+            // Otimização: Atualização de estoque em lote
+            const stockUpdates: Promise<void>[] = [];
             for (const c of props.cart) {
                 const itemDef = props.items?.find(it => it.id === c.itemId);
                 if (itemDef?.recipe) {
                     for (const ing of itemDef.recipe) {
-                        await props.onUpdateStock(props.effectiveStoreId, ing.stock_base_name, -(ing.quantity * c.unitsSold), '', 'adjustment');
+                        stockUpdates.push(props.onUpdateStock(props.effectiveStoreId, ing.stock_base_name, -(ing.quantity * c.unitsSold), '', 'adjustment'));
                     }
                 }
             }
+            if (stockUpdates.length > 0) await Promise.all(stockUpdates);
 
-            // Dispara impressão ANTES de limpar o estado para garantir que os dados estejam disponíveis
             props.handlePrintTicket(operationalSales, saleCode, isMisto ? 'Misto' : (props.paymentMethod as string), (props.paymentMethod === 'Fiado' || (isMisto && props.mistoValues['Fiado'])) ? props.buyerName : undefined);
             
             props.setCart([]); 
@@ -131,8 +160,8 @@ const PDVMobileView: React.FC<PDVMobileViewProps> = (props) => {
             props.setBuyerName(''); 
             setStep('categories');
             alert("Venda registrada com sucesso!");
-        } catch (e) { 
-            alert("Erro ao finalizar venda."); 
+        } catch (e: any) { 
+            alert(e.message || "Erro ao finalizar venda."); 
         } finally { 
             props.setIsSubmitting(false); 
         }
@@ -277,7 +306,6 @@ const PDVMobileView: React.FC<PDVMobileViewProps> = (props) => {
                 )}
             </main>
 
-            {/* Barra de Ação Flutuante */}
             {props.cart?.length > 0 && (
                 <div className="fixed bottom-0 left-0 right-0 bg-white px-6 py-6 pb-10 shadow-[0_-10px_30px_rgba(0,0,0,0.05)] rounded-t-[40px] z-50 animate-in slide-in-from-bottom duration-500">
                     <div className="flex justify-between items-center mb-5">

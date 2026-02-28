@@ -106,6 +106,7 @@ export interface IceCreamItem {
 
 export interface IceCreamDailySale {
   id: string;
+  sale_id?: string;
   storeId: string;
   itemId: string;
   productName: string;
@@ -118,10 +119,34 @@ export interface IceCreamDailySale {
   buyer_name?: string;
   createdAt?: string;
   saleCode?: string;
-  status?: 'active' | 'canceled';
+  status?: 'active' | 'canceled' | 'completed';
   cancel_reason?: string;
   canceled_by?: string;
   ml?: string;
+}
+
+export interface Sale {
+  id: string;
+  store_id: string;
+  total_value: number;
+  status: 'active' | 'canceled' | 'completed';
+  created_by?: string;
+  created_at: string;
+  sale_code: string;
+  buyer_name?: string;
+}
+
+export type IceCreamSale = Sale;
+
+export interface SalePayment {
+  id: string;
+  sale_id: string;
+  store_id: string;
+  payment_method: IceCreamPaymentMethod;
+  amount: number;
+  created_at: string;
+  sale_code?: string;
+  status?: string;
 }
 
 export type IceCreamPaymentMethod =
@@ -158,20 +183,6 @@ export interface StoreProfitPartner {
   percentage: number;
   active: boolean;
   created_at?: string;
-}
-
-/* =========================
-   TRANSAÇÕES
-========================= */
-export interface IceCreamTransaction {
-  id: string;
-  storeId: string;
-  date: string;
-  type: 'entry' | 'exit';
-  category: string;
-  value: number;
-  description?: string;
-  createdAt: Date;
 }
 
 /* =========================
