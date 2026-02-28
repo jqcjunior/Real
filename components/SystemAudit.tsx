@@ -1,5 +1,5 @@
 import React, { useState, useMemo } from 'react';
-import { SystemLog, Receipt, Store, CashError, IceCreamDailySale, IceCreamPromissoryNote, UserRole, User, IceCreamTransaction, CreditCardSale } from '../types';
+import { SystemLog, Receipt, Store, CashError, IceCreamDailySale, IceCreamPromissoryNote, UserRole, User, CreditCardSale } from '../types';
 import { formatCurrency, BRAND_LOGO } from '../constants';
 import { Shield, Search, Printer, IceCream, FileText, AlertTriangle, History, ChevronRight, CheckCircle2, UserCheck, Calendar, Trash2, Edit3, Filter, X, DollarSign, User as UserIcon, CreditCard, ArrowRight } from 'lucide-react';
 import { printReceiptDoc, getCardFlagIcon } from './CashRegisterModule';
@@ -12,13 +12,12 @@ interface SystemAuditProps {
   cashErrors: CashError[];
   iceCreamSales: IceCreamDailySale[];
   icPromissories: IceCreamPromissoryNote[];
-  finances?: IceCreamTransaction[];
   cardSales?: CreditCardSale[];
   currentUser?: User;
 }
 
-const SystemAudit: React.FC<SystemAuditProps> = ({ logs, receipts, store, cashErrors, iceCreamSales, icPromissories, finances = [], cardSales = [], currentUser }) => {
-  const [activeTab, setActiveTab] = useState<'logs' | 'receipts' | 'cash_errors' | 'vendas_cartao' | 'conferencia' | 'financeiro'>('logs');
+const SystemAudit: React.FC<SystemAuditProps> = ({ logs, receipts, store, cashErrors, iceCreamSales, icPromissories, cardSales = [], currentUser }) => {
+  const [activeTab, setActiveTab] = useState<'logs' | 'receipts' | 'cash_errors' | 'vendas_cartao' | 'conferencia'>('logs');
   const [searchTerm, setSearchTerm] = useState('');
   
   // Estados para Intervalo de Datas - Por padrão traz o mês atual
@@ -40,7 +39,7 @@ const SystemAudit: React.FC<SystemAuditProps> = ({ logs, receipts, store, cashEr
     return Array.from(users).sort();
   }, [logs, cardSales]);
 
-  const handleDeleteFinance = async (id: string, table: 'ice_cream_finances' | 'financial_card_sales') => {
+  const handleDeleteFinance = async (id: string, table: 'financial_card_sales') => {
       if (!isManagement) return;
       if (!window.confirm("Deseja realmente EXCLUIR este registro permanentemente?")) return;
       try {
@@ -55,15 +54,6 @@ const SystemAudit: React.FC<SystemAuditProps> = ({ logs, receipts, store, cashEr
     const d = dateStr.split('T')[0];
     return (!startDate || d >= startDate) && (!endDate || d <= endDate);
   };
-
-  const filteredFinances = useMemo(() => {
-      return finances.filter(f => {
-          const matchesDate = checkDateInRange(String(f.date));
-          const matchesUser = filterUser === 'all' || f.description?.includes(filterUser);
-          const matchesSearch = searchTerm === '' || f.description?.toLowerCase().includes(searchTerm.toLowerCase()) || f.category.toLowerCase().includes(searchTerm.toLowerCase());
-          return matchesDate && matchesUser && matchesSearch;
-      });
-  }, [finances, startDate, endDate, filterUser, searchTerm]);
 
   const filteredCardSales = useMemo(() => {
       return (cardSales || []).filter(c => {
@@ -94,7 +84,6 @@ const SystemAudit: React.FC<SystemAuditProps> = ({ logs, receipts, store, cashEr
         <div className="flex bg-white p-1 rounded-2xl border border-gray-200 shadow-sm overflow-x-auto no-scrollbar w-full lg:w-auto">
             <button onClick={() => setActiveTab('logs')} className={`flex-1 lg:flex-none px-6 py-2.5 rounded-xl text-[10px] font-black uppercase transition-all whitespace-nowrap ${activeTab === 'logs' ? 'bg-gray-950 text-white shadow-lg' : 'text-gray-400 hover:text-gray-900'}`}>Log de Atividade</button>
             <button onClick={() => setActiveTab('vendas_cartao')} className={`flex-1 lg:flex-none px-6 py-2.5 rounded-xl text-[10px] font-black uppercase transition-all whitespace-nowrap flex items-center justify-center gap-2 ${activeTab === 'vendas_cartao' ? 'bg-blue-600 text-white shadow-lg' : 'text-gray-400 hover:text-gray-900'}`}><CreditCard size={14}/> Vendas Cartão</button>
-            <button onClick={() => setActiveTab('financeiro')} className={`flex-1 lg:flex-none px-6 py-2.5 rounded-xl text-[10px] font-black uppercase transition-all whitespace-nowrap flex items-center justify-center gap-2 ${activeTab === 'financeiro' ? 'bg-green-600 text-white shadow-lg' : 'text-gray-400 hover:text-gray-900'}`}><DollarSign size={14}/> Sangrias/DRE</button>
             <button onClick={() => setActiveTab('receipts')} className={`flex-1 lg:flex-none px-6 py-2.5 rounded-xl text-[10px] font-black uppercase transition-all whitespace-nowrap ${activeTab === 'receipts' ? 'bg-gray-900 text-white shadow-lg' : 'text-gray-400 hover:text-gray-900'}`}>Recibos</button>
             <button onClick={() => setActiveTab('cash_errors')} className={`flex-1 lg:flex-none px-6 py-2.5 rounded-xl text-[10px] font-black uppercase transition-all whitespace-nowrap ${activeTab === 'cash_errors' ? 'bg-red-600 text-white shadow-lg' : 'text-gray-400 hover:text-gray-900'}`}>Quebras</button>
         </div>
@@ -171,35 +160,6 @@ const SystemAudit: React.FC<SystemAuditProps> = ({ logs, receipts, store, cashEr
                             </tr>
                         ))}
                         {filteredCardSales.length === 0 && <tr><td colSpan={5} className="py-20 text-center text-gray-400 uppercase font-black text-xs italic tracking-widest">Nenhum lançamento de cartão no período selecionado.</td></tr>}
-                    </tbody>
-                </table>
-            </div>
-        )}
-
-        {activeTab === 'financeiro' && (
-            <div className="overflow-x-auto">
-                <table className="w-full text-left min-w-[1000px]">
-                    <thead className="bg-gray-50/80 text-[10px] font-black text-gray-400 uppercase tracking-widest border-b">
-                        <tr><th className="px-8 py-5">Data / Ref</th><th className="px-8 py-5">Tipo / Categoria</th><th className="px-8 py-5">Descrição</th><th className="px-8 py-5 text-right">Valor</th>{isManagement && <th className="px-8 py-5 text-center">Gestão</th>}</tr>
-                    </thead>
-                    <tbody className="divide-y divide-gray-50 font-bold text-xs">
-                        {filteredFinances.map(f => (
-                            <tr key={f.id} className="hover:bg-gray-50 transition-colors">
-                                <td className="px-8 py-5">
-                                  <div className="text-[10px] font-black text-gray-900">{new Date(f.date + 'T12:00:00').toLocaleDateString('pt-BR')}</div>
-                                  <div className="text-[8px] text-gray-400 mt-1">{f.createdAt ? new Date(f.createdAt).toLocaleTimeString() : 'ID: ' + f.id.slice(-8)}</div>
-                                </td>
-                                <td className="px-8 py-5"><span className={`px-2 py-1 rounded text-[9px] font-black border ${f.type === 'entry' ? 'bg-green-50 text-green-700 border-green-100' : 'bg-red-50 text-red-700 border-red-100'}`}>{f.category}</span></td>
-                                <td className="px-8 py-5 text-xs text-gray-500 max-w-xs truncate">{f.description}</td>
-                                <td className={`px-8 py-5 text-right font-black italic text-sm ${f.type === 'entry' ? 'text-green-600' : 'text-red-600'}`}>{formatCurrency(f.value)}</td>
-                                {isManagement && (
-                                    <td className="px-8 py-5 text-center">
-                                        <button onClick={() => handleDeleteFinance(f.id, 'ice_cream_finances')} className="p-2 text-red-300 hover:text-red-600 transition-all"><Trash2 size={16}/></button>
-                                    </td>
-                                )}
-                            </tr>
-                        ))}
-                        {filteredFinances.length === 0 && <tr><td colSpan={5} className="py-20 text-center text-gray-400 uppercase font-black text-xs italic tracking-widest">Nenhum registro financeiro no período selecionado.</td></tr>}
                     </tbody>
                 </table>
             </div>

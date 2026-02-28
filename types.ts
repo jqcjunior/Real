@@ -104,6 +104,35 @@ export interface IceCreamItem {
   created_at?: string;
 }
 
+export interface IceCreamStockMovement {
+  id: string;
+  stock_id: string;
+  store_id: string;
+  user_id: string;
+  quantity: number;
+  movement_type: string;
+  reason: string;
+  created_at: string;
+}
+
+export interface IceCreamSangriaCategory {
+  id: string;
+  store_id: string;
+  name: string;
+  is_active: boolean;
+  created_at: string;
+}
+
+export interface IceCreamSangria {
+  id: string;
+  store_id: string;
+  user_id: string;
+  category_id: string;
+  amount: number;
+  description: string;
+  created_at: string;
+}
+
 export interface IceCreamDailySale {
   id: string;
   sale_id?: string;

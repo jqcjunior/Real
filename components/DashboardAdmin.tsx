@@ -332,13 +332,13 @@ const DashboardAdmin: React.FC<DashboardAdminProps> = ({ stores, performanceData
                     </div>
                 </div>
 
-                <div className="flex flex-wrap items-center gap-3 w-full lg:w-auto">
+                <div className="flex flex-col sm:flex-row flex-wrap items-center gap-3 w-full lg:w-auto">
                     <input type="file" ref={fileInputRef} onChange={handleFileUpload} accept=".xlsx, .xls" hidden />
                     
                     <button 
                         onClick={() => fileInputRef.current?.click()}
                         disabled={isImporting}
-                        className="flex-1 lg:flex-none flex items-center justify-center gap-2 bg-green-600 text-white px-6 py-3.5 rounded-2xl font-black uppercase text-[10px] shadow-lg border-b-4 border-green-800 hover:bg-green-700 transition-all active:scale-95 disabled:opacity-50"
+                        className="w-full sm:flex-1 lg:flex-none flex items-center justify-center gap-2 bg-green-600 text-white px-6 py-3.5 rounded-2xl font-black uppercase text-[10px] shadow-lg border-b-4 border-green-800 hover:bg-green-700 transition-all active:scale-95 disabled:opacity-50"
                     >
                         {isImporting ? <Loader2 size={16} className="animate-spin" /> : <FileSpreadsheet size={16} />}
                         Importar XLSX
@@ -347,7 +347,7 @@ const DashboardAdmin: React.FC<DashboardAdminProps> = ({ stores, performanceData
                     <select 
                         value={selectedMonth} 
                         onChange={e => setSelectedMonth(e.target.value)}
-                        className="flex-1 lg:flex-none bg-gray-50 border border-gray-100 rounded-xl px-4 py-3.5 text-xs font-black uppercase text-blue-900 outline-none focus:ring-4 focus:ring-blue-50 transition-all"
+                        className="w-full sm:flex-1 lg:flex-none bg-gray-50 border border-gray-100 rounded-xl px-4 py-3.5 text-xs font-black uppercase text-blue-900 outline-none focus:ring-4 focus:ring-blue-50 transition-all"
                     >
                         <option value="2026-02">Fevereiro 2026</option>
                         <option value="2026-01">Janeiro 2026</option>
@@ -357,7 +357,7 @@ const DashboardAdmin: React.FC<DashboardAdminProps> = ({ stores, performanceData
                     <button 
                         onClick={handleRefresh}
                         disabled={isRefreshing}
-                        className="p-3.5 bg-gray-950 text-white rounded-xl shadow-lg hover:bg-black transition-all active:scale-95 disabled:opacity-50"
+                        className="w-full sm:w-auto p-3.5 bg-gray-950 text-white rounded-xl shadow-lg hover:bg-black transition-all flex items-center justify-center active:scale-95 disabled:opacity-50"
                     >
                         {isRefreshing ? <Loader2 size={20} className="animate-spin" /> : <RefreshCw size={20} />}
                     </button>

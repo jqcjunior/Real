@@ -1,9 +1,9 @@
 import React, { useState, useMemo, useEffect } from 'react';
-import { IceCreamItem, IceCreamDailySale, IceCreamCategory, IceCreamPaymentMethod, User, UserRole, Store, IceCreamStock, IceCreamPromissoryNote, IceCreamRecipeItem, StoreProfitPartner, Sale } from '../types';
+import { IceCreamItem, IceCreamDailySale, IceCreamCategory, IceCreamPaymentMethod, User, UserRole, Store, IceCreamStock, IceCreamPromissoryNote, IceCreamRecipeItem, StoreProfitPartner, Sale, IceCreamSangria, IceCreamSangriaCategory, IceCreamStockMovement, AdminUser } from '../types';
 import { formatCurrency, BRAND_LOGO } from '../constants';
 import { 
-    IceCream, Plus, Package, ShoppingCart, CheckCircle2, 
-    Trash2, X, History, PieChart, ArrowDownCircle, ArrowUpCircle, 
+    IceCream, Plus, Package, ShoppingCart, CheckCircle2, XCircle,
+    Trash2, X, History, PieChart, ArrowDownCircle, ArrowUpCircle, ExternalLink, Activity,
     Loader2, Search, Trash, ChevronRight, Calculator, FileText, Ban, UserCheck, Save, Image as ImageIcon, Sliders, Settings, Calendar, BarChart3, ListChecks, TrendingUp, TrendingDown, DollarSign, Wallet, CreditCard, Banknote, PackagePlus, Printer, ClipboardList, AlertCircle, Info, ToggleLeft, ToggleRight, Receipt, ArrowRight,
     Users as UsersIcon, ShieldCheck, UserCog, Clock, FileBarChart, Users, Handshake, AlertTriangle, Zap, Beaker, Layers, Clipboard, Edit3, Filter, ChevronDown, FilePieChart, Briefcase, Warehouse, PencilLine, Truck, ChevronUp
 } from 'lucide-react';
@@ -31,6 +31,15 @@ interface IceCreamModuleProps {
   onUpdateStock: (storeId: string, base: string, value: number, unit: string, type: 'production' | 'adjustment' | 'purchase' | 'inventory', stockId?: string) => Promise<void>;
   liquidatePromissory: (id: string) => Promise<void>;
   onDeleteStockItem: (id: string) => Promise<void>;
+  sangriaCategories: IceCreamSangriaCategory[];
+  sangrias: IceCreamSangria[];
+  stockMovements: IceCreamStockMovement[];
+  partners: StoreProfitPartner[];
+  adminUsers: AdminUser[];
+  onAddSangria: (sangria: Partial<IceCreamSangria>) => Promise<void>;
+  onAddSangriaCategory: (cat: Partial<IceCreamSangriaCategory>) => Promise<void>;
+  onDeleteSangriaCategory: (id: string) => Promise<void>;
+  onAddStockMovement: (movement: Partial<IceCreamStockMovement>) => Promise<void>;
 }
 
 const PRODUCT_CATEGORIES: IceCreamCategory[] = ['Sundae', 'Milkshake', 'Casquinha', 'Cascão', 'Cascão Trufado', 'Copinho', 'Bebidas', 'Adicionais'].sort() as IceCreamCategory[];
@@ -56,7 +65,9 @@ const MONTHS = [
 const IceCreamModule: React.FC<IceCreamModuleProps> = ({ 
     user, stores = [], items = [], stock = [], sales = [], salePayments = [], promissories = [], can,
     onAddSales, onAddSaleAtomic, onCancelSale, onUpdatePrice, onAddItem, onSaveProduct, onDeleteItem, onUpdateStock,
-    liquidatePromissory, onDeleteStockItem, salesHeaders
+    liquidatePromissory, onDeleteStockItem, salesHeaders,
+    sangriaCategories = [], sangrias = [], onAddSangria, onAddSangriaCategory, onDeleteSangriaCategory, onAddStockMovement,
+    stockMovements = [], partners: initialPartners = [], adminUsers = []
 }) => {
   const [activeTab, setActiveTab] = useState<'pdv' | 'estoque' | 'dre_diario' | 'dre_mensal' | 'audit' | 'produtos'>('pdv');
   const [dreSubTab, setDreSubTab] = useState<'resumo' | 'detalhado'>('resumo');
@@ -79,6 +90,11 @@ const IceCreamModule: React.FC<IceCreamModuleProps> = ({
 
   const [showProductModal, setShowProductModal] = useState(false);
   const [showWastageModal, setShowWastageModal] = useState(false);
+  const [showSangriaModal, setShowSangriaModal] = useState(false);
+  const [showSangriaDetailModal, setShowSangriaDetailModal] = useState<'day' | 'month' | null>(null);
+  const [showPartnersModal, setShowPartnersModal] = useState(false);
+  const [partnerForm, setPartnerForm] = useState({ partner_name: '', percentage: '' });
+  const [sangriaForm, setSangriaForm] = useState({ amount: '', categoryId: '', description: '' });
   const [showCategoryManager, setShowCategoryManager] = useState(false);
   const [newCategoryName, setNewCategoryName] = useState('');
 
@@ -261,16 +277,56 @@ const dreStats = useMemo(() => {
         resumo[venda.productName].total += Number(venda.totalValue || 0);
     });
 
+    // ===== SANGRIAS E AVARIAS =====
+    const monthSangrias = (sangrias ?? []).filter(s => {
+        if (!s.created_at) return false;
+        const d = new Date(s.created_at);
+        return d >= monthStart && d < monthEnd && s.store_id === effectiveStoreId;
+    });
+    const monthSangriaTotal = monthSangrias.reduce((acc, s) => acc + Number(s.amount || 0), 0);
+
+    const daySangrias = (sangrias ?? []).filter(s => {
+        if (!s.created_at) return false;
+        const d = new Date(s.created_at);
+        return d >= dayStart && d < dayEnd && s.store_id === effectiveStoreId;
+    });
+    const daySangriaTotal = daySangrias.reduce((acc, s) => acc + Number(s.amount || 0), 0);
+
+    const monthWastage = (stockMovements ?? []).filter(m => {
+        if (!m.created_at) return false;
+        const d = new Date(m.created_at);
+        return d >= monthStart && d < monthEnd && m.store_id === effectiveStoreId && m.movement_type === 'AVARIA';
+    });
+    const monthWastageTotal = monthWastage.reduce((acc, m) => acc + Math.abs(Number(m.quantity || 0)), 0);
+
+    const dayWastage = (stockMovements ?? []).filter(m => {
+        if (!m.created_at) return false;
+        const d = new Date(m.created_at);
+        return d >= dayStart && d < dayEnd && m.store_id === effectiveStoreId && m.movement_type === 'AVARIA';
+    });
+    const dayWastageTotal = dayWastage.reduce((acc, m) => acc + Math.abs(Number(m.quantity || 0)), 0);
+
+    const monthProfit = monthIn - monthSangriaTotal;
+    const dayProfit = dayIn - daySangriaTotal;
+
     return {
         monthIn,
         monthMethods,
-        monthOut: 0,
-        profit,
+        monthOut: monthSangriaTotal,
+        monthSangriaTotal,
+        monthSangrias,
+        monthWastageTotal,
+        profit: monthProfit,
+        monthProfit,
         monthFiadoDetails: monthFiadoDetails.sort((a, b) =>
             String(b.createdAt || '').localeCompare(String(a.createdAt || ''))
         ),
         dayIn,
-        dayOut: 0,
+        dayOut: daySangriaTotal,
+        daySangriaTotal,
+        daySangrias,
+        dayWastageTotal,
+        dayProfit,
         dayMethods,
         dayExits: [],
         daySales: daySales.sort((a, b) =>
@@ -280,7 +336,7 @@ const dreStats = useMemo(() => {
             (a, b) => b[1].qtd - a[1].qtd
         )
     };
-}, [sales, salePayments, selectedYear, selectedMonth, effectiveStoreId]);
+}, [sales, salePayments, selectedYear, selectedMonth, effectiveStoreId, sangrias, stockMovements]);
 
   const monthFiadoGrouped = useMemo(() => {
     const groups: Record<string, { name: string, total: number, items: any[] }> = {};
@@ -385,8 +441,15 @@ const dreStats = useMemo(() => {
             <div class="section">
                 <div class="section-title">Resumo Financeiro</div>
                 <div class="kpi"><span>Faturamento Bruto (+)</span> <span style="color:#059669">${formatCurrency(dreStats.monthIn)}</span></div>
-                <div class="kpi"><span>Despesas Operacionais (-)</span> <span style="color:#dc2626">${formatCurrency(dreStats.monthOut)}</span></div>
+                <div class="kpi"><span>Sangrias / Saídas (-)</span> <span style="color:#dc2626">${formatCurrency(dreStats.monthSangriaTotal)}</span></div>
                 <div class="kpi total-row"><span>LUCRO LÍQUIDO (=)</span> <span>${formatCurrency(dreStats.profit)}</span></div>
+            </div>
+
+            <div class="section">
+                <div class="section-title">RESUMO OPERACIONAL DO PERÍODO</div>
+                <div class="kpi"><span>Total de Sangrias</span> <span>${formatCurrency(dreStats.monthSangriaTotal)}</span></div>
+                <div class="kpi"><span>Total de Avarias</span> <span>${dreStats.monthWastageTotal.toFixed(2)}</span></div>
+                <div class="kpi"><span>Margem Líquida (%)</span> <span>${dreStats.monthIn > 0 ? ((dreStats.profit / dreStats.monthIn) * 100).toFixed(1) : '0.0'}%</span></div>
             </div>
 
             <div class="section">
@@ -623,6 +686,16 @@ const dreStats = useMemo(() => {
           const val = parseFloat(wastageForm.quantity.replace(',', '.'));
           await onUpdateStock(effectiveStoreId, stItem.product_base, -val, stItem.unit, 'adjustment', stItem.stock_id);
           
+          // Add stock movement history
+          await onAddStockMovement({
+              stock_id: stItem.stock_id,
+              store_id: effectiveStoreId,
+              user_id: user.id,
+              quantity: -val,
+              movement_type: 'AVARIA',
+              reason: wastageForm.reason || 'DEFEITO / AVARIA'
+          });
+          
           setWastageForm({ stockId: '', quantity: '', reason: 'DEFEITO / AVARIA' });
           setShowWastageModal(false);
           alert("Baixa de avaria realizada com sucesso!");
@@ -642,6 +715,104 @@ const dreStats = useMemo(() => {
       setNewInsumo({ name: '', unit: 'un', initial: '' });
       setShowNewInsumoModal(false); alert("Insumo cadastrado!");
     } catch (e) { alert("Erro."); } finally { setIsSubmitting(false); }
+  };
+
+  const handleSaveSangria = async () => {
+      if (!sangriaForm.amount || !sangriaForm.categoryId || !effectiveStoreId) {
+          alert("Preencha valor e categoria.");
+          return;
+      }
+      setIsSubmitting(true);
+      try {
+          await onAddSangria({
+              store_id: effectiveStoreId,
+              user_id: user.id,
+              category_id: sangriaForm.categoryId,
+              amount: parseFloat(sangriaForm.amount.replace(',', '.')),
+              description: sangriaForm.description
+          });
+          setSangriaForm({ amount: '', categoryId: '', description: '' });
+          setShowSangriaModal(false);
+          alert("Sangria realizada com sucesso!");
+      } catch (e) {
+          alert("Erro ao realizar sangria.");
+      } finally {
+          setIsSubmitting(false);
+      }
+  };
+
+  const handleSaveSangriaCategory = async () => {
+      if (!newCategoryName.trim() || !effectiveStoreId) return;
+      setIsSubmitting(true);
+      try {
+          await onAddSangriaCategory({
+              store_id: effectiveStoreId,
+              name: newCategoryName.trim().toUpperCase(),
+              is_active: true
+          });
+          setNewCategoryName('');
+          alert("Categoria cadastrada!");
+      } catch (e) {
+          alert("Erro ao cadastrar categoria.");
+      } finally {
+          setIsSubmitting(false);
+      }
+  };
+
+  const handleSavePartner = async () => {
+      if (!partnerForm.partner_name || !partnerForm.percentage || !effectiveStoreId) return;
+      
+      const newPercent = parseFloat(partnerForm.percentage.replace(',', '.'));
+      const activeTotal = partners.filter(p => p.active).reduce((acc, p) => acc + p.percentage, 0);
+      
+      if (activeTotal + newPercent > 100.01) {
+          alert(`A soma dos percentuais ativos (${(activeTotal + newPercent).toFixed(1)}%) não pode ultrapassar 100%.`);
+          return;
+      }
+
+      setIsSubmitting(true);
+      try {
+          await supabase.from('store_profit_distribution').insert([{
+              store_id: effectiveStoreId,
+              partner_name: partnerForm.partner_name.toUpperCase(),
+              percentage: newPercent,
+              active: true
+          }]);
+          setPartnerForm({ partner_name: '', percentage: '' });
+          fetchPartners();
+          alert("Sócio adicionado!");
+      } catch (e) {
+          alert("Erro ao salvar sócio.");
+      } finally {
+          setIsSubmitting(false);
+      }
+  };
+
+  const handleTogglePartner = async (id: string, active: boolean) => {
+      if (active) {
+          const pToToggle = partners.find(p => p.id === id);
+          const activeTotal = partners.filter(p => p.active && p.id !== id).reduce((acc, p) => acc + p.percentage, 0);
+          if (activeTotal + (pToToggle?.percentage || 0) > 100.01) {
+              alert("Ativar este sócio faria a soma ultrapassar 100%.");
+              return;
+          }
+      }
+      try {
+          await supabase.from('store_profit_distribution').update({ active }).eq('id', id);
+          fetchPartners();
+      } catch (e) {
+          alert("Erro ao atualizar status.");
+      }
+  };
+
+  const handleDeletePartner = async (id: string) => {
+      if (!confirm("Excluir sócio?")) return;
+      try {
+          await supabase.from('store_profit_distribution').delete().eq('id', id);
+          fetchPartners();
+      } catch (e) {
+          alert("Erro ao excluir.");
+      }
   };
 
   const handleSavePurchase = async () => {
@@ -704,12 +875,12 @@ const dreStats = useMemo(() => {
                     </div>
                 </div>
             </div>
-            <div className="flex bg-gray-100 p-0.5 rounded-xl overflow-x-auto no-scrollbar w-full md:w-auto max-w-full">
+            <div className="flex flex-wrap bg-gray-100 p-0.5 rounded-xl overflow-x-auto no-scrollbar w-full md:w-auto max-w-full">
                 {visibleTabs.map(tab => (
                     <button 
                         key={tab.label} 
                         onClick={() => setActiveTab(tab.view as any)} 
-                        className={`flex-1 md:flex-none px-3 py-2 rounded-lg text-[8px] md:text-[9px] font-black uppercase transition-all flex items-center justify-center gap-1.5 whitespace-nowrap ${activeTab === tab.view ? 'bg-white text-blue-900 shadow-sm' : 'text-gray-400 hover:text-blue-900 hover:bg-white/50'}`}
+                        className={`flex-1 sm:flex-none px-3 py-2 rounded-lg text-[8px] md:text-[9px] font-black uppercase transition-all flex items-center justify-center gap-1.5 whitespace-nowrap ${activeTab === tab.view ? 'bg-white text-blue-900 shadow-sm' : 'text-gray-400 hover:text-blue-900 hover:bg-white/50'}`}
                     >
                         <tab.icon size={12}/> {tab.label}
                     </button>
@@ -811,6 +982,7 @@ const dreStats = useMemo(() => {
                         <div className="flex items-center gap-4"><div className="p-4 bg-blue-50 text-blue-700 rounded-3xl"><Clock size={32}/></div><div><h3 className="text-2xl font-black uppercase italic text-blue-950 tracking-tighter">Fluxo de Caixa <span className="text-blue-700">Diário</span></h3><div className="flex bg-gray-100 p-1 rounded-lg mt-2"><button onClick={() => setDreSubTab('resumo')} className={`px-4 py-1.5 rounded-md text-[9px] font-black uppercase transition-all ${dreSubTab === 'resumo' ? 'bg-white text-blue-700 shadow-sm' : 'text-gray-400'}`}>Resumo</button><button onClick={() => setDreSubTab('detalhado')} className={`px-4 py-1.5 rounded-md text-[9px] font-black uppercase transition-all ${dreSubTab === 'detalhado' ? 'bg-white text-blue-700 shadow-sm' : 'text-gray-400'}`}>Detalhado</button></div></div></div>
                         <div className="flex flex-col items-end gap-2">
                              <div className="flex gap-2">
+                                <button onClick={() => setShowSangriaModal(true)} className="px-6 py-2.5 bg-red-500 text-white rounded-xl font-black uppercase text-[10px] shadow-lg flex items-center gap-2 border-b-4 border-red-700 active:scale-95"><DollarSign size={14}/> Sangria</button>
                                 <button onClick={() => setShowWastageModal(true)} className="px-6 py-2.5 bg-orange-500 text-white rounded-xl font-black uppercase text-[10px] shadow-lg flex items-center gap-2 border-b-4 border-orange-700 active:scale-95"><AlertTriangle size={14}/> Baixa Avaria</button>
                              </div>
                              <div className="text-right"><p className="text-[9px] font-black text-gray-400 uppercase">Apuração</p><p className="text-lg font-black text-blue-950">{todayKey.split('-').reverse().join('/')}</p></div>
@@ -829,8 +1001,38 @@ const dreStats = useMemo(() => {
                                     </div>
                                     <div className="pt-2 border-t-2 border-green-50"><p className="text-2xl font-black text-green-700 italic">{formatCurrency(dreStats.dayIn)}</p></div>
                                 </div>
-                                <div className="bg-white p-6 rounded-[32px] border-2 border-red-100 shadow-sm flex flex-col justify-between"><div><span className="text-[9px] font-black text-red-600 uppercase tracking-widest">Resumo Saídas (-)</span><p className="text-3xl font-black text-red-700 italic mt-4">{formatCurrency(0)}</p></div></div>
-                                <div className="bg-gray-950 p-6 rounded-[32px] text-white shadow-xl flex flex-col justify-between"><div><span className="text-[9px] font-black text-blue-400 uppercase tracking-widest">Saldo Líquido</span><p className="text-3xl font-black italic mt-4">{formatCurrency(dreStats.dayIn)}</p></div></div>
+                                <div className="bg-white p-6 rounded-[32px] border-2 border-red-100 shadow-sm flex flex-col justify-between cursor-pointer hover:bg-red-50 transition-all" onClick={() => setShowSangriaDetailModal('day')}>
+                                    <div>
+                                        <span className="text-[9px] font-black text-red-600 uppercase tracking-widest flex items-center gap-2">Resumo Saídas (-) <ExternalLink size={10}/></span>
+                                        <p className="text-3xl font-black text-red-700 italic mt-4">{formatCurrency(dreStats.daySangriaTotal)}</p>
+                                    </div>
+                                </div>
+                                <div className="bg-gray-950 p-6 rounded-[32px] text-white shadow-xl flex flex-col justify-between">
+                                    <div>
+                                        <span className="text-[9px] font-black text-blue-400 uppercase tracking-widest">Saldo Líquido</span>
+                                        <p className="text-3xl font-black italic mt-4">{formatCurrency(dreStats.dayProfit)}</p>
+                                    </div>
+                                </div>
+                            </div>
+
+                            <div className="bg-white p-8 rounded-[40px] border border-gray-100 shadow-sm">
+                                <h4 className="text-[10px] font-black text-gray-400 uppercase tracking-widest mb-6 flex items-center gap-2">
+                                    <Activity size={16} className="text-blue-600" /> RESUMO OPERACIONAL DO PERÍODO
+                                </h4>
+                                <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+                                    <div className="p-4 bg-gray-50 rounded-2xl border border-gray-100">
+                                        <p className="text-[9px] font-black text-gray-400 uppercase">Total de Sangrias</p>
+                                        <p className="text-xl font-black text-red-600 italic">{formatCurrency(dreStats.daySangriaTotal)}</p>
+                                    </div>
+                                    <div className="p-4 bg-gray-50 rounded-2xl border border-gray-100">
+                                        <p className="text-[9px] font-black text-gray-400 uppercase">Total de Avarias</p>
+                                        <p className="text-xl font-black text-orange-600 italic">{dreStats.dayWastageTotal.toFixed(2)}</p>
+                                    </div>
+                                    <div className="p-4 bg-blue-950 rounded-2xl border border-blue-900 text-white">
+                                        <p className="text-[9px] font-black text-blue-300 uppercase">Margem Líquida (%)</p>
+                                        <p className="text-xl font-black italic">{dreStats.dayIn > 0 ? ((dreStats.dayProfit / dreStats.dayIn) * 100).toFixed(1) : '0.0'}%</p>
+                                    </div>
+                                </div>
                             </div>
 
                             <div className="bg-white p-8 rounded-[40px] border border-gray-100 shadow-sm">
@@ -895,9 +1097,31 @@ const dreStats = useMemo(() => {
                         <div className="lg:col-span-8 space-y-6">
                             <div className="bg-white p-8 rounded-[40px] shadow-sm border border-gray-100"><h4 className="text-[10px] font-black text-gray-400 uppercase tracking-[0.2em] mb-6 flex items-center gap-2"><Briefcase size={14}/> Demonstrativo de Resultado</h4><div className="space-y-4">
                                 <div className="flex justify-between items-center pb-4 border-b"><span className="font-bold text-gray-600 uppercase text-xs">Faturamento (+)</span><span className="font-black text-green-600 text-lg">{formatCurrency(dreStats.monthIn)}</span></div>
-                                <div className="flex justify-between items-center pb-4 border-b"><span className="font-bold text-gray-600 uppercase text-xs">Despesas / Saídas (-)</span><span className="font-black text-red-600 text-lg">{formatCurrency(0)}</span></div>
+                                <div className="flex justify-between items-center pb-4 border-b cursor-pointer hover:bg-red-50 transition-all rounded-lg px-2 -mx-2" onClick={() => setShowSangriaDetailModal('month')}>
+                                    <span className="font-bold text-gray-600 uppercase text-xs flex items-center gap-2">Despesas / Saídas (-) <ExternalLink size={10}/></span>
+                                    <span className="font-black text-red-600 text-lg">{formatCurrency(dreStats.monthSangriaTotal)}</span>
+                                </div>
                                 <div className="flex justify-between items-center pt-2"><span className="font-black text-blue-950 uppercase text-sm">Lucro Líquido (=)</span><span className="font-black text-blue-900 text-2xl italic">{formatCurrency(dreStats.profit)}</span></div>
                             </div></div>
+                            <div className="bg-white p-8 rounded-[40px] shadow-sm border border-gray-100">
+                                <h4 className="text-[10px] font-black text-gray-400 uppercase tracking-[0.2em] mb-6 flex items-center gap-2">
+                                    <Activity size={16} className="text-blue-600" /> RESUMO OPERACIONAL DO PERÍODO
+                                </h4>
+                                <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+                                    <div className="p-4 bg-gray-50 rounded-2xl border border-gray-100">
+                                        <p className="text-[9px] font-black text-gray-400 uppercase">Total de Sangrias</p>
+                                        <p className="text-xl font-black text-red-600 italic">{formatCurrency(dreStats.monthSangriaTotal)}</p>
+                                    </div>
+                                    <div className="p-4 bg-gray-50 rounded-2xl border border-gray-100">
+                                        <p className="text-[9px] font-black text-gray-400 uppercase">Total de Avarias</p>
+                                        <p className="text-xl font-black text-orange-600 italic">{dreStats.monthWastageTotal.toFixed(2)}</p>
+                                    </div>
+                                    <div className="p-4 bg-blue-950 rounded-2xl border border-blue-900 text-white">
+                                        <p className="text-[9px] font-black text-blue-300 uppercase">Margem Líquida (%)</p>
+                                        <p className="text-xl font-black italic">{dreStats.monthIn > 0 ? ((dreStats.profit / dreStats.monthIn) * 100).toFixed(1) : '0.0'}%</p>
+                                    </div>
+                                </div>
+                            </div>
                             <div className="bg-white p-8 rounded-[40px] shadow-sm border border-gray-100">
                                 <h4 className="text-[10px] font-black text-gray-400 uppercase tracking-[0.2em] mb-4">Detalhamento por Método</h4>
                                 <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
@@ -909,7 +1133,14 @@ const dreStats = useMemo(() => {
                             </div>
                         </div>
                         <div className="lg:col-span-4 bg-gray-950 p-8 rounded-[40px] text-white shadow-2xl flex flex-col h-fit">
-                            <h4 className="text-[10px] font-black text-blue-400 uppercase tracking-[0.2em] mb-6 flex items-center gap-3"><UsersIcon size={16}/> Partilha de Lucros</h4>
+                            <div className="flex justify-between items-center mb-6">
+                                <h4 className="text-[10px] font-black text-blue-400 uppercase tracking-[0.2em] flex items-center gap-3"><UsersIcon size={16}/> Partilha de Lucros</h4>
+                                {can('admin_settings') && (
+                                    <button onClick={() => setShowPartnersModal(true)} className="text-blue-400 hover:text-blue-200 transition-all">
+                                        <Settings size={16}/>
+                                    </button>
+                                )}
+                            </div>
                             <div className="space-y-4">{partners.map(p => <div key={p.id} className="border-b border-white/5 pb-4 last:border-0"><div className="flex justify-between items-baseline mb-1"><span className="text-[10px] font-black uppercase italic tracking-tighter">{p.partner_name}</span><span className="text-[9px] font-bold text-blue-400">{p.percentage}%</span></div><p className="text-xl font-black italic tracking-tighter text-blue-100">{formatCurrency((dreStats.profit * p.percentage) / 100)}</p></div>)}</div>
                             {partners.length === 0 && <p className="text-[9px] text-gray-600 uppercase text-center py-10 italic">Nenhuma partilha configurada</p>}
                         </div>
@@ -1403,6 +1634,181 @@ const dreStats = useMemo(() => {
                     <h3 className="text-2xl font-black text-gray-900 uppercase italic mb-2 tracking-tighter">Estornar <span className="text-red-600">Venda?</span></h3>
                     <input value={cancelReason} onChange={e => setCancelReason(e.target.value)} placeholder="Motivo do estorno..." className="w-full p-4 bg-gray-50 border border-gray-100 rounded-2xl text-[10px] font-black uppercase outline-none focus:ring-4 focus:ring-red-50 mb-6 shadow-inner" />
                     <div className="flex gap-3"><button onClick={() => { setShowCancelModal(null); setCancelReason(''); }} className="flex-1 py-4 bg-gray-100 text-gray-500 rounded-2xl font-black uppercase text-[10px]">Voltar</button><button onClick={handleCancelSale} disabled={isSubmitting} className="flex-1 py-4 bg-red-600 text-white rounded-2xl font-black uppercase text-[10px] shadow-lg active:scale-95 disabled:opacity-30">Confirmar Estorno</button></div>
+                </div>
+            </div>
+        )}
+
+        {showSangriaModal && (
+            <div className="fixed inset-0 bg-black/80 backdrop-blur-md flex items-center justify-center z-[130] p-4">
+                <div className="bg-white rounded-[40px] w-full max-w-md shadow-2xl animate-in zoom-in duration-300 border-t-8 border-red-600 flex flex-col overflow-hidden">
+                    <div className="p-8 border-b bg-gray-50/50 flex justify-between items-center shrink-0">
+                        <h3 className="text-xl font-black uppercase italic text-blue-950 flex items-center gap-3">
+                            <DollarSign className="text-red-600" /> Realizar <span className="text-red-600">Sangria</span>
+                        </h3>
+                        <button onClick={() => setShowSangriaModal(false)} className="text-gray-400 hover:text-red-600"><X size={24}/></button>
+                    </div>
+                    <div className="p-10 space-y-6">
+                        <div className="space-y-2">
+                            <label className="text-[10px] font-black text-gray-400 uppercase ml-2">Valor</label>
+                            <input value={sangriaForm.amount} onChange={e => setSangriaForm({...sangriaForm, amount: e.target.value})} className="w-full p-4 bg-red-50 rounded-2xl font-black text-red-700 text-2xl text-center outline-none focus:ring-4 focus:ring-red-100" placeholder="0,00" />
+                        </div>
+                        <div className="space-y-2">
+                            <div className="flex justify-between items-center px-2">
+                                <label className="text-[10px] font-black text-gray-400 uppercase">Categoria</label>
+                                <button onClick={() => setShowCategoryManager(true)} className="text-blue-600 hover:text-blue-800 transition-all"><Settings size={14}/></button>
+                            </div>
+                            <select value={sangriaForm.categoryId} onChange={e => setSangriaForm({...sangriaForm, categoryId: e.target.value})} className="w-full p-4 bg-gray-50 rounded-2xl font-black uppercase outline-none">
+                                <option value="">SELECIONE...</option>
+                                {sangriaCategories.filter(c => c.store_id === effectiveStoreId && c.is_active).map(c => (
+                                    <option key={c.id} value={c.id}>{c.name}</option>
+                                ))}
+                            </select>
+                        </div>
+                        <div className="space-y-2">
+                            <label className="text-[10px] font-black text-gray-400 uppercase ml-2">Descrição (Opcional)</label>
+                            <textarea value={sangriaForm.description} onChange={e => setSangriaForm({...sangriaForm, description: e.target.value})} className="w-full p-4 bg-gray-50 rounded-2xl font-black uppercase text-[10px] outline-none h-24 resize-none" placeholder="MOTIVO DA SANGRIA..." />
+                        </div>
+                        <button onClick={handleSaveSangria} disabled={isSubmitting} className="w-full py-5 bg-red-600 text-white rounded-[28px] font-black uppercase text-xs shadow-xl active:scale-95 transition-all border-b-4 border-red-900 flex items-center justify-center gap-3">
+                            {isSubmitting ? <Loader2 className="animate-spin" /> : <Save size={18}/>} EFETIVAR SANGRIA
+                        </button>
+                    </div>
+                </div>
+            </div>
+        )}
+
+        {showCategoryManager && (
+            <div className="fixed inset-0 bg-black/80 backdrop-blur-md flex items-center justify-center z-[140] p-4">
+                <div className="bg-white rounded-[40px] w-full max-w-md shadow-2xl animate-in zoom-in duration-300 border-t-8 border-blue-600 flex flex-col overflow-hidden">
+                    <div className="p-8 border-b bg-gray-50/50 flex justify-between items-center shrink-0">
+                        <h3 className="text-xl font-black uppercase italic text-blue-950 flex items-center gap-3">
+                            <Settings className="text-blue-600" /> Categorias de <span className="text-blue-600">Sangria</span>
+                        </h3>
+                        <button onClick={() => setShowCategoryManager(false)} className="text-gray-400 hover:text-red-600"><X size={24}/></button>
+                    </div>
+                    <div className="p-10 space-y-6">
+                        <div className="flex gap-2">
+                            <input value={newCategoryName} onChange={e => setNewCategoryName(e.target.value)} className="flex-1 p-4 bg-gray-50 rounded-2xl font-black uppercase text-xs outline-none" placeholder="NOVA CATEGORIA..." />
+                            <button onClick={handleSaveSangriaCategory} disabled={isSubmitting} className="p-4 bg-blue-600 text-white rounded-2xl shadow-lg active:scale-95"><Plus size={20}/></button>
+                        </div>
+                        <div className="space-y-2 max-h-[300px] overflow-y-auto no-scrollbar">
+                            {sangriaCategories.filter(c => c.store_id === effectiveStoreId).map(c => (
+                                <div key={c.id} className="flex justify-between items-center p-4 bg-gray-50 rounded-2xl border border-gray-100">
+                                    <span className="text-[10px] font-black text-blue-950 uppercase italic">{c.name}</span>
+                                    <button onClick={() => onDeleteSangriaCategory(c.id)} className="text-red-300 hover:text-red-600 transition-all"><Trash2 size={16}/></button>
+                                </div>
+                            ))}
+                        </div>
+                    </div>
+                </div>
+            </div>
+        )}
+
+        {showSangriaDetailModal && (
+            <div className="fixed inset-0 bg-black/80 backdrop-blur-md flex items-center justify-center z-[140] p-4">
+                <div className="bg-white rounded-[40px] w-full max-w-2xl shadow-2xl animate-in zoom-in duration-300 border-t-8 border-red-600 flex flex-col overflow-hidden max-h-[90vh]">
+                    <div className="p-8 border-b bg-gray-50/50 flex justify-between items-center shrink-0">
+                        <h3 className="text-xl font-black uppercase italic text-blue-950 flex items-center gap-3">
+                            <DollarSign className="text-red-600" /> Detalhamento de <span className="text-red-600">Sangrias</span>
+                        </h3>
+                        <button onClick={() => setShowSangriaDetailModal(null)} className="text-gray-400 hover:text-red-600"><X size={24}/></button>
+                    </div>
+                    <div className="flex-1 overflow-y-auto p-6 no-scrollbar">
+                        <table className="w-full text-left">
+                            <thead className="bg-gray-50 text-[9px] font-black text-gray-400 uppercase tracking-widest border-b sticky top-0 z-10">
+                                <tr>
+                                    <th className="px-4 py-4">Data / Hora</th>
+                                    <th className="px-4 py-4">Categoria</th>
+                                    <th className="px-4 py-4">Descrição</th>
+                                    <th className="px-4 py-4">Usuário</th>
+                                    <th className="px-4 py-4 text-right">Valor</th>
+                                </tr>
+                            </thead>
+                            <tbody className="divide-y divide-gray-50 font-bold text-[10px]">
+                                {(showSangriaDetailModal === 'day' ? dreStats.daySangrias : dreStats.monthSangrias).map(s => {
+                                    const cat = sangriaCategories.find(c => c.id === s.category_id);
+                                    const userObj = adminUsers.find(u => u.id === s.user_id);
+                                    return (
+                                        <tr key={s.id} className="hover:bg-red-50/20">
+                                            <td className="px-4 py-3 text-gray-400">{new Date(s.created_at!).toLocaleString()}</td>
+                                            <td className="px-4 py-3 uppercase text-blue-950">{cat?.name || '---'}</td>
+                                            <td className="px-4 py-3 text-gray-500 italic">{s.description || '---'}</td>
+                                            <td className="px-4 py-3 uppercase text-gray-400">{userObj?.name || '---'}</td>
+                                            <td className="px-4 py-3 text-right text-red-600 font-black">{formatCurrency(s.amount)}</td>
+                                        </tr>
+                                    );
+                                })}
+                                {(showSangriaDetailModal === 'day' ? dreStats.daySangrias : dreStats.monthSangrias).length === 0 && (
+                                    <tr><td colSpan={5} className="px-4 py-10 text-center text-gray-400 uppercase italic">Nenhuma sangria encontrada</td></tr>
+                                )}
+                            </tbody>
+                        </table>
+                    </div>
+                    <div className="p-6 bg-gray-50 border-t flex justify-between items-center">
+                        <span className="text-[10px] font-black text-gray-400 uppercase">Total do Período</span>
+                        <span className="text-xl font-black text-red-600 italic">{formatCurrency(showSangriaDetailModal === 'day' ? dreStats.daySangriaTotal : dreStats.monthSangriaTotal)}</span>
+                    </div>
+                </div>
+            </div>
+        )}
+
+        {showPartnersModal && (
+            <div className="fixed inset-0 bg-black/80 backdrop-blur-md flex items-center justify-center z-[140] p-4">
+                <div className="bg-white rounded-[40px] w-full max-w-md shadow-2xl animate-in zoom-in duration-300 border-t-8 border-blue-600 flex flex-col overflow-hidden max-h-[90vh]">
+                    <div className="p-8 border-b bg-gray-50/50 flex justify-between items-center shrink-0">
+                        <h3 className="text-xl font-black uppercase italic text-blue-950 flex items-center gap-3">
+                            <UsersIcon className="text-blue-600" /> Gestão de <span className="text-blue-600">Sócios</span>
+                        </h3>
+                        <button onClick={() => setShowPartnersModal(false)} className="text-gray-400 hover:text-red-600"><X size={24}/></button>
+                    </div>
+                    <div className="p-8 space-y-6 flex-1 overflow-y-auto no-scrollbar">
+                        <div className="bg-blue-50 p-4 rounded-2xl border border-blue-100">
+                            <p className="text-[10px] font-black text-blue-900 uppercase mb-2">Soma dos Percentuais Ativos</p>
+                            <div className="flex items-baseline gap-2">
+                                <span className={`text-3xl font-black italic ${Math.abs(partners.filter(p => p.active).reduce((a,p) => a + p.percentage, 0) - 100) < 0.1 ? 'text-green-600' : 'text-red-600'}`}>
+                                    {partners.filter(p => p.active).reduce((a,p) => a + p.percentage, 0).toFixed(1)}%
+                                </span>
+                                <span className="text-[10px] font-bold text-blue-400 uppercase">/ 100% obrigatório</span>
+                            </div>
+                        </div>
+
+                        <div className="space-y-4">
+                            <div className="grid grid-cols-2 gap-2">
+                                <div className="space-y-1">
+                                    <label className="text-[9px] font-black text-gray-400 uppercase ml-2">Nome</label>
+                                    <input value={partnerForm.partner_name} onChange={e => setPartnerForm({...partnerForm, partner_name: e.target.value})} className="w-full p-3 bg-gray-50 rounded-xl font-black uppercase text-[10px] outline-none" placeholder="NOME..." />
+                                </div>
+                                <div className="space-y-1">
+                                    <label className="text-[9px] font-black text-gray-400 uppercase ml-2">%</label>
+                                    <input value={partnerForm.percentage} onChange={e => setPartnerForm({...partnerForm, percentage: e.target.value})} className="w-full p-3 bg-gray-50 rounded-xl font-black text-[10px] outline-none" placeholder="0.00" />
+                                </div>
+                            </div>
+                            <button onClick={handleSavePartner} disabled={isSubmitting} className="w-full py-3 bg-blue-600 text-white rounded-xl font-black uppercase text-[10px] shadow-lg active:scale-95 transition-all">
+                                Adicionar Sócio
+                            </button>
+                        </div>
+
+                        <div className="space-y-2">
+                            {partners.map(p => (
+                                <div key={p.id} className="flex justify-between items-center p-4 bg-gray-50 rounded-2xl border border-gray-100">
+                                    <div className="flex flex-col">
+                                        <span className="text-[10px] font-black text-blue-950 uppercase italic">{p.partner_name}</span>
+                                        <span className="text-[9px] font-bold text-blue-400">{p.percentage}%</span>
+                                    </div>
+                                    <div className="flex items-center gap-2">
+                                        <button onClick={() => handleTogglePartner(p.id, !p.active)} className={`p-2 rounded-lg transition-all ${p.active ? 'text-green-600 bg-green-50' : 'text-gray-300 bg-gray-100'}`}>
+                                            {p.active ? <CheckCircle2 size={16}/> : <XCircle size={16}/>}
+                                        </button>
+                                        <button onClick={() => handleDeletePartner(p.id)} className="p-2 text-red-300 hover:text-red-600 transition-all">
+                                            <Trash2 size={16}/>
+                                        </button>
+                                    </div>
+                                </div>
+                            ))}
+                        </div>
+                    </div>
+                    <div className="p-6 bg-gray-50 border-t">
+                        <p className="text-[8px] text-gray-400 uppercase font-bold text-center">A soma dos percentuais ativos deve ser exatamente 100% para o fechamento correto.</p>
+                    </div>
                 </div>
             </div>
         )}

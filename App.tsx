@@ -2,7 +2,8 @@ import React, { useState, useEffect } from 'react';
 import { 
     User, Store, MonthlyPerformance, UserRole, Cota, CotaSettings, CotaDebts, QuotaCategory, QuotaMixParameter,
     IceCreamItem, IceCreamDailySale, CashRegisterClosure, ProductPerformance, Receipt, IceCreamStock, IceCreamPromissoryNote, AgendaItem, DownloadItem, CashError, SystemLog, MonthlyGoal, CreditCardSale,
-    Sale, SalePayment
+    Sale, SalePayment, IceCreamSangria, IceCreamSangriaCategory,
+    IceCreamStockMovement, StoreProfitPartner, AdminUser
 } from './types';
 import { supabase } from './services/supabaseClient';
 import { BRAND_LOGO } from './constants';
@@ -37,6 +38,13 @@ const App: React.FC = () => {
     const [currentView, setCurrentView] = useState<string>(''); 
     const [isLoading, setIsLoading] = useState(true);
     const [isSidebarOpen, setIsSidebarOpen] = useState(false);
+
+    useEffect(() => {
+        if (window.innerWidth >= 1024) {
+            setIsSidebarOpen(true);
+        }
+    }, []);
+
     const [userPermissions, setUserPermissions] = useState<string[]>([]);
     const [userCount, setUserCount] = useState<number | null>(null);
     const [connectionError, setConnectionError] = useState<string | null>(null);
@@ -63,6 +71,11 @@ const App: React.FC = () => {
     const [downloads, setDownloads] = useState<DownloadItem[]>([]);
     const [closures, setClosures] = useState<CashRegisterClosure[]>([]);
     const [logs, setLogs] = useState<SystemLog[]>([]);
+    const [icSangriaCategories, setIcSangriaCategories] = useState<IceCreamSangriaCategory[]>([]);
+    const [icSangrias, setIcSangrias] = useState<IceCreamSangria[]>([]);
+    const [icStockMovements, setIcStockMovements] = useState<IceCreamStockMovement[]>([]);
+    const [partners, setPartners] = useState<StoreProfitPartner[]>([]);
+    const [adminUsers, setAdminUsers] = useState<AdminUser[]>([]);
 
     const can = (permissionKey: string) => {
         if (user?.role === UserRole.ADMIN) return true;
@@ -87,7 +100,8 @@ const App: React.FC = () => {
             const [
                 {data: s}, {data: p}, {data: pur}, {data: c}, {data: cs}, {data: cd}, {data: cat}, {data: mix},
                 {data: ici}, {data: ics}, {data: icst}, {data: icp}, {data: r}, {data: ce}, {data: ag}, {data: dl}, {data: cl}, {data: lg},
-                {data: g}, {data: cds}, {data: sls}, {data: slsp}
+                {data: g}, {data: cds}, {data: sls}, {data: slsp},
+                {data: sangCat}, {data: sang}, {data: movements}, {data: part}, {data: ausers}
             ] = await Promise.all([
                 supabase.from('stores').select('*'),
                 supabase.from('monthly_performance').select('*'), 
@@ -110,7 +124,12 @@ const App: React.FC = () => {
                 supabase.from('monthly_goals').select('*'),
                 supabase.from('financial_card_sales').select('*').order('created_at', { ascending: false }),
                 supabase.from('ice_cream_sales').select('*').order('created_at', { ascending: false }),
-                supabase.from('ice_cream_daily_sales_payments').select('*').order('created_at', { ascending: false })
+                supabase.from('ice_cream_daily_sales_payments').select('*').order('created_at', { ascending: false }),
+                supabase.from('ice_cream_sangria_categoria').select('*'),
+                supabase.from('ice_cream_sangria').select('*').order('created_at', { ascending: false }),
+                supabase.from('ice_cream_stock_movements').select('*').order('created_at', { ascending: false }),
+                supabase.from('store_profit_distribution').select('*'),
+                supabase.from('admin_users').select('*')
             ]);
 
             if(s) setStores(s);
@@ -135,6 +154,11 @@ const App: React.FC = () => {
             if(dl) setDownloads(dl.map(x => ({...x, fileName: x.file_name, createdBy: x.created_by})));
             if(cl) setClosures(cl.map(x => ({...x, storeId: x.store_id, closedBy: x.closed_by})));
             if(lg) setLogs(lg);
+            if(sangCat) setIcSangriaCategories(sangCat);
+            if(sang) setIcSangrias(sang);
+            if(movements) setIcStockMovements(movements);
+            if(part) setPartners(part);
+            if(ausers) setAdminUsers(ausers);
         } catch (err) { console.error("Erro Sincronismo:", err); }
         finally { setIsLoading(false); }
     };
@@ -259,11 +283,24 @@ const App: React.FC = () => {
     
     return (
         <div className="flex h-screen bg-gray-950 text-white overflow-hidden font-sans relative">
-            {isSidebarOpen && ( <div className="fixed inset-0 bg-black/60 backdrop-blur-sm z-[90]" onClick={() => setIsSidebarOpen(false)} /> )}
-            <aside className={`fixed inset-y-0 left-0 z-[100] w-72 bg-gray-950 border-r border-white/5 flex flex-col p-6 transition-transform duration-300 transform ${isSidebarOpen ? 'translate-x-0' : '-translate-x-full'} lg:relative lg:translate-x-0`}>
-                <div className="flex items-center gap-4 mb-8">
-                    <img src={BRAND_LOGO} alt="Logo" className="h-10 w-auto object-contain" />
-                    <h1 className="text-xl font-black italic uppercase">ADMIN</h1>
+            {/* Overlay for mobile/tablet */}
+            {isSidebarOpen && ( 
+                <div className="fixed inset-0 bg-black/60 backdrop-blur-sm z-[90] lg:hidden" onClick={() => setIsSidebarOpen(false)} /> 
+            )}
+            
+            <aside className={`
+                fixed inset-y-0 left-0 z-[100] w-72 bg-gray-950 border-r border-white/5 flex flex-col p-6 transition-all duration-300 transform
+                ${isSidebarOpen ? 'translate-x-0' : '-translate-x-full'}
+                lg:relative lg:translate-x-0 ${!isSidebarOpen ? 'lg:hidden' : 'lg:flex'}
+            `}>
+                <div className="flex items-center justify-between mb-8">
+                    <div className="flex items-center gap-4">
+                        <img src={BRAND_LOGO} alt="Logo" className="h-10 w-auto object-contain" />
+                        <h1 className="text-xl font-black italic uppercase">ADMIN</h1>
+                    </div>
+                    <button onClick={() => setIsSidebarOpen(false)} className="p-2 text-gray-500 hover:text-white lg:hidden">
+                        <X size={24} />
+                    </button>
                 </div>
                 <nav className="flex-1 space-y-6 overflow-y-auto no-scrollbar">
                     {[
@@ -287,13 +324,17 @@ const App: React.FC = () => {
                 <button onClick={() => window.location.reload()} className="mt-8 flex items-center gap-4 p-4 text-red-500 font-black uppercase text-[10px] hover:bg-red-500/10 rounded-xl transition-all border border-red-500/20"><LogOut size={18} /> Sair</button>
             </aside>
             <div className="flex-1 flex flex-col h-full bg-[#f3f4f6] overflow-hidden text-blue-950">
-                <header className="h-16 border-b border-gray-100 bg-white items-center justify-between px-6 flex shrink-0 z-50">
-                    <div className="flex items-center gap-4">
-                        <button onClick={() => setIsSidebarOpen(true)} className="p-2 text-blue-900 lg:hidden"><Menu size={24} /></button>
-                        <span className="text-xs font-black uppercase text-gray-400 flex items-center gap-3"><UserCog size={18}/> Sessão: <span className="text-blue-950 italic">{user?.name}</span></span>
+                <header className="h-16 border-b border-gray-100 bg-white items-center justify-between px-4 md:px-6 flex shrink-0 z-50">
+                    <div className="flex items-center gap-2 md:gap-4">
+                        <button onClick={() => setIsSidebarOpen(!isSidebarOpen)} className="p-2 text-blue-900">
+                            <Menu size={24} />
+                        </button>
+                        <span className="text-[10px] md:text-xs font-black uppercase text-gray-400 flex items-center gap-2 md:gap-3">
+                            <UserCog size={18} className="hidden xs:block"/> Sessão: <span className="text-blue-950 italic truncate max-w-[100px] md:max-w-none">{user?.name}</span>
+                        </span>
                     </div>
                 </header>
-                <main className="flex-1 overflow-y-auto no-scrollbar p-4 lg:p-8">
+                <main className="flex-1 overflow-y-auto no-scrollbar p-3 md:p-6 lg:p-8">
                     {(() => {
                         if (currentView === 'dashboard_rede' && can('MODULE_DASHBOARD_ADMIN')) return <DashboardAdmin stores={stores} performanceData={performanceData} goalsData={goalsData} onImportPerformance={async (d) => { 
                             const upsertData = d.map(row => ({ 
@@ -313,11 +354,20 @@ const App: React.FC = () => {
                         }} onRefresh={fetchData} />;
                         if (currentView === 'dashboard_loja' && can('MODULE_DASHBOARD_MANAGER')) return <DashboardManager user={user!} stores={stores} performanceData={performanceData} purchasingData={purchasingData} />;
                         if (currentView === 'metas' && can('MODULE_METAS')) return <GoalRegistration stores={stores} goalsData={goalsData} onSaveGoals={async (data) => { for(const row of data) { await supabase.from('monthly_goals').upsert({ store_id: row.storeId, year: row.year, month: row.month, revenue_target: row.revenueTarget, pa_target: row.paTarget, pu_target: row.puTarget, ticket_target: row.ticketTarget, items_target: row.itemsTarget, business_days: row.businessDays, delinquency_target: row.delinquencyTarget, trend: row.trend }, { onConflict: 'store_id, year, month' }); } fetchData(); }} />;
-                        if (currentView === 'cotas' && can('MODULE_COTAS')) return <CotasManagement user={user!} stores={stores} cotas={cotas} cotaSettings={cotaSettings} cotaDebts={cotaDebts} performanceData={performanceData} productCategories={quotaCategories} mixParameters={quotaMixParams} onAddCota={async (c) => { await supabase.from('cotas').insert([{ store_id: c.storeId, brand: c.brand, category_id: c.category_id, total_value: c.totalValue, shipment_date: `${c.shipmentDate}-01`, payment_terms: c.paymentTerms, pairs: c.pairs, installments: c.installments, status: 'ABERTA' }]); fetchData(); }} onUpdateCota={async (id, u) => { await supabase.from('cotas').update(u).eq('id', id); fetchData(); }} onDeleteCota={async (id) => { await supabase.from('cotas').delete().eq('id', id); fetchData(); }} onSaveSettings={async (s) => { await supabase.from('cota_settings').upsert({ store_id: s.storeId, budget_value: s.budgetValue, manager_percent: s.managerPercent }, { onConflict: 'store_id' }); fetchData(); }} onSaveDebts={async (d) => { await supabase.from('cota_debts').upsert({ store_id: d.storeId, month: d.month, value: d.value }, { onConflict: 'store_id, month' }); fetchData(); }} onDeleteDebt={async (id) => { await supabase.from('cota_debts').delete().eq('id', id); fetchData(); }} />;
+                        if (currentView === 'cotas' && can('MODULE_COTAS')) return <CotasManagement user={user!} stores={stores} cotas={cotas} cotaSettings={cotaSettings} cotaDebts={cotaDebts} performanceData={performanceData} productCategories={quotaCategories} mixParameters={quotaMixParams} onAddCota={async (c) => { await supabase.from('cotas').insert([{ store_id: c.storeId, brand: c.brand, category_id: c.category_id, total_value: c.totalValue, shipment_date: `${c.shipmentDate}-01`, payment_terms: c.paymentTerms, pairs: c.pairs, installments: c.installments, status: 'ABERTA' }]); fetchData(); }} onUpdateCota={async (id, u) => { await supabase.from('cotas').update(u).eq('id', id); fetchData(); }} onDeleteCota={async (id) => { await supabase.from('cotas').delete().eq('id', id); fetchData(); }} onSaveSettings={async (s) => { await supabase.from('cota_settings').upsert({ store_id: s.storeId, budget_value: s.budgetValue, manager_percent: s.managerPercent }, { onConflict: 'store_id' }); fetchData(); }} onSaveDebts={async (d) => { await supabase.from('cota_debts').upsert({ store_id: d.storeId, month: d.month, value: d.value }, { onConflict: 'store_id, month' }); fetchData(); }} onDeleteDebt={async (id) => { await supabase.from('cota_debts').delete().eq('id', id); fetchData(); }} onUpdateMixParameter={async (id, sId, cat, pct, sem) => { if (id) { await supabase.from('quota_mix_parameters').update({ mix_percentage: pct }).eq('id', id); } else { await supabase.from('quota_mix_parameters').insert([{ store_id: sId, parent_category: cat, mix_percentage: pct, semester: sem }]); } fetchData(); }} />;
                         if (currentView === 'compras' && can('MODULE_PURCHASES')) return <DashboardPurchases user={user!} stores={stores} data={purchasingData} onImport={async (d) => { await supabase.from('product_performance').insert(d.map(x => ({ store_id: x.storeId, month: x.month, brand: x.brand, category: x.category, pairs_sold: x.pairsSold, revenue: x.revenue }))); fetchData(); }} onOpenSpreadsheetModule={() => setCurrentView('spreadsheet_order')} />;
                         if (currentView === 'pdv_gelateria' && can('MODULE_ICECREAM')) return <IceCreamModule 
                             user={user!} stores={stores} items={iceCreamItems} sales={iceCreamSales} salesHeaders={sales} salePayments={salePayments}
                             stock={iceCreamStock} promissories={icPromissories} can={can}
+                            sangriaCategories={icSangriaCategories}
+                            sangrias={icSangrias}
+                            stockMovements={icStockMovements}
+                            partners={partners}
+                            adminUsers={adminUsers}
+                            onAddSangria={async (s) => { await supabase.from('ice_cream_sangria').insert([s]); fetchData(); }}
+                            onAddSangriaCategory={async (c) => { await supabase.from('ice_cream_sangria_categoria').insert([c]); fetchData(); }}
+                            onDeleteSangriaCategory={async (id) => { await supabase.from('ice_cream_sangria_categoria').delete().eq('id', id); fetchData(); }}
+                            onAddStockMovement={async (m) => { await supabase.from('ice_cream_stock_movements').insert([m]); fetchData(); }}
                             onAddSales={async (s) => { 
                                 await supabase.from('ice_cream_daily_sales').insert(s.map(x => ({ 
                                     store_id: x.storeId, 

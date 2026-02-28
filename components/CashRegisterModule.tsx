@@ -1,5 +1,5 @@
 import React, { useState, useMemo, useEffect } from 'react';
-import { User, IceCreamDailySale, IceCreamTransaction, Receipt, CashError, UserRole, Store } from '../types';
+import { User, IceCreamDailySale, Receipt, CashError, UserRole, Store } from '../types';
 import { formatCurrency, BRAND_LOGO } from '../constants';
 import { 
     DollarSign, Save, Calendar, FileText, CreditCard, AlertTriangle, 
@@ -22,7 +22,6 @@ interface CashRegisterModuleProps {
     user: User;
     stores: Store[];
     sales: IceCreamDailySale[];
-    finances: IceCreamTransaction[];
     closures: any[];
     receipts: Receipt[];
     errors: CashError[];
@@ -375,14 +374,14 @@ const CashRegisterModule: React.FC<CashRegisterModuleProps> = ({
                     <div className="p-2.5 bg-blue-900 text-white rounded-xl shadow-lg"><DollarSign size={24} /></div>
                     <div><h1 className="text-xl font-black text-blue-950 uppercase italic tracking-tighter">Gestão de Caixa</h1><p className="text-[10px] text-gray-400 font-bold uppercase tracking-widest">Finanças e Auditoria Rede Real</p></div>
                 </div>
-                <div className="flex bg-gray-100 p-1 rounded-2xl">
+                <div className="flex flex-wrap bg-gray-100 p-1 rounded-2xl w-full md:w-auto">
                     {[
                         { id: 'recibos', label: 'Recibos', icon: FileText }, 
                         { id: 'cartoes', label: 'Cartões', icon: CreditCard }, 
                         { id: 'quebras', label: 'Quebra', icon: AlertTriangle },
                         { id: 'fechamento', label: 'Fechamento', icon: CheckCircle2 }
                     ].map(tab => (
-                        <button key={tab.id} onClick={() => setActiveTab(tab.id as any)} className={`flex items-center gap-2 px-6 py-2.5 rounded-xl text-[10px] font-black uppercase transition-all whitespace-nowrap ${activeTab === tab.id ? 'bg-white text-blue-900 shadow-md border border-blue-50' : 'text-gray-400 hover:text-gray-600'}`}>
+                        <button key={tab.id} onClick={() => setActiveTab(tab.id as any)} className={`flex-1 sm:flex-none flex items-center justify-center gap-2 px-4 md:px-6 py-2.5 rounded-xl text-[10px] font-black uppercase transition-all whitespace-nowrap ${activeTab === tab.id ? 'bg-white text-blue-900 shadow-md border border-blue-50' : 'text-gray-400 hover:text-gray-600'}`}>
                             <tab.icon size={14} /> {tab.label}
                         </button>
                     ))}
