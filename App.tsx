@@ -391,13 +391,15 @@ const App: React.FC = () => {
                                     throw new Error("A soma dos pagamentos não confere com o total da venda.");
                                 }
 
+                                const buyerName = saleData.buyer_name?.trim() || null;
+
                                 const { data: header, error: headerError } = await supabase
                                     .from('ice_cream_sales')
                                     .insert([{
                                         store_id: saleData.store_id,
                                         total_value: saleData.total,
                                         sale_code: saleData.sale_code,
-                                        buyer_name: saleData.buyer_name,
+                                        buyer_name: buyerName,
                                         status: 'completed',
                                         created_at: new Date().toISOString()
                                     }])
@@ -419,7 +421,7 @@ const App: React.FC = () => {
                                         total_value: x.totalValue, 
                                         payment_method: payments.length > 1 ? 'Misto' : payments[0].method, 
                                         sale_code: saleData.sale_code, 
-                                        buyer_name: saleData.buyer_name, 
+                                        buyer_name: buyerName, 
                                         status: 'completed' 
                                     })));
 
@@ -434,6 +436,7 @@ const App: React.FC = () => {
                                         payment_method: p.method,
                                         amount: p.amount,
                                         sale_code: saleData.sale_code,
+                                        buyer_name: buyerName,
                                         created_at: new Date().toISOString()
                                     })));
 
