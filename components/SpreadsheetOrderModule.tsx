@@ -98,6 +98,14 @@ const SpreadsheetOrderModule = ({ user, onClose }: { user: any, onClose: () => v
     referencia: "", tipo: "", cor1: "", cor2: "", cor3: "", 
     modelo: "Fem" as keyof typeof TAMANHOS, valorCompra: 0, precoVenda: 0 
   });
+
+  const [dbSuggestions, setDbSuggestions] = useState({
+    marcas: [] as string[],
+    fornecedores: [] as string[],
+    tipos: [] as string[],
+    cores: [] as string[],
+    referencias: [] as string[]
+  });
   
   // Auto-preenchimento por Marca
   useEffect(() => {
@@ -109,16 +117,16 @@ const SpreadsheetOrderModule = ({ user, onClose }: { user: any, onClose: () => v
           .select('fornecedor, representante, telefone, email')
           .eq('marca', pedido.marca)
           .order('created_at', { ascending: false })
-          .limit(1)
-          .single();
+          .limit(1);
 
-        if (data && !error) {
+        if (data && data.length > 0 && !error) {
+          const lastOrder = data[0];
           setPedido(prev => ({
             ...prev,
-            fornecedor: data.fornecedor || prev.fornecedor,
-            representante: data.representante || prev.representante,
-            telefone: data.telefone || prev.telefone,
-            email: data.email || prev.email
+            fornecedor: lastOrder.fornecedor || prev.fornecedor,
+            representante: lastOrder.representante || prev.representante,
+            telefone: lastOrder.telefone || prev.telefone,
+            email: lastOrder.email || prev.email
           }));
         }
       } catch (err) {
@@ -344,6 +352,13 @@ const SpreadsheetOrderModule = ({ user, onClose }: { user: any, onClose: () => v
 
         setCell(sheet, r, 2, refObj.referencia); // Coluna C
         setCell(sheet, r, 7, refObj.tipo);       // Coluna H
+        
+        const classificacao = getClassificacao(refObj.modelo, gradesSalvas.find(g => g.letra === refObj.gradeLetra)?.valores || {});
+        const descSetor = classificacao ? ` (${classificacao})` : "";
+        
+        // Coluna 8 (Index 8) - Descrição: "PRODUTO + REF + (SETOR)"
+        setCell(sheet, r, 8, `${refObj.tipo} ${refObj.referencia}${descSetor}`);
+        
         setCell(sheet, r, 17, refObj.cor1);      // R36
         setCell(sheet, r, 18, refObj.cor2);      // S36
         setCell(sheet, r, 19, refObj.cor3);      // T36
@@ -536,14 +551,14 @@ const SpreadsheetOrderModule = ({ user, onClose }: { user: any, onClose: () => v
         </div>
 
         {/* STEPPER - TIGHTER */}
-        <div className={`flex bg-white px-4 py-2 gap-1 border-b border-slate-100 shrink-0 ${isMobile ? 'flex-col' : 'flex-row overflow-x-auto no-scrollbar'}`}>
+        <div className="flex bg-white px-4 py-2 gap-1 border-b border-slate-100 shrink-0 flex-row overflow-x-auto no-scrollbar">
           {[1, 2, 3, 4].map(n => {
             const label = n === 1 ? 'Pedido' : n === 2 ? 'Produtos' : n === 3 ? 'Grades' : 'Lojas';
             return (
               <button 
                 key={n} 
                 onClick={() => setEtapa(n)} 
-                className={`flex-1 py-2 rounded-xl transition-all border-b-2 flex flex-col items-center justify-center gap-1 ${etapa === n ? 'bg-blue-50 text-blue-700 border-blue-600' : 'text-slate-400 border-transparent hover:bg-slate-50'}`}
+                className={`flex-1 min-w-[70px] py-2 rounded-xl transition-all border-b-2 flex flex-col items-center justify-center gap-1 ${etapa === n ? 'bg-blue-50 text-blue-700 border-blue-600' : 'text-slate-400 border-transparent hover:bg-slate-50'}`}
               >
                 <div className={`w-6 h-6 rounded-full flex items-center justify-center text-[10px] font-black transition-all ${etapa === n ? 'bg-blue-600 text-white shadow-md' : 'bg-slate-100 text-slate-400'}`}>
                   {n}
