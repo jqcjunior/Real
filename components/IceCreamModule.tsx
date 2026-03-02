@@ -606,6 +606,12 @@ const dreStats = useMemo(() => {
       return; 
     }
 
+    const hasFiado = splitData.some(p => p.method === 'Fiado');
+    if (hasFiado && !buyerName.trim()) {
+      alert("O nome do comprador é obrigatório para vendas no Fiado.");
+      return;
+    }
+
     setIsSubmitting(true);
     const saleCode = `GEL-${Date.now().toString().slice(-6)}`;
     
@@ -614,7 +620,7 @@ const dreStats = useMemo(() => {
         store_id: effectiveStoreId,
         total: cartTotal,
         sale_code: saleCode,
-        buyer_name: (paymentMethod === 'Fiado' || (isMisto && mistoValues['Fiado'])) ? buyerName.toUpperCase() : undefined
+        buyer_name: hasFiado ? buyerName.trim().toUpperCase() : null
       };
 
       const operationalSales = cart.map(item => ({ 
