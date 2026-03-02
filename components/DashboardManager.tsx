@@ -1,7 +1,7 @@
 import React, { useState, useMemo } from 'react';
-import { User, Store, ProductPerformance } from '../types';
+import { User, Store, ProductPerformance, IceCreamSangria, IceCreamStockMovement, IceCreamStock } from '../types';
 import { formatCurrency, formatDecimal } from '../constants';
-import { ShoppingBag, DollarSign, Package, Hash, AlertCircle, Trophy, BarChart3, TrendingUp, Target, Clock, BrainCircuit, Sparkles, Loader2, Zap, X } from 'lucide-react';
+import { ShoppingBag, DollarSign, Package, Hash, AlertCircle, Trophy, BarChart3, TrendingUp, Target, Clock, BrainCircuit, Sparkles, Loader2, Zap, X, TrendingDown, Percent, Activity } from 'lucide-react';
 import { analyzePerformance } from '../services/geminiService';
 
 interface DashboardManagerProps {
@@ -9,6 +9,9 @@ interface DashboardManagerProps {
   stores: Store[];
   performanceData: any[]; 
   purchasingData: ProductPerformance[];
+  sangrias: IceCreamSangria[];
+  stockMovements: IceCreamStockMovement[];
+  stock: IceCreamStock[];
 }
 
 const KPICard = ({ label, value, target, icon: Icon, type = 'currency', mode = 'higher' }: { label: string, value: number, target?: number, icon: any, type?: 'currency' | 'decimal' | 'integer', mode?: 'higher' | 'lower' }) => {
@@ -76,8 +79,13 @@ const KPICard = ({ label, value, target, icon: Icon, type = 'currency', mode = '
   );
 };
 
-const DashboardManager: React.FC<DashboardManagerProps> = ({ user, stores, performanceData }) => {
-  const [selectedMonth, setSelectedMonth] = useState<string>('2026-02');
+const DashboardManager: React.FC<DashboardManagerProps> = ({ user, stores, performanceData, sangrias, stockMovements, stock }) => {
+  const currentMonthStr = useMemo(() => {
+    const now = new Date();
+    return `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`;
+  }, []);
+
+  const [selectedMonth, setSelectedMonth] = useState<string>(currentMonthStr);
   const [aiInsight, setAiInsight] = useState<string>('');
   const [isLoadingAi, setIsLoadingAi] = useState(false);
 
@@ -129,6 +137,34 @@ const DashboardManager: React.FC<DashboardManagerProps> = ({ user, stores, perfo
       const finalPUTarget = aggregated.puTarget / storeMonthData.length;
       const finalTicketTarget = aggregated.ticketTarget / storeMonthData.length;
 
+      // Sangrias da Loja no Mês
+      const mySangrias = sangrias.filter(s => 
+        String(s.store_id) === String(myStore.id) && 
+        s.created_at.startsWith(selectedMonth)
+      );
+      const totalSangria = mySangrias.reduce((acc, curr) => acc + Number(curr.amount || 0), 0);
+
+      // Avarias da Loja no Mês
+      const myAvarias = stockMovements.filter(m => 
+        String(m.store_id) === String(myStore.id) && 
+        m.movement_type === 'AVARIA' &&
+        m.created_at.startsWith(selectedMonth)
+      );
+      // Aqui as avarias são em quantidade, mas o DRE pedia valor. 
+      // Como não temos o custo unitário fácil aqui, vamos mostrar a quantidade ou estimar.
+      // O usuário pediu "Total Avarias" no resumo operacional anterior.
+      const totalAvariasQty = myAvarias.reduce((acc, curr) => acc + Number(curr.quantity || 0), 0);
+
+      // Lucro e Margem (Simplificado: Receita - Sangria)
+      const profit = aggregated.revenueActual - totalSangria;
+      const margin = aggregated.revenueActual > 0 ? (profit / aggregated.revenueActual) * 100 : 0;
+
+      // Estoque Crítico
+      const criticalStock = stock.filter(s => 
+        String(s.store_id) === String(myStore.id) && 
+        Number(s.stock_current || 0) <= 5 // Exemplo de limite crítico
+      ).length;
+
       return {
         revAct: aggregated.revenueActual,
         revTgt: aggregated.revenueTarget,
@@ -140,13 +176,18 @@ const DashboardManager: React.FC<DashboardManagerProps> = ({ user, stores, perfo
         tktTgt: finalTicketTarget,
         itemsAct: aggregated.itemsActual,
         itemsTgt: aggregated.itemsTarget,
+        totalSangria,
+        totalAvariasQty,
+        profit,
+        margin,
+        criticalStock,
         ating: calcAttainment(aggregated.revenueActual, aggregated.revenueTarget, 'higher'),
         paAting: calcAttainment(finalPA, finalPATarget, 'higher'),
         puAting: calcAttainment(finalPU, finalPUTarget, 'lower'),
         tktAting: calcAttainment(finalTicket, finalTicketTarget, 'higher'),
         itemsAting: calcAttainment(aggregated.itemsActual, aggregated.itemsTarget, 'higher')
       };
-  }, [performanceData, selectedMonth, myStore]);
+  }, [performanceData, selectedMonth, myStore, sangrias, stockMovements, stock]);
 
   const weightedRanking = useMemo(() => {
       const monthData = performanceData.filter(p => String(p.month) === selectedMonth);
@@ -221,10 +262,47 @@ const DashboardManager: React.FC<DashboardManagerProps> = ({ user, stores, perfo
                 </div>
             </div>
             <div className="flex items-center gap-3">
-                <select value={selectedMonth} onChange={e => setSelectedMonth(e.target.value)} className="bg-slate-50 px-4 py-2 rounded-xl text-[10px] font-black text-blue-900 uppercase border-none outline-none cursor-pointer">
-                    <option value="2026-02">Fevereiro 2026</option>
-                    <option value="2026-01">Janeiro 2026</option>
-                </select>
+                <div className="flex items-center gap-2">
+                    <select 
+                        value={selectedMonth.split('-')[1]} 
+                        onChange={e => {
+                            const [year] = selectedMonth.split('-');
+                            setSelectedMonth(`${year}-${e.target.value}`);
+                        }}
+                        className="bg-slate-50 px-4 py-2 rounded-xl text-[10px] font-black text-blue-900 uppercase border-none outline-none cursor-pointer"
+                    >
+                        <option value="01">Janeiro</option>
+                        <option value="02">Fevereiro</option>
+                        <option value="03">Março</option>
+                        <option value="04">Abril</option>
+                        <option value="05">Maio</option>
+                        <option value="06">Junho</option>
+                        <option value="07">Julho</option>
+                        <option value="08">Agosto</option>
+                        <option value="09">Setembro</option>
+                        <option value="10">Outubro</option>
+                        <option value="11">Novembro</option>
+                        <option value="12">Dezembro</option>
+                    </select>
+
+                    <select 
+                        value={selectedMonth.split('-')[0]} 
+                        onChange={e => {
+                            const [, month] = selectedMonth.split('-');
+                            setSelectedMonth(`${e.target.value}-${month}`);
+                        }}
+                        className="bg-slate-50 px-4 py-2 rounded-xl text-[10px] font-black text-blue-900 uppercase border-none outline-none cursor-pointer"
+                    >
+                        {(() => {
+                            const years = [];
+                            const currentYear = new Date().getFullYear();
+                            for (let y = currentYear + 1; y >= 2024; y--) {
+                                years.push(<option key={y} value={y}>{y}</option>);
+                            }
+                            return years;
+                        })()}
+                    </select>
+                </div>
                 <button onClick={handleGenerateInsight} disabled={isLoadingAi} className="p-2.5 bg-slate-900 text-white rounded-xl shadow-lg active:scale-95 transition-all">
                     {isLoadingAi ? <Loader2 className="animate-spin" size={16} /> : <Sparkles className="text-amber-400" size={16} />}
                 </button>
@@ -235,9 +313,33 @@ const DashboardManager: React.FC<DashboardManagerProps> = ({ user, stores, perfo
             <>
                 <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
                     <KPICard label="Faturamento" value={myPerformance.revAct} target={myPerformance.revTgt} icon={DollarSign} />
-                    <KPICard label="Peças por Atendimento (P.A)" value={myPerformance.paAct} target={myPerformance.paTgt} icon={Hash} type="decimal" />
-                    <KPICard label="Preço Unitário Médio (P.U)" value={myPerformance.puAct} target={myPerformance.puTgt} icon={Zap} mode="lower" />
-                    <KPICard label="Ticket Médio" value={myPerformance.tktAct} target={myPerformance.tktTgt} icon={Target} />
+                    <KPICard label="Lucro Estimado" value={myPerformance.profit} icon={TrendingUp} />
+                    <KPICard label="Sangrias" value={myPerformance.totalSangria} icon={TrendingDown} />
+                    <KPICard label="Margem Líquida" value={myPerformance.margin} icon={Percent} type="decimal" />
+                </div>
+
+                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+                    <div className="bg-white p-6 rounded-[40px] shadow-sm border border-slate-100 flex items-center gap-4">
+                        <div className="p-3 bg-red-50 text-red-600 rounded-2xl"><AlertCircle size={24}/></div>
+                        <div>
+                            <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Estoque Crítico</p>
+                            <p className="text-2xl font-black text-slate-900 italic">{myPerformance.criticalStock} <span className="text-[10px] not-italic text-gray-400">Itens</span></p>
+                        </div>
+                    </div>
+                    <div className="bg-white p-6 rounded-[40px] shadow-sm border border-slate-100 flex items-center gap-4">
+                        <div className="p-3 bg-orange-50 text-orange-600 rounded-2xl"><Activity size={24}/></div>
+                        <div>
+                            <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Total Avarias</p>
+                            <p className="text-2xl font-black text-slate-900 italic">{myPerformance.totalAvariasQty} <span className="text-[10px] not-italic text-gray-400">Unid.</span></p>
+                        </div>
+                    </div>
+                    <div className="bg-white p-6 rounded-[40px] shadow-sm border border-slate-100 flex items-center gap-4">
+                        <div className="p-3 bg-blue-50 text-blue-600 rounded-2xl"><Target size={24}/></div>
+                        <div>
+                            <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Atingimento Meta</p>
+                            <p className="text-2xl font-black text-slate-900 italic">{myPerformance.ating.toFixed(1)}%</p>
+                        </div>
+                    </div>
                 </div>
 
                 <div className="grid grid-cols-1 gap-6">

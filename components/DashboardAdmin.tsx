@@ -1,22 +1,29 @@
 import React, { useState, useMemo, useRef } from 'react';
-import { Store, MonthlyPerformance, MonthlyGoal } from '../types';
+import { Store, MonthlyPerformance, MonthlyGoal, IceCreamSangria } from '../types';
 import { formatCurrency } from '../constants';
 import * as XLSX from 'xlsx';
 import { 
     LayoutDashboard, DollarSign, ShoppingBag, Target, Users, 
-    RefreshCw, Loader2, BarChart3, Upload, FileSpreadsheet, CheckCircle2
+    RefreshCw, Loader2, BarChart3, Upload, FileSpreadsheet, CheckCircle2,
+    TrendingDown, Percent
 } from 'lucide-react';
 
 interface DashboardAdminProps {
     stores: Store[];
     performanceData: MonthlyPerformance[];
     goalsData: MonthlyGoal[];
+    sangrias: IceCreamSangria[];
     onImportPerformance: (data: any[]) => Promise<void>;
     onRefresh: () => Promise<void>;
 }
 
-const DashboardAdmin: React.FC<DashboardAdminProps> = ({ stores, performanceData, goalsData, onImportPerformance, onRefresh }) => {
-    const [selectedMonth, setSelectedMonth] = useState('2026-02');
+const DashboardAdmin: React.FC<DashboardAdminProps> = ({ stores, performanceData, goalsData, onImportPerformance, onRefresh, sangrias }) => {
+    const currentMonthStr = useMemo(() => {
+        const now = new Date();
+        return `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`;
+    }, []);
+
+    const [selectedMonth, setSelectedMonth] = useState(currentMonthStr);
     const [isRefreshing, setIsRefreshing] = useState(false);
     const [isImporting, setIsImporting] = useState(false);
     const fileInputRef = useRef<HTMLInputElement>(null);
@@ -241,6 +248,15 @@ const DashboardAdmin: React.FC<DashboardAdminProps> = ({ stores, performanceData
         const businessDays = storeStats[0]?.businessDays || 26;
         const revenueForecast = elapsedDays > 0 ? (totalRevenue / elapsedDays) * businessDays : 0;
 
+        // Sangria Total Rede
+        const totalSangria = sangrias
+            .filter(s => s.created_at.startsWith(selectedMonth))
+            .reduce((acc, curr) => acc + Number(curr.amount || 0), 0);
+
+        // Margem Média (Estimada se não houver COGS real, usando 60% como padrão se necessário ou calculando se houver dados)
+        // Aqui vamos usar uma lógica simplificada: (Receita - Sangria) / Receita como margem operacional bruta aproximada
+        const avgMargin = totalRevenue > 0 ? ((totalRevenue - totalSangria) / totalRevenue) * 100 : 0;
+
         return {
             totalRevenue,
             totalTarget,
@@ -258,10 +274,12 @@ const DashboardAdmin: React.FC<DashboardAdminProps> = ({ stores, performanceData
             avgTicketTarget,
             ticketAttainment,
             revenueForecast,
+            totalSangria,
+            avgMargin,
             storeCount: stores.length,
             currentData: storeStats.sort((a, b) => b.revenueActual - a.revenueActual)
         };
-    }, [performanceData, goalsData, selectedMonth, stores]);
+    }, [performanceData, goalsData, selectedMonth, stores, sangrias]);
 
     const renderKPICard = (title: string, actual: number, target: number, percent: number, icon: React.ReactNode, type: 'currency' | 'decimal' | 'integer', isPrimary: boolean = false) => {
         const isSuccess = percent >= 100;
@@ -344,15 +362,47 @@ const DashboardAdmin: React.FC<DashboardAdminProps> = ({ stores, performanceData
                         Importar XLSX
                     </button>
 
-                    <select 
-                        value={selectedMonth} 
-                        onChange={e => setSelectedMonth(e.target.value)}
-                        className="w-full sm:flex-1 lg:flex-none bg-gray-50 border border-gray-100 rounded-xl px-4 py-3.5 text-xs font-black uppercase text-blue-900 outline-none focus:ring-4 focus:ring-blue-50 transition-all"
-                    >
-                        <option value="2026-02">Fevereiro 2026</option>
-                        <option value="2026-01">Janeiro 2026</option>
-                        <option value="2025-12">Dezembro 2025</option>
-                    </select>
+                    <div className="flex items-center gap-2 w-full sm:flex-1 lg:flex-none">
+                        <select 
+                            value={selectedMonth.split('-')[1]} 
+                            onChange={e => {
+                                const [year] = selectedMonth.split('-');
+                                setSelectedMonth(`${year}-${e.target.value}`);
+                            }}
+                            className="flex-1 bg-gray-50 border border-gray-100 rounded-xl px-4 py-3.5 text-xs font-black uppercase text-blue-900 outline-none focus:ring-4 focus:ring-blue-50 transition-all"
+                        >
+                            <option value="01">Janeiro</option>
+                            <option value="02">Fevereiro</option>
+                            <option value="03">Março</option>
+                            <option value="04">Abril</option>
+                            <option value="05">Maio</option>
+                            <option value="06">Junho</option>
+                            <option value="07">Julho</option>
+                            <option value="08">Agosto</option>
+                            <option value="09">Setembro</option>
+                            <option value="10">Outubro</option>
+                            <option value="11">Novembro</option>
+                            <option value="12">Dezembro</option>
+                        </select>
+
+                        <select 
+                            value={selectedMonth.split('-')[0]} 
+                            onChange={e => {
+                                const [, month] = selectedMonth.split('-');
+                                setSelectedMonth(`${e.target.value}-${month}`);
+                            }}
+                            className="w-24 bg-gray-50 border border-gray-100 rounded-xl px-4 py-3.5 text-xs font-black uppercase text-blue-900 outline-none focus:ring-4 focus:ring-blue-50 transition-all"
+                        >
+                            {(() => {
+                                const years = [];
+                                const currentYear = new Date().getFullYear();
+                                for (let y = currentYear + 1; y >= 2024; y--) {
+                                    years.push(<option key={y} value={y}>{y}</option>);
+                                }
+                                return years;
+                            })()}
+                        </select>
+                    </div>
 
                     <button 
                         onClick={handleRefresh}
@@ -365,16 +415,15 @@ const DashboardAdmin: React.FC<DashboardAdminProps> = ({ stores, performanceData
             </div>
 
             {/* KPI Grid */}
-            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-4 md:gap-6">
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 md:gap-6">
                 <div className="relative group">
                     {renderKPICard('Faturamento Rede', stats.totalRevenue, stats.totalTarget, stats.attainment, <DollarSign size={24}/>, 'currency', true)}
                     <div className="absolute -bottom-2 left-1/2 -translate-x-1/2 bg-blue-950 text-white text-[8px] font-black px-2 py-0.5 rounded-full opacity-0 group-hover:opacity-100 transition-opacity whitespace-nowrap">
                         Previsão: {formatCurrency(stats.revenueForecast)}
                     </div>
                 </div>
-                {renderKPICard('Quantidade de Itens', stats.totalItems, stats.totalItemsTarget, stats.itemsAttainment, <ShoppingBag size={24}/>, 'integer')}
-                {renderKPICard('Peças por Atendimento (P.A)', stats.avgPA, stats.avgPATarget, stats.paAttainment, <Target size={24}/>, 'decimal')}
-                {renderKPICard('Preço Unitário Médio (P.U)', stats.avgPU, stats.avgPUTarget, stats.puAttainment, <BarChart3 size={24}/>, 'currency')}
+                {renderKPICard('Sangria Total Rede', stats.totalSangria, 0, 0, <TrendingDown size={24}/>, 'currency')}
+                {renderKPICard('Margem Média', stats.avgMargin, 100, stats.avgMargin, <Percent size={24}/>, 'decimal')}
                 {renderKPICard('Ticket Médio', stats.avgTicket, stats.avgTicketTarget, stats.ticketAttainment, <Users size={24}/>, 'currency')}
             </div>
 

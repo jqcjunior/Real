@@ -1,15 +1,17 @@
 
 import React, { useState, useMemo, useRef } from 'react';
-import { Store, ProductPerformance, User } from '../types';
+import { Store, ProductPerformance, User, AdminUser } from '../types';
 import { formatCurrency } from '../constants';
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer, PieChart, Pie, Cell } from 'recharts';
-import { ShoppingBag, TrendingUp, Upload, Filter, Calendar, Package, DollarSign, Award, ArrowUpRight, CheckCircle, Loader2, TrendingDown, FileSpreadsheet, Plus, ArrowRight } from 'lucide-react';
+import { ShoppingBag, TrendingUp, Upload, Filter, Calendar, Package, DollarSign, Award, ArrowUpRight, CheckCircle, Loader2, TrendingDown, FileSpreadsheet, Plus, ArrowRight, ClipboardList } from 'lucide-react';
 import * as XLSX from 'xlsx';
+import PurchaseQuestionnaire from './PurchaseQuestionnaire';
 
 interface DashboardPurchasesProps {
   user: User;
   stores: Store[];
   data: ProductPerformance[];
+  adminUsers: AdminUser[];
   onImport: (newData: ProductPerformance[]) => Promise<void>;
   onOpenSpreadsheetModule: () => void;
 }
@@ -23,7 +25,8 @@ const MONTHS = [
   { value: 10, label: 'Outubro' }, { value: 11, label: 'Novembro' }, { value: 12, label: 'Dezembro' }
 ];
 
-const DashboardPurchases: React.FC<DashboardPurchasesProps> = ({ stores, data, onImport, user, onOpenSpreadsheetModule }) => {
+const DashboardPurchases: React.FC<DashboardPurchasesProps> = ({ stores, data, onImport, user, onOpenSpreadsheetModule, adminUsers }) => {
+  const [activeTab, setActiveTab] = useState<'analysis' | 'questionnaire'>('analysis');
   const [selectedMonth, setSelectedMonth] = useState<string>(() => {
      const now = new Date();
      return `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`;
@@ -110,78 +113,102 @@ const DashboardPurchases: React.FC<DashboardPurchasesProps> = ({ stores, data, o
          </div>
 
          <div className="flex flex-col sm:flex-row gap-3 w-full lg:w-auto">
-             <button onClick={onOpenSpreadsheetModule} className="flex-1 lg:flex-none flex items-center justify-center gap-2 bg-gray-950 text-white px-8 py-4 rounded-2xl hover:bg-black transition-all shadow-xl font-black uppercase text-[10px] tracking-widest border-b-4 border-blue-600">
-                 <FileSpreadsheet size={18} /> Planilha Pedido
-             </button>
-             <button onClick={() => setShowImportModal(true)} className="flex-1 lg:flex-none flex items-center justify-center gap-2 bg-green-600 text-white px-8 py-4 rounded-2xl hover:bg-green-700 transition-all shadow-xl font-black uppercase text-[10px] tracking-widest border-b-4 border-green-800">
-                 <Upload size={18} /> Importar Vendas
-             </button>
+             <div className="flex bg-gray-100 p-1.5 rounded-2xl mr-4">
+                 <button 
+                    onClick={() => setActiveTab('analysis')}
+                    className={`px-6 py-3 rounded-xl font-black uppercase text-[10px] transition-all flex items-center gap-2 ${activeTab === 'analysis' ? 'bg-white text-blue-900 shadow-sm' : 'text-gray-400 hover:text-gray-600'}`}
+                 >
+                     <TrendingUp size={16}/> Análise
+                 </button>
+                 <button 
+                    onClick={() => setActiveTab('questionnaire')}
+                    className={`px-6 py-3 rounded-xl font-black uppercase text-[10px] transition-all flex items-center gap-2 ${activeTab === 'questionnaire' ? 'bg-white text-blue-900 shadow-sm' : 'text-gray-400 hover:text-gray-600'}`}
+                 >
+                     <ClipboardList size={16}/> Pesquisas
+                 </button>
+             </div>
+             {activeTab === 'analysis' && (
+                 <>
+                    <button onClick={onOpenSpreadsheetModule} className="flex-1 lg:flex-none flex items-center justify-center gap-2 bg-gray-950 text-white px-8 py-4 rounded-2xl hover:bg-black transition-all shadow-xl font-black uppercase text-[10px] tracking-widest border-b-4 border-blue-600">
+                        <FileSpreadsheet size={18} /> Planilha Pedido
+                    </button>
+                    <button onClick={() => setShowImportModal(true)} className="flex-1 lg:flex-none flex items-center justify-center gap-2 bg-green-600 text-white px-8 py-4 rounded-2xl hover:bg-green-700 transition-all shadow-xl font-black uppercase text-[10px] tracking-widest border-b-4 border-green-800">
+                        <Upload size={18} /> Importar Vendas
+                    </button>
+                 </>
+             )}
          </div>
       </div>
 
-      <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 md:gap-6">
-          <div className="bg-white p-8 rounded-[40px] shadow-sm border border-gray-100 flex items-center justify-between group overflow-hidden relative">
-              <div className="absolute top-0 right-0 p-6 opacity-5 group-hover:opacity-10 transition-opacity"><Package size={80}/></div>
-              <div className="relative z-10">
-                  <p className="text-[9px] font-black text-gray-400 uppercase tracking-widest mb-1">Volume Consolidado</p>
-                  <p className="text-3xl font-black text-gray-900 italic tracking-tighter">
-                      {currentData.reduce((acc, curr) => acc + curr.pairsSold, 0).toLocaleString()} <span className="text-[10px] text-gray-400 not-italic uppercase font-black tracking-[0.2em] ml-2">Pares</span>
-                  </p>
-              </div>
-          </div>
-          <div className="bg-white p-8 rounded-[40px] shadow-sm border border-gray-100 flex items-center justify-between group overflow-hidden relative">
-              <div className="absolute top-0 right-0 p-6 opacity-5 group-hover:opacity-10 transition-opacity"><DollarSign size={80}/></div>
-              <div className="relative z-10">
-                  <p className="text-[9px] font-black text-gray-400 uppercase tracking-widest mb-1">Venda Direta Marcas</p>
-                  <p className="text-3xl font-black text-blue-900 italic tracking-tighter leading-none">
-                      {formatCurrency(currentData.reduce((acc, curr) => acc + curr.revenue, 0))}
-                  </p>
-              </div>
-          </div>
-      </div>
+      {activeTab === 'analysis' ? (
+          <>
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 md:gap-6">
+                <div className="bg-white p-8 rounded-[40px] shadow-sm border border-gray-100 flex items-center justify-between group overflow-hidden relative">
+                    <div className="absolute top-0 right-0 p-6 opacity-5 group-hover:opacity-10 transition-opacity"><Package size={80}/></div>
+                    <div className="relative z-10">
+                        <p className="text-[9px] font-black text-gray-400 uppercase tracking-widest mb-1">Volume Consolidado</p>
+                        <p className="text-3xl font-black text-gray-900 italic tracking-tighter">
+                            {currentData.reduce((acc, curr) => acc + curr.pairsSold, 0).toLocaleString()} <span className="text-[10px] text-gray-400 not-italic uppercase font-black tracking-[0.2em] ml-2">Pares</span>
+                        </p>
+                    </div>
+                </div>
+                <div className="bg-white p-8 rounded-[40px] shadow-sm border border-gray-100 flex items-center justify-between group overflow-hidden relative">
+                    <div className="absolute top-0 right-0 p-6 opacity-5 group-hover:opacity-10 transition-opacity"><DollarSign size={80}/></div>
+                    <div className="relative z-10">
+                        <p className="text-[9px] font-black text-gray-400 uppercase tracking-widest mb-1">Venda Direta Marcas</p>
+                        <p className="text-3xl font-black text-blue-900 italic tracking-tighter leading-none">
+                            {formatCurrency(currentData.reduce((acc, curr) => acc + curr.revenue, 0))}
+                        </p>
+                    </div>
+                </div>
+            </div>
 
-      <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 md:gap-8">
-          <div className="lg:col-span-2 bg-white p-6 md:p-8 rounded-[40px] md:rounded-[48px] shadow-sm border border-gray-100">
-              <h3 className="font-black text-lg text-gray-900 uppercase italic tracking-tighter mb-8 flex items-center gap-3">
-                  <TrendingUp size={24} className="text-blue-600"/> Desempenho <span className="text-blue-600">Top 10 Marcas</span>
-              </h3>
-              <div className="h-80 w-full overflow-hidden">
-                  <ResponsiveContainer width="100%" height="100%">
-                      <BarChart data={brandPerformance}>
-                          <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#f1f5f9" />
-                          <XAxis dataKey="brand" fontSize={9} fontWeight="900" tickLine={false} axisLine={false} />
-                          <YAxis fontSize={9} fontWeight="900" tickFormatter={(val) => `R$${val/1000}k`} />
-                          <Tooltip cursor={{fill: '#f8fafc'}} />
-                          <Bar dataKey="revenue" name="Venda (R$)" fill="#1e3a8a" radius={[8, 8, 0, 0]} barSize={32} />
-                      </BarChart>
-                  </ResponsiveContainer>
-              </div>
-          </div>
+            <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 md:gap-8">
+                <div className="lg:col-span-2 bg-white p-6 md:p-8 rounded-[40px] md:rounded-[48px] shadow-sm border border-gray-100">
+                    <h3 className="font-black text-lg text-gray-900 uppercase italic tracking-tighter mb-8 flex items-center gap-3">
+                        <TrendingUp size={24} className="text-blue-600"/> Desempenho <span className="text-blue-600">Top 10 Marcas</span>
+                    </h3>
+                    <div className="h-80 w-full overflow-hidden">
+                        <ResponsiveContainer width="100%" height="100%">
+                            <BarChart data={brandPerformance}>
+                                <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#f1f5f9" />
+                                <XAxis dataKey="brand" fontSize={9} fontWeight="900" tickLine={false} axisLine={false} />
+                                <YAxis fontSize={9} fontWeight="900" tickFormatter={(val) => `R$${val/1000}k`} />
+                                <Tooltip cursor={{fill: '#f8fafc'}} />
+                                <Bar dataKey="revenue" name="Venda (R$)" fill="#1e3a8a" radius={[8, 8, 0, 0]} barSize={32} />
+                            </BarChart>
+                        </ResponsiveContainer>
+                    </div>
+                </div>
 
-          <div className="bg-white p-6 md:p-8 rounded-[40px] md:rounded-[48px] shadow-sm border border-gray-100 flex flex-col">
-              <h3 className="font-black text-lg text-gray-900 uppercase italic tracking-tighter mb-8">Mix de <span className="text-red-600">Categorias</span></h3>
-              <div className="flex-1 h-80 min-h-[300px]">
-                  <ResponsiveContainer width="100%" height="100%">
-                      <PieChart>
-                          <Pie data={categoryData} cx="50%" cy="50%" innerRadius={60} outerRadius={90} paddingAngle={8} dataKey="value">
-                              {categoryData.map((entry, index) => (
-                                  <Cell key={`cell-${index}`} fill={COLORS[index % COLORS.length]} stroke="none" />
-                              ))}
-                          </Pie>
-                          <Tooltip />
-                      </PieChart>
-                  </ResponsiveContainer>
-              </div>
-              <div className="mt-4 flex flex-wrap gap-2 justify-center">
-                  {categoryData.slice(0, 4).map((c, i) => (
-                      <div key={c.name} className="flex items-center gap-1.5 px-2 py-1 bg-gray-50 rounded-lg">
-                          <div className="w-2 h-2 rounded-full" style={{backgroundColor: COLORS[i % COLORS.length]}}></div>
-                          <span className="text-[8px] font-black uppercase text-gray-500">{c.name.substring(0, 10)}</span>
-                      </div>
-                  ))}
-              </div>
-          </div>
-      </div>
+                <div className="bg-white p-6 md:p-8 rounded-[40px] md:rounded-[48px] shadow-sm border border-gray-100 flex flex-col">
+                    <h3 className="font-black text-lg text-gray-900 uppercase italic tracking-tighter mb-8">Mix de <span className="text-red-600">Categorias</span></h3>
+                    <div className="flex-1 h-80 min-h-[300px]">
+                        <ResponsiveContainer width="100%" height="100%">
+                            <PieChart>
+                                <Pie data={categoryData} cx="50%" cy="50%" innerRadius={60} outerRadius={90} paddingAngle={8} dataKey="value">
+                                    {categoryData.map((entry, index) => (
+                                        <Cell key={`cell-${index}`} fill={COLORS[index % COLORS.length]} stroke="none" />
+                                    ))}
+                                </Pie>
+                                <Tooltip />
+                            </PieChart>
+                        </ResponsiveContainer>
+                    </div>
+                    <div className="mt-4 flex flex-wrap gap-2 justify-center">
+                        {categoryData.slice(0, 4).map((c, i) => (
+                            <div key={c.name} className="flex items-center gap-1.5 px-2 py-1 bg-gray-50 rounded-lg">
+                                <div className="w-2 h-2 rounded-full" style={{backgroundColor: COLORS[i % COLORS.length]}}></div>
+                                <span className="text-[8px] font-black uppercase text-gray-500">{c.name.substring(0, 10)}</span>
+                            </div>
+                        ))}
+                    </div>
+                </div>
+            </div>
+          </>
+      ) : (
+          <PurchaseQuestionnaire user={user} stores={stores} adminUsers={adminUsers} />
+      )}
     </div>
   );
 };

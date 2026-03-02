@@ -404,3 +404,37 @@ export interface AdminUser {
   store_id: string | null;
   last_activity?: string;
 }
+
+/* =========================
+   🔹 QUESTIONÁRIOS DE COMPRAS
+========================= */
+export interface Questionnaire {
+  id: string;
+  store_id: string | null;
+  title: string;
+  description: string;
+  created_by: string;
+  created_at: string;
+  is_active: boolean;
+}
+
+export interface QuestionnaireProduct {
+  id: string;
+  questionnaire_id: string;
+  product_name: string;
+  brand: string;
+  category: string;
+  one_drive_image_url: string;
+  created_at: string;
+}
+
+export interface QuestionnaireAnswer {
+  id: string;
+  questionnaire_id: string;
+  product_id: string;
+  user_id: string;
+  rating: number;
+  suggested_quantity: number;
+  comment: string;
+  created_at: string;
+}
