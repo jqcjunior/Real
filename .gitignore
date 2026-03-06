@@ -22,3 +22,5 @@ dist-ssr
 *.njsproj
 *.sln
 *.sw?
+# Impedir que o Git ignore ou tente deletar o template
+!template.xlsx
