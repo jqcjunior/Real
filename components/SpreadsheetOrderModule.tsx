@@ -58,6 +58,15 @@ const getClassificacao = (modelo: string, valores: Record<string, number>) => {
   return "JUVENIL";
 };
 
+const calcularColunaExcelPorTamanho = (tam: string, modelo: string) => {
+  const t = parseInt(tam);
+  if (!isNaN(t)) {
+    return 45 + (t - 33); // 33 = AT (45)
+  }
+  const acessMap: Record<string, number> = { "UN": 45, "P": 46, "M": 47, "G": 48, "GG": 49 };
+  return acessMap[tam] || -1;
+};
+
 const SpreadsheetOrderModule = ({ user, onClose }: { user: any, onClose: () => void }) => {
   const [etapa, setEtapa] = useState(1);
   const [verLotes, setVerLotes] = useState(false);
@@ -78,13 +87,15 @@ const SpreadsheetOrderModule = ({ user, onClose }: { user: any, onClose: () => v
     representante: "",
     telefone: "",
     email: "",
-    comprador: user?.user_metadata?.full_name || "",
+    comprador: user?.name || "",
     embarqueInicio: "", 
     embarqueFim: "", 
     desconto: 0, 
     markup: 2.6, 
     prazos: "" 
   });
+
+  const [isSaving, setIsSaving] = useState(false);
 
   const formatPhone = (val: string) => {
     const digits = val.replace(/\D/g, "");
@@ -112,21 +123,40 @@ const SpreadsheetOrderModule = ({ user, onClose }: { user: any, onClose: () => v
     const autoFillBrand = async () => {
       if (!pedido.marca) return;
       try {
-        const { data, error } = await supabase
+        // 1. Tenta buscar no cadastro oficial de marcas
+        const { data: brandData } = await supabase
+          .from('Pedido_Brand')
+          .select('fornecedor, representante, telefone, email')
+          .eq('name', pedido.marca.toUpperCase())
+          .maybeSingle();
+
+        if (brandData && (brandData.fornecedor || brandData.representante)) {
+          setPedido(prev => ({
+            ...prev,
+            fornecedor: brandData.fornecedor || prev.fornecedor,
+            representante: brandData.representante || prev.representante,
+            telefone: brandData.telefone || prev.telefone,
+            email: brandData.email || prev.email
+          }));
+          return;
+        }
+
+        // 2. Fallback para o último pedido realizado desta marca
+        const { data: lastOrder } = await supabase
           .from('Pedido_Header')
           .select('fornecedor, representante, telefone, email')
-          .eq('marca', pedido.marca)
+          .eq('marca', pedido.marca.toUpperCase())
           .order('created_at', { ascending: false })
           .limit(1);
 
-        if (data && data.length > 0 && !error) {
-          const lastOrder = data[0];
+        if (lastOrder && lastOrder.length > 0) {
+          const last = lastOrder[0];
           setPedido(prev => ({
             ...prev,
-            fornecedor: lastOrder.fornecedor || prev.fornecedor,
-            representante: lastOrder.representante || prev.representante,
-            telefone: lastOrder.telefone || prev.telefone,
-            email: lastOrder.email || prev.email
+            fornecedor: last.fornecedor || prev.fornecedor,
+            representante: last.representante || prev.representante,
+            telefone: last.telefone || prev.telefone,
+            email: last.email || prev.email
           }));
         }
       } catch (err) {
@@ -134,7 +164,7 @@ const SpreadsheetOrderModule = ({ user, onClose }: { user: any, onClose: () => v
       }
     };
     
-    const timer = setTimeout(autoFillBrand, 500);
+    const timer = setTimeout(autoFillBrand, 600);
     return () => clearTimeout(timer);
   }, [pedido.marca]);
 
@@ -275,25 +305,21 @@ const SpreadsheetOrderModule = ({ user, onClose }: { user: any, onClose: () => v
       console.log("Iniciando exportação robusta...");
       
       // 1. Fetch do arquivo template.xlsx diretamente do GitHub
-      const response = await fetch(
-        "https://raw.githubusercontent.com/jqcjunior/Real/main/Template.xlsx",
-        {
-          method: "GET",
-          cache: "no-store",
-        }
-      );
+      const TEMPLATE_URL = "https://raw.githubusercontent.com/jqcjunior/Real/main/template.xlsx";
+      const response = await fetch(TEMPLATE_URL + "?v=" + Date.now(), {
+        method: "GET",
+        cache: "no-store",
+      });
 
       if (!response.ok) {
         throw new Error("Não foi possível baixar o template do GitHub. Verifique sua conexão ou o link.");
       }
 
       // Validação de Content-Type (GitHub raw costuma retornar binary/octet-stream ou similar)
-      const contentType = response.headers.get("content-type");
+      const contentType = response.headers.get("content-type") || "";
       // Aceitamos octet-stream ou spreadsheetml para o GitHub
-      if (!contentType?.includes("spreadsheetml") && !contentType?.includes("octet-stream")) {
-        const text = await response.text();
-        console.error("Resposta inválida do GitHub:", text.slice(0, 200));
-        throw new Error("O link do GitHub não retornou um arquivo Excel válido.");
+      if (!contentType.includes("spreadsheet") && !contentType.includes("octet")) {
+        console.warn("Content-Type inesperado:", contentType);
       }
 
       const arrayBuffer = await response.arrayBuffer();
@@ -338,43 +364,55 @@ const SpreadsheetOrderModule = ({ user, onClose }: { user: any, onClose: () => v
       }
 
       // 3. Preenchimento dos Itens (Início na Linha 36)
-      const itemsUnicos = Array.from(
-        new Set(lotesFinalizados.map(l => `${l.referencia}-${l.corEscolhida}`))
-      );
+      const mapItens = new Map();
 
-      itemsUnicos.forEach((key, idx) => {
-        const lotes = lotesFinalizados.filter(
-          l => `${l.referencia}-${l.corEscolhida}` === key
-        );
+      lotesFinalizados.forEach(l => {
+        // Chave única combinando Produto + Cor + O grupo de lojas (vínculo)
+        const key = `${l.referencia}-${l.corEscolhida}-${l.idVinculo}`;
+        if (!mapItens.has(key)) {
+          mapItens.set(key, []);
+        }
+        mapItens.get(key).push(l);
+      });
 
-        const refObj = lotes[0];
-        const r = 35 + idx; // Linha 36
+      // Agora iteramos sobre os grupos únicos de distribuição
+      Array.from(mapItens.values()).forEach((lotesDoGrupo, idx) => {
+        const refObj = lotesDoGrupo[0]; // Primeiro lote do grupo para pegar os dados do produto
+        const r = 35 + idx; // Inicia na linha 36
 
-        setCell(sheet, r, 2, refObj.referencia); // Coluna C
-        setCell(sheet, r, 7, refObj.tipo);       // Coluna H
+        // Dados Básicos
+        setCell(sheet, r, 2, refObj.referencia); 
+        setCell(sheet, r, 7, refObj.tipo);
         
-        const classificacao = getClassificacao(refObj.modelo, gradesSalvas.find(g => g.letra === refObj.gradeLetra)?.valores || {});
+        // Lógica de Descrição com Setor (Baby/Criança/Juvenil)
+        const gradeInfo = gradesSalvas.find(g => g.letra === refObj.gradeLetra);
+        const classificacao = gradeInfo ? getClassificacao(refObj.modelo, gradeInfo.valores) : "";
         const descSetor = classificacao ? ` (${classificacao})` : "";
-        
-        // Coluna 8 (Index 8) - Descrição: "PRODUTO + REF + (SETOR)"
         setCell(sheet, r, 8, `${refObj.tipo} ${refObj.referencia}${descSetor}`);
-        
-        setCell(sheet, r, 17, refObj.cor1);      // R36
-        setCell(sheet, r, 18, refObj.cor2);      // S36
-        setCell(sheet, r, 19, refObj.cor3);      // T36
-        setCell(sheet, r, 37, Number(refObj.valorCompra), "n"); // AL36
-        setCell(sheet, r, 40, Number(refObj.precoVenda), "n");  // AO36
 
-        // 4. Grades por Lote (X, AA, AD, AG, AJ)
-        const lotesAgrupadosPorVinculo = Array.from(new Set(lotes.map(l => l.idVinculo)));
-        lotesAgrupadosPorVinculo.forEach((vid, vIdx) => {
-          if (vIdx > 4) return;
-          const col = 23 + (vIdx * 3); // X=23, AA=26, AD=29, AG=32, AJ=35
-          const loteItem = lotes.find(l => l.idVinculo === vid);
-          if (loteItem) {
-            setCell(sheet, r, col, loteItem.gradeLetra);
-          }
-        });
+        // Cores e Valores
+        setCell(sheet, r, 17, refObj.cor1);
+        setCell(sheet, r, 18, refObj.cor2);
+        setCell(sheet, r, 19, refObj.cor3);
+        setCell(sheet, r, 37, Number(refObj.valorCompra), "n");
+        setCell(sheet, r, 40, Number(refObj.precoVenda), "n");
+
+        // Escreve a Letra da Grade na coluna correspondente (X, AA, AD, AG ou AJ)
+        // Como agora cada linha é um vínculo único, usamos vIdx 0 para a primeira coluna de grade da linha
+        const colGradeLetra = 23; // Coluna X (Grade 1)
+        setCell(sheet, r, colGradeLetra, refObj.gradeLetra);
+
+        // IMPORTANTE: Preencher as quantidades por tamanho para o Excel somar
+        if (gradeInfo) {
+          Object.entries(gradeInfo.valores).forEach(([tam, qtd]) => {
+            if (Number(qtd) > 0) {
+              const colTam = calcularColunaExcelPorTamanho(tam, refObj.modelo); 
+              if (colTam !== -1) {
+                setCell(sheet, r, colTam, Number(qtd), "n");
+              }
+            }
+          });
+        }
       });
 
       // 5. Matriz de Distribuição de Lojas (Linhas 23 a 27)
@@ -412,7 +450,8 @@ const SpreadsheetOrderModule = ({ user, onClose }: { user: any, onClose: () => v
       const year = String(now.getFullYear()).slice(-2);
       const dateStr = `${day}.${month}.${year}`;
       
-      a.download = `Pedido_${pedido.marca || "SEM_NOME"}_${dateStr}.xlsx`;
+      const safeMarca = (pedido.marca || "SEM_NOME").replace(/[^\w\d]/g, "_");
+      a.download = `Pedido_${safeMarca}_${dateStr}.xlsx`;
       document.body.appendChild(a);
       a.click();
       document.body.removeChild(a);
@@ -425,43 +464,176 @@ const SpreadsheetOrderModule = ({ user, onClose }: { user: any, onClose: () => v
     }
   };
 
+  const exportarPedidosPorLoja = async () => {
+    if (lotesFinalizados.length === 0) {
+      alert("Nenhum lote encontrado.");
+      return;
+    }
+
+    try {
+      const TEMPLATE_URL = "https://raw.githubusercontent.com/jqcjunior/Real/main/template.xlsx";
+
+      const response = await fetch(`${TEMPLATE_URL}?v=${Date.now()}`, {
+        method: "GET",
+        cache: "no-store",
+      });
+
+      if (!response.ok) throw new Error("Erro ao baixar template.");
+
+      const templateBuffer = await response.arrayBuffer();
+
+      const lojasUnicas = [
+        ...new Set(lotesFinalizados.map((l) => l.loja)),
+      ].sort();
+
+      for (const loja of lojasUnicas) {
+        const workbook = XLSX.read(templateBuffer, { type: "array" });
+        const sheet = workbook.Sheets[workbook.SheetNames[0]];
+
+        const lotesDaLoja = lotesFinalizados.filter((l) => l.loja === loja);
+
+        const mapItensLoja = new Map();
+
+        lotesDaLoja.forEach((l) => {
+          // Chave única combinando Produto + Cor + O grupo de lojas (vínculo)
+          const key = `${l.referencia}-${l.corEscolhida}-${l.idVinculo}`;
+          if (!mapItensLoja.has(key)) {
+            mapItensLoja.set(key, []);
+          }
+          mapItensLoja.get(key).push(l);
+        });
+
+        // Agora iteramos sobre os grupos únicos de distribuição daquela loja
+        Array.from(mapItensLoja.values()).forEach((lotesDoGrupo, idx) => {
+          const refObj = lotesDoGrupo[0]; 
+          const r = 35 + idx; 
+
+          setCell(sheet, r, 2, refObj.referencia); 
+          setCell(sheet, r, 7, refObj.tipo);
+          
+          const gradeInfo = gradesSalvas.find(g => g.letra === refObj.gradeLetra);
+          const classificacao = gradeInfo ? getClassificacao(refObj.modelo, gradeInfo.valores) : "";
+          const descSetor = classificacao ? ` (${classificacao})` : "";
+          setCell(sheet, r, 8, `${refObj.tipo} ${refObj.referencia}${descSetor}`);
+
+          setCell(sheet, r, 17, refObj.cor1);
+          setCell(sheet, r, 18, refObj.cor2);
+          setCell(sheet, r, 19, refObj.cor3);
+          setCell(sheet, r, 37, Number(refObj.valorCompra), "n");
+          setCell(sheet, r, 40, Number(refObj.precoVenda), "n");
+
+          const colGradeLetra = 23; 
+          setCell(sheet, r, colGradeLetra, refObj.gradeLetra);
+
+          if (gradeInfo) {
+            Object.entries(gradeInfo.valores).forEach(([tam, qtd]) => {
+              if (Number(qtd) > 0) {
+                const colTam = calcularColunaExcelPorTamanho(tam, refObj.modelo); 
+                if (colTam !== -1) {
+                  setCell(sheet, r, colTam, Number(qtd), "n");
+                }
+              }
+            });
+          }
+        });
+
+        const wbout = XLSX.write(workbook, {
+          bookType: "xlsx",
+          type: "array",
+        });
+
+        const blob = new Blob([wbout], {
+          type: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+        });
+
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement("a");
+        a.href = url;
+
+        const safeMarca = (pedido.marca || "SEM_NOME").replace(/[^\w\d]/g, "_");
+        a.download = `Pedido_${safeMarca}_Loja_${loja}.xlsx`;
+
+        document.body.appendChild(a);
+        a.click();
+
+        document.body.removeChild(a);
+        URL.revokeObjectURL(url);
+
+        await new Promise((resolve) => setTimeout(resolve, 100));
+      }
+
+      alert("Pedidos por loja gerados com sucesso.");
+    } catch (error) {
+      console.error(error);
+      alert("Erro ao gerar pedidos por loja.");
+    }
+  };
+
   const salvarPedidoCompleto = async () => {
     if (lotesFinalizados.length === 0) {
       alert("Não há dados para salvar. Adicione itens e distribua nas lojas primeiro.");
       return;
     }
 
+    setIsSaving(true);
     try {
       console.log("Iniciando salvamento no Supabase...");
       
+      // 0. Atualizar/Upsert Cadastro da Marca (Pedido_Brand)
+      if (pedido.marca) {
+        const brandName = pedido.marca.toUpperCase();
+        const brandPayload = {
+          name: brandName,
+          fornecedor: pedido.fornecedor,
+          representante: pedido.representante,
+          telefone: pedido.telefone,
+          email: pedido.email
+        };
+
+        const { data: existingBrand } = await supabase
+          .from('Pedido_Brand')
+          .select('id')
+          .eq('name', brandName)
+          .maybeSingle();
+
+        if (existingBrand) {
+          await supabase.from('Pedido_Brand').update(brandPayload).eq('id', existingBrand.id);
+        } else {
+          await supabase.from('Pedido_Brand').insert([brandPayload]);
+        }
+      }
+
       // 1. Salvar Pedido_Header
       const { data: headerData, error: headerError } = await supabase
         .from('Pedido_Header')
         .insert([{
-          marca: pedido.marca,
-          fornecedor: pedido.fornecedor,
-          representante: pedido.representante,
+          marca: pedido.marca.toUpperCase(),
+          fornecedor: pedido.fornecedor.toUpperCase(),
+          representante: pedido.representante.toUpperCase(),
           telefone: pedido.telefone,
-          email: pedido.email,
-          comprador: pedido.comprador,
+          email: pedido.email.toLowerCase(),
+          comprador: pedido.comprador.toUpperCase(),
           embarque_inicio: pedido.embarqueInicio,
           embarque_fim: pedido.embarqueFim,
-          desconto: pedido.desconto,
-          markup: pedido.markup,
+          desconto: Number(pedido.desconto),
+          markup: Number(pedido.markup),
           prazo: pedido.prazos,
           user_id: user?.id
         }])
         .select()
         .single();
 
-      if (headerError) throw headerError;
+      if (headerError) {
+        console.error("Erro ao salvar Header:", headerError);
+        throw new Error(`Erro no cabeçalho: ${headerError.message}`);
+      }
       const headerId = headerData.id;
 
-      // 2. Agrupar itens únicos para salvar em Pedido_Items
-      // Usamos uma chave composta para identificar itens únicos no pedido
+      // 2. AGRUPAR ITENS ÚNICOS (Usando a lógica de Vínculo que corrige o Excel)
       const itensMap = new Map();
       lotesFinalizados.forEach(l => {
-        const key = `${l.referencia}-${l.corEscolhida}`;
+        // Aqui usamos a chave composta para não duplicar itens desnecessariamente no banco
+        const key = `${l.referencia}-${l.corEscolhida}-${l.idVinculo}`;
         if (!itensMap.has(key)) {
           itensMap.set(key, {
             header_id: headerId,
@@ -471,30 +643,29 @@ const SpreadsheetOrderModule = ({ user, onClose }: { user: any, onClose: () => v
             modelo: l.modelo,
             valor_compra: l.valorCompra,
             preco_venda: l.precoVenda,
-            original_lotes: [] // Para vincular a distribuição depois
+            lotes_originais: [] 
           });
         }
-        itensMap.get(key).original_lotes.push(l);
+        itensMap.get(key).lotes_originais.push(l);
       });
 
-      // Salvar itens um por um para pegar os IDs gerados (ou usar insert().select())
-      const itensParaInserir = Array.from(itensMap.values()).map(({ original_lotes, ...rest }) => rest);
+      // 3. SALVAR ITENS E PEGAR OS IDS GERADOS
       const { data: savedItems, error: itemsError } = await supabase
         .from('Pedido_Items')
-        .insert(itensParaInserir)
+        .insert(Array.from(itensMap.values()).map(({ lotes_originais, ...rest }) => rest))
         .select();
 
-      if (itemsError) throw itemsError;
+      if (itemsError) throw new Error(`Erro nos Itens: ${itemsError.message}`);
 
-      // 3. Salvar Pedido_Distribuicao
-      const distribuicaoParaInserir: any[] = [];
+      // 4. SALVAR DISTRIBUIÇÃO (Relacionando Item_ID com as Lojas)
+      const distribuicaoFinal: any[] = [];
+      const itensMapArray = Array.from(itensMap.values());
       
-      savedItems.forEach(savedItem => {
-        const key = `${savedItem.referencia}-${savedItem.cor_escolhida}`;
-        const itemData = itensMap.get(key);
-        
-        itemData.original_lotes.forEach((l: any) => {
-          distribuicaoParaInserir.push({
+      // O Supabase retorna os itens na ordem de inserção, permitindo o mapeamento por índice
+      savedItems.forEach((savedItem, index) => {
+        const originalEntry = itensMapArray[index];
+        originalEntry.lotes_originais.forEach((l: any) => {
+          distribuicaoFinal.push({
             item_id: savedItem.id,
             loja: l.loja,
             grade_letra: l.gradeLetra,
@@ -505,14 +676,17 @@ const SpreadsheetOrderModule = ({ user, onClose }: { user: any, onClose: () => v
 
       const { error: distError } = await supabase
         .from('Pedido_Distribuicao')
-        .insert(distribuicaoParaInserir);
+        .insert(distribuicaoFinal);
 
-      if (distError) throw distError;
+      if (distError) throw new Error(`Erro na Distribuição: ${distError.message}`);
 
-      alert("Pedido salvo com sucesso no banco de dados!");
+      alert("✅ Pedido e Distribuição salvos com sucesso!");
+      setEtapa(1); // Volta para o início após salvar
     } catch (error: any) {
       console.error("Erro ao salvar pedido:", error);
       alert(`Erro ao salvar: ${error.message || "Erro desconhecido"}`);
+    } finally {
+      setIsSaving(false);
     }
   };
 
@@ -928,22 +1102,52 @@ const SpreadsheetOrderModule = ({ user, onClose }: { user: any, onClose: () => v
                       const isSel = selecaoLote.itensIds.includes(it.id);
                       const assignment = persistAssignments[it.referencia] || { gradeLetra: "", corSelecionada: it.cor1 || "" };
                       return (
-                        <div key={it.id} className={`p-3 rounded-2xl border transition-all ${isSel ? 'bg-blue-50 border-blue-400 shadow-sm' : 'bg-slate-50 border-transparent opacity-80'}`}>
-                          <label className="flex items-center gap-3 cursor-pointer">
-                            <input type="checkbox" className="w-5 h-5 rounded border-slate-300 text-blue-600" checked={isSel} onChange={() => setSelecaoLote({...selecaoLote, itensIds: isSel ? selecaoLote.itensIds.filter(x => x !== it.id) : [...selecaoLote.itensIds, it.id]})} />
-                            <div className="flex-1"><p className="text-[10px] font-black uppercase text-slate-800 truncate">{it.referencia}</p></div>
+                        <div key={it.id} className={`p-4 rounded-2xl border transition-all ${isSel ? 'bg-blue-50 border-blue-400 shadow-sm' : 'bg-slate-50 border-transparent opacity-80'}`}>
+                          <label className="flex items-start gap-3 cursor-pointer">
+                            <div className="pt-0.5 shrink-0">
+                              <input 
+                                type="checkbox" 
+                                className="w-5 h-5 rounded border-slate-300 text-blue-600 focus:ring-blue-500" 
+                                checked={isSel} 
+                                onChange={() => setSelecaoLote({...selecaoLote, itensIds: isSel ? selecaoLote.itensIds.filter(x => x !== it.id) : [...selecaoLote.itensIds, it.id]})} 
+                              />
+                            </div>
+                            <div className="flex-1 min-w-0">
+                              <p className="text-[10px] font-black uppercase text-slate-800 break-words leading-tight">
+                                {it.referencia} - {it.tipo} - {it.cor1}
+                              </p>
+                            </div>
                           </label>
                           {isSel && (
-                            <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 mt-3 pt-3 border-t border-blue-100">
-                              <select value={assignment.gradeLetra} onChange={e => setPersistAssignments({...persistAssignments, [it.referencia]: {...assignment, gradeLetra: e.target.value}})} className="p-1.5 bg-white border border-blue-200 rounded-lg text-[9px] font-black text-blue-700 outline-none min-h-[44px]">
-                                <option value="">GRADE?</option>
-                                {gradesSalvas.map(gr => <option key={gr.letra} value={gr.letra}>GRADE {gr.letra}</option>)}
+                            <div className="mt-4 pt-4 border-t border-blue-100 space-y-3">
+                              <select 
+                                value={assignment.gradeLetra} 
+                                onChange={e => setPersistAssignments({...persistAssignments, [it.referencia]: {...assignment, gradeLetra: e.target.value}})} 
+                                className="w-full p-2.5 bg-white border border-blue-200 rounded-xl text-[10px] font-black text-blue-700 outline-none min-h-[44px] shadow-sm"
+                              >
+                                <option value="">SELECIONE A GRADE...</option>
+                                {gradesSalvas.map(gr => (
+                                  <option key={gr.letra} value={gr.letra}>
+                                    GRADE {gr.letra} {gr.classificacao ? `- ${gr.classificacao}` : ""}
+                                  </option>
+                                ))}
                               </select>
-                              <select value={assignment.corSelecionada} onChange={e => setPersistAssignments({...persistAssignments, [it.referencia]: {...assignment, corSelecionada: e.target.value}})} className="p-1.5 bg-white border border-blue-200 rounded-lg text-[9px] font-black text-blue-700 uppercase outline-none min-h-[44px]">
-                                <option value={it.cor1}>{it.cor1}</option>
-                                {it.cor2 && <option value={it.cor2}>{it.cor2}</option>}
-                                {it.cor3 && <option value={it.cor3}>{it.cor3}</option>}
-                              </select>
+
+                              {assignment.gradeLetra && (
+                                <div className="bg-blue-600/5 p-3 rounded-xl border border-blue-100">
+                                  <p className="text-[7px] font-black text-blue-400 uppercase mb-2 tracking-widest">Numeração da Grade</p>
+                                  <p className="text-[11px] font-black text-blue-900 italic leading-relaxed">
+                                    {(() => {
+                                      const g = gradesSalvas.find(x => x.letra === assignment.gradeLetra);
+                                      if (!g) return null;
+                                      return Object.entries(g.valores)
+                                        .filter(([_, v]) => Number(v) > 0)
+                                        .map(([tam, qtd]) => `${tam} - ${qtd}`)
+                                        .join('   ');
+                                    })()}
+                                  </p>
+                                </div>
+                              )}
                             </div>
                           )}
                         </div>
@@ -991,11 +1195,21 @@ const SpreadsheetOrderModule = ({ user, onClose }: { user: any, onClose: () => v
             <ListFilter size={16}/> Lotes Ativos ({lotesAgrupados.length})
           </button>
           <div className="flex gap-2 w-full md:w-auto">
-            <button onClick={salvarPedidoCompleto} className="flex-1 md:flex-none bg-slate-900 text-white px-6 py-3 rounded-xl font-black text-[9px] uppercase shadow-lg hover:bg-slate-800 transition-all border-b-4 border-slate-700 active:scale-95 flex items-center justify-center gap-2 min-h-[44px]">
-              <Layers size={18}/> 💾 Salvar Pedido
+            <button 
+              onClick={salvarPedidoCompleto} 
+              disabled={isSaving}
+              className={`flex-1 md:flex-none bg-slate-900 text-white px-6 py-3 rounded-xl font-black text-[9px] uppercase shadow-lg transition-all border-b-4 border-slate-700 active:scale-95 flex items-center justify-center gap-2 min-h-[44px] ${isSaving ? 'opacity-50 cursor-not-allowed' : 'hover:bg-slate-800'}`}
+            >
+              <Layers size={18}/> {isSaving ? 'Salvando...' : '💾 Salvar Pedido'}
             </button>
             <button onClick={exportarPlanilhaFinal} className="flex-1 md:flex-none bg-red-600 text-white px-8 py-3 rounded-xl font-black text-[9px] uppercase shadow-lg hover:bg-red-700 transition-all border-b-4 border-red-900 active:scale-95 flex items-center justify-center gap-2 min-h-[44px]">
               <Download size={18}/> Exportar Excel
+            </button>
+            <button
+              onClick={exportarPedidosPorLoja}
+              className="flex-1 md:flex-none bg-blue-700 text-white px-8 py-3 rounded-xl font-black text-[9px] uppercase shadow-lg hover:bg-blue-800 transition-all border-b-4 border-blue-900 active:scale-95 flex items-center justify-center gap-2 min-h-[44px]"
+            >
+              <Download size={18}/> Gerar Pedidos por Loja
             </button>
           </div>
         </div>
