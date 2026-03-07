@@ -58,18 +58,14 @@ const getClassificacao = (modelo: string, valores: Record<string, number>) => {
   return "JUVENIL";
 };
 
-const calcularColunaExcelPorTamanho = (tam: string, modelo: string) => {
+const calcularColunaExcelPorTamanho = (tam: string) => {
   const t = parseInt(tam);
   if (!isNaN(t)) {
-    return 45 + (t - 33); // 33 = AT (45) conforme solicitado
+    // I=8 (16), J=9 (17)...
+    return 8 + (t - 16);
   }
-  // Mapeamento conforme MAPA_GRADE (código original)
   const acessMap: Record<string, number> = { 
-    "UN": MAPA_GRADE.UN, 
-    "P": MAPA_GRADE.P, 
-    "M": MAPA_GRADE.M, 
-    "G": MAPA_GRADE.G, 
-    "GG": MAPA_GRADE.GG 
+    "UN": 3, "P": 4, "M": 5, "G": 6, "GG": 7 
   };
   return acessMap[tam] || -1;
 };
@@ -77,6 +73,7 @@ const calcularColunaExcelPorTamanho = (tam: string, modelo: string) => {
 const SpreadsheetOrderModule = ({ user, onClose }: { user: any, onClose: () => void }) => {
   const [etapa, setEtapa] = useState(1);
   const [verLotes, setVerLotes] = useState(false);
+  const [pedidoExpandido, setPedidoExpandido] = useState<string | null>(null);
   const [isMobile, setIsMobile] = useState(false);
   const [showGradeModal, setShowGradeModal] = useState(false);
 
@@ -114,6 +111,7 @@ const SpreadsheetOrderModule = ({ user, onClose }: { user: any, onClose: () => v
   const [itens, setItens] = useState<any[]>([]);
   const [itemAtual, setItemAtual] = useState({ 
     referencia: "", tipo: "", cor1: "", cor2: "", cor3: "", 
+    color1_id: null as string | null, color2_id: null as string | null, color3_id: null as string | null,
     modelo: "Fem" as keyof typeof TAMANHOS, valorCompra: 0, precoVenda: 0 
   });
 
@@ -130,25 +128,7 @@ const SpreadsheetOrderModule = ({ user, onClose }: { user: any, onClose: () => v
     const autoFillBrand = async () => {
       if (!pedido.marca) return;
       try {
-        // 1. Tenta buscar no cadastro oficial de marcas usando ilike
-        const { data: brandData } = await supabase
-          .from('Pedido_Brand')
-          .select('fornecedor, representante, telefone, email')
-          .ilike('name', pedido.marca)
-          .maybeSingle();
-
-        if (brandData && (brandData.fornecedor || brandData.representante)) {
-          setPedido(prev => ({
-            ...prev,
-            fornecedor: brandData.fornecedor || prev.fornecedor,
-            representante: brandData.representante || prev.representante,
-            telefone: brandData.telefone || prev.telefone,
-            email: brandData.email || prev.email
-          }));
-          return;
-        }
-
-        // 2. Fallback para o último pedido realizado desta marca
+        // Busca no último pedido realizado desta marca (Pedido_Header conforme solicitado)
         const { data: lastOrder } = await supabase
           .from('Pedido_Header')
           .select('fornecedor, representante, telefone, email')
@@ -186,60 +166,119 @@ const SpreadsheetOrderModule = ({ user, onClose }: { user: any, onClose: () => v
       ]);
 
       setDbSuggestions({
-        marcas: (brands.data || []).map(i => i.name),
-        fornecedores: (suppliers.data || []).map(i => i.name),
-        tipos: (types.data || []).map(i => i.name),
-        cores: (colors.data || []).map(i => i.name),
-        referencias: (refs.data || []).map(i => i.name)
+        marcas: [...new Set((brands.data || []).map(i => i.name))].sort((a, b) => a.localeCompare(b)),
+        fornecedores: [...new Set((suppliers.data || []).map(i => i.name))].sort((a, b) => a.localeCompare(b)),
+        tipos: [...new Set((types.data || []).map(i => i.name))].sort((a, b) => a.localeCompare(b)),
+        cores: [...new Set((colors.data || []).map(i => i.name))].sort((a, b) => a.localeCompare(b)),
+        referencias: [...new Set((refs.data || []).map(i => i.name))].sort((a, b) => a.localeCompare(b))
       });
     } catch (error) {
       console.error("Erro ao buscar sugestões:", error);
     }
   };
 
+  // --- FUNÇÃO PARA RESOLVER ID (EVITA ERRO 409/500 E DUPLICIDADE) ---
+  const resolveId = async (table: string, value: string, extraFilter = {}) => {
+    if (!value) return null;
+    const normalized = value.trim().toUpperCase();
+
+    try {
+      // 1. REGRA: Primeiro tenta buscar. Se achar, já retorna o ID e nem tenta inserir.
+      let query = supabase.from(table).select('id').eq('name', normalized);
+      
+      // Aplica filtros extras (como o 'publico' para Pedido_Types)
+      Object.entries(extraFilter).forEach(([key, val]) => {
+        query = query.eq(key, val);
+      });
+
+      const { data: existing } = await query.maybeSingle();
+      if (existing) return existing.id;
+
+      // 2. Se não existir, tenta o UPSERT (insere ou ignora conflito)
+      const { data: inserted, error: insError } = await supabase
+        .from(table)
+        .upsert(
+          { name: normalized, ...extraFilter }, 
+          { onConflict: table === 'Pedido_Types' ? 'name,publico' : 'name' }
+        )
+        .select('id')
+        .single();
+
+      if (insError) throw insError;
+      return inserted.id;
+
+    } catch (error: any) {
+      // Se ainda assim der erro de duplicidade (23505), tenta buscar uma última vez
+      if (error.code === '23505' || error.status === 409) {
+         const { data: retry } = await supabase.from(table).select('id').eq('name', normalized).maybeSingle();
+         return retry?.id;
+      }
+      console.error(`Erro ao resolver ID em ${table}:`, error);
+      return null;
+    }
+  };
+
+  // Resolve o erro 'upsertValue is not defined' no onBlur das linhas 773/785
+  const upsertValue = async (table: string, value: string) => {
+    if (!value) return;
+    await resolveId(table, value);
+    fetchSuggestions(); // Atualiza a lista de sugestões (datalist) imediatamente
+  };
+
+  const resolveColorId = async (colorName: string): Promise<string | null> => {
+    return resolveId('Pedido_Colors', colorName);
+  };
+
+  const handleIncluirItem = async () => {
+    if (!itemAtual.referencia || !itemAtual.cor1) {
+      alert("Preencha ao menos Referência e Cor 1");
+      return;
+    }
+
+    setIsSaving(true);
+    try {
+      // Resolve os IDs de forma segura
+      const [refId, c1, c2, c3, typeId] = await Promise.all([
+        resolveId('Pedido_References', itemAtual.referencia),
+        resolveId('Pedido_Colors', itemAtual.cor1),
+        itemAtual.cor2 ? resolveId('Pedido_Colors', itemAtual.cor2) : Promise.resolve(null),
+        itemAtual.cor3 ? resolveId('Pedido_Colors', itemAtual.cor3) : Promise.resolve(null),
+        resolveId('Pedido_Types', itemAtual.tipo, { publico: itemAtual.modelo })
+      ]);
+
+      const novoItem = {
+        ...itemAtual,
+        id: crypto.randomUUID(),
+        reference_id: refId,
+        color1_id: c1,
+        color2_id: c2,
+        color3_id: c3,
+        type_id: typeId
+      };
+
+      setItens(prev => [...prev, novoItem]);
+      
+      // Limpa os campos para o próximo item
+      setItemAtual(prev => ({
+        ...prev, 
+        referencia: "", 
+        cor1: "", 
+        cor2: "", 
+        cor3: "", 
+        valorCompra: 0,
+        color1_id: null,
+        color2_id: null,
+        color3_id: null
+      }));
+      fetchSuggestions();
+    } finally {
+      setIsSaving(false);
+    }
+  };
+
   useEffect(() => {
     fetchSuggestions();
   }, [itemAtual.modelo]);
-
-  const upsertValue = async (table: string, value: string) => {
-    if (!value) return;
-    try {
-      const { data: existing } = await supabase.from(table).select('name').eq('name', value.toUpperCase()).single();
-      if (!existing) {
-        await supabase.from(table).insert([{ name: value.toUpperCase() }]);
-        fetchSuggestions(); // Refresh
-      }
-    } catch (error) {
-      console.error(`Erro ao salvar em ${table}:`, error);
-    }
-  };
-
-  const upsertTipo = async (value: string) => {
-    if (!value) return;
-
-    const upper = value.toUpperCase();
-
-    try {
-      const { data: existing } = await supabase
-        .from('Pedido_Types')
-        .select('id')
-        .eq('name', upper)
-        .eq('publico', itemAtual.modelo)
-        .single();
-
-      if (!existing) {
-        await supabase.from('Pedido_Types').insert([
-          {
-            name: upper,
-            publico: itemAtual.modelo
-          }
-        ]);
-        fetchSuggestions();
-      }
-    } catch (error) {
-      console.error(`Erro ao salvar tipo:`, error);
-    }
-  };
 
   const [gradeEditando, setGradeEditando] = useState<Record<string, number>>({});
   const [gradesSalvas, setGradesSalvas] = useState<any[]>([]);
@@ -301,89 +340,116 @@ const SpreadsheetOrderModule = ({ user, onClose }: { user: any, onClose: () => v
       const workbook = XLSX.read(arrayBuffer, { type: "array" });
       const sheet = workbook.Sheets[workbook.SheetNames[0]];
 
-      // --- 1. CABEÇALHO ---
-      setCell(sheet, 1, 26, pedido.comprador);     // AA2
-      setCell(sheet, 2, 13, pedido.marca);         // N3
-      setCell(sheet, 3, 13, pedido.fornecedor);    // N4
-      setCell(sheet, 2, 26, pedido.representante); // AA3
-      setCell(sheet, 2, 39, pedido.telefone);      // AN3
-      setCell(sheet, 3, 26, pedido.email);         // AA4
-      setCell(sheet, 4, 26, pedido.embarqueInicio);// AA5
-      setCell(sheet, 4, 33, pedido.embarqueFim);   // AH5
-      setCell(sheet, 5, 25, Number(pedido.desconto), "n"); // Z6
-      setCell(sheet, 5, 31, Number(pedido.markup), "n");   // AF6
+      // --- 1. CABEÇALHO (MAPEMAENTO EXATO DO JÚNIOR) ---
+      setCell(sheet, 1, 26, pedido.comprador);      // AA2 (R1, C26 no ExcelJS index 0)
+      setCell(sheet, 2, 13, pedido.marca);          // N3
+      setCell(sheet, 3, 13, pedido.fornecedor);     // N4
+      setCell(sheet, 2, 26, pedido.representante);  // AA3
+      setCell(sheet, 2, 39, pedido.telefone);       // AN3
+      setCell(sheet, 3, 26, pedido.email);          // AA4
+      setCell(sheet, 4, 26, pedido.embarqueInicio); // AA5
+      setCell(sheet, 4, 33, pedido.embarqueFim);    // AH5
 
-      // --- 2. PRAZOS E VENCIMENTOS ---
+      // Lógica de Prazos e Meses (N5/Q5/T5 e N6/Q6/T6)
       if (pedido.prazos) {
         const prazosArr = pedido.prazos.split('/');
         prazosArr.forEach((p, i) => {
           if (i > 2) return;
-          const val = parseInt(p);
-          if (!isNaN(val)) {
-            const col = 13 + (i * 3); // N=13, Q=16, T=19
-            setCell(sheet, 4, col, val, "n"); // Linha 5 (Prazos)
-            
-            if (pedido.embarqueFim) {
-              // Lógica para preencher o nome do mês na Linha 6 (N6, Q6, T6)
-              const d = new Date(pedido.embarqueFim + "T12:00:00");
-              if (val % 30 === 0) {
-                d.setMonth(d.getMonth() + (val / 30));
-              } else {
-                d.setDate(d.getDate() + val);
-              }
-              const mesAno = `${new Intl.DateTimeFormat('pt-BR', { month: 'long' }).format(d)}/${d.getFullYear().toString().slice(-2)}`;
-              setCell(sheet, 5, col, mesAno.toUpperCase()); // Linha 6
-            }
+          const dias = parseInt(p);
+          const col = 13 + (i * 3); // N=13, Q=16, T=19
+          setCell(sheet, 4, col, dias, "n"); // Linha 5
+          
+          if (pedido.embarqueFim) {
+            const d = new Date(pedido.embarqueFim + "T12:00:00");
+            d.setDate(d.getDate() + dias);
+            const mesFormatado = `${new Intl.DateTimeFormat('pt-BR', { month: 'long' }).format(d)}/${d.getFullYear().toString().slice(-2)}`;
+            setCell(sheet, 5, col, mesFormatado.toUpperCase()); // Linha 6 (Mês/Ano)
           }
         });
       }
 
-      // --- 3. PRODUTOS E GRADES (LINHA 36 EM DIANTE) ---
-      // Agrupamos por Referência para preencher as linhas
-      const referenciasUnicas = [...new Set(lotesFinalizados.map(l => l.referencia))];
+      // --- 3. RESUMO DE GRADES (LINHAS 14-21) ---
+      const idsVinculos = ([...new Set(lotesFinalizados.map(l => l.idVinculo))].slice(0, 5)) as string[];
       
-      referenciasUnicas.forEach((ref, idx) => {
-        const r = 35 + idx; // Linha 36
-        const l = lotesFinalizados.find(item => item.referencia === ref);
-        const originalItem = itens.find(it => it.referencia === ref);
-        
+      idsVinculos.forEach((idV, idx) => {
+        const row = 13 + idx; // Linha 14, 15...
+        const l = lotesFinalizados.find(item => item.idVinculo === idV);
         if (l) {
-          setCell(sheet, r, 2, ref); // Col C
-          setCell(sheet, r, 7, l.tipo); // Col H (Tipo de Produto)
-          
-          // Cor (R36) - Apenas a cor escolhida para este lote
-          setCell(sheet, r, 17, l.corEscolhida); // Col R
-          
-          // Valores Financeiros
-          setCell(sheet, r, 37, Number(l.valorCompra), "n"); // Col AL
-          setCell(sheet, r, 40, Number(l.precoVenda), "n"); // Col AO
-
-          // Mapeamento de Grades A-E conforme o Lote
-          // X=23, AA=26, AD=29, AG=32, AJ=35
-          const mappingGrades: Record<string, number> = { "A": 23, "B": 26, "C": 29, "D": 32, "E": 35 };
-          const gradeLetra = l.gradeLetra; 
-          if(mappingGrades[gradeLetra]) {
-            setCell(sheet, r, mappingGrades[gradeLetra], gradeLetra);
-          }
-
-          // Quantidades por tamanho (Colunas AR em diante)
-          const gradeInfo = gradesSalvas.find(g => g.letra === gradeLetra);
+          setCell(sheet, row, 1, l.gradeLetra); // Col B (Letra da Grade)
+          const gradeInfo = gradesSalvas.find(g => g.letra === l.gradeLetra);
           if (gradeInfo) {
             Object.entries(gradeInfo.valores).forEach(([tam, qtd]) => {
               if (Number(qtd) > 0) {
-                const colTam = calcularColunaExcelPorTamanho(tam, l.modelo);
-                if (colTam !== -1) setCell(sheet, r, colTam, Number(qtd), "n");
+                const colTam = calcularColunaExcelPorTamanho(tam);
+                if (colTam !== -1) setCell(sheet, row, colTam, Number(qtd), "n");
               }
             });
           }
         }
       });
 
-      // --- 4. LOJAS (D23 até AO27) ---
-      // Distribuindo as lojas selecionadas nos 5 lotes/linhas possíveis
-      const idsVinculos = [...new Set(lotesFinalizados.map(l => l.idVinculo))].slice(0, 5);
+      // --- 4. PRODUTOS (LINHA 36 EM DIANTE) ---
+      // Agrupamos por Referência + Tipo + Cores para listar os itens únicos
+      const itensUnicosMap = new Map<string, {
+        referencia: string,
+        tipo: string,
+        cor1: string,
+        cor2: string,
+        cor3: string,
+        valorCompra: number,
+        precoVenda: number,
+        batches: Record<string, string>
+      }>();
+      lotesFinalizados.forEach(l => {
+        const key = `${l.referencia}-${l.tipo}-${l.cor1}-${l.cor2 || ''}-${l.cor3 || ''}`;
+        if (!itensUnicosMap.has(key)) {
+          itensUnicosMap.set(key, {
+            referencia: l.referencia,
+            tipo: l.tipo,
+            cor1: l.cor1,
+            cor2: l.cor2,
+            cor3: l.cor3,
+            valorCompra: l.valorCompra,
+            precoVenda: l.precoVenda,
+            batches: {} 
+          });
+        }
+        const item = itensUnicosMap.get(key)!;
+        item.batches[l.idVinculo] = l.gradeLetra;
+      });
+
+      const itensUnicos = Array.from(itensUnicosMap.values());
+      
+      itensUnicos.forEach((it, idx) => {
+        if (idx >= 129) return; // Limite da linha 164 (36 + 129 = 165)
+        const r = 35 + idx; // Linha 36
+        
+        setCell(sheet, r, 2, it.referencia);       // C (Coluna 2)
+        setCell(sheet, r, 7, it.tipo);             // H (Coluna 7)
+        setCell(sheet, r, 17, it.cor1);            // R (Coluna 17)
+        setCell(sheet, r, 18, it.cor2 || "");      // S (Coluna 18)
+        setCell(sheet, r, 19, it.cor3 || "");      // T (Coluna 19)
+        setCell(sheet, r, 37, Number(it.valorCompra), "n"); // AL
+        setCell(sheet, r, 40, Number(it.precoVenda), "n");  // AO
+
+        // Inserção da Letra da Grade nas colunas dos Pedidos (Batches)
+        // Pedido 1 (idx 0): X (23)
+        // Pedido 2 (idx 1): AA (26)
+        // Pedido 3 (idx 2): AD (29)
+        // Pedido 4 (idx 3): AG (32)
+        // Pedido 5 (idx 4): AJ (35)
+        const mappingCols = [23, 26, 29, 32, 35];
+        idsVinculos.forEach((idV, batchIdx) => {
+          const gradeLetra = it.batches[idV];
+          if (gradeLetra) {
+            setCell(sheet, r, mappingCols[batchIdx], gradeLetra);
+          }
+        });
+      });
+
+      // --- 5. LOJAS (D23 até AO27) ---
       idsVinculos.forEach((idV, idx) => {
-        const linhaLoja = 22 + idx; // Linha 23, 24...
+        const linhaLoja = 22 + idx; // Linha 23
         const lojasDoLote = [...new Set(lotesFinalizados.filter(l => l.idVinculo === idV).map(l => l.loja))];
         
         lojasDoLote.forEach((lojaCod, colIdx) => {
@@ -467,35 +533,43 @@ const SpreadsheetOrderModule = ({ user, onClose }: { user: any, onClose: () => v
           });
         }
 
-        const lotesDaLoja = lotesFinalizados.filter((l) => l.loja === loja);
-        
-        lotesDaLoja.forEach((l, idx) => {
-          const r = 35 + idx;
-          const originalItem = itens.find(it => it.referencia === l.referencia);
-          
-          if (originalItem) {
-            setCell(sheet, r, 2, l.referencia);
-            setCell(sheet, r, 7, l.tipo);
-            
-            // Cor (R36) - Apenas a cor escolhida para este lote
-            setCell(sheet, r, 17, l.corEscolhida);
-            
-            setCell(sheet, r, 37, Number(l.valorCompra), "n");
-            setCell(sheet, r, 40, Number(l.precoVenda), "n");
-
-            const mappingGrades: Record<string, number> = { "A": 23, "B": 26, "C": 29, "D": 32, "E": 35 };
-            if(mappingGrades[l.gradeLetra]) {
-              setCell(sheet, r, mappingGrades[l.gradeLetra], l.gradeLetra);
-            }
-
+        // --- 3. RESUMO DE GRADES (LINHAS 14-21) ---
+        const idsVinculosGrades = [...new Set(lotesFinalizados.map(l => l.idVinculo))].slice(0, 5);
+        idsVinculosGrades.forEach((idV, idx) => {
+          const row = 13 + idx; // Linha 14, 15...
+          const l = lotesFinalizados.find(item => item.idVinculo === idV);
+          if (l) {
+            setCell(sheet, row, 1, l.gradeLetra); // Col B (Letra da Grade)
             const gradeInfo = gradesSalvas.find(g => g.letra === l.gradeLetra);
             if (gradeInfo) {
               Object.entries(gradeInfo.valores).forEach(([tam, qtd]) => {
                 if (Number(qtd) > 0) {
-                  const colTam = calcularColunaExcelPorTamanho(tam, l.modelo);
-                  if (colTam !== -1) setCell(sheet, r, colTam, Number(qtd), "n");
+                  const colTam = calcularColunaExcelPorTamanho(tam);
+                  if (colTam !== -1) setCell(sheet, row, colTam, Number(qtd), "n");
                 }
               });
+            }
+          }
+        });
+
+        const lotesDaLoja = lotesFinalizados.filter((l) => l.loja === loja);
+        
+        lotesDaLoja.forEach((l, idx) => {
+          const r = 35 + idx;
+          
+          if (l) {
+            setCell(sheet, r, 2, l.referencia);    // C
+            setCell(sheet, r, 7, l.tipo);          // H
+            setCell(sheet, r, 17, l.cor1);         // R
+            setCell(sheet, r, 18, l.cor2 || "");   // S
+            setCell(sheet, r, 19, l.cor3 || "");   // T
+            
+            setCell(sheet, r, 37, Number(l.valorCompra), "n"); // AL
+            setCell(sheet, r, 40, Number(l.precoVenda), "n");  // AO
+
+            const mappingGrades: Record<string, number> = { "A": 23, "B": 26, "C": 29, "D": 32, "E": 35 };
+            if(mappingGrades[l.gradeLetra]) {
+              setCell(sheet, r, mappingGrades[l.gradeLetra], l.gradeLetra);
             }
           }
         });
@@ -531,11 +605,7 @@ const SpreadsheetOrderModule = ({ user, onClose }: { user: any, onClose: () => v
       // 0. Upsert Master Data (Tabelas Auxiliares) com validação
       if (pedido.marca) {
         await supabase.from('Pedido_Brand').upsert({ 
-          name: pedido.marca.toUpperCase(),
-          fornecedor: pedido.fornecedor?.toUpperCase() || "",
-          representante: pedido.representante?.toUpperCase() || "",
-          telefone: pedido.telefone || "",
-          email: pedido.email?.toLowerCase() || ""
+          name: pedido.marca.toUpperCase()
         }, { onConflict: 'name' });
       }
 
@@ -568,12 +638,12 @@ const SpreadsheetOrderModule = ({ user, onClose }: { user: any, onClose: () => v
 
       // 1. Salvar Cabeçalho (Pedido_Header)
       const { data: hD, error: hE } = await supabase.from('Pedido_Header').insert([{
-        marca: pedido.marca.toUpperCase(),
-        fornecedor: pedido.fornecedor.toUpperCase(),
-        representante: pedido.representante.toUpperCase(),
+        marca: pedido.marca.trim().toUpperCase(),
+        fornecedor: pedido.fornecedor.trim().toUpperCase(),
+        representante: pedido.representante.trim().toUpperCase(),
         telefone: pedido.telefone,
-        email: pedido.email.toLowerCase(),
-        comprador: pedido.comprador.toUpperCase(),
+        email: pedido.email.trim().toLowerCase(),
+        comprador: pedido.comprador.trim().toUpperCase(),
         desconto: Number(pedido.desconto),
         markup: Number(pedido.markup),
         embarque_inicio: pedido.embarqueInicio,
@@ -586,17 +656,17 @@ const SpreadsheetOrderModule = ({ user, onClose }: { user: any, onClose: () => v
       // 2. Agrupar Itens por Referência e Cor (Pedido_Items)
       const itensMap = new Map();
       lotesFinalizados.forEach(l => {
-        const key = `${l.referencia}-${l.corEscolhida}`; 
+        // Chave de agrupamento agora inclui os IDs das 3 cores para evitar mesclagem indevida
+        const key = `${l.referencia}-${l.color1_id}-${l.color2_id}-${l.color3_id}`; 
         if (!itensMap.has(key)) {
-          const originalItem = itens.find(it => it.referencia === l.referencia);
           itensMap.set(key, { 
             pedido_id: hD.id, 
             referencia: l.referencia, 
             tipo: l.tipo,
             modelo: l.modelo,
-            cor1: originalItem?.cor1 || l.cor1 || l.corEscolhida,
-            cor2: originalItem?.cor2 || l.cor2 || l.corEscolhida,
-            cor3: originalItem?.cor3 || l.cor3 || l.corEscolhida,
+            color1_id: l.color1_id,
+            color2_id: l.color2_id,
+            color3_id: l.color3_id,
             valor_compra: l.valorCompra,
             preco_venda: l.precoVenda,
             lotes_originais: [] 
@@ -606,9 +676,23 @@ const SpreadsheetOrderModule = ({ user, onClose }: { user: any, onClose: () => v
       });
 
       // 3. Salvar Itens
-      const { data: sI, error: iE } = await supabase.from('Pedido_Items')
-        .insert(Array.from(itensMap.values()).map(({ lotes_originais, ...rest }) => rest))
+      const itemsToInsert = Array.from(itensMap.values()).map(({ lotes_originais, ...rest }) => ({
+        pedido_id: rest.pedido_id,
+        referencia: rest.referencia.trim().toUpperCase(),
+        tipo: rest.tipo.trim().toUpperCase(),
+        modelo: rest.modelo,
+        color1_id: rest.color1_id,
+        color2_id: rest.color2_id,
+        color3_id: rest.color3_id,
+        valor_compra: rest.valor_compra,
+        preco_venda: rest.preco_venda
+      }));
+
+      const { data: sI, error: iE } = await supabase
+        .from('Pedido_Items')
+        .insert(itemsToInsert)
         .select();
+
       if (iE) throw iE;
 
       // 4. Salvar Distribuição (Pedido_Distribuicao)
@@ -662,9 +746,9 @@ const SpreadsheetOrderModule = ({ user, onClose }: { user: any, onClose: () => v
   };
 
   const lotesAgrupados = useMemo(() => {
-    const res: Record<string, { grade: string, items: Set<string>, lojas: Set<string>, valBruto: number, valLiquido: number, pares: number }> = {};
+    const res: Record<string, { idVinculo: string, grade: string, items: Set<string>, lojas: Set<string>, valBruto: number, valLiquido: number, pares: number }> = {};
     lotesFinalizados.forEach(l => {
-      if (!res[l.idVinculo]) res[l.idVinculo] = { grade: l.gradeLetra, items: new Set(), lojas: new Set(), valBruto: 0, valLiquido: 0, pares: 0 };
+      if (!res[l.idVinculo]) res[l.idVinculo] = { idVinculo: l.idVinculo, grade: l.gradeLetra, items: new Set(), lojas: new Set(), valBruto: 0, valLiquido: 0, pares: 0 };
       res[l.idVinculo].items.add(l.referencia);
       res[l.idVinculo].lojas.add(l.loja);
       const g = gradesSalvas.find(x => x.letra === l.gradeLetra);
@@ -725,7 +809,7 @@ const SpreadsheetOrderModule = ({ user, onClose }: { user: any, onClose: () => v
                     className="w-full p-3 bg-slate-50 rounded-xl font-bold uppercase outline-none focus:ring-2 focus:ring-blue-100 min-h-[44px]" 
                     value={pedido.marca} 
                     onChange={e => setPedido({...pedido, marca: e.target.value.toUpperCase()})} 
-                    onBlur={e => upsertValue('Pedido_Brand', e.target.value)}
+                    onBlur={e => resolveId('Pedido_Brand', e.target.value)}
                     placeholder="EX: BEBECE" 
                   />
                   <datalist id="brands">{dbSuggestions.marcas.map(m => <option key={m} value={m} />)}</datalist>
@@ -737,7 +821,7 @@ const SpreadsheetOrderModule = ({ user, onClose }: { user: any, onClose: () => v
                     className="w-full p-3 bg-slate-50 rounded-xl font-bold uppercase outline-none min-h-[44px]" 
                     value={pedido.fornecedor} 
                     onChange={e => setPedido({...pedido, fornecedor: e.target.value.toUpperCase()})} 
-                    onBlur={e => upsertValue('Pedido_Suppliers', e.target.value)}
+                    onBlur={e => resolveId('Pedido_Suppliers', e.target.value)}
                     placeholder="EX: CALCADOS BEBECE LTDA" 
                   />
                   <datalist id="suppliers">{dbSuggestions.fornecedores.map(s => <option key={s} value={s} />)}</datalist>
@@ -906,21 +990,13 @@ const SpreadsheetOrderModule = ({ user, onClose }: { user: any, onClose: () => v
                   <div><p className="text-[8px] font-black text-slate-500 uppercase tracking-widest">Custo Fábrica</p><div className="flex items-center font-black text-lg sm:text-xl"><span className="text-blue-500 mr-1">R$</span><input type="number" className="bg-transparent w-20 outline-none min-h-[44px] [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none" value={itemAtual.valorCompra || ""} onChange={e => setItemAtual({...itemAtual, valorCompra: Number(e.target.value)})} /></div></div>
                   <div className="text-right border-l border-white/10 pl-4 sm:pl-6"><p className="text-[8px] font-black text-blue-400 uppercase mb-1">Valor de Venda</p><p className="text-xl sm:text-3xl font-black text-yellow-400 italic leading-none">R$ {itemAtual.precoVenda.toFixed(2)}</p></div>
                 </div>
-                <button onClick={async () => { 
-                  if(!itemAtual.referencia || !itemAtual.valorCompra) return; 
-                  
-                  // Upsert automático ao adicionar
-                  await Promise.all([
-                    upsertValue('Pedido_References', itemAtual.referencia),
-                    upsertTipo(itemAtual.tipo),
-                    upsertValue('Pedido_Colors', itemAtual.cor1),
-                    itemAtual.cor2 && upsertValue('Pedido_Colors', itemAtual.cor2),
-                    itemAtual.cor3 && upsertValue('Pedido_Colors', itemAtual.cor3)
-                  ]);
-
-                  setItens([...itens, {...itemAtual, id: crypto.randomUUID()}]); 
-                  setItemAtual({...itemAtual, referencia: "", valorCompra: 0, cor1: "", cor2: "", cor3: ""}); 
-                }} className="w-full py-4 bg-blue-600 text-white rounded-2xl font-black text-[10px] uppercase shadow-md hover:bg-blue-700 transition-all min-h-[44px]">+ ADICIONAR ITEM</button>
+                <button 
+                  onClick={handleIncluirItem} 
+                  disabled={isSaving}
+                  className={`w-full py-4 bg-blue-600 text-white rounded-2xl font-black text-[10px] uppercase shadow-md transition-all min-h-[44px] ${isSaving ? 'opacity-50 cursor-not-allowed' : 'hover:bg-blue-700'}`}
+                >
+                  {isSaving ? 'PROCESSANDO...' : '+ ADICIONAR ITEM'}
+                </button>
               </div>
               <div className="lg:col-span-5 space-y-3 flex flex-col h-full overflow-hidden">
                 <h4 className="text-[9px] font-black text-slate-400 uppercase tracking-widest px-2">Carrinho ({itens.length})</h4>
@@ -1112,16 +1188,17 @@ const SpreadsheetOrderModule = ({ user, onClose }: { user: any, onClose: () => v
                               </div>
                             </label>
                             <div className="flex gap-1 shrink-0">
-                                {[it.cor1, it.cor2, it.cor3].filter(Boolean).map(c => (
+                                {[...new Set([it.cor1, it.cor2, it.cor3].filter(Boolean))].map((cName) => (
                                   <button 
-                                    key={c} 
+                                    key={`btn-${it.id}-${cName}`} // Chave única garantida: ID do item + Nome da Cor
                                     onClick={(e) => {
                                       e.preventDefault();
-                                      setPersistAssignments({...persistAssignments, [it.referencia]: {...assignment, corSelecionada: c}});
+                                      const assignment = persistAssignments[it.referencia] || { gradeLetra: "", corSelecionada: it.cor1 || "" };
+                                      setPersistAssignments({...persistAssignments, [it.referencia]: {...assignment, corSelecionada: cName}});
                                     }} 
-                                    className={`px-1.5 py-0.5 rounded-md text-[6px] font-black uppercase transition-all ${assignment.corSelecionada === c ? 'bg-blue-600 text-white' : 'bg-white border border-slate-200 text-slate-400'}`}
+                                    className={`px-1.5 py-0.5 rounded-md text-[6px] font-black uppercase transition-all ${assignment.corSelecionada === cName ? 'bg-blue-600 text-white' : 'bg-white border border-slate-200 text-slate-400'}`}
                                   >
-                                    {c}
+                                    {cName}
                                   </button>
                                 ))}
                             </div>
@@ -1178,6 +1255,12 @@ const SpreadsheetOrderModule = ({ user, onClose }: { user: any, onClose: () => v
                   </div>
                   <button onClick={() => {
                     if (selecaoLote.itensIds.length === 0 || selecaoLote.lojasIds.length === 0) return alert("Faltam itens ou lojas!");
+                    
+                    const numLotesAtuais = new Set(lotesFinalizados.map(l => l.idVinculo)).size;
+                    if (numLotesAtuais >= 5) {
+                      return alert("O máximo são 5 lotes de pedidos por carga.");
+                    }
+
                     const idVinculo = crypto.randomUUID();
                     const novos = selecaoLote.itensIds.flatMap(id => {
                       const it = itens.find(i => i.id === id);
@@ -1209,18 +1292,18 @@ const SpreadsheetOrderModule = ({ user, onClose }: { user: any, onClose: () => v
                 }
               }} 
               disabled={isSaving}
-              className={`flex-1 md:flex-none bg-slate-900 text-white px-6 py-3 rounded-xl font-black text-[9px] uppercase shadow-lg transition-all border-b-4 border-slate-700 active:scale-95 flex items-center justify-center gap-2 min-h-[44px] ${isSaving ? 'opacity-50 cursor-not-allowed' : 'hover:bg-slate-800'}`}
+              className={`flex-1 md:flex-none md:w-48 bg-slate-900 text-white px-4 py-3 rounded-xl font-black text-[9px] uppercase shadow-lg transition-all border-b-4 border-slate-700 active:scale-95 flex items-center justify-center gap-2 min-h-[44px] ${isSaving ? 'opacity-50 cursor-not-allowed' : 'hover:bg-slate-800'}`}
             >
               <Layers size={18}/> {isSaving ? 'Salvando...' : '💾 Salvar Pedido'}
             </button>
-            <button onClick={handleSalvarEExportar} className="flex-1 md:flex-none bg-red-600 text-white px-8 py-3 rounded-xl font-black text-[9px] uppercase shadow-lg hover:bg-red-700 transition-all border-b-4 border-red-900 active:scale-95 flex items-center justify-center gap-2 min-h-[44px]">
+            <button onClick={handleSalvarEExportar} className="flex-1 md:flex-none md:w-48 bg-red-600 text-white px-4 py-3 rounded-xl font-black text-[9px] uppercase shadow-lg hover:bg-red-700 transition-all border-b-4 border-red-900 active:scale-95 flex items-center justify-center gap-2 min-h-[44px]">
               <Download size={18}/> Exportar Excel
             </button>
             <button
               onClick={exportarPedidosPorLoja}
-              className="flex-1 md:flex-none bg-blue-700 text-white px-8 py-3 rounded-xl font-black text-[9px] uppercase shadow-lg hover:bg-blue-800 transition-all border-b-4 border-blue-900 active:scale-95 flex items-center justify-center gap-2 min-h-[44px]"
+              className="flex-1 md:flex-none md:w-48 bg-blue-700 text-white px-4 py-3 rounded-xl font-black text-[9px] uppercase shadow-lg hover:bg-blue-800 transition-all border-b-4 border-blue-900 active:scale-95 flex items-center justify-center gap-2 min-h-[44px]"
             >
-              <Download size={18}/> Gerar Pedidos por Loja
+              <Download size={18}/> Pedidos por Loja
             </button>
           </div>
         </div>
@@ -1230,7 +1313,7 @@ const SpreadsheetOrderModule = ({ user, onClose }: { user: any, onClose: () => v
             <div className="absolute inset-x-0 bottom-16 bg-white border-t border-slate-200 shadow-2xl p-6 max-h-[50vh] overflow-y-auto animate-in slide-in-from-bottom duration-300 z-50 rounded-t-[32px]">
                 <div className="max-w-4xl mx-auto">
                     <div className="flex justify-between items-center mb-6">
-                      <h4 className="text-xs font-black uppercase italic text-blue-950">Resumo da Carga</h4>
+                      <h4 className="text-xs font-black uppercase italic text-blue-950">Resumo do Pedido</h4>
                       <div className="flex items-center gap-3">
                         <button onClick={() => setLotesFinalizados([])} className="text-red-500 text-[9px] font-black uppercase border border-red-100 px-3 py-1.5 rounded-lg hover:bg-red-50 transition-all">Limpar Carga</button>
                         <button onClick={() => setVerLotes(false)} className="p-2 text-slate-400 hover:text-slate-600 hover:bg-slate-100 rounded-full transition-all">
@@ -1238,60 +1321,132 @@ const SpreadsheetOrderModule = ({ user, onClose }: { user: any, onClose: () => v
                         </button>
                       </div>
                     </div>
-                    <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
+                    <div className="space-y-4">
                         {lotesAgrupados.map((l, i) => {
+                            const isExpanded = pedidoExpandido === l.idVinculo;
+                            const itensDoLote = lotesFinalizados.filter(x => x.idVinculo === l.idVinculo);
+                            const refsNoLote = [...new Set(itensDoLote.map(x => x.referencia))];
                             const gradeInfo = gradesSalvas.find(g => g.letra === l.grade);
                             const classificacao = gradeInfo ? getClassificacao(gradeInfo.modelo, gradeInfo.valores) : "";
                             const descClassificacao = classificacao ? ` - ${classificacao}` : "";
                             
                             return (
-                                <div key={i} className="bg-slate-50 p-4 rounded-2xl border border-slate-100 relative group flex flex-col gap-3">
-                                    <div className="flex items-center gap-3">
-                                        <div className="w-10 h-10 bg-white rounded-xl flex items-center justify-center font-black text-lg text-blue-600 shadow-sm border border-blue-50">{l.grade}</div>
-                                        <div className="flex-1 min-w-0">
-                                            <p className="text-[10px] font-black text-slate-800 uppercase leading-none truncate">Grade {l.grade}{descClassificacao}</p>
-                                            <p className="text-[8px] font-bold text-slate-400 uppercase mt-1">Lojas {Array.from(l.lojas).sort().join('-')}</p>
-                                        </div>
-                                    </div>
-
-                                    {gradeInfo && (
-                                        <div className="flex flex-col gap-2 py-2 border-y border-slate-200/50">
-                                            <p className="text-[9px] font-black text-blue-600 uppercase tracking-widest">Numeração Detalhada:</p>
-                                            <div className="flex flex-wrap gap-1">
-                                                {Object.entries(gradeInfo.valores)
-                                                    .filter(([_, v]) => Number(v) > 0)
-                                                    .map(([tam, qtd]) => (
-                                                        <div key={tam} className="flex items-center border border-blue-100 rounded-md overflow-hidden bg-white shadow-xs">
-                                                            <span className="bg-blue-50 px-1 py-0.5 text-[8px] font-black text-blue-700 border-r border-blue-50">{tam}</span>
-                                                            <span className="px-1 py-0.5 text-[8px] font-black text-slate-900">{qtd}</span>
-                                                        </div>
-                                                    ))}
+                                <div key={l.idVinculo} className="bg-slate-50 rounded-2xl border border-slate-100 overflow-hidden shadow-sm">
+                                    <button 
+                                      onClick={() => setPedidoExpandido(isExpanded ? null : l.idVinculo)}
+                                      className="w-full p-4 flex items-center justify-between hover:bg-slate-100 transition-all"
+                                    >
+                                        <div className="flex items-center gap-4">
+                                            <div className="w-10 h-10 bg-blue-600 rounded-xl flex items-center justify-center font-black text-lg text-white shadow-md">
+                                                {i + 1}
                                             </div>
-                                            <p className="text-[10px] font-bold text-slate-500 italic">
-                                                {Object.entries(gradeInfo.valores)
-                                                    .filter(([_, v]) => Number(v) > 0)
-                                                    .map(([tam, qtd]) => `${tam}-${qtd}`)
-                                                    .join(', ')}
-                                            </p>
+                                            <div className="text-left">
+                                                <p className="text-[10px] font-black text-slate-800 uppercase leading-none">Pedido {i + 1} (Grade {l.grade}{descClassificacao})</p>
+                                                <p className="text-[8px] font-bold text-slate-400 uppercase mt-1">Lojas: {Array.from(l.lojas).sort().join(', ')}</p>
+                                            </div>
+                                        </div>
+                                        <div className="flex items-center gap-4">
+                                            <div className="text-right">
+                                                <p className="text-[7px] text-gray-400 font-black uppercase">Total Pares</p>
+                                                <p className="text-sm font-black text-slate-900 italic">{l.pares}</p>
+                                            </div>
+                                            <ChevronRight size={20} className={`text-slate-300 transition-transform ${isExpanded ? 'rotate-90' : ''}`} />
+                                        </div>
+                                    </button>
+
+                                    {isExpanded && (
+                                        <div className="p-4 bg-white border-t border-slate-100 space-y-4 animate-in slide-in-from-top-2 duration-200">
+                                            <div className="space-y-3">
+                                                {(() => {
+                                                    const itemsUnicos = new Map();
+                                                    itensDoLote.forEach(it => {
+                                                        const key = `${it.referencia}-${it.corEscolhida}`;
+                                                        if (!itemsUnicos.has(key)) itemsUnicos.set(key, it);
+                                                    });
+                                                    
+                                                    return Array.from(itemsUnicos.values()).map((itemLote, idx) => {
+                                                        const totalParesItem = (gradeInfo?.total || 0) * l.lojas.size;
+                                                        const totalFinanceiro = (itemLote?.valorCompra || 0) * totalParesItem;
+
+                                                        return (
+                                                            <div key={`${itemLote.referencia}-${itemLote.corEscolhida}-${idx}`} className="p-4 bg-slate-50 rounded-2xl border border-slate-100 shadow-sm space-y-3">
+                                                                <div className="grid grid-cols-1 md:grid-cols-12 gap-4 items-center">
+                                                                    <div className="col-span-1 flex items-center justify-center">
+                                                                        <span className="w-6 h-6 bg-slate-200 rounded-md flex items-center justify-center text-[10px] font-black text-slate-600">{idx + 1}</span>
+                                                                    </div>
+                                                                    <div className="col-span-2">
+                                                                        <p className="text-[7px] font-black text-slate-400 uppercase">Referência</p>
+                                                                        <p className="text-[10px] font-black text-slate-900 uppercase">{itemLote.referencia}</p>
+                                                                    </div>
+                                                                    <div className="col-span-3">
+                                                                        <p className="text-[7px] font-black text-slate-400 uppercase">Descrição / Cor</p>
+                                                                        <p className="text-[10px] font-black text-slate-900 uppercase truncate">{itemLote.tipo} - {itemLote.corEscolhida}</p>
+                                                                    </div>
+                                                                    <div className="col-span-1">
+                                                                        <p className="text-[7px] font-black text-slate-400 uppercase">Grade</p>
+                                                                        <p className="text-[10px] font-black text-blue-600 uppercase">{l.grade}</p>
+                                                                    </div>
+                                                                    <div className="col-span-1">
+                                                                        <p className="text-[7px] font-black text-slate-400 uppercase">Custo</p>
+                                                                        <p className="text-[10px] font-black text-slate-900">{formatCurrency(itemLote.valorCompra)}</p>
+                                                                    </div>
+                                                                    <div className="col-span-1">
+                                                                        <p className="text-[7px] font-black text-slate-400 uppercase">Venda</p>
+                                                                        <p className="text-[10px] font-black text-slate-900">{formatCurrency(itemLote.precoVenda)}</p>
+                                                                    </div>
+                                                                    <div className="col-span-1">
+                                                                        <p className="text-[7px] font-black text-slate-400 uppercase">Qtd Total</p>
+                                                                        <p className="text-[10px] font-black text-slate-900">{totalParesItem}</p>
+                                                                    </div>
+                                                                    <div className="col-span-2 text-right">
+                                                                        <p className="text-[7px] font-black text-slate-400 uppercase">Subtotal</p>
+                                                                        <p className="text-[10px] font-black text-blue-600">{formatCurrency(totalFinanceiro)}</p>
+                                                                    </div>
+                                                                </div>
+                                                                
+                                                                {gradeInfo && (
+                                                                    <div className="flex flex-wrap gap-1 mt-2 pt-2 border-t border-slate-200/50">
+                                                                        <span className="text-[7px] font-black text-slate-400 uppercase mr-2 self-center">Grade:</span>
+                                                                        {Object.entries(gradeInfo.valores)
+                                                                            .filter(([_, v]) => Number(v) > 0)
+                                                                            .map(([tam, qtd]) => (
+                                                                                <div key={`${itemLote.referencia}-${tam}`} className="flex items-center border border-blue-100 rounded-md overflow-hidden bg-white shadow-xs">
+                                                                                    <span className="bg-blue-50 px-1.5 py-0.5 text-[8px] font-black text-blue-700 border-r border-blue-50">{tam}</span>
+                                                                                    <span className="px-1.5 py-0.5 text-[8px] font-black text-slate-900">{qtd}</span>
+                                                                                </div>
+                                                                            ))}
+                                                                    </div>
+                                                                )}
+                                                            </div>
+                                                        );
+                                                    });
+                                                })()}
+                                            </div>
+                                            
+                                            <div className="pt-4 border-t border-slate-100 flex justify-between items-center">
+                                                <div className="text-left">
+                                                    <p className="text-[8px] font-black text-slate-400 uppercase">Total Itens</p>
+                                                    <p className="text-sm font-black text-blue-600">{l.pares} Pares</p>
+                                                </div>
+                                                <div className="text-right">
+                                                    <p className="text-[8px] font-black text-slate-400 uppercase">Valor Total do Pedido</p>
+                                                    <p className="text-lg font-black text-slate-900 italic">{formatCurrency(l.valBruto)}</p>
+                                                    {pedido.desconto > 0 && (
+                                                        <p className="text-[10px] font-black text-green-600 uppercase">Líquido: {formatCurrency(l.valLiquido)}</p>
+                                                    )}
+                                                </div>
+                                            </div>
                                         </div>
                                     )}
-
-                                    <div className="flex justify-between items-end mt-auto">
-                                        <div><p className="text-[7px] text-gray-400 font-black uppercase">Pares</p><p className="text-lg font-black text-slate-900 leading-none italic">{l.pares}</p></div>
-                                        <div className="text-right">
-                                            <p className="text-[7px] text-gray-400 font-black uppercase">Bruto</p>
-                                            <p className={`font-black italic leading-none ${pedido.desconto > 0 ? 'text-slate-400 text-xs line-through' : 'text-slate-900 text-base'}`}>{formatCurrency(l.valBruto)}</p>
-                                            {pedido.desconto > 0 && (
-                                                <>
-                                                    <p className="text-[7px] text-blue-500 font-black uppercase mt-1">Líquido (-{pedido.desconto}%)</p>
-                                                    <p className="text-base font-black text-green-600 leading-none italic">{formatCurrency(l.valLiquido)}</p>
-                                                </>
-                                            )}
-                                        </div>
-                                    </div>
                                 </div>
                             );
                         })}
+                        {lotesAgrupados.length === 0 && (
+                            <div className="py-20 flex flex-col items-center justify-center opacity-20 grayscale">
+                                <ShoppingBag size={48} />
+                                <p className="text-[10px] font-black uppercase mt-4">Nenhum lote gerado</p>
+                            </div>
+                        )}
                     </div>
                 </div>
             </div>
