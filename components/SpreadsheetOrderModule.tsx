@@ -61,9 +61,16 @@ const getClassificacao = (modelo: string, valores: Record<string, number>) => {
 const calcularColunaExcelPorTamanho = (tam: string, modelo: string) => {
   const t = parseInt(tam);
   if (!isNaN(t)) {
-    return 45 + (t - 33); // 33 = AT (45)
+    return 45 + (t - 33); // 33 = AT (45) conforme solicitado
   }
-  const acessMap: Record<string, number> = { "UN": 45, "P": 46, "M": 47, "G": 48, "GG": 49 };
+  // Mapeamento conforme MAPA_GRADE (código original)
+  const acessMap: Record<string, number> = { 
+    "UN": MAPA_GRADE.UN, 
+    "P": MAPA_GRADE.P, 
+    "M": MAPA_GRADE.M, 
+    "G": MAPA_GRADE.G, 
+    "GG": MAPA_GRADE.GG 
+  };
   return acessMap[tam] || -1;
 };
 
@@ -123,11 +130,11 @@ const SpreadsheetOrderModule = ({ user, onClose }: { user: any, onClose: () => v
     const autoFillBrand = async () => {
       if (!pedido.marca) return;
       try {
-        // 1. Tenta buscar no cadastro oficial de marcas
+        // 1. Tenta buscar no cadastro oficial de marcas usando ilike
         const { data: brandData } = await supabase
           .from('Pedido_Brand')
           .select('fornecedor, representante, telefone, email')
-          .eq('name', pedido.marca.toUpperCase())
+          .ilike('name', pedido.marca)
           .maybeSingle();
 
         if (brandData && (brandData.fornecedor || brandData.representante)) {
@@ -145,7 +152,7 @@ const SpreadsheetOrderModule = ({ user, onClose }: { user: any, onClose: () => v
         const { data: lastOrder } = await supabase
           .from('Pedido_Header')
           .select('fornecedor, representante, telefone, email')
-          .eq('marca', pedido.marca.toUpperCase())
+          .ilike('marca', pedido.marca)
           .order('created_at', { ascending: false })
           .limit(1);
 
@@ -277,22 +284,6 @@ const SpreadsheetOrderModule = ({ user, onClose }: { user: any, onClose: () => v
       sheet[ref].v = value;
       sheet[ref].t = type;
     }
-
-    // Atualiza o range da planilha para garantir que as novas células sejam incluídas na exportação
-    if (!sheet["!ref"]) {
-      sheet["!ref"] = XLSX.utils.encode_range({
-        s: { r, c },
-        e: { r, c }
-      });
-      return;
-    }
-
-    const range = XLSX.utils.decode_range(sheet["!ref"]);
-    if (r < range.s.r) range.s.r = r;
-    if (c < range.s.c) range.s.c = c;
-    if (r > range.e.r) range.e.r = r;
-    if (c > range.e.c) range.e.c = c;
-    sheet["!ref"] = XLSX.utils.encode_range(range);
   };
 
   const exportarPlanilhaFinal = async () => {
@@ -302,165 +293,119 @@ const SpreadsheetOrderModule = ({ user, onClose }: { user: any, onClose: () => v
     }
 
     try {
-      console.log("Iniciando exportação robusta...");
-      
-      // 1. Fetch do arquivo template.xlsx diretamente do GitHub
-      const TEMPLATE_URL = "https://raw.githubusercontent.com/jqcjunior/Real/main/template.xlsx";
-      const response = await fetch(TEMPLATE_URL + "?v=" + Date.now(), {
-        method: "GET",
-        cache: "no-store",
-      });
-
-      if (!response.ok) {
-        throw new Error("Não foi possível baixar o template do GitHub. Verifique sua conexão ou o link.");
-      }
-
-      // Validação de Content-Type (GitHub raw costuma retornar binary/octet-stream ou similar)
-      const contentType = response.headers.get("content-type") || "";
-      // Aceitamos octet-stream ou spreadsheetml para o GitHub
-      if (!contentType.includes("spreadsheet") && !contentType.includes("octet")) {
-        console.warn("Content-Type inesperado:", contentType);
-      }
+      const TEMPLATE_URL = "https://rwwomakjhmglgoowbmsl.supabase.co/storage/v1/object/public/template/template.xlsx";
+      const response = await fetch(TEMPLATE_URL + "?v=" + Date.now(), { method: "GET", cache: "no-store" });
+      if (!response.ok) throw new Error("Erro ao baixar template.");
 
       const arrayBuffer = await response.arrayBuffer();
       const workbook = XLSX.read(arrayBuffer, { type: "array" });
       const sheet = workbook.Sheets[workbook.SheetNames[0]];
 
-      // 2. Preenchimento do Cabeçalho (COORDENADAS EXATAS)
-      setCell(sheet, 2, 13, pedido.marca);          // Marca (N3)
-      setCell(sheet, 3, 13, pedido.fornecedor);     // Razão Social (N4)
-      setCell(sheet, 2, 26, pedido.representante);  // Representante (AA3)
-      setCell(sheet, 2, 39, pedido.telefone);       // Telefone (AN3)
-      setCell(sheet, 3, 26, pedido.email);         // Email (AA4)
-      setCell(sheet, 1, 26, pedido.comprador);     // Comprador (AA2)
-      setCell(sheet, 4, 26, pedido.embarqueInicio); // Embarque Início (AA5)
-      setCell(sheet, 4, 33, pedido.embarqueFim);    // Embarque Fim (AH5)
-      setCell(sheet, 5, 25, Number(pedido.desconto), "n"); // Desconto (Z6)
-      setCell(sheet, 5, 31, Number(pedido.markup), "n");   // Markup (AF6)
+      // --- 1. CABEÇALHO ---
+      setCell(sheet, 1, 26, pedido.comprador);     // AA2
+      setCell(sheet, 2, 13, pedido.marca);         // N3
+      setCell(sheet, 3, 13, pedido.fornecedor);    // N4
+      setCell(sheet, 2, 26, pedido.representante); // AA3
+      setCell(sheet, 2, 39, pedido.telefone);      // AN3
+      setCell(sheet, 3, 26, pedido.email);         // AA4
+      setCell(sheet, 4, 26, pedido.embarqueInicio);// AA5
+      setCell(sheet, 4, 33, pedido.embarqueFim);   // AH5
+      setCell(sheet, 5, 25, Number(pedido.desconto), "n"); // Z6
+      setCell(sheet, 5, 31, Number(pedido.markup), "n");   // AF6
 
-      // Lógica de Prazos e Vencimentos (N5, Q5, T5 e N6, Q6, T6)
-      if (pedido.embarqueFim && pedido.prazos) {
-        const date = new Date(pedido.embarqueFim + "T12:00:00");
-        const meses = ["Janeiro", "Fevereiro", "Março", "Abril", "Maio", "Junho", "Julho", "Agosto", "Setembro", "Outubro", "Novembro", "Dezembro"];
+      // --- 2. PRAZOS E VENCIMENTOS ---
+      if (pedido.prazos) {
         const prazosArr = pedido.prazos.split('/');
-        
         prazosArr.forEach((p, i) => {
-          if (i > 2) return; // Apenas os 3 primeiros
+          if (i > 2) return;
           const val = parseInt(p);
-          if (isNaN(val)) return;
-          
-          const col = 13 + (i * 3); // N=13, Q=16, T=19
-          setCell(sheet, 4, col, val, "n"); // Dias (Linha 5)
-          
-          const d = new Date(date);
-          if (val % 30 === 0) {
-            d.setMonth(d.getMonth() + (val / 30));
-          } else {
-            d.setDate(d.getDate() + val);
+          if (!isNaN(val)) {
+            const col = 13 + (i * 3); // N=13, Q=16, T=19
+            setCell(sheet, 4, col, val, "n"); // Linha 5 (Prazos)
+            
+            if (pedido.embarqueFim) {
+              // Lógica para preencher o nome do mês na Linha 6 (N6, Q6, T6)
+              const d = new Date(pedido.embarqueFim + "T12:00:00");
+              if (val % 30 === 0) {
+                d.setMonth(d.getMonth() + (val / 30));
+              } else {
+                d.setDate(d.getDate() + val);
+              }
+              const mesAno = `${new Intl.DateTimeFormat('pt-BR', { month: 'long' }).format(d)}/${d.getFullYear().toString().slice(-2)}`;
+              setCell(sheet, 5, col, mesAno.toUpperCase()); // Linha 6
+            }
           }
-          const mesStr = `${meses[d.getMonth()]}/${String(d.getFullYear()).slice(-2)}`;
-          setCell(sheet, 5, col, mesStr); // Mês (Linha 6)
         });
       }
 
-      // 3. Preenchimento dos Itens (Início na Linha 36)
-      const mapItens = new Map();
-
-      lotesFinalizados.forEach(l => {
-        // Chave única combinando Produto + Cor + O grupo de lojas (vínculo)
-        const key = `${l.referencia}-${l.corEscolhida}-${l.idVinculo}`;
-        if (!mapItens.has(key)) {
-          mapItens.set(key, []);
-        }
-        mapItens.get(key).push(l);
-      });
-
-      // Agora iteramos sobre os grupos únicos de distribuição
-      Array.from(mapItens.values()).forEach((lotesDoGrupo, idx) => {
-        const refObj = lotesDoGrupo[0]; // Primeiro lote do grupo para pegar os dados do produto
-        const r = 35 + idx; // Inicia na linha 36
-
-        // Dados Básicos
-        setCell(sheet, r, 2, refObj.referencia); 
-        setCell(sheet, r, 7, refObj.tipo);
+      // --- 3. PRODUTOS E GRADES (LINHA 36 EM DIANTE) ---
+      // Agrupamos por Referência para preencher as linhas
+      const referenciasUnicas = [...new Set(lotesFinalizados.map(l => l.referencia))];
+      
+      referenciasUnicas.forEach((ref, idx) => {
+        const r = 35 + idx; // Linha 36
+        const l = lotesFinalizados.find(item => item.referencia === ref);
+        const originalItem = itens.find(it => it.referencia === ref);
         
-        // Lógica de Descrição com Setor (Baby/Criança/Juvenil)
-        const gradeInfo = gradesSalvas.find(g => g.letra === refObj.gradeLetra);
-        const classificacao = gradeInfo ? getClassificacao(refObj.modelo, gradeInfo.valores) : "";
-        const descSetor = classificacao ? ` (${classificacao})` : "";
-        setCell(sheet, r, 8, `${refObj.tipo} ${refObj.referencia}${descSetor}`);
+        if (l) {
+          setCell(sheet, r, 2, ref); // Col C
+          setCell(sheet, r, 7, l.tipo); // Col H (Tipo de Produto)
+          
+          // Cor (R36) - Apenas a cor escolhida para este lote
+          setCell(sheet, r, 17, l.corEscolhida); // Col R
+          
+          // Valores Financeiros
+          setCell(sheet, r, 37, Number(l.valorCompra), "n"); // Col AL
+          setCell(sheet, r, 40, Number(l.precoVenda), "n"); // Col AO
 
-        // Cores e Valores
-        setCell(sheet, r, 17, refObj.cor1);
-        setCell(sheet, r, 18, refObj.cor2);
-        setCell(sheet, r, 19, refObj.cor3);
-        setCell(sheet, r, 37, Number(refObj.valorCompra), "n");
-        setCell(sheet, r, 40, Number(refObj.precoVenda), "n");
+          // Mapeamento de Grades A-E conforme o Lote
+          // X=23, AA=26, AD=29, AG=32, AJ=35
+          const mappingGrades: Record<string, number> = { "A": 23, "B": 26, "C": 29, "D": 32, "E": 35 };
+          const gradeLetra = l.gradeLetra; 
+          if(mappingGrades[gradeLetra]) {
+            setCell(sheet, r, mappingGrades[gradeLetra], gradeLetra);
+          }
 
-        // Escreve a Letra da Grade na coluna correspondente (X, AA, AD, AG ou AJ)
-        // Como agora cada linha é um vínculo único, usamos vIdx 0 para a primeira coluna de grade da linha
-        const colGradeLetra = 23; // Coluna X (Grade 1)
-        setCell(sheet, r, colGradeLetra, refObj.gradeLetra);
-
-        // IMPORTANTE: Preencher as quantidades por tamanho para o Excel somar
-        if (gradeInfo) {
-          Object.entries(gradeInfo.valores).forEach(([tam, qtd]) => {
-            if (Number(qtd) > 0) {
-              const colTam = calcularColunaExcelPorTamanho(tam, refObj.modelo); 
-              if (colTam !== -1) {
-                setCell(sheet, r, colTam, Number(qtd), "n");
+          // Quantidades por tamanho (Colunas AR em diante)
+          const gradeInfo = gradesSalvas.find(g => g.letra === gradeLetra);
+          if (gradeInfo) {
+            Object.entries(gradeInfo.valores).forEach(([tam, qtd]) => {
+              if (Number(qtd) > 0) {
+                const colTam = calcularColunaExcelPorTamanho(tam, l.modelo);
+                if (colTam !== -1) setCell(sheet, r, colTam, Number(qtd), "n");
               }
-            }
-          });
+            });
+          }
         }
       });
 
-      // 5. Matriz de Distribuição de Lojas (Linhas 23 a 27)
-      const vinculosUnicos = Array.from(new Set(lotesFinalizados.map(l => l.idVinculo)));
-      vinculosUnicos.forEach((vid, vIdx) => {
-        if (vIdx > 4) return;
-        const r = 22 + vIdx; // Linha 23
-        const lotesDoVinculo = lotesFinalizados.filter(l => l.idVinculo === vid);
+      // --- 4. LOJAS (D23 até AO27) ---
+      // Distribuindo as lojas selecionadas nos 5 lotes/linhas possíveis
+      const idsVinculos = [...new Set(lotesFinalizados.map(l => l.idVinculo))].slice(0, 5);
+      idsVinculos.forEach((idV, idx) => {
+        const linhaLoja = 22 + idx; // Linha 23, 24...
+        const lojasDoLote = [...new Set(lotesFinalizados.filter(l => l.idVinculo === idV).map(l => l.loja))];
         
-        // Listar lojas horizontalmente
-        const lojasUnicas = Array.from(new Set(lotesDoVinculo.map(l => l.loja))).sort();
-        lojasUnicas.forEach((loja, lIdx) => {
-          if (lIdx > 37) return; // D até AO
-          setCell(sheet, r, 3 + lIdx, loja);
+        lojasDoLote.forEach((lojaCod, colIdx) => {
+          if (colIdx < 38) { // Limite de colunas D até AO (38 colunas de largura aprox)
+            setCell(sheet, linhaLoja, 3 + colIdx, lojaCod);
+          }
         });
       });
 
-      // 5. Geração do arquivo e disparo do download
-      const wbout = XLSX.write(workbook, {
-        bookType: "xlsx",
-        type: "array"
-      });
-
-      const blob = new Blob([wbout], {
-        type: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
-      });
-
+      // Gerar e baixar
+      const wbout = XLSX.write(workbook, { bookType: "xlsx", type: "array" });
+      const blob = new Blob([wbout], { type: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" });
       const url = URL.createObjectURL(blob);
       const a = document.createElement("a");
       a.href = url;
-      
-      const now = new Date();
-      const day = String(now.getDate()).padStart(2, '0');
-      const month = String(now.getMonth() + 1).padStart(2, '0');
-      const year = String(now.getFullYear()).slice(-2);
-      const dateStr = `${day}.${month}.${year}`;
-      
-      const safeMarca = (pedido.marca || "SEM_NOME").replace(/[^\w\d]/g, "_");
-      a.download = `Pedido_${safeMarca}_${dateStr}.xlsx`;
-      document.body.appendChild(a);
+      a.download = `Pedido_${pedido.marca || "REAL"}.xlsx`;
       a.click();
-      document.body.removeChild(a);
       URL.revokeObjectURL(url);
 
-      console.log("Exportação concluída com sucesso.");
     } catch (error) {
-      console.error("Falha na exportação:", error);
-      alert(error instanceof Error ? error.message : "Erro desconhecido ao gerar Excel.");
+      console.error("Erro:", error);
+      alert("Erro ao exportar. Verifique o console.");
     }
   };
 
@@ -471,94 +416,102 @@ const SpreadsheetOrderModule = ({ user, onClose }: { user: any, onClose: () => v
     }
 
     try {
-      const TEMPLATE_URL = "https://raw.githubusercontent.com/jqcjunior/Real/main/template.xlsx";
-
+      const TEMPLATE_URL = "https://rwwomakjhmglgoowbmsl.supabase.co/storage/v1/object/public/template/template.xlsx";
       const response = await fetch(`${TEMPLATE_URL}?v=${Date.now()}`, {
         method: "GET",
         cache: "no-store",
       });
 
       if (!response.ok) throw new Error("Erro ao baixar template.");
-
       const templateBuffer = await response.arrayBuffer();
 
-      const lojasUnicas = [
-        ...new Set(lotesFinalizados.map((l) => l.loja)),
-      ].sort();
+      const lojasUnicas = [...new Set(lotesFinalizados.map((l) => l.loja))].sort();
 
       for (const loja of lojasUnicas) {
         const workbook = XLSX.read(templateBuffer, { type: "array" });
         const sheet = workbook.Sheets[workbook.SheetNames[0]];
 
-        const lotesDaLoja = lotesFinalizados.filter((l) => l.loja === loja);
+        // --- 1. CABEÇALHO ---
+        setCell(sheet, 1, 26, pedido.comprador);
+        setCell(sheet, 2, 13, pedido.marca);
+        setCell(sheet, 3, 13, pedido.fornecedor);
+        setCell(sheet, 2, 26, pedido.representante);
+        setCell(sheet, 2, 39, pedido.telefone);
+        setCell(sheet, 3, 26, pedido.email);
+        setCell(sheet, 4, 26, pedido.embarqueInicio);
+        setCell(sheet, 4, 33, pedido.embarqueFim);
+        setCell(sheet, 5, 25, Number(pedido.desconto), "n");
+        setCell(sheet, 5, 31, Number(pedido.markup), "n");
 
-        const mapItensLoja = new Map();
-
-        lotesDaLoja.forEach((l) => {
-          // Chave única combinando Produto + Cor + O grupo de lojas (vínculo)
-          const key = `${l.referencia}-${l.corEscolhida}-${l.idVinculo}`;
-          if (!mapItensLoja.has(key)) {
-            mapItensLoja.set(key, []);
-          }
-          mapItensLoja.get(key).push(l);
-        });
-
-        // Agora iteramos sobre os grupos únicos de distribuição daquela loja
-        Array.from(mapItensLoja.values()).forEach((lotesDoGrupo, idx) => {
-          const refObj = lotesDoGrupo[0]; 
-          const r = 35 + idx; 
-
-          setCell(sheet, r, 2, refObj.referencia); 
-          setCell(sheet, r, 7, refObj.tipo);
-          
-          const gradeInfo = gradesSalvas.find(g => g.letra === refObj.gradeLetra);
-          const classificacao = gradeInfo ? getClassificacao(refObj.modelo, gradeInfo.valores) : "";
-          const descSetor = classificacao ? ` (${classificacao})` : "";
-          setCell(sheet, r, 8, `${refObj.tipo} ${refObj.referencia}${descSetor}`);
-
-          setCell(sheet, r, 17, refObj.cor1);
-          setCell(sheet, r, 18, refObj.cor2);
-          setCell(sheet, r, 19, refObj.cor3);
-          setCell(sheet, r, 37, Number(refObj.valorCompra), "n");
-          setCell(sheet, r, 40, Number(refObj.precoVenda), "n");
-
-          const colGradeLetra = 23; 
-          setCell(sheet, r, colGradeLetra, refObj.gradeLetra);
-
-          if (gradeInfo) {
-            Object.entries(gradeInfo.valores).forEach(([tam, qtd]) => {
-              if (Number(qtd) > 0) {
-                const colTam = calcularColunaExcelPorTamanho(tam, refObj.modelo); 
-                if (colTam !== -1) {
-                  setCell(sheet, r, colTam, Number(qtd), "n");
+        // --- 2. PRAZOS E VENCIMENTOS ---
+        if (pedido.prazos) {
+          const prazosArr = pedido.prazos.split('/');
+          prazosArr.forEach((p, i) => {
+            if (i > 2) return;
+            const val = parseInt(p);
+            if (!isNaN(val)) {
+              const col = 13 + (i * 3);
+              setCell(sheet, 4, col, val, "n");
+              
+              if (pedido.embarqueFim) {
+                const d = new Date(pedido.embarqueFim + "T12:00:00");
+                if (val % 30 === 0) {
+                  d.setMonth(d.getMonth() + (val / 30));
+                } else {
+                  d.setDate(d.getDate() + val);
                 }
+                const mesAno = `${new Intl.DateTimeFormat('pt-BR', { month: 'long' }).format(d)}/${d.getFullYear().toString().slice(-2)}`;
+                setCell(sheet, 5, col, mesAno.toUpperCase());
               }
-            });
+            }
+          });
+        }
+
+        const lotesDaLoja = lotesFinalizados.filter((l) => l.loja === loja);
+        
+        lotesDaLoja.forEach((l, idx) => {
+          const r = 35 + idx;
+          const originalItem = itens.find(it => it.referencia === l.referencia);
+          
+          if (originalItem) {
+            setCell(sheet, r, 2, l.referencia);
+            setCell(sheet, r, 7, l.tipo);
+            
+            // Cor (R36) - Apenas a cor escolhida para este lote
+            setCell(sheet, r, 17, l.corEscolhida);
+            
+            setCell(sheet, r, 37, Number(l.valorCompra), "n");
+            setCell(sheet, r, 40, Number(l.precoVenda), "n");
+
+            const mappingGrades: Record<string, number> = { "A": 23, "B": 26, "C": 29, "D": 32, "E": 35 };
+            if(mappingGrades[l.gradeLetra]) {
+              setCell(sheet, r, mappingGrades[l.gradeLetra], l.gradeLetra);
+            }
+
+            const gradeInfo = gradesSalvas.find(g => g.letra === l.gradeLetra);
+            if (gradeInfo) {
+              Object.entries(gradeInfo.valores).forEach(([tam, qtd]) => {
+                if (Number(qtd) > 0) {
+                  const colTam = calcularColunaExcelPorTamanho(tam, l.modelo);
+                  if (colTam !== -1) setCell(sheet, r, colTam, Number(qtd), "n");
+                }
+              });
+            }
           }
         });
 
-        const wbout = XLSX.write(workbook, {
-          bookType: "xlsx",
-          type: "array",
-        });
+        // --- 4. IDENTIFICAÇÃO DA LOJA ---
+        setCell(sheet, 22, 3, loja); // Col D23
 
-        const blob = new Blob([wbout], {
-          type: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-        });
-
-        const url = URL.createObjectURL(blob);
+        const wbout = XLSX.write(workbook, { bookType: "xlsx", type: "array" });
+        const url = URL.createObjectURL(new Blob([wbout], { type: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" }));
         const a = document.createElement("a");
         a.href = url;
-
-        const safeMarca = (pedido.marca || "SEM_NOME").replace(/[^\w\d]/g, "_");
-        a.download = `Pedido_${safeMarca}_Loja_${loja}.xlsx`;
-
+        a.download = `Pedido_Loja_${loja}_${pedido.marca || "FINAL"}.xlsx`;
         document.body.appendChild(a);
         a.click();
-
         document.body.removeChild(a);
         URL.revokeObjectURL(url);
-
         await new Promise((resolve) => setTimeout(resolve, 100));
       }
 
@@ -570,77 +523,80 @@ const SpreadsheetOrderModule = ({ user, onClose }: { user: any, onClose: () => v
   };
 
   const salvarPedidoCompleto = async () => {
-    if (lotesFinalizados.length === 0) {
-      alert("Não há dados para salvar. Adicione itens e distribua nas lojas primeiro.");
-      return;
-    }
-
+    if (lotesFinalizados.length === 0) return alert("Não há dados para salvar.");
     setIsSaving(true);
     try {
-      console.log("Iniciando salvamento no Supabase...");
-      
-      // 0. Atualizar/Upsert Cadastro da Marca (Pedido_Brand)
+      console.log("Iniciando salvamento completo no Supabase...");
+
+      // 0. Upsert Master Data (Tabelas Auxiliares) com validação
       if (pedido.marca) {
-        const brandName = pedido.marca.toUpperCase();
-        const brandPayload = {
-          name: brandName,
-          fornecedor: pedido.fornecedor,
-          representante: pedido.representante,
-          telefone: pedido.telefone,
-          email: pedido.email
-        };
-
-        const { data: existingBrand } = await supabase
-          .from('Pedido_Brand')
-          .select('id')
-          .eq('name', brandName)
-          .maybeSingle();
-
-        if (existingBrand) {
-          await supabase.from('Pedido_Brand').update(brandPayload).eq('id', existingBrand.id);
-        } else {
-          await supabase.from('Pedido_Brand').insert([brandPayload]);
-        }
+        await supabase.from('Pedido_Brand').upsert({ 
+          name: pedido.marca.toUpperCase(),
+          fornecedor: pedido.fornecedor?.toUpperCase() || "",
+          representante: pedido.representante?.toUpperCase() || "",
+          telefone: pedido.telefone || "",
+          email: pedido.email?.toLowerCase() || ""
+        }, { onConflict: 'name' });
       }
 
-      // 1. Salvar Pedido_Header
-      const { data: headerData, error: headerError } = await supabase
-        .from('Pedido_Header')
-        .insert([{
-          marca: pedido.marca.toUpperCase(),
-          fornecedor: pedido.fornecedor.toUpperCase(),
-          representante: pedido.representante.toUpperCase(),
-          telefone: pedido.telefone,
-          email: pedido.email.toLowerCase(),
-          comprador: pedido.comprador.toUpperCase(),
-          embarque_inicio: pedido.embarqueInicio,
-          embarque_fim: pedido.embarqueFim,
-          desconto: Number(pedido.desconto),
-          markup: Number(pedido.markup),
-          prazo: pedido.prazos,
-          user_id: user?.id
-        }])
-        .select()
-        .single();
-
-      if (headerError) {
-        console.error("Erro ao salvar Header:", headerError);
-        throw new Error(`Erro no cabeçalho: ${headerError.message}`);
+      if (pedido.fornecedor) {
+        await supabase.from('Pedido_Suppliers').upsert({ 
+          name: pedido.fornecedor.toUpperCase() 
+        }, { onConflict: 'name' });
       }
-      const headerId = headerData.id;
+      
+      const typesToUpsert = itens
+        .filter(it => it.tipo)
+        .map(it => ({ name: it.tipo.toUpperCase(), publico: it.modelo }));
+      if (typesToUpsert.length > 0) {
+        await supabase.from('Pedido_Types').upsert(typesToUpsert, { onConflict: 'name,publico' });
+      }
+      
+      const refsToUpsert = itens
+        .filter(it => it.referencia)
+        .map(it => ({ name: it.referencia.toUpperCase() }));
+      if (refsToUpsert.length > 0) {
+        await supabase.from('Pedido_References').upsert(refsToUpsert, { onConflict: 'name' });
+      }
 
-      // 2. AGRUPAR ITENS ÚNICOS (Usando a lógica de Vínculo que corrige o Excel)
+      const colorsToUpsert = itens
+        .flatMap(it => [it.cor1, it.cor2, it.cor3].filter(Boolean))
+        .map(c => ({ name: c.toUpperCase() }));
+      if (colorsToUpsert.length > 0) {
+        await supabase.from('Pedido_Colors').upsert(colorsToUpsert, { onConflict: 'name' });
+      }
+
+      // 1. Salvar Cabeçalho (Pedido_Header)
+      const { data: hD, error: hE } = await supabase.from('Pedido_Header').insert([{
+        marca: pedido.marca.toUpperCase(),
+        fornecedor: pedido.fornecedor.toUpperCase(),
+        representante: pedido.representante.toUpperCase(),
+        telefone: pedido.telefone,
+        email: pedido.email.toLowerCase(),
+        comprador: pedido.comprador.toUpperCase(),
+        desconto: Number(pedido.desconto),
+        markup: Number(pedido.markup),
+        embarque_inicio: pedido.embarqueInicio,
+        embarque_fim: pedido.embarqueFim,
+        prazos: pedido.prazos,
+        user_id: user?.id
+      }]).select().single();
+      if (hE) throw hE;
+
+      // 2. Agrupar Itens por Referência e Cor (Pedido_Items)
       const itensMap = new Map();
       lotesFinalizados.forEach(l => {
-        // Aqui usamos a chave composta para não duplicar itens desnecessariamente no banco
-        const key = `${l.referencia}-${l.corEscolhida}-${l.idVinculo}`;
+        const key = `${l.referencia}-${l.corEscolhida}`; 
         if (!itensMap.has(key)) {
-          itensMap.set(key, {
-            header_id: headerId,
-            referencia: l.referencia,
+          const originalItem = itens.find(it => it.referencia === l.referencia);
+          itensMap.set(key, { 
+            pedido_id: hD.id, 
+            referencia: l.referencia, 
             tipo: l.tipo,
-            cor_escolhida: l.corEscolhida,
             modelo: l.modelo,
+            cor1: originalItem?.cor1 || l.cor1 || l.corEscolhida,
+            cor2: originalItem?.cor2 || l.cor2 || l.corEscolhida,
+            cor3: originalItem?.cor3 || l.cor3 || l.corEscolhida,
             valor_compra: l.valorCompra,
             preco_venda: l.precoVenda,
             lotes_originais: [] 
@@ -649,44 +605,59 @@ const SpreadsheetOrderModule = ({ user, onClose }: { user: any, onClose: () => v
         itensMap.get(key).lotes_originais.push(l);
       });
 
-      // 3. SALVAR ITENS E PEGAR OS IDS GERADOS
-      const { data: savedItems, error: itemsError } = await supabase
-        .from('Pedido_Items')
+      // 3. Salvar Itens
+      const { data: sI, error: iE } = await supabase.from('Pedido_Items')
         .insert(Array.from(itensMap.values()).map(({ lotes_originais, ...rest }) => rest))
         .select();
+      if (iE) throw iE;
 
-      if (itemsError) throw new Error(`Erro nos Itens: ${itemsError.message}`);
-
-      // 4. SALVAR DISTRIBUIÇÃO (Relacionando Item_ID com as Lojas)
-      const distribuicaoFinal: any[] = [];
-      const itensMapArray = Array.from(itensMap.values());
+      // 4. Salvar Distribuição (Pedido_Distribuicao)
+      const distFinal = sI.flatMap((item, idx) => 
+        Array.from(itensMap.values())[idx].lotes_originais.map((l: any) => ({
+          item_id: item.id,
+          loja: l.loja,
+          grade_letra: l.gradeLetra
+        }))
+      );
       
-      // O Supabase retorna os itens na ordem de inserção, permitindo o mapeamento por índice
-      savedItems.forEach((savedItem, index) => {
-        const originalEntry = itensMapArray[index];
-        originalEntry.lotes_originais.forEach((l: any) => {
-          distribuicaoFinal.push({
-            item_id: savedItem.id,
-            loja: l.loja,
-            grade_letra: l.gradeLetra,
-            id_vinculo: l.idVinculo
-          });
-        });
-      });
+      const { error: dE } = await supabase.from('Pedido_Distribuicao').insert(distFinal);
+      if (dE) throw dE;
 
-      const { error: distError } = await supabase
-        .from('Pedido_Distribuicao')
-        .insert(distribuicaoFinal);
-
-      if (distError) throw new Error(`Erro na Distribuição: ${distError.message}`);
-
-      alert("✅ Pedido e Distribuição salvos com sucesso!");
-      setEtapa(1); // Volta para o início após salvar
+      return hD.id;
     } catch (error: any) {
       console.error("Erro ao salvar pedido:", error);
-      alert(`Erro ao salvar: ${error.message || "Erro desconhecido"}`);
+      alert("Erro ao salvar: " + (error.message || "Erro desconhecido"));
+      return null;
     } finally {
       setIsSaving(false);
+    }
+  };
+
+  const handleSalvarEExportar = async () => {
+    const savedId = await salvarPedidoCompleto();
+    if (savedId) {
+      alert("✅ Pedido salvo no banco! Iniciando geração do Excel...");
+      await exportarPlanilhaFinal();
+      
+      // Resetar tudo para novo pedido
+      setPedido({ 
+        marca: "", 
+        fornecedor: "", 
+        representante: "",
+        telefone: "",
+        email: "",
+        comprador: user?.name || "",
+        embarqueInicio: "", 
+        embarqueFim: "", 
+        desconto: 0, 
+        markup: 2.6, 
+        prazos: "" 
+      });
+      setItens([]);
+      setGradesSalvas([]);
+      setLotesFinalizados([]);
+      setPersistAssignments({});
+      setEtapa(1);
     }
   };
 
@@ -814,13 +785,15 @@ const SpreadsheetOrderModule = ({ user, onClose }: { user: any, onClose: () => v
                   <label className="text-[9px] font-black text-orange-500 uppercase ml-2 flex items-center gap-1"><Calendar size={10}/> Embarque Fim</label>
                   <input type="date" className="w-full p-3 bg-orange-50/50 rounded-xl font-bold outline-none min-h-[44px]" value={pedido.embarqueFim} onChange={e => setPedido({...pedido, embarqueFim: e.target.value})} />
                 </div>
-                <div className="col-span-2 sm:col-span-1 space-y-1">
-                  <label className="text-[9px] font-black text-blue-500 uppercase ml-2 flex items-center gap-1"><Zap size={10}/> Markup</label>
-                  <input type="number" step="0.1" className="w-full p-3 bg-blue-50/50 rounded-xl font-black text-center text-blue-900 outline-none min-h-[44px]" value={pedido.markup || ""} onChange={e => setPedido({...pedido, markup: Number(e.target.value)})} />
-                </div>
-                <div className="col-span-2 sm:col-span-1 space-y-1">
-                  <label className="text-[9px] font-black text-red-500 uppercase ml-2 flex items-center gap-1"><Percent size={10}/> Desconto %</label>
-                  <input type="number" className="w-full p-3 bg-red-50/50 rounded-xl font-black text-center text-red-900 outline-none min-h-[44px]" value={pedido.desconto || ""} onChange={e => setPedido({...pedido, desconto: Number(e.target.value)})} />
+                <div className="grid grid-cols-2 gap-4">
+                  <div className="space-y-1">
+                    <label className="text-[9px] font-black text-blue-500 uppercase ml-2 flex items-center gap-1"><Zap size={10}/> Markup</label>
+                    <input type="number" step="0.1" className="w-full p-3 bg-blue-50/50 rounded-xl font-black text-center text-blue-900 outline-none min-h-[44px] text-xs" value={pedido.markup || ""} onChange={e => setPedido({...pedido, markup: Number(e.target.value)})} />
+                  </div>
+                  <div className="space-y-1">
+                    <label className="text-[9px] font-black text-red-500 uppercase ml-2 flex items-center gap-1"><Percent size={10}/> Desconto %</label>
+                    <input type="number" className="w-full p-3 bg-red-50/50 rounded-xl font-black text-center text-red-900 outline-none min-h-[44px] text-xs" value={pedido.desconto || ""} onChange={e => setPedido({...pedido, desconto: Number(e.target.value)})} />
+                  </div>
                 </div>
                 <div className="col-span-2 space-y-2 pt-2 border-t border-slate-50">
                   <label className="text-[9px] font-black text-slate-400 uppercase ml-2 flex items-center gap-1"><CreditCard size={10}/> Prazos de Pagamento</label>
@@ -873,18 +846,12 @@ const SpreadsheetOrderModule = ({ user, onClose }: { user: any, onClose: () => v
           )}
 
           {etapa === 2 && (
-            <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 h-full animate-in slide-in-from-right duration-300">
-              <div className="lg:col-span-7 bg-white p-6 rounded-3xl shadow-sm border border-slate-100 flex flex-col gap-4">
-                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+            <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 animate-in slide-in-from-right-4 duration-300">
+              <div className="lg:col-span-7 space-y-4 bg-white p-4 sm:p-6 rounded-3xl shadow-sm border border-slate-100">
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                   <div className="space-y-1">
                     <label className="text-[9px] font-black text-slate-400 uppercase ml-2">Referência</label>
-                    <input 
-                      list="refs"
-                      className="w-full p-3 bg-slate-50 rounded-xl font-black text-lg outline-none uppercase min-h-[44px]" 
-                      value={itemAtual.referencia} 
-                      onChange={e => setItemAtual({...itemAtual, referencia: e.target.value.toUpperCase()})} 
-                      placeholder="REF" 
-                    />
+                    <input list="refs" className="w-full p-3 bg-slate-50 rounded-xl font-bold uppercase text-[10px] outline-none min-h-[44px]" value={itemAtual.referencia} onChange={e => setItemAtual({...itemAtual, referencia: e.target.value.toUpperCase()})} placeholder="EX: 1234" />
                     <datalist id="refs">{dbSuggestions.referencias.map(r => <option key={r} value={r} />)}</datalist>
                   </div>
                   <div className="space-y-1">
@@ -898,22 +865,46 @@ const SpreadsheetOrderModule = ({ user, onClose }: { user: any, onClose: () => v
                   <datalist id="types">{dbSuggestions.tipos.map(t => <option key={t} value={t} />)}</datalist>
                 </div>
                 <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
-                  {['cor1','cor2','cor3'].map(c => (
-                    <div key={c} className="space-y-1">
-                      <input 
-                        list="colors"
-                        className="w-full p-2.5 bg-slate-50 rounded-xl text-[9px] font-bold uppercase outline-none border border-transparent focus:border-blue-200 min-h-[44px]" 
-                        placeholder={c.toUpperCase()} 
-                        value={itemAtual[c as keyof typeof itemAtual] as string} 
-                        onChange={e => setItemAtual({...itemAtual, [c]: e.target.value.toUpperCase()})} 
-                      />
-                      <datalist id="colors">{dbSuggestions.cores.map(co => <option key={co} value={co} />)}</datalist>
-                    </div>
-                  ))}
+                  <div className="space-y-1">
+                    <input 
+                      list="colors"
+                      className="w-full p-2.5 bg-slate-50 rounded-xl text-[9px] font-bold uppercase outline-none border border-transparent focus:border-blue-200 min-h-[44px]" 
+                      placeholder="COR1" 
+                      value={itemAtual.cor1} 
+                      onChange={e => {
+                        const val = e.target.value.toUpperCase();
+                        setItemAtual({
+                          ...itemAtual, 
+                          cor1: val,
+                          cor2: val, // Replicação automática
+                          cor3: val  // Replicação automática
+                        });
+                      }} 
+                    />
+                    <datalist id="colors">{dbSuggestions.cores.map(co => <option key={co} value={co} />)}</datalist>
+                  </div>
+                  <div className="space-y-1">
+                    <input 
+                      list="colors"
+                      className="w-full p-2.5 bg-slate-50 rounded-xl text-[9px] font-bold uppercase outline-none border border-transparent focus:border-blue-200 min-h-[44px]" 
+                      placeholder="COR2" 
+                      value={itemAtual.cor2} 
+                      onChange={e => setItemAtual({...itemAtual, cor2: e.target.value.toUpperCase()})} 
+                    />
+                  </div>
+                  <div className="space-y-1">
+                    <input 
+                      list="colors"
+                      className="w-full p-2.5 bg-slate-50 rounded-xl text-[9px] font-bold uppercase outline-none border border-transparent focus:border-blue-200 min-h-[44px]" 
+                      placeholder="COR3" 
+                      value={itemAtual.cor3} 
+                      onChange={e => setItemAtual({...itemAtual, cor3: e.target.value.toUpperCase()})} 
+                    />
+                  </div>
                 </div>
-                <div className="bg-slate-900 p-6 rounded-3xl text-white flex justify-between items-center shadow-lg border-b-4 border-blue-600">
-                  <div><p className="text-[8px] font-black text-slate-500 uppercase tracking-widest">Custo Fábrica</p><div className="flex items-center font-black text-xl"><span className="text-blue-500 mr-1">R$</span><input type="number" className="bg-transparent w-20 outline-none min-h-[44px] [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none" value={itemAtual.valorCompra || ""} onChange={e => setItemAtual({...itemAtual, valorCompra: Number(e.target.value)})} /></div></div>
-                  <div className="text-right border-l border-white/10 pl-6"><p className="text-[8px] font-black text-blue-400 uppercase mb-1">Valor de Venda</p><p className="text-3xl font-black text-yellow-400 italic leading-none">R$ {itemAtual.precoVenda.toFixed(2)}</p></div>
+                <div className="bg-slate-900 p-4 sm:p-6 rounded-3xl text-white flex justify-between items-center shadow-lg border-b-4 border-blue-600">
+                  <div><p className="text-[8px] font-black text-slate-500 uppercase tracking-widest">Custo Fábrica</p><div className="flex items-center font-black text-lg sm:text-xl"><span className="text-blue-500 mr-1">R$</span><input type="number" className="bg-transparent w-20 outline-none min-h-[44px] [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none" value={itemAtual.valorCompra || ""} onChange={e => setItemAtual({...itemAtual, valorCompra: Number(e.target.value)})} /></div></div>
+                  <div className="text-right border-l border-white/10 pl-4 sm:pl-6"><p className="text-[8px] font-black text-blue-400 uppercase mb-1">Valor de Venda</p><p className="text-xl sm:text-3xl font-black text-yellow-400 italic leading-none">R$ {itemAtual.precoVenda.toFixed(2)}</p></div>
                 </div>
                 <button onClick={async () => { 
                   if(!itemAtual.referencia || !itemAtual.valorCompra) return; 
@@ -933,14 +924,14 @@ const SpreadsheetOrderModule = ({ user, onClose }: { user: any, onClose: () => v
               </div>
               <div className="lg:col-span-5 space-y-3 flex flex-col h-full overflow-hidden">
                 <h4 className="text-[9px] font-black text-slate-400 uppercase tracking-widest px-2">Carrinho ({itens.length})</h4>
-                <div className="flex-1 overflow-y-auto space-y-2 no-scrollbar pr-1">
+                <div className="flex-1 overflow-y-auto space-y-2 no-scrollbar pr-1 max-h-[300px] lg:max-h-full">
                   {itens.map(it => (
-                    <div key={it.id} className="bg-white p-4 rounded-2xl border border-slate-100 flex justify-between items-center group shadow-sm">
-                      <div><p className="text-[10px] font-black text-slate-800 uppercase italic leading-none">{it.referencia} • {it.tipo}</p><p className="text-[8px] font-bold text-blue-500 uppercase mt-1">Venda: {formatCurrency(it.precoVenda)}</p></div>
-                      <button onClick={() => setItens(itens.filter(x => x.id !== it.id))} className="text-slate-300 hover:text-red-500 transition-colors"><Trash2 size={16}/></button>
+                    <div key={it.id} className="bg-white p-3 sm:p-4 rounded-2xl border border-slate-100 flex justify-between items-center group shadow-sm">
+                      <div><p className="text-[9px] sm:text-[10px] font-black text-slate-800 uppercase italic leading-none">{it.referencia} • {it.tipo}</p><p className="text-[7px] sm:text-[8px] font-bold text-blue-500 uppercase mt-1">Venda: {formatCurrency(it.precoVenda)}</p></div>
+                      <button onClick={() => setItens(itens.filter(x => x.id !== it.id))} className="text-slate-300 hover:text-red-500 transition-colors"><Trash2 size={14}/></button>
                     </div>
                   ))}
-                  {itens.length === 0 && <div className="h-full flex flex-col items-center justify-center opacity-30 grayscale py-12"><ShoppingBag size={40}/><p className="text-[9px] font-black uppercase mt-2">Vazio</p></div>}
+                  {itens.length === 0 && <div className="h-full flex flex-col items-center justify-center opacity-30 grayscale py-12"><ShoppingBag size={32}/><p className="text-[8px] font-black uppercase mt-2">Vazio</p></div>}
                 </div>
               </div>
             </div>
@@ -1041,25 +1032,25 @@ const SpreadsheetOrderModule = ({ user, onClose }: { user: any, onClose: () => v
                       </span>
                     </div>
 
-                    <div className={`grid gap-2 max-h-[40vh] overflow-y-auto no-scrollbar p-1 ${itemAtual.modelo === "Inf" ? 'grid-cols-4' : 'grid-cols-3'}`}>
+                    <div className={`grid gap-1.5 max-h-[40vh] overflow-y-auto no-scrollbar p-1 ${itemAtual.modelo === "Inf" ? 'grid-cols-4' : 'grid-cols-3'}`}>
                       {(TAMANHOS[itemAtual.modelo] || []).map(tam => (
-                        <div key={tam} className="bg-slate-50 rounded-2xl border border-slate-100 p-2 flex flex-col items-center gap-2">
-                          <span className="text-[9px] font-black text-slate-400 uppercase">{tam}</span>
-                          <div className="flex flex-col items-center gap-1.5 w-full">
+                        <div key={tam} className="bg-slate-50 rounded-xl border border-slate-100 p-1.5 flex flex-col items-center gap-1.5">
+                          <span className="text-[8px] font-black text-slate-400 uppercase">{tam}</span>
+                          <div className="flex flex-col items-center gap-1 w-full">
                             <button 
                               onClick={() => setGradeEditando({...gradeEditando, [tam]: (gradeEditando[tam] || 0) + 1})}
-                              className="w-8 h-8 bg-blue-600 rounded-lg flex items-center justify-center text-white shadow-sm active:scale-90 transition-all text-xl font-bold"
+                              className="w-6 h-6 bg-blue-600 rounded-md flex items-center justify-center text-white shadow-sm active:scale-90 transition-all text-lg font-bold"
                             >
                               +
                             </button>
-                            <div className="w-full py-1 bg-white border border-slate-200 rounded-md flex items-center justify-center">
-                              <span className="font-black text-xs text-slate-900">
+                            <div className="w-full py-0.5 bg-white border border-slate-200 rounded-md flex items-center justify-center">
+                              <span className="font-black text-[10px] text-slate-900">
                                 {gradeEditando[tam] || 0}
                               </span>
                             </div>
                             <button 
                               onClick={() => setGradeEditando({...gradeEditando, [tam]: Math.max(0, (gradeEditando[tam] || 0) - 1)})}
-                              className="w-8 h-8 bg-red-500 rounded-lg flex items-center justify-center text-white shadow-sm active:scale-90 transition-all text-xl font-bold"
+                              className="w-6 h-6 bg-red-500 rounded-md flex items-center justify-center text-white shadow-sm active:scale-90 transition-all text-lg font-bold"
                             >
                               -
                             </button>
@@ -1095,55 +1086,69 @@ const SpreadsheetOrderModule = ({ user, onClose }: { user: any, onClose: () => v
 
           {etapa === 4 && (
             <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 h-full animate-in slide-in-from-bottom duration-300">
-               <div className="lg:col-span-4 bg-white p-5 rounded-3xl shadow-sm border border-slate-100 flex flex-col">
+               <div className="lg:col-span-4 bg-white p-4 rounded-3xl shadow-sm border border-slate-100 flex flex-col">
                   <span className="text-[9px] font-black text-blue-600 uppercase mb-4 text-center tracking-widest border-b pb-2">1. Selecionar & Vincular</span>
-                  <div className="flex-1 overflow-y-auto space-y-2 pr-1 no-scrollbar">
+                  <div className="flex-1 overflow-y-auto space-y-2 pr-1 no-scrollbar max-h-[400px] lg:max-h-full">
                     {itens.map(it => {
                       const isSel = selecaoLote.itensIds.includes(it.id);
                       const assignment = persistAssignments[it.referencia] || { gradeLetra: "", corSelecionada: it.cor1 || "" };
                       return (
-                        <div key={it.id} className={`p-4 rounded-2xl border transition-all ${isSel ? 'bg-blue-50 border-blue-400 shadow-sm' : 'bg-slate-50 border-transparent opacity-80'}`}>
-                          <label className="flex items-start gap-3 cursor-pointer">
-                            <div className="pt-0.5 shrink-0">
-                              <input 
-                                type="checkbox" 
-                                className="w-5 h-5 rounded border-slate-300 text-blue-600 focus:ring-blue-500" 
-                                checked={isSel} 
-                                onChange={() => setSelecaoLote({...selecaoLote, itensIds: isSel ? selecaoLote.itensIds.filter(x => x !== it.id) : [...selecaoLote.itensIds, it.id]})} 
-                              />
-                            </div>
-                            <div className="flex-1 min-w-0">
-                              <p className="text-[10px] font-black uppercase text-slate-800 break-words leading-tight">
-                                {it.referencia} - {it.tipo} - {it.cor1}
-                              </p>
-                            </div>
-                          </label>
-                          {isSel && (
-                            <div className="mt-4 pt-4 border-t border-blue-100 space-y-3">
-                              <select 
-                                value={assignment.gradeLetra} 
-                                onChange={e => setPersistAssignments({...persistAssignments, [it.referencia]: {...assignment, gradeLetra: e.target.value}})} 
-                                className="w-full p-2.5 bg-white border border-blue-200 rounded-xl text-[10px] font-black text-blue-700 outline-none min-h-[44px] shadow-sm"
-                              >
-                                <option value="">SELECIONE A GRADE...</option>
-                                {gradesSalvas.map(gr => (
-                                  <option key={gr.letra} value={gr.letra}>
-                                    GRADE {gr.letra} {gr.classificacao ? `- ${gr.classificacao}` : ""}
-                                  </option>
+                        <div key={it.id} className={`p-3 rounded-2xl border transition-all ${isSel ? 'bg-blue-50 border-blue-400 shadow-sm' : 'bg-slate-50 border-transparent opacity-80'}`}>
+                          <div className="flex justify-between items-start gap-2">
+                            <label className="flex items-start gap-2 cursor-pointer flex-1 min-w-0">
+                              <div className="pt-0.5 shrink-0">
+                                <input 
+                                  type="checkbox" 
+                                  className="w-4 h-4 rounded border-slate-300 text-blue-600 focus:ring-blue-500" 
+                                  checked={isSel} 
+                                  onChange={() => setSelecaoLote({...selecaoLote, itensIds: isSel ? selecaoLote.itensIds.filter(x => x !== it.id) : [...selecaoLote.itensIds, it.id]})} 
+                                />
+                              </div>
+                              <div className="flex-1 min-w-0">
+                                <p className="text-[9px] font-black uppercase text-slate-800 break-words leading-tight">
+                                  {it.referencia}
+                                </p>
+                                <p className="text-[7px] font-bold text-slate-400 uppercase truncate">{it.tipo}</p>
+                              </div>
+                            </label>
+                            <div className="flex gap-1 shrink-0">
+                                {[it.cor1, it.cor2, it.cor3].filter(Boolean).map(c => (
+                                  <button 
+                                    key={c} 
+                                    onClick={(e) => {
+                                      e.preventDefault();
+                                      setPersistAssignments({...persistAssignments, [it.referencia]: {...assignment, corSelecionada: c}});
+                                    }} 
+                                    className={`px-1.5 py-0.5 rounded-md text-[6px] font-black uppercase transition-all ${assignment.corSelecionada === c ? 'bg-blue-600 text-white' : 'bg-white border border-slate-200 text-slate-400'}`}
+                                  >
+                                    {c}
+                                  </button>
                                 ))}
-                              </select>
-
+                            </div>
+                          </div>
+                          {isSel && (
+                            <div className="mt-3 pt-3 border-t border-blue-100 space-y-2">
+                              <div className="flex flex-wrap gap-1">
+                                {gradesSalvas.map(gr => (
+                                  <button 
+                                    key={gr.letra}
+                                    onClick={() => setPersistAssignments({...persistAssignments, [it.referencia]: {...assignment, gradeLetra: gr.letra}})}
+                                    className={`w-7 h-7 rounded-lg text-[9px] font-black flex items-center justify-center transition-all ${assignment.gradeLetra === gr.letra ? 'bg-blue-600 text-white shadow-md' : 'bg-white border border-slate-200 text-slate-400'}`}
+                                  >
+                                    {gr.letra}
+                                  </button>
+                                ))}
+                              </div>
                               {assignment.gradeLetra && (
-                                <div className="bg-blue-600/5 p-3 rounded-xl border border-blue-100">
-                                  <p className="text-[7px] font-black text-blue-400 uppercase mb-2 tracking-widest">Numeração da Grade</p>
-                                  <p className="text-[11px] font-black text-blue-900 italic leading-relaxed">
+                                <div className="bg-blue-600/5 p-2 rounded-xl border border-blue-100">
+                                  <p className="text-[9px] font-black text-blue-900 italic leading-tight text-center">
                                     {(() => {
                                       const g = gradesSalvas.find(x => x.letra === assignment.gradeLetra);
                                       if (!g) return null;
                                       return Object.entries(g.valores)
                                         .filter(([_, v]) => Number(v) > 0)
-                                        .map(([tam, qtd]) => `${tam} - ${qtd}`)
-                                        .join('   ');
+                                        .map(([tam, qtd]) => `${tam}-${qtd}`)
+                                        .join(' ');
                                     })()}
                                   </p>
                                 </div>
@@ -1196,13 +1201,19 @@ const SpreadsheetOrderModule = ({ user, onClose }: { user: any, onClose: () => v
           </button>
           <div className="flex gap-2 w-full md:w-auto">
             <button 
-              onClick={salvarPedidoCompleto} 
+              onClick={async () => {
+                const res = await salvarPedidoCompleto();
+                if (res) {
+                  alert("✅ Pedido salvo com sucesso!");
+                  setEtapa(1);
+                }
+              }} 
               disabled={isSaving}
               className={`flex-1 md:flex-none bg-slate-900 text-white px-6 py-3 rounded-xl font-black text-[9px] uppercase shadow-lg transition-all border-b-4 border-slate-700 active:scale-95 flex items-center justify-center gap-2 min-h-[44px] ${isSaving ? 'opacity-50 cursor-not-allowed' : 'hover:bg-slate-800'}`}
             >
               <Layers size={18}/> {isSaving ? 'Salvando...' : '💾 Salvar Pedido'}
             </button>
-            <button onClick={exportarPlanilhaFinal} className="flex-1 md:flex-none bg-red-600 text-white px-8 py-3 rounded-xl font-black text-[9px] uppercase shadow-lg hover:bg-red-700 transition-all border-b-4 border-red-900 active:scale-95 flex items-center justify-center gap-2 min-h-[44px]">
+            <button onClick={handleSalvarEExportar} className="flex-1 md:flex-none bg-red-600 text-white px-8 py-3 rounded-xl font-black text-[9px] uppercase shadow-lg hover:bg-red-700 transition-all border-b-4 border-red-900 active:scale-95 flex items-center justify-center gap-2 min-h-[44px]">
               <Download size={18}/> Exportar Excel
             </button>
             <button
@@ -1244,15 +1255,24 @@ const SpreadsheetOrderModule = ({ user, onClose }: { user: any, onClose: () => v
                                     </div>
 
                                     {gradeInfo && (
-                                        <div className="flex flex-wrap gap-1 py-2 border-y border-slate-200/50">
-                                            {Object.entries(gradeInfo.valores)
-                                                .filter(([_, v]) => Number(v) > 0)
-                                                .map(([tam, qtd]) => (
-                                                    <div key={tam} className="flex items-center border border-blue-100 rounded-md overflow-hidden bg-white shadow-xs">
-                                                        <span className="bg-blue-50 px-1 py-0.5 text-[8px] font-black text-blue-700 border-r border-blue-50">{tam}</span>
-                                                        <span className="px-1 py-0.5 text-[8px] font-black text-slate-900">{qtd}</span>
-                                                    </div>
-                                                ))}
+                                        <div className="flex flex-col gap-2 py-2 border-y border-slate-200/50">
+                                            <p className="text-[9px] font-black text-blue-600 uppercase tracking-widest">Numeração Detalhada:</p>
+                                            <div className="flex flex-wrap gap-1">
+                                                {Object.entries(gradeInfo.valores)
+                                                    .filter(([_, v]) => Number(v) > 0)
+                                                    .map(([tam, qtd]) => (
+                                                        <div key={tam} className="flex items-center border border-blue-100 rounded-md overflow-hidden bg-white shadow-xs">
+                                                            <span className="bg-blue-50 px-1 py-0.5 text-[8px] font-black text-blue-700 border-r border-blue-50">{tam}</span>
+                                                            <span className="px-1 py-0.5 text-[8px] font-black text-slate-900">{qtd}</span>
+                                                        </div>
+                                                    ))}
+                                            </div>
+                                            <p className="text-[10px] font-bold text-slate-500 italic">
+                                                {Object.entries(gradeInfo.valores)
+                                                    .filter(([_, v]) => Number(v) > 0)
+                                                    .map(([tam, qtd]) => `${tam}-${qtd}`)
+                                                    .join(', ')}
+                                            </p>
                                         </div>
                                     )}
 
