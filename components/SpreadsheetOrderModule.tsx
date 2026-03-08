@@ -86,6 +86,7 @@ const SpreadsheetOrderModule = ({ user, onClose }: { user: any, onClose: () => v
   
   // Pedido
   const [pedido, setPedido] = useState({ 
+    numero_pedido: "",
     marca: "", 
     fornecedor: "", 
     representante: "",
@@ -325,153 +326,119 @@ const SpreadsheetOrderModule = ({ user, onClose }: { user: any, onClose: () => v
     }
   };
 
-  const exportarPlanilhaFinal = async () => {
+  useEffect(() => {
+    const initGapi = () => {
+      // @ts-ignore
+      if (typeof gapi !== 'undefined') {
+        // @ts-ignore
+        gapi.load('client', async () => {
+          try {
+            // @ts-ignore
+            await gapi.client.init({
+              apiKey: "AIzaSyBmTNDd_Gl3CBcWxObbGYO0K54ibMWUzUs",
+              discoveryDocs: ["https://sheets.googleapis.com/$discovery/rest?version=v4"],
+            });
+            console.log("GAPI initialized");
+          } catch (err) {
+            console.error("Error initializing GAPI:", err);
+          }
+        });
+      }
+    };
+    initGapi();
+  }, []);
+
+  const exportarPlanilhaFinal = async (hD?: any) => {
     if (lotesFinalizados.length === 0) {
       alert("Adicione itens e distribua nas lojas primeiro.");
       return;
     }
 
+    // @ts-ignore
+    if (typeof gapi === 'undefined' || !gapi.client || !gapi.client.sheets) {
+      alert("Google API não carregada. Verifique sua conexão ou configuração.");
+      return;
+    }
+
     try {
-      const TEMPLATE_URL = "https://rwwomakjhmglgoowbmsl.supabase.co/storage/v1/object/public/template/template.xlsx";
-      const response = await fetch(TEMPLATE_URL + "?v=" + Date.now(), { method: "GET", cache: "no-store" });
-      if (!response.ok) throw new Error("Erro ao baixar template.");
+      const spreadsheetId = "1KXTNAm9F8Pabw-aTGaspH2tJc7EVUsP5oAsVmm3QRCA";
+      const dataHeader = hD || pedido;
 
-      const arrayBuffer = await response.arrayBuffer();
-      const workbook = XLSX.read(arrayBuffer, { type: "array" });
-      const sheet = workbook.Sheets[workbook.SheetNames[0]];
+      const formatDate = (dateStr: string) => {
+        if (!dateStr) return "";
+        const parts = dateStr.split('-');
+        if (parts.length !== 3) return dateStr;
+        const [year, month, day] = parts;
+        return `${day}/${month}/${year}`;
+      };
 
-      // --- 1. CABEÇALHO (MAPEMAENTO EXATO DO JÚNIOR) ---
-      setCell(sheet, 1, 26, pedido.comprador);      // AA2 (R1, C26 no ExcelJS index 0)
-      setCell(sheet, 2, 13, pedido.marca);          // N3
-      setCell(sheet, 3, 13, pedido.fornecedor);     // N4
-      setCell(sheet, 2, 26, pedido.representante);  // AA3
-      setCell(sheet, 2, 39, pedido.telefone);       // AN3
-      setCell(sheet, 3, 26, pedido.email);          // AA4
-      setCell(sheet, 4, 26, pedido.embarqueInicio); // AA5
-      setCell(sheet, 4, 33, pedido.embarqueFim);    // AH5
+      // 1. Dados do Cabeçalho (Mapeamento exato para o seu Template)
+      const headerUpdates = [
+        { range: 'PEDIDO!N2', values: [[dataHeader.numero_pedido || ""]] },           
+        { range: 'PEDIDO!N3', values: [[dataHeader.marca.toUpperCase()]] },      
+        { range: 'PEDIDO!N4', values: [[dataHeader.fornecedor.toUpperCase()]] }, 
+        { range: 'PEDIDO!AA2', values: [[dataHeader.comprador.toUpperCase()]] }, 
+        { range: 'PEDIDO!AA5', values: [[formatDate(dataHeader.embarque_inicio || dataHeader.embarqueInicio)]] },   
+        { range: 'PEDIDO!AH5', values: [[formatDate(dataHeader.embarque_fim || dataHeader.embarqueFim)]] },      
+        { range: 'PEDIDO!N5', values: [[dataHeader.prazos || ""]] },             
+      ];
 
-      // Lógica de Prazos e Meses (N5/Q5/T5 e N6/Q6/T6)
-      if (pedido.prazos) {
-        const prazosArr = pedido.prazos.split('/');
-        prazosArr.forEach((p, i) => {
-          if (i > 2) return;
-          const dias = parseInt(p);
-          const col = 13 + (i * 3); // N=13, Q=16, T=19
-          setCell(sheet, 4, col, dias, "n"); // Linha 5
-          
-          if (pedido.embarqueFim) {
-            const d = new Date(pedido.embarqueFim + "T12:00:00");
-            d.setDate(d.getDate() + dias);
-            const mesFormatado = `${new Intl.DateTimeFormat('pt-BR', { month: 'long' }).format(d)}/${d.getFullYear().toString().slice(-2)}`;
-            setCell(sheet, 5, col, mesFormatado.toUpperCase()); // Linha 6 (Mês/Ano)
-          }
-        });
-      }
-
-      // --- 3. RESUMO DE GRADES (LINHAS 14-21) ---
-      const idsVinculos = ([...new Set(lotesFinalizados.map(l => l.idVinculo))].slice(0, 5)) as string[];
-      
-      idsVinculos.forEach((idV, idx) => {
-        const row = 13 + idx; // Linha 14, 15...
-        const l = lotesFinalizados.find(item => item.idVinculo === idV);
-        if (l) {
-          setCell(sheet, row, 1, l.gradeLetra); // Col B (Letra da Grade)
-          const gradeInfo = gradesSalvas.find(g => g.letra === l.gradeLetra);
-          if (gradeInfo) {
-            Object.entries(gradeInfo.valores).forEach(([tam, qtd]) => {
-              if (Number(qtd) > 0) {
-                const colTam = calcularColunaExcelPorTamanho(tam);
-                if (colTam !== -1) setCell(sheet, row, colTam, Number(qtd), "n");
-              }
-            });
-          }
-        }
-      });
-
-      // --- 4. PRODUTOS (LINHA 36 EM DIANTE) ---
       // Agrupamos por Referência + Tipo + Cores para listar os itens únicos
       const itensUnicosMap = new Map<string, {
         referencia: string,
         tipo: string,
+        modelo: string,
         cor1: string,
-        cor2: string,
-        cor3: string,
-        valorCompra: number,
-        precoVenda: number,
-        batches: Record<string, string>
+        valorCompra: number
       }>();
+      
       lotesFinalizados.forEach(l => {
-        const key = `${l.referencia}-${l.tipo}-${l.cor1}-${l.cor2 || ''}-${l.cor3 || ''}`;
+        const key = `${l.referencia}-${l.tipo}-${l.cor1}`;
         if (!itensUnicosMap.has(key)) {
           itensUnicosMap.set(key, {
             referencia: l.referencia,
             tipo: l.tipo,
+            modelo: l.modelo,
             cor1: l.cor1,
-            cor2: l.cor2,
-            cor3: l.cor3,
-            valorCompra: l.valorCompra,
-            precoVenda: l.precoVenda,
-            batches: {} 
+            valorCompra: l.valorCompra
           });
         }
-        const item = itensUnicosMap.get(key)!;
-        item.batches[l.idVinculo] = l.gradeLetra;
       });
 
       const itensUnicos = Array.from(itensUnicosMap.values());
+
+      // 2. Dados dos Produtos (Começando na Linha 36 conforme solicitado)
+      const rows = itensUnicos.map(item => {
+        const row = new Array(36).fill(""); // Até AL (Index 35)
+        row[0] = item.referencia; // C
+        row[5] = item.tipo;       // H
+        row[6] = item.modelo;     // I
+        row[9] = item.cor1;       // L
+        row[35] = Number(item.valorCompra); // AL
+        return row;
+      });
+
+      // Comando para escrever no Google Sheets via API
+      // @ts-ignore
+      await gapi.client.sheets.spreadsheets.values.batchUpdate({
+        spreadsheetId: spreadsheetId,
+        resource: {
+          data: [
+            ...headerUpdates,
+            { range: 'PEDIDO!C36', values: rows }
+          ],
+          valueInputOption: 'USER_ENTERED'
+        }
+      });
+
+      console.log("Pedido enviado! Layout preservado.");
       
-      itensUnicos.forEach((it, idx) => {
-        if (idx >= 129) return; // Limite da linha 164 (36 + 129 = 165)
-        const r = 35 + idx; // Linha 36
-        
-        setCell(sheet, r, 2, it.referencia);       // C (Coluna 2)
-        setCell(sheet, r, 7, it.tipo);             // H (Coluna 7)
-        setCell(sheet, r, 17, it.cor1);            // R (Coluna 17)
-        setCell(sheet, r, 18, it.cor2 || "");      // S (Coluna 18)
-        setCell(sheet, r, 19, it.cor3 || "");      // T (Coluna 19)
-        setCell(sheet, r, 37, Number(it.valorCompra), "n"); // AL
-        setCell(sheet, r, 40, Number(it.precoVenda), "n");  // AO
+      // 3. O SEGREREDO: Link para baixar o XLSX pronto do Google
+      window.open(`https://docs.google.com/spreadsheets/d/${spreadsheetId}/export?format=xlsx`, '_blank');
 
-        // Inserção da Letra da Grade nas colunas dos Pedidos (Batches)
-        // Pedido 1 (idx 0): X (23)
-        // Pedido 2 (idx 1): AA (26)
-        // Pedido 3 (idx 2): AD (29)
-        // Pedido 4 (idx 3): AG (32)
-        // Pedido 5 (idx 4): AJ (35)
-        const mappingCols = [23, 26, 29, 32, 35];
-        idsVinculos.forEach((idV, batchIdx) => {
-          const gradeLetra = it.batches[idV];
-          if (gradeLetra) {
-            setCell(sheet, r, mappingCols[batchIdx], gradeLetra);
-          }
-        });
-      });
-
-      // --- 5. LOJAS (D23 até AO27) ---
-      idsVinculos.forEach((idV, idx) => {
-        const linhaLoja = 22 + idx; // Linha 23
-        const lojasDoLote = [...new Set(lotesFinalizados.filter(l => l.idVinculo === idV).map(l => l.loja))];
-        
-        lojasDoLote.forEach((lojaCod, colIdx) => {
-          if (colIdx < 38) { // Limite de colunas D até AO (38 colunas de largura aprox)
-            setCell(sheet, linhaLoja, 3 + colIdx, lojaCod);
-          }
-        });
-      });
-
-      // Gerar e baixar
-      const wbout = XLSX.write(workbook, { bookType: "xlsx", type: "array" });
-      const blob = new Blob([wbout], { type: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" });
-      const url = URL.createObjectURL(blob);
-      const a = document.createElement("a");
-      a.href = url;
-      a.download = `Pedido_${pedido.marca || "REAL"}.xlsx`;
-      a.click();
-      URL.revokeObjectURL(url);
-
-    } catch (error) {
-      console.error("Erro:", error);
-      alert("Erro ao exportar. Verifique o console.");
+    } catch (err) {
+      console.error("Erro ao escrever na planilha:", err);
+      alert("Erro ao enviar dados para o Google Sheets. Verifique o console.");
     }
   };
 
@@ -560,9 +527,10 @@ const SpreadsheetOrderModule = ({ user, onClose }: { user: any, onClose: () => v
           if (l) {
             setCell(sheet, r, 2, l.referencia);    // C
             setCell(sheet, r, 7, l.tipo);          // H
-            setCell(sheet, r, 17, l.cor1);         // R
-            setCell(sheet, r, 18, l.cor2 || "");   // S
-            setCell(sheet, r, 19, l.cor3 || "");   // T
+            setCell(sheet, r, 8, l.modelo);        // I
+            setCell(sheet, r, 12, l.cor1);         // M
+            setCell(sheet, r, 13, l.cor2 || "");   // N
+            setCell(sheet, r, 14, l.cor3 || "");   // O
             
             setCell(sheet, r, 37, Number(l.valorCompra), "n"); // AL
             setCell(sheet, r, 40, Number(l.precoVenda), "n");  // AO
@@ -638,6 +606,7 @@ const SpreadsheetOrderModule = ({ user, onClose }: { user: any, onClose: () => v
 
       // 1. Salvar Cabeçalho (Pedido_Header)
       const { data: hD, error: hE } = await supabase.from('Pedido_Header').insert([{
+        numero_pedido: pedido.numero_pedido || null,
         marca: pedido.marca.trim().toUpperCase(),
         fornecedor: pedido.fornecedor.trim().toUpperCase(),
         representante: pedido.representante.trim().toUpperCase(),
@@ -646,8 +615,8 @@ const SpreadsheetOrderModule = ({ user, onClose }: { user: any, onClose: () => v
         comprador: pedido.comprador.trim().toUpperCase(),
         desconto: Number(pedido.desconto),
         markup: Number(pedido.markup),
-        embarque_inicio: pedido.embarqueInicio,
-        embarque_fim: pedido.embarqueFim,
+        embarque_inicio: pedido.embarqueInicio || null,
+        embarque_fim: pedido.embarqueFim || null,
         prazos: pedido.prazos,
         user_id: user?.id
       }]).select().single();
@@ -656,7 +625,6 @@ const SpreadsheetOrderModule = ({ user, onClose }: { user: any, onClose: () => v
       // 2. Agrupar Itens por Referência e Cor (Pedido_Items)
       const itensMap = new Map();
       lotesFinalizados.forEach(l => {
-        // Chave de agrupamento agora inclui os IDs das 3 cores para evitar mesclagem indevida
         const key = `${l.referencia}-${l.color1_id}-${l.color2_id}-${l.color3_id}`; 
         if (!itensMap.has(key)) {
           itensMap.set(key, { 
@@ -707,7 +675,7 @@ const SpreadsheetOrderModule = ({ user, onClose }: { user: any, onClose: () => v
       const { error: dE } = await supabase.from('Pedido_Distribuicao').insert(distFinal);
       if (dE) throw dE;
 
-      return hD.id;
+      return hD;
     } catch (error: any) {
       console.error("Erro ao salvar pedido:", error);
       alert("Erro ao salvar: " + (error.message || "Erro desconhecido"));
@@ -718,13 +686,14 @@ const SpreadsheetOrderModule = ({ user, onClose }: { user: any, onClose: () => v
   };
 
   const handleSalvarEExportar = async () => {
-    const savedId = await salvarPedidoCompleto();
-    if (savedId) {
-      alert("✅ Pedido salvo no banco! Iniciando geração do Excel...");
-      await exportarPlanilhaFinal();
+    const hD = await salvarPedidoCompleto();
+    if (hD) {
+      alert("✅ Pedido salvo no banco! Iniciando sincronização com Google Sheets...");
+      await exportarPlanilhaFinal(hD);
       
       // Resetar tudo para novo pedido
       setPedido({ 
+        numero_pedido: "",
         marca: "", 
         fornecedor: "", 
         representante: "",
@@ -802,6 +771,15 @@ const SpreadsheetOrderModule = ({ user, onClose }: { user: any, onClose: () => v
           {etapa === 1 && (
             <div className="max-w-2xl mx-auto space-y-4 animate-in fade-in zoom-in duration-300">
               <div className="bg-white p-6 rounded-3xl shadow-sm border border-slate-100 grid grid-cols-2 gap-4">
+                <div className="col-span-2 md:col-span-1 space-y-1">
+                  <label className="text-[9px] font-black text-slate-400 uppercase ml-2">Nº Pedido</label>
+                  <input 
+                    className="w-full p-3 bg-slate-50 rounded-xl font-bold uppercase outline-none focus:ring-2 focus:ring-blue-100 min-h-[44px]" 
+                    value={pedido.numero_pedido} 
+                    onChange={e => setPedido({...pedido, numero_pedido: e.target.value})} 
+                    placeholder="EX: 8" 
+                  />
+                </div>
                 <div className="col-span-2 md:col-span-1 space-y-1">
                   <label className="text-[9px] font-black text-slate-400 uppercase ml-2">Marca</label>
                   <input 
