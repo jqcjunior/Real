@@ -772,15 +772,6 @@ const SpreadsheetOrderModule = ({ user, onClose }: { user: any, onClose: () => v
             <div className="max-w-2xl mx-auto space-y-4 animate-in fade-in zoom-in duration-300">
               <div className="bg-white p-6 rounded-3xl shadow-sm border border-slate-100 grid grid-cols-2 gap-4">
                 <div className="col-span-2 md:col-span-1 space-y-1">
-                  <label className="text-[9px] font-black text-slate-400 uppercase ml-2">Nº Pedido</label>
-                  <input 
-                    className="w-full p-3 bg-slate-50 rounded-xl font-bold uppercase outline-none focus:ring-2 focus:ring-blue-100 min-h-[44px]" 
-                    value={pedido.numero_pedido} 
-                    onChange={e => setPedido({...pedido, numero_pedido: e.target.value})} 
-                    placeholder="EX: 8" 
-                  />
-                </div>
-                <div className="col-span-2 md:col-span-1 space-y-1">
                   <label className="text-[9px] font-black text-slate-400 uppercase ml-2">Marca</label>
                   <input 
                     list="brands"

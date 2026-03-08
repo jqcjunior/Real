@@ -108,6 +108,10 @@ const IceCreamModule: React.FC<IceCreamModuleProps> = ({
   const [showTicketModal, setShowTicketModal] = useState(false);
   const [ticketData, setTicketData] = useState<{ items: IceCreamDailySale[], saleCode: string, method: string | null, buyer?: string } | null>(null);
 
+  const [showDaySummary, setShowDaySummary] = useState(false);
+  const [auditWastageStart, setAuditWastageStart] = useState(new Date().toISOString().split('T')[0]);
+  const [auditWastageEnd, setAuditWastageEnd] = useState(new Date().toISOString().split('T')[0]);
+
   const [partners, setPartners] = useState<StoreProfitPartner[]>([]);
   const [expandedEmployee, setExpandedEmployee] = useState<string | null>(null);
   
@@ -395,9 +399,54 @@ const dreStats = useMemo(() => {
     return Object.values(groups).sort((a: any, b: any) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
   }, [sales, effectiveStoreId, auditDay, auditMonth, auditYear, auditSearch]);
 
+  const auditSummary = useMemo(() => {
+    // NOVA FUNCIONALIDADE — RESUMO BASEADO NO FILTRO DE AUDITORIA
+    const filterParts = [];
+    if (auditYear) filterParts.push(auditYear);
+    if (auditMonth) filterParts.push(String(auditMonth).padStart(2, '0'));
+    if (auditDay) filterParts.push(String(auditDay).padStart(2, '0'));
+    const filterPrefix = filterParts.join('-');
+
+    const filtered = (sales || []).filter(s => {
+      if (s.storeId !== effectiveStoreId) return false;
+      if (s.status !== 'completed') return false;
+      const localDate = new Date(s.createdAt || '').toLocaleDateString('en-CA');
+      if (filterPrefix && !localDate.startsWith(filterPrefix)) return false;
+      return true;
+    });
+
+    const resumo: Record<string, { qtd: number; total: number }> = {};
+    let totalGeral = 0;
+    let totalItens = 0;
+
+    filtered.forEach(venda => {
+      if (!resumo[venda.productName]) {
+        resumo[venda.productName] = { qtd: 0, total: 0 };
+      }
+      const qtd = Number(venda.unitsSold || 0);
+      const total = Number(venda.totalValue || 0);
+      resumo[venda.productName].qtd += qtd;
+      resumo[venda.productName].total += total;
+      totalGeral += total;
+      totalItens += qtd;
+    });
+
+    return {
+      resumoItens: Object.entries(resumo).sort((a, b) => b[1].qtd - a[1].qtd),
+      totalGeral,
+      totalItens
+    };
+  }, [sales, auditYear, auditMonth, auditDay, effectiveStoreId]);
+
   const filteredAuditWastage = useMemo(() => {
-    return []; // Auditoria de avarias removida por depender de finances
-  }, []);
+    // NOVA FUNCIONALIDADE — FILTRO AVARIAS
+    return (stockMovements ?? []).filter(m => {
+      if (m.movement_type !== 'AVARIA' || m.store_id !== effectiveStoreId) return false;
+      if (!m.created_at) return false;
+      const d = new Date(m.created_at).toISOString().split('T')[0];
+      return d >= auditWastageStart && d <= auditWastageEnd;
+    }).sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime());
+  }, [stockMovements, effectiveStoreId, auditWastageStart, auditWastageEnd]);
 
   const handlePrintDreMensal = () => {
     const printWindow = window.open('', '_blank');
@@ -1264,12 +1313,60 @@ const dreStats = useMemo(() => {
                                     <button onClick={() => setAuditSubTab('avarias')} className={`px-4 py-1.5 rounded-lg text-[9px] font-black uppercase transition-all ${auditSubTab === 'avarias' ? 'bg-white text-blue-900 shadow-sm' : 'text-gray-400'}`}>Baixas / Avarias</button>
                                 </div>
                             </div>
+                            {/* NOVA FUNCIONALIDADE — BOTÃO RESUMO DO DIA */}
+                            <div className="flex items-center gap-3">
+                                <button 
+                                    onClick={() => setShowDaySummary(!showDaySummary)}
+                                    className="px-6 py-3 bg-blue-600 text-white rounded-2xl font-black uppercase text-[10px] shadow-lg flex items-center gap-2 hover:bg-blue-700 transition-all"
+                                >
+                                    📊 Resumo do Dia
+                                </button>
+                            </div>
                         </div>
                         <div className="grid grid-cols-2 md:grid-cols-5 gap-4">
                             <select value={auditDay} onChange={e => setAuditDay(e.target.value)} className="bg-gray-50 border-none rounded-xl p-3 text-[10px] font-black uppercase outline-none shadow-inner"><option value="">DIA</option>{Array.from({length: 31}, (_, i) => <option key={i+1} value={String(i+1)}>{i+1}</option>)}</select>
                             <select value={auditMonth} onChange={e => setAuditMonth(e.target.value)} className="bg-gray-50 border-none rounded-xl p-3 text-[10px] font-black uppercase outline-none shadow-inner"><option value="">MÊS</option>{MONTHS.map(m => <option key={m.value} value={String(m.value)}>{m.label}</option>)}</select>
                             <select value={auditYear} onChange={e => setAuditYear(e.target.value)} className="bg-gray-50 border-none rounded-xl p-3 text-[10px] font-black uppercase outline-none shadow-inner"><option value="">ANO</option>{[2024, 2025, 2026].map(y => <option key={y} value={String(y)}>{y}</option>)}</select>
                             <div className="col-span-2 relative"><Search className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-300" size={14}/><input value={auditSearch} onChange={e => setAuditSearch(e.target.value)} placeholder="PRODUTO, CÓDIGO OU FUNCIONÁRIO..." className="w-full bg-gray-50 border-none rounded-xl pl-10 pr-4 py-3 text-[10px] font-black uppercase outline-none shadow-inner" /></div>
+                        </div>
+                    </div>
+
+                    {/* NOVA FUNCIONALIDADE — RESUMO DO DIA PANEL */}
+                    {showDaySummary && (
+                        <div className="bg-white p-8 rounded-[40px] shadow-2xl border-2 border-blue-100 animate-in slide-in-from-top duration-500">
+                            <div className="flex items-center justify-between mb-6">
+                                <h4 className="text-xl font-black uppercase italic text-blue-950 flex items-center gap-3">
+                                    📊 Resumo do Dia
+                                </h4>
+                                <button onClick={() => setShowDaySummary(false)} className="text-gray-400 hover:text-red-500 transition-all"><X size={24}/></button>
+                            </div>
+                            <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+                                {auditSummary.resumoItens.map(([name, data]: any) => (
+                                    <div key={name} className="bg-gray-50 p-4 rounded-3xl border border-gray-100">
+                                        <p className="text-xs font-black text-blue-900 uppercase italic truncate mb-1">{name}</p>
+                                        <div className="flex justify-between items-end">
+                                            <p className="text-[10px] font-bold text-gray-400 uppercase">{data.qtd} unidades</p>
+                                            <p className="text-sm font-black text-blue-600">{formatCurrency(data.total)}</p>
+                                        </div>
+                                    </div>
+                                ))}
+                            </div>
+                            <div className="mt-8 pt-6 border-t border-dashed border-gray-200 flex justify-between items-center">
+                                <p className="text-sm font-black text-gray-400 uppercase tracking-widest">Total Geral do Período</p>
+                                <p className="text-2xl font-black text-blue-950 italic">{formatCurrency(auditSummary.totalGeral)}</p>
+                            </div>
+                        </div>
+                    )}
+
+                    {/* NOVA FUNCIONALIDADE — TOTAIS RÁPIDOS */}
+                    <div className="flex flex-wrap gap-6 px-4 py-2 bg-blue-50/50 rounded-2xl border border-blue-100/50">
+                        <div className="flex items-center gap-2">
+                            <span className="text-[9px] font-black text-gray-400 uppercase tracking-widest">Total vendido no período:</span>
+                            <span className="text-xs font-black text-blue-700">{formatCurrency(auditSummary.totalGeral)}</span>
+                        </div>
+                        <div className="flex items-center gap-2">
+                            <span className="text-[9px] font-black text-gray-400 uppercase tracking-widest">Total de itens vendidos:</span>
+                            <span className="text-xs font-black text-blue-700">{auditSummary.totalItens} itens</span>
                         </div>
                     </div>
 
@@ -1327,36 +1424,65 @@ const dreStats = useMemo(() => {
                             </table>
                         </div>
                     ) : (
-                        <div className="bg-white rounded-[40px] shadow-xl border border-gray-100 overflow-hidden">
-                            <table className="w-full text-left">
-                                <thead className="bg-gray-50 text-[9px] font-black text-gray-400 uppercase border-b">
-                                    <tr>
-                                        <th className="px-8 py-5">Data / Hora</th>
-                                        <th className="px-8 py-5">Detalhes do Ajuste de Estoque</th>
-                                        <th className="px-8 py-5 text-right">Ação</th>
-                                    </tr>
-                                </thead>
-                                <tbody className="divide-y divide-gray-50 font-bold text-[10px]">
-                                    {filteredAuditWastage.map((f: any) => (
-                                        <tr key={f.id} className="hover:bg-orange-50/20 transition-all">
-                                            <td className="px-8 py-5">
-                                                <div className="text-[10px] font-black text-gray-900 uppercase">{new Date(f.date + 'T12:00:00').toLocaleDateString('pt-BR')}</div>
-                                                <div className="text-[8px] text-gray-400 uppercase mt-0.5">{new Date(f.createdAt).toLocaleTimeString('pt-BR')}</div>
-                                            </td>
-                                            <td className="px-8 py-5">
-                                                <div className="text-[10px] font-black text-orange-700 uppercase italic tracking-tighter">BAIXA DE AVARIA / DEFEITO</div>
-                                                <div className="text-[9px] text-gray-600 font-medium uppercase mt-1 leading-relaxed">{f.description}</div>
-                                            </td>
-                                            <td className="px-8 py-5 text-right">
-                                                <span className="px-3 py-1 rounded-full text-[8px] font-black uppercase border bg-red-50 text-red-700 border-red-100">STOCK_OUT</span>
-                                            </td>
+                        <div className="space-y-6">
+                            {/* NOVA FUNCIONALIDADE — FILTRO AVARIAS UI */}
+                            <div className="bg-white p-6 rounded-[40px] shadow-sm border border-gray-100 flex flex-col md:flex-row items-center gap-4">
+                                <div className="flex items-center gap-3 shrink-0">
+                                    <div className="p-2 bg-orange-50 text-orange-600 rounded-xl"><Calendar size={20}/></div>
+                                    <span className="text-[10px] font-black uppercase text-gray-400 tracking-widest">Período de Avarias:</span>
+                                </div>
+                                <div className="flex items-center gap-2 w-full">
+                                    <input 
+                                        type="date" 
+                                        value={auditWastageStart} 
+                                        onChange={e => setAuditWastageStart(e.target.value)}
+                                        className="flex-1 bg-gray-50 border-none rounded-xl p-3 text-[10px] font-black uppercase outline-none shadow-inner"
+                                    />
+                                    <span className="text-gray-300 font-bold">até</span>
+                                    <input 
+                                        type="date" 
+                                        value={auditWastageEnd} 
+                                        onChange={e => setAuditWastageEnd(e.target.value)}
+                                        className="flex-1 bg-gray-50 border-none rounded-xl p-3 text-[10px] font-black uppercase outline-none shadow-inner"
+                                    />
+                                </div>
+                            </div>
+
+                            <div className="bg-white rounded-[40px] shadow-xl border border-gray-100 overflow-hidden">
+                                <table className="w-full text-left">
+                                    <thead className="bg-gray-50 text-[9px] font-black text-gray-400 uppercase border-b">
+                                        <tr>
+                                            <th className="px-8 py-5">Data / Hora</th>
+                                            <th className="px-8 py-5">Detalhes do Ajuste de Estoque</th>
+                                            <th className="px-8 py-5 text-right">Ação</th>
                                         </tr>
-                                    ))}
-                                    {filteredAuditWastage.length === 0 && (
-                                        <tr><td colSpan={3} className="px-8 py-10 text-center text-gray-400 uppercase font-black tracking-widest italic">Nenhuma baixa de avaria encontrada para os filtros selecionados</td></tr>
-                                    )}
-                                </tbody>
-                            </table>
+                                    </thead>
+                                    <tbody className="divide-y divide-gray-50 font-bold text-[10px]">
+                                        {filteredAuditWastage.map((f: any) => (
+                                            <tr key={f.id} className="hover:bg-orange-50/20 transition-all">
+                                                <td className="px-8 py-5">
+                                                    <div className="text-[10px] font-black text-gray-900 uppercase">{new Date(f.created_at).toLocaleDateString('pt-BR')}</div>
+                                                    <div className="text-[8px] text-gray-400 uppercase mt-0.5">{new Date(f.created_at).toLocaleTimeString('pt-BR')}</div>
+                                                </td>
+                                                <td className="px-8 py-5">
+                                                    <div className="text-[10px] font-black text-orange-700 uppercase italic tracking-tighter">BAIXA DE AVARIA / DEFEITO</div>
+                                                    <div className="text-[9px] text-gray-600 font-medium uppercase mt-1 leading-relaxed">
+                                                        {stock.find(s => s.stock_id === f.stock_id)?.product_base} - {Math.abs(f.quantity)} {stock.find(s => s.stock_id === f.stock_id)?.unit}
+                                                        <br/>
+                                                        <span className="text-[8px] text-gray-400 italic">Motivo: {f.reason}</span>
+                                                    </div>
+                                                </td>
+                                                <td className="px-8 py-5 text-right">
+                                                    <span className="px-3 py-1 rounded-full text-[8px] font-black uppercase border bg-red-50 text-red-700 border-red-100">STOCK_OUT</span>
+                                                </td>
+                                            </tr>
+                                        ))}
+                                        {filteredAuditWastage.length === 0 && (
+                                            <tr><td colSpan={3} className="px-8 py-10 text-center text-gray-400 uppercase font-black tracking-widest italic">Nenhuma baixa de avaria encontrada para os filtros selecionados</td></tr>
+                                        )}
+                                    </tbody>
+                                </table>
+                            </div>
                         </div>
                     )}
                 </div>
