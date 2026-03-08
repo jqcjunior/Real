@@ -184,10 +184,8 @@ const SpreadsheetOrderModule = ({ user, onClose }: { user: any, onClose: () => v
     const normalized = value.trim().toUpperCase();
 
     try {
-      // 1. REGRA: Primeiro tenta buscar. Se achar, já retorna o ID e nem tenta inserir.
+      // 1. TENTA BUSCAR PRIMEIRO (Evita tentar inserir e dar erro 500)
       let query = supabase.from(table).select('id').eq('name', normalized);
-      
-      // Aplica filtros extras (como o 'publico' para Pedido_Types)
       Object.entries(extraFilter).forEach(([key, val]) => {
         query = query.eq(key, val);
       });
@@ -195,26 +193,23 @@ const SpreadsheetOrderModule = ({ user, onClose }: { user: any, onClose: () => v
       const { data: existing } = await query.maybeSingle();
       if (existing) return existing.id;
 
-      // 2. Se não existir, tenta o UPSERT (insere ou ignora conflito)
+      // 2. SE NÃO EXISTIR, TENTA INSERIR (Com tratamento de erro de conflito)
+      const payload = { name: normalized, ...extraFilter };
       const { data: inserted, error: insError } = await supabase
         .from(table)
-        .upsert(
-          { name: normalized, ...extraFilter }, 
-          { onConflict: table === 'Pedido_Types' ? 'name,publico' : 'name' }
-        )
+        .upsert(payload, { onConflict: table === 'Pedido_Types' ? 'name,publico' : 'name' })
         .select('id')
-        .single();
+        .maybeSingle();
 
-      if (insError) throw insError;
-      return inserted.id;
-
-    } catch (error: any) {
-      // Se ainda assim der erro de duplicidade (23505), tenta buscar uma última vez
-      if (error.code === '23505' || error.status === 409) {
-         const { data: retry } = await supabase.from(table).select('id').eq('name', normalized).maybeSingle();
-         return retry?.id;
+      if (insError) {
+        // Se der erro 409 ou 500 por duplicidade, busca de novo por segurança
+        const { data: retry } = await query.maybeSingle();
+        return retry?.id || null;
       }
-      console.error(`Erro ao resolver ID em ${table}:`, error);
+
+      return inserted?.id || null;
+    } catch (error) {
+      console.error(`Erro crítico em ${table}:`, error);
       return null;
     }
   };
@@ -568,43 +563,18 @@ const SpreadsheetOrderModule = ({ user, onClose }: { user: any, onClose: () => v
     if (lotesFinalizados.length === 0) return alert("Não há dados para salvar.");
     setIsSaving(true);
     try {
-      console.log("Iniciando salvamento completo no Supabase...");
+      console.log("Iniciando salvamento seguro...");
 
-      // 0. Upsert Master Data (Tabelas Auxiliares) com validação
-      if (pedido.marca) {
-        await supabase.from('Pedido_Brand').upsert({ 
-          name: pedido.marca.toUpperCase()
-        }, { onConflict: 'name' });
-      }
-
-      if (pedido.fornecedor) {
-        await supabase.from('Pedido_Suppliers').upsert({ 
-          name: pedido.fornecedor.toUpperCase() 
-        }, { onConflict: 'name' });
-      }
-      
-      const typesToUpsert = itens
-        .filter(it => it.tipo)
-        .map(it => ({ name: it.tipo.toUpperCase(), publico: it.modelo }));
-      if (typesToUpsert.length > 0) {
-        await supabase.from('Pedido_Types').upsert(typesToUpsert, { onConflict: 'name,publico' });
-      }
-      
-      const refsToUpsert = itens
-        .filter(it => it.referencia)
-        .map(it => ({ name: it.referencia.toUpperCase() }));
-      if (refsToUpsert.length > 0) {
-        await supabase.from('Pedido_References').upsert(refsToUpsert, { onConflict: 'name' });
+      // PROCESSAMENTO SEGURO DE TIPOS E CORES (Um por um para não travar)
+      for (const it of itens) {
+        it.type_id = await resolveId('Pedido_Types', it.tipo, { publico: it.modelo });
+        it.color1_id = await resolveId('Pedido_Colors', it.cor1);
+        it.color2_id = it.cor2 ? await resolveId('Pedido_Colors', it.cor2) : null;
+        it.color3_id = it.cor3 ? await resolveId('Pedido_Colors', it.cor3) : null;
+        it.reference_id = await resolveId('Pedido_References', it.referencia);
       }
 
-      const colorsToUpsert = itens
-        .flatMap(it => [it.cor1, it.cor2, it.cor3].filter(Boolean))
-        .map(c => ({ name: c.toUpperCase() }));
-      if (colorsToUpsert.length > 0) {
-        await supabase.from('Pedido_Colors').upsert(colorsToUpsert, { onConflict: 'name' });
-      }
-
-      // 1. Salvar Cabeçalho (Pedido_Header)
+      // 1. Salvar Cabeçalho (Pedido_Header) - Onde entra o PEDIDO 8
       const { data: hD, error: hE } = await supabase.from('Pedido_Header').insert([{
         numero_pedido: pedido.numero_pedido || null,
         marca: pedido.marca.trim().toUpperCase(),
@@ -615,11 +585,13 @@ const SpreadsheetOrderModule = ({ user, onClose }: { user: any, onClose: () => v
         comprador: pedido.comprador.trim().toUpperCase(),
         desconto: Number(pedido.desconto),
         markup: Number(pedido.markup),
+        // Correção de data vazia para NULL
         embarque_inicio: pedido.embarqueInicio || null,
         embarque_fim: pedido.embarqueFim || null,
         prazos: pedido.prazos,
         user_id: user?.id
       }]).select().single();
+
       if (hE) throw hE;
 
       // 2. Agrupar Itens por Referência e Cor (Pedido_Items)
