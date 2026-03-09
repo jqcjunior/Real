@@ -135,7 +135,23 @@ const App: React.FC = () => {
             if(s) setStores(s);
             if(sls) setSales(sls);
             if(slsp) setSalePayments(slsp.map(x => ({ ...x, amount: Number(x.amount || 0) })));
-            if(p) setPerformanceData(p.map(x => ({ ...x, storeId: x.store_id, revenueActual: Number(x.revenue_actual || 0), revenueTarget: Number(x.revenue_target || 0), itemsActual: Number(x.items_actual || 0), itemsTarget: Number(x.items_target || 0), salesActual: Number(x.sales_actual || 0), paActual: Number(x.pa_actual || 0), puActual: Number(x.pu_actual || 0), averageTicket: Number(x.average_ticket || 0), percentMeta: Number(x.percent_meta || 0), paTarget: Number(x.pa_target || 0), puTarget: Number(x.pu_target || 0), ticketTarget: Number(x.ticket_target || 0), businessDays: Number(x.business_days || 26) })));
+            if(p) setPerformanceData(p.map(x => ({ 
+                ...x, 
+                storeId: x.store_id, 
+                revenueActual: Number(x.revenue_actual || 0), 
+                revenueTarget: Number(x.revenue_target || 0), 
+                itemsActual: Number(x.items_actual || 0), 
+                itemsTarget: Number(x.items_target || 0), 
+                salesActual: Number(x.sales_actual || 0), 
+                paActual: Number(x.pa_actual || 0), 
+                puActual: Number(x.pu_actual || 0), 
+                averageTicket: Number(x.ticket_actual || x.average_ticket || 0), 
+                percentMeta: Number(x.percent_meta || 0), 
+                paTarget: Number(x.pa_target || 0), 
+                puTarget: Number(x.pu_target || 0), 
+                ticketTarget: Number(x.ticket_target || 0), 
+                businessDays: Number(x.business_days || 26) 
+            })));
             if(g) setGoalsData(g.map(x => ({ id: x.id, storeId: x.store_id, year: Number(x.year), month: Number(x.month), revenueTarget: Number(x.revenue_target || 0), itemsTarget: Number(x.items_target || 0), paTarget: Number(x.pa_target || 0), puTarget: Number(x.pu_target || 0), ticketTarget: Number(x.ticket_target || 0), delinquencyTarget: Number(x.delinquency_target || 2.0), businessDays: Number(x.business_days || 26), trend: x.trend || 'stable' })));
             if(pur) setPurchasingData(pur.map(x => ({...x, storeId: x.store_id, pairsSold: x.pairs_sold})));
             if(c) setCotas(c.map(x => ({ ...x, id: x.id, storeId: x.store_id, totalValue: Number(x.total_value || 0), shipmentDate: x.shipment_date, paymentTerms: x.payment_terms, createdByRole: x.created_by_role, category_id: x.category_id, category_name: x.category_name || x.classification, createdAt: new Date(x.created_at) })));
@@ -337,20 +353,37 @@ const App: React.FC = () => {
                 <main className="flex-1 overflow-y-auto no-scrollbar p-3 md:p-6 lg:p-8">
                     {(() => {
                         if (currentView === 'dashboard_rede' && can('MODULE_DASHBOARD_ADMIN')) return <DashboardAdmin stores={stores} performanceData={performanceData} goalsData={goalsData} sangrias={icSangrias} onImportPerformance={async (d) => { 
-                            const upsertData = d.map(row => ({ 
-                                store_id: row.storeId, 
-                                month: row.month, 
-                                revenue_actual: row.revenueActual, 
-                                items_actual: row.itemsActual, 
-                                sales_actual: row.salesActual, 
-                                items_per_ticket: row.paActual,
-                                unit_price_average: row.puActual,
-                                average_ticket: row.averageTicket,
-                                delinquency_rate: row.delinquencyRate, 
-                                business_days: row.businessDays 
-                            }));
-                            await supabase.from('monthly_performance_actual').upsert(upsertData, { onConflict: 'store_id, month' });
-                            fetchData(); 
+                            const upsertData = d.map(row => {
+                                const [y, m] = row.month.split('-');
+                                return { 
+                                    store_id: row.storeId, 
+                                    month: row.month, 
+                                    year: parseInt(y),
+                                    month_num: parseInt(m),
+                                    revenue_actual: row.revenueActual, 
+                                    items_actual: row.itemsActual, 
+                                    sales_actual: row.salesActual, 
+                                    items_per_ticket: row.paActual,
+                                    unit_price_average: row.puActual,
+                                    average_ticket: row.averageTicket,
+                                    pa_actual: row.paActual,
+                                    pu_actual: row.puActual,
+                                    ticket_actual: row.averageTicket,
+                                    delinquency_rate: row.delinquencyRate, 
+                                    delinquency_actual: row.delinquencyRate,
+                                    business_days: row.businessDays,
+                                    percent_meta: row.percentMeta,
+                                    trend: row.trend,
+                                    last_import_by: user?.name
+                                };
+                            });
+                            const { error } = await supabase.from('monthly_performance_actual').upsert(upsertData, { onConflict: 'store_id, month' });
+                            if (error) {
+                                console.error("Erro ao salvar monthly_performance_actual:", error);
+                                alert("Erro ao salvar dados no banco: " + error.message);
+                            } else {
+                                fetchData(); 
+                            }
                         }} onRefresh={fetchData} />;
                         if (currentView === 'dashboard_loja' && can('MODULE_DASHBOARD_MANAGER')) return <DashboardManager user={user!} stores={stores} performanceData={performanceData} purchasingData={purchasingData} sangrias={icSangrias} stockMovements={icStockMovements} stock={iceCreamStock} />;
                         if (currentView === 'metas' && can('MODULE_METAS')) return <GoalRegistration stores={stores} goalsData={goalsData} onSaveGoals={async (data) => { for(const row of data) { await supabase.from('monthly_goals').upsert({ store_id: row.storeId, year: row.year, month: row.month, revenue_target: row.revenueTarget, pa_target: row.paTarget, pu_target: row.puTarget, ticket_target: row.ticketTarget, items_target: row.itemsTarget, business_days: row.businessDays, delinquency_target: row.delinquencyTarget, trend: row.trend }, { onConflict: 'store_id, year, month' }); } fetchData(); }} />;

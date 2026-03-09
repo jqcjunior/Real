@@ -5,7 +5,7 @@ import * as XLSX from 'xlsx';
 import { 
     LayoutDashboard, DollarSign, ShoppingBag, Target, Users, 
     RefreshCw, Loader2, BarChart3, Upload, FileSpreadsheet, CheckCircle2,
-    TrendingDown, Percent
+    TrendingDown, Percent, Medal, Gem, Zap, Trophy, Minus
 } from 'lucide-react';
 
 interface DashboardAdminProps {
@@ -74,7 +74,10 @@ const DashboardAdmin: React.FC<DashboardAdminProps> = ({ stores, performanceData
                         return value;
                     }
 
-                    const str = String(value).trim();
+                    let str = String(value).trim();
+                    
+                    // Remove símbolos de moeda e espaços extras
+                    str = str.replace(/[R$\s]/g, "");
 
                     // 🔥 Caso seja formato brasileiro: 498.544,25
                     if (str.includes(",")) {
@@ -92,7 +95,7 @@ const DashboardAdmin: React.FC<DashboardAdminProps> = ({ stores, performanceData
                 };
 
                 // Tentativa de encontrar a loja por número ou nome
-                const storeRaw = getValue(row, ["loja", "filial"]);
+                const storeRaw = getValue(row, ["loja", "filial", "unidade", "loja"]);
                 const storeNum = String(storeRaw || '').replace(/\D/g, '').replace(/^0+/, '');
                 const targetStore = stores.find(s => s.number === storeNum);
                 
@@ -101,15 +104,17 @@ const DashboardAdmin: React.FC<DashboardAdminProps> = ({ stores, performanceData
                 return {
                     storeId: targetStore.id,
                     month: selectedMonth,
-                    revenueActual: parseBRL(getValue(row, ["valor vendido", "faturamento", "venda", "vendas", "valor"])),
-                    itemsActual: parseBRL(getValue(row, ["quantidade de itens", "qtde itens", "itens", "peças", "pecas", "it"])),
-                    salesActual: parseBRL(getValue(row, ["quantidade de vendas", "atendimentos", "vendas", "venda", "atend"])),
-                    paActual: parseBRL(getValue(row, ["p.a.", "p.a", "pa"])),
-                    puActual: parseBRL(getValue(row, ["p.u.", "p.u", "pu"])),
-                    averageTicket: parseBRL(getValue(row, ["ticket médio", "ticket medio", "ticket", "tm"])),
-                    delinquencyRate: parseBRL(getValue(row, ["inadimplencia", "inadimplência"])),
-                    revenueTarget: parseBRL(getValue(row, ["meta", "objetivo", "target"])),
-                    businessDays: 26
+                    revenueActual: parseBRL(getValue(row, ["valor vendido", "faturamento", "venda", "vendas", "valor", "h"])),
+                    itemsActual: parseBRL(getValue(row, ["quantidade de itens", "qtde itens", "itens", "peças", "pecas", "it", "c"])),
+                    salesActual: parseBRL(getValue(row, ["quantidade de vendas", "qtde vendas", "atendimentos", "vendas", "venda", "atend", "b"])),
+                    paActual: parseBRL(getValue(row, ["p.a.", "p.a", "pa", "p.a ( produtos por atendimento )", "d"])),
+                    puActual: parseBRL(getValue(row, ["p.u.", "p.u", "pu", "p.u ( produtos por unidade )", "e"])),
+                    averageTicket: parseBRL(getValue(row, ["ticket médio", "ticket medio", "ticket", "tm", "f"])),
+                    delinquencyRate: parseBRL(getValue(row, ["inadimplencia", "inadimplência", "n"])),
+                    revenueTarget: parseBRL(getValue(row, ["meta", "objetivo", "target", "g"])),
+                    percentMeta: parseBRL(getValue(row, ["percentual da meta", "percentual", "i"])),
+                    trend: getValue(row, ["tendência", "tendencia", "l"]),
+                    businessDays: parseBRL(getValue(row, ["período de vendas", "periodo", "j"])) || 26
                 };
             }).filter(Boolean);
 
@@ -146,14 +151,29 @@ const DashboardAdmin: React.FC<DashboardAdminProps> = ({ stores, performanceData
             const id = String(p.storeId || p.store_id);
             if (!acc[id]) {
                 acc[id] = { 
-                    revenueActual: 0, itemsActual: 0, salesActual: 0, 
-                    revenueTarget: 0, itemsTarget: 0, paTarget: 0, puTarget: 0, ticketTarget: 0,
+                    revenueActual: 0,
+                    itemsActual: 0,
+                    salesActual: 0,
+
+                    paActual: 0,
+                    puActual: 0,
+                    averageTicket: 0,
+
+                    revenueTarget: 0,
+                    itemsTarget: 0,
+                    paTarget: 0,
+                    puTarget: 0,
+                    ticketTarget: 0,
+
                     businessDays: 26
                 };
             }
             acc[id].revenueActual += Number(p.revenueActual || 0);
             acc[id].itemsActual += Number(p.itemsActual || 0);
             acc[id].salesActual += Number(p.salesActual || 0);
+            acc[id].paActual += Number(p.paActual || 0);
+            acc[id].puActual += Number(p.puActual || 0);
+            acc[id].averageTicket += Number(p.averageTicket || 0);
             
             // Para metas, pegamos o valor máximo encontrado (evita somar metas duplicadas)
             acc[id].revenueTarget = Math.max(acc[id].revenueTarget, Number(p.revenueTarget || 0));
@@ -176,9 +196,9 @@ const DashboardAdmin: React.FC<DashboardAdminProps> = ({ stores, performanceData
             const itemsTarget = Number(perf?.itemsTarget || goal?.itemsTarget || 0);
             const salesActual = Number(perf?.salesActual || 0);
             
-            const paActual = salesActual > 0 ? itemsActual / salesActual : 0;
-            const puActual = itemsActual > 0 ? revenueActual / itemsActual : 0;
-            const averageTicket = salesActual > 0 ? revenueActual / salesActual : 0;
+            const paActual = Number(perf?.paActual || 0);
+            const puActual = Number(perf?.puActual || 0);
+            const averageTicket = Number(perf?.averageTicket || 0);
 
             const paTarget = Number(perf?.paTarget || goal?.paTarget || 0);
             const puTarget = Number(perf?.puTarget || goal?.puTarget || 0);
@@ -229,13 +249,19 @@ const DashboardAdmin: React.FC<DashboardAdminProps> = ({ stores, performanceData
         const attainment = calcAttainment(totalRevenue, totalTarget, 'higher');
         const itemsAttainment = calcAttainment(totalItems, totalItemsTarget, 'higher');
         
-        const avgPA = totalSales > 0 ? totalItems / totalSales : 0;
+        const avgPA = storesWithGoals.length > 0 
+            ? storeStats.reduce((acc, curr) => acc + curr.paActual, 0) / storeStats.length 
+            : 0;
         const paAttainment = calcAttainment(avgPA, avgPATarget, 'higher');
         
-        const avgPU = totalItems > 0 ? totalRevenue / totalItems : 0;
+        const avgPU = storesWithGoals.length > 0 
+            ? storeStats.reduce((acc, curr) => acc + curr.puActual, 0) / storeStats.length 
+            : 0;
         const puAttainment = calcAttainment(avgPU, avgPUTarget, 'lower');
         
-        const avgTicket = totalSales > 0 ? totalRevenue / totalSales : 0;
+        const avgTicket = storesWithGoals.length > 0 
+            ? storeStats.reduce((acc, curr) => acc + curr.averageTicket, 0) / storeStats.length 
+            : 0;
         const ticketAttainment = calcAttainment(avgTicket, avgTicketTarget, 'higher');
 
         // Previsão de Receita
@@ -247,15 +273,6 @@ const DashboardAdmin: React.FC<DashboardAdminProps> = ({ stores, performanceData
         
         const businessDays = storeStats[0]?.businessDays || 26;
         const revenueForecast = elapsedDays > 0 ? (totalRevenue / elapsedDays) * businessDays : 0;
-
-        // Sangria Total Rede
-        const totalSangria = sangrias
-            .filter(s => s.created_at.startsWith(selectedMonth))
-            .reduce((acc, curr) => acc + Number(curr.amount || 0), 0);
-
-        // Margem Média (Estimada se não houver COGS real, usando 60% como padrão se necessário ou calculando se houver dados)
-        // Aqui vamos usar uma lógica simplificada: (Receita - Sangria) / Receita como margem operacional bruta aproximada
-        const avgMargin = totalRevenue > 0 ? ((totalRevenue - totalSangria) / totalRevenue) * 100 : 0;
 
         return {
             totalRevenue,
@@ -274,26 +291,38 @@ const DashboardAdmin: React.FC<DashboardAdminProps> = ({ stores, performanceData
             avgTicketTarget,
             ticketAttainment,
             revenueForecast,
-            totalSangria,
-            avgMargin,
             storeCount: stores.length,
-            currentData: storeStats.sort((a, b) => b.revenueActual - a.revenueActual)
+            currentData: storeStats.sort((a, b) => {
+                // Novo Ranking Ponderado: Meta 40%, PA 30%, Ticket 15%, PU 10%, Itens 5%
+                const getScore = (s: any) => {
+                    const pF = Math.min(calcAttainment(s.revenueActual, s.revenueTarget, 'higher'), 120);
+                    const pPA = Math.min(calcAttainment(s.paActual, s.paTarget, 'higher'), 120);
+                    const pT = Math.min(calcAttainment(s.averageTicket, s.ticketTarget, 'higher'), 120);
+                    const pPU = Math.min(calcAttainment(s.puActual, s.puTarget, 'lower'), 120);
+                    const pI = Math.min(calcAttainment(s.itemsActual, s.itemsTarget, 'higher'), 120);
+                    return (pF * 0.40) + (pPA * 0.30) + (pT * 0.15) + (pPU * 0.10) + (pI * 0.05);
+                };
+                return getScore(b) - getScore(a);
+            })
         };
     }, [performanceData, goalsData, selectedMonth, stores, sangrias]);
 
-    const renderKPICard = (title: string, actual: number, target: number, percent: number, icon: React.ReactNode, type: 'currency' | 'decimal' | 'integer', isPrimary: boolean = false) => {
-        const isSuccess = percent >= 100;
-        const isWarning = percent < 50;
+    const renderKPICard = (title: string, actual: number, target: number, percent: number, icon: React.ReactNode, type: 'currency' | 'decimal' | 'integer', isPrimary: boolean = false, mode: 'higher' | 'lower' = 'higher') => {
+        const isSuccess = mode === 'higher' ? actual >= (target || 0) : actual <= (target || 999999);
+        const isWarning = percent < 80;
         
         let barColor = 'bg-blue-500';
         let textColor = 'text-blue-900';
         
         if (isSuccess) {
-            barColor = 'bg-green-500';
-            textColor = 'text-green-600';
-        } else if (isWarning) {
-            barColor = 'bg-red-300';
-            textColor = 'text-red-600';
+            barColor = 'bg-emerald-500';
+            textColor = 'text-emerald-600';
+        } else if (percent < 50) {
+            barColor = 'bg-rose-500';
+            textColor = 'text-rose-600';
+        } else {
+            barColor = 'bg-amber-500';
+            textColor = 'text-amber-600';
         }
 
         const formatValue = (val: number) => {
@@ -303,35 +332,39 @@ const DashboardAdmin: React.FC<DashboardAdminProps> = ({ stores, performanceData
         };
 
         return (
-            <div className={`bg-white p-6 rounded-[40px] shadow-sm border border-gray-100 group hover:border-blue-200 transition-all ${isPrimary ? 'ring-2 ring-blue-50' : ''}`}>
-                <div className="flex justify-between items-start mb-3">
-                    <div className={`p-2.5 rounded-2xl ${isSuccess ? 'bg-green-50' : isWarning ? 'bg-red-50' : 'bg-blue-50'} ${isSuccess ? 'text-green-600' : isWarning ? 'text-red-600' : 'text-blue-600'}`}>
-                        {React.cloneElement(icon as React.ReactElement, { size: isPrimary ? 24 : 20 })}
+            <div className={`bg-white p-5 md:p-6 rounded-[32px] shadow-sm border border-slate-100 group hover:border-blue-200 transition-all ${isPrimary ? 'ring-2 ring-blue-50' : ''}`}>
+                <div className="flex justify-between items-start mb-4">
+                    <div className={`p-2.5 rounded-2xl ${isSuccess ? 'bg-emerald-50' : isWarning ? 'bg-rose-50' : 'bg-blue-50'} ${isSuccess ? 'text-emerald-600' : isWarning ? 'text-rose-600' : 'text-blue-600'}`}>
+                        {React.cloneElement(icon as React.ReactElement, { size: isPrimary ? 22 : 18 })}
                     </div>
+                    {target > 0 && (
+                        <span className={`text-[10px] font-black px-2 py-1 rounded-lg ${isSuccess ? 'bg-emerald-100 text-emerald-700' : 'bg-slate-100 text-slate-600'}`}>
+                            {percent.toFixed(1)}%
+                        </span>
+                    )}
                 </div>
                 
-                <p className="text-[10px] font-black text-gray-400 uppercase tracking-widest mb-2">{title}</p>
+                <p className="text-[9px] font-black text-slate-400 uppercase tracking-[0.15em] mb-1.5">{title}</p>
                 
-                <div className="flex items-baseline justify-between gap-2 mb-1">
-                    <h3 className={`text-2xl font-black italic tracking-tighter ${textColor}`}>
+                <div className="flex items-baseline justify-between gap-2">
+                    <h3 className={`text-xl md:text-2xl font-black italic tracking-tighter ${textColor}`}>
                         {formatValue(actual)}
                     </h3>
-                    <span className="text-[10px] font-bold text-gray-300 italic">
-                        {formatValue(actual)} / {formatValue(target)}
-                    </span>
                 </div>
                 
-                <div className="flex items-center gap-3">
-                    <div className={`flex-1 bg-gray-50 rounded-full overflow-hidden ${isPrimary ? 'h-2' : 'h-1'}`}>
-                        <div 
-                            className={`h-full transition-all duration-1000 ${barColor}`} 
-                            style={{ width: `${Math.min(percent, 100)}%` }} 
-                        />
+                {target > 0 && (
+                    <div className="mt-4 space-y-2">
+                        <div className={`w-full bg-slate-50 rounded-full overflow-hidden ${isPrimary ? 'h-1.5' : 'h-1'}`}>
+                            <div 
+                                className={`h-full transition-all duration-1000 ${barColor}`} 
+                                style={{ width: `${Math.min(percent, 100)}%` }} 
+                            />
+                        </div>
+                        <p className="text-[9px] font-bold text-slate-300 italic text-right">
+                            Meta: {formatValue(target)}
+                        </p>
                     </div>
-                    <span className={`text-[10px] font-black min-w-[35px] text-right ${textColor}`}>
-                        {percent.toFixed(1)}%
-                    </span>
-                </div>
+                )}
             </div>
         );
     };
@@ -422,92 +455,188 @@ const DashboardAdmin: React.FC<DashboardAdminProps> = ({ stores, performanceData
                         Previsão: {formatCurrency(stats.revenueForecast)}
                     </div>
                 </div>
-                {renderKPICard('Sangria Total Rede', stats.totalSangria, 0, 0, <TrendingDown size={24}/>, 'currency')}
-                {renderKPICard('Margem Média', stats.avgMargin, 100, stats.avgMargin, <Percent size={24}/>, 'decimal')}
-                {renderKPICard('Ticket Médio', stats.avgTicket, stats.avgTicketTarget, stats.ticketAttainment, <Users size={24}/>, 'currency')}
+                {renderKPICard('P.A Médio Rede', stats.avgPA, stats.avgPATarget, stats.paAttainment, <ShoppingBag size={24}/>, 'decimal')}
+                {renderKPICard('P.U Médio Rede', stats.avgPU, stats.avgPUTarget, stats.puAttainment, <Percent size={24}/>, 'decimal', false, 'lower')}
+                {renderKPICard('Ticket Médio Rede', stats.avgTicket, stats.avgTicketTarget, stats.ticketAttainment, <Users size={24}/>, 'currency')}
             </div>
 
             {/* Ranking Operacional Section */}
-            <div className="bg-white p-8 rounded-[48px] shadow-sm border border-gray-100">
-                <h3 className="text-sm font-black text-blue-950 uppercase italic tracking-tighter mb-8 flex items-center gap-2">
-                    <BarChart3 className="text-blue-600" /> Ranking <span className="text-blue-600">Operacional de Lojas</span>
-                </h3>
+            <div className="bg-white p-6 md:p-10 rounded-[48px] shadow-sm border border-slate-100">
+                <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4 mb-10">
+                    <h3 className="text-sm font-black text-blue-950 uppercase italic tracking-tighter flex items-center gap-3">
+                        <BarChart3 className="text-blue-600" size={20} /> Ranking <span className="text-blue-600">Ponderado de Performance</span>
+                    </h3>
+                    <div className="flex items-center gap-2 bg-slate-50 px-4 py-2 rounded-2xl border border-slate-100">
+                        <div className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse"></div>
+                        <span className="text-[9px] font-black text-slate-400 uppercase tracking-widest">Atualizado em Tempo Real</span>
+                    </div>
+                </div>
                 
-                <div className="overflow-x-auto -mx-4 px-4">
-                    <table className="w-full text-left border-collapse min-w-[1000px]">
-                        <thead>
-                            <tr className="border-b-2 border-gray-100">
-                                <th className="py-4 px-4 text-[10px] font-black uppercase text-gray-400 tracking-widest">Loja / Cidade</th>
-                                <th className="py-4 px-4 text-[10px] font-black uppercase text-gray-400 tracking-widest text-right">Faturamento / Atingimento</th>
-                                <th className="py-4 px-4 text-[10px] font-black uppercase text-gray-400 tracking-widest text-right">P.A</th>
-                                <th className="py-4 px-4 text-[10px] font-black uppercase text-gray-400 tracking-widest text-right">P.U Médio</th>
-                                <th className="py-4 px-4 text-[10px] font-black uppercase text-gray-400 tracking-widest text-right">Ticket Médio</th>
-                                <th className="py-4 px-4 text-[10px] font-black uppercase text-gray-400 tracking-widest text-right">Itens</th>
-                            </tr>
-                        </thead>
-                        <tbody className="divide-y divide-gray-50">
-                            {stats.currentData.map((d, index) => {
-                                const percent = Number(d.percentMeta) || 0;
-                                const revenueActual = Number(d.revenueActual) || 0;
-                                const revenueTarget = Number(d.revenueTarget) || 0;
-                                
-                                // Cor da barra:
-                                // >=100% → verde
-                                // 50% a 99% → azul
-                                // <50% → vermelho claro
-                                let barColor = 'bg-red-300';
-                                if (percent >= 100) barColor = 'bg-green-500';
-                                else if (percent >= 50) barColor = 'bg-blue-500';
+                <div className="grid grid-cols-1 gap-4">
+                    {stats.currentData.map((d, index) => {
+                        const getScore = (s: any) => {
+                            const pF = Math.min(calcAttainment(s.revenueActual, s.revenueTarget, 'higher'), 120);
+                            const pPA = Math.min(calcAttainment(s.paActual, s.paTarget, 'higher'), 120);
+                            const pT = Math.min(calcAttainment(s.averageTicket, s.ticketTarget, 'higher'), 120);
+                            const pPU = Math.min(calcAttainment(s.puActual, s.puTarget, 'lower'), 120);
+                            const pI = Math.min(calcAttainment(s.itemsActual, s.itemsTarget, 'higher'), 120);
+                            return (pF * 0.40) + (pPA * 0.30) + (pT * 0.15) + (pPU * 0.10) + (pI * 0.05);
+                        };
+                        
+                        const score = getScore(d);
+                        const nextStore = stats.currentData[index - 1];
+                        
+                        const getTier = (idx: number) => {
+                            if (idx === 0) return { label: 'Diamante', icon: <Gem className="text-cyan-400" size={16} />, color: 'bg-cyan-50 text-cyan-600 border-cyan-200', bar: 'bg-cyan-500' };
+                            if (idx === 1) return { label: 'Esmeralda', icon: <Gem className="text-emerald-400" size={16} />, color: 'bg-emerald-50 text-emerald-600 border-emerald-200', bar: 'bg-emerald-500' };
+                            if (idx === 2) return { label: 'Ouro', icon: <Trophy className="text-amber-400" size={16} />, color: 'bg-amber-50 text-amber-600 border-amber-200', bar: 'bg-amber-500' };
+                            if (idx === 3) return { label: 'Prata', icon: <Medal className="text-slate-400" size={16} />, color: 'bg-slate-50 text-slate-600 border-slate-200', bar: 'bg-slate-400' };
+                            if (idx === 4) return { label: 'Bronze', icon: <Medal className="text-orange-400" size={16} />, color: 'bg-orange-50 text-orange-600 border-orange-200', bar: 'bg-orange-500' };
+                            if (idx === 5) return { label: 'Ouro', icon: <Zap className="text-amber-400" size={16} />, color: 'bg-amber-50 text-amber-600 border-amber-100', bar: 'bg-amber-400' };
+                            if (idx === 6) return { label: 'Prata', icon: <Zap className="text-slate-400" size={16} />, color: 'bg-slate-50 text-slate-600 border-slate-100', bar: 'bg-slate-300' };
+                            if (idx === 7) return { label: 'Bronze', icon: <Zap className="text-orange-400" size={16} />, color: 'bg-orange-50 text-orange-600 border-orange-100', bar: 'bg-orange-300' };
+                            if (idx >= 8 && idx <= 12) return { label: 'Subindo', icon: <TrendingDown className="text-blue-400 rotate-180" size={16} />, color: 'bg-blue-50 text-blue-600 border-blue-100', bar: 'bg-blue-400' };
+                            if (idx >= 13 && idx <= 17) return { label: 'Neutro', icon: <Minus className="text-slate-400" size={16} />, color: 'bg-slate-50 text-slate-400 border-slate-100', bar: 'bg-slate-200' };
+                            if (idx >= stats.currentData.length - 3) return { label: 'Rebaixamento', icon: <TrendingDown className="text-rose-400" size={16} />, color: 'bg-rose-50 text-rose-600 border-rose-100', bar: 'bg-rose-400' };
+                            return { label: 'Neutro', icon: <Minus className="text-slate-400" size={16} />, color: 'bg-slate-50 text-slate-400 border-slate-100', bar: 'bg-slate-200' };
+                        };
 
-                                return (
-                                    <tr key={d.storeId} className="hover:bg-blue-50/50 transition-all group">
-                                        <td className="py-5 px-4">
-                                            <div className="flex items-center gap-4">
-                                                <span className="text-xs font-black text-gray-300 group-hover:text-blue-200 transition-colors">#{String(index + 1).padStart(2, '0')}</span>
-                                                <div>
-                                                    <p className="text-sm font-black text-blue-950 uppercase italic leading-none">Loja {d.storeNumber}</p>
-                                                    <p className="text-[10px] font-bold text-gray-400 uppercase mt-1">{d.city.split(' - ')[0]}</p>
-                                                </div>
+                        const tier = getTier(index);
+                        const textColor = tier.color.split(' ')[1];
+
+                        const getRemainingWorkDays = (monthStr: string) => {
+                            const [year, month] = monthStr.split('-').map(Number);
+                            const now = new Date();
+                            const lastDay = new Date(year, month, 0).getDate();
+                            const currentYear = now.getFullYear();
+                            const currentMonth = now.getMonth() + 1;
+                            let startDay = 1;
+                            if (year === currentYear && month === currentMonth) {
+                                startDay = now.getDate();
+                            } else if (year < currentYear || (year === currentYear && month < currentMonth)) {
+                                return 1;
+                            }
+                            let count = 0;
+                            for (let d = startDay; d <= lastDay; d++) {
+                                const date = new Date(year, month - 1, d);
+                                if (date.getDay() !== 0) count++;
+                            }
+                            return Math.max(count, 1);
+                        };
+
+                        const getDetailedAdvice = (curr: any, next: any) => {
+                            const remainingDays = getRemainingWorkDays(selectedMonth);
+                            const diff = getScore(next) - getScore(curr);
+                            
+                            const revDiff = Math.max(next.revenueTarget - curr.revenueActual, 0);
+                            const dailyRev = revDiff / remainingDays;
+                            
+                            let advice = `Melhore seu score em ${diff.toFixed(1)}% para alcançar a Loja ${next.storeNumber}. `;
+                            
+                            if (revDiff > 0) {
+                                advice += `Venda R$ ${dailyRev.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}/dia para bater a meta. `;
+                            }
+
+                            if (curr.paActual < next.paTarget) {
+                                const itemsNeeded = Math.ceil((next.paTarget * curr.salesActual) - curr.itemsActual);
+                                if (itemsNeeded > 0) advice += `Venda +${itemsNeeded} itens para atingir P.A ${next.paTarget.toFixed(2)}. `;
+                            }
+
+                            if (curr.puActual > next.puTarget) {
+                                advice += `Reduza o P.U em R$ ${(curr.puActual - next.puTarget).toFixed(2)}. `;
+                            }
+
+                            return advice;
+                        };
+
+                        return (
+                            <div key={d.storeId} className={`group relative p-5 md:p-8 rounded-[32px] border transition-all duration-500 ${index < 3 ? 'bg-white shadow-xl shadow-blue-900/5 border-slate-100' : 'bg-slate-50/50 hover:bg-white border-transparent hover:border-slate-100 hover:shadow-lg'}`}>
+                                <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-6">
+                                    <div className="flex items-center gap-6">
+                                        <div className={`w-14 h-14 rounded-2xl flex flex-col items-center justify-center font-black italic text-xl shadow-lg ${index === 0 ? 'bg-amber-400 text-white' : index === 1 ? 'bg-slate-300 text-white' : index === 2 ? 'bg-orange-400 text-white' : 'bg-white text-slate-400 border border-slate-100'}`}>
+                                            <span className="text-[10px] uppercase not-italic font-bold opacity-60 mb-0.5">{String(index + 1).padStart(2, '0')}</span>
+                                            {tier.icon}
+                                        </div>
+                                        <div>
+                                            <div className="flex items-center gap-3 mb-1">
+                                                <p className="text-lg font-black text-blue-950 uppercase italic leading-none">Loja {d.storeNumber}</p>
+                                                <span className={`${tier.color} text-[8px] font-black px-2 py-0.5 rounded-full uppercase tracking-widest border`}>
+                                                    {tier.label}
+                                                </span>
                                             </div>
-                                        </td>
-                                        <td className="py-5 px-4">
-                                            <div className="flex items-center justify-end gap-4">
-                                                <div className="text-right min-w-[120px]">
-                                                    <p className="text-sm font-black text-blue-950 italic">{formatCurrency(revenueActual)}</p>
-                                                    <p className="text-[9px] font-bold text-gray-400 uppercase tracking-tighter mt-1">
-                                                        Meta: {formatCurrency(revenueTarget)}
-                                                    </p>
-                                                </div>
-                                                <div className="flex flex-col items-center w-28">
-                                                    <span className={`text-[10px] font-black italic mb-1 ${percent >= 100 ? 'text-green-600' : 'text-blue-900'}`}>
-                                                        {percent.toFixed(1)}%
-                                                    </span>
-                                                    <div className="w-full bg-gray-100 h-1.5 rounded-full overflow-hidden shadow-inner">
-                                                        <div 
-                                                            className={`h-full transition-all duration-1000 ${barColor}`} 
-                                                            style={{ width: `${Math.min(percent, 100)}%` }} 
-                                                        />
-                                                    </div>
-                                                </div>
+                                            <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">{d.city}</p>
+                                        </div>
+                                    </div>
+
+                                    <div className="flex-1 w-full md:max-w-md">
+                                        <div className="flex justify-between items-end mb-2">
+                                            <p className="text-[9px] font-black text-slate-400 uppercase tracking-widest">Performance Global</p>
+                                            <p className={`text-xl font-black italic ${textColor}`}>{score.toFixed(1)}%</p>
+                                        </div>
+                                        <div className="h-2 bg-slate-100 rounded-full overflow-hidden shadow-inner">
+                                            <div className={`h-full transition-all duration-1000 ${tier.bar}`} style={{ width: `${Math.min(score, 100)}%` }} />
+                                        </div>
+                                    </div>
+
+                                    <div className="grid grid-cols-2 md:grid-cols-4 gap-6 w-full md:w-auto">
+                                        <div className="flex flex-col items-end">
+                                            <p className="text-[8px] font-black text-slate-300 uppercase mb-0.5">Faturamento</p>
+                                            <div className="bg-blue-50 text-blue-600 text-[8px] font-black px-2 py-1 rounded-full uppercase tracking-tighter mb-1 border border-blue-100 shadow-sm">
+                                                Meta: {formatCurrency(d.revenueTarget)}
                                             </div>
-                                        </td>
-                                        <td className="py-5 px-4 text-right">
-                                            <p className="text-sm font-black text-blue-950">{(Number(d.paActual) || 0).toFixed(2)}</p>
-                                        </td>
-                                        <td className="py-5 px-4 text-right">
-                                            <p className="text-sm font-black text-blue-950">{formatCurrency(Number(d.puActual) || 0)}</p>
-                                        </td>
-                                        <td className="py-5 px-4 text-right">
-                                            <p className="text-sm font-black text-blue-950">{formatCurrency(Number(d.averageTicket) || 0)}</p>
-                                        </td>
-                                        <td className="py-5 px-4 text-right">
-                                            <p className="text-sm font-black text-blue-950">{Number(d.itemsActual || 0).toLocaleString('pt-BR')}</p>
-                                        </td>
-                                    </tr>
-                                );
-                            })}
-                        </tbody>
-                    </table>
+                                            <p className="text-xs font-black text-blue-950 italic leading-none mb-1">{formatCurrency(d.revenueActual)}</p>
+                                            {d.revenueActual < d.revenueTarget && (
+                                                <p className="text-[7px] font-bold text-blue-500 uppercase leading-none">
+                                                    R$ {((d.revenueTarget - d.revenueActual) / getRemainingWorkDays(selectedMonth)).toLocaleString('pt-BR', { maximumFractionDigits: 0 })}/dia
+                                                </p>
+                                            )}
+                                        </div>
+                                        <div className="flex flex-col items-end">
+                                            <p className="text-[8px] font-black text-slate-300 uppercase mb-0.5">P.A</p>
+                                            <div className="bg-blue-50 text-blue-600 text-[8px] font-black px-2 py-1 rounded-full uppercase tracking-tighter mb-1 border border-blue-100 shadow-sm">
+                                                Meta: {d.paTarget.toFixed(2)}
+                                            </div>
+                                            <p className="text-xs font-black text-blue-950 italic leading-none mb-1">{d.paActual.toFixed(2)}</p>
+                                            <div className="w-12 h-1 bg-slate-100 rounded-full overflow-hidden">
+                                                <div className="h-full bg-blue-400" style={{ width: `${Math.min((d.paActual / d.paTarget) * 100, 100)}%` }} />
+                                            </div>
+                                        </div>
+                                        <div className="flex flex-col items-end">
+                                            <p className="text-[8px] font-black text-slate-300 uppercase mb-0.5">P.U</p>
+                                            <div className="bg-emerald-50 text-emerald-600 text-[8px] font-black px-2 py-1 rounded-full uppercase tracking-tighter mb-1 border border-emerald-100 shadow-sm">
+                                                Meta: {d.puTarget.toFixed(2)}
+                                            </div>
+                                            <p className="text-xs font-black text-blue-950 italic leading-none mb-1">{d.puActual.toFixed(2)}</p>
+                                            <div className="w-12 h-1 bg-slate-100 rounded-full overflow-hidden">
+                                                <div className="h-full bg-emerald-400" style={{ width: `${Math.min((d.puTarget / d.puActual) * 100, 100)}%` }} />
+                                            </div>
+                                        </div>
+                                        <div className="flex flex-col items-end">
+                                            <p className="text-[8px] font-black text-slate-300 uppercase mb-0.5">Ticket</p>
+                                            <div className="bg-indigo-50 text-indigo-600 text-[8px] font-black px-2 py-1 rounded-full uppercase tracking-tighter mb-1 border border-indigo-100 shadow-sm">
+                                                Meta: {formatCurrency(d.ticketTarget)}
+                                            </div>
+                                            <p className="text-xs font-black text-blue-950 italic leading-none mb-1">{formatCurrency(d.averageTicket)}</p>
+                                            <div className="w-12 h-1 bg-slate-100 rounded-full overflow-hidden">
+                                                <div className="h-full bg-indigo-400" style={{ width: `${Math.min((d.averageTicket / d.ticketTarget) * 100, 100)}%` }} />
+                                            </div>
+                                        </div>
+                                    </div>
+                                </div>
+
+                                {nextStore && (
+                                    <div className={`mt-6 pt-6 border-t border-slate-100/50 flex items-start gap-3 p-4 rounded-2xl ${index >= stats.currentData.length - 3 ? 'bg-rose-50/30' : 'bg-blue-50/30'}`}>
+                                        <div className={`p-1.5 rounded-lg ${index >= stats.currentData.length - 3 ? 'bg-rose-100 text-rose-600' : 'bg-blue-100 text-blue-600'}`}>
+                                            <TrendingDown size={14} className={index >= stats.currentData.length - 3 ? '' : 'rotate-180'} />
+                                        </div>
+                                        <p className="text-[10px] font-medium text-slate-600 leading-relaxed">
+                                            <span className="font-black text-blue-900 uppercase tracking-tighter">Plano de Ação:</span> {getDetailedAdvice(d, nextStore)}
+                                        </p>
+                                    </div>
+                                )}
+                            </div>
+                        );
+                    })}
                 </div>
             </div>
         </div>

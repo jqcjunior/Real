@@ -28,6 +28,7 @@ const SystemAudit: React.FC<SystemAuditProps> = ({ logs, receipts, store, cashEr
   const [endDate, setEndDate] = useState(new Date().toISOString().split('T')[0]);
   
   const [filterUser, setFilterUser] = useState('all');
+  const [showDailySummary, setShowDailySummary] = useState(false);
 
   const isManagement = currentUser?.role === UserRole.ADMIN || currentUser?.role === UserRole.MANAGER;
 
@@ -70,6 +71,36 @@ const SystemAudit: React.FC<SystemAuditProps> = ({ logs, receipts, store, cashEr
       });
   }, [cardSales, startDate, endDate, filterUser, searchTerm, currentUser]);
 
+  const stats = useMemo(() => {
+    const filteredSales = iceCreamSales.filter(s => {
+      const saleDate = (s.createdAt || '').split('T')[0];
+      const matchesDate = checkDateInRange(saleDate);
+      const matchesStore = currentUser?.role === UserRole.ADMIN || s.storeId === currentUser?.storeId;
+      return matchesDate && matchesStore;
+    });
+
+    const totalValue = filteredSales.reduce((acc, curr) => acc + (curr.totalValue || 0), 0);
+    const totalItems = filteredSales.reduce((acc, curr) => acc + (curr.unitsSold || 0), 0);
+    
+    const productSummary = filteredSales.reduce((acc, curr) => {
+      const name = curr.productName || 'Desconhecido';
+      if (!acc[name]) {
+        acc[name] = { units: 0, value: 0 };
+      }
+      acc[name].units += (curr.unitsSold || 0);
+      acc[name].value += (curr.totalValue || 0);
+      return acc;
+    }, {} as Record<string, { units: number, value: number }>);
+
+    return { 
+      totalValue, 
+      totalItems, 
+      productSummary: (Object.entries(productSummary) as [string, { units: number, value: number }][])
+        .map(([name, data]) => ({ name, units: data.units, value: data.value }))
+        .sort((a, b) => b.value - a.value)
+    };
+  }, [iceCreamSales, startDate, endDate, currentUser]);
+
   return (
     <div className="p-4 md:p-8 max-w-[1600px] mx-auto space-y-6 animate-in fade-in duration-500 pb-20">
       <div className="flex flex-col lg:flex-row justify-between items-start lg:items-center gap-6">
@@ -90,6 +121,36 @@ const SystemAudit: React.FC<SystemAuditProps> = ({ logs, receipts, store, cashEr
       </div>
 
       <div className="grid grid-cols-1 md:grid-cols-12 gap-4 bg-white p-6 rounded-[32px] shadow-sm border border-gray-100 items-center">
+        {/* Totais Rápidos */}
+        <div className="md:col-span-12 grid grid-cols-2 md:grid-cols-4 gap-4 mb-2">
+            <div className="bg-blue-50 p-4 rounded-2xl border border-blue-100">
+                <p className="text-[8px] font-black text-blue-400 uppercase tracking-widest mb-1">Vendas (Período)</p>
+                <p className="text-xl font-black text-blue-900 italic">{formatCurrency(stats.totalValue)}</p>
+            </div>
+            <div className="bg-indigo-50 p-4 rounded-2xl border border-indigo-100">
+                <p className="text-[8px] font-black text-indigo-400 uppercase tracking-widest mb-1">Itens Vendidos</p>
+                <p className="text-xl font-black text-indigo-900 italic">{stats.totalItems.toLocaleString('pt-BR')} UN</p>
+            </div>
+            <div className="bg-emerald-50 p-4 rounded-2xl border border-emerald-100 flex items-center justify-between">
+                <div>
+                    <p className="text-[8px] font-black text-emerald-400 uppercase tracking-widest mb-1">Resumo Diário</p>
+                    <p className="text-[10px] font-bold text-emerald-700 uppercase">Vendas por Produto</p>
+                </div>
+                <button 
+                    onClick={() => setShowDailySummary(true)}
+                    className="p-2 bg-white text-emerald-600 rounded-xl shadow-sm border border-emerald-100 hover:bg-emerald-600 hover:text-white transition-all"
+                >
+                    <FileText size={18} />
+                </button>
+            </div>
+            <div className="bg-red-50 p-4 rounded-2xl border border-red-100">
+                <p className="text-[8px] font-black text-red-400 uppercase tracking-widest mb-1">Quebras (Período)</p>
+                <p className="text-xl font-black text-red-900 italic">
+                    {formatCurrency(cashErrors.filter(e => checkDateInRange(String(e.date))).reduce((acc, curr) => acc + (curr.value || 0), 0))}
+                </p>
+            </div>
+        </div>
+
         {/* Busca por texto */}
         <div className="md:col-span-4 relative group">
             <Search className="absolute left-5 top-1/2 -translate-y-1/2 text-gray-300" size={20} />
@@ -237,6 +298,69 @@ const SystemAudit: React.FC<SystemAuditProps> = ({ logs, receipts, store, cashEr
             </div>
         )}
       </div>
+
+      {/* Modal de Resumo do Dia */}
+      {showDailySummary && (
+        <div className="fixed inset-0 bg-black/80 backdrop-blur-md flex items-center justify-center z-[200] p-4">
+          <div className="bg-white rounded-[40px] w-full max-w-2xl shadow-2xl animate-in zoom-in duration-300 border-t-8 border-emerald-600 overflow-hidden">
+            <div className="p-6 border-b flex justify-between items-center bg-gray-50/50">
+              <div className="flex items-center gap-3">
+                <div className="p-2 bg-emerald-100 text-emerald-600 rounded-xl">
+                  <FileText size={20} />
+                </div>
+                <div>
+                  <h3 className="text-lg font-black uppercase italic text-blue-950">Resumo de <span className="text-emerald-600">Vendas</span></h3>
+                  <p className="text-[10px] font-bold text-gray-400 uppercase tracking-widest">Consolidado por Produto no Período</p>
+                </div>
+              </div>
+              <button onClick={() => setShowDailySummary(false)} className="text-gray-400 hover:text-red-600 transition-colors">
+                <X size={24} />
+              </button>
+            </div>
+            
+            <div className="p-6 max-h-[60vh] overflow-y-auto no-scrollbar">
+              <div className="space-y-2">
+                <div className="grid grid-cols-12 gap-4 px-4 py-2 text-[10px] font-black text-gray-400 uppercase tracking-widest border-b">
+                  <div className="col-span-6">Produto</div>
+                  <div className="col-span-3 text-right">Qtd</div>
+                  <div className="col-span-3 text-right">Total</div>
+                </div>
+                {stats.productSummary.map((item, idx) => (
+                  <div key={idx} className="grid grid-cols-12 gap-4 px-4 py-4 bg-gray-50 rounded-2xl items-center hover:bg-emerald-50 transition-colors">
+                    <div className="col-span-6">
+                      <p className="text-xs font-black text-blue-950 uppercase italic leading-none">{item.name}</p>
+                    </div>
+                    <div className="col-span-3 text-right">
+                      <p className="text-xs font-bold text-gray-600">{item.units.toLocaleString('pt-BR')} UN</p>
+                    </div>
+                    <div className="col-span-3 text-right">
+                      <p className="text-sm font-black text-emerald-600 italic">{formatCurrency(item.value)}</p>
+                    </div>
+                  </div>
+                ))}
+                {stats.productSummary.length === 0 && (
+                  <div className="py-20 text-center text-gray-400 uppercase font-black text-xs italic tracking-widest">
+                    Nenhuma venda registrada no período.
+                  </div>
+                )}
+              </div>
+            </div>
+
+            <div className="p-6 bg-gray-50 border-t flex justify-between items-center">
+                <div className="text-left">
+                    <p className="text-[8px] font-black text-gray-400 uppercase tracking-widest">Total Geral</p>
+                    <p className="text-xl font-black text-blue-950 italic">{formatCurrency(stats.totalValue)}</p>
+                </div>
+                <button 
+                    onClick={() => setShowDailySummary(false)}
+                    className="px-8 py-3 bg-blue-900 text-white rounded-2xl font-black uppercase text-[10px] shadow-lg hover:bg-black transition-all active:scale-95"
+                >
+                    Fechar
+                </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 };
