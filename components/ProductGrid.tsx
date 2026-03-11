@@ -41,6 +41,7 @@ export const ProductGrid: React.FC<ProductGridProps> = ({ items, selectedCategor
                             src={item.image_url || getCategoryImage(item.category, item.name)} 
                             className="w-full h-full object-contain p-2 transition-transform duration-300 group-hover:scale-110" 
                             alt={item.name}
+                            loading="lazy"
                             onError={(e) => {
                                 (e.target as HTMLImageElement).src = 'https://img.icons8.com/color/144/ice-cream.png';
                             }}

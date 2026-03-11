@@ -95,6 +95,25 @@ const App: React.FC = () => {
         if (data) setUserPermissions(data.map(p => p.page_key));
     };
 
+    const fetchAllRows = async (table: string, orderBy: string) => {
+        let allData: any[] = [];
+        let from = 0;
+        const step = 999;
+        let hasMore = true;
+        while (hasMore) {
+            const { data, error } = await supabase.from(table).select('*').order(orderBy, { ascending: false }).range(from, from + step);
+            if (error) break;
+            if (data && data.length > 0) {
+                allData = [...allData, ...data];
+                from += step + 1;
+                if (data.length <= step) hasMore = false;
+            } else {
+                hasMore = false;
+            }
+        }
+        return { data: allData };
+    };
+
     const fetchData = async () => {
         try {
             const [
@@ -112,7 +131,7 @@ const App: React.FC = () => {
                 supabase.from('quota_product_categories').select('*'),
                 supabase.from('quota_mix_parameters').select('*'),
                 supabase.from('ice_cream_items').select('*'),
-                supabase.from('ice_cream_daily_sales').select('*').order('created_at', { ascending: false }),
+                fetchAllRows('ice_cream_daily_sales', 'created_at'),
                 supabase.from('ice_cream_stock').select('*'),
                 supabase.from('ice_cream_promissory_notes').select('*'),
                 supabase.from('financial_receipts').select('*').order('created_at', { ascending: true }),
@@ -122,12 +141,12 @@ const App: React.FC = () => {
                 supabase.from('cash_register_closures').select('*'),
                 supabase.from('system_logs').select('*').order('created_at', { ascending: false }).limit(200),
                 supabase.from('monthly_goals').select('*'),
-                supabase.from('financial_card_sales').select('*').order('created_at', { ascending: false }),
-                supabase.from('ice_cream_sales').select('*').order('created_at', { ascending: false }),
-                supabase.from('ice_cream_daily_sales_payments').select('*').order('created_at', { ascending: false }),
+                fetchAllRows('financial_card_sales', 'created_at'),
+                fetchAllRows('ice_cream_sales', 'created_at'),
+                fetchAllRows('ice_cream_daily_sales_payments', 'created_at'),
                 supabase.from('ice_cream_sangria_categoria').select('*'),
-                supabase.from('ice_cream_sangria').select('*').order('created_at', { ascending: false }),
-                supabase.from('ice_cream_stock_movements').select('*').order('created_at', { ascending: false }),
+                fetchAllRows('ice_cream_sangria', 'created_at'),
+                fetchAllRows('ice_cream_stock_movements', 'created_at'),
                 supabase.from('store_profit_distribution').select('*'),
                 supabase.from('admin_users').select('*')
             ]);

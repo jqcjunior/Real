@@ -174,46 +174,96 @@ const IceCreamModule: React.FC<IceCreamModuleProps> = ({
 
 const dreStats = useMemo(() => {
     const now = new Date();
-    const currentUTCFullYear = now.getUTCFullYear();
-    const currentUTCMonth = now.getUTCMonth() + 1;
-    const currentUTCDate = now.getUTCDate();
+    const currentYear = now.getFullYear();
+    const currentMonth = now.getMonth();
+    const currentDate = now.getDate();
 
-    // ===== INTERVALOS SEGUROS EM UTC =====
-    const monthStart = new Date(Date.UTC(Number(selectedYear), Number(selectedMonth) - 1, 1, 0, 0, 0));
-    const monthEnd = new Date(Date.UTC(Number(selectedYear), Number(selectedMonth), 1, 0, 0, 0));
+    // ===== INTERVALOS SEGUROS EM TEMPO LOCAL =====
+    const monthStart = new Date(Number(selectedYear), Number(selectedMonth) - 1, 1, 0, 0, 0);
+    const monthEnd = new Date(Number(selectedYear), Number(selectedMonth), 1, 0, 0, 0);
 
-    const dayStart = new Date(Date.UTC(currentUTCFullYear, currentUTCMonth - 1, currentUTCDate, 0, 0, 0));
-    const dayEnd = new Date(Date.UTC(currentUTCFullYear, currentUTCMonth - 1, currentUTCDate + 1, 0, 0, 0));
+    const dayStart = new Date(currentYear, currentMonth, currentDate, 0, 0, 0);
+    const dayEnd = new Date(currentYear, currentMonth, currentDate + 1, 0, 0, 0);
 
-    // ===== FATURAMENTO MENSAL (USANDO salePayments) =====
-    const monthPaymentsFiltered = (salePayments ?? []).filter(p => {
-        if (!p.created_at) return false;
-        const d = new Date(p.created_at);
-
-        // SENIOR FIX: Cruzando com a tabela de vendas para verificar status 'completed'
-        const sale = (salesHeaders ?? []).find(s => s.id === p.sale_id);
-        const isCompleted = sale?.status === 'completed';
-
-        return (
-            d >= monthStart &&
-            d < monthEnd &&
-            isCompleted &&
-            p.store_id === effectiveStoreId
-        );
-    });
-
+    // ===== FATURAMENTO MENSAL E DIÁRIO (CRUZANDO salesHeaders, salePayments e sales) =====
     let monthIn = 0;
     const monthMethods = { pix: 0, money: 0, card: 0, fiado: 0 };
+    const monthFiadoDetails: any[] = [];
 
-    monthPaymentsFiltered.forEach(p => {
-        const val = Number(p.amount || 0);
-        monthIn += val;
+    let dayIn = 0;
+    const dayMethods = { pix: 0, money: 0, card: 0, fiado: 0 };
 
-        const method = p.payment_method?.toLowerCase();
-        if (method === 'pix') monthMethods.pix += val;
-        else if (method === 'dinheiro') monthMethods.money += val;
-        else if (method === 'cartão') monthMethods.card += val;
-        else if (method === 'fiado') monthMethods.fiado += val;
+    const monthSalesHeaders = (salesHeaders ?? []).filter(s => {
+        if (!s.created_at) return false;
+        const d = new Date(s.created_at);
+        return d >= monthStart && d < monthEnd && s.status === 'completed' && s.store_id === effectiveStoreId;
+    });
+
+    monthSalesHeaders.forEach(sale => {
+        const d = new Date(sale.created_at);
+        const isDaySale = d >= dayStart && d < dayEnd;
+
+        const payments = (salePayments ?? []).filter(p => p.sale_id === sale.id);
+        
+        if (payments.length > 0) {
+            payments.forEach(p => {
+                const val = Number(p.amount || 0);
+                monthIn += val;
+                if (isDaySale) dayIn += val;
+
+                const method = p.payment_method?.toLowerCase();
+                if (method === 'pix') {
+                    monthMethods.pix += val;
+                    if (isDaySale) dayMethods.pix += val;
+                } else if (method === 'dinheiro') {
+                    monthMethods.money += val;
+                    if (isDaySale) dayMethods.money += val;
+                } else if (method === 'cartão') {
+                    monthMethods.card += val;
+                    if (isDaySale) dayMethods.card += val;
+                } else if (method === 'fiado') {
+                    monthMethods.fiado += val;
+                    if (isDaySale) dayMethods.fiado += val;
+                    monthFiadoDetails.push({
+                        buyer_name: sale.buyer_name || 'NÃO INFORMADO',
+                        totalValue: p.amount,
+                        saleCode: sale.sale_code || '---',
+                        createdAt: p.created_at,
+                        productName: 'Venda Diversa'
+                    });
+                }
+            });
+        } else {
+            // Fallback para itens da venda (ice_cream_daily_sales)
+            const items = (sales ?? []).filter(i => i.saleCode === sale.sale_code && i.status === 'completed');
+            items.forEach(i => {
+                const val = Number(i.totalValue || 0);
+                monthIn += val;
+                if (isDaySale) dayIn += val;
+
+                const method = i.paymentMethod?.toLowerCase();
+                if (method === 'pix') {
+                    monthMethods.pix += val;
+                    if (isDaySale) dayMethods.pix += val;
+                } else if (method === 'dinheiro') {
+                    monthMethods.money += val;
+                    if (isDaySale) dayMethods.money += val;
+                } else if (method === 'cartão') {
+                    monthMethods.card += val;
+                    if (isDaySale) dayMethods.card += val;
+                } else if (method === 'fiado') {
+                    monthMethods.fiado += val;
+                    if (isDaySale) dayMethods.fiado += val;
+                    monthFiadoDetails.push({
+                        buyer_name: i.buyer_name || 'NÃO INFORMADO',
+                        totalValue: i.totalValue,
+                        saleCode: i.saleCode || '---',
+                        createdAt: i.createdAt,
+                        productName: i.productName || 'Venda Diversa'
+                    });
+                }
+            });
+        }
     });
 
     const profit = monthIn; // Sem despesas por enquanto
@@ -229,44 +279,6 @@ const dreStats = useMemo(() => {
             s.status === 'completed' &&
             s.storeId === effectiveStoreId
         );
-    });
-
-    let dayIn = 0;
-    const dayMethods = { pix: 0, money: 0, card: 0, fiado: 0 };
-
-    // SENIOR FIX: dayIn agora vem da tabela de pagamentos filtrada pelo dia
-    const dayPaymentsFiltered = (salePayments ?? []).filter(p => {
-        if (!p.created_at) return false;
-        const d = new Date(p.created_at);
-        const sale = (salesHeaders ?? []).find(s => s.id === p.sale_id);
-        return d >= dayStart && d < dayEnd && sale?.status === 'completed' && p.store_id === effectiveStoreId;
-    });
-
-    dayPaymentsFiltered.forEach(p => {
-        const val = Number(p.amount || 0);
-        dayIn += val;
-
-        const method = p.payment_method?.toLowerCase();
-        if (method === 'pix') dayMethods.pix += val;
-        else if (method === 'dinheiro') dayMethods.money += val;
-        else if (method === 'cartão') dayMethods.card += val;
-        else if (method === 'fiado') dayMethods.fiado += val;
-    });
-
-    // ===== FIADO DETALHADO (CRUZANDO salePayments + sales) =====
-    const monthFiadoPayments = monthPaymentsFiltered.filter(
-        p => p.payment_method?.toLowerCase() === 'fiado'
-    );
-
-    const monthFiadoDetails = monthFiadoPayments.map(p => {
-        const sale = (salesHeaders ?? []).find(s => s.id === p.sale_id);
-        return {
-            buyer_name: sale?.buyer_name || 'NÃO INFORMADO',
-            totalValue: p.amount,
-            saleCode: sale?.sale_code || '---',
-            createdAt: p.created_at,
-            productName: 'Venda Diversa'
-        };
     });
 
     // ===== RESUMO DE ITENS (RODAPÉ DRE DIÁRIO) =====
@@ -416,6 +428,7 @@ const dreStats = useMemo(() => {
     });
 
     const resumo: Record<string, { qtd: number; total: number }> = {};
+    const resumoPagamentos: Record<string, number> = { 'Dinheiro': 0, 'Fiado': 0, 'Pix': 0, 'Cartão': 0 };
     let totalGeral = 0;
     let totalItens = 0;
 
@@ -429,14 +442,70 @@ const dreStats = useMemo(() => {
       resumo[venda.productName].total += total;
       totalGeral += total;
       totalItens += qtd;
+
+      // Adicionando ao resumo de pagamentos
+      if (venda.paymentMethod) {
+          const method = venda.paymentMethod;
+          if (resumoPagamentos[method] !== undefined) {
+              resumoPagamentos[method] += total;
+          } else if (method === 'Misto') {
+              // Se for misto, precisariamos dos detalhes da venda, mas aqui vamos tentar simplificar
+              // ou buscar na tabela de pagamentos se disponível.
+              // Por enquanto, vamos somar no total geral mas talvez não consigamos quebrar perfeitamente aqui sem salePayments
+          }
+      }
+    });
+
+    // Refinamento: Usar salePayments para totais de pagamento mais precisos (especialmente para Misto)
+    const filterPartsPayments = [];
+    if (auditYear) filterPartsPayments.push(auditYear);
+    if (auditMonth) filterPartsPayments.push(String(auditMonth).padStart(2, '0'));
+    if (auditDay) filterPartsPayments.push(String(auditDay).padStart(2, '0'));
+    const filterPrefixPayments = filterPartsPayments.join('-');
+
+    const resumoPagamentosFinal: Record<string, number> = { 'Dinheiro': 0, 'Fiado': 0, 'Pix': 0, 'Cartão': 0 };
+    const resumoPagamentosQtd: Record<string, number> = { 'Dinheiro': 0, 'Fiado': 0, 'Pix': 0, 'Cartão': 0 };
+
+    const auditSalesHeaders = (salesHeaders ?? []).filter(s => {
+        if (s.store_id !== effectiveStoreId) return false;
+        if (s.status !== 'completed') return false;
+        if (!s.created_at) return false;
+        const localDate = new Date(s.created_at).toLocaleDateString('en-CA');
+        return !filterPrefixPayments || localDate.startsWith(filterPrefixPayments);
+    });
+
+    auditSalesHeaders.forEach(sale => {
+        const payments = (salePayments ?? []).filter(p => p.sale_id === sale.id);
+        
+        if (payments.length > 0) {
+            payments.forEach(p => {
+                const method = p.payment_method;
+                if (resumoPagamentosFinal[method] !== undefined) {
+                    resumoPagamentosFinal[method] += Number(p.amount || 0);
+                    resumoPagamentosQtd[method] += 1;
+                }
+            });
+        } else {
+            // Fallback para itens da venda (ice_cream_daily_sales)
+            const items = (sales ?? []).filter(i => i.saleCode === sale.sale_code && i.status === 'completed');
+            items.forEach(i => {
+                const method = i.paymentMethod;
+                if (method && resumoPagamentosFinal[method] !== undefined) {
+                    resumoPagamentosFinal[method] += Number(i.totalValue || 0);
+                    resumoPagamentosQtd[method] += 1;
+                }
+            });
+        }
     });
 
     return {
       resumoItens: Object.entries(resumo).sort((a, b) => b[1].qtd - a[1].qtd),
+      resumoPagamentos: resumoPagamentosFinal,
+      resumoPagamentosQtd,
       totalGeral,
       totalItens
     };
-  }, [sales, auditYear, auditMonth, auditDay, effectiveStoreId]);
+  }, [sales, auditYear, auditMonth, auditDay, effectiveStoreId, salePayments, salesHeaders]);
 
   const filteredAuditWastage = useMemo(() => {
     // NOVA FUNCIONALIDADE — FILTRO AVARIAS
@@ -1351,9 +1420,36 @@ const dreStats = useMemo(() => {
                                     </div>
                                 ))}
                             </div>
-                            <div className="mt-8 pt-6 border-t border-dashed border-gray-200 flex justify-between items-center">
-                                <p className="text-sm font-black text-gray-400 uppercase tracking-widest">Total Geral do Período</p>
-                                <p className="text-2xl font-black text-blue-950 italic">{formatCurrency(auditSummary.totalGeral)}</p>
+                            <div className="mt-8 pt-6 border-t border-dashed border-gray-200">
+                                <h5 className="text-[10px] font-black text-gray-400 uppercase tracking-widest mb-4 flex items-center gap-2">
+                                    <Wallet size={14} className="text-blue-600" /> Resumo Financeiro por Método
+                                </h5>
+                                <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-6">
+                                    {Object.entries(auditSummary.resumoPagamentos).map(([method, total]) => (
+                                        <div key={method} className="bg-blue-50/50 p-4 rounded-2xl border border-blue-100">
+                                            <p className="text-[10px] font-black text-blue-600 uppercase tracking-widest mb-1">
+                                                {method === 'Dinheiro' ? 'À Vista' : method}
+                                            </p>
+                                            <div className="flex justify-between items-end mt-2">
+                                                <div className="flex flex-col">
+                                                    <span className="text-[8px] font-bold text-gray-400 uppercase">Recebimentos</span>
+                                                    <span className="text-xs font-black text-blue-950">{auditSummary.resumoPagamentosQtd[method]}</span>
+                                                </div>
+                                                <div className="flex flex-col items-end">
+                                                    <span className="text-[8px] font-bold text-gray-400 uppercase">Total</span>
+                                                    <span className="text-sm font-black text-blue-900">{formatCurrency(total as number)}</span>
+                                                </div>
+                                            </div>
+                                        </div>
+                                    ))}
+                                </div>
+                                <div className="flex justify-between items-center bg-blue-950 p-6 rounded-3xl text-white shadow-xl">
+                                    <div className="flex flex-col">
+                                        <p className="text-[10px] font-black text-blue-300 uppercase tracking-widest">Total Financeiro</p>
+                                        <p className="text-[9px] text-blue-400 mt-1">Soma de todos os recebimentos</p>
+                                    </div>
+                                    <p className="text-3xl font-black italic">{formatCurrency(auditSummary.totalGeral)}</p>
+                                </div>
                             </div>
                         </div>
                     )}

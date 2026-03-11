@@ -28,6 +28,14 @@ const LoginScreen: React.FC<LoginScreenProps> = ({ onLoginAttempt, onRegisterReq
     e.preventDefault();
     if (isLoading) return;
     setError('');
+
+    // Validação de formato de e-mail
+    const emailRegex = /^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$/;
+    if (!emailRegex.test(email.trim())) {
+        setError('Por favor, insira um e-mail válido.');
+        return;
+    }
+
     setIsLoading(true);
     try {
         const result = await onLoginAttempt(email.trim(), password.trim(), rememberMe);

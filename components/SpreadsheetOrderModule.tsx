@@ -100,6 +100,26 @@ const SpreadsheetOrderModule = ({ user, onClose }: { user: any, onClose: () => v
     prazos: "" 
   });
 
+  // Auto-fill supplier details based on Marca
+  useEffect(() => {
+    if (pedido.marca) {
+      const savedBrands = localStorage.getItem("order_brands_cache");
+      if (savedBrands) {
+        const brandsMap = JSON.parse(savedBrands);
+        const brandDetails = brandsMap[pedido.marca.toUpperCase()];
+        if (brandDetails) {
+          setPedido(prev => ({
+            ...prev,
+            fornecedor: prev.fornecedor || brandDetails.fornecedor || "",
+            representante: prev.representante || brandDetails.representante || "",
+            telefone: prev.telefone || brandDetails.telefone || "",
+            email: prev.email || brandDetails.email || ""
+          }));
+        }
+      }
+    }
+  }, [pedido.marca]);
+
   const [isSaving, setIsSaving] = useState(false);
 
   const formatPhone = (val: string) => {
@@ -321,42 +341,13 @@ const SpreadsheetOrderModule = ({ user, onClose }: { user: any, onClose: () => v
     }
   };
 
-  useEffect(() => {
-    const initGapi = () => {
-      // @ts-ignore
-      if (typeof gapi !== 'undefined') {
-        // @ts-ignore
-        gapi.load('client', async () => {
-          try {
-            // @ts-ignore
-            await gapi.client.init({
-              apiKey: "AIzaSyBmTNDd_Gl3CBcWxObbGYO0K54ibMWUzUs",
-              discoveryDocs: ["https://sheets.googleapis.com/$discovery/rest?version=v4"],
-            });
-            console.log("GAPI initialized");
-          } catch (err) {
-            console.error("Error initializing GAPI:", err);
-          }
-        });
-      }
-    };
-    initGapi();
-  }, []);
-
   const exportarPlanilhaFinal = async (hD?: any) => {
     if (lotesFinalizados.length === 0) {
       alert("Adicione itens e distribua nas lojas primeiro.");
       return;
     }
 
-    // @ts-ignore
-    if (typeof gapi === 'undefined' || !gapi.client || !gapi.client.sheets) {
-      alert("Google API não carregada. Verifique sua conexão ou configuração.");
-      return;
-    }
-
     try {
-      const spreadsheetId = "1KXTNAm9F8Pabw-aTGaspH2tJc7EVUsP5oAsVmm3QRCA";
       const dataHeader = hD || pedido;
 
       const formatDate = (dateStr: string) => {
@@ -367,73 +358,141 @@ const SpreadsheetOrderModule = ({ user, onClose }: { user: any, onClose: () => v
         return `${day}/${month}/${year}`;
       };
 
-      // 1. Dados do Cabeçalho (Mapeamento exato para o seu Template)
-      const headerUpdates = [
-        { range: 'PEDIDO!N2', values: [[dataHeader.numero_pedido || ""]] },           
-        { range: 'PEDIDO!N3', values: [[dataHeader.marca.toUpperCase()]] },      
-        { range: 'PEDIDO!N4', values: [[dataHeader.fornecedor.toUpperCase()]] }, 
-        { range: 'PEDIDO!AA2', values: [[dataHeader.comprador.toUpperCase()]] }, 
-        { range: 'PEDIDO!AA5', values: [[formatDate(dataHeader.embarque_inicio || dataHeader.embarqueInicio)]] },   
-        { range: 'PEDIDO!AH5', values: [[formatDate(dataHeader.embarque_fim || dataHeader.embarqueFim)]] },      
-        { range: 'PEDIDO!N5', values: [[dataHeader.prazos || ""]] },             
-      ];
+      const TEMPLATE_URL = "https://rwwomakjhmglgoowbmsl.supabase.co/storage/v1/object/public/template/template.xlsx";
+      const response = await fetch(`${TEMPLATE_URL}?v=${Date.now()}`, {
+        method: "GET",
+        cache: "no-store",
+      });
 
-      // Agrupamos por Referência + Tipo + Cores para listar os itens únicos
-      const itensUnicosMap = new Map<string, {
-        referencia: string,
-        tipo: string,
-        modelo: string,
-        cor1: string,
-        valorCompra: number
-      }>();
+      if (!response.ok) throw new Error("Erro ao baixar template.");
+      const templateBuffer = await response.arrayBuffer();
+
+      const workbook = XLSX.read(templateBuffer, { type: "array" });
+      const sheet = workbook.Sheets[workbook.SheetNames[0]];
+
+      // 1. Dados do Cabeçalho
+      setCell(sheet, 1, 13, dataHeader.numero_pedido || ""); // N2
+      setCell(sheet, 2, 13, dataHeader.marca.toUpperCase()); // N3
+      setCell(sheet, 3, 13, dataHeader.fornecedor.toUpperCase()); // N4 (Razão Social)
+      setCell(sheet, 2, 26, dataHeader.representante.toUpperCase()); // AA3
+      setCell(sheet, 2, 42, dataHeader.telefone); // AQ3
+      setCell(sheet, 3, 26, dataHeader.email); // AA4
+      setCell(sheet, 1, 26, dataHeader.comprador.toUpperCase()); // AA2
+      setCell(sheet, 1, 42, formatDate(new Date().toISOString().split('T')[0])); // AQ2 (DATA)
+      setCell(sheet, 3, 42, "CIF"); // AQ4 (FRETE)
+      setCell(sheet, 4, 26, formatDate(dataHeader.embarque_inicio || dataHeader.embarqueInicio)); // AA5
+      setCell(sheet, 4, 36, formatDate(dataHeader.embarque_fim || dataHeader.embarqueFim)); // AK5
+      setCell(sheet, 5, 25, Number(dataHeader.desconto), "n"); // Z6
+      setCell(sheet, 5, 34, Number(dataHeader.markup), "n"); // AI6
+
+      // Prazos
+      if (dataHeader.prazos) {
+        const prazosArr = dataHeader.prazos.split('/');
+        prazosArr.forEach((p: string, i: number) => {
+          if (i > 2) return;
+          const val = parseInt(p);
+          if (!isNaN(val)) {
+            const col = 13 + (i * 3); // N(13), Q(16), T(19)
+            setCell(sheet, 4, col, val, "n");
+            
+            if (dataHeader.embarque_fim || dataHeader.embarqueFim) {
+              const d = new Date((dataHeader.embarque_fim || dataHeader.embarqueFim) + "T12:00:00");
+              d.setDate(d.getDate() + val);
+              const dateStr = `${d.getDate().toString().padStart(2, '0')}/${(d.getMonth() + 1).toString().padStart(2, '0')}/${d.getFullYear()}`;
+              setCell(sheet, 5, col, dateStr); // N6, Q6, T6
+            }
+          }
+        });
+      }
+
+      // Agrupar lotes (Pedidos 1 a 5)
+      const lotesAgrupados = Object.values(
+        lotesFinalizados.reduce((acc, l) => {
+          if (!acc[l.idVinculo]) {
+            acc[l.idVinculo] = { idVinculo: l.idVinculo, grade: l.gradeLetra, lojas: new Set() };
+          }
+          acc[l.idVinculo].lojas.add(l.loja);
+          return acc;
+        }, {} as Record<string, any>)
+      );
+
+      // 3. Grades (Linhas 14 a 18) e 4. Lojas (Linhas 23 a 27)
+      lotesAgrupados.slice(0, 5).forEach((lote: any, idx: number) => {
+        const rowGrade = 13 + idx; // Linha 14, 15, 16, 17, 18
+        setCell(sheet, rowGrade, 1, lote.grade); // Col B (Letra da Grade)
+        
+        const gradeInfo = gradesSalvas.find(g => g.letra === lote.grade);
+        if (gradeInfo) {
+          Object.entries(gradeInfo.valores).forEach(([tam, qtd]) => {
+            if (Number(qtd) > 0) {
+              const colTam = calcularColunaExcelPorTamanho(tam);
+              if (colTam !== -1) setCell(sheet, rowGrade, colTam, Number(qtd), "n");
+            }
+          });
+        }
+
+        const rowLoja = 22 + idx; // Linha 23, 24, 25, 26, 27
+        const lojasArray = Array.from(lote.lojas).sort();
+        lojasArray.forEach((loja: any, lojaIdx: number) => {
+          const colLoja = 3 + lojaIdx; // D(3), E(4)...
+          if (colLoja <= 40) { // Até AO(40)
+            setCell(sheet, rowLoja, colLoja, loja);
+          }
+        });
+      });
+
+      // 2. Dados dos Produtos (Começando na Linha 36)
+      const itensUnicosMap = new Map<string, any>();
       
       lotesFinalizados.forEach(l => {
-        const key = `${l.referencia}-${l.tipo}-${l.cor1}`;
+        const key = `${l.referencia}-${l.corEscolhida}-${l.cor2 || ''}-${l.cor3 || ''}`;
         if (!itensUnicosMap.has(key)) {
-          itensUnicosMap.set(key, {
-            referencia: l.referencia,
-            tipo: l.tipo,
-            modelo: l.modelo,
-            cor1: l.cor1,
-            valorCompra: l.valorCompra
-          });
+          itensUnicosMap.set(key, { ...l, lotes: new Set([l.idVinculo]) });
+        } else {
+          itensUnicosMap.get(key).lotes.add(l.idVinculo);
         }
       });
 
       const itensUnicos = Array.from(itensUnicosMap.values());
 
-      // 2. Dados dos Produtos (Começando na Linha 36 conforme solicitado)
-      const rows = itensUnicos.map(item => {
-        const row = new Array(36).fill(""); // Até AL (Index 35)
-        row[0] = item.referencia; // C
-        row[5] = item.tipo;       // H
-        row[6] = item.modelo;     // I
-        row[9] = item.cor1;       // L
-        row[35] = Number(item.valorCompra); // AL
-        return row;
+      itensUnicos.forEach((item, idx) => {
+        const r = 35 + idx; // Linha 36 é o índice 35
+        setCell(sheet, r, 2, item.referencia); // C
+        setCell(sheet, r, 7, item.tipo);       // H
+        setCell(sheet, r, 17, item.corEscolhida || ""); // R (17)
+        setCell(sheet, r, 18, item.cor2 || ""); // S (18)
+        setCell(sheet, r, 19, item.cor3 || ""); // T (19)
+        setCell(sheet, r, 37, Number(item.valorCompra), "n"); // AL (37)
+        setCell(sheet, r, 40, Number(item.precoVenda), "n"); // AO (40)
+
+        // Grades do Pedido (X36, AA36, AD36, AG36, AJ36)
+        item.lotes.forEach((idVinculo: string) => {
+          const loteIndex = lotesAgrupados.findIndex(l => l.idVinculo === idVinculo);
+          if (loteIndex !== -1 && loteIndex < 5) {
+            const cols = [23, 26, 29, 32, 35]; // X(23), AA(26), AD(29), AG(32), AJ(35)
+            const gradeLetra = lotesFinalizados.find(l => l.idVinculo === idVinculo && l.referencia === item.referencia && l.corEscolhida === item.corEscolhida)?.gradeLetra;
+            if (gradeLetra) {
+              setCell(sheet, r, cols[loteIndex], gradeLetra);
+            }
+          }
+        });
       });
 
-      // Comando para escrever no Google Sheets via API
-      // @ts-ignore
-      await gapi.client.sheets.spreadsheets.values.batchUpdate({
-        spreadsheetId: spreadsheetId,
-        resource: {
-          data: [
-            ...headerUpdates,
-            { range: 'PEDIDO!C36', values: rows }
-          ],
-          valueInputOption: 'USER_ENTERED'
-        }
-      });
+      const wbout = XLSX.write(workbook, { bookType: "xlsx", type: "array" });
+      const url = URL.createObjectURL(new Blob([wbout], { type: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" }));
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = `Pedido_Consolidado_${dataHeader.marca || "FINAL"}.xlsx`;
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+      URL.revokeObjectURL(url);
 
-      console.log("Pedido enviado! Layout preservado.");
-      
-      // 3. O SEGREREDO: Link para baixar o XLSX pronto do Google
-      window.open(`https://docs.google.com/spreadsheets/d/${spreadsheetId}/export?format=xlsx`, '_blank');
+      console.log("Pedido consolidado exportado com sucesso!");
 
     } catch (err) {
-      console.error("Erro ao escrever na planilha:", err);
-      alert("Erro ao enviar dados para o Google Sheets. Verifique o console.");
+      console.error("Erro ao exportar planilha:", err);
+      alert("Erro ao exportar planilha consolidada. Verifique o console.");
     }
   };
 
@@ -460,16 +519,28 @@ const SpreadsheetOrderModule = ({ user, onClose }: { user: any, onClose: () => v
         const sheet = workbook.Sheets[workbook.SheetNames[0]];
 
         // --- 1. CABEÇALHO ---
-        setCell(sheet, 1, 26, pedido.comprador);
-        setCell(sheet, 2, 13, pedido.marca);
-        setCell(sheet, 3, 13, pedido.fornecedor);
-        setCell(sheet, 2, 26, pedido.representante);
-        setCell(sheet, 2, 39, pedido.telefone);
-        setCell(sheet, 3, 26, pedido.email);
-        setCell(sheet, 4, 26, pedido.embarqueInicio);
-        setCell(sheet, 4, 33, pedido.embarqueFim);
-        setCell(sheet, 5, 25, Number(pedido.desconto), "n");
-        setCell(sheet, 5, 31, Number(pedido.markup), "n");
+        setCell(sheet, 1, 13, pedido.numero_pedido || ""); // N2
+        setCell(sheet, 2, 13, pedido.marca.toUpperCase()); // N3
+        setCell(sheet, 3, 13, pedido.fornecedor.toUpperCase()); // N4 (Razão Social)
+        setCell(sheet, 2, 26, pedido.representante.toUpperCase()); // AA3
+        setCell(sheet, 2, 42, pedido.telefone); // AQ3
+        setCell(sheet, 3, 26, pedido.email); // AA4
+        setCell(sheet, 1, 26, pedido.comprador.toUpperCase()); // AA2
+        
+        const formatDate = (dateStr: string) => {
+          if (!dateStr) return "";
+          const parts = dateStr.split('-');
+          if (parts.length !== 3) return dateStr;
+          const [year, month, day] = parts;
+          return `${day}/${month}/${year}`;
+        };
+        
+        setCell(sheet, 1, 42, formatDate(new Date().toISOString().split('T')[0])); // AQ2 (DATA)
+        setCell(sheet, 3, 42, "CIF"); // AQ4 (FRETE)
+        setCell(sheet, 4, 26, formatDate(pedido.embarqueInicio)); // AA5
+        setCell(sheet, 4, 36, formatDate(pedido.embarqueFim)); // AK5
+        setCell(sheet, 5, 25, Number(pedido.desconto), "n"); // Z6
+        setCell(sheet, 5, 34, Number(pedido.markup), "n"); // AI6
 
         // --- 2. PRAZOS E VENCIMENTOS ---
         if (pedido.prazos) {
@@ -483,13 +554,9 @@ const SpreadsheetOrderModule = ({ user, onClose }: { user: any, onClose: () => v
               
               if (pedido.embarqueFim) {
                 const d = new Date(pedido.embarqueFim + "T12:00:00");
-                if (val % 30 === 0) {
-                  d.setMonth(d.getMonth() + (val / 30));
-                } else {
-                  d.setDate(d.getDate() + val);
-                }
-                const mesAno = `${new Intl.DateTimeFormat('pt-BR', { month: 'long' }).format(d)}/${d.getFullYear().toString().slice(-2)}`;
-                setCell(sheet, 5, col, mesAno.toUpperCase());
+                d.setDate(d.getDate() + val);
+                const dateStr = `${d.getDate().toString().padStart(2, '0')}/${(d.getMonth() + 1).toString().padStart(2, '0')}/${d.getFullYear()}`;
+                setCell(sheet, 5, col, dateStr);
               }
             }
           });
@@ -516,23 +583,34 @@ const SpreadsheetOrderModule = ({ user, onClose }: { user: any, onClose: () => v
 
         const lotesDaLoja = lotesFinalizados.filter((l) => l.loja === loja);
         
+        // Agrupar lotes para saber o índice do lote (0 a 4)
+        const lotesAgrupados = Object.values(
+          lotesFinalizados.reduce((acc, l) => {
+            if (!acc[l.idVinculo]) {
+              acc[l.idVinculo] = { idVinculo: l.idVinculo, grade: l.gradeLetra, lojas: new Set() };
+            }
+            acc[l.idVinculo].lojas.add(l.loja);
+            return acc;
+          }, {} as Record<string, any>)
+        );
+
         lotesDaLoja.forEach((l, idx) => {
           const r = 35 + idx;
           
           if (l) {
             setCell(sheet, r, 2, l.referencia);    // C
             setCell(sheet, r, 7, l.tipo);          // H
-            setCell(sheet, r, 8, l.modelo);        // I
-            setCell(sheet, r, 12, l.cor1);         // M
-            setCell(sheet, r, 13, l.cor2 || "");   // N
-            setCell(sheet, r, 14, l.cor3 || "");   // O
+            setCell(sheet, r, 17, l.corEscolhida || ""); // R
+            setCell(sheet, r, 18, l.cor2 || "");   // S
+            setCell(sheet, r, 19, l.cor3 || "");   // T
             
             setCell(sheet, r, 37, Number(l.valorCompra), "n"); // AL
             setCell(sheet, r, 40, Number(l.precoVenda), "n");  // AO
 
-            const mappingGrades: Record<string, number> = { "A": 23, "B": 26, "C": 29, "D": 32, "E": 35 };
-            if(mappingGrades[l.gradeLetra]) {
-              setCell(sheet, r, mappingGrades[l.gradeLetra], l.gradeLetra);
+            const loteIndex = lotesAgrupados.findIndex(la => la.idVinculo === l.idVinculo);
+            if (loteIndex !== -1 && loteIndex < 5) {
+              const cols = [23, 26, 29, 32, 35]; // X(23), AA(26), AD(29), AG(32), AJ(35)
+              setCell(sheet, r, cols[loteIndex], l.gradeLetra);
             }
           }
         });
@@ -660,7 +738,21 @@ const SpreadsheetOrderModule = ({ user, onClose }: { user: any, onClose: () => v
   const handleSalvarEExportar = async () => {
     const hD = await salvarPedidoCompleto();
     if (hD) {
-      alert("✅ Pedido salvo no banco! Iniciando sincronização com Google Sheets...");
+      alert("✅ Pedido salvo no banco! Gerando planilha consolidada...");
+      
+      // Save brand details to cache for auto-fill
+      if (pedido.marca) {
+        const savedBrands = localStorage.getItem("order_brands_cache");
+        const brandsMap = savedBrands ? JSON.parse(savedBrands) : {};
+        brandsMap[pedido.marca.toUpperCase()] = {
+          fornecedor: pedido.fornecedor,
+          representante: pedido.representante,
+          telefone: pedido.telefone,
+          email: pedido.email
+        };
+        localStorage.setItem("order_brands_cache", JSON.stringify(brandsMap));
+      }
+
       await exportarPlanilhaFinal(hD);
       
       // Resetar tudo para novo pedido
@@ -1105,10 +1197,10 @@ const SpreadsheetOrderModule = ({ user, onClose }: { user: any, onClose: () => v
             <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 h-full animate-in slide-in-from-bottom duration-300">
                <div className="lg:col-span-4 bg-white p-4 rounded-3xl shadow-sm border border-slate-100 flex flex-col">
                   <span className="text-[9px] font-black text-blue-600 uppercase mb-4 text-center tracking-widest border-b pb-2">1. Selecionar & Vincular</span>
-                  <div className="flex-1 overflow-y-auto space-y-2 pr-1 no-scrollbar max-h-[400px] lg:max-h-full">
+                  <div className="flex-1 overflow-y-auto space-y-2 pr-1 no-scrollbar max-h-[35vh] lg:max-h-full">
                     {itens.map(it => {
                       const isSel = selecaoLote.itensIds.includes(it.id);
-                      const assignment = persistAssignments[it.referencia] || { gradeLetra: "", corSelecionada: it.cor1 || "" };
+                      const assignment = persistAssignments[it.id] || { gradeLetra: "", corSelecionada: it.cor1 || "" };
                       return (
                         <div key={it.id} className={`p-3 rounded-2xl border transition-all ${isSel ? 'bg-blue-50 border-blue-400 shadow-sm' : 'bg-slate-50 border-transparent opacity-80'}`}>
                           <div className="flex justify-between items-start gap-2">
@@ -1134,8 +1226,8 @@ const SpreadsheetOrderModule = ({ user, onClose }: { user: any, onClose: () => v
                                     key={`btn-${it.id}-${cName}`} // Chave única garantida: ID do item + Nome da Cor
                                     onClick={(e) => {
                                       e.preventDefault();
-                                      const assignment = persistAssignments[it.referencia] || { gradeLetra: "", corSelecionada: it.cor1 || "" };
-                                      setPersistAssignments({...persistAssignments, [it.referencia]: {...assignment, corSelecionada: cName}});
+                                      const assignment = persistAssignments[it.id] || { gradeLetra: "", corSelecionada: it.cor1 || "" };
+                                      setPersistAssignments({...persistAssignments, [it.id]: {...assignment, corSelecionada: cName}});
                                     }} 
                                     className={`px-1.5 py-0.5 rounded-md text-[6px] font-black uppercase transition-all ${assignment.corSelecionada === cName ? 'bg-blue-600 text-white' : 'bg-white border border-slate-200 text-slate-400'}`}
                                   >
@@ -1150,7 +1242,7 @@ const SpreadsheetOrderModule = ({ user, onClose }: { user: any, onClose: () => v
                                 {gradesSalvas.map(gr => (
                                   <button 
                                     key={gr.letra}
-                                    onClick={() => setPersistAssignments({...persistAssignments, [it.referencia]: {...assignment, gradeLetra: gr.letra}})}
+                                    onClick={() => setPersistAssignments({...persistAssignments, [it.id]: {...assignment, gradeLetra: gr.letra}})}
                                     className={`w-7 h-7 rounded-lg text-[9px] font-black flex items-center justify-center transition-all ${assignment.gradeLetra === gr.letra ? 'bg-blue-600 text-white shadow-md' : 'bg-white border border-slate-200 text-slate-400'}`}
                                   >
                                     {gr.letra}
@@ -1205,8 +1297,11 @@ const SpreadsheetOrderModule = ({ user, onClose }: { user: any, onClose: () => v
                     const idVinculo = crypto.randomUUID();
                     const novos = selecaoLote.itensIds.flatMap(id => {
                       const it = itens.find(i => i.id === id);
-                      const cfg = persistAssignments[it.referencia];
-                      if (!cfg?.gradeLetra) throw new Error(`Vincule grade para ${it.referencia}`);
+                      const cfg = persistAssignments[it.id];
+                      if (!cfg?.gradeLetra) {
+                        alert(`Vincule grade para a referência ${it.referencia}`);
+                        throw new Error(`Vincule grade para ${it.referencia}`);
+                      }
                       return selecaoLote.lojasIds.map(loja => ({ ...it, loja, gradeLetra: cfg.gradeLetra, corEscolhida: cfg.corSelecionada || it.cor1, idVinculo }));
                     });
                     setLotesFinalizados([...lotesFinalizados, ...novos]);
@@ -1365,16 +1460,28 @@ const SpreadsheetOrderModule = ({ user, onClose }: { user: any, onClose: () => v
                                             </div>
                                             
                                             <div className="pt-4 border-t border-slate-100 flex justify-between items-center">
-                                                <div className="text-left">
-                                                    <p className="text-[8px] font-black text-slate-400 uppercase">Total Itens</p>
-                                                    <p className="text-sm font-black text-blue-600">{l.pares} Pares</p>
+                                                <div className="text-left flex gap-6">
+                                                    <div>
+                                                        <p className="text-[8px] font-black text-slate-400 uppercase">Total Itens</p>
+                                                        <p className="text-sm font-black text-blue-600">{l.pares} Pares</p>
+                                                    </div>
+                                                    <div>
+                                                        <p className="text-[8px] font-black text-slate-400 uppercase">Pares por Loja</p>
+                                                        <p className="text-sm font-black text-slate-700">{l.lojas.size > 0 ? Math.round(l.pares / l.lojas.size) : 0} Pares</p>
+                                                    </div>
                                                 </div>
-                                                <div className="text-right">
-                                                    <p className="text-[8px] font-black text-slate-400 uppercase">Valor Total do Pedido</p>
-                                                    <p className="text-lg font-black text-slate-900 italic">{formatCurrency(l.valBruto)}</p>
-                                                    {pedido.desconto > 0 && (
-                                                        <p className="text-[10px] font-black text-green-600 uppercase">Líquido: {formatCurrency(l.valLiquido)}</p>
-                                                    )}
+                                                <div className="text-right flex gap-6 text-right justify-end">
+                                                    <div>
+                                                        <p className="text-[8px] font-black text-slate-400 uppercase">Valor Por Loja</p>
+                                                        <p className="text-lg font-black text-slate-700 italic">{formatCurrency(l.lojas.size > 0 ? l.valBruto / l.lojas.size : 0)}</p>
+                                                    </div>
+                                                    <div>
+                                                        <p className="text-[8px] font-black text-slate-400 uppercase">Valor Total do Pedido</p>
+                                                        <p className="text-lg font-black text-slate-900 italic">{formatCurrency(l.valBruto)}</p>
+                                                        {pedido.desconto > 0 && (
+                                                            <p className="text-[10px] font-black text-green-600 uppercase">Líquido: {formatCurrency(l.valLiquido)}</p>
+                                                        )}
+                                                    </div>
                                                 </div>
                                             </div>
                                         </div>
