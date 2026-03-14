@@ -97,6 +97,7 @@ const GoalRegistration: React.FC<GoalRegistrationProps> = ({
             <thead className="sticky top-0 bg-white z-20">
               <tr className="bg-slate-50 text-[8px] font-black uppercase text-slate-400 tracking-widest border-b">
                 <th className="px-6 py-4 w-48 sticky left-0 bg-slate-50 border-r">Unidade / Cidade</th>
+                <th className="px-4 py-4 text-center">Dias Úteis</th>
                 <th className="px-4 py-4 text-center">Faturamento (R$)</th>
                 <th className="px-4 py-4 text-center">Itens (PR)</th>
                 <th className="px-4 py-4 text-center">P.A (Virg.)</th>
@@ -115,6 +116,9 @@ const GoalRegistration: React.FC<GoalRegistrationProps> = ({
                         <span className="text-[10px] font-black text-slate-900 uppercase italic leading-none mb-0.5">#{store.number} - {store.name.substring(0,10)}</span>
                         <span className="text-[8px] font-bold text-slate-400 uppercase truncate">{store.city}</span>
                       </div>
+                    </td>
+                    <td className="px-3 py-2">
+                      <input type="number" value={row.businessDays || ''} onChange={e => handleChange(store.id, 'businessDays', e.target.value)} className="w-full p-2 bg-slate-50 border-none rounded-lg font-black text-slate-900 text-center text-[11px] outline-none focus:bg-white focus:ring-2 focus:ring-blue-100" placeholder="26" />
                     </td>
                     <td className="px-3 py-2">
                       <input type="number" value={row.revenueTarget || ''} onChange={e => handleChange(store.id, 'revenueTarget', e.target.value)} className="w-full p-2 bg-slate-50 border-none rounded-lg font-black text-slate-900 text-center text-[11px] outline-none focus:bg-white focus:ring-2 focus:ring-blue-100" placeholder="0" />

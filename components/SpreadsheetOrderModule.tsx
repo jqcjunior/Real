@@ -409,11 +409,11 @@ const SpreadsheetOrderModule = ({ user, onClose }: { user: any, onClose: () => v
       const lotesAgrupados = Object.values(
         lotesFinalizados.reduce((acc, l) => {
           if (!acc[l.idVinculo]) {
-            acc[l.idVinculo] = { idVinculo: l.idVinculo, grade: l.gradeLetra, lojas: new Set() };
+            acc[l.idVinculo] = { idVinculo: l.idVinculo, grade: l.gradeLetra, lojas: new Set<string>() };
           }
           acc[l.idVinculo].lojas.add(l.loja);
           return acc;
-        }, {} as Record<string, any>)
+        }, {} as Record<string, { idVinculo: string, grade: string, lojas: Set<string> }>)
       );
 
       // 3. Grades (Linhas 14 a 18) e 4. Lojas (Linhas 23 a 27)
@@ -467,7 +467,7 @@ const SpreadsheetOrderModule = ({ user, onClose }: { user: any, onClose: () => v
 
         // Grades do Pedido (X36, AA36, AD36, AG36, AJ36)
         item.lotes.forEach((idVinculo: string) => {
-          const loteIndex = lotesAgrupados.findIndex(l => l.idVinculo === idVinculo);
+          const loteIndex = lotesAgrupados.findIndex((l: any) => l.idVinculo === idVinculo);
           if (loteIndex !== -1 && loteIndex < 5) {
             const cols = [23, 26, 29, 32, 35]; // X(23), AA(26), AD(29), AG(32), AJ(35)
             const gradeLetra = lotesFinalizados.find(l => l.idVinculo === idVinculo && l.referencia === item.referencia && l.corEscolhida === item.corEscolhida)?.gradeLetra;
@@ -587,11 +587,11 @@ const SpreadsheetOrderModule = ({ user, onClose }: { user: any, onClose: () => v
         const lotesAgrupados = Object.values(
           lotesFinalizados.reduce((acc, l) => {
             if (!acc[l.idVinculo]) {
-              acc[l.idVinculo] = { idVinculo: l.idVinculo, grade: l.gradeLetra, lojas: new Set() };
+              acc[l.idVinculo] = { idVinculo: l.idVinculo, grade: l.gradeLetra, lojas: new Set<string>() };
             }
             acc[l.idVinculo].lojas.add(l.loja);
             return acc;
-          }, {} as Record<string, any>)
+          }, {} as Record<string, { idVinculo: string, grade: string, lojas: Set<string> }>)
         );
 
         lotesDaLoja.forEach((l, idx) => {
@@ -607,7 +607,7 @@ const SpreadsheetOrderModule = ({ user, onClose }: { user: any, onClose: () => v
             setCell(sheet, r, 37, Number(l.valorCompra), "n"); // AL
             setCell(sheet, r, 40, Number(l.precoVenda), "n");  // AO
 
-            const loteIndex = lotesAgrupados.findIndex(la => la.idVinculo === l.idVinculo);
+            const loteIndex = lotesAgrupados.findIndex((la: any) => la.idVinculo === l.idVinculo);
             if (loteIndex !== -1 && loteIndex < 5) {
               const cols = [23, 26, 29, 32, 35]; // X(23), AA(26), AD(29), AG(32), AJ(35)
               setCell(sheet, r, cols[loteIndex], l.gradeLetra);

@@ -195,7 +195,8 @@ const DashboardManager: React.FC<DashboardManagerProps> = ({ user, stores, perfo
           if (!acc[id]) {
               acc[id] = { 
                   revenueActual: 0, revenueTarget: 0, itemsActual: 0, itemsTarget: 0, 
-                  salesActual: 0, paTarget: 0, puTarget: 0, ticketTarget: 0, percentMeta: 0 
+                  salesActual: 0, paTarget: 0, puTarget: 0, ticketTarget: 0, percentMeta: 0,
+                  businessDays: 26
               };
           }
           acc[id].revenueActual += Number(p.revenueActual || 0);
@@ -207,6 +208,7 @@ const DashboardManager: React.FC<DashboardManagerProps> = ({ user, stores, perfo
           acc[id].paTarget = Math.max(acc[id].paTarget, Number(p.paTarget || 0));
           acc[id].puTarget = Math.max(acc[id].puTarget, Number(p.puTarget || 0));
           acc[id].ticketTarget = Math.max(acc[id].ticketTarget, Number(p.ticketTarget || 0));
+          acc[id].businessDays = Math.max(acc[id].businessDays, Number(p.businessDays || 26));
           return acc;
       }, {} as Record<string, any>);
 
@@ -227,11 +229,12 @@ const DashboardManager: React.FC<DashboardManagerProps> = ({ user, stores, perfo
           const pT = calcPercent(tktActual, p.ticketTarget, 'higher');
           const puActual = Number(monthData.find(md => String(md.storeId || md.store_id) === storeId)?.puActual || 0);
           const pPU = calcPercent(puActual, p.puTarget, 'lower');
-          const pI = calcPercent(p.itemsActual, p.itemsTarget, 'higher');
 
-          const scoreFinal = (pF * 0.40) + (pPA * 0.30) + (pT * 0.15) + (pPU * 0.10) + (pI * 0.05);
+          // Nova métrica: Meta 50%, P.A 40%, P.U 5%, Ticket 5%
+          const scoreFinal = (pF * 0.50) + (pPA * 0.40) + (pPU * 0.05) + (pT * 0.05);
 
           return {
+              storeId,
               storeNumber: store?.number || '?',
               city: store?.city || '?',
               score: scoreFinal,
@@ -260,7 +263,7 @@ const DashboardManager: React.FC<DashboardManagerProps> = ({ user, stores, perfo
     } catch (e) { alert("Erro IA"); } finally { setIsLoadingAi(false); }
   };
 
-  const getRemainingWorkDays = (monthStr: string) => {
+  const getRemainingWorkDays = (monthStr: string, storeId?: string) => {
     const [year, month] = monthStr.split('-').map(Number);
     const now = new Date();
     const lastDay = new Date(year, month, 0).getDate();
@@ -275,18 +278,40 @@ const DashboardManager: React.FC<DashboardManagerProps> = ({ user, stores, perfo
         return 1;
     }
     
-    let count = 0;
+    // Contar dias úteis restantes no mês (excluindo domingos)
+    let remainingCount = 0;
     for (let d = startDay; d <= lastDay; d++) {
         const date = new Date(year, month - 1, d);
         if (date.getDay() !== 0) { // 0 é Domingo
-            count++;
+            remainingCount++;
         }
     }
-    return Math.max(count, 1);
+
+    // Se tivermos o storeId, podemos ajustar baseado nos dias úteis configurados na meta
+    if (storeId) {
+        const storePerf = performanceData.find(p => String(p.storeId || p.store_id) === String(storeId) && String(p.month) === monthStr);
+        if (storePerf && storePerf.businessDays) {
+            // Contar total de dias úteis no mês (excluindo domingos)
+            let totalWorkDays = 0;
+            for (let d = 1; d <= lastDay; d++) {
+                const date = new Date(year, month - 1, d);
+                if (date.getDay() !== 0) totalWorkDays++;
+            }
+            
+            // Dias úteis que já passaram (excluindo domingos)
+            const passedWorkDays = totalWorkDays - remainingCount;
+            
+            // Dias restantes baseados na meta configurada
+            const adjustedRemaining = storePerf.businessDays - passedWorkDays;
+            return Math.max(adjustedRemaining, 1);
+        }
+    }
+
+    return Math.max(remainingCount, 1);
   };
 
   const getDetailedAdvice = (curr: any, next?: any) => {
-    const remainingDays = getRemainingWorkDays(selectedMonth);
+    const remainingDays = getRemainingWorkDays(selectedMonth, curr.storeId);
     const targetStore = next || curr;
     
     // Se for o próprio curr, as metas são dele mesmo
@@ -318,22 +343,34 @@ const DashboardManager: React.FC<DashboardManagerProps> = ({ user, stores, perfo
   };
 
   const getRevenueToPass = (curr: any, target: any) => {
-    // Calculamos quanto de faturamento ele precisaria para igualar o score do target, 
-    // mantendo os outros indicadores dele constantes.
-    // Score = (Rev/Tgt * 0.4) + (PA/Tgt * 0.3) + (Tkt/Tgt * 0.15) + (PUTgt/PU * 0.1) + (Itens/Tgt * 0.05)
+    // Nova métrica: Meta 50%, P.A 40%, P.U 5%, Ticket 5%
+    // Score = (Rev/Tgt * 0.5) + (PA/Tgt * 0.4) + (PUTgt/PU * 0.05) + (Tkt/Tgt * 0.05)
     
+    if (!curr.revenueTarget || curr.revenueTarget <= 0) return null;
+
+    const safeRatio = (act: number, tgt: number, mode: 'higher' | 'lower') => {
+        if (!tgt || tgt <= 0) return 0;
+        const val = mode === 'higher' ? (act / tgt) : (tgt / act);
+        return Math.min(val, 1.2);
+    };
+
     const otherMetricsWeight = (
-        (Math.min(curr.paActual / curr.paTarget, 1.2) * 0.3) +
-        (Math.min(curr.ticketActual / curr.ticketTarget, 1.2) * 0.15) +
-        (Math.min(curr.puTarget / curr.puActual, 1.2) * 0.1) +
-        (Math.min(curr.itemsActual / (curr.itemsTarget || 1), 1.2) * 0.05)
+        (safeRatio(curr.paActual, curr.paTarget, 'higher') * 0.40) +
+        (safeRatio(curr.puActual, curr.puTarget, 'lower') * 0.05) +
+        (safeRatio(curr.ticketActual, curr.ticketTarget, 'higher') * 0.05)
     );
 
     const targetScoreDecimal = target.score / 100;
-    const neededRevRatio = (targetScoreDecimal - otherMetricsWeight) / 0.4;
-    const neededTotalRev = neededRevRatio * curr.revenueTarget;
+    const neededRevRatio = (targetScoreDecimal - otherMetricsWeight) / 0.50;
     
-    return Math.max(neededTotalRev - curr.revenueActual, 0);
+    // Se neededRevRatio > 1.2, significa que mesmo atingindo 120% da meta de faturamento,
+    // não será suficiente para passar a loja apenas com faturamento (devido ao cap de 120%).
+    if (neededRevRatio > 1.2) return null;
+    
+    const neededTotalRev = neededRevRatio * curr.revenueTarget;
+    const diff = neededTotalRev - curr.revenueActual;
+    
+    return diff > 0 ? diff : null;
   };
 
   return (
@@ -412,7 +449,7 @@ const DashboardManager: React.FC<DashboardManagerProps> = ({ user, stores, perfo
                                 <div className="p-3 bg-blue-50 text-blue-600 rounded-2xl shadow-inner"><Trophy size={24} /></div>
                                 <div>
                                     <h3 className="text-sm font-black text-slate-900 uppercase italic tracking-tighter">Ranking <span className="text-blue-600">Ponderado</span></h3>
-                                    <p className="text-[9px] font-bold text-slate-400 uppercase tracking-widest mt-0.5">Equilíbrio de Metas (40/30/15/10/5)</p>
+                                    <p className="text-[9px] font-bold text-slate-400 uppercase tracking-widest mt-0.5">Equilíbrio de Metas (50/40/5/5)</p>
                                 </div>
                             </div>
                         </div>
@@ -477,7 +514,7 @@ const DashboardManager: React.FC<DashboardManagerProps> = ({ user, stores, perfo
                                                         <p className="text-[11px] font-black text-slate-900 italic leading-none mb-1">{formatCurrency(item.revenueActual)}</p>
                                                         {item.revenueActual < item.revenueTarget && (
                                                             <p className="text-[7px] font-bold text-blue-500 uppercase">
-                                                                R$ {((item.revenueTarget - item.revenueActual) / getRemainingWorkDays(selectedMonth)).toLocaleString('pt-BR', { maximumFractionDigits: 0 })}/dia
+                                                                R$ {((item.revenueTarget - item.revenueActual) / getRemainingWorkDays(selectedMonth, item.storeId)).toLocaleString('pt-BR', { maximumFractionDigits: 0 })}/dia
                                                             </p>
                                                         )}
                                                     </div>
@@ -518,9 +555,9 @@ const DashboardManager: React.FC<DashboardManagerProps> = ({ user, stores, perfo
                                         {advice.length > 0 && (
                                             <div className="mt-4 pt-4 border-t border-slate-100 space-y-1">
                                                 {advice.map((line, i) => (
-                                                    <p key={i} className="text-[9px] font-bold text-slate-500 flex items-center gap-2">
-                                                        <div className="w-1 h-1 rounded-full bg-blue-400" /> {line}
-                                                    </p>
+                                                    <div key={i} className="text-[9px] font-bold text-slate-500 flex items-center gap-2">
+                                                        <div className="w-1 h-1 rounded-full bg-blue-400 shrink-0" /> {line}
+                                                    </div>
                                                 ))}
                                             </div>
                                         )}
@@ -572,6 +609,14 @@ const DashboardManager: React.FC<DashboardManagerProps> = ({ user, stores, perfo
                                                 <p className="text-[9px] font-black uppercase tracking-widest text-blue-400 mb-2">Metas de Ultrapassagem</p>
                                                 {storesAbove.map((s, i) => {
                                                     const neededRev = getRevenueToPass(curr, s);
+                                                    if (neededRev === null) {
+                                                        return (
+                                                            <div key={i} className="flex justify-between items-center bg-blue-900/20 p-3 rounded-2xl border border-blue-800/20">
+                                                                <p className="text-[10px] font-bold text-blue-100">Melhorar <span className="text-amber-400">P.A / P.U</span></p>
+                                                                <p className="text-[8px] font-black uppercase text-blue-400">Passar Loja {s.storeNumber}</p>
+                                                            </div>
+                                                        );
+                                                    }
                                                     return (
                                                         <div key={i} className="flex justify-between items-center bg-blue-900/20 p-3 rounded-2xl border border-blue-800/20">
                                                             <p className="text-[10px] font-bold text-blue-100">Vender <span className="text-emerald-400">{formatCurrency(neededRev)}</span></p>
