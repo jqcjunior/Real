@@ -478,7 +478,7 @@ const DashboardManager: React.FC<DashboardManagerProps> = ({ user, stores, perfo
                                 const advice = getDetailedAdvice(item, weightedRanking[idx - 1]);
 
                                 return (
-                                    <div key={idx} className={`p-5 md:p-8 rounded-[32px] border transition-all duration-500 ${isMe ? 'bg-white border-blue-200 ring-8 ring-blue-50 shadow-2xl shadow-blue-900/10' : 'bg-slate-50/50 border-transparent hover:bg-white hover:border-slate-100 hover:shadow-xl'}`}>
+                                    <div key={idx} className={`p-5 md:p-8 rounded-[32px] border transition-all duration-500 ${isMe ? 'bg-white border-blue-200 ring-8 ring-blue-50 shadow-2xl shadow-blue-900/10 scale-[1.02] z-20' : 'bg-slate-50/50 border-transparent hover:bg-white hover:border-slate-100 hover:shadow-xl'}`}>
                                         <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-6">
                                             <div className="flex items-center gap-6">
                                                 <div className={`w-14 h-14 rounded-2xl flex flex-col items-center justify-center font-black italic text-xl shadow-lg ${idx === 0 ? 'bg-amber-400 text-white' : idx === 1 ? 'bg-slate-300 text-white' : idx === 2 ? 'bg-orange-400 text-white' : 'bg-white text-slate-400 border border-slate-100'}`}>
@@ -487,10 +487,15 @@ const DashboardManager: React.FC<DashboardManagerProps> = ({ user, stores, perfo
                                                 </div>
                                                 <div>
                                                     <div className="flex items-center gap-3 mb-1">
-                                                        <p className={`text-lg font-black uppercase italic ${isMe ? 'text-blue-950' : 'text-slate-900'}`}>Loja {item.storeNumber}</p>
+                                                        <p className={`text-lg font-black uppercase italic ${isMe ? 'text-blue-950 underline decoration-blue-500 decoration-4 underline-offset-4' : 'text-slate-900'}`}>Loja {item.storeNumber}</p>
                                                         <span className={`${tier.color} text-[8px] font-black px-2 py-0.5 rounded-full uppercase tracking-widest border`}>
                                                             {tier.label}
                                                         </span>
+                                                        {isMe && (
+                                                            <span className="bg-blue-600 text-white text-[7px] font-black px-2 py-0.5 rounded-full uppercase tracking-widest animate-pulse">
+                                                                Sua Loja
+                                                            </span>
+                                                        )}
                                                     </div>
                                                     <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">{item.city}</p>
                                                 </div>
@@ -505,20 +510,22 @@ const DashboardManager: React.FC<DashboardManagerProps> = ({ user, stores, perfo
                                                     <div className={`h-full transition-all duration-1000 ${tier.bar}`} style={{ width: `${Math.min(score, 100)}%` }} />
                                                 </div>
 
-                                                <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-                                                    <div className="flex flex-col items-end">
-                                                        <p className="text-[7px] font-black text-slate-300 uppercase">Faturamento</p>
-                                                        <div className="bg-blue-50 text-blue-600 text-[8px] font-black px-2 py-1 rounded-full uppercase tracking-tighter mb-1 border border-blue-100 shadow-sm">
-                                                            Meta: {formatCurrency(item.revenueTarget)}
+                                                <div className={`grid gap-4 justify-center ${isMe ? 'grid-cols-2 md:grid-cols-4' : 'grid-cols-1 md:grid-cols-3'}`}>
+                                                    {isMe && (
+                                                        <div className="flex flex-col items-center md:items-end">
+                                                            <p className="text-[7px] font-black text-slate-300 uppercase">Faturamento</p>
+                                                            <div className="bg-blue-50 text-blue-600 text-[8px] font-black px-2 py-1 rounded-full uppercase tracking-tighter mb-1 border border-blue-100 shadow-sm">
+                                                                Meta: {formatCurrency(item.revenueTarget)}
+                                                            </div>
+                                                            <p className="text-[11px] font-black text-slate-900 italic leading-none mb-1">{formatCurrency(item.revenueActual)}</p>
+                                                            {item.revenueActual < item.revenueTarget && (
+                                                                <p className="text-[7px] font-bold text-blue-500 uppercase">
+                                                                    R$ {((item.revenueTarget - item.revenueActual) / getRemainingWorkDays(selectedMonth, item.storeId)).toLocaleString('pt-BR', { maximumFractionDigits: 0 })}/dia
+                                                                </p>
+                                                            )}
                                                         </div>
-                                                        <p className="text-[11px] font-black text-slate-900 italic leading-none mb-1">{formatCurrency(item.revenueActual)}</p>
-                                                        {item.revenueActual < item.revenueTarget && (
-                                                            <p className="text-[7px] font-bold text-blue-500 uppercase">
-                                                                R$ {((item.revenueTarget - item.revenueActual) / getRemainingWorkDays(selectedMonth, item.storeId)).toLocaleString('pt-BR', { maximumFractionDigits: 0 })}/dia
-                                                            </p>
-                                                        )}
-                                                    </div>
-                                                    <div className="flex flex-col items-end">
+                                                    )}
+                                                    <div className="flex flex-col items-center">
                                                         <p className="text-[7px] font-black text-slate-300 uppercase">P.A</p>
                                                         <div className="bg-blue-50 text-blue-600 text-[8px] font-black px-2 py-1 rounded-full uppercase tracking-tighter mb-1 border border-blue-100 shadow-sm">
                                                             Meta: {item.paTarget.toFixed(2)}
@@ -528,7 +535,7 @@ const DashboardManager: React.FC<DashboardManagerProps> = ({ user, stores, perfo
                                                             <div className="h-full bg-blue-400" style={{ width: `${Math.min((item.paActual / item.paTarget) * 100, 100)}%` }} />
                                                         </div>
                                                     </div>
-                                                    <div className="flex flex-col items-end">
+                                                    <div className="flex flex-col items-center">
                                                         <p className="text-[7px] font-black text-slate-300 uppercase">P.U</p>
                                                         <div className="bg-emerald-50 text-emerald-600 text-[8px] font-black px-2 py-1 rounded-full uppercase tracking-tighter mb-1 border border-emerald-100 shadow-sm">
                                                             Meta: {item.puTarget.toFixed(2)}
@@ -538,7 +545,7 @@ const DashboardManager: React.FC<DashboardManagerProps> = ({ user, stores, perfo
                                                             <div className="h-full bg-emerald-400" style={{ width: `${Math.min((item.puTarget / item.puActual) * 100, 100)}%` }} />
                                                         </div>
                                                     </div>
-                                                    <div className="flex flex-col items-end">
+                                                    <div className="flex flex-col items-center">
                                                         <p className="text-[7px] font-black text-slate-300 uppercase">Ticket</p>
                                                         <div className="bg-indigo-50 text-indigo-600 text-[8px] font-black px-2 py-1 rounded-full uppercase tracking-tighter mb-1 border border-indigo-100 shadow-sm">
                                                             Meta: {formatCurrency(item.ticketTarget)}

@@ -1,5 +1,6 @@
 import React, { useState, useEffect, useMemo } from "react";
 import * as XLSX from "xlsx";
+import ExcelJS from "exceljs";
 import { 
   Download, Trash2, X, ShoppingBag, ListFilter, Layers, Calendar, Zap, Percent, Hash, Info, Plus, ChevronRight, CreditCard
 } from "lucide-react";
@@ -324,20 +325,82 @@ const SpreadsheetOrderModule = ({ user, onClose }: { user: any, onClose: () => v
   }, [itemAtual.valorCompra, pedido.markup, pedido.desconto]);
 
   const setCell = (
-    sheet: XLSX.WorkSheet,
+    ws: any,
     r: number,
     c: number,
-    value: any,
-    type: "s" | "n" = "s"
+    value: any
   ) => {
-    const ref = XLSX.utils.encode_cell({ r, c });
-    
-    if (!sheet[ref]) {
-      sheet[ref] = { t: type, v: value };
-    } else {
-      // Preserva metadados (estilos, bordas, comentários) se existirem no template
-      sheet[ref].v = value;
-      sheet[ref].t = type;
+    const cell = ws.getRow(r + 1).getCell(c + 1);
+    cell.value = value;
+  };
+
+  const [lastDownloadUrl, setLastDownloadUrl] = useState<string | null>(null);
+  const [expandedPedido, setExpandedPedido] = useState<string | null>(null);
+
+  // Auto-preenchimento de dados da marca
+  useEffect(() => {
+    if (pedido.marca) {
+      const savedBrands = localStorage.getItem("order_brands_cache");
+      if (savedBrands) {
+        const brandsMap = JSON.parse(savedBrands);
+        const data = brandsMap[pedido.marca.toUpperCase()];
+        if (data) {
+          setPedido(prev => ({
+            ...prev,
+            fornecedor: prev.fornecedor || data.fornecedor || "",
+            representante: prev.representante || data.representante || "",
+            telefone: prev.telefone || data.telefone || "",
+            email: prev.email || data.email || ""
+          }));
+        }
+      }
+    }
+  }, [pedido.marca]);
+
+  const fetchTemplate = async () => {
+    const response = await fetch("/api/proxy-template");
+    if (!response.ok) {
+      throw new Error("Erro ao buscar template no servidor. Verifique se a planilha está pública.");
+    }
+    return response;
+  };
+
+  const downloadBlob = async (blob: Blob, fileName: string) => {
+    try {
+      const reader = new FileReader();
+      reader.readAsDataURL(blob);
+      reader.onloadend = async () => {
+        const base64data = (reader.result as string).split(',')[1];
+        
+        const response = await fetch("/api/prepare-download", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ 
+            base64: base64data, 
+            fileName
+          })
+        });
+
+        if (response.ok) {
+          const { id } = await response.json();
+          const downloadUrl = `/api/download-file/${id}`;
+          setLastDownloadUrl(downloadUrl);
+          
+          const form = document.createElement('form');
+          form.method = 'GET';
+          form.action = downloadUrl;
+          form.target = '_blank';
+          document.body.appendChild(form);
+          form.submit();
+          document.body.removeChild(form);
+          
+          setTimeout(() => setLastDownloadUrl(null), 60000);
+        } else {
+          throw new Error("Falha ao preparar download");
+        }
+      };
+    } catch (err) {
+      console.error("Erro no downloadBlob:", err);
     }
   };
 
@@ -349,150 +412,135 @@ const SpreadsheetOrderModule = ({ user, onClose }: { user: any, onClose: () => v
 
     try {
       const dataHeader = hD || pedido;
-
-      const formatDate = (dateStr: string) => {
-        if (!dateStr) return "";
-        const parts = dateStr.split('-');
-        if (parts.length !== 3) return dateStr;
-        const [year, month, day] = parts;
-        return `${day}/${month}/${year}`;
-      };
-
-      const TEMPLATE_URL = "https://rwwomakjhmglgoowbmsl.supabase.co/storage/v1/object/public/template/template.xlsx";
-      const response = await fetch(`${TEMPLATE_URL}?v=${Date.now()}`, {
-        method: "GET",
-        cache: "no-store",
-      });
-
+      const response = await fetchTemplate();
       if (!response.ok) throw new Error("Erro ao baixar template.");
+      
       const templateBuffer = await response.arrayBuffer();
+      const workbook = new ExcelJS.Workbook();
+      await workbook.xlsx.load(templateBuffer);
+      const sheet = workbook.getWorksheet(1);
+      if (!sheet) throw new Error("Planilha não encontrada.");
 
-      const workbook = XLSX.read(templateBuffer, { type: "array" });
-      const sheet = workbook.Sheets[workbook.SheetNames[0]];
+      // --- 01 - CABEÇALHO (COORDENADAS EXATAS) ---
+      sheet.getCell('N2').value = dataHeader.numero_pedido || "";
+      sheet.getCell('AA2').value = dataHeader.comprador.toUpperCase();
+      sheet.getCell('N3').value = dataHeader.marca.toUpperCase();
+      sheet.getCell('AA3').value = dataHeader.representante.toUpperCase();
+      sheet.getCell('AN3').value = dataHeader.telefone;
+      sheet.getCell('N4').value = dataHeader.fornecedor.toUpperCase();
+      sheet.getCell('AA4').value = dataHeader.email.toLowerCase();
+      
+      const fmtDate = (d: string) => {
+        if (!d) return "";
+        const parts = d.split('-');
+        return parts.length === 3 ? `${parts[2]}/${parts[1]}/${parts[0]}` : d;
+      };
+      
+      sheet.getCell('AA5').value = fmtDate(dataHeader.embarqueInicio);
+      sheet.getCell('AH5').value = fmtDate(dataHeader.embarqueFim);
+      sheet.getCell('Z6').value = Number(dataHeader.desconto) / 100;
+      sheet.getCell('AF6').value = Number(dataHeader.markup);
 
-      // 1. Dados do Cabeçalho
-      setCell(sheet, 1, 13, dataHeader.numero_pedido || ""); // N2
-      setCell(sheet, 2, 13, dataHeader.marca.toUpperCase()); // N3
-      setCell(sheet, 3, 13, dataHeader.fornecedor.toUpperCase()); // N4 (Razão Social)
-      setCell(sheet, 2, 26, dataHeader.representante.toUpperCase()); // AA3
-      setCell(sheet, 2, 42, dataHeader.telefone); // AQ3
-      setCell(sheet, 3, 26, dataHeader.email); // AA4
-      setCell(sheet, 1, 26, dataHeader.comprador.toUpperCase()); // AA2
-      setCell(sheet, 1, 42, formatDate(new Date().toISOString().split('T')[0])); // AQ2 (DATA)
-      setCell(sheet, 3, 42, "CIF"); // AQ4 (FRETE)
-      setCell(sheet, 4, 26, formatDate(dataHeader.embarque_inicio || dataHeader.embarqueInicio)); // AA5
-      setCell(sheet, 4, 36, formatDate(dataHeader.embarque_fim || dataHeader.embarqueFim)); // AK5
-      setCell(sheet, 5, 25, Number(dataHeader.desconto), "n"); // Z6
-      setCell(sheet, 5, 34, Number(dataHeader.markup), "n"); // AI6
+      // Prazos e Vencimentos (N5, Q5, T5 e N6, Q6, T6)
+      if (dataHeader.prazos && dataHeader.embarqueFim) {
+        const pArray = dataHeader.prazos.split('/');
+        const baseDate = new Date(dataHeader.embarqueFim + "T12:00:00");
+        const mesesNomes = ["Janeiro", "Fevereiro", "Março", "Abril", "Maio", "Junho", "Julho", "Agosto", "Setembro", "Outubro", "Novembro", "Dezembro"];
+        const colPrazos = ['N', 'Q', 'T'];
 
-      // Prazos
-      if (dataHeader.prazos) {
-        const prazosArr = dataHeader.prazos.split('/');
-        prazosArr.forEach((p: string, i: number) => {
+        pArray.forEach((p, i) => {
           if (i > 2) return;
-          const val = parseInt(p);
-          if (!isNaN(val)) {
-            const col = 13 + (i * 3); // N(13), Q(16), T(19)
-            setCell(sheet, 4, col, val, "n");
-            
-            if (dataHeader.embarque_fim || dataHeader.embarqueFim) {
-              const d = new Date((dataHeader.embarque_fim || dataHeader.embarqueFim) + "T12:00:00");
-              d.setDate(d.getDate() + val);
-              const dateStr = `${d.getDate().toString().padStart(2, '0')}/${(d.getMonth() + 1).toString().padStart(2, '0')}/${d.getFullYear()}`;
-              setCell(sheet, 5, col, dateStr); // N6, Q6, T6
-            }
+          const col = colPrazos[i];
+          const dias = parseInt(p.trim());
+          if (!isNaN(dias)) {
+            sheet.getCell(`${col}5`).value = dias;
+            const dVenc = new Date(baseDate);
+            dVenc.setDate(dVenc.getDate() + dias);
+            const mesNome = mesesNomes[dVenc.getMonth()];
+            const anoCurto = dVenc.getFullYear().toString().slice(-2);
+            sheet.getCell(`${col}6`).value = `${mesNome}/${anoCurto}`;
           }
         });
       }
 
-      // Agrupar lotes (Pedidos 1 a 5)
-      const lotesAgrupados = Object.values(
-        lotesFinalizados.reduce((acc, l) => {
-          if (!acc[l.idVinculo]) {
-            acc[l.idVinculo] = { idVinculo: l.idVinculo, grade: l.gradeLetra, lojas: new Set<string>() };
-          }
-          acc[l.idVinculo].lojas.add(l.loja);
-          return acc;
-        }, {} as Record<string, { idVinculo: string, grade: string, lojas: Set<string> }>)
-      );
-
-      // 3. Grades (Linhas 14 a 18) e 4. Lojas (Linhas 23 a 27)
-      lotesAgrupados.slice(0, 5).forEach((lote: any, idx: number) => {
-        const rowGrade = 13 + idx; // Linha 14, 15, 16, 17, 18
-        setCell(sheet, rowGrade, 1, lote.grade); // Col B (Letra da Grade)
-        
-        const gradeInfo = gradesSalvas.find(g => g.letra === lote.grade);
-        if (gradeInfo) {
-          Object.entries(gradeInfo.valores).forEach(([tam, qtd]) => {
-            if (Number(qtd) > 0) {
-              const colTam = calcularColunaExcelPorTamanho(tam);
-              if (colTam !== -1) setCell(sheet, rowGrade, colTam, Number(qtd), "n");
-            }
-          });
-        }
-
-        const rowLoja = 22 + idx; // Linha 23, 24, 25, 26, 27
-        const lojasArray = Array.from(lote.lojas).sort();
-        lojasArray.forEach((loja: any, lojaIdx: number) => {
-          const colLoja = 3 + lojaIdx; // D(3), E(4)...
-          if (colLoja <= 40) { // Até AO(40)
-            setCell(sheet, rowLoja, colLoja, loja);
-          }
-        });
-      });
-
-      // 2. Dados dos Produtos (Começando na Linha 36)
-      const itensUnicosMap = new Map<string, any>();
+      // --- 03 - DEFINIÇÃO DE GRADES (LINHAS 14-18) ---
+      // Ajustado para que 34 seja AA (Coluna 27, index 23 de D)
+      // D=11, E=12, F=13, G=14, H=15, I=16, J=17, K=18, L=19, M=20, N=21, O=22, P=23, Q=24, R=25, S=26, T=27, U=28, V=29, W=30, X=31, Y=32, Z=33, AA=34
+      const allPossibleSizes = ["11","12","13","14","15","16","17","18","19","20","21","22","23","24","25","26","27","28","29","30","31","32","33","34","35","36","37","38","39","40","41","42","43","44","45","46","47","48"];
+      const colSizes = ["D","E","F","G","H","I","J","K","L","M","N","O","P","Q","R","S","T","U","V","W","X","Y","Z","AA","AB","AC","AD","AE","AF","AG","AH","AI","AJ","AK","AL","AM","AN","AO"];
       
-      lotesFinalizados.forEach(l => {
-        const key = `${l.referencia}-${l.corEscolhida}-${l.cor2 || ''}-${l.cor3 || ''}`;
-        if (!itensUnicosMap.has(key)) {
-          itensUnicosMap.set(key, { ...l, lotes: new Set([l.idVinculo]) });
-        } else {
-          itensUnicosMap.get(key).lotes.add(l.idVinculo);
-        }
-      });
-
-      const itensUnicos = Array.from(itensUnicosMap.values());
-
-      itensUnicos.forEach((item, idx) => {
-        const r = 35 + idx; // Linha 36 é o índice 35
-        setCell(sheet, r, 2, item.referencia); // C
-        setCell(sheet, r, 7, item.tipo);       // H
-        setCell(sheet, r, 17, item.corEscolhida || ""); // R (17)
-        setCell(sheet, r, 18, item.cor2 || ""); // S (18)
-        setCell(sheet, r, 19, item.cor3 || ""); // T (19)
-        setCell(sheet, r, 37, Number(item.valorCompra), "n"); // AL (37)
-        setCell(sheet, r, 40, Number(item.precoVenda), "n"); // AO (40)
-
-        // Grades do Pedido (X36, AA36, AD36, AG36, AJ36)
-        item.lotes.forEach((idVinculo: string) => {
-          const loteIndex = lotesAgrupados.findIndex((l: any) => l.idVinculo === idVinculo);
-          if (loteIndex !== -1 && loteIndex < 5) {
-            const cols = [23, 26, 29, 32, 35]; // X(23), AA(26), AD(29), AG(32), AJ(35)
-            const gradeLetra = lotesFinalizados.find(l => l.idVinculo === idVinculo && l.referencia === item.referencia && l.corEscolhida === item.corEscolhida)?.gradeLetra;
-            if (gradeLetra) {
-              setCell(sheet, r, cols[loteIndex], gradeLetra);
-            }
+      gradesSalvas.forEach((g, idx) => {
+        if (idx > 4) return;
+        const row = 14 + idx;
+        Object.entries(g.valores).forEach(([tam, qtd]) => {
+          // Trata "17/18" como "18" ou similar se necessário, mas aqui buscamos exato
+          const sIdx = allPossibleSizes.indexOf(tam === "17/18" ? "18" : tam);
+          if (sIdx !== -1 && Number(qtd) > 0) {
+            sheet.getCell(`${colSizes[sIdx]}${row}`).value = Number(qtd);
           }
         });
       });
 
-      const wbout = XLSX.write(workbook, { bookType: "xlsx", type: "array" });
-      const url = URL.createObjectURL(new Blob([wbout], { type: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" }));
-      const a = document.createElement("a");
-      a.href = url;
-      a.download = `Pedido_Consolidado_${dataHeader.marca || "FINAL"}.xlsx`;
-      document.body.appendChild(a);
-      a.click();
-      document.body.removeChild(a);
-      URL.revokeObjectURL(url);
+      // --- 04 - LOJAS (LINHAS 23-27) ---
+      const lotesIds = Array.from(new Set(lotesFinalizados.map(l => l.idVinculo)));
+      lotesIds.slice(0, 5).forEach((idV, idx) => {
+        const row = 23 + idx;
+        // Atualiza label para "Pedido" conforme solicitado
+        sheet.getCell(`B${row}`).value = "Pedido";
+        sheet.getCell(`C${row}`).value = ""; 
 
-      console.log("Pedido consolidado exportado com sucesso!");
+        const lojasDoLote = lotesFinalizados.filter(l => l.idVinculo === idV).map(l => l.loja);
+        lojasDoLote.forEach(loja => {
+          const lojaIdx = SUBGRUPO_LOJAS.indexOf(loja);
+          if (lojaIdx !== -1 && lojaIdx < colSizes.length) {
+            // Coloca o NÚMERO da loja em vez de "X"
+            sheet.getCell(`${colSizes[lojaIdx]}${row}`).value = loja;
+          }
+        });
+      });
+
+      // --- 02 - PRODUTOS (LINHA 34+) ---
+      itens.forEach((it, idx) => {
+        const row = 34 + idx;
+        if (row > 162) return;
+
+        sheet.getCell(`C${row}`).value = it.referencia;
+        sheet.getCell(`H${row}`).value = it.tipo;
+        sheet.getCell(`R${row}`).value = it.cor1;
+        sheet.getCell(`S${row}`).value = it.cor2 || "";
+        sheet.getCell(`T${row}`).value = it.cor3 || "";
+        sheet.getCell(`AL${row}`).value = Number(it.valorCompra);
+        sheet.getCell(`AO${row}`).value = Number(it.valorVenda);
+
+        // Vínculo de Grade por Lote
+        lotesIds.slice(0, 5).forEach((idV, lIdx) => {
+          const loteItem = lotesFinalizados.find(l => l.idVinculo === idV && l.referencia === it.referencia);
+          if (loteItem) {
+            const colGrade = ['X', 'AA', 'AD', 'AG', 'AJ'][lIdx];
+            sheet.getCell(`${colGrade}${row}`).value = loteItem.gradeLetra;
+          }
+        });
+      });
+
+      // Salvar dados da marca no cache para auto-preenchimento futuro
+      if (dataHeader.marca) {
+        const savedBrands = localStorage.getItem("order_brands_cache");
+        const brandsMap = savedBrands ? JSON.parse(savedBrands) : {};
+        brandsMap[dataHeader.marca.toUpperCase()] = {
+          fornecedor: dataHeader.fornecedor,
+          representante: dataHeader.representante,
+          telefone: dataHeader.telefone,
+          email: dataHeader.email
+        };
+        localStorage.setItem("order_brands_cache", JSON.stringify(brandsMap));
+      }
+
+      const buffer = await workbook.xlsx.writeBuffer();
+      await downloadBlob(new Blob([buffer]), `Pedido_Consolidado_${dataHeader.marca || "FINAL"}.xlsx`);
 
     } catch (err) {
-      console.error("Erro ao exportar planilha:", err);
-      alert("Erro ao exportar planilha consolidada. Verifique o console.");
+      console.error("Erro na exportação:", err);
+      alert("Erro ao gerar planilha. Verifique o console.");
     }
   };
 
@@ -503,29 +551,30 @@ const SpreadsheetOrderModule = ({ user, onClose }: { user: any, onClose: () => v
     }
 
     try {
-      const TEMPLATE_URL = "https://rwwomakjhmglgoowbmsl.supabase.co/storage/v1/object/public/template/template.xlsx";
-      const response = await fetch(`${TEMPLATE_URL}?v=${Date.now()}`, {
-        method: "GET",
-        cache: "no-store",
-      });
+      const response = await fetchTemplate();
 
-      if (!response.ok) throw new Error("Erro ao baixar template.");
+      if (!response.ok) {
+        throw new Error("Erro ao baixar template. Verifique se a planilha está pública (Qualquer pessoa com o link pode ler).");
+      }
+      
       const templateBuffer = await response.arrayBuffer();
 
       const lojasUnicas = [...new Set(lotesFinalizados.map((l) => l.loja))].sort();
 
       for (const loja of lojasUnicas) {
-        const workbook = XLSX.read(templateBuffer, { type: "array" });
-        const sheet = workbook.Sheets[workbook.SheetNames[0]];
+        const workbook = new ExcelJS.Workbook();
+        await workbook.xlsx.load(templateBuffer);
+        const sheet = workbook.getWorksheet(1);
+        if (!sheet) continue;
 
         // --- 1. CABEÇALHO ---
-        setCell(sheet, 1, 13, pedido.numero_pedido || ""); // N2
-        setCell(sheet, 2, 13, pedido.marca.toUpperCase()); // N3
-        setCell(sheet, 3, 13, pedido.fornecedor.toUpperCase()); // N4 (Razão Social)
-        setCell(sheet, 2, 26, pedido.representante.toUpperCase()); // AA3
-        setCell(sheet, 2, 42, pedido.telefone); // AQ3
-        setCell(sheet, 3, 26, pedido.email); // AA4
-        setCell(sheet, 1, 26, pedido.comprador.toUpperCase()); // AA2
+        sheet.getCell('N2').value = pedido.numero_pedido || "";
+        sheet.getCell('N3').value = pedido.marca.toUpperCase();
+        sheet.getCell('N4').value = pedido.fornecedor.toUpperCase();
+        sheet.getCell('AA3').value = pedido.representante.toUpperCase();
+        sheet.getCell('AQ3').value = pedido.telefone;
+        sheet.getCell('AA4').value = pedido.email;
+        sheet.getCell('AA2').value = pedido.comprador.toUpperCase();
         
         const formatDate = (dateStr: string) => {
           if (!dateStr) return "";
@@ -535,46 +584,53 @@ const SpreadsheetOrderModule = ({ user, onClose }: { user: any, onClose: () => v
           return `${day}/${month}/${year}`;
         };
         
-        setCell(sheet, 1, 42, formatDate(new Date().toISOString().split('T')[0])); // AQ2 (DATA)
-        setCell(sheet, 3, 42, "CIF"); // AQ4 (FRETE)
-        setCell(sheet, 4, 26, formatDate(pedido.embarqueInicio)); // AA5
-        setCell(sheet, 4, 36, formatDate(pedido.embarqueFim)); // AK5
-        setCell(sheet, 5, 25, Number(pedido.desconto), "n"); // Z6
-        setCell(sheet, 5, 34, Number(pedido.markup), "n"); // AI6
+        sheet.getCell('AN2').value = formatDate(new Date().toISOString().split('T')[0]);
+        sheet.getCell('AN4').value = "CIF";
+        sheet.getCell('AA5').value = formatDate(pedido.embarqueInicio);
+        sheet.getCell('AH5').value = formatDate(pedido.embarqueFim);
+        sheet.getCell('Z6').value = Number(pedido.desconto);
+        sheet.getCell('AI6').value = Number(pedido.markup);
 
         // --- 2. PRAZOS E VENCIMENTOS ---
         if (pedido.prazos) {
           const prazosArr = pedido.prazos.split('/');
+          const colPrazos = ['N', 'Q', 'T'];
           prazosArr.forEach((p, i) => {
             if (i > 2) return;
             const val = parseInt(p);
             if (!isNaN(val)) {
-              const col = 13 + (i * 3);
-              setCell(sheet, 4, col, val, "n");
+              const col = colPrazos[i];
+              sheet.getCell(`${col}5`).value = val;
               
               if (pedido.embarqueFim) {
                 const d = new Date(pedido.embarqueFim + "T12:00:00");
                 d.setDate(d.getDate() + val);
                 const dateStr = `${d.getDate().toString().padStart(2, '0')}/${(d.getMonth() + 1).toString().padStart(2, '0')}/${d.getFullYear()}`;
-                setCell(sheet, 5, col, dateStr);
+                sheet.getCell(`${col}6`).value = dateStr;
               }
             }
           });
         }
 
-        // --- 3. RESUMO DE GRADES (LINHAS 14-21) ---
+        // --- 3. RESUMO DE GRADES (LINHAS 16-20) ---
+        // Ajustado para que 34 seja AA
+        const allPossibleSizes = ["11","12","13","14","15","16","17","18","19","20","21","22","23","24","25","26","27","28","29","30","31","32","33","34","35","36","37","38","39","40","41","42","43","44","45","46","47","48"];
+        const colSizes = ["D","E","F","G","H","I","J","K","L","M","N","O","P","Q","R","S","T","U","V","W","X","Y","Z","AA","AB","AC","AD","AE","AF","AG","AH","AI","AJ","AK","AL","AM","AN","AO"];
+        
         const idsVinculosGrades = [...new Set(lotesFinalizados.map(l => l.idVinculo))].slice(0, 5);
         idsVinculosGrades.forEach((idV, idx) => {
-          const row = 13 + idx; // Linha 14, 15...
+          const row = 16 + idx;
           const l = lotesFinalizados.find(item => item.idVinculo === idV);
           if (l) {
-            setCell(sheet, row, 1, l.gradeLetra); // Col B (Letra da Grade)
+            sheet.getCell(`B${row}`).value = l.gradeLetra;
             const gradeInfo = gradesSalvas.find(g => g.letra === l.gradeLetra);
             if (gradeInfo) {
               Object.entries(gradeInfo.valores).forEach(([tam, qtd]) => {
                 if (Number(qtd) > 0) {
-                  const colTam = calcularColunaExcelPorTamanho(tam);
-                  if (colTam !== -1) setCell(sheet, row, colTam, Number(qtd), "n");
+                  const sIdx = allPossibleSizes.indexOf(tam === "17/18" ? "18" : tam);
+                  if (sIdx !== -1) {
+                    sheet.getCell(`${colSizes[sIdx]}${row}`).value = Number(qtd);
+                  }
                 }
               });
             }
@@ -595,45 +651,44 @@ const SpreadsheetOrderModule = ({ user, onClose }: { user: any, onClose: () => v
         );
 
         lotesDaLoja.forEach((l, idx) => {
-          const r = 35 + idx;
+          const r = 34 + idx; // Começa na linha 34
           
           if (l) {
-            setCell(sheet, r, 2, l.referencia);    // C
-            setCell(sheet, r, 7, l.tipo);          // H
-            setCell(sheet, r, 17, l.corEscolhida || ""); // R
-            setCell(sheet, r, 18, l.cor2 || "");   // S
-            setCell(sheet, r, 19, l.cor3 || "");   // T
+            sheet.getCell(`B${r}`).value = l.referencia;
+            sheet.getCell(`H${r}`).value = l.tipo;
+            sheet.getCell(`R${r}`).value = l.corEscolhida || "";
+            sheet.getCell(`S${r}`).value = l.cor2 || "";
+            sheet.getCell(`T${r}`).value = l.cor3 || "";
             
-            setCell(sheet, r, 37, Number(l.valorCompra), "n"); // AL
-            setCell(sheet, r, 40, Number(l.precoVenda), "n");  // AO
+            sheet.getCell(`AL${r}`).value = Number(l.valorCompra);
+            sheet.getCell(`AO${r}`).value = Number(l.precoVenda);
 
             const loteIndex = lotesAgrupados.findIndex((la: any) => la.idVinculo === l.idVinculo);
             if (loteIndex !== -1 && loteIndex < 5) {
-              const cols = [23, 26, 29, 32, 35]; // X(23), AA(26), AD(29), AG(32), AJ(35)
-              setCell(sheet, r, cols[loteIndex], l.gradeLetra);
+              const colsGrade = ['X', 'AA', 'AD', 'AG', 'AJ'];
+              const colsQtd = ['AS', 'AV', 'AY', 'BB', 'BE'];
+              
+              sheet.getCell(`${colsGrade[loteIndex]}${r}`).value = l.gradeLetra;
+              
+              // Qtd para esta loja específica (total da grade)
+              const gradeInfo = gradesSalvas.find(g => g.letra === l.gradeLetra);
+              sheet.getCell(`${colsQtd[loteIndex]}${r}`).value = gradeInfo?.total || 0;
             }
           }
         });
 
         // --- 4. IDENTIFICAÇÃO DA LOJA ---
-        setCell(sheet, 22, 3, loja); // Col D23
+        sheet.getCell('D25').value = loja as any;
 
-        const wbout = XLSX.write(workbook, { bookType: "xlsx", type: "array" });
-        const url = URL.createObjectURL(new Blob([wbout], { type: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" }));
-        const a = document.createElement("a");
-        a.href = url;
-        a.download = `Pedido_Loja_${loja}_${pedido.marca || "FINAL"}.xlsx`;
-        document.body.appendChild(a);
-        a.click();
-        document.body.removeChild(a);
-        URL.revokeObjectURL(url);
+        const buffer = await workbook.xlsx.writeBuffer();
+        downloadBlob(new Blob([buffer]), `Pedido_Loja_${loja}_${pedido.marca || "FINAL"}.xlsx`);
         await new Promise((resolve) => setTimeout(resolve, 100));
       }
 
-      alert("Pedidos por loja gerados com sucesso.");
-    } catch (error) {
-      console.error(error);
-      alert("Erro ao gerar pedidos por loja.");
+      console.log("Pedidos por loja exportados com sucesso!");
+    } catch (err) {
+      console.error("Erro ao exportar pedidos por loja:", err);
+      alert(`Erro ao exportar pedidos por loja: ${err instanceof Error ? err.message : "Erro desconhecido"}`);
     }
   };
 
@@ -779,13 +834,26 @@ const SpreadsheetOrderModule = ({ user, onClose }: { user: any, onClose: () => v
   };
 
   const lotesAgrupados = useMemo(() => {
-    const res: Record<string, { idVinculo: string, grade: string, items: Set<string>, lojas: Set<string>, valBruto: number, valLiquido: number, pares: number }> = {};
+    const res: Record<string, { idVinculo: string, grade: string, items: { ref: string, tipo: string, cor: string, custo: number, venda: number, pares: number }[], lojas: Set<string>, valBruto: number, valLiquido: number, pares: number }> = {};
     lotesFinalizados.forEach(l => {
-      if (!res[l.idVinculo]) res[l.idVinculo] = { idVinculo: l.idVinculo, grade: l.gradeLetra, items: new Set(), lojas: new Set(), valBruto: 0, valLiquido: 0, pares: 0 };
-      res[l.idVinculo].items.add(l.referencia);
-      res[l.idVinculo].lojas.add(l.loja);
+      if (!res[l.idVinculo]) res[l.idVinculo] = { idVinculo: l.idVinculo, grade: l.gradeLetra, items: [], lojas: new Set(), valBruto: 0, valLiquido: 0, pares: 0 };
+      
+      const itemOriginal = itens.find(it => it.referencia === l.referencia);
       const g = gradesSalvas.find(x => x.letra === l.gradeLetra);
       const paresLote = g?.total || 0;
+      
+      if (!res[l.idVinculo].items.find(i => i.ref === l.referencia)) {
+        res[l.idVinculo].items.push({
+          ref: l.referencia,
+          tipo: itemOriginal?.tipo || "",
+          cor: `${itemOriginal?.cor1 || ""} ${itemOriginal?.cor2 || ""} ${itemOriginal?.cor3 || ""}`.trim(),
+          custo: l.valorCompra || 0,
+          venda: itemOriginal?.valorVenda || 0,
+          pares: paresLote
+        });
+      }
+
+      res[l.idVinculo].lojas.add(l.loja);
       const bruto = paresLote * (l.valorCompra || 0);
       const liquido = bruto * (1 - (pedido.desconto / 100));
       
@@ -794,7 +862,7 @@ const SpreadsheetOrderModule = ({ user, onClose }: { user: any, onClose: () => v
       res[l.idVinculo].valLiquido += liquido;
     });
     return Object.values(res);
-  }, [lotesFinalizados, gradesSalvas, pedido.desconto]);
+  }, [lotesFinalizados, gradesSalvas, itens, pedido.desconto]);
 
   return (
     <div className="fixed inset-0 bg-slate-900/40 backdrop-blur-sm flex items-center justify-center p-4 z-[100] font-sans">
@@ -811,6 +879,28 @@ const SpreadsheetOrderModule = ({ user, onClose }: { user: any, onClose: () => v
           </div>
           <button onClick={onClose} className="p-2 text-slate-300 hover:text-red-500 hover:bg-red-50 rounded-full transition-all"><X size={20} /></button>
         </div>
+
+        {lastDownloadUrl && (
+          <div className="mx-6 mt-4 p-4 bg-green-50 border border-green-200 rounded-2xl flex items-center justify-between animate-in fade-in slide-in-from-top-4 duration-500">
+            <div className="flex items-center gap-3">
+              <div className="w-10 h-10 bg-green-500 rounded-xl flex items-center justify-center text-white shadow-md">
+                <Download size={20} />
+              </div>
+              <div>
+                <p className="text-xs font-black text-green-800 uppercase italic">Arquivo Pronto!</p>
+                <p className="text-[10px] font-bold text-green-600">Se o download não iniciou, clique no botão ao lado.</p>
+              </div>
+            </div>
+            <a 
+              href={lastDownloadUrl} 
+              target="_blank" 
+              rel="noopener noreferrer"
+              className="px-6 py-2 bg-green-600 text-white text-[10px] font-black uppercase rounded-xl hover:bg-green-700 shadow-sm transition-all flex items-center gap-2"
+            >
+              Baixar Agora <Download size={14} />
+            </a>
+          </div>
+        )}
 
         {/* STEPPER - TIGHTER */}
         <div className="flex bg-white px-4 py-2 gap-1 border-b border-slate-100 shrink-0 flex-row overflow-x-auto no-scrollbar">
@@ -1351,6 +1441,26 @@ const SpreadsheetOrderModule = ({ user, onClose }: { user: any, onClose: () => v
                     <div className="flex justify-between items-center mb-6">
                       <h4 className="text-xs font-black uppercase italic text-blue-950">Resumo do Pedido</h4>
                       <div className="flex items-center gap-3">
+                        <div className="flex items-center gap-4 mr-4 px-4 py-2 bg-blue-50 rounded-xl border border-blue-100">
+                          <div className="text-right">
+                            <p className="text-[7px] text-blue-400 font-black uppercase">Total Pares Geral</p>
+                            <p className="text-xs font-black text-blue-900 italic">
+                              {lotesFinalizados.reduce((acc, l) => {
+                                const g = gradesSalvas.find(x => x.letra === l.gradeLetra);
+                                return acc + (g?.total || 0);
+                              }, 0)}
+                            </p>
+                          </div>
+                          <div className="text-right">
+                            <p className="text-[7px] text-blue-400 font-black uppercase">Total Valor Geral</p>
+                            <p className="text-xs font-black text-blue-900 italic">
+                              {formatCurrency(lotesFinalizados.reduce((acc, l) => {
+                                const g = gradesSalvas.find(x => x.letra === l.gradeLetra);
+                                return acc + ((g?.total || 0) * (l.valorCompra || 0));
+                              }, 0))}
+                            </p>
+                          </div>
+                        </div>
                         <button onClick={() => setLotesFinalizados([])} className="text-red-500 text-[9px] font-black uppercase border border-red-100 px-3 py-1.5 rounded-lg hover:bg-red-50 transition-all">Limpar Carga</button>
                         <button onClick={() => setVerLotes(false)} className="p-2 text-slate-400 hover:text-slate-600 hover:bg-slate-100 rounded-full transition-all">
                           <X size={18} />
@@ -1394,6 +1504,7 @@ const SpreadsheetOrderModule = ({ user, onClose }: { user: any, onClose: () => v
                                         <div className="p-4 bg-white border-t border-slate-100 space-y-4 animate-in slide-in-from-top-2 duration-200">
                                             <div className="space-y-3">
                                                 {(() => {
+                                                    // Agrupa itens por referência e cor para evitar duplicatas visuais no resumo
                                                     const itemsUnicos = new Map();
                                                     itensDoLote.forEach(it => {
                                                         const key = `${it.referencia}-${it.corEscolhida}`;
@@ -1432,7 +1543,7 @@ const SpreadsheetOrderModule = ({ user, onClose }: { user: any, onClose: () => v
                                                                     </div>
                                                                     <div className="col-span-1">
                                                                         <p className="text-[7px] font-black text-slate-400 uppercase">Qtd Total</p>
-                                                                        <p className="text-[10px] font-black text-slate-900">{totalParesItem}</p>
+                                                                        <p className="text-[10px] font-black text-slate-900">{totalParesItem} prs</p>
                                                                     </div>
                                                                     <div className="col-span-2 text-right">
                                                                         <p className="text-[7px] font-black text-slate-400 uppercase">Subtotal</p>
@@ -1442,7 +1553,7 @@ const SpreadsheetOrderModule = ({ user, onClose }: { user: any, onClose: () => v
                                                                 
                                                                 {gradeInfo && (
                                                                     <div className="flex flex-wrap gap-1 mt-2 pt-2 border-t border-slate-200/50">
-                                                                        <span className="text-[7px] font-black text-slate-400 uppercase mr-2 self-center">Grade:</span>
+                                                                        <span className="text-[7px] font-black text-slate-400 uppercase mr-2 self-center">Distribuição:</span>
                                                                         {Object.entries(gradeInfo.valores)
                                                                             .filter(([_, v]) => Number(v) > 0)
                                                                             .map(([tam, qtd]) => (
@@ -1462,12 +1573,12 @@ const SpreadsheetOrderModule = ({ user, onClose }: { user: any, onClose: () => v
                                             <div className="pt-4 border-t border-slate-100 flex justify-between items-center">
                                                 <div className="text-left flex gap-6">
                                                     <div>
-                                                        <p className="text-[8px] font-black text-slate-400 uppercase">Total Itens</p>
+                                                        <p className="text-[8px] font-black text-slate-400 uppercase">Total de Pares</p>
                                                         <p className="text-sm font-black text-blue-600">{l.pares} Pares</p>
                                                     </div>
                                                     <div>
-                                                        <p className="text-[8px] font-black text-slate-400 uppercase">Pares por Loja</p>
-                                                        <p className="text-sm font-black text-slate-700">{l.lojas.size > 0 ? Math.round(l.pares / l.lojas.size) : 0} Pares</p>
+                                                        <p className="text-[8px] font-black text-slate-400 uppercase">Lojas Atendidas</p>
+                                                        <p className="text-sm font-black text-slate-700">{l.lojas.size} Lojas</p>
                                                     </div>
                                                 </div>
                                                 <div className="text-right flex gap-6 text-right justify-end">
@@ -1477,9 +1588,9 @@ const SpreadsheetOrderModule = ({ user, onClose }: { user: any, onClose: () => v
                                                     </div>
                                                     <div>
                                                         <p className="text-[8px] font-black text-slate-400 uppercase">Valor Total do Pedido</p>
-                                                        <p className="text-lg font-black text-slate-900 italic">{formatCurrency(l.valBruto)}</p>
+                                                        <p className="text-xl font-black text-slate-900 italic">{formatCurrency(l.valBruto)}</p>
                                                         {pedido.desconto > 0 && (
-                                                            <p className="text-[10px] font-black text-green-600 uppercase">Líquido: {formatCurrency(l.valLiquido)}</p>
+                                                            <p className="text-[10px] font-black text-green-600 uppercase">Líquido (-{pedido.desconto}%): {formatCurrency(l.valLiquido)}</p>
                                                         )}
                                                     </div>
                                                 </div>
