@@ -114,6 +114,22 @@ const App: React.FC = () => {
         return { data: allData };
     };
 
+    const addLog = async (action: string, details: string) => {
+        if (!user) return;
+        try {
+            await supabase.from('system_logs').insert([{
+                user_id: user.id,
+                user_name: user.name,
+                user_role: user.role,
+                action,
+                details
+            }]);
+            fetchData();
+        } catch (err) {
+            console.error("Erro ao criar log:", err);
+        }
+    };
+
     const fetchData = async () => {
         try {
             const [
@@ -522,14 +538,14 @@ const App: React.FC = () => {
                             liquidatePromissory={async (id) => { await supabase.from('ice_cream_promissory_notes').update({ status: 'paid' }).eq('id', id); await fetchData(); }} 
                             onDeleteStockItem={async (id) => { if (user?.role === UserRole.ADMIN) { await supabase.from('ice_cream_stock').update({ is_active: false }).eq('id', id); await fetchData(); } }} 
                         />;
-                        if (currentView === 'caixa' && can('MODULE_CASH_REGISTER')) return <CashRegisterModule user={user!} stores={stores} sales={iceCreamSales} closures={closures} receipts={receipts} errors={cashErrors} onAddClosure={async (c) => { await supabase.from('cash_register_closures').insert([{ store_id: user?.storeId, closed_by: user?.name, total_sales: c.totalSales, total_expenses: c.totalExpenses, balance: c.balance, notes: c.notes, date: c.date }]); fetchData(); }} onAddReceipt={async (r) => { await supabase.from('financial_receipts').insert([{ id: r.id, store_id: user?.storeId, issuer_name: user?.name, payer: r.payer, recipient: r.recipient, value: r.value, value_in_words: r.valueInWords, reference: r.reference, receipt_date: r.date }]); fetchData(); }} onAddError={async (e) => { await supabase.from('cash_errors').insert([e]); fetchData(); }} onDeleteError={async (id) => { await supabase.from('cash_errors').delete().eq('id', id); fetchData(); }} />;
+                        if (currentView === 'caixa' && can('MODULE_CASH_REGISTER')) return <CashRegisterModule user={user!} stores={stores} sales={iceCreamSales} closures={closures} receipts={receipts} errors={cashErrors} onAddClosure={async (c) => { await supabase.from('cash_register_closures').insert([{ store_id: c.storeId || user?.storeId, closed_by: user?.name, total_sales: c.totalSales, total_expenses: c.totalExpenses, balance: c.balance, notes: c.notes, date: c.date }]); addLog('FECHAMENTO CAIXA', `Fechamento da loja ${c.storeId} no valor de ${c.balance}`); fetchData(); }} onAddReceipt={async (r) => { await supabase.from('financial_receipts').insert([{ id: r.id, store_id: r.storeId || user?.storeId, issuer_name: user?.name, payer: r.payer, recipient: r.recipient, value: r.value, value_in_words: r.valueInWords, reference: r.reference, receipt_date: r.date }]); addLog('EMISSÃO RECIBO', `Recibo #${r.id} para ${r.recipient} no valor de ${r.value}`); fetchData(); }} onAddError={async (e) => { await supabase.from('cash_errors').insert([e]); addLog('REGISTRO QUEBRA', `${e.type === 'shortage' ? 'Falta' : 'Sobra'} de ${e.value} na loja ${e.store_id}`); fetchData(); }} onDeleteError={async (id) => { await supabase.from('cash_errors').delete().eq('id', id); addLog('EXCLUSÃO QUEBRA', `Remoção do registro de quebra ID: ${id}`); fetchData(); }} onAddLog={addLog} />;
                         if (currentView === 'agenda' && can('MODULE_AGENDA')) return <AgendaSystem user={user!} tasks={agenda} onAddTask={async (t) => { await supabase.from('agenda_tasks').insert([{ user_id: user?.id, title: t.title, description: t.description, due_date: t.dueDate, due_time: t.dueTime, priority: t.priority, is_completed: false }]); fetchData(); }} onUpdateTask={async (t) => { await supabase.from('agenda_tasks').update({ is_completed: t.isCompleted }).eq('id', t.id); fetchData(); }} onDeleteTask={async (id) => { await supabase.from('agenda_tasks').delete().eq('id', id); fetchData(); }} />;
                         if (currentView === 'autoriz_compra' && can('MODULE_AUTORIZ_COMPRA')) return <PurchaseAuthorization />;
                         if (currentView === 'termo_condicional' && can('MODULE_TERMO_CONDICIONAL')) return <TermoAutorizacao user={user!} store={stores.find(s => s.id === user?.storeId)} />;
                         if (currentView === 'downloads' && can('MODULE_DOWNLOADS')) return <DownloadsModule user={user!} items={downloads} onUpload={async (i) => { await supabase.from('downloads').insert([i]); fetchData(); }} onDelete={async (id) => { await supabase.from('downloads').delete().eq('id', id); fetchData(); }} />;
                         if (currentView === 'users' && can('MODULE_ADMIN_USERS')) return <AdminUsersManagement currentUser={user} stores={stores} />;
                         if (currentView === 'access' && can('MODULE_ACCESS_CONTROL')) return <AccessControlManagement />;
-                        if (currentView === 'audit' && can('MODULE_AUDIT')) return <SystemAudit currentUser={user!} logs={logs} receipts={receipts} cashErrors={cashErrors} iceCreamSales={iceCreamSales} icPromissories={icPromissories} cardSales={cardSales} />;
+                        if (currentView === 'audit' && can('MODULE_AUDIT')) return <SystemAudit currentUser={user!} logs={logs} receipts={receipts} cashErrors={cashErrors} iceCreamSales={iceCreamSales} icPromissories={icPromissories} cardSales={cardSales} closures={closures} stores={stores} />;
                         if (currentView === 'settings' && can('MODULE_SETTINGS')) return <AdminSettings stores={stores} onAddStore={async (s) => { await supabase.from('stores').insert([s]); fetchData(); }} onUpdateStore={async (s) => { await supabase.from('stores').update(s).eq('id', s.id); fetchData(); }} onDeleteStore={async (id) => { await supabase.from('stores').delete().eq('id', id); fetchData(); }} />;
                         if (currentView === 'spreadsheet_order' && can('MODULE_PURCHASES')) return <SpreadsheetOrderModule user={user!} onClose={() => setCurrentView('compras')} />;
                         return <div className="flex items-center justify-center h-full text-gray-400 uppercase tracking-widest font-black text-sm">Selecione um módulo no menu</div>;

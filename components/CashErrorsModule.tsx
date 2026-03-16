@@ -149,7 +149,7 @@ const CashErrorsModule: React.FC<CashErrorsModuleProps> = ({ user, store, stores
                         <div>
                             <label className="block text-xs font-bold text-gray-500 uppercase mb-1">Loja</label>
                             <select value={formData.storeId} onChange={e => setFormData({...formData, storeId: e.target.value})} className="w-full p-3 border rounded-lg outline-none">
-                                {stores.map(s => <option key={s.id} value={s.id}>{s.number} - {s.name}</option>)}
+                                {[...stores].sort((a, b) => (parseInt(a.number) || 0) - (parseInt(b.number) || 0)).map(s => <option key={s.id} value={s.id}>{s.number} - {s.name}</option>)}
                             </select>
                         </div>
                     )}

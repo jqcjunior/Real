@@ -1,7 +1,7 @@
 import React, { useState, useMemo } from 'react';
-import { SystemLog, Receipt, Store, CashError, IceCreamDailySale, IceCreamPromissoryNote, UserRole, User, CreditCardSale } from '../types';
+import { SystemLog, Receipt, Store, CashError, IceCreamDailySale, IceCreamPromissoryNote, UserRole, User, CreditCardSale, CashRegisterClosure } from '../types';
 import { formatCurrency, BRAND_LOGO } from '../constants';
-import { Shield, Search, Printer, IceCream, FileText, AlertTriangle, History, ChevronRight, CheckCircle2, UserCheck, Calendar, Trash2, Edit3, Filter, X, DollarSign, User as UserIcon, CreditCard, ArrowRight } from 'lucide-react';
+import { Shield, Search, Printer, IceCream, FileText, AlertTriangle, History, ChevronRight, CheckCircle2, UserCheck, Calendar, Trash2, Edit3, Filter, X, DollarSign, User as UserIcon, CreditCard, ArrowRight, Store as StoreIcon } from 'lucide-react';
 import { printReceiptDoc, getCardFlagIcon } from './CashRegisterModule';
 import { supabase } from '../services/supabaseClient';
 
@@ -14,11 +14,14 @@ interface SystemAuditProps {
   icPromissories: IceCreamPromissoryNote[];
   cardSales?: CreditCardSale[];
   currentUser?: User;
+  closures: CashRegisterClosure[];
+  stores: Store[];
 }
 
-const SystemAudit: React.FC<SystemAuditProps> = ({ logs, receipts, store, cashErrors, iceCreamSales, icPromissories, cardSales = [], currentUser }) => {
-  const [activeTab, setActiveTab] = useState<'logs' | 'receipts' | 'cash_errors' | 'vendas_cartao' | 'conferencia'>('logs');
+const SystemAudit: React.FC<SystemAuditProps> = ({ logs, receipts, store, cashErrors, iceCreamSales, icPromissories, cardSales = [], currentUser, closures, stores }) => {
+  const [activeTab, setActiveTab] = useState<'logs' | 'receipts' | 'cash_errors' | 'vendas_cartao' | 'fechamentos'>('logs');
   const [searchTerm, setSearchTerm] = useState('');
+  const [selectedStoreId, setSelectedStoreId] = useState('');
   
   // Estados para Intervalo de Datas - Por padrão traz o mês atual
   const [startDate, setStartDate] = useState(() => {
@@ -65,17 +68,21 @@ const SystemAudit: React.FC<SystemAuditProps> = ({ logs, receipts, store, cashEr
                                 (c.brand || '').toLowerCase().includes(searchTerm.toLowerCase()) || 
                                 (c.saleCode || '').toLowerCase().includes(searchTerm.toLowerCase());
           
-          const matchesStore = currentUser?.role === UserRole.ADMIN || c.storeId === currentUser?.storeId;
+          const matchesStore = currentUser?.role === UserRole.ADMIN 
+            ? (!selectedStoreId || c.storeId === selectedStoreId)
+            : c.storeId === currentUser?.storeId;
           
           return matchesDate && matchesUser && matchesSearch && matchesStore;
       });
-  }, [cardSales, startDate, endDate, filterUser, searchTerm, currentUser]);
+  }, [cardSales, startDate, endDate, filterUser, searchTerm, currentUser, selectedStoreId]);
 
   const stats = useMemo(() => {
     const filteredSales = iceCreamSales.filter(s => {
       const saleDate = (s.createdAt || '').split('T')[0];
       const matchesDate = checkDateInRange(saleDate);
-      const matchesStore = currentUser?.role === UserRole.ADMIN || s.storeId === currentUser?.storeId;
+      const matchesStore = currentUser?.role === UserRole.ADMIN 
+        ? (!selectedStoreId || s.storeId === selectedStoreId)
+        : s.storeId === currentUser?.storeId;
       return matchesDate && matchesStore;
     });
 
@@ -117,6 +124,7 @@ const SystemAudit: React.FC<SystemAuditProps> = ({ logs, receipts, store, cashEr
             <button onClick={() => setActiveTab('vendas_cartao')} className={`flex-1 lg:flex-none px-6 py-2.5 rounded-xl text-[10px] font-black uppercase transition-all whitespace-nowrap flex items-center justify-center gap-2 ${activeTab === 'vendas_cartao' ? 'bg-blue-600 text-white shadow-lg' : 'text-gray-400 hover:text-gray-900'}`}><CreditCard size={14}/> Vendas Cartão</button>
             <button onClick={() => setActiveTab('receipts')} className={`flex-1 lg:flex-none px-6 py-2.5 rounded-xl text-[10px] font-black uppercase transition-all whitespace-nowrap ${activeTab === 'receipts' ? 'bg-gray-900 text-white shadow-lg' : 'text-gray-400 hover:text-gray-900'}`}>Recibos</button>
             <button onClick={() => setActiveTab('cash_errors')} className={`flex-1 lg:flex-none px-6 py-2.5 rounded-xl text-[10px] font-black uppercase transition-all whitespace-nowrap ${activeTab === 'cash_errors' ? 'bg-red-600 text-white shadow-lg' : 'text-gray-400 hover:text-gray-900'}`}>Quebras</button>
+            <button onClick={() => setActiveTab('fechamentos')} className={`flex-1 lg:flex-none px-6 py-2.5 rounded-xl text-[10px] font-black uppercase transition-all whitespace-nowrap ${activeTab === 'fechamentos' ? 'bg-emerald-600 text-white shadow-lg' : 'text-gray-400 hover:text-gray-900'}`}>Fechamentos</button>
         </div>
       </div>
 
@@ -146,10 +154,27 @@ const SystemAudit: React.FC<SystemAuditProps> = ({ logs, receipts, store, cashEr
             <div className="bg-red-50 p-4 rounded-2xl border border-red-100">
                 <p className="text-[8px] font-black text-red-400 uppercase tracking-widest mb-1">Quebras (Período)</p>
                 <p className="text-xl font-black text-red-900 italic">
-                    {formatCurrency(cashErrors.filter(e => checkDateInRange(String(e.date))).reduce((acc, curr) => acc + (curr.value || 0), 0))}
+                    {formatCurrency(cashErrors.filter(e => {
+                        const matchesDate = checkDateInRange(String(e.date));
+                        const matchesStore = currentUser?.role === UserRole.ADMIN 
+                          ? (!selectedStoreId || e.storeId === selectedStoreId)
+                          : e.storeId === currentUser?.storeId;
+                        return matchesDate && matchesStore;
+                    }).reduce((acc, curr) => acc + (curr.value || 0), 0))}
                 </p>
             </div>
         </div>
+
+        {/* Filtro de Loja (Admin) */}
+        {currentUser?.role === UserRole.ADMIN && (
+            <div className="md:col-span-12 bg-blue-50/30 px-5 py-4 rounded-[20px] border border-blue-100 shadow-inner flex items-center gap-3 mb-2">
+                <StoreIcon size={18} className="text-blue-600" />
+                <select value={selectedStoreId} onChange={e => setSelectedStoreId(e.target.value)} className="w-full font-black uppercase text-[10px] outline-none bg-transparent border-none p-0 cursor-pointer">
+                    <option value="">TODAS AS LOJAS</option>
+                    {[...stores].sort((a, b) => (parseInt(a.number) || 0) - (parseInt(b.number) || 0)).map(s => <option key={s.id} value={s.id}>LOJA {s.number} - {s.name}</option>)}
+                </select>
+            </div>
+        )}
 
         {/* Busca por texto */}
         <div className="md:col-span-4 relative group">
@@ -256,7 +281,13 @@ const SystemAudit: React.FC<SystemAuditProps> = ({ logs, receipts, store, cashEr
                         <tr><th className="px-8 py-5">Nº / Data</th><th className="px-8 py-5">Payer (Loja)</th><th className="px-8 py-5">Recipient</th><th className="px-8 py-5 text-right">Valor</th><th className="px-8 py-5 text-center">Ações</th></tr>
                     </thead>
                     <tbody className="divide-y divide-gray-50 font-bold">
-                        {receipts.filter(r => checkDateInRange(String(r.date))).map(r => (
+                        {receipts.filter(r => {
+                            const matchesDate = checkDateInRange(String(r.date));
+                            const matchesStore = currentUser?.role === UserRole.ADMIN 
+                              ? (!selectedStoreId || r.storeId === selectedStoreId)
+                              : r.storeId === currentUser?.storeId;
+                            return matchesDate && matchesStore;
+                        }).map(r => (
                             <tr key={r.id} className="hover:bg-gray-50">
                                 <td className="px-8 py-5">
                                   <div className="font-black text-blue-900 text-xs italic">#{String(r.id).padStart(4, '0')}</div>
@@ -282,7 +313,13 @@ const SystemAudit: React.FC<SystemAuditProps> = ({ logs, receipts, store, cashEr
                         <tr><th className="px-8 py-5">Data / Operador</th><th className="px-8 py-5">Tipo</th><th className="px-8 py-5">Motivo</th><th className="px-8 py-5 text-right">Valor</th></tr>
                     </thead>
                     <tbody className="divide-y divide-gray-50 font-bold">
-                        {cashErrors.filter(e => checkDateInRange(String(e.date))).map(err => (
+                        {cashErrors.filter(e => {
+                            const matchesDate = checkDateInRange(String(e.date));
+                            const matchesStore = currentUser?.role === UserRole.ADMIN 
+                              ? (!selectedStoreId || e.storeId === selectedStoreId)
+                              : e.storeId === currentUser?.storeId;
+                            return matchesDate && matchesStore;
+                        }).map(err => (
                             <tr key={err.id} className="hover:bg-red-50/30">
                                 <td className="px-8 py-5">
                                   <div className="text-blue-950 uppercase italic text-xs leading-none mb-1">{err.userName}</div>
@@ -291,6 +328,42 @@ const SystemAudit: React.FC<SystemAuditProps> = ({ logs, receipts, store, cashEr
                                 <td className="px-8 py-5"><span className={`px-3 py-1 rounded-lg text-[9px] font-black border ${err.type === 'shortage' ? 'bg-red-50 text-red-700 border-red-100' : 'bg-green-50 text-green-700 border-green-100'}`}>{err.type === 'shortage' ? 'FALTA (-)' : 'SOBRA (+)'}</span></td>
                                 <td className="px-8 py-5 text-gray-500 text-xs max-w-xs truncate">{err.reason}</td>
                                 <td className={`px-8 py-5 text-right font-black text-base italic ${err.type === 'shortage' ? 'text-red-600' : 'text-green-600'}`}>{formatCurrency(err.value)}</td>
+                            </tr>
+                        ))}
+                    </tbody>
+                </table>
+            </div>
+        )}
+        {activeTab === 'fechamentos' && (
+            <div className="bg-white rounded-[32px] shadow-sm border border-gray-100 overflow-hidden animate-in fade-in duration-300">
+                <table className="w-full text-left border-collapse">
+                    <thead>
+                        <tr className="bg-gray-50/50 border-b border-gray-100">
+                            <th className="px-8 py-4 text-[10px] font-black text-gray-400 uppercase tracking-widest">Data / Responsável</th>
+                            <th className="px-8 py-4 text-[10px] font-black text-gray-400 uppercase tracking-widest">Loja</th>
+                            <th className="px-8 py-4 text-[10px] font-black text-gray-400 uppercase tracking-widest">Vendas</th>
+                            <th className="px-8 py-4 text-[10px] font-black text-gray-400 uppercase tracking-widest">Despesas</th>
+                            <th className="px-8 py-4 text-[10px] font-black text-gray-400 uppercase tracking-widest text-right">Saldo</th>
+                        </tr>
+                    </thead>
+                    <tbody className="divide-y divide-gray-50">
+                        {closures.filter(c => {
+                            const matchesDate = checkDateInRange(c.date);
+                            const matchesStore = currentUser?.role === UserRole.ADMIN || c.storeId === currentUser?.storeId;
+                            const matchesSelectedStore = !selectedStoreId || c.storeId === selectedStoreId;
+                            return matchesDate && matchesStore && matchesSelectedStore;
+                        }).map(c => (
+                            <tr key={c.id} className="hover:bg-gray-50/50 transition-colors group">
+                                <td className="px-8 py-5">
+                                    <div className="text-blue-950 uppercase italic text-xs leading-none mb-1">{c.closedBy}</div>
+                                    <div className="text-[9px] text-gray-400">{new Date(c.date + 'T12:00:00').toLocaleDateString('pt-BR')}</div>
+                                </td>
+                                <td className="px-8 py-5">
+                                    <span className="text-[10px] font-black text-gray-400 uppercase">Loja {stores.find(s => s.id === c.storeId)?.number || 'N/A'}</span>
+                                </td>
+                                <td className="px-8 py-5 text-green-600 font-bold text-xs">{formatCurrency(c.totalSales)}</td>
+                                <td className="px-8 py-5 text-red-600 font-bold text-xs">{formatCurrency(c.totalExpenses)}</td>
+                                <td className="px-8 py-5 text-right font-black text-base italic text-blue-900">{formatCurrency(c.balance)}</td>
                             </tr>
                         ))}
                     </tbody>

@@ -29,18 +29,19 @@ interface CashRegisterModuleProps {
     onAddReceipt: (receipt: any) => Promise<void>;
     onAddError: (error: any) => Promise<void>;
     onDeleteError: (id: string) => Promise<void>;
+    onAddLog?: (action: string, details: string) => Promise<void>;
 }
 
 // Mapeador de Ícones de Bandeiras - Atualizado com Elo Oficial
 export const getCardFlagIcon = (brandName: string) => {
     const name = brandName.toLowerCase();
-    // Bandeira Elo (Oficial Colorida conforme imagem enviada)
+    // Bandeira Elo (Oficial Colorida)
     if (name.includes('elo')) return 'https://upload.wikimedia.org/wikipedia/commons/thumb/e/e3/Elo_logo.svg/1024px-Elo_logo.svg.png';
     if (name.includes('visa')) return 'https://img.icons8.com/color/48/visa.png';
     if (name.includes('master')) return 'https://img.icons8.com/color/48/mastercard.png';
     if (name.includes('amex') || name.includes('american')) return 'https://img.icons8.com/color/48/amex.png';
     if (name.includes('diners')) return 'https://img.icons8.com/color/48/diners-club.png';
-    if (name.includes('hiper')) return 'https://img.icons8.com/color/48/hipercard.png';
+    if (name.includes('hiper')) return 'https://upload.wikimedia.org/wikipedia/commons/thumb/b/b8/Hipercard_logo.svg/1280px-Hipercard_logo.svg.png';
     if (name.includes('alelo')) return 'https://img.icons8.com/color/48/alelo.png';
     if (name.includes('sodexo')) return 'https://img.icons8.com/color/48/sodexo.png';
     if (name.includes('cielo')) return 'https://img.icons8.com/color/48/cielo.png';
@@ -164,7 +165,7 @@ export const printReceiptDoc = (r: any) => {
 };
 
 export const printCardSummaryDoc = (date: string, storeName: string, cards: CardEntry[], operator: string) => {
-    const printWindow = window.open('', '_blank', 'width=900,height=1200');
+    const printWindow = window.open('', '_blank', 'width=450,height=600');
     if (!printWindow) return;
     const totalsByBrand: Record<string, number> = {};
     cards.forEach(c => { totalsByBrand[c.brand] = (totalsByBrand[c.brand] || 0) + c.value; });
@@ -174,25 +175,57 @@ export const printCardSummaryDoc = (date: string, storeName: string, cards: Card
         <head>
             <script src="https://cdn.tailwindcss.com"></script>
             <style>
-                @page { size: A4 portrait; margin: 15mm; }
-                body { margin: 0; padding: 20px; font-family: sans-serif; -webkit-print-color-adjust: exact; print-color-adjust: exact; }
-                table { width: 100%; border-collapse: collapse; margin-top: 15px; }
-                th, td { border: 1px solid #e2e8f0; padding: 10px; text-align: left; font-size: 10pt; }
-                th { background-color: #f8fafc; font-weight: 900; text-transform: uppercase; color: #64748b; font-size: 8pt; }
-                .total-row { font-weight: 900; background-color: #f1f5f9; }
+                @page { size: 110mm 130mm; margin: 0; }
+                body { 
+                    margin: 0; 
+                    padding: 5mm; 
+                    font-family: 'Courier New', Courier, monospace; 
+                    -webkit-print-color-adjust: exact; 
+                    print-color-adjust: exact;
+                    width: 110mm;
+                    height: 130mm;
+                    box-sizing: border-box;
+                    background: white;
+                }
+                .dashed-line { border-top: 1px dashed #000; margin: 5px 0; }
+                .text-small { font-size: 9px; }
+                .text-medium { font-size: 11px; }
+                .text-large { font-size: 14px; }
             </style>
         </head>
-        <body class="bg-white">
-            <div class="flex justify-between items-start border-b-4 border-blue-900 pb-4 mb-6">
-                <div><h1 class="text-2xl font-black uppercase italic text-blue-900">Resumo de Conferência</h1><p class="text-[10px] font-bold text-gray-400 uppercase tracking-widest">Fechamento de Lote de Cartões - Auditoria Interna</p></div>
-                <div class="text-right"><p class="text-xs font-black uppercase">Data: ${new Date(date + 'T12:00:00').toLocaleDateString('pt-BR')}</p><p class="text-xs font-black uppercase">Loja: ${storeName}</p><p class="text-xs font-black uppercase">Operador: ${operator}</p></div>
+        <body>
+            <div class="text-center mb-2">
+                <h1 class="text-medium font-black uppercase">Resumo de Conferência</h1>
+                <p class="text-small font-bold">Auditoria de Cartões</p>
             </div>
-            <div class="grid grid-cols-2 gap-8 mb-8">
-                <div><h2 class="text-sm font-black uppercase border-b-2 border-gray-100 pb-2 mb-4">Totais por Bandeira</h2><table><thead><tr><th>Bandeira</th><th class="text-right">Valor Total</th></tr></thead><tbody>${Object.entries(totalsByBrand).map(([brand, val]) => `<tr><td class="font-bold">${brand}</td><td class="text-right font-black">${new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(val)}</td></tr>`).join('')}</tbody><tfoot><tr class="total-row"><td class="text-blue-900">SOMA TOTAL</td><td class="text-right text-blue-900 text-lg">${new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(totalValue)}</td></tr></tfoot></table></div>
-                <div class="bg-gray-50 p-6 rounded-3xl border border-gray-100"><h2 class="text-sm font-black uppercase mb-4">Informações de Auditoria</h2><p class="text-[10px] text-gray-600 leading-relaxed italic">Este documento deve ser anexado aos comprovantes físicos (filipetas) e assinado pelo operador e pelo gerente de plantão para validação da sangria de cartões.</p><div class="mt-12 space-y-8"><div class="border-t border-gray-400 pt-1 text-center text-[8px] font-black uppercase">Assinatura do Operador</div><div class="border-t border-gray-400 pt-1 text-center text-[8px] font-black uppercase">Assinatura da Gerência</div></div></div>
+            <div class="dashed-line"></div>
+            <div class="text-small space-y-1">
+                <p><strong>DATA:</strong> ${new Date(date + 'T12:00:00').toLocaleDateString('pt-BR')}</p>
+                <p><strong>LOJA:</strong> ${storeName}</p>
+                <p><strong>OPERADOR:</strong> ${operator}</p>
             </div>
-            <h2 class="text-sm font-black uppercase border-b-2 border-gray-100 pb-2 mb-4">Detalhamento dos Lançamentos</h2><table><thead><tr><th>Item</th><th>Bandeira / Modalidade</th><th class="text-right">Valor Unitário</th></tr></thead><tbody>${cards.map((c, i) => `<tr><td class="text-gray-400 font-mono text-[9px]">#${i + 1}</td><td class="font-bold uppercase text-[9px]">${c.brand}</td><td class="text-right font-black text-[10px]">${new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(c.value)}</td></tr>`).join('')}</tbody></table>
-            <script>window.onload = () => { setTimeout(() => { window.print(); window.close(); }, 800); }</script>
+            <div class="dashed-line"></div>
+            <div class="mt-2">
+                <p class="text-small font-black uppercase mb-1">Totais por Bandeira:</p>
+                <div class="space-y-1">
+                    ${Object.entries(totalsByBrand).map(([brand, val]) => `
+                        <div class="flex justify-between text-small">
+                            <span>${brand}</span>
+                            <span class="font-bold">${new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(val)}</span>
+                        </div>
+                    `).join('')}
+                </div>
+            </div>
+            <div class="dashed-line"></div>
+            <div class="flex justify-between items-center mt-2">
+                <span class="text-medium font-black">TOTAL GERAL:</span>
+                <span class="text-large font-black">${new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(totalValue)}</span>
+            </div>
+            <div class="dashed-line"></div>
+            <div class="mt-4 text-center">
+                <div class="border-t border-black pt-1 text-[8px] font-bold uppercase">Assinatura do Operador</div>
+            </div>
+            <script>window.onload = () => { setTimeout(() => { window.print(); window.close(); }, 500); }</script>
         </body>
         </html>
     `;
@@ -201,11 +234,12 @@ export const printCardSummaryDoc = (date: string, storeName: string, cards: Card
 };
 
 const CashRegisterModule: React.FC<CashRegisterModuleProps> = ({ 
-    user, stores, receipts, errors, finances, onAddReceipt, onAddError, onDeleteError 
+    user, stores, receipts, errors, finances, onAddReceipt, onAddError, onDeleteError, onAddClosure, onAddLog 
 }) => {
     const [activeTab, setActiveTab] = useState<'recibos' | 'cartoes' | 'quebras' | 'fechamento'>('recibos');
     const [isSubmitting, setIsSubmitting] = useState(false);
     const [selectedDate, setSelectedDate] = useState(new Date().toISOString().split('T')[0]);
+    const [selectedStoreId, setSelectedStoreId] = useState(user.storeId || '');
     const [dailyTotals, setDailyTotals] = useState<Record<string, number>>({});
     const [isLoadingTotals, setIsLoadingTotals] = useState(false);
     
@@ -216,11 +250,11 @@ const CashRegisterModule: React.FC<CashRegisterModuleProps> = ({
     const [showBrandManager, setShowBrandManager] = useState(false);
     const [newBrandName, setNewBrandName] = useState('');
 
-    const userStore = useMemo(() => stores.find(s => s.id === user.storeId), [stores, user.storeId]);
+    const selectedStore = useMemo(() => stores.find(s => s.id === selectedStoreId), [stores, selectedStoreId]);
     const payerName = useMemo(() => {
-        if (!userStore) return "REAL CALÇADOS";
-        return `REAL CALÇADOS LOJA ${userStore.number} ${userStore.city.split(' - ')[0]}`.toUpperCase();
-    }, [userStore]);
+        if (!selectedStore) return "REAL CALÇADOS";
+        return `REAL CALÇADOS LOJA ${selectedStore.number} ${selectedStore.city.split(' - ')[0]}`.toUpperCase();
+    }, [selectedStore]);
 
     const fetchBrands = async () => {
         try {
@@ -243,14 +277,14 @@ const CashRegisterModule: React.FC<CashRegisterModuleProps> = ({
     };
 
     const fetchDailyTotals = async () => {
-        if (!user.storeId) return;
+        if (!selectedStoreId) return;
         setIsLoadingTotals(true);
         try {
             // SENIOR FIX: Busca direta na tabela de pagamentos para evitar divergências
             const { data, error } = await supabase
                 .from('sale_payments')
                 .select('amount, payment_method, sales!inner(store_id, sale_date, status)')
-                .eq('sales.store_id', user.storeId)
+                .eq('sales.store_id', selectedStoreId)
                 .eq('sales.sale_date', selectedDate)
                 .eq('sales.status', 'active');
 
@@ -282,10 +316,14 @@ const CashRegisterModule: React.FC<CashRegisterModuleProps> = ({
     };
 
     useEffect(() => {
+        fetchBrands();
+    }, []);
+
+    useEffect(() => {
         if (activeTab === 'fechamento') {
             fetchDailyTotals();
         }
-    }, [activeTab, selectedDate, user.storeId]);
+    }, [activeTab, selectedDate, selectedStoreId]);
 
     const handleAddBrand = async () => {
         if (!newBrandName.trim()) return;
@@ -309,13 +347,14 @@ const CashRegisterModule: React.FC<CashRegisterModuleProps> = ({
     };
 
     const nextReceiptNumber = useMemo(() => {
-        if (!receipts || receipts.length === 0) return 1;
-        const maxId = receipts.reduce((max, r) => {
+        const storeReceipts = receipts.filter(r => r.storeId === selectedStoreId);
+        if (!storeReceipts || storeReceipts.length === 0) return 1;
+        const maxId = storeReceipts.reduce((max, r) => {
             const idNum = parseInt(String(r.id).replace(/\D/g, ''));
             return isNaN(idNum) ? max : Math.max(max, idNum);
         }, 0);
         return maxId + 1;
-    }, [receipts]);
+    }, [receipts, selectedStoreId]);
 
     const totalsByBrand = useMemo(() => {
         const res: Record<string, number> = {};
@@ -338,9 +377,18 @@ const CashRegisterModule: React.FC<CashRegisterModuleProps> = ({
         setIsSubmitting(true);
         try {
             const saleCode = `CARD-${Date.now().toString().slice(-6)}`;
-            const entries = stagedCards.map(c => ({ store_id: user.storeId, user_id: user.id, user_name: user.name, date: selectedDate, brand: c.brand, value: c.value, sale_code: saleCode }));
+            const entries = stagedCards.map(c => ({ 
+                store_id: selectedStoreId, 
+                user_id: user.id, 
+                user_name: user.name, 
+                date: selectedDate, 
+                brand: c.brand, 
+                value: c.value, 
+                sale_code: saleCode 
+            }));
             const { error } = await supabase.from('financial_card_sales').insert(entries);
             if (error) throw error;
+            if (onAddLog) await onAddLog('VALIDAÇÃO CARTÕES', `Lançamento de ${entries.length} cartões na loja ${selectedStoreId} totalizando ${formatCurrency(totalStagedValue)}`);
             if (window.confirm("Vendas validadas! Deseja imprimir o resumo de conferência?")) { printCardSummaryDoc(selectedDate, payerName, stagedCards, user.name); }
             setStagedCards([]);
             alert("Sucesso!");
@@ -354,11 +402,20 @@ const CashRegisterModule: React.FC<CashRegisterModuleProps> = ({
     const handleSaveReceipt = async (e: React.FormEvent) => {
         e.preventDefault();
         const numericVal = parseFloat(receiptForm.value.replace(',', '.')) || 0;
-        if (numericVal <= 0 || !receiptForm.recipient) return;
+        if (numericVal <= 0 || !receiptForm.recipient || !selectedStoreId) return;
         setIsSubmitting(true);
         try {
             const receiptId = String(nextReceiptNumber);
-            const rData = { id: receiptId, payer: payerName, recipient: receiptForm.recipient.toUpperCase(), value: numericVal, valueInWords: numberToWords(numericVal).toUpperCase(), reference: receiptForm.reference.toUpperCase(), date: selectedDate };
+            const rData = { 
+                id: receiptId, 
+                storeId: selectedStoreId,
+                payer: payerName, 
+                recipient: receiptForm.recipient.toUpperCase(), 
+                value: numericVal, 
+                valueInWords: numberToWords(numericVal).toUpperCase(), 
+                reference: receiptForm.reference.toUpperCase(), 
+                date: selectedDate 
+            };
             await onAddReceipt(rData);
             printReceiptDoc(rData);
             setReceiptForm({ recipient: '', value: '', reference: '' });
@@ -370,9 +427,27 @@ const CashRegisterModule: React.FC<CashRegisterModuleProps> = ({
     return (
         <div className="flex flex-col h-full bg-gray-50 font-sans overflow-hidden">
             <div className="bg-white px-6 py-4 border-b border-gray-200 flex flex-col md:flex-row justify-between items-center gap-4 shrink-0 shadow-sm">
-                <div className="flex items-center gap-3">
-                    <div className="p-2.5 bg-blue-900 text-white rounded-xl shadow-lg"><DollarSign size={24} /></div>
-                    <div><h1 className="text-xl font-black text-blue-950 uppercase italic tracking-tighter">Gestão de Caixa</h1><p className="text-[10px] text-gray-400 font-bold uppercase tracking-widest">Finanças e Auditoria Rede Real</p></div>
+                <div className="flex flex-col md:flex-row items-center gap-6">
+                    <div className="flex items-center gap-3">
+                        <div className="p-2.5 bg-blue-900 text-white rounded-xl shadow-lg"><DollarSign size={24} /></div>
+                        <div><h1 className="text-xl font-black text-blue-950 uppercase italic tracking-tighter">Gestão de Caixa</h1><p className="text-[10px] text-gray-400 font-bold uppercase tracking-widest">Finanças e Auditoria Rede Real</p></div>
+                    </div>
+
+                    {user.role === UserRole.ADMIN && (
+                        <div className="flex items-center gap-2 bg-gray-50 px-4 py-2 rounded-2xl border border-gray-200 shadow-inner">
+                            <Settings2 size={16} className="text-blue-600" />
+                            <select 
+                                value={selectedStoreId} 
+                                onChange={(e) => setSelectedStoreId(e.target.value)}
+                                className="bg-transparent border-none text-[10px] font-black text-gray-700 uppercase outline-none cursor-pointer"
+                            >
+                                <option value="">SELECIONE UMA LOJA</option>
+                                {[...stores].sort((a, b) => (parseInt(a.number) || 0) - (parseInt(b.number) || 0)).map(s => (
+                                    <option key={s.id} value={s.id}>LOJA {s.number} - {s.city}</option>
+                                ))}
+                            </select>
+                        </div>
+                    )}
                 </div>
                 <div className="flex flex-wrap bg-gray-100 p-1 rounded-2xl w-full md:w-auto">
                     {[
@@ -435,10 +510,28 @@ const CashRegisterModule: React.FC<CashRegisterModuleProps> = ({
                             </div>
                             <div className="lg:col-span-8 bg-white rounded-[32px] shadow-xl border border-gray-100 flex flex-col min-h-[500px] overflow-hidden">
                                 <div className="px-6 py-4 border-b flex justify-between items-center bg-gray-50/50">
-                                    <div><h3 className="text-base font-black text-blue-950 uppercase italic tracking-tighter">Mesa de <span className="text-blue-600">Conferência</span></h3><p className="text-[8px] font-black text-gray-400 uppercase tracking-widest leading-none mt-1">Role para conferir os itens lançados</p></div>
-                                    <div className="text-right"><p className="text-[7px] font-black text-gray-400 uppercase leading-none">Total na Mesa</p><p className="text-xl font-black text-green-700 italic leading-none mt-1">{formatCurrency(totalStagedValue)}</p></div>
+                                    <div>
+                                        <h3 className="text-base font-black text-blue-950 uppercase italic tracking-tighter flex items-center gap-2">
+                                            Mesa de <span className="text-blue-600">Conferência</span>
+                                        </h3>
+                                        <p className="text-[8px] font-black text-gray-400 uppercase tracking-widest leading-none mt-1">Role para conferir os itens lançados</p>
+                                    </div>
+                                    <div className="flex items-center gap-4">
+                                        {stagedCards.length > 0 && (
+                                            <button 
+                                                onClick={() => printCardSummaryDoc(selectedDate, stores.find(s => s.id === selectedStoreId)?.city || 'N/A', stagedCards, user.name)}
+                                                className="p-2 bg-blue-50 text-blue-600 rounded-xl hover:bg-blue-600 hover:text-white transition-all flex items-center gap-2 text-[9px] font-black uppercase shadow-sm"
+                                            >
+                                                <Printer size={14} /> Imprimir
+                                            </button>
+                                        )}
+                                        <div className="text-right">
+                                            <p className="text-[7px] font-black text-gray-400 uppercase leading-none">Total na Mesa</p>
+                                            <p className="text-xl font-black text-green-700 italic leading-none mt-1">{formatCurrency(totalStagedValue)}</p>
+                                        </div>
+                                    </div>
                                 </div>
-                                <div className="flex-1 overflow-y-auto no-scrollbar p-3 space-y-1 bg-[#fcfdfe]">
+                                <div className="flex-1 overflow-y-auto no-scrollbar p-3 space-y-1 bg-[#fcfdfe] max-h-[400px]">
                                     {stagedCards.map((c) => (
                                         <div key={c.id} className="flex items-center justify-between px-4 py-2 bg-white rounded-xl border border-gray-100 group hover:border-blue-200 hover:shadow-sm transition-all animate-in slide-in-from-left-2 duration-200">
                                             <div className="flex items-center gap-3">
@@ -457,12 +550,20 @@ const CashRegisterModule: React.FC<CashRegisterModuleProps> = ({
                                     <div className="p-4 bg-blue-50/50 border-t border-blue-50">
                                         <div className="grid grid-cols-2 md:grid-cols-4 gap-2">
                                             {Object.entries(totalsByBrand).map(([brand, val]) => (
-                                                <div key={brand} className="bg-white p-2 rounded-lg border border-blue-50 flex justify-between items-center"><span className="text-[7px] font-black text-gray-400 uppercase truncate pr-1">{brand}</span><span className="text-[9px] font-black text-blue-900">{formatCurrency(val as number)}</span></div>
+                                                <div key={brand} className="bg-white p-2 rounded-lg border border-blue-50 flex justify-between items-center shadow-sm">
+                                                    <span className="text-[7px] font-black text-gray-400 uppercase truncate pr-1">{brand}</span>
+                                                    <span className="text-[9px] font-black text-blue-900">{formatCurrency(val as number)}</span>
+                                                </div>
                                             ))}
                                         </div>
                                     </div>
                                 )}
-                                <div className="p-4 bg-white border-t grid grid-cols-2 gap-3"><button onClick={() => setStagedCards([])} className="py-3 bg-gray-100 text-gray-400 rounded-xl font-black uppercase text-[9px]">Limpar</button><button onClick={handleValidateAndSaveCards} disabled={isSubmitting || stagedCards.length === 0} className="py-3 bg-blue-900 text-white rounded-xl font-black uppercase text-[9px] shadow-lg active:scale-95 border-b-4 border-blue-950 flex items-center justify-center gap-2">{isSubmitting ? <Loader2 className="animate-spin" size={14}/> : <CheckCircle2 size={14}/>} VALIDAR & LANÇAR</button></div>
+                                <div className="p-4 bg-white border-t grid grid-cols-2 gap-3 shadow-inner">
+                                    <button onClick={() => setStagedCards([])} className="py-3 bg-gray-100 text-gray-400 rounded-xl font-black uppercase text-[9px] hover:bg-gray-200 transition-all">Limpar</button>
+                                    <button onClick={handleValidateAndSaveCards} disabled={isSubmitting || stagedCards.length === 0} className="py-3 bg-blue-900 text-white rounded-xl font-black uppercase text-[9px] shadow-lg active:scale-95 border-b-4 border-blue-950 flex items-center justify-center gap-2 hover:bg-blue-800 transition-all">
+                                        {isSubmitting ? <Loader2 className="animate-spin" size={14}/> : <CheckCircle2 size={14}/>} VALIDAR & LANÇAR
+                                    </button>
+                                </div>
                             </div>
                         </div>
                     </div>
@@ -472,7 +573,25 @@ const CashRegisterModule: React.FC<CashRegisterModuleProps> = ({
                     <div className="max-w-xl mx-auto space-y-6 animate-in slide-in-from-bottom-4 duration-300">
                         <div className="bg-white p-8 rounded-[48px] shadow-sm border border-gray-100">
                             <h3 className="text-sm font-black text-gray-900 uppercase italic tracking-tighter mb-8 flex items-center gap-3"><AlertTriangle className="text-red-600" size={20} /> Registrar Divergência</h3>
-                            <form onSubmit={async (e) => { e.preventDefault(); setIsSubmitting(true); try { await onAddError({ store_id: user.storeId, user_id: user.id, user_name: user.name, error_date: selectedDate, value: parseFloat(errorForm.value.replace(',', '.')), type: errorForm.type, reason: errorForm.reason.toUpperCase() }); setErrorForm({ value: '', reason: '', type: 'shortage' }); alert("Sucesso!"); } catch { alert("Erro."); } finally { setIsSubmitting(false); } }} className="space-y-6">
+                            <form onSubmit={async (e) => { 
+                                e.preventDefault(); 
+                                if (!selectedStoreId) { alert("Selecione uma loja primeiro."); return; }
+                                setIsSubmitting(true); 
+                                try { 
+                                    await onAddError({ 
+                                        store_id: selectedStoreId, 
+                                        user_id: user.id, 
+                                        user_name: user.name, 
+                                        error_date: selectedDate, 
+                                        value: parseFloat(errorForm.value.replace(',', '.')), 
+                                        type: errorForm.type, 
+                                        reason: errorForm.reason.toUpperCase() 
+                                    }); 
+                                    setErrorForm({ value: '', reason: '', type: 'shortage' }); 
+                                    alert("Sucesso!"); 
+                                } catch { alert("Erro."); } 
+                                finally { setIsSubmitting(false); } 
+                            }} className="space-y-6">
                                 <div className="space-y-2"><label className="text-[10px] font-black text-gray-400 uppercase ml-2">Tipo</label><div className="flex bg-gray-100 p-1 rounded-2xl"><button type="button" onClick={() => setErrorForm({...errorForm, type: 'shortage'})} className={`flex-1 py-4 rounded-xl text-[10px] font-black uppercase transition-all ${errorForm.type === 'shortage' ? 'bg-red-600 text-white shadow-lg' : 'text-gray-400'}`}>Falta (-)</button><button type="button" onClick={() => setErrorForm({...errorForm, type: 'surplus'})} className={`flex-1 py-4 rounded-xl text-[10px] font-black uppercase transition-all ${errorForm.type === 'surplus' ? 'bg-green-600 text-white shadow-lg' : 'text-gray-400'}`}>Sobra (+)</button></div></div>
                                 <div className="space-y-2"><label className="text-[10px] font-black text-gray-400 uppercase ml-2">Valor</label><input required value={errorForm.value} onChange={e => setErrorForm({...errorForm, value: e.target.value})} className="w-full p-5 bg-gray-50 border-none rounded-[24px] font-black text-2xl text-center text-blue-950 shadow-inner" placeholder="0,00" /></div>
                                 <div className="space-y-2"><label className="text-[10px] font-black text-gray-400 uppercase ml-2">Motivo</label><textarea required value={errorForm.reason} onChange={e => setErrorForm({...errorForm, reason: e.target.value})} className="w-full p-5 bg-gray-50 border-none rounded-[24px] font-bold text-xs text-gray-700 h-32 shadow-inner no-scrollbar" placeholder="MOTIVO DA DIVERGÊNCIA..." /></div>
@@ -530,6 +649,34 @@ const CashRegisterModule: React.FC<CashRegisterModuleProps> = ({
                                     </p>
                                 </div>
                             </div>
+
+                            <button 
+                                onClick={async () => {
+                                    if (!selectedStoreId) return;
+                                    if (!window.confirm("Deseja realizar o fechamento do caixa para esta data?")) return;
+                                    setIsSubmitting(true);
+                                    try {
+                                        const totalSales = (Object.values(dailyTotals) as number[]).reduce((acc, val) => acc + val, 0);
+                                        await onAddClosure({
+                                            storeId: selectedStoreId,
+                                            totalSales,
+                                            totalExpenses: 0,
+                                            balance: totalSales,
+                                            notes: `Fechamento automático via sistema em ${selectedDate}`,
+                                            date: selectedDate
+                                        });
+                                        alert("Caixa fechado com sucesso!");
+                                    } catch {
+                                        alert("Erro ao fechar caixa.");
+                                    } finally {
+                                        setIsSubmitting(false);
+                                    }
+                                }}
+                                disabled={isSubmitting || Object.keys(dailyTotals).length === 0}
+                                className="w-full mt-6 py-5 bg-blue-900 text-white rounded-[28px] font-black uppercase text-xs shadow-xl active:scale-95 border-b-4 border-blue-950 flex items-center justify-center gap-3"
+                            >
+                                {isSubmitting ? <Loader2 className="animate-spin" /> : <CheckCircle2 size={18}/>} FECHAR CAIXA & SALVAR
+                            </button>
                         </div>
                     </div>
                 )}

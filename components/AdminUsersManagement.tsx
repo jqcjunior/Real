@@ -195,7 +195,7 @@ const AdminUsersManagement: React.FC<AdminUsersManagementProps> = ({ currentUser
                                     <label className="text-[9px] font-black text-gray-400 uppercase ml-2 tracking-widest">Unidade</label>
                                     <select value={formData.store_id || ''} onChange={e => setFormData({...formData, store_id: e.target.value || null})} className="w-full p-4 bg-gray-50 rounded-2xl font-black uppercase text-xs outline-none cursor-pointer">
                                         <option value="">TODAS AS LOJAS</option>
-                                        {stores.map(s => <option key={s.id} value={s.id}>#{s.number} - {s.city}</option>)}
+                                        {[...stores].sort((a, b) => (parseInt(a.number) || 0) - (parseInt(b.number) || 0)).map(s => <option key={s.id} value={s.id}>#{s.number} - {s.city}</option>)}
                                     </select>
                                 </div>
                             </div>
