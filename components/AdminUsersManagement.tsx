@@ -13,6 +13,7 @@ const AdminUsersManagement: React.FC<AdminUsersManagementProps> = ({ currentUser
     const [admins, setAdmins] = useState<AdminUser[]>([]);
     const [isLoading, setIsLoading] = useState(true);
     const [searchTerm, setSearchTerm] = useState('');
+    const [selectedRole, setSelectedRole] = useState<AdminRoleLevel | 'all'>('all');
     const [isModalOpen, setIsModalOpen] = useState(false);
     const [isSubmitting, setIsSubmitting] = useState(false);
     
@@ -24,10 +25,14 @@ const AdminUsersManagement: React.FC<AdminUsersManagementProps> = ({ currentUser
     const [resetUser, setResetUser] = useState<AdminUser | null>(null);
     const [newResetPassword, setNewResetPassword] = useState('');
 
-    const filteredAdmins = admins.filter(admin => 
-        admin.name.toLowerCase().includes(searchTerm.toLowerCase()) || 
-        admin.email.toLowerCase().includes(searchTerm.toLowerCase())
-    );
+    const filteredAdmins = admins
+        .filter(admin => {
+            const matchesSearch = admin.name.toLowerCase().includes(searchTerm.toLowerCase()) || 
+                                 admin.email.toLowerCase().includes(searchTerm.toLowerCase());
+            const matchesRole = selectedRole === 'all' || admin.role_level === selectedRole;
+            return matchesSearch && matchesRole;
+        })
+        .sort((a, b) => a.name.localeCompare(b.name));
 
     const fetchAdmins = async () => {
         setIsLoading(true);
@@ -142,7 +147,39 @@ const AdminUsersManagement: React.FC<AdminUsersManagementProps> = ({ currentUser
             </div>
 
             <div className="bg-white rounded-[32px] md:rounded-[40px] shadow-sm border border-gray-100 overflow-hidden">
-                <div className="p-6 border-b bg-gray-50/30">
+                <div className="p-6 border-b bg-gray-50/30 space-y-4">
+                    <div className="flex flex-wrap gap-2">
+                        <button 
+                            onClick={() => setSelectedRole('all')}
+                            className={`px-4 py-2 rounded-xl text-[10px] font-black uppercase transition-all border ${selectedRole === 'all' ? 'bg-gray-950 text-white border-gray-950 shadow-md' : 'bg-white text-gray-400 border-gray-200 hover:border-gray-400'}`}
+                        >
+                            Todos
+                        </button>
+                        <button 
+                            onClick={() => setSelectedRole('admin')}
+                            className={`px-4 py-2 rounded-xl text-[10px] font-black uppercase transition-all border ${selectedRole === 'admin' ? 'bg-red-600 text-white border-red-600 shadow-md' : 'bg-white text-gray-400 border-gray-200 hover:border-red-200'}`}
+                        >
+                            Admin
+                        </button>
+                        <button 
+                            onClick={() => setSelectedRole('manager')}
+                            className={`px-4 py-2 rounded-xl text-[10px] font-black uppercase transition-all border ${selectedRole === 'manager' ? 'bg-blue-600 text-white border-blue-600 shadow-md' : 'bg-white text-gray-400 border-gray-200 hover:border-blue-200'}`}
+                        >
+                            Gerente
+                        </button>
+                        <button 
+                            onClick={() => setSelectedRole('cashier')}
+                            className={`px-4 py-2 rounded-xl text-[10px] font-black uppercase transition-all border ${selectedRole === 'cashier' ? 'bg-green-600 text-white border-green-600 shadow-md' : 'bg-white text-gray-400 border-gray-200 hover:border-green-200'}`}
+                        >
+                            Caixa
+                        </button>
+                        <button 
+                            onClick={() => setSelectedRole('sorvete')}
+                            className={`px-4 py-2 rounded-xl text-[10px] font-black uppercase transition-all border ${selectedRole === 'sorvete' ? 'bg-purple-600 text-white border-purple-600 shadow-md' : 'bg-white text-gray-400 border-gray-200 hover:border-purple-200'}`}
+                        >
+                            Sorvete
+                        </button>
+                    </div>
                     <div className="relative max-w-md">
                         <Search className="absolute left-4 top-1/2 -translate-y-1/2 text-gray-400" size={18} />
                         <input type="text" placeholder="Pesquisar profissionais..." value={searchTerm} onChange={(e) => setSearchTerm(e.target.value)} className="w-full pl-12 pr-6 py-3 bg-white border border-gray-200 rounded-xl text-sm font-bold text-gray-700 focus:ring-4 focus:ring-blue-50 outline-none shadow-inner" />
