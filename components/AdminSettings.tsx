@@ -128,6 +128,62 @@ const AdminSettings: React.FC<AdminSettingsProps> = ({ stores, onAddStore, onUpd
                 </div>
             </div>
 
+            {/* SEÇÃO DE SOLICITAÇÕES PENDENTES */}
+            {stores.some(s => s.status === 'pending') && (
+                <div className="bg-amber-50 p-8 rounded-[40px] border border-amber-100 shadow-sm animate-in slide-in-from-top-4 duration-500">
+                    <div className="flex items-center justify-between mb-8">
+                        <h3 className="text-xs font-black text-amber-600 uppercase tracking-[0.3em] flex items-center gap-3">
+                            <AlertTriangle size={18} /> Solicitações de Acesso Pendentes
+                        </h3>
+                        <span className="bg-amber-100 text-amber-700 px-4 py-1.5 rounded-full text-[10px] font-black uppercase tracking-widest">
+                            {stores.filter(s => s.status === 'pending').length} Pendentes
+                        </span>
+                    </div>
+                    <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+                        {stores.filter(s => s.status === 'pending').map(store => (
+                            <div key={store.id} className="bg-white p-6 rounded-3xl shadow-sm border border-amber-200 relative overflow-hidden group">
+                                <div className="flex justify-between items-start mb-4">
+                                    <div className="flex items-center gap-3">
+                                        <div className="p-3 bg-amber-100 text-amber-600 rounded-2xl">
+                                            <Building2 size={20} />
+                                        </div>
+                                        <div>
+                                            <h4 className="text-lg font-black text-blue-950 italic uppercase tracking-tighter leading-none">LOJA {store.number}</h4>
+                                            <p className="text-[9px] font-black text-gray-400 uppercase mt-1">{store.name}</p>
+                                        </div>
+                                    </div>
+                                </div>
+                                <div className="space-y-3 mb-6">
+                                    <div className="flex items-center gap-2 text-gray-500">
+                                        <MapPin size={14} />
+                                        <span className="text-[10px] font-bold uppercase">{store.city}</span>
+                                    </div>
+                                    <div className="p-3 bg-gray-50 rounded-xl border border-gray-100">
+                                        <p className="text-[8px] font-black text-gray-400 uppercase tracking-widest mb-1">Responsável</p>
+                                        <p className="text-[10px] font-black text-blue-900 uppercase">{store.managerName || 'NÃO INFORMADO'}</p>
+                                        <p className="text-[9px] font-bold text-gray-500">{store.managerEmail || '---'}</p>
+                                    </div>
+                                </div>
+                                <div className="flex gap-2">
+                                    <button 
+                                        onClick={() => onUpdateStore({ ...store, status: 'active' })}
+                                        className="flex-1 py-3 bg-green-600 text-white rounded-xl font-black uppercase text-[9px] shadow-lg hover:bg-green-700 transition-all flex items-center justify-center gap-2 border-b-4 border-green-800"
+                                    >
+                                        <CheckCircle size={14} /> Aprovar
+                                    </button>
+                                    <button 
+                                        onClick={() => onDeleteStore(store.id)}
+                                        className="py-3 px-4 bg-white text-red-600 rounded-xl font-black uppercase text-[9px] border border-red-100 hover:bg-red-50 transition-all"
+                                    >
+                                        <X size={14} /> Recusar
+                                    </button>
+                                </div>
+                            </div>
+                        ))}
+                    </div>
+                </div>
+            )}
+
             <div className="bg-white p-8 rounded-[40px] shadow-sm border border-gray-100">
                 <h3 className="text-xs font-black text-gray-400 uppercase tracking-[0.3em] mb-8 flex items-center gap-3">
                     <Plus size={18} className="text-blue-600" /> Registrar Nova Unidade

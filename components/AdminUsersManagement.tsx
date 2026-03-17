@@ -20,6 +20,9 @@ const AdminUsersManagement: React.FC<AdminUsersManagementProps> = ({ currentUser
         name: '', email: '', password: '', status: 'active', role_level: 'admin', store_id: null
     });
     const [editingId, setEditingId] = useState<string | null>(null);
+    const [isResetModalOpen, setIsResetModalOpen] = useState(false);
+    const [resetUser, setResetUser] = useState<AdminUser | null>(null);
+    const [newResetPassword, setNewResetPassword] = useState('');
 
     const filteredAdmins = admins.filter(admin => 
         admin.name.toLowerCase().includes(searchTerm.toLowerCase()) || 
@@ -78,6 +81,27 @@ const AdminUsersManagement: React.FC<AdminUsersManagementProps> = ({ currentUser
             alert("Usuário atualizado!");
         } catch (err: any) {
             alert("Erro ao processar: " + err.message);
+        } finally {
+            setIsSubmitting(false);
+        }
+    };
+
+    const handleResetPassword = async (e: React.FormEvent) => {
+        e.preventDefault();
+        if (!resetUser || !newResetPassword) return;
+        setIsSubmitting(true);
+        try {
+            const { error } = await supabase
+                .from('admin_users')
+                .update({ password: newResetPassword.trim() })
+                .eq('id', resetUser.id);
+            if (error) throw error;
+            alert(`Senha de ${resetUser.name} atualizada com sucesso!`);
+            setIsResetModalOpen(false);
+            setResetUser(null);
+            setNewResetPassword('');
+        } catch (err: any) {
+            alert("Erro ao resetar senha: " + err.message);
         } finally {
             setIsSubmitting(false);
         }
@@ -157,6 +181,13 @@ const AdminUsersManagement: React.FC<AdminUsersManagementProps> = ({ currentUser
                                         </td>
                                         <td className="px-8 py-5 text-right">
                                             <div className="flex justify-end gap-2 opacity-0 group-hover:opacity-100 transition-all">
+                                                <button 
+                                                    onClick={() => { setResetUser(admin); setIsResetModalOpen(true); }} 
+                                                    className="p-2 text-amber-600 hover:bg-amber-50 rounded-xl transition-all"
+                                                    title="Resetar Senha"
+                                                >
+                                                    <Lock size={18} />
+                                                </button>
                                                 <button onClick={() => { setEditingId(admin.id); setFormData(admin); setIsModalOpen(true); }} className="p-2 text-blue-600 hover:bg-blue-50 rounded-xl transition-all"><Edit3 size={18} /></button>
                                                 <button onClick={() => handleDelete(admin.id, admin.name)} className="p-2 text-red-300 hover:text-red-500 rounded-xl transition-all"><Trash2 size={18} /></button>
                                             </div>
@@ -209,6 +240,38 @@ const AdminUsersManagement: React.FC<AdminUsersManagementProps> = ({ currentUser
                             </div>
                             <button type="submit" disabled={isSubmitting} className="w-full py-5 bg-red-600 text-white rounded-[28px] font-black uppercase text-xs shadow-xl active:scale-95 transition-all border-b-4 border-red-900 flex items-center justify-center gap-2">
                                 {isSubmitting ? <Loader2 className="animate-spin" /> : <Save size={18}/>} EFETIVAR USUÁRIO
+                            </button>
+                        </form>
+                    </div>
+                </div>
+            )}
+
+            {isResetModalOpen && resetUser && (
+                <div className="fixed inset-0 bg-black/90 backdrop-blur-md flex items-center justify-center z-[120] p-4">
+                    <div className="bg-white rounded-[48px] shadow-2xl w-full max-w-md overflow-hidden animate-in zoom-in duration-300">
+                        <div className="p-8 bg-amber-50 border-b flex justify-between items-center">
+                            <h3 className="text-xl font-black text-gray-900 uppercase italic tracking-tighter leading-none">Resetar <span className="text-amber-600">Senha</span></h3>
+                            <button onClick={() => setIsResetModalOpen(false)} className="bg-white p-2 rounded-full text-gray-400 hover:text-red-600 shadow-sm border"><X size={20} /></button>
+                        </div>
+                        <form onSubmit={handleResetPassword} className="p-10 space-y-6">
+                            <div className="p-4 bg-gray-50 rounded-2xl border border-gray-100">
+                                <p className="text-[10px] font-black text-gray-400 uppercase tracking-widest mb-1">Usuário</p>
+                                <p className="text-sm font-black text-blue-950 uppercase italic">{resetUser.name}</p>
+                                <p className="text-[10px] font-bold text-gray-500">{resetUser.email}</p>
+                            </div>
+                            <div className="space-y-2">
+                                <label className="text-[9px] font-black text-gray-400 uppercase ml-2 tracking-widest">Nova Senha Temporária</label>
+                                <input 
+                                    required 
+                                    type="password" 
+                                    value={newResetPassword} 
+                                    onChange={e => setNewResetPassword(e.target.value)} 
+                                    className="w-full p-4 bg-gray-50 border-none rounded-2xl font-bold text-gray-700 outline-none focus:ring-4 focus:ring-amber-50 transition-all" 
+                                    placeholder="••••••••"
+                                />
+                            </div>
+                            <button type="submit" disabled={isSubmitting} className="w-full py-5 bg-amber-600 text-white rounded-[28px] font-black uppercase text-xs shadow-xl active:scale-95 transition-all border-b-4 border-amber-900 flex items-center justify-center gap-2">
+                                {isSubmitting ? <Loader2 className="animate-spin" /> : <Save size={18}/>} CONFIRMAR RESET
                             </button>
                         </form>
                     </div>

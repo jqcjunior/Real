@@ -26,11 +26,13 @@ import TermoAutorizacao from './components/TermoAutorizacao';
 import SystemAudit from './components/SystemAudit';
 import SpreadsheetOrderModule from './components/SpreadsheetOrderModule';
 import LoginScreen from './components/LoginScreen';
+import NotificationHeader from './components/NotificationHeader';
+import ChangePasswordModal from './components/ChangePasswordModal';
 
 // Ícones
 import { 
     LayoutDashboard, Target, ShoppingBag, Calculator, IceCream as IceCreamIcon, 
-    DollarSign, AlertCircle, Calendar, LogOut, Loader2, Menu, X, ClipboardList, Shield, UserCog, Users, ShieldAlert, Settings, FileSignature, FileText, Download
+    DollarSign, AlertCircle, Calendar, LogOut, Loader2, Menu, X, ClipboardList, Shield, UserCog, Users, ShieldAlert, Settings, FileSignature, FileText, Download, Lock
 } from 'lucide-react';
 
 const App: React.FC = () => {
@@ -38,6 +40,7 @@ const App: React.FC = () => {
     const [currentView, setCurrentView] = useState<string>(''); 
     const [isLoading, setIsLoading] = useState(true);
     const [isSidebarOpen, setIsSidebarOpen] = useState(false);
+    const [isChangePasswordOpen, setIsChangePasswordOpen] = useState(false);
 
     useEffect(() => {
         if (window.innerWidth >= 1024) {
@@ -167,7 +170,12 @@ const App: React.FC = () => {
                 supabase.from('admin_users').select('*')
             ]);
 
-            if(s) setStores(s);
+            if(s) setStores(s.map(x => ({
+                ...x,
+                managerName: x.manager_name,
+                managerEmail: x.manager_email,
+                managerPhone: x.manager_phone
+            })));
             if(sls) setSales(sls);
             if(slsp) setSalePayments(slsp.map(x => ({ ...x, amount: Number(x.amount || 0) })));
             if(p) setPerformanceData(p.map(x => ({ 
@@ -372,7 +380,20 @@ const App: React.FC = () => {
                         );
                     })}
                 </nav>
-                <button onClick={() => window.location.reload()} className="mt-8 flex items-center gap-4 p-4 text-red-500 font-black uppercase text-[10px] hover:bg-red-500/10 rounded-xl transition-all border border-red-500/20"><LogOut size={18} /> Sair</button>
+                <div className="mt-8 space-y-2">
+                    <button 
+                        onClick={() => setIsChangePasswordOpen(true)}
+                        className="w-full flex items-center gap-4 p-4 text-gray-400 font-black uppercase text-[10px] hover:bg-white/5 hover:text-white rounded-xl transition-all border border-white/5"
+                    >
+                        <Lock size={18} /> Alterar Senha
+                    </button>
+                    <button 
+                        onClick={() => window.location.reload()} 
+                        className="w-full flex items-center gap-4 p-4 text-red-500 font-black uppercase text-[10px] hover:bg-red-500/10 rounded-xl transition-all border border-red-500/20"
+                    >
+                        <LogOut size={18} /> Sair
+                    </button>
+                </div>
             </aside>
             <div className="flex-1 flex flex-col h-full bg-[#f3f4f6] overflow-hidden text-blue-950">
                 <header className="h-16 border-b border-gray-100 bg-white items-center justify-between px-4 md:px-6 flex shrink-0 z-50">
@@ -382,7 +403,17 @@ const App: React.FC = () => {
                         </button>
                         <span className="text-[10px] md:text-xs font-black uppercase text-gray-400 flex items-center gap-2 md:gap-3">
                             <UserCog size={18} className="hidden xs:block"/> Sessão: <span className="text-blue-950 italic truncate max-w-[100px] md:max-w-none">{user?.name}</span>
+                            <button 
+                                onClick={() => setIsChangePasswordOpen(true)}
+                                className="p-1.5 bg-gray-100 text-gray-500 rounded-lg hover:bg-blue-600 hover:text-white transition-all shadow-sm border border-gray-200"
+                                title="Alterar Senha"
+                            >
+                                <Lock size={14} />
+                            </button>
                         </span>
+                    </div>
+                    <div className="flex items-center gap-4">
+                        <NotificationHeader user={user!} stores={stores} agenda={agenda} onNavigate={setCurrentView} />
                     </div>
                 </header>
                 <main className="flex-1 overflow-y-auto no-scrollbar p-3 md:p-6 lg:p-8">
@@ -552,6 +583,9 @@ const App: React.FC = () => {
                     })()}
                 </main>
             </div>
+            {isChangePasswordOpen && (
+                <ChangePasswordModal user={user!} onClose={() => setIsChangePasswordOpen(false)} />
+            )}
         </div>
     );
 };
