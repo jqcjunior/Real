@@ -233,6 +233,108 @@ export const printCardSummaryDoc = (date: string, storeName: string, cards: Card
     printWindow.document.close();
 };
 
+export const printErrorsDoc = (title: string, dateInfo: string, storeName: string, errors: CashError[], operator: string) => {
+    const printWindow = window.open('', '_blank', 'width=600,height=800');
+    if (!printWindow) return;
+
+    // Apenas valores negativos contam como erro real
+    const realErrors = errors.filter(e => e.value < 0 || e.type === 'shortage');
+    const samplingSurplus = errors.filter(e => e.value > 0 || e.type === 'surplus');
+    
+    const totalRealError = realErrors.reduce((acc, e) => acc + Math.abs(e.value), 0);
+    const totalSurplus = samplingSurplus.reduce((acc, e) => acc + e.value, 0);
+
+    const html = `
+        <html>
+        <head>
+            <script src="https://cdn.tailwindcss.com"></script>
+            <style>
+                @page { size: A4; margin: 10mm; }
+                body { font-family: 'Courier New', Courier, monospace; background: white; padding: 10px; }
+                .dashed-line { border-top: 1px dashed #000; margin: 10px 0; }
+            </style>
+        </head>
+        <body>
+            <div class="text-center mb-4">
+                <h1 class="text-xl font-black uppercase">${title}</h1>
+                <p class="text-sm font-bold">Relatório de Divergências de Caixa</p>
+            </div>
+            
+            <div class="dashed-line"></div>
+            <div class="text-xs space-y-1 mb-4">
+                <p><strong>LOJA:</strong> ${storeName}</p>
+                <p><strong>PERÍODO:</strong> ${dateInfo}</p>
+                <p><strong>EMISSÃO:</strong> ${new Date().toLocaleString('pt-BR')}</p>
+                <p><strong>OPERADOR:</strong> ${operator}</p>
+            </div>
+            <div class="dashed-line"></div>
+
+            <div class="mb-6">
+                <h2 class="text-sm font-black bg-gray-100 p-1 mb-2">ERROS REAIS (FALTAS)</h2>
+                <table class="w-full text-[10px]">
+                    <thead>
+                        <tr class="border-b border-black">
+                            <th class="text-left py-1">DATA</th>
+                            <th class="text-left py-1">MOTIVO</th>
+                            <th class="text-right py-1">VALOR</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        ${realErrors.length > 0 ? realErrors.map(e => `
+                            <tr>
+                                <td class="py-1">${new Date(e.date + 'T12:00:00').toLocaleDateString('pt-BR')}</td>
+                                <td class="py-1 uppercase">${e.reason}</td>
+                                <td class="py-1 text-right font-bold">-${new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(Math.abs(e.value))}</td>
+                            </tr>
+                        `).join('') : '<tr><td colspan="3" class="text-center py-2">NENHUMA FALTA REGISTRADA</td></tr>'}
+                    </tbody>
+                </table>
+                <div class="dashed-line"></div>
+                <div class="flex justify-between text-sm font-black">
+                    <span>TOTAL ERRO REAL:</span>
+                    <span>${new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(totalRealError)}</span>
+                </div>
+            </div>
+
+            <div class="mb-6">
+                <h2 class="text-sm font-black bg-gray-100 p-1 mb-2">AMOSTRAGEM (SOBRAS)</h2>
+                <table class="w-full text-[10px]">
+                    <thead>
+                        <tr class="border-b border-black">
+                            <th class="text-left py-1">DATA</th>
+                            <th class="text-left py-1">MOTIVO</th>
+                            <th class="text-right py-1">VALOR</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        ${samplingSurplus.length > 0 ? samplingSurplus.map(e => `
+                            <tr>
+                                <td class="py-1">${new Date(e.date + 'T12:00:00').toLocaleDateString('pt-BR')}</td>
+                                <td class="py-1 uppercase">${e.reason}</td>
+                                <td class="py-1 text-right font-bold">+${new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(e.value)}</td>
+                            </tr>
+                        `).join('') : '<tr><td colspan="3" class="text-center py-2">NENHUMA SOBRA REGISTRADA</td></tr>'}
+                    </tbody>
+                </table>
+                <div class="dashed-line"></div>
+                <div class="flex justify-between text-xs font-bold text-gray-600">
+                    <span>TOTAL SOBRAS (AMOSTRAGEM):</span>
+                    <span>${new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(totalSurplus)}</span>
+                </div>
+            </div>
+
+            <div class="mt-12 text-center">
+                <div class="border-t border-black pt-2 text-[10px] font-bold uppercase">Assinatura do Responsável</div>
+            </div>
+
+            <script>window.onload = () => { setTimeout(() => { window.print(); window.close(); }, 800); }</script>
+        </body>
+        </html>
+    `;
+    printWindow.document.write(html);
+    printWindow.document.close();
+};
+
 const CashRegisterModule: React.FC<CashRegisterModuleProps> = ({ 
     user, stores, receipts, errors, finances, onAddReceipt, onAddError, onDeleteError, onAddClosure, onAddLog 
 }) => {
@@ -572,7 +674,36 @@ const CashRegisterModule: React.FC<CashRegisterModuleProps> = ({
                 {activeTab === 'quebras' && (
                     <div className="max-w-xl mx-auto space-y-6 animate-in slide-in-from-bottom-4 duration-300">
                         <div className="bg-white p-8 rounded-[48px] shadow-sm border border-gray-100">
-                            <h3 className="text-sm font-black text-gray-900 uppercase italic tracking-tighter mb-8 flex items-center gap-3"><AlertTriangle className="text-red-600" size={20} /> Registrar Divergência</h3>
+                            <div className="flex justify-between items-center mb-8">
+                                <h3 className="text-sm font-black text-gray-900 uppercase italic tracking-tighter flex items-center gap-3"><AlertTriangle className="text-red-600" size={20} /> Registrar Divergência</h3>
+                                <div className="flex gap-2">
+                                    <button 
+                                        onClick={() => {
+                                            const dailyErrors = errors.filter(e => e.storeId === selectedStoreId && e.date === selectedDate);
+                                            printErrorsDoc('RELATÓRIO DIÁRIO', new Date(selectedDate + 'T12:00:00').toLocaleDateString('pt-BR'), payerName, dailyErrors, user.name);
+                                        }}
+                                        className="p-2 bg-gray-100 text-gray-600 rounded-xl hover:bg-blue-600 hover:text-white transition-all shadow-sm"
+                                        title="Imprimir Erros do Dia"
+                                    >
+                                        <Printer size={16} />
+                                    </button>
+                                    <button 
+                                        onClick={() => {
+                                            const [year, month] = selectedDate.split('-');
+                                            const monthlyErrors = errors.filter(e => {
+                                                const [eYear, eMonth] = e.date.split('-');
+                                                return e.storeId === selectedStoreId && eYear === year && eMonth === month;
+                                            });
+                                            const monthName = new Date(parseInt(year), parseInt(month) - 1).toLocaleDateString('pt-BR', { month: 'long', year: 'numeric' });
+                                            printErrorsDoc('RELATÓRIO MENSAL', monthName.toUpperCase(), payerName, monthlyErrors, user.name);
+                                        }}
+                                        className="p-2 bg-gray-100 text-gray-600 rounded-xl hover:bg-blue-600 hover:text-white transition-all shadow-sm"
+                                        title="Imprimir Erros do Mês"
+                                    >
+                                        <Calendar size={16} />
+                                    </button>
+                                </div>
+                            </div>
                             <form onSubmit={async (e) => { 
                                 e.preventDefault(); 
                                 if (!selectedStoreId) { alert("Selecione uma loja primeiro."); return; }

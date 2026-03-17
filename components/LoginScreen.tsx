@@ -40,11 +40,13 @@ const LoginScreen: React.FC<LoginScreenProps> = ({ onLoginAttempt, onRegisterReq
     try {
         const result = await onLoginAttempt(email.trim(), password.trim(), rememberMe);
         if (!result.success) {
-            setError(result.error || 'Credenciais inválidas.');
+            setError(result.error || 'Senha ou e-mail incorretos.');
+            setPassword(''); // Zerar a senha para nova inserção
             setIsLoading(false);
         }
     } catch (err) {
         setError('Falha na comunicação com o servidor.');
+        setPassword('');
         setIsLoading(false);
     }
   };
