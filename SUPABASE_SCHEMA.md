@@ -36,18 +36,35 @@ create table public.financial_card_sales (
 );
 ```
 
-### 3. Tabela de Recibos
+### 4. Tabela de Gestão de Compras (Importação Planilha)
 ```sql
-create table public.financial_receipts (
-    id text primary key, -- Número do recibo formatado
+create table public.gestao_compras (
+    id uuid default gen_random_uuid() primary key,
     store_id uuid references public.stores(id) on delete cascade,
-    issuer_name text,
-    payer text,
-    recipient text,
-    value numeric(10,2),
-    value_in_words text,
-    reference text,
-    receipt_date date,
-    created_at timestamptz default now()
+    brand text not null,
+    product_type text not null,
+    stock_qty integer default 0,
+    buy_qty integer default 0,
+    sell_qty integer default 0,
+    sell_price numeric(10,2) default 0,
+    last_buy_date date,
+    year integer not null,
+    month integer not null,
+    updated_at timestamptz default now(),
+    unique(store_id, brand, product_type, year, month)
 );
+
+-- Habilitar RLS
+alter table public.gestao_compras enable row level security;
+
+-- Políticas de Acesso
+create policy "Acesso Global Admin" on public.gestao_compras
+    for all using (
+        exists (select 1 from public.admin_users where id = auth.uid() and role = 'ADMIN')
+    );
+
+create policy "Acesso Local Loja" on public.gestao_compras
+    for select using (
+        exists (select 1 from public.admin_users where id = auth.uid() and store_id = gestao_compras.store_id)
+    );
 ```

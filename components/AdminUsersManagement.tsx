@@ -61,7 +61,7 @@ const AdminUsersManagement: React.FC<AdminUsersManagementProps> = ({ currentUser
 
         setIsSubmitting(true);
         try {
-            const cleanStoreId = (isNonAdmin && formData.store_id && formData.store_id !== '') ? formData.store_id : null;
+            const cleanStoreId = (formData.store_id && formData.store_id !== '') ? formData.store_id : null;
             const payload: any = { 
                 name: formData.name?.toUpperCase().trim(), 
                 email: formData.email?.trim().toLowerCase(), 

@@ -3,7 +3,7 @@ import {
     User, Store, MonthlyPerformance, UserRole, Cota, CotaSettings, CotaDebts, QuotaCategory, QuotaMixParameter,
     IceCreamItem, IceCreamDailySale, CashRegisterClosure, ProductPerformance, Receipt, IceCreamStock, IceCreamPromissoryNote, AgendaItem, DownloadItem, CashError, SystemLog, MonthlyGoal, CreditCardSale,
     Sale, SalePayment, IceCreamSangria, IceCreamSangriaCategory,
-    IceCreamStockMovement, StoreProfitPartner, AdminUser
+    IceCreamStockMovement, StoreProfitPartner, AdminUser, PurchasingManagement
 } from './types';
 import { supabase } from './services/supabaseClient';
 import { BRAND_LOGO } from './constants';
@@ -79,6 +79,7 @@ const App: React.FC = () => {
     const [icStockMovements, setIcStockMovements] = useState<IceCreamStockMovement[]>([]);
     const [partners, setPartners] = useState<StoreProfitPartner[]>([]);
     const [adminUsers, setAdminUsers] = useState<AdminUser[]>([]);
+    const [purchasingManagement, setPurchasingManagement] = useState<PurchasingManagement[]>([]);
 
     const can = (permissionKey: string) => {
         if (user?.role === UserRole.ADMIN) return true;
@@ -139,7 +140,8 @@ const App: React.FC = () => {
                 {data: s}, {data: p}, {data: pur}, {data: c}, {data: cs}, {data: cd}, {data: cat}, {data: mix},
                 {data: ici}, {data: ics}, {data: icst}, {data: icp}, {data: r}, {data: ce}, {data: ag}, {data: dl}, {data: cl}, {data: lg},
                 {data: g}, {data: cds}, {data: sls}, {data: slsp},
-                {data: sangCat}, {data: sang}, {data: movements}, {data: part}, {data: ausers}
+                {data: sangCat}, {data: sang}, {data: movements}, {data: part}, {data: ausers},
+                {data: pm}
             ] = await Promise.all([
                 supabase.from('stores').select('*'),
                 supabase.from('monthly_performance').select('*'), 
@@ -167,7 +169,8 @@ const App: React.FC = () => {
                 fetchAllRows('ice_cream_sangria', 'created_at'),
                 fetchAllRows('ice_cream_stock_movements', 'created_at'),
                 supabase.from('store_profit_distribution').select('*'),
-                supabase.from('admin_users').select('*')
+                supabase.from('admin_users').select('*'),
+                supabase.from('gestao_compras').select('*')
             ]);
 
             if(s) setStores(s.map(x => ({
@@ -218,6 +221,20 @@ const App: React.FC = () => {
             if(movements) setIcStockMovements(movements);
             if(part) setPartners(part);
             if(ausers) setAdminUsers(ausers);
+            if(pm) setPurchasingManagement(pm.map(x => ({
+                id: x.id,
+                storeId: x.store_id,
+                brand: x.brand,
+                productType: x.product_type,
+                stockQty: Number(x.stock_qty || 0),
+                buyQty: Number(x.buy_qty || 0),
+                sellQty: Number(x.sell_qty || 0),
+                sellPrice: Number(x.sell_price || 0),
+                lastBuyDate: x.last_buy_date,
+                year: Number(x.year || 0),
+                month: Number(x.month || 0),
+                updatedAt: x.updated_at
+            })));
         } catch (err) { console.error("Erro Sincronismo:", err); }
         finally { setIsLoading(false); }
     };
@@ -230,6 +247,7 @@ const App: React.FC = () => {
             .on('postgres_changes', { event: '*', schema: 'public', table: 'ice_cream_daily_sales_payments' }, () => fetchData())
             .on('postgres_changes', { event: '*', schema: 'public', table: 'ice_cream_sales' }, () => fetchData())
             .on('postgres_changes', { event: '*', schema: 'public', table: 'ice_cream_daily_sales' }, () => fetchData())
+            .on('postgres_changes', { event: '*', schema: 'public', table: 'gestao_compras' }, () => fetchData())
             .subscribe();
         return () => { supabase.removeChannel(channel); };
     }, []);
@@ -454,7 +472,34 @@ const App: React.FC = () => {
                         if (currentView === 'dashboard_loja' && can('MODULE_DASHBOARD_MANAGER')) return <DashboardManager user={user!} stores={stores} performanceData={performanceData} purchasingData={purchasingData} sangrias={icSangrias} stockMovements={icStockMovements} stock={iceCreamStock} />;
                         if (currentView === 'metas' && can('MODULE_METAS')) return <GoalRegistration stores={stores} goalsData={goalsData} onSaveGoals={async (data) => { for(const row of data) { await supabase.from('monthly_goals').upsert({ store_id: row.storeId, year: row.year, month: row.month, revenue_target: row.revenueTarget, pa_target: row.paTarget, pu_target: row.puTarget, ticket_target: row.ticketTarget, items_target: row.itemsTarget, business_days: row.businessDays, delinquency_target: row.delinquencyTarget, trend: row.trend }, { onConflict: 'store_id, year, month' }); } fetchData(); }} />;
                         if (currentView === 'cotas' && can('MODULE_COTAS')) return <CotasManagement user={user!} stores={stores} cotas={cotas} cotaSettings={cotaSettings} cotaDebts={cotaDebts} performanceData={performanceData} productCategories={quotaCategories} mixParameters={quotaMixParams} onAddCota={async (c) => { await supabase.from('cotas').insert([{ store_id: c.storeId, brand: c.brand, category_id: c.category_id, total_value: c.totalValue, shipment_date: `${c.shipmentDate}-01`, payment_terms: c.paymentTerms, pairs: c.pairs, installments: c.installments, status: 'ABERTA' }]); fetchData(); }} onUpdateCota={async (id, u) => { await supabase.from('cotas').update(u).eq('id', id); fetchData(); }} onDeleteCota={async (id) => { await supabase.from('cotas').delete().eq('id', id); fetchData(); }} onSaveSettings={async (s) => { await supabase.from('cota_settings').upsert({ store_id: s.storeId, budget_value: s.budgetValue, manager_percent: s.managerPercent }, { onConflict: 'store_id' }); fetchData(); }} onSaveDebts={async (d) => { await supabase.from('cota_debts').upsert({ store_id: d.storeId, month: d.month, value: d.value }, { onConflict: 'store_id, month' }); fetchData(); }} onDeleteDebt={async (id) => { await supabase.from('cota_debts').delete().eq('id', id); fetchData(); }} onUpdateMixParameter={async (id, sId, cat, pct, sem) => { if (id) { await supabase.from('quota_mix_parameters').update({ mix_percentage: pct }).eq('id', id); } else { await supabase.from('quota_mix_parameters').insert([{ store_id: sId, parent_category: cat, mix_percentage: pct, semester: sem }]); } fetchData(); }} />;
-                        if (currentView === 'compras' && can('MODULE_PURCHASES')) return <DashboardPurchases user={user!} stores={stores} data={purchasingData} adminUsers={adminUsers} onImport={async (d) => { await supabase.from('product_performance').insert(d.map(x => ({ store_id: x.storeId, month: x.month, brand: x.brand, category: x.category, pairs_sold: x.pairsSold, revenue: x.revenue }))); fetchData(); }} onOpenSpreadsheetModule={() => setCurrentView('spreadsheet_order')} />;
+                        if (currentView === 'compras' && can('MODULE_PURCHASES')) return <DashboardPurchases 
+                            user={user!} 
+                            stores={stores} 
+                            data={purchasingData} 
+                            managementData={purchasingManagement}
+                            adminUsers={adminUsers} 
+                            onImport={async (d) => { await supabase.from('product_performance').insert(d.map(x => ({ store_id: x.storeId, month: x.month, brand: x.brand, category: x.category, pairs_sold: x.pairsSold, revenue: x.revenue }))); fetchData(); }} 
+                            onImportManagement={async (d, shouldFetch = true) => {
+                                const { error } = await supabase.from('gestao_compras').upsert(d.map(x => ({
+                                    store_id: x.storeId,
+                                    brand: x.brand,
+                                    product_type: x.productType,
+                                    stock_qty: x.stockQty,
+                                    buy_qty: x.buyQty,
+                                    sell_qty: x.sellQty,
+                                    sell_price: x.sellPrice,
+                                    last_buy_date: x.lastBuyDate,
+                                    year: x.year,
+                                    month: x.month
+                                })), { onConflict: 'store_id, brand, product_type, year, month' });
+                                if (error) {
+                                    console.error("Erro Supabase (gestao_compras):", error);
+                                    throw error;
+                                }
+                                if (shouldFetch) fetchData();
+                            }}
+                            onOpenSpreadsheetModule={() => setCurrentView('spreadsheet_order')} 
+                        />;
                         if (currentView === 'pdv_gelateria' && can('MODULE_ICECREAM')) return <IceCreamModule 
                             user={user!} stores={stores} items={iceCreamItems} sales={iceCreamSales} salesHeaders={sales} salePayments={salePayments}
                             stock={iceCreamStock} promissories={icPromissories} can={can}

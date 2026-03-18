@@ -405,6 +405,21 @@ export interface AdminUser {
   last_activity?: string;
 }
 
+export interface PurchasingManagement {
+  id?: string;
+  storeId: string;
+  brand: string;
+  productType: string;
+  stockQty: number;
+  buyQty: number;
+  sellQty: number;
+  sellPrice: number;
+  lastBuyDate: string | null;
+  year: number;
+  month: number;
+  updatedAt?: string;
+}
+
 /* =========================
    🔹 QUESTIONÁRIOS DE COMPRAS
 ========================= */
