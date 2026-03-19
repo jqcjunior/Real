@@ -28,17 +28,50 @@ async function startServer() {
     try {
       const GOOGLE_SHEET_URL = "https://docs.google.com/spreadsheets/d/1KXTNAm9F8Pabw-aTGaspH2tJc7EVUsP5oAsVmm3QRCA/export?format=xlsx";
       
+      console.log(`[Proxy] Buscando template: ${GOOGLE_SHEET_URL}`);
+      
       const response = await fetch(GOOGLE_SHEET_URL, {
         headers: {
           'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36'
-        }
+        },
+        redirect: 'follow'
       });
 
+      const contentType = response.headers.get('content-type');
+      console.log(`[Proxy] Resposta do Google: ${response.status} ${response.statusText}`);
+      console.log(`[Proxy] Content-Type: ${contentType}`);
+
       if (!response.ok) {
-        return res.status(response.status).send("Erro ao buscar template no Google");
+        console.error(`[Proxy] Erro na resposta do Google: ${response.status}`);
+        return res.status(response.status).send(`Erro ao buscar template no Google: ${response.statusText}`);
       }
 
       const buffer = await response.arrayBuffer();
+      console.log(`[Proxy] Tamanho do buffer recebido: ${buffer.byteLength} bytes`);
+
+      // Se o Google retornar HTML, provavelmente é uma página de login ou erro
+      if (contentType && contentType.includes('text/html')) {
+        const htmlContent = Buffer.from(buffer).toString('utf8').substring(0, 500);
+        console.error("[Proxy] Google retornou HTML em vez de XLSX.");
+        console.error("[Proxy] Início do HTML:", htmlContent);
+        
+        if (htmlContent.includes('ServiceLogin') || htmlContent.includes('accounts.google.com')) {
+          return res.status(403).send("A planilha do Google requer login. Certifique-se de que ela está configurada como 'Qualquer pessoa com o link' (Leitor).");
+        }
+        return res.status(403).send("O Google retornou uma página de erro ou login em vez do arquivo. Verifique as permissões da planilha.");
+      }
+
+      if (buffer.byteLength < 500) {
+        console.error("[Proxy] Buffer muito pequeno, provavelmente não é um arquivo XLSX válido.");
+        return res.status(500).send("O arquivo retornado pelo Google é muito pequeno ou inválido.");
+      }
+      
+      // Verificar assinatura de arquivo ZIP (PK..)
+      const firstBytes = Buffer.from(buffer.slice(0, 4));
+      if (firstBytes[0] !== 0x50 || firstBytes[1] !== 0x4B) {
+        console.error("[Proxy] O arquivo não possui assinatura ZIP válida (PK).");
+        return res.status(500).send("O arquivo retornado pelo Google não é um arquivo Excel (.xlsx) válido.");
+      }
       
       res.setHeader('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
       res.setHeader('Content-Disposition', 'attachment; filename=template.xlsx');
