@@ -92,20 +92,19 @@ export const printReceiptDoc = (r: any) => {
                 .receipt-page { width: 210mm; height: 148.5mm; padding: 10mm; box-sizing: border-box; display: flex; justify-content: center; align-items: flex-start; background: white; }
                 .receipt-container { 
                     width: 190mm; 
-                    height: 125mm; 
+                    height: 130mm; 
                     border: 4px double #000; 
                     padding: 8mm; 
                     display: flex; 
                     flex-direction: column; 
                     position: relative; 
                     background: #fff;
-                    overflow: hidden;
                 }
                 .logo-header { display: flex; justify-content: space-between; align-items: center; border-bottom: 2px solid #000; padding-bottom: 3mm; margin-bottom: 4mm; }
                 .value-box { border: 2px solid #000; padding: 1mm 6mm; background: #f1f5f9; font-size: 24pt; font-weight: 900; font-style: italic; }
                 .clause { font-size: 9pt; text-align: center; line-height: 1.2; font-style: italic; color: #000; margin-top: 4mm; font-weight: 600; padding: 0 4mm; }
-                .line-fill { border-bottom: 1px dotted #000; flex: 1; margin-left: 2mm; font-weight: bold; text-transform: uppercase; font-size: 14pt; }
-                .footer-sign { position: absolute; bottom: 6mm; left: 8mm; right: 8mm; display: flex; justify-content: space-between; align-items: flex-end; }
+                .line-fill { border-bottom: 1px dotted #000; flex: 1; margin-left: 2mm; font-weight: bold; text-transform: uppercase; font-size: 14pt; padding-bottom: 1px; }
+                .footer-sign { margin-top: auto; display: flex; justify-content: space-between; align-items: flex-end; padding-top: 4mm; }
             </style>
         </head>
         <body>
@@ -126,17 +125,17 @@ export const printReceiptDoc = (r: any) => {
                     </div>
                     <div class="space-y-4 flex-1 text-lg">
                         <div class="flex items-baseline">
-                            <span class="whitespace-nowrap">Recebi(emos) de:</span>
+                            <span class="whitespace-nowrap font-medium">Recebi(emos) de:</span>
                             <div class="line-fill">${r.payer}</div>
                         </div>
-                        <div>
-                            <span class="whitespace-nowrap">A quantia de:</span>
-                            <div class="w-full bg-gray-50 border border-gray-100 px-4 py-1 mt-1 text-base font-bold italic uppercase leading-tight">
+                        <div class="flex flex-col">
+                            <span class="whitespace-nowrap font-medium">A quantia de:</span>
+                            <div class="w-full bg-gray-50 border-b border-gray-200 px-4 py-1.5 mt-1 text-base font-bold italic uppercase leading-tight min-h-[1.2em]">
                                 ${r.valueInWords}
                             </div>
                         </div>
                         <div class="flex items-baseline">
-                            <span class="whitespace-nowrap">Referente a:</span>
+                            <span class="whitespace-nowrap font-medium">Referente a:</span>
                             <div class="line-fill" style="font-size: 12pt;">${r.reference}</div>
                         </div>
                     </div>
@@ -144,13 +143,13 @@ export const printReceiptDoc = (r: any) => {
                         "E para maior clareza firmo o presente recibo para que produza os seus efeitos, dando plena, rasa e irrevogável quitação, pelo valor recebido e descrito neste termo."
                     </div>
                     <div class="footer-sign">
-                        <div class="text-base font-bold">
+                        <div class="text-base font-bold pb-2">
                             ${new Date(r.date + 'T12:00:00').toLocaleDateString('pt-BR', { day: 'numeric', month: 'long', year: 'numeric' })}
                         </div>
-                        <div class="w-[85mm] text-center">
-                            <div class="border-t-2 border-black pt-1">
-                                <p class="font-bold uppercase text-base leading-none">${r.recipient}</p>
-                                <p class="text-[8px] uppercase font-bold text-gray-500 tracking-[0.2em] mt-1">Assinatura do Recebedor</p>
+                        <div class="w-[90mm] text-center">
+                            <div class="border-t-2 border-black pt-2 mt-8">
+                                <p class="font-bold uppercase text-base leading-none mb-1">${r.recipient}</p>
+                                <p class="text-[9px] uppercase font-bold text-gray-500 tracking-[0.2em]">Assinatura do Recebedor</p>
                             </div>
                         </div>
                     </div>

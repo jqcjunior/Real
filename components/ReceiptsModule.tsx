@@ -97,11 +97,11 @@ const ReceiptsModule: React.FC<ReceiptsModuleProps> = ({ user, stores, receipts,
                 @page { size: A4 portrait; margin: 0; }
                 body { margin: 0; padding: 0; background: white; font-family: 'Times New Roman', serif; }
                 .receipt-page { width: 210mm; height: 148.5mm; padding: 10mm; box-sizing: border-box; display: flex; justify-content: center; }
-                .receipt-box { width: 190mm; height: 128.5mm; border: 4px double #000; padding: 8mm; box-sizing: border-box; display: flex; flex-direction: column; }
+                .receipt-box { width: 190mm; height: 132mm; border: 4px double #000; padding: 8mm; box-sizing: border-box; display: flex; flex-direction: column; }
                 .header-line { display: flex; justify-content: space-between; align-items: center; border-bottom: 2px solid #000; padding-bottom: 4mm; margin-bottom: 6mm; }
                 .value-display { border: 2px solid #000; background: #f1f5f9; padding: 2mm 8mm; font-size: 26pt; font-weight: 900; font-style: italic; font-family: sans-serif; }
-                .clause { text-align: center; font-size: 10pt; font-style: italic; color: #000; margin: 6mm 0; line-height: 1.4; font-weight: 600; padding: 0 10mm; }
-                .handwritten { font-weight: bold; border-bottom: 1px dotted #000; text-transform: uppercase; }
+                .clause { text-align: center; font-size: 10pt; font-style: italic; color: #000; margin: 4mm 0; line-height: 1.4; font-weight: 600; padding: 0 10mm; }
+                .handwritten { font-weight: bold; border-bottom: 1px dotted #000; text-transform: uppercase; padding-bottom: 1px; }
             </style>
         </head>
         <body>
@@ -120,19 +120,21 @@ const ReceiptsModule: React.FC<ReceiptsModuleProps> = ({ user, stores, receipts,
                             <div class="value-display mt-2">${formattedValue}</div>
                         </div>
                     </div>
-                    <div class="flex-1 space-y-6 text-xl text-gray-900">
+                    <div class="flex-1 space-y-4 text-xl text-gray-900">
                         <p>Recebi(emos) de <span class="handwritten inline-block min-w-[130mm]">${receipt.payer}</span></p>
-                        <div class="leading-relaxed">A quantia de <span class="handwritten italic bg-gray-50 border border-gray-100 block w-full px-4 py-1 mt-2 text-lg uppercase">${receipt.valueInWords}</span></div>
+                        <div class="leading-relaxed">A quantia de <span class="handwritten italic bg-gray-50 border-b border-gray-200 block w-full px-4 py-1.5 mt-2 text-lg uppercase min-h-[1.2em]">${receipt.valueInWords}</span></div>
                         <p>Referente a <span class="handwritten inline-block min-w-[145mm]">${receipt.reference}</span>.</p>
                     </div>
                     <div class="clause">
                         "E para maior clareza firmo o presente recibo para que produza os seus efeitos, dando plena, rasa e irrevogável quitação, pelo valor recebido e descrito neste termo."
                     </div>
-                    <div class="mt-4 flex justify-between items-end">
-                        <div class="text-lg font-bold">${city}, ${formattedDate}</div>
-                        <div class="w-[90mm] text-center border-t-2 border-black pt-2">
-                            <p class="font-bold uppercase text-lg leading-none">${receipt.recipient}</p>
-                            <p class="text-[9px] uppercase font-bold text-gray-500 tracking-widest mt-1">Assinatura do Recebedor</p>
+                    <div class="mt-auto flex justify-between items-end pt-4">
+                        <div class="text-lg font-bold pb-2">${city}, ${formattedDate}</div>
+                        <div class="w-[90mm] text-center">
+                            <div class="border-t-2 border-black pt-2 mt-8">
+                                <p class="font-bold uppercase text-lg leading-none mb-1">${receipt.recipient}</p>
+                                <p class="text-[10px] uppercase font-bold text-gray-500 tracking-widest">Assinatura do Recebedor</p>
+                            </div>
                         </div>
                     </div>
                 </div>

@@ -348,31 +348,51 @@ const DashboardManager: React.FC<DashboardManagerProps> = ({ user, stores, perfo
 
   const getDetailedAdvice = (curr: any, next?: any) => {
     const remainingDays = getRemainingWorkDays(selectedMonth, curr.storeId);
-    const targetStore = next || curr;
-    
-    // Se for o próprio curr, as metas são dele mesmo
-    const revDiff = Math.max(targetStore.revenueTarget - curr.revenueActual, 0);
-    const dailyRev = revDiff / remainingDays;
-    
     let advice = [];
     
-    if (revDiff > 0) {
-        advice.push(`Venda R$ ${formatDecimal(dailyRev)}/dia para bater a meta.`);
-    }
+    if (next) {
+        // Metas para ULTRAPASSAR a próxima loja
+        const revToPass = getRevenueToPass(curr, next);
+        if (revToPass && revToPass > 0) {
+            const dailyRev = revToPass / remainingDays;
+            advice.push(`Venda R$ ${formatDecimal(dailyRev)}/dia para ultrapassar a ${next.name}.`);
+        }
 
-    if (curr.paActual < targetStore.paTarget) {
-        const itemsNeeded = Math.ceil((targetStore.paTarget * curr.salesActual) - curr.itemsActual);
-        if (itemsNeeded > 0) advice.push(`Venda +${itemsNeeded} itens no total para atingir P.A ${targetStore.paTarget.toFixed(2)}.`);
-    }
+        // P.A (Peças por Atendimento)
+        if (curr.paActual < next.paActual) {
+            const totalItemsNeeded = Math.ceil((next.paActual * curr.salesActual) - curr.itemsActual);
+            const dailyItems = Math.ceil(totalItemsNeeded / remainingDays);
+            if (dailyItems > 0) {
+                advice.push(`Venda +${dailyItems} itens/dia (P.A) para ultrapassar a ${next.name}.`);
+            }
+        }
 
-    if (curr.ticketActual < targetStore.ticketTarget) {
-        const tktDiff = targetStore.ticketTarget - curr.ticketActual;
-        advice.push(`Aumente o Ticket Médio em R$ ${formatDecimal(tktDiff)}.`);
-    }
+        // Ticket Médio
+        if (curr.ticketActual < next.ticketActual) {
+            const tktDiff = next.ticketActual - curr.ticketActual;
+            advice.push(`Aumente o Ticket Médio em R$ ${formatDecimal(tktDiff)} para ultrapassar a ${next.name}.`);
+        }
+    } else {
+        // Metas para BATER A PRÓPRIA META (caso seja o 1º ou não haja próxima)
+        const revDiff = Math.max(curr.revenueTarget - curr.revenueActual, 0);
+        const dailyRev = revDiff / remainingDays;
+        
+        if (revDiff > 0) {
+            advice.push(`Venda R$ ${formatDecimal(dailyRev)}/dia para bater a meta.`);
+        }
 
-    if (curr.puActual > targetStore.puTarget) {
-        const puDiff = curr.puActual - targetStore.puTarget;
-        advice.push(`Reduza o P.U em R$ ${formatDecimal(puDiff)} (foco em itens de menor valor).`);
+        if (curr.paActual < curr.paTarget) {
+            const totalItemsNeeded = Math.ceil((curr.paTarget * curr.salesActual) - curr.itemsActual);
+            const dailyItems = Math.ceil(totalItemsNeeded / remainingDays);
+            if (dailyItems > 0) {
+                advice.push(`Venda +${dailyItems} itens/dia (P.A) para atingir a meta.`);
+            }
+        }
+
+        if (curr.ticketActual < curr.ticketTarget) {
+            const tktDiff = curr.ticketTarget - curr.ticketActual;
+            advice.push(`Aumente o Ticket Médio em R$ ${formatDecimal(tktDiff)} para atingir a meta.`);
+        }
     }
 
     return advice;
