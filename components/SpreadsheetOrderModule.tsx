@@ -446,7 +446,7 @@ const SpreadsheetOrderModule = ({ user, onClose }: { user: any, onClose: () => v
           // Verificação básica de integridade do ZIP (XLSX)
           const firstBytes = new Uint8Array(templateBuffer.slice(0, 4));
           if (firstBytes[0] !== 0x50 || firstBytes[1] !== 0x4B) {
-            throw new Error("O arquivo retornado pelo Google não é um Excel válido (assinatura PK não encontrada).");
+            throw new Error("O arquivo retornado pelo servidor não é um Excel válido (assinatura PK não encontrada).");
           }
         } catch (fetchErr: any) {
           console.error("Erro ao buscar template:", fetchErr);
@@ -460,6 +460,24 @@ const SpreadsheetOrderModule = ({ user, onClose }: { user: any, onClose: () => v
       const sheet = workbook.getWorksheet(1);
       if (!sheet) throw new Error("Planilha não encontrada no template.");
 
+      // --- ESTRATÉGIA ANTI-ERRO: ACHATAR TODAS AS FÓRMULAS DO TEMPLATE ---
+      sheet.eachRow({ includeEmpty: true }, (row) => {
+        row.eachCell({ includeEmpty: true }, (cell) => {
+          if (cell.type === 6) { // 6 = Formula
+            const val = cell.result !== undefined ? cell.result : cell.value;
+            const model = cell.model as any;
+            if (model) {
+              delete model.formula;
+              delete model.sharedFormula;
+              delete model.master;
+              delete model.si;
+            }
+            cell.value = val;
+            (cell as any).formula = undefined;
+          }
+        });
+      });
+
       // Função auxiliar para definir valor com segurança máxima e preservação de estilo
       const safeSet = (cell: any, val: any) => {
         if (!cell) return;
@@ -472,6 +490,17 @@ const SpreadsheetOrderModule = ({ user, onClose }: { user: any, onClose: () => v
         }
         cell.value = val;
       };
+
+      // Limpeza preventiva de fórmulas na área de produtos para evitar erros de Shared Formula
+      for (let r = 36; r <= 166; r++) {
+        const row = sheet.getRow(r);
+        row.eachCell({ includeEmpty: true }, (cell) => {
+          if (cell.type === 6) { // 6 = Formula
+            const val = cell.result !== undefined ? cell.result : cell.value;
+            safeSet(cell, val);
+          }
+        });
+      }
 
       // --- 01 - CABEÇALHO (COORDENADAS EXATAS) ---
       const comprador = dataHeader.comprador || pedido.comprador;
@@ -637,11 +666,11 @@ const SpreadsheetOrderModule = ({ user, onClose }: { user: any, onClose: () => v
           
           const firstBytes = new Uint8Array(templateBuffer.slice(0, 4));
           if (firstBytes[0] !== 0x50 || firstBytes[1] !== 0x4B) {
-            throw new Error("O arquivo retornado pelo Google não é um Excel válido.");
+            throw new Error("O arquivo retornado pelo servidor não é um Excel válido.");
           }
         } catch (fetchErr: any) {
           console.error("Erro ao buscar template:", fetchErr);
-          alert(`Erro ao buscar template do Google: ${fetchErr.message}.`);
+          alert(`Erro ao buscar template do OneDrive: ${fetchErr.message}.`);
           return;
         }
       }
@@ -687,7 +716,7 @@ const SpreadsheetOrderModule = ({ user, onClose }: { user: any, onClose: () => v
         };
 
         // Limpeza preventiva de fórmulas na área de produtos para evitar erros de Shared Formula
-        for (let r = 36; r <= 162; r++) {
+        for (let r = 36; r <= 166; r++) {
           const row = sheet.getRow(r);
           row.eachCell({ includeEmpty: true }, (cell) => {
             if (cell.type === 6) { // 6 = Formula

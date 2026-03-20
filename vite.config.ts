@@ -8,6 +8,7 @@ export default defineConfig(({ mode }) => {
       server: {
         port: 3000,
         host: '0.0.0.0',
+        hmr: false, // Desativa o WebSocket do Vite que está gerando erros no console
       },
       plugins: [react()],
       define: {
