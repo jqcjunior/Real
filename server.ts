@@ -23,64 +23,79 @@ async function startServer() {
   const app = express();
   const PORT = 3000;
 
-  // API para buscar o template do Google Sheets sem problemas de CORS
+  // API para buscar o template do Google Sheets ou OneDrive sem problemas de CORS
   app.get("/api/proxy-template", async (req, res) => {
     const sheetId = "1KXTNAm9F8Pabw-aTGaspH2tJc7EVUsP5oAsVmm3QRCA";
+    const oneDriveUrl = "https://1drv.ms/x/c/c6fa712d2b8cf9f7/IQCjnS2HxitQQZ-RatFogEFXAb9KGFQL7fRNm3MgmIWOJ7s?e=tB0BQR";
+    
+    // Função para converter link do OneDrive em link de download direto
+    const getOneDriveDirectLink = (url: string) => {
+      const base64Value = Buffer.from(url).toString('base64');
+      const encodedUrl = base64Value.replace(/\//g, '_').replace(/\+/g, '-').replace(/=+$/, '');
+      return `https://api.onedrive.com/v1.0/shares/u!${encodedUrl}/root/content`;
+    };
+
     const urls = [
+      getOneDriveDirectLink(oneDriveUrl), // Tenta OneDrive primeiro agora
       `https://docs.google.com/spreadsheets/d/${sheetId}/export?format=xlsx`,
       `https://docs.google.com/spreadsheets/d/${sheetId}/pub?output=xlsx`,
       `https://docs.google.com/spreadsheet/ccc?key=${sheetId}&output=xlsx`,
-      `https://docs.google.com/spreadsheets/u/0/d/${sheetId}/export?format=xlsx`
+      `https://docs.google.com/spreadsheets/u/0/d/${sheetId}/export?format=xlsx`,
+      `https://docs.google.com/spreadsheets/d/${sheetId}/export?format=xlsx&id=${sheetId}`
     ];
+
+    console.log(`[Proxy] Iniciando busca de template. Prioridade: OneDrive`);
 
     for (const url of urls) {
       try {
-        console.log(`[Proxy] Tentando buscar template: ${url}`);
+        console.log(`[Proxy] Tentando URL: ${url.substring(0, 100)}...`);
         const response = await fetch(url, {
           headers: {
             'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
-            'Accept': 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet,application/octet-stream,text/html'
+            'Accept': 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet,application/octet-stream,text/html,application/xhtml+xml'
           },
           redirect: 'follow'
         });
 
         const contentType = response.headers.get('content-type') || '';
-        console.log(`[Proxy] Resposta (${url}): ${response.status} ${response.statusText}`);
-        console.log(`[Proxy] Content-Type: ${contentType}`);
+        console.log(`[Proxy] Status: ${response.status} | Content-Type: ${contentType}`);
+
+        if (!response.ok) {
+          console.warn(`[Proxy] Resposta não OK para URL. Status: ${response.status}`);
+          continue;
+        }
 
         const buffer = await response.arrayBuffer();
+        console.log(`[Proxy] Tamanho do buffer: ${buffer.byteLength} bytes`);
         
-        if (response.ok && !contentType.includes('text/html') && buffer.byteLength > 5000) {
+        // Verificação robusta de arquivo ZIP (XLSX é um ZIP)
+        if (buffer.byteLength > 5000) {
           const firstBytes = Buffer.from(buffer.slice(0, 4));
+          // Assinatura PK (0x50 0x4B 0x03 0x04)
           if (firstBytes[0] === 0x50 && firstBytes[1] === 0x4B) {
-            console.log(`[Proxy] Template obtido com sucesso! (${buffer.byteLength} bytes)`);
+            console.log(`[Proxy] Assinatura PK detectada. Enviando buffer...`);
             res.setHeader('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
             res.setHeader('Content-Disposition', 'attachment; filename=template.xlsx');
+            res.setHeader('Content-Length', buffer.byteLength);
             return res.send(Buffer.from(buffer));
+          } else {
+            console.warn(`[Proxy] Buffer não possui assinatura PK. Primeiros bytes: ${firstBytes.toString('hex')}`);
           }
-        } 
+        } else {
+          console.warn(`[Proxy] Buffer muito pequeno (${buffer.byteLength} bytes). Provavelmente erro ou página de login.`);
+        }
         
         if (contentType.includes('text/html')) {
-          const htmlSnippet = Buffer.from(buffer).toString('utf8').substring(0, 1000);
-          console.warn(`[Proxy] URL ${url} retornou HTML. Início: ${htmlSnippet.substring(0, 100)}...`);
-          
-          // Se for o aviso de "Virus Scan" do Google, ele tem um link com "confirm="
-          if (htmlSnippet.includes('confirm=')) {
-            const match = htmlSnippet.match(/href="([^"]+confirm=[^"]+)"/);
-            if (match) {
-              const confirmUrl = match[1].replace(/&amp;/g, '&');
-              console.log(`[Proxy] Detectado aviso de vírus. Tentando link de confirmação: ${confirmUrl}`);
-              // Recursão simples para tentar o link de confirmação (opcional, mas arriscado)
-            }
-          }
+          const htmlSnippet = Buffer.from(buffer).toString('utf8').substring(0, 500);
+          console.warn(`[Proxy] Recebido HTML em vez de XLSX. Snippet: ${htmlSnippet.replace(/\s+/g, ' ')}`);
         }
       } catch (err) {
-        console.error(`[Proxy] Erro ao tentar ${url}:`, err);
+        console.error(`[Proxy] Erro fatal ao tentar URL:`, err);
       }
     }
 
-    console.error("[Proxy] Todas as tentativas de buscar o template falharam.");
-    res.status(403).send("Não foi possível baixar a planilha do Google. O Google pode estar bloqueando o acesso automatizado. Por favor, anexe o arquivo .xlsx diretamente no chat para que eu possa salvá-lo no sistema.");
+    console.error("[Proxy] Falha total: Nenhuma URL retornou um XLSX válido.");
+    res.status(403).send("O servidor não conseguiu baixar o template (OneDrive/Google). Certifique-se de que o arquivo está compartilhado corretamente. Se o erro persistir, use o botão 'Carregar Template Local' no sistema.");
   });
 
   // Endpoint para receber o arquivo do cliente e gerar um link de download direto

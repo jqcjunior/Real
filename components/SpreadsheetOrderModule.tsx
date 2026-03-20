@@ -434,13 +434,25 @@ const SpreadsheetOrderModule = ({ user, onClose }: { user: any, onClose: () => v
       const dataHeader = hD || pedido;
       let templateBuffer: ArrayBuffer;
 
-      try {
-        const response = await fetchTemplate();
-        templateBuffer = await response.arrayBuffer();
-      } catch (fetchErr: any) {
-        console.error("Erro ao buscar template:", fetchErr);
-        alert(`Erro ao buscar template do Google: ${fetchErr.message}.`);
-        return;
+      // Prioridade para template carregado localmente
+      if (localTemplate) {
+        console.log("Usando template carregado localmente.");
+        templateBuffer = localTemplate;
+      } else {
+        try {
+          const response = await fetchTemplate();
+          templateBuffer = await response.arrayBuffer();
+          
+          // Verificação básica de integridade do ZIP (XLSX)
+          const firstBytes = new Uint8Array(templateBuffer.slice(0, 4));
+          if (firstBytes[0] !== 0x50 || firstBytes[1] !== 0x4B) {
+            throw new Error("O arquivo retornado pelo Google não é um Excel válido (assinatura PK não encontrada).");
+          }
+        } catch (fetchErr: any) {
+          console.error("Erro ao buscar template:", fetchErr);
+          alert(`Erro ao buscar template: ${fetchErr.message}. Tente carregar o arquivo .xlsx manualmente usando o botão 'Carregar Template Local'.`);
+          return;
+        }
       }
       
       const workbook = new ExcelJS.Workbook();
@@ -462,12 +474,22 @@ const SpreadsheetOrderModule = ({ user, onClose }: { user: any, onClose: () => v
       };
 
       // --- 01 - CABEÇALHO (COORDENADAS EXATAS) ---
-      safeSet(sheet.getCell('AA2'), dataHeader.comprador.toUpperCase());
-      safeSet(sheet.getCell('N3'), dataHeader.marca.toUpperCase());
-      safeSet(sheet.getCell('AA3'), dataHeader.representante.toUpperCase());
-      safeSet(sheet.getCell('AN3'), dataHeader.telefone);
-      safeSet(sheet.getCell('N4'), dataHeader.fornecedor.toUpperCase());
-      safeSet(sheet.getCell('AA4'), dataHeader.email.toLowerCase());
+      const comprador = dataHeader.comprador || pedido.comprador;
+      const marca = dataHeader.marca || pedido.marca;
+      const representante = dataHeader.representante || pedido.representante;
+      const telefone = dataHeader.telefone || pedido.telefone;
+      const fornecedor = dataHeader.fornecedor || pedido.fornecedor;
+      const email = dataHeader.email || pedido.email;
+      const embInicio = dataHeader.embarqueInicio || dataHeader.embarque_inicio || pedido.embarqueInicio;
+      const embFim = dataHeader.embarqueFim || dataHeader.embarque_fim || pedido.embarqueFim;
+      const prazos = dataHeader.prazos || pedido.prazos;
+
+      safeSet(sheet.getCell('AA2'), (comprador || "").toUpperCase());
+      safeSet(sheet.getCell('N3'), (marca || "").toUpperCase());
+      safeSet(sheet.getCell('AA3'), (representante || "").toUpperCase());
+      safeSet(sheet.getCell('AN3'), telefone || "");
+      safeSet(sheet.getCell('N4'), (fornecedor || "").toUpperCase());
+      safeSet(sheet.getCell('AA4'), (email || "").toLowerCase());
       
       const fmtDate = (d: string) => {
         if (!d) return "";
@@ -475,19 +497,23 @@ const SpreadsheetOrderModule = ({ user, onClose }: { user: any, onClose: () => v
         return parts.length === 3 ? `${parts[2]}/${parts[1]}/${parts[0]}` : d;
       };
       
-      safeSet(sheet.getCell('AA5'), fmtDate(dataHeader.embarqueInicio));
-      safeSet(sheet.getCell('AH5'), fmtDate(dataHeader.embarqueFim));
-      safeSet(sheet.getCell('Z6'), Number(dataHeader.desconto) / 100);
-      safeSet(sheet.getCell('AF6'), Number(dataHeader.markup));
+      safeSet(sheet.getCell('AA5'), fmtDate(embInicio));
+      safeSet(sheet.getCell('AH5'), fmtDate(embFim));
+      safeSet(sheet.getCell('Z6'), Number(dataHeader.desconto || pedido.desconto) / 100);
+      safeSet(sheet.getCell('AF6'), Number(dataHeader.markup || pedido.markup));
+      
+      // Data de Emissão e Frete
+      safeSet(sheet.getCell('AN2'), fmtDate(new Date().toISOString().split('T')[0]));
+      safeSet(sheet.getCell('AN4'), "CIF");
 
       // Prazos e Vencimentos (N5, Q5, T5 e N6, Q6, T6)
-      if (dataHeader.prazos && dataHeader.embarqueFim) {
-        const pArray = dataHeader.prazos.split('/');
-        const baseDate = new Date(dataHeader.embarqueFim + "T12:00:00");
+      if (prazos && embFim) {
+        const pArray = prazos.split('/');
+        const baseDate = new Date(embFim + "T12:00:00");
         const mesesNomes = ["Janeiro", "Fevereiro", "Março", "Abril", "Maio", "Junho", "Julho", "Agosto", "Setembro", "Outubro", "Novembro", "Dezembro"];
         const colPrazos = ['N', 'Q', 'T'];
 
-        pArray.forEach((p, i) => {
+        pArray.forEach((p: string, i: number) => {
           if (i > 2) return;
           const col = colPrazos[i];
           const dias = parseInt(p.trim());
@@ -503,7 +529,6 @@ const SpreadsheetOrderModule = ({ user, onClose }: { user: any, onClose: () => v
       }
 
       // --- 02 - DEFINIÇÃO DE GRADES (LINHAS 14-18) ---
-      // Mapeamento exato da linha 13: D=UN, E=P, F=M, G=G, H=GG, I=16, J=17...
       const allPossibleSizes = ["UN","P","M","G","GG","16","17","18","19","20","21","22","23","24","25","26","27","28","29","30","31","32","33","34","35","36","37","38","39","40","41","42","43","44","45","46","47","48"];
       const colSizes = ["D","E","F","G","H","I","J","K","L","M","N","O","P","Q","R","S","T","U","V","W","X","Y","Z","AA","AB","AC","AD","AE","AF","AG","AH","AI","AJ","AK","AL","AM","AN","AO"];
       
@@ -512,6 +537,7 @@ const SpreadsheetOrderModule = ({ user, onClose }: { user: any, onClose: () => v
         const row = 14 + idx;
         const primeiroItemDoLote = lotesFinalizados.find(l => l.idVinculo === idV);
         if (primeiroItemDoLote) {
+          safeSet(sheet.getCell(`B${row}`), primeiroItemDoLote.gradeLetra);
           const gradeInfo = gradesSalvas.find(g => g.letra === primeiroItemDoLote.gradeLetra);
           if (gradeInfo) {
             Object.entries(gradeInfo.valores).forEach(([tam, qtd]) => {
@@ -541,14 +567,17 @@ const SpreadsheetOrderModule = ({ user, onClose }: { user: any, onClose: () => v
       });
 
       // --- 04 - PRODUTOS (LINHA 36+) ---
-      const itensUnicos = Array.from(new Set(lotesFinalizados.map(l => l.referencia))).map(ref => {
-        return lotesFinalizados.find(l => l.referencia === ref);
-      });
+      // Agrupar por referência e cor para evitar duplicidade de linhas
+      const itensUnicos = lotesFinalizados.reduce((acc: any[], curr) => {
+        const exists = acc.find(it => it.referencia === curr.referencia && it.corEscolhida === curr.corEscolhida);
+        if (!exists) acc.push(curr);
+        return acc;
+      }, []);
 
       itensUnicos.forEach((it, idx) => {
         if (!it) return;
-        const row = 36 + idx;
-        if (row > 164) return;
+        const row = 36 + idx; // Começa na linha 36 conforme solicitado
+        if (row > 166) return;
 
         safeSet(sheet.getCell(`C${row}`), it.referencia);
         safeSet(sheet.getCell(`H${row}`), it.tipo);
@@ -556,11 +585,11 @@ const SpreadsheetOrderModule = ({ user, onClose }: { user: any, onClose: () => v
         safeSet(sheet.getCell(`S${row}`), it.cor2 || "");
         safeSet(sheet.getCell(`T${row}`), it.cor3 || "");
         safeSet(sheet.getCell(`AL${row}`), Number(it.valorCompra));
-        safeSet(sheet.getCell(`AO${row}`), Number(it.valorVenda));
+        safeSet(sheet.getCell(`AO${row}`), Number(it.precoVenda || it.valorVenda));
 
         // Vínculo de Letra da Grade (X, AA, AD, AG, AJ)
         lotesIds.slice(0, 5).forEach((idV, lIdx) => {
-          const loteItem = lotesFinalizados.find(l => l.idVinculo === idV && l.referencia === it.referencia);
+          const loteItem = lotesFinalizados.find(l => l.idVinculo === idV && l.referencia === it.referencia && l.corEscolhida === it.corEscolhida);
           if (loteItem) {
             const colGrade = ['X', 'AA', 'AD', 'AG', 'AJ'][lIdx];
             safeSet(sheet.getCell(`${colGrade}${row}`), loteItem.gradeLetra);
@@ -569,24 +598,24 @@ const SpreadsheetOrderModule = ({ user, onClose }: { user: any, onClose: () => v
       });
 
       // Salvar dados da marca no cache para auto-preenchimento futuro
-      if (dataHeader.marca) {
+      if (marca) {
         const savedBrands = localStorage.getItem("order_brands_cache");
         const brandsMap = savedBrands ? JSON.parse(savedBrands) : {};
-        brandsMap[dataHeader.marca.toUpperCase()] = {
-          fornecedor: dataHeader.fornecedor,
-          representante: dataHeader.representante,
-          telefone: dataHeader.telefone,
-          email: dataHeader.email
+        brandsMap[marca.toUpperCase()] = {
+          fornecedor: fornecedor,
+          representante: representante,
+          telefone: telefone,
+          email: email
         };
         localStorage.setItem("order_brands_cache", JSON.stringify(brandsMap));
       }
 
       const buffer = await workbook.xlsx.writeBuffer();
-      await downloadBlob(new Blob([buffer]), `Pedido_Consolidado_${dataHeader.marca || "FINAL"}.xlsx`);
+      await downloadBlob(new Blob([buffer]), `Pedido_Consolidado_${(marca || "FINAL")}.xlsx`);
 
     } catch (err) {
       console.error("Erro na exportação:", err);
-      alert("Erro ao gerar planilha. Verifique o console.");
+      alert("Erro ao gerar planilha. Verifique se o template é um arquivo .xlsx válido.");
     }
   };
 
@@ -599,13 +628,22 @@ const SpreadsheetOrderModule = ({ user, onClose }: { user: any, onClose: () => v
     try {
       let templateBuffer: ArrayBuffer;
 
-      try {
-        const response = await fetchTemplate();
-        templateBuffer = await response.arrayBuffer();
-      } catch (fetchErr: any) {
-        console.error("Erro ao buscar template:", fetchErr);
-        alert(`Erro ao buscar template do Google: ${fetchErr.message}.`);
-        return;
+      if (localTemplate) {
+        templateBuffer = localTemplate;
+      } else {
+        try {
+          const response = await fetchTemplate();
+          templateBuffer = await response.arrayBuffer();
+          
+          const firstBytes = new Uint8Array(templateBuffer.slice(0, 4));
+          if (firstBytes[0] !== 0x50 || firstBytes[1] !== 0x4B) {
+            throw new Error("O arquivo retornado pelo Google não é um Excel válido.");
+          }
+        } catch (fetchErr: any) {
+          console.error("Erro ao buscar template:", fetchErr);
+          alert(`Erro ao buscar template do Google: ${fetchErr.message}.`);
+          return;
+        }
       }
 
       const lojasUnicas = [...new Set(lotesFinalizados.map((l) => l.loja))].sort();
@@ -649,7 +687,7 @@ const SpreadsheetOrderModule = ({ user, onClose }: { user: any, onClose: () => v
         };
 
         // Limpeza preventiva de fórmulas na área de produtos para evitar erros de Shared Formula
-        for (let r = 34; r <= 162; r++) {
+        for (let r = 36; r <= 162; r++) {
           const row = sheet.getRow(r);
           row.eachCell({ includeEmpty: true }, (cell) => {
             if (cell.type === 6) { // 6 = Formula
@@ -685,7 +723,7 @@ const SpreadsheetOrderModule = ({ user, onClose }: { user: any, onClose: () => v
         safeSet(sheet.getCell('AN4'), "CIF");
         safeSet(sheet.getCell('AA5'), formatDate(pedido.embarqueInicio));
         safeSet(sheet.getCell('AH5'), formatDate(pedido.embarqueFim));
-        safeSet(sheet.getCell('Z6'), Number(pedido.desconto));
+        safeSet(sheet.getCell('Z6'), Number(pedido.desconto) / 100);
         safeSet(sheet.getCell('AF6'), Number(pedido.markup));
 
         // --- 2. PRAZOS E VENCIMENTOS ---
@@ -759,7 +797,7 @@ const SpreadsheetOrderModule = ({ user, onClose }: { user: any, onClose: () => v
         });
 
         lotesDaLoja.forEach((l, idx) => {
-          const r = 34 + idx; // Começa na linha 34
+          const r = 36 + idx; // Começa na linha 36
           
           if (l) {
             safeSet(sheet.getCell(`B${r}`), l.referencia);
@@ -807,7 +845,7 @@ const SpreadsheetOrderModule = ({ user, onClose }: { user: any, onClose: () => v
         }
 
         const buffer = await workbook.xlsx.writeBuffer();
-        downloadBlob(new Blob([buffer]), `Pedido_Loja_${loja}_${pedido.marca || "FINAL"}.xlsx`);
+        downloadBlob(new Blob([buffer]), `Pedido_Loja_${loja}_${(pedido.marca || "FINAL")}.xlsx`);
         await new Promise((resolve) => setTimeout(resolve, 100));
       }
 
