@@ -101,6 +101,22 @@ const SpreadsheetOrderModule = ({ user, onClose }: { user: any, onClose: () => v
     prazos: "" 
   });
 
+  const [localTemplate, setLocalTemplate] = useState<ArrayBuffer | null>(null);
+
+  const handleTemplateUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (file) {
+      const reader = new FileReader();
+      reader.onload = (event) => {
+        if (event.target?.result) {
+          setLocalTemplate(event.target.result as ArrayBuffer);
+          alert("✅ Template carregado com sucesso! Agora o sistema usará este arquivo local para as exportações.");
+        }
+      };
+      reader.readAsArrayBuffer(file);
+    }
+  };
+
   // Auto-fill supplier details based on Marca
   useEffect(() => {
     if (pedido.marca) {
@@ -416,48 +432,36 @@ const SpreadsheetOrderModule = ({ user, onClose }: { user: any, onClose: () => v
 
     try {
       const dataHeader = hD || pedido;
-      const response = await fetchTemplate();
-      if (!response.ok) throw new Error("Erro ao baixar template.");
+      let templateBuffer: ArrayBuffer;
+
+      try {
+        const response = await fetchTemplate();
+        templateBuffer = await response.arrayBuffer();
+      } catch (fetchErr: any) {
+        console.error("Erro ao buscar template:", fetchErr);
+        alert(`Erro ao buscar template do Google: ${fetchErr.message}.`);
+        return;
+      }
       
-      const templateBuffer = await response.arrayBuffer();
       const workbook = new ExcelJS.Workbook();
       await workbook.xlsx.load(templateBuffer);
       const sheet = workbook.getWorksheet(1);
-      if (!sheet) throw new Error("Planilha não encontrada.");
+      if (!sheet) throw new Error("Planilha não encontrada no template.");
 
-      // Função auxiliar para definir valor limpando possíveis fórmulas (evita erro de Shared Formula do exceljs)
+      // Função auxiliar para definir valor com segurança máxima e preservação de estilo
       const safeSet = (cell: any, val: any) => {
-        try {
-          if (cell) {
-            // Limpeza profunda do modelo da célula para remover vínculos de fórmulas compartilhadas
-            if (cell.model) {
-              delete cell.model.formula;
-              delete cell.model.sharedFormula;
-              delete cell.model.master;
-              delete cell.model.si;
-            }
-            cell.value = val;
-            cell.formula = undefined;
-          }
-        } catch (e) {
-          console.warn("Erro ao definir célula:", e);
-          if (cell) cell.value = val;
+        if (!cell) return;
+        const model = cell.model as any;
+        if (model) {
+          delete model.formula;
+          delete model.sharedFormula;
+          delete model.master;
+          delete model.si;
         }
+        cell.value = val;
       };
 
-      // Limpeza preventiva de fórmulas na área de produtos para evitar erros de Shared Formula
-      for (let r = 34; r <= 162; r++) {
-        const row = sheet.getRow(r);
-        row.eachCell({ includeEmpty: true }, (cell) => {
-          if (cell.type === 6) { // 6 = Formula
-            const val = cell.result !== undefined ? cell.result : cell.value;
-            safeSet(cell, val);
-          }
-        });
-      }
-
       // --- 01 - CABEÇALHO (COORDENADAS EXATAS) ---
-      safeSet(sheet.getCell('N2'), dataHeader.numero_pedido || "");
       safeSet(sheet.getCell('AA2'), dataHeader.comprador.toUpperCase());
       safeSet(sheet.getCell('N3'), dataHeader.marca.toUpperCase());
       safeSet(sheet.getCell('AA3'), dataHeader.representante.toUpperCase());
@@ -498,51 +502,63 @@ const SpreadsheetOrderModule = ({ user, onClose }: { user: any, onClose: () => v
         });
       }
 
-      // --- 03 - DEFINIÇÃO DE GRADES (LINHAS 14-18) ---
-      const allPossibleSizes = ["11","12","13","14","15","16","17","18","19","20","21","22","23","24","25","26","27","28","29","30","31","32","33","34","35","36","37","38","39","40","41","42","43","44","45","46","47","48"];
+      // --- 02 - DEFINIÇÃO DE GRADES (LINHAS 14-18) ---
+      // Mapeamento exato da linha 13: D=UN, E=P, F=M, G=G, H=GG, I=16, J=17...
+      const allPossibleSizes = ["UN","P","M","G","GG","16","17","18","19","20","21","22","23","24","25","26","27","28","29","30","31","32","33","34","35","36","37","38","39","40","41","42","43","44","45","46","47","48"];
       const colSizes = ["D","E","F","G","H","I","J","K","L","M","N","O","P","Q","R","S","T","U","V","W","X","Y","Z","AA","AB","AC","AD","AE","AF","AG","AH","AI","AJ","AK","AL","AM","AN","AO"];
       
-      gradesSalvas.forEach((g, idx) => {
-        if (idx > 4) return;
-        const row = 14 + idx;
-        Object.entries(g.valores).forEach(([tam, qtd]) => {
-          const sIdx = allPossibleSizes.indexOf(tam === "17/18" ? "18" : tam);
-          if (sIdx !== -1 && Number(qtd) > 0) {
-            safeSet(sheet.getCell(`${colSizes[sIdx]}${row}`), Number(qtd));
-          }
-        });
-      });
-
-      // --- 04 - LOJAS (LINHAS 23-27) ---
       const lotesIds = Array.from(new Set(lotesFinalizados.map(l => l.idVinculo)));
       lotesIds.slice(0, 5).forEach((idV, idx) => {
-        const row = 23 + idx;
-        safeSet(sheet.getCell(`B${row}`), "Pedido");
-        safeSet(sheet.getCell(`C${row}`), ""); 
+        const row = 14 + idx;
+        const primeiroItemDoLote = lotesFinalizados.find(l => l.idVinculo === idV);
+        if (primeiroItemDoLote) {
+          const gradeInfo = gradesSalvas.find(g => g.letra === primeiroItemDoLote.gradeLetra);
+          if (gradeInfo) {
+            Object.entries(gradeInfo.valores).forEach(([tam, qtd]) => {
+              const sIdx = allPossibleSizes.indexOf(tam === "17/18" ? "18" : tam);
+              if (sIdx !== -1 && Number(qtd) > 0) {
+                safeSet(sheet.getCell(`${colSizes[sIdx]}${row}`), Number(qtd));
+              }
+            });
+          }
+        }
+      });
 
+      // --- 03 - LOJAS (LINHAS 23-27) ---
+      lotesIds.slice(0, 5).forEach((idV, idx) => {
+        const row = 23 + idx;
         const lojasDoLote = lotesFinalizados.filter(l => l.idVinculo === idV).map(l => l.loja);
-        lojasDoLote.forEach(loja => {
-          const lojaIdx = SUBGRUPO_LOJAS.indexOf(loja);
-          if (lojaIdx !== -1 && lojaIdx < colSizes.length) {
-            safeSet(sheet.getCell(`${colSizes[lojaIdx]}${row}`), loja);
+        lojasDoLote.forEach(numLoja => {
+          const lojaNum = parseInt(numLoja);
+          if (!isNaN(lojaNum)) {
+            const colIdx = 3 + lojaNum; // Loja 01 = Col 4 (D)
+            if (colIdx >= 4 && colIdx <= 41) { // D até AO
+              const colLetter = colSizes[colIdx - 4];
+              safeSet(sheet.getCell(`${colLetter}${row}`), numLoja);
+            }
           }
         });
       });
 
-      // --- 02 - PRODUTOS (LINHA 34+) ---
-      itens.forEach((it, idx) => {
-        const row = 34 + idx;
-        if (row > 162) return;
+      // --- 04 - PRODUTOS (LINHA 36+) ---
+      const itensUnicos = Array.from(new Set(lotesFinalizados.map(l => l.referencia))).map(ref => {
+        return lotesFinalizados.find(l => l.referencia === ref);
+      });
+
+      itensUnicos.forEach((it, idx) => {
+        if (!it) return;
+        const row = 36 + idx;
+        if (row > 164) return;
 
         safeSet(sheet.getCell(`C${row}`), it.referencia);
         safeSet(sheet.getCell(`H${row}`), it.tipo);
-        safeSet(sheet.getCell(`R${row}`), it.cor1);
+        safeSet(sheet.getCell(`R${row}`), it.corEscolhida || it.cor1 || "");
         safeSet(sheet.getCell(`S${row}`), it.cor2 || "");
         safeSet(sheet.getCell(`T${row}`), it.cor3 || "");
         safeSet(sheet.getCell(`AL${row}`), Number(it.valorCompra));
         safeSet(sheet.getCell(`AO${row}`), Number(it.valorVenda));
 
-        // Vínculo de Grade por Lote
+        // Vínculo de Letra da Grade (X, AA, AD, AG, AJ)
         lotesIds.slice(0, 5).forEach((idV, lIdx) => {
           const loteItem = lotesFinalizados.find(l => l.idVinculo === idV && l.referencia === it.referencia);
           if (loteItem) {
@@ -581,13 +597,16 @@ const SpreadsheetOrderModule = ({ user, onClose }: { user: any, onClose: () => v
     }
 
     try {
-      const response = await fetchTemplate();
+      let templateBuffer: ArrayBuffer;
 
-      if (!response.ok) {
-        throw new Error("Erro ao baixar template. Verifique se a planilha está pública (Qualquer pessoa com o link pode ler).");
+      try {
+        const response = await fetchTemplate();
+        templateBuffer = await response.arrayBuffer();
+      } catch (fetchErr: any) {
+        console.error("Erro ao buscar template:", fetchErr);
+        alert(`Erro ao buscar template do Google: ${fetchErr.message}.`);
+        return;
       }
-      
-      const templateBuffer = await response.arrayBuffer();
 
       const lojasUnicas = [...new Set(lotesFinalizados.map((l) => l.loja))].sort();
 
@@ -597,24 +616,36 @@ const SpreadsheetOrderModule = ({ user, onClose }: { user: any, onClose: () => v
         const sheet = workbook.getWorksheet(1);
         if (!sheet) continue;
 
-        // Função auxiliar para definir valor limpando possíveis fórmulas (evita erro de Shared Formula do exceljs)
-        const safeSet = (cell: any, val: any) => {
-          try {
-            if (cell) {
-              // Limpeza profunda do modelo da célula para remover vínculos de fórmulas compartilhadas
-              if (cell.model) {
-                delete cell.model.formula;
-                delete cell.model.sharedFormula;
-                delete cell.model.master;
-                delete cell.model.si;
+        // --- ESTRATÉGIA ANTI-ERRO: ACHATAR TODAS AS FÓRMULAS DO TEMPLATE ---
+        sheet.eachRow({ includeEmpty: true }, (row) => {
+          row.eachCell({ includeEmpty: true }, (cell) => {
+            if (cell.type === 6) { // 6 = Formula
+              const val = cell.result !== undefined ? cell.result : cell.value;
+              const model = cell.model as any;
+              if (model) {
+                delete model.formula;
+                delete model.sharedFormula;
+                delete model.master;
+                delete model.si;
               }
               cell.value = val;
-              cell.formula = undefined;
+              (cell as any).formula = undefined;
             }
-          } catch (e) {
-            console.warn("Erro ao definir célula:", e);
-            if (cell) cell.value = val;
+          });
+        });
+
+        // Função auxiliar para definir valor limpando possíveis fórmulas (evita erro de Shared Formula do exceljs)
+        const safeSet = (cell: any, val: any) => {
+          if (!cell) return;
+          const model = cell.model as any;
+          if (model) {
+            delete model.formula;
+            delete model.sharedFormula;
+            delete model.master;
+            delete model.si;
           }
+          cell.value = val;
+          cell.formula = undefined;
         };
 
         // Limpeza preventiva de fórmulas na área de produtos para evitar erros de Shared Formula
@@ -633,7 +664,7 @@ const SpreadsheetOrderModule = ({ user, onClose }: { user: any, onClose: () => v
         safeSet(sheet.getCell('N3'), pedido.marca.toUpperCase());
         safeSet(sheet.getCell('N4'), pedido.fornecedor.toUpperCase());
         safeSet(sheet.getCell('AA3'), pedido.representante.toUpperCase());
-        safeSet(sheet.getCell('AQ3'), pedido.telefone);
+        safeSet(sheet.getCell('AN3'), pedido.telefone);
         safeSet(sheet.getCell('AA4'), pedido.email);
         safeSet(sheet.getCell('AA2'), pedido.comprador.toUpperCase());
         
@@ -644,13 +675,18 @@ const SpreadsheetOrderModule = ({ user, onClose }: { user: any, onClose: () => v
           const [year, month, day] = parts;
           return `${day}/${month}/${year}`;
         };
+
+        const formatMonthYear = (date: Date) => {
+          const months = ["Janeiro", "Fevereiro", "Março", "Abril", "Maio", "Junho", "Julho", "Agosto", "Setembro", "Outubro", "Novembro", "Dezembro"];
+          return `${months[date.getMonth()]}/${date.getFullYear().toString().slice(-2)}`;
+        };
         
         safeSet(sheet.getCell('AN2'), formatDate(new Date().toISOString().split('T')[0]));
         safeSet(sheet.getCell('AN4'), "CIF");
         safeSet(sheet.getCell('AA5'), formatDate(pedido.embarqueInicio));
         safeSet(sheet.getCell('AH5'), formatDate(pedido.embarqueFim));
         safeSet(sheet.getCell('Z6'), Number(pedido.desconto));
-        safeSet(sheet.getCell('AI6'), Number(pedido.markup));
+        safeSet(sheet.getCell('AF6'), Number(pedido.markup));
 
         // --- 2. PRAZOS E VENCIMENTOS ---
         if (pedido.prazos) {
@@ -666,20 +702,19 @@ const SpreadsheetOrderModule = ({ user, onClose }: { user: any, onClose: () => v
               if (pedido.embarqueFim) {
                 const d = new Date(pedido.embarqueFim + "T12:00:00");
                 d.setDate(d.getDate() + val);
-                const dateStr = `${d.getDate().toString().padStart(2, '0')}/${(d.getMonth() + 1).toString().padStart(2, '0')}/${d.getFullYear()}`;
-                safeSet(sheet.getCell(`${col}6`), dateStr);
+                safeSet(sheet.getCell(`${col}6`), formatMonthYear(d));
               }
             }
           });
         }
 
-        // --- 3. RESUMO DE GRADES (LINHAS 16-20) ---
-        const allPossibleSizes = ["11","12","13","14","15","16","17","18","19","20","21","22","23","24","25","26","27","28","29","30","31","32","33","34","35","36","37","38","39","40","41","42","43","44","45","46","47","48"];
+        // --- 3. RESUMO DE GRADES (LINHAS 14-18) ---
+        const allPossibleSizes = ["UN", "P", "M", "G", "GG", "15", "16", "17", "18", "19", "20", "21", "22", "23", "24", "25", "26", "27", "28", "29", "30", "31", "32", "33", "34", "35", "36", "37", "38", "39", "40", "41", "42", "43", "44", "45", "46", "47"];
         const colSizes = ["D","E","F","G","H","I","J","K","L","M","N","O","P","Q","R","S","T","U","V","W","X","Y","Z","AA","AB","AC","AD","AE","AF","AG","AH","AI","AJ","AK","AL","AM","AN","AO"];
         
         const idsVinculosGrades = [...new Set(lotesFinalizados.map(l => l.idVinculo))].slice(0, 5);
         idsVinculosGrades.forEach((idV, idx) => {
-          const row = 16 + idx;
+          const row = 14 + idx;
           const l = lotesFinalizados.find(item => item.idVinculo === idV);
           if (l) {
             safeSet(sheet.getCell(`B${row}`), l.gradeLetra);
@@ -700,7 +735,7 @@ const SpreadsheetOrderModule = ({ user, onClose }: { user: any, onClose: () => v
         const lotesDaLoja = lotesFinalizados.filter((l) => l.loja === loja);
         
         // Agrupar lotes para saber o índice do lote (0 a 4)
-        const lotesAgrupados = Object.values(
+        const lotesAgrupadosExport = Object.values(
           lotesFinalizados.reduce((acc, l) => {
             if (!acc[l.idVinculo]) {
               acc[l.idVinculo] = { idVinculo: l.idVinculo, grade: l.gradeLetra, lojas: new Set<string>() };
@@ -709,6 +744,19 @@ const SpreadsheetOrderModule = ({ user, onClose }: { user: any, onClose: () => v
             return acc;
           }, {} as Record<string, { idVinculo: string, grade: string, lojas: Set<string> }>)
         );
+
+        // --- 4. MARCAÇÃO DE LOJAS (LINHAS 23-27) ---
+        lotesAgrupadosExport.forEach((la: any, idx) => {
+          if (idx >= 5) return;
+          const rowNum = 23 + idx;
+          la.lojas.forEach((lojaId: string) => {
+            const lojaNum = parseInt(lojaId);
+            if (!isNaN(lojaNum) && lojaNum >= 1 && lojaNum <= 120) {
+              const colIdx = 3 + lojaNum; // D=4, E=5...
+              safeSet(sheet.getRow(rowNum).getCell(colIdx), lojaId);
+            }
+          });
+        });
 
         lotesDaLoja.forEach((l, idx) => {
           const r = 34 + idx; // Começa na linha 34
@@ -723,7 +771,7 @@ const SpreadsheetOrderModule = ({ user, onClose }: { user: any, onClose: () => v
             safeSet(sheet.getCell(`AL${r}`), Number(l.valorCompra));
             safeSet(sheet.getCell(`AO${r}`), Number(l.precoVenda));
 
-            const loteIndex = lotesAgrupados.findIndex((la: any) => la.idVinculo === l.idVinculo);
+            const loteIndex = lotesAgrupadosExport.findIndex((la: any) => la.idVinculo === l.idVinculo);
             if (loteIndex !== -1 && loteIndex < 5) {
               const colsGrade = ['X', 'AA', 'AD', 'AG', 'AJ'];
               const colsQtd = ['AS', 'AV', 'AY', 'BB', 'BE'];
@@ -737,8 +785,26 @@ const SpreadsheetOrderModule = ({ user, onClose }: { user: any, onClose: () => v
           }
         });
 
-        // --- 4. IDENTIFICAÇÃO DA LOJA ---
+        // --- 5. IDENTIFICAÇÃO DA LOJA ---
         safeSet(sheet.getCell('D25'), loja as any);
+
+        // --- 6. PLANILHA "Exportar Use" ---
+        let exportUseSheet = workbook.getWorksheet("Exportar Use");
+        if (exportUseSheet) {
+          lotesDaLoja.forEach((l, idx) => {
+            const r = 2 + idx; // Começa na linha 2
+            safeSet(exportUseSheet.getCell(`Q${r}`), VALORES_FISCAIS.IPPT);
+            safeSet(exportUseSheet.getCell(`T${r}`), VALORES_FISCAIS.NCM);
+            safeSet(exportUseSheet.getCell(`U${r}`), VALORES_FISCAIS.CEST);
+            safeSet(exportUseSheet.getCell(`V${r}`), VALORES_FISCAIS.UNIDADE);
+            safeSet(exportUseSheet.getCell(`Y${r}`), VALORES_FISCAIS.IPI);
+            safeSet(exportUseSheet.getCell(`Z${r}`), VALORES_FISCAIS.PIS);
+            safeSet(exportUseSheet.getCell(`AA${r}`), VALORES_FISCAIS.COFINS);
+            safeSet(exportUseSheet.getCell(`AB${r}`), VALORES_FISCAIS.ICMS);
+            safeSet(exportUseSheet.getCell(`AM${r}`), Number(l.precoVenda));
+            safeSet(exportUseSheet.getCell(`AS${r}`), VALORES_FISCAIS.FAIXA);
+          });
+        }
 
         const buffer = await workbook.xlsx.writeBuffer();
         downloadBlob(new Blob([buffer]), `Pedido_Loja_${loja}_${pedido.marca || "FINAL"}.xlsx`);
@@ -893,6 +959,67 @@ const SpreadsheetOrderModule = ({ user, onClose }: { user: any, onClose: () => v
     }
   };
 
+  useEffect(() => {
+    const fetchNextOrderNumber = async () => {
+      try {
+        const { data, error } = await supabase
+          .from('Pedido_Header')
+          .select('numero_pedido')
+          .order('numero_pedido', { ascending: false })
+          .limit(1);
+        
+        if (error) throw error;
+
+        let nextNumber = 10002;
+        if (data && data.length > 0 && data[0].numero_pedido) {
+          const lastNumber = parseInt(data[0].numero_pedido);
+          if (!isNaN(lastNumber)) {
+            nextNumber = Math.max(10002, lastNumber + 1);
+          }
+        }
+        setPedido(prev => ({ ...prev, numero_pedido: nextNumber.toString() }));
+      } catch (err) {
+        console.error("Erro ao buscar último número de pedido:", err);
+      }
+    };
+
+    fetchNextOrderNumber();
+  }, []);
+
+  // Auto-preenchimento de fornecedor baseado na marca
+  useEffect(() => {
+    if (pedido.marca) {
+      const cachedData = localStorage.getItem(`brand_data_${pedido.marca.toUpperCase()}`);
+      if (cachedData) {
+        try {
+          const data = JSON.parse(cachedData);
+          setPedido(prev => ({
+            ...prev,
+            fornecedor: data.fornecedor || prev.fornecedor,
+            representante: data.representante || prev.representante,
+            telefone: data.telefone || prev.telefone,
+            email: data.email || prev.email
+          }));
+        } catch (e) {
+          console.error("Erro ao carregar cache da marca", e);
+        }
+      }
+    }
+  }, [pedido.marca]);
+
+  // Salvar dados da marca no cache ao sair do campo
+  const salvarCacheMarca = () => {
+    if (pedido.marca && pedido.fornecedor) {
+      const data = {
+        fornecedor: pedido.fornecedor,
+        representante: pedido.representante,
+        telefone: pedido.telefone,
+        email: pedido.email
+      };
+      localStorage.setItem(`brand_data_${pedido.marca.toUpperCase()}`, JSON.stringify(data));
+    }
+  };
+
   const lotesAgrupados = useMemo(() => {
     const res: Record<string, { idVinculo: string, grade: string, items: { ref: string, tipo: string, cor: string, custo: number, venda: number, pares: number }[], lojas: Set<string>, valBruto: number, valLiquido: number, pares: number }> = {};
     lotesFinalizados.forEach(l => {
@@ -992,7 +1119,7 @@ const SpreadsheetOrderModule = ({ user, onClose }: { user: any, onClose: () => v
                     className="w-full p-3 bg-slate-50 rounded-xl font-bold uppercase outline-none focus:ring-2 focus:ring-blue-100 min-h-[44px]" 
                     value={pedido.marca} 
                     onChange={e => setPedido({...pedido, marca: e.target.value.toUpperCase()})} 
-                    onBlur={e => resolveId('Pedido_Brand', e.target.value)}
+                    onBlur={salvarCacheMarca}
                     placeholder="EX: BEBECE" 
                   />
                   <datalist id="brands">{dbSuggestions.marcas.map(m => <option key={m} value={m} />)}</datalist>
@@ -1004,7 +1131,7 @@ const SpreadsheetOrderModule = ({ user, onClose }: { user: any, onClose: () => v
                     className="w-full p-3 bg-slate-50 rounded-xl font-bold uppercase outline-none min-h-[44px]" 
                     value={pedido.fornecedor} 
                     onChange={e => setPedido({...pedido, fornecedor: e.target.value.toUpperCase()})} 
-                    onBlur={e => resolveId('Pedido_Suppliers', e.target.value)}
+                    onBlur={salvarCacheMarca}
                     placeholder="EX: CALCADOS BEBECE LTDA" 
                   />
                   <datalist id="suppliers">{dbSuggestions.fornecedores.map(s => <option key={s} value={s} />)}</datalist>
@@ -1015,6 +1142,7 @@ const SpreadsheetOrderModule = ({ user, onClose }: { user: any, onClose: () => v
                     className="w-full p-3 bg-slate-50 rounded-xl font-bold uppercase outline-none min-h-[44px]" 
                     value={pedido.representante} 
                     onChange={e => setPedido({...pedido, representante: e.target.value.toUpperCase()})} 
+                    onBlur={salvarCacheMarca}
                     placeholder="NOME DO REPRESENTANTE" 
                   />
                 </div>
@@ -1024,6 +1152,7 @@ const SpreadsheetOrderModule = ({ user, onClose }: { user: any, onClose: () => v
                     className="w-full p-3 bg-slate-50 rounded-xl font-bold outline-none min-h-[44px]" 
                     value={pedido.telefone} 
                     onChange={e => setPedido({...pedido, telefone: formatPhone(e.target.value)})} 
+                    onBlur={salvarCacheMarca}
                     placeholder="(00) 00000-0000" 
                   />
                 </div>
@@ -1033,6 +1162,7 @@ const SpreadsheetOrderModule = ({ user, onClose }: { user: any, onClose: () => v
                     className="w-full p-3 bg-slate-50 rounded-xl font-bold outline-none min-h-[44px]" 
                     value={pedido.email} 
                     onChange={e => setPedido({...pedido, email: e.target.value.toLowerCase()})} 
+                    onBlur={salvarCacheMarca}
                     placeholder="EMAIL@EXEMPLO.COM" 
                   />
                 </div>
@@ -1441,7 +1571,7 @@ const SpreadsheetOrderModule = ({ user, onClose }: { user: any, onClose: () => v
                     
                     const numLotesAtuais = new Set(lotesFinalizados.map(l => l.idVinculo)).size;
                     if (numLotesAtuais >= 5) {
-                      return alert("O máximo são 5 lotes de pedidos por carga.");
+                      return alert("O máximo são 5 pedidos por carga.");
                     }
 
                     const idVinculo = crypto.randomUUID();
@@ -1456,8 +1586,8 @@ const SpreadsheetOrderModule = ({ user, onClose }: { user: any, onClose: () => v
                     });
                     setLotesFinalizados([...lotesFinalizados, ...novos]);
                     setSelecaoLote({ itensIds: [], lojasIds: [] });
-                    alert("Carga gerada com sucesso!");
-                  }} className="w-full py-4 bg-slate-950 text-white rounded-2xl font-black uppercase text-[10px] shadow-xl border-b-4 border-slate-800 hover:bg-blue-600 transition-all flex items-center justify-center gap-2 min-h-[44px]"><Layers size={14}/> GERAR CARGA DE LOTES</button>
+                    alert("Pedido gerado com sucesso!");
+                  }} className="w-full py-4 bg-slate-950 text-white rounded-2xl font-black uppercase text-[10px] shadow-xl border-b-4 border-slate-800 hover:bg-blue-600 transition-all flex items-center justify-center gap-2 min-h-[44px]"><Layers size={14}/> GERAR PEDIDO</button>
                </div>
             </div>
           )}
@@ -1466,9 +1596,13 @@ const SpreadsheetOrderModule = ({ user, onClose }: { user: any, onClose: () => v
         {/* FOOTER - MINIMALIST */}
         <div className="px-6 py-4 bg-white border-t border-slate-100 flex flex-col md:flex-row justify-between items-center gap-4 shrink-0">
           <button onClick={() => setVerLotes(!verLotes)} className={`w-full md:w-auto px-6 py-2.5 rounded-xl font-black text-[9px] uppercase transition-all flex items-center justify-center gap-2 border min-h-[44px] ${verLotes ? 'bg-blue-600 text-white border-blue-700 shadow-md' : 'bg-slate-50 text-blue-700 border-slate-200'}`}>
-            <ListFilter size={16}/> Lotes Ativos ({lotesAgrupados.length})
+            <ListFilter size={16}/> Pedidos Ativos ({lotesAgrupados.length})
           </button>
           <div className="flex gap-2 w-full md:w-auto">
+            <label className="flex-1 md:flex-none md:w-48 bg-slate-100 text-slate-700 px-4 py-3 rounded-xl font-black text-[9px] uppercase shadow-sm hover:bg-slate-200 transition-all border border-slate-200 cursor-pointer flex items-center justify-center gap-2 min-h-[44px]">
+              <Plus size={18}/> {localTemplate ? 'Template OK' : 'Carregar Template'}
+              <input type="file" accept=".xlsx" onChange={handleTemplateUpload} className="hidden" />
+            </label>
             <button 
               onClick={async () => {
                 const res = await salvarPedidoCompleto();
@@ -1521,7 +1655,7 @@ const SpreadsheetOrderModule = ({ user, onClose }: { user: any, onClose: () => v
                             </p>
                           </div>
                         </div>
-                        <button onClick={() => setLotesFinalizados([])} className="text-red-500 text-[9px] font-black uppercase border border-red-100 px-3 py-1.5 rounded-lg hover:bg-red-50 transition-all">Limpar Carga</button>
+                        <button onClick={() => setLotesFinalizados([])} className="text-red-500 text-[9px] font-black uppercase border border-red-100 px-3 py-1.5 rounded-lg hover:bg-red-50 transition-all">Limpar Pedido</button>
                         <button onClick={() => setVerLotes(false)} className="p-2 text-slate-400 hover:text-slate-600 hover:bg-slate-100 rounded-full transition-all">
                           <X size={18} />
                         </button>

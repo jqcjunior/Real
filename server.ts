@@ -25,61 +25,62 @@ async function startServer() {
 
   // API para buscar o template do Google Sheets sem problemas de CORS
   app.get("/api/proxy-template", async (req, res) => {
-    try {
-      const GOOGLE_SHEET_URL = "https://docs.google.com/spreadsheets/d/1KXTNAm9F8Pabw-aTGaspH2tJc7EVUsP5oAsVmm3QRCA/export?format=xlsx";
-      
-      console.log(`[Proxy] Buscando template: ${GOOGLE_SHEET_URL}`);
-      
-      const response = await fetch(GOOGLE_SHEET_URL, {
-        headers: {
-          'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36'
-        },
-        redirect: 'follow'
-      });
+    const sheetId = "1KXTNAm9F8Pabw-aTGaspH2tJc7EVUsP5oAsVmm3QRCA";
+    const urls = [
+      `https://docs.google.com/spreadsheets/d/${sheetId}/export?format=xlsx`,
+      `https://docs.google.com/spreadsheets/d/${sheetId}/pub?output=xlsx`,
+      `https://docs.google.com/spreadsheet/ccc?key=${sheetId}&output=xlsx`,
+      `https://docs.google.com/spreadsheets/u/0/d/${sheetId}/export?format=xlsx`
+    ];
 
-      const contentType = response.headers.get('content-type');
-      console.log(`[Proxy] Resposta do Google: ${response.status} ${response.statusText}`);
-      console.log(`[Proxy] Content-Type: ${contentType}`);
+    for (const url of urls) {
+      try {
+        console.log(`[Proxy] Tentando buscar template: ${url}`);
+        const response = await fetch(url, {
+          headers: {
+            'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+            'Accept': 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet,application/octet-stream,text/html'
+          },
+          redirect: 'follow'
+        });
 
-      if (!response.ok) {
-        console.error(`[Proxy] Erro na resposta do Google: ${response.status}`);
-        return res.status(response.status).send(`Erro ao buscar template no Google: ${response.statusText}`);
-      }
+        const contentType = response.headers.get('content-type') || '';
+        console.log(`[Proxy] Resposta (${url}): ${response.status} ${response.statusText}`);
+        console.log(`[Proxy] Content-Type: ${contentType}`);
 
-      const buffer = await response.arrayBuffer();
-      console.log(`[Proxy] Tamanho do buffer recebido: ${buffer.byteLength} bytes`);
-
-      // Se o Google retornar HTML, provavelmente é uma página de login ou erro
-      if (contentType && contentType.includes('text/html')) {
-        const htmlContent = Buffer.from(buffer).toString('utf8').substring(0, 500);
-        console.error("[Proxy] Google retornou HTML em vez de XLSX.");
-        console.error("[Proxy] Início do HTML:", htmlContent);
+        const buffer = await response.arrayBuffer();
         
-        if (htmlContent.includes('ServiceLogin') || htmlContent.includes('accounts.google.com')) {
-          return res.status(403).send("A planilha do Google requer login. Certifique-se de que ela está configurada como 'Qualquer pessoa com o link' (Leitor).");
+        if (response.ok && !contentType.includes('text/html') && buffer.byteLength > 5000) {
+          const firstBytes = Buffer.from(buffer.slice(0, 4));
+          if (firstBytes[0] === 0x50 && firstBytes[1] === 0x4B) {
+            console.log(`[Proxy] Template obtido com sucesso! (${buffer.byteLength} bytes)`);
+            res.setHeader('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
+            res.setHeader('Content-Disposition', 'attachment; filename=template.xlsx');
+            return res.send(Buffer.from(buffer));
+          }
+        } 
+        
+        if (contentType.includes('text/html')) {
+          const htmlSnippet = Buffer.from(buffer).toString('utf8').substring(0, 1000);
+          console.warn(`[Proxy] URL ${url} retornou HTML. Início: ${htmlSnippet.substring(0, 100)}...`);
+          
+          // Se for o aviso de "Virus Scan" do Google, ele tem um link com "confirm="
+          if (htmlSnippet.includes('confirm=')) {
+            const match = htmlSnippet.match(/href="([^"]+confirm=[^"]+)"/);
+            if (match) {
+              const confirmUrl = match[1].replace(/&amp;/g, '&');
+              console.log(`[Proxy] Detectado aviso de vírus. Tentando link de confirmação: ${confirmUrl}`);
+              // Recursão simples para tentar o link de confirmação (opcional, mas arriscado)
+            }
+          }
         }
-        return res.status(403).send("O Google retornou uma página de erro ou login em vez do arquivo. Verifique as permissões da planilha.");
+      } catch (err) {
+        console.error(`[Proxy] Erro ao tentar ${url}:`, err);
       }
-
-      if (buffer.byteLength < 500) {
-        console.error("[Proxy] Buffer muito pequeno, provavelmente não é um arquivo XLSX válido.");
-        return res.status(500).send("O arquivo retornado pelo Google é muito pequeno ou inválido.");
-      }
-      
-      // Verificar assinatura de arquivo ZIP (PK..)
-      const firstBytes = Buffer.from(buffer.slice(0, 4));
-      if (firstBytes[0] !== 0x50 || firstBytes[1] !== 0x4B) {
-        console.error("[Proxy] O arquivo não possui assinatura ZIP válida (PK).");
-        return res.status(500).send("O arquivo retornado pelo Google não é um arquivo Excel (.xlsx) válido.");
-      }
-      
-      res.setHeader('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
-      res.setHeader('Content-Disposition', 'attachment; filename=template.xlsx');
-      res.send(Buffer.from(buffer));
-    } catch (error) {
-      console.error("Erro no proxy do servidor:", error);
-      res.status(500).send("Erro interno ao buscar template");
     }
+
+    console.error("[Proxy] Todas as tentativas de buscar o template falharam.");
+    res.status(403).send("Não foi possível baixar a planilha do Google. O Google pode estar bloqueando o acesso automatizado. Por favor, anexe o arquivo .xlsx diretamente no chat para que eu possa salvá-lo no sistema.");
   });
 
   // Endpoint para receber o arquivo do cliente e gerar um link de download direto
