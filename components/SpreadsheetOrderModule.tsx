@@ -377,9 +377,7 @@ const SpreadsheetOrderModule = ({ user, onClose }: { user: any, onClose: () => v
     const response = await fetch("/api/proxy-template");
     if (!response.ok) {
       const errorText = await response.text();
-      if (response.status === 403) {
-        throw new Error("A planilha do Google não está pública. Por favor, abra a planilha no Google Sheets, clique em 'Compartilhar' e mude para 'Qualquer pessoa com o link' (Leitor).");
-      }
+      // Se o servidor retornar 403, usamos a mensagem personalizada do servidor
       throw new Error(errorText || "Erro ao buscar template no servidor.");
     }
     return response;
@@ -446,6 +444,8 @@ const SpreadsheetOrderModule = ({ user, onClose }: { user: any, onClose: () => v
           // Verificação básica de integridade do ZIP (XLSX)
           const firstBytes = new Uint8Array(templateBuffer.slice(0, 4));
           if (firstBytes[0] !== 0x50 || firstBytes[1] !== 0x4B) {
+            const snippet = new TextDecoder().decode(new Uint8Array(templateBuffer.slice(0, 100)));
+            console.warn("Assinatura PK não encontrada (Export Final). Primeiros 100 bytes:", snippet);
             throw new Error("O arquivo retornado pelo servidor não é um Excel válido (assinatura PK não encontrada).");
           }
         } catch (fetchErr: any) {
@@ -666,11 +666,13 @@ const SpreadsheetOrderModule = ({ user, onClose }: { user: any, onClose: () => v
           
           const firstBytes = new Uint8Array(templateBuffer.slice(0, 4));
           if (firstBytes[0] !== 0x50 || firstBytes[1] !== 0x4B) {
-            throw new Error("O arquivo retornado pelo servidor não é um Excel válido.");
+            const snippet = new TextDecoder().decode(new Uint8Array(templateBuffer.slice(0, 100)));
+            console.warn("Assinatura PK não encontrada (Export por Loja). Primeiros 100 bytes:", snippet);
+            throw new Error("O arquivo retornado pelo servidor não é um Excel válido (assinatura PK não encontrada).");
           }
         } catch (fetchErr: any) {
           console.error("Erro ao buscar template:", fetchErr);
-          alert(`Erro ao buscar template do OneDrive: ${fetchErr.message}.`);
+          alert(`Erro ao buscar template: ${fetchErr.message}. Tente carregar o arquivo .xlsx manualmente usando o botão 'Carregar Template Local'.`);
           return;
         }
       }
@@ -1665,11 +1667,12 @@ const SpreadsheetOrderModule = ({ user, onClose }: { user: any, onClose: () => v
           <button onClick={() => setVerLotes(!verLotes)} className={`w-full md:w-auto px-6 py-2.5 rounded-xl font-black text-[9px] uppercase transition-all flex items-center justify-center gap-2 border min-h-[44px] ${verLotes ? 'bg-blue-600 text-white border-blue-700 shadow-md' : 'bg-slate-50 text-blue-700 border-slate-200'}`}>
             <ListFilter size={16}/> Pedidos Ativos ({lotesAgrupados.length})
           </button>
-          <div className="flex gap-2 w-full md:w-auto">
-            <label className="flex-1 md:flex-none md:w-48 bg-slate-100 text-slate-700 px-4 py-3 rounded-xl font-black text-[9px] uppercase shadow-sm hover:bg-slate-200 transition-all border border-slate-200 cursor-pointer flex items-center justify-center gap-2 min-h-[44px]">
-              <Plus size={18}/> {localTemplate ? 'Template OK' : 'Carregar Template'}
-              <input type="file" accept=".xlsx" onChange={handleTemplateUpload} className="hidden" />
-            </label>
+          <div className="flex flex-col gap-1 w-full md:w-auto">
+            <div className="flex gap-2 w-full md:w-auto">
+              <label className={`flex-1 md:flex-none md:w-48 px-4 py-3 rounded-xl font-black text-[9px] uppercase shadow-sm transition-all border cursor-pointer flex items-center justify-center gap-2 min-h-[44px] ${localTemplate ? 'bg-emerald-50 text-emerald-700 border-emerald-200 hover:bg-emerald-100' : 'bg-blue-600 text-white border-blue-700 hover:bg-blue-700 animate-pulse'}`}>
+                <Plus size={18}/> {localTemplate ? 'Template OK' : 'Carregar Template'}
+                <input type="file" accept=".xlsx" onChange={handleTemplateUpload} className="hidden" />
+              </label>
             <button 
               onClick={async () => {
                 const res = await salvarPedidoCompleto();
@@ -1693,7 +1696,11 @@ const SpreadsheetOrderModule = ({ user, onClose }: { user: any, onClose: () => v
               <Download size={18}/> Pedidos por Loja
             </button>
           </div>
+          <a href="/api/proxy-template" target="_blank" className="text-[8px] text-slate-400 hover:text-blue-600 text-center font-bold uppercase tracking-widest mt-1">
+            Testar Conexão OneDrive (Download Direto)
+          </a>
         </div>
+      </div>
 
         {/* OVERLAY RESUMO LOTES */}
         {verLotes && (
