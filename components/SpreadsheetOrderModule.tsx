@@ -374,11 +374,9 @@ const SpreadsheetOrderModule = ({ user, onClose }: { user: any, onClose: () => v
   }, [pedido.marca]);
 
   const fetchTemplate = async () => {
-    const response = await fetch("/api/proxy-template");
+    const response = await fetch("https://rwwomakjhmglgoowbmsl.supabase.co/storage/v1/object/public/template/Template.xlsx");
     if (!response.ok) {
-      const errorText = await response.text();
-      // Se o servidor retornar 403, usamos a mensagem personalizada do servidor
-      throw new Error(errorText || "Erro ao buscar template no servidor.");
+      throw new Error("Erro ao baixar template");
     }
     return response;
   };
@@ -441,16 +439,14 @@ const SpreadsheetOrderModule = ({ user, onClose }: { user: any, onClose: () => v
           const response = await fetchTemplate();
           templateBuffer = await response.arrayBuffer();
           
-          // Verificação básica de integridade do ZIP (XLSX)
-          const firstBytes = new Uint8Array(templateBuffer.slice(0, 4));
-          if (firstBytes[0] !== 0x50 || firstBytes[1] !== 0x4B) {
-            const snippet = new TextDecoder().decode(new Uint8Array(templateBuffer.slice(0, 100)));
-            console.warn("Assinatura PK não encontrada (Export Final). Primeiros 100 bytes:", snippet);
-            throw new Error("O arquivo retornado pelo servidor não é um Excel válido (assinatura PK não encontrada).");
+          // Validação obrigatória do header do arquivo (PK)
+          const bytes = new Uint8Array(templateBuffer.slice(0, 4));
+          if (bytes[0] !== 0x50 || bytes[1] !== 0x4B) {
+            throw new Error("Arquivo inválido: não é um Excel válido (PK não encontrada)");
           }
         } catch (fetchErr: any) {
           console.error("Erro ao buscar template:", fetchErr);
-          alert(`Erro ao buscar template: ${fetchErr.message}. Tente carregar o arquivo .xlsx manualmente usando o botão 'Carregar Template Local'.`);
+          alert(`Erro ao baixar template: ${fetchErr.message}. Tente carregar o arquivo .xlsx manualmente.`);
           return;
         }
       }
@@ -664,15 +660,14 @@ const SpreadsheetOrderModule = ({ user, onClose }: { user: any, onClose: () => v
           const response = await fetchTemplate();
           templateBuffer = await response.arrayBuffer();
           
-          const firstBytes = new Uint8Array(templateBuffer.slice(0, 4));
-          if (firstBytes[0] !== 0x50 || firstBytes[1] !== 0x4B) {
-            const snippet = new TextDecoder().decode(new Uint8Array(templateBuffer.slice(0, 100)));
-            console.warn("Assinatura PK não encontrada (Export por Loja). Primeiros 100 bytes:", snippet);
-            throw new Error("O arquivo retornado pelo servidor não é um Excel válido (assinatura PK não encontrada).");
+          // Validação obrigatória do header do arquivo (PK)
+          const bytes = new Uint8Array(templateBuffer.slice(0, 4));
+          if (bytes[0] !== 0x50 || bytes[1] !== 0x4B) {
+            throw new Error("Arquivo inválido: não é um Excel válido (PK não encontrada)");
           }
         } catch (fetchErr: any) {
           console.error("Erro ao buscar template:", fetchErr);
-          alert(`Erro ao buscar template: ${fetchErr.message}. Tente carregar o arquivo .xlsx manualmente usando o botão 'Carregar Template Local'.`);
+          alert(`Erro ao baixar template: ${fetchErr.message}. Tente carregar o arquivo .xlsx manualmente.`);
           return;
         }
       }
@@ -1696,9 +1691,6 @@ const SpreadsheetOrderModule = ({ user, onClose }: { user: any, onClose: () => v
               <Download size={18}/> Pedidos por Loja
             </button>
           </div>
-          <a href="/api/proxy-template" target="_blank" className="text-[8px] text-slate-400 hover:text-blue-600 text-center font-bold uppercase tracking-widest mt-1">
-            Testar Conexão OneDrive (Download Direto)
-          </a>
         </div>
       </div>
 
