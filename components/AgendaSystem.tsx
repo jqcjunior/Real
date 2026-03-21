@@ -3,7 +3,7 @@ import { AgendaItem, User, TaskPriority } from '../types';
 import { 
   Calendar, Plus, Trash2, ChevronLeft, ChevronRight, 
   X, Loader2, Clock, Save, CalendarDays, 
-  AlignLeft, BarChart 
+  AlignLeft, BarChart, Edit 
 } from 'lucide-react';
 
 interface AgendaSystemProps {
@@ -34,6 +34,7 @@ const AgendaSystem: React.FC<AgendaSystemProps> = ({ user, tasks, onAddTask, onU
 
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const [editingTask, setEditingTask] = useState<AgendaItem | null>(null);
   const [formData, setFormData] = useState({
     title: '',
     description: '',
@@ -78,12 +79,39 @@ const AgendaSystem: React.FC<AgendaSystemProps> = ({ user, tasks, onAddTask, onU
     
     setIsSubmitting(true);
     try {
-      await onAddTask({
-        ...formData,
-        title: formData.title.toUpperCase(),
-        isCompleted: false
+      if (editingTask) {
+        await onUpdateTask({
+          ...editingTask,
+          ...formData,
+          title: formData.title.toUpperCase()
+        });
+      } else {
+        await onAddTask({
+          ...formData,
+          title: formData.title.toUpperCase(),
+          isCompleted: false
+        });
+      }
+      closeModal();
+    } catch (error) {
+      alert("Erro ao salvar tarefa.");
+    } finally {
+      setIsSubmitting(false);
+    }
+  };
+
+  const openModal = (task?: AgendaItem) => {
+    if (task) {
+      setEditingTask(task);
+      setFormData({
+        title: task.title,
+        description: task.description || '',
+        dueDate: task.dueDate ? task.dueDate.split('T')[0] : new Date().toISOString().split('T')[0],
+        dueTime: task.dueTime || '08:00',
+        priority: task.priority
       });
-      setIsModalOpen(false);
+    } else {
+      setEditingTask(null);
       setFormData({
         title: '',
         description: '',
@@ -91,11 +119,20 @@ const AgendaSystem: React.FC<AgendaSystemProps> = ({ user, tasks, onAddTask, onU
         dueTime: '08:00',
         priority: 'medium'
       });
-    } catch (error) {
-      alert("Erro ao salvar tarefa.");
-    } finally {
-      setIsSubmitting(false);
     }
+    setIsModalOpen(true);
+  };
+
+  const closeModal = () => {
+    setIsModalOpen(false);
+    setEditingTask(null);
+    setFormData({
+      title: '',
+      description: '',
+      dueDate: new Date().toISOString().split('T')[0],
+      dueTime: '08:00',
+      priority: 'medium'
+    });
   };
 
   const changeWeek = (direction: 'next' | 'prev') => {
@@ -122,7 +159,7 @@ const AgendaSystem: React.FC<AgendaSystemProps> = ({ user, tasks, onAddTask, onU
             <button onClick={() => setCurrentWeekStart(new Date())} className="px-4 py-2 text-[10px] font-black uppercase text-gray-500 hover:text-blue-600">Hoje</button>
             <button onClick={() => changeWeek('next')} className="p-2 hover:bg-white hover:text-blue-600 rounded-lg transition-all"><ChevronRight size={20}/></button>
           </div>
-          <button onClick={() => setIsModalOpen(true)} className="bg-gray-950 text-white px-8 py-3 rounded-2xl font-black uppercase text-[11px] shadow-xl hover:bg-black transition-all flex items-center gap-3 border-b-4 border-blue-600 active:scale-95">
+          <button onClick={() => openModal()} className="bg-gray-950 text-white px-8 py-3 rounded-2xl font-black uppercase text-[11px] shadow-xl hover:bg-black transition-all flex items-center gap-3 border-b-4 border-blue-600 active:scale-95">
             <Plus size={18} /> Novo Agendamento
           </button>
         </div>
@@ -149,9 +186,14 @@ const AgendaSystem: React.FC<AgendaSystemProps> = ({ user, tasks, onAddTask, onU
                       </span>
                     </div>
                     <h4 className="font-black text-[11px] uppercase italic text-gray-900 leading-tight mb-2">{task.title}</h4>
-                    {!task.isCompleted && (
-                      <button onClick={() => onUpdateTask({...task, isCompleted: true})} className="w-full py-2 mt-2 bg-blue-50 text-blue-700 rounded-xl text-[9px] font-black uppercase hover:bg-blue-600 hover:text-white transition-all">Concluir</button>
-                    )}
+                    <div className="flex gap-2 mt-2">
+                      {!task.isCompleted && (
+                        <button onClick={() => onUpdateTask({...task, isCompleted: true})} className="flex-1 py-2 bg-blue-50 text-blue-700 rounded-xl text-[9px] font-black uppercase hover:bg-blue-600 hover:text-white transition-all">Concluir</button>
+                      )}
+                      <button onClick={() => openModal(task)} className="p-2 bg-gray-50 text-gray-400 rounded-xl hover:bg-gray-100 hover:text-blue-600 transition-all">
+                        <Edit size={12} />
+                      </button>
+                    </div>
                     <button onClick={() => onDeleteTask(task.id)} className="absolute top-2 right-2 p-1 text-gray-300 hover:text-red-500 opacity-0 group-hover:opacity-100 transition-all"><Trash2 size={12}/></button>
                   </div>
                 ))}
@@ -172,9 +214,13 @@ const AgendaSystem: React.FC<AgendaSystemProps> = ({ user, tasks, onAddTask, onU
           <div className="bg-white rounded-[40px] w-full max-w-md shadow-2xl animate-in zoom-in duration-300 overflow-hidden border-t-8 border-blue-600">
             <div className="p-8 border-b bg-gray-50 flex justify-between items-center">
               <h3 className="text-xl font-black uppercase italic text-blue-950 flex items-center gap-3">
-                <Plus className="text-blue-600" size={20} /> Novo <span className="text-blue-600">Agendamento</span>
+                {editingTask ? (
+                  <><Edit className="text-blue-600" size={20} /> Editar <span className="text-blue-600">Agendamento</span></>
+                ) : (
+                  <><Plus className="text-blue-600" size={20} /> Novo <span className="text-blue-600">Agendamento</span></>
+                )}
               </h3>
-              <button onClick={() => setIsModalOpen(false)} className="bg-white p-2 rounded-full text-gray-400 hover:text-red-600 shadow-sm border"><X size={20} /></button>
+              <button onClick={closeModal} className="bg-white p-2 rounded-full text-gray-400 hover:text-red-600 shadow-sm border"><X size={20} /></button>
             </div>
             
             <form onSubmit={handleSaveTask} className="p-8 space-y-6">
@@ -243,7 +289,7 @@ const AgendaSystem: React.FC<AgendaSystemProps> = ({ user, tasks, onAddTask, onU
                 disabled={isSubmitting} 
                 className="w-full py-5 bg-blue-900 text-white rounded-[28px] font-black uppercase text-xs shadow-xl active:scale-95 transition-all border-b-4 border-blue-950 flex items-center justify-center gap-2 hover:bg-black"
               >
-                {isSubmitting ? <Loader2 className="animate-spin" /> : <Save size={18}/>} AGENDAR TAREFA
+                {isSubmitting ? <Loader2 className="animate-spin" /> : <Save size={18}/>} {editingTask ? 'SALVAR ALTERAÇÕES' : 'AGENDAR TAREFA'}
               </button>
             </form>
           </div>
