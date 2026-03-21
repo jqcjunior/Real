@@ -460,7 +460,6 @@ const SpreadsheetOrderModule = ({ user, onClose }: { user: any, onClose: () => v
       sheet.eachRow({ includeEmpty: true }, (row) => {
         row.eachCell({ includeEmpty: true }, (cell) => {
           if (cell.type === 6) { // 6 = Formula
-            const val = cell.result !== undefined ? cell.result : cell.value;
             const model = cell.model as any;
             if (model) {
               delete model.formula;
@@ -468,8 +467,7 @@ const SpreadsheetOrderModule = ({ user, onClose }: { user: any, onClose: () => v
               delete model.master;
               delete model.si;
             }
-            cell.value = val;
-            (cell as any).formula = undefined;
+            cell.value = cell.result ?? cell.value;
           }
         });
       });
@@ -684,7 +682,6 @@ const SpreadsheetOrderModule = ({ user, onClose }: { user: any, onClose: () => v
         sheet.eachRow({ includeEmpty: true }, (row) => {
           row.eachCell({ includeEmpty: true }, (cell) => {
             if (cell.type === 6) { // 6 = Formula
-              const val = cell.result !== undefined ? cell.result : cell.value;
               const model = cell.model as any;
               if (model) {
                 delete model.formula;
@@ -692,8 +689,7 @@ const SpreadsheetOrderModule = ({ user, onClose }: { user: any, onClose: () => v
                 delete model.master;
                 delete model.si;
               }
-              cell.value = val;
-              (cell as any).formula = undefined;
+              cell.value = cell.result ?? cell.value;
             }
           });
         });
@@ -709,7 +705,6 @@ const SpreadsheetOrderModule = ({ user, onClose }: { user: any, onClose: () => v
             delete model.si;
           }
           cell.value = val;
-          cell.formula = undefined;
         };
 
         // Limpeza preventiva de fórmulas na área de produtos para evitar erros de Shared Formula
