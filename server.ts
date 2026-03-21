@@ -25,37 +25,44 @@ async function startServer() {
 
   // API para buscar o template do OneDrive sem problemas de CORS
   app.get("/api/proxy-template", async (req, res) => {
-    const oneDriveUrl = "https://1drv.ms/x/c/c6fa712d2b8cf9f7/IQCjnS2HxitQQZ-RatFogEFXAb9KGFQL7fRNm3MgmIWOJ7s?e=tB0BQR";
+    // Novo link fornecido pelo usuário com permissão de edição
+    const oneDriveUrl = "https://1drv.ms/x/c/c6fa712d2b8cf9f7/IQCjnS2HxitQQZ-RatFogEFXAb9KGFQL7fRNm3MgmIWOJ7s?e=L7Vhwa";
     
     // Função para converter link do OneDrive em link de download direto
     const getOneDriveDirectLink = (url: string) => {
-      // Remove parâmetros de query para garantir um base64 limpo do link de compartilhamento
-      const cleanUrl = url.split('?')[0];
-      const base64Value = Buffer.from(cleanUrl).toString('base64');
-      const encodedUrl = base64Value.replace(/\//g, '_').replace(/\+/g, '-').replace(/=+$/, '');
-      return `https://api.onedrive.com/v1.0/shares/u!${encodedUrl}/root/content`;
+      try {
+        // Remove parâmetros de query para garantir um base64 limpo do link de compartilhamento
+        const cleanUrl = url.split('?')[0];
+        const base64Value = Buffer.from(cleanUrl).toString('base64');
+        const encodedUrl = base64Value.replace(/\//g, '_').replace(/\+/g, '-').replace(/=+$/, '');
+        return `https://api.onedrive.com/v1.0/shares/u!${encodedUrl}/root/content`;
+      } catch (e) {
+        return url;
+      }
     };
 
     const urls = [
+      // Estratégia 1: API de Compartilhamento do OneDrive (Mais oficial)
       getOneDriveDirectLink(oneDriveUrl),
-      // Link direto alternativo para OneDrive Personal (URL completa)
-      `https://api.onedrive.com/v1.0/shares/u!${Buffer.from(oneDriveUrl).toString('base64').replace(/\//g, '_').replace(/\+/g, '-').replace(/=+$/, '')}/root/content`,
-      // Variação sem o parâmetro ?e=
-      getOneDriveDirectLink(oneDriveUrl.split('?')[0]),
-      // Fallback: Tenta o link original com parâmetro de download
+      
+      // Estratégia 2: Link Direto via parâmetro download=1 (Funciona em muitos casos)
       `${oneDriveUrl.split('?')[0]}?download=1`,
+      
+      // Estratégia 3: Link Direto via parâmetro e=...&download=1
       `${oneDriveUrl}&download=1`,
-      // Link de download direto para OneDrive Business/Personal (outro formato)
+      
+      // Estratégia 4: Substituição de subdomínio (Específico para alguns tipos de link)
       oneDriveUrl.replace("1drv.ms/x/c/", "1drv.ms/x/u/").replace("?e=", "?download=1&e="),
-      // Link para OneDrive Personal (outro formato comum)
-      `https://onedrive.live.com/download?cid=${oneDriveUrl.split('/')[5] || ''}&resid=${oneDriveUrl.split('/')[6] || ''}&authkey=${oneDriveUrl.split('e=')[1] || ''}`
+      
+      // Estratégia 5: Link para OneDrive Personal (Formato alternativo)
+      `https://onedrive.live.com/download?cid=c6fa712d2b8cf9f7&resid=c6fa712d2b8cf9f7!IQCjnS2HxitQQZ-RatFogEFXAb9KGFQL7fRNm3MgmIWOJ7s&authkey=L7Vhwa`
     ];
 
-    console.log(`[Proxy] Iniciando busca de template EXCLUSIVO OneDrive`);
+    console.log(`[Proxy] Iniciando busca de template EXCLUSIVO OneDrive (Novo Link)`);
 
     for (const url of urls) {
       try {
-        console.log(`[Proxy] Tentando URL: ${url.substring(0, 100)}...`);
+        console.log(`[Proxy] Tentando URL: ${url.substring(0, 120)}...`);
         const response = await fetch(url, {
           headers: {
             'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
@@ -65,33 +72,35 @@ async function startServer() {
         });
 
         if (!response.ok) {
-          console.warn(`[Proxy] Resposta não OK (${response.status}). Pulando...`);
+          console.warn(`[Proxy] Resposta não OK (${response.status}) para URL: ${url.substring(0, 50)}...`);
           continue;
         }
 
         const buffer = await response.arrayBuffer();
         const contentType = response.headers.get('content-type') || '';
         
+        // Verificação de assinatura PK (0x50 0x4B)
         if (buffer.byteLength > 5000) {
           const firstBytes = Buffer.from(buffer.slice(0, 4));
           if (firstBytes[0] === 0x50 && firstBytes[1] === 0x4B) {
-            console.log(`[Proxy] Template OneDrive obtido com sucesso! (${buffer.byteLength} bytes)`);
+            console.log(`[Proxy] Template OneDrive obtido com SUCESSO! (${buffer.byteLength} bytes)`);
             res.setHeader('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
             res.setHeader('Content-Disposition', 'attachment; filename=template.xlsx');
             return res.send(Buffer.from(buffer));
           } else {
-            console.warn(`[Proxy] Buffer não possui assinatura PK. Content-Type: ${contentType}. Primeiros 100 bytes: ${Buffer.from(buffer.slice(0, 100)).toString('utf8')}`);
+            const snippet = Buffer.from(buffer.slice(0, 100)).toString('utf8');
+            console.warn(`[Proxy] Falha na assinatura PK. Content-Type: ${contentType}. Snippet: ${snippet.substring(0, 50)}...`);
           }
         } else {
-          console.warn(`[Proxy] Buffer muito pequeno (${buffer.byteLength} bytes). Provavelmente erro ou página de login.`);
+          console.warn(`[Proxy] Buffer muito pequeno (${buffer.byteLength} bytes).`);
         }
       } catch (err) {
         console.error(`[Proxy] Erro ao tentar URL OneDrive:`, err);
       }
     }
 
-    console.error("[Proxy] Todas as tentativas de buscar o template no OneDrive falharam.");
-    res.status(403).send("Não foi possível baixar o template do OneDrive automaticamente. Por favor, baixe o arquivo .xlsx manualmente e use o botão 'Carregar Template Local' no sistema.");
+    console.error("[Proxy] Todas as estratégias de download do OneDrive falharam.");
+    res.status(403).send("Não foi possível baixar o template do OneDrive automaticamente. O link pode estar bloqueado ou expirado. Tente carregar o arquivo .xlsx manualmente.");
   });
 
   // Endpoint para receber o arquivo do cliente e gerar um link de download direto
