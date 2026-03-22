@@ -103,17 +103,17 @@ const SpreadsheetOrderModule = ({ user, onClose }: { user: any, onClose: () => v
 
   const [localTemplate, setLocalTemplate] = useState<ArrayBuffer | null>(null);
 
-  const handleTemplateUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
+  const handleTemplateUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (file) {
-      const reader = new FileReader();
-      reader.onload = (event) => {
-        if (event.target?.result) {
-          setLocalTemplate(event.target.result as ArrayBuffer);
-          alert("✅ Template carregado com sucesso! Agora o sistema usará este arquivo local para as exportações.");
-        }
-      };
-      reader.readAsArrayBuffer(file);
+      try {
+        const buffer = await file.arrayBuffer();
+        setLocalTemplate(buffer);
+        alert("✅ Template carregado com sucesso! Agora o sistema usará este arquivo local para as exportações.");
+      } catch (err) {
+        console.error("Erro ao carregar template:", err);
+        alert("Erro ao carregar arquivo local.");
+      }
     }
   };
 
@@ -350,74 +350,43 @@ const SpreadsheetOrderModule = ({ user, onClose }: { user: any, onClose: () => v
     cell.value = value;
   };
 
-  const [lastDownloadUrl, setLastDownloadUrl] = useState<string | null>(null);
-  const [expandedPedido, setExpandedPedido] = useState<string | null>(null);
+  const fetchTemplate = () => fetch("https://rwwomakjhmglgoowbmsl.supabase.co/storage/v1/object/public/template/Template.xlsx");
 
-  // Auto-preenchimento de dados da marca
-  useEffect(() => {
-    if (pedido.marca) {
-      const savedBrands = localStorage.getItem("order_brands_cache");
-      if (savedBrands) {
-        const brandsMap = JSON.parse(savedBrands);
-        const data = brandsMap[pedido.marca.toUpperCase()];
-        if (data) {
-          setPedido(prev => ({
-            ...prev,
-            fornecedor: prev.fornecedor || data.fornecedor || "",
-            representante: prev.representante || data.representante || "",
-            telefone: prev.telefone || data.telefone || "",
-            email: prev.email || data.email || ""
-          }));
-        }
+  const safeSet = (cell: ExcelJS.Cell | undefined, val: any) => {
+    if (!cell) return;
+
+    if (typeof val === "string") {
+      const cleanedVal = val
+        .replace(/\./g, "")   // remove milhar
+        .replace(",", ".");  // converte decimal
+
+      const num = Number(cleanedVal);
+
+      if (!isNaN(num) && val.trim() !== "") {
+        cell.value = num;
+        return;
       }
     }
-  }, [pedido.marca]);
 
-  const fetchTemplate = async () => {
-    const response = await fetch("https://rwwomakjhmglgoowbmsl.supabase.co/storage/v1/object/public/template/Template.xlsx");
-    if (!response.ok) {
-      throw new Error("Erro ao baixar template");
+    if (typeof val === "number" && isFinite(val)) {
+      cell.value = val;
+      return;
     }
-    return response;
+
+    cell.value = val ?? "";
   };
 
-  const downloadBlob = async (blob: Blob, fileName: string) => {
-    try {
-      const reader = new FileReader();
-      reader.readAsDataURL(blob);
-      reader.onloadend = async () => {
-        const base64data = (reader.result as string).split(',')[1];
-        
-        const response = await fetch("/api/prepare-download", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ 
-            base64: base64data, 
-            fileName
-          })
-        });
-
-        if (response.ok) {
-          const { id } = await response.json();
-          const downloadUrl = `/api/download-file/${id}`;
-          setLastDownloadUrl(downloadUrl);
-          
-          const form = document.createElement('form');
-          form.method = 'GET';
-          form.action = downloadUrl;
-          form.target = '_blank';
-          document.body.appendChild(form);
-          form.submit();
-          document.body.removeChild(form);
-          
-          setTimeout(() => setLastDownloadUrl(null), 60000);
-        } else {
-          throw new Error("Falha ao preparar download");
-        }
-      };
-    } catch (err) {
-      console.error("Erro no downloadBlob:", err);
-    }
+  const generateAndDownload = async (workbook: ExcelJS.Workbook, fileName: string) => {
+    const buffer = await workbook.xlsx.writeBuffer();
+    const blob = new Blob([buffer], {
+      type: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+    });
+    const url = window.URL.createObjectURL(blob);
+    const anchor = document.createElement("a");
+    anchor.href = url;
+    anchor.download = fileName;
+    anchor.click();
+    window.URL.revokeObjectURL(url);
   };
 
   const exportarPlanilhaFinal = async (hD?: any) => {
@@ -455,46 +424,6 @@ const SpreadsheetOrderModule = ({ user, onClose }: { user: any, onClose: () => v
       await workbook.xlsx.load(templateBuffer);
       const sheet = workbook.getWorksheet(1);
       if (!sheet) throw new Error("Planilha não encontrada no template.");
-
-      // --- ESTRATÉGIA ANTI-ERRO: ACHATAR TODAS AS FÓRMULAS DO TEMPLATE ---
-      sheet.eachRow({ includeEmpty: true }, (row) => {
-        row.eachCell({ includeEmpty: true }, (cell) => {
-          if (cell.type === 6) { // 6 = Formula
-            const model = cell.model as any;
-            if (model) {
-              delete model.formula;
-              delete model.sharedFormula;
-              delete model.master;
-              delete model.si;
-            }
-            cell.value = cell.result ?? cell.value;
-          }
-        });
-      });
-
-      // Função auxiliar para definir valor com segurança máxima e preservação de estilo
-      const safeSet = (cell: any, val: any) => {
-        if (!cell) return;
-        const model = cell.model as any;
-        if (model) {
-          delete model.formula;
-          delete model.sharedFormula;
-          delete model.master;
-          delete model.si;
-        }
-        cell.value = val;
-      };
-
-      // Limpeza preventiva de fórmulas na área de produtos para evitar erros de Shared Formula
-      for (let r = 36; r <= 166; r++) {
-        const row = sheet.getRow(r);
-        row.eachCell({ includeEmpty: true }, (cell) => {
-          if (cell.type === 6) { // 6 = Formula
-            const val = cell.result !== undefined ? cell.result : cell.value;
-            safeSet(cell, val);
-          }
-        });
-      }
 
       // --- 01 - CABEÇALHO (COORDENADAS EXATAS) ---
       const comprador = dataHeader.comprador || pedido.comprador;
@@ -633,8 +562,7 @@ const SpreadsheetOrderModule = ({ user, onClose }: { user: any, onClose: () => v
         localStorage.setItem("order_brands_cache", JSON.stringify(brandsMap));
       }
 
-      const buffer = await workbook.xlsx.writeBuffer();
-      await downloadBlob(new Blob([buffer]), `Pedido_Consolidado_${(marca || "FINAL")}.xlsx`);
+      await generateAndDownload(workbook, `Pedido_Consolidado_${(marca || "FINAL")}.xlsx`);
 
     } catch (err) {
       console.error("Erro na exportação:", err);
@@ -677,46 +605,6 @@ const SpreadsheetOrderModule = ({ user, onClose }: { user: any, onClose: () => v
         await workbook.xlsx.load(templateBuffer);
         const sheet = workbook.getWorksheet(1);
         if (!sheet) continue;
-
-        // --- ESTRATÉGIA ANTI-ERRO: ACHATAR TODAS AS FÓRMULAS DO TEMPLATE ---
-        sheet.eachRow({ includeEmpty: true }, (row) => {
-          row.eachCell({ includeEmpty: true }, (cell) => {
-            if (cell.type === 6) { // 6 = Formula
-              const model = cell.model as any;
-              if (model) {
-                delete model.formula;
-                delete model.sharedFormula;
-                delete model.master;
-                delete model.si;
-              }
-              cell.value = cell.result ?? cell.value;
-            }
-          });
-        });
-
-        // Função auxiliar para definir valor limpando possíveis fórmulas (evita erro de Shared Formula do exceljs)
-        const safeSet = (cell: any, val: any) => {
-          if (!cell) return;
-          const model = cell.model as any;
-          if (model) {
-            delete model.formula;
-            delete model.sharedFormula;
-            delete model.master;
-            delete model.si;
-          }
-          cell.value = val;
-        };
-
-        // Limpeza preventiva de fórmulas na área de produtos para evitar erros de Shared Formula
-        for (let r = 36; r <= 166; r++) {
-          const row = sheet.getRow(r);
-          row.eachCell({ includeEmpty: true }, (cell) => {
-            if (cell.type === 6) { // 6 = Formula
-              const val = cell.result !== undefined ? cell.result : cell.value;
-              safeSet(cell, val);
-            }
-          });
-        }
 
         // --- 1. CABEÇALHO ---
         safeSet(sheet.getCell('N2'), pedido.numero_pedido || "");
@@ -865,8 +753,7 @@ const SpreadsheetOrderModule = ({ user, onClose }: { user: any, onClose: () => v
           });
         }
 
-        const buffer = await workbook.xlsx.writeBuffer();
-        downloadBlob(new Blob([buffer]), `Pedido_Loja_${loja}_${(pedido.marca || "FINAL")}.xlsx`);
+        await generateAndDownload(workbook, `Pedido_Loja_${loja}_${(pedido.marca || "FINAL")}.xlsx`);
         await new Promise((resolve) => setTimeout(resolve, 100));
       }
 
@@ -1125,28 +1012,6 @@ const SpreadsheetOrderModule = ({ user, onClose }: { user: any, onClose: () => v
           </div>
           <button onClick={onClose} className="p-2 text-slate-300 hover:text-red-500 hover:bg-red-50 rounded-full transition-all"><X size={20} /></button>
         </div>
-
-        {lastDownloadUrl && (
-          <div className="mx-6 mt-4 p-4 bg-green-50 border border-green-200 rounded-2xl flex items-center justify-between animate-in fade-in slide-in-from-top-4 duration-500">
-            <div className="flex items-center gap-3">
-              <div className="w-10 h-10 bg-green-500 rounded-xl flex items-center justify-center text-white shadow-md">
-                <Download size={20} />
-              </div>
-              <div>
-                <p className="text-xs font-black text-green-800 uppercase italic">Arquivo Pronto!</p>
-                <p className="text-[10px] font-bold text-green-600">Se o download não iniciou, clique no botão ao lado.</p>
-              </div>
-            </div>
-            <a 
-              href={lastDownloadUrl} 
-              target="_blank" 
-              rel="noopener noreferrer"
-              className="px-6 py-2 bg-green-600 text-white text-[10px] font-black uppercase rounded-xl hover:bg-green-700 shadow-sm transition-all flex items-center gap-2"
-            >
-              Baixar Agora <Download size={14} />
-            </a>
-          </div>
-        )}
 
         {/* STEPPER - TIGHTER */}
         <div className="flex bg-white px-4 py-2 gap-1 border-b border-slate-100 shrink-0 flex-row overflow-x-auto no-scrollbar">
