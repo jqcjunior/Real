@@ -1,5 +1,5 @@
-import React, { useState, useMemo, useEffect } from 'react';
-import { User, Store, ProductPerformance, IceCreamSangria, IceCreamStockMovement, IceCreamStock, UserRole } from '../types';
+import React, { useState, useMemo } from 'react';
+import { User, Store, ProductPerformance, IceCreamSangria, IceCreamStockMovement, IceCreamStock } from '../types';
 import { formatCurrency, formatDecimal } from '../constants';
 import { ShoppingBag, DollarSign, Package, Hash, AlertCircle, Trophy, BarChart3, TrendingUp, Target, Clock, BrainCircuit, Sparkles, Loader2, Zap, X, TrendingDown, Percent, Activity, Users, Medal, Gem, Minus } from 'lucide-react';
 import { analyzePerformance } from '../services/geminiService';
@@ -30,12 +30,6 @@ const KPICard = ({ label, value, target, icon: Icon, type = 'currency', mode = '
   if (isOk) {
     barColor = 'bg-green-500';
     textColor = 'text-green-600';
-  } else if (ating < 50) {
-    barColor = 'bg-red-500';
-    textColor = 'text-red-600';
-  } else {
-    barColor = 'bg-amber-500';
-    textColor = 'text-amber-600';
   }
 
   const formatValue = (val: number) => {
@@ -89,37 +83,10 @@ const DashboardManager: React.FC<DashboardManagerProps> = ({ user, stores, perfo
   }, []);
 
   const [selectedMonth, setSelectedMonth] = useState<string>(currentMonthStr);
-  const [selectedStoreId, setSelectedStoreId] = useState<string>(() => {
-    if (user.role === UserRole.ADMIN) {
-      const saved = localStorage.getItem('admin_selected_store_id');
-      if (saved) return saved;
-    }
-    return user.storeId || '';
-  });
   const [aiInsight, setAiInsight] = useState<string>('');
   const [isLoadingAi, setIsLoadingAi] = useState(false);
 
-  useEffect(() => {
-    if (stores.length > 0 && selectedStoreId === '') {
-      if (user.role === UserRole.ADMIN) {
-        const store26 = stores.find(s => s.number === '26');
-        if (store26) {
-          setSelectedStoreId(store26.id);
-          return;
-        }
-      }
-      setSelectedStoreId(user.storeId || stores[0]?.id || '');
-    }
-  }, [stores, user.role, user.storeId, selectedStoreId]);
-
-  const handleStoreSelect = (id: string) => {
-    setSelectedStoreId(id);
-    if (user.role === UserRole.ADMIN) {
-      localStorage.setItem('admin_selected_store_id', id);
-    }
-  };
-
-  const myStore = useMemo(() => stores.find(s => s.id === selectedStoreId) || stores[0], [stores, selectedStoreId]);
+  const myStore = useMemo(() => stores.find(s => s.id === user.storeId) || stores[0], [stores, user.storeId]);
 
   const calcAttainment = (actual: number, target: number, mode: 'higher' | 'lower') => {
       if (!actual || !target) return 0;
@@ -213,9 +180,10 @@ const DashboardManager: React.FC<DashboardManagerProps> = ({ user, stores, perfo
       };
   }, [performanceData, selectedMonth, myStore, sangrias, stockMovements, stock]);
 
-  const scoreBasedRanking = useMemo(() => {
+  const weightedRanking = useMemo(() => {
       const monthData = performanceData.filter(p => String(p.month) === selectedMonth);
       
+      // Agrupar dados por loja antes de calcular o ranking
       const storeAggregation = monthData.reduce((acc, p) => {
           const id = String(p.storeId || p.store_id);
           if (!acc[id]) {
@@ -252,11 +220,10 @@ const DashboardManager: React.FC<DashboardManagerProps> = ({ user, stores, perfo
           const paActual = Number(monthData.find(md => String(md.storeId || md.store_id) === storeId)?.paActual || 0);
           const pPA = calcPercent(paActual, p.paTarget, 'higher');
           const tktActual = Number(monthData.find(md => String(md.storeId || md.store_id) === storeId)?.averageTicket || 0);
-          const pT = calcPercent(tktActual, p.ticketTarget, 'higher');
           const puActual = Number(monthData.find(md => String(md.storeId || md.store_id) === storeId)?.puActual || 0);
-          const pPU = calcPercent(puActual, p.puTarget, 'lower');
 
-          const scoreFinal = (pF * 0.50) + (pPA * 0.40) + (pPU * 0.05) + (pT * 0.05);
+          // Nova métrica: Faturamento 50%, P.A 50%
+          const scoreFinal = (pF * 0.50) + (pPA * 0.50);
 
           return {
               storeId,
@@ -278,17 +245,6 @@ const DashboardManager: React.FC<DashboardManagerProps> = ({ user, stores, perfo
 
       return ranked.sort((a, b) => b.score - a.score);
   }, [performanceData, selectedMonth, stores]);
-
-  const weightedRanking = useMemo(() => {
-      if (user.role === UserRole.ADMIN) {
-          return [...scoreBasedRanking].sort((a, b) => {
-              const nameA = `${a.city} ${a.storeNumber}`;
-              const nameB = `${b.city} ${b.storeNumber}`;
-              return nameA.localeCompare(nameB);
-          });
-      }
-      return scoreBasedRanking;
-  }, [scoreBasedRanking, user.role]);
 
   const handleGenerateInsight = async () => {
     if (!myStore) return;
@@ -348,59 +304,39 @@ const DashboardManager: React.FC<DashboardManagerProps> = ({ user, stores, perfo
 
   const getDetailedAdvice = (curr: any, next?: any) => {
     const remainingDays = getRemainingWorkDays(selectedMonth, curr.storeId);
+    const targetStore = next || curr;
+    
+    // Se for o próprio curr, as metas são dele mesmo
+    const revDiff = Math.max(targetStore.revenueTarget - curr.revenueActual, 0);
+    const dailyRev = revDiff / remainingDays;
+    
     let advice = [];
     
-    if (next) {
-        // Metas para ULTRAPASSAR a próxima loja
-        const revToPass = getRevenueToPass(curr, next);
-        if (revToPass && revToPass > 0) {
-            const dailyRev = revToPass / remainingDays;
-            advice.push(`Venda R$ ${formatDecimal(dailyRev)}/dia para ultrapassar a ${next.name}.`);
-        }
+    if (revDiff > 0) {
+        advice.push(`Venda R$ ${formatDecimal(dailyRev)}/dia para bater a meta.`);
+    }
 
-        // P.A (Peças por Atendimento)
-        if (curr.paActual < next.paActual) {
-            const totalItemsNeeded = Math.ceil((next.paActual * curr.salesActual) - curr.itemsActual);
-            const dailyItems = Math.ceil(totalItemsNeeded / remainingDays);
-            if (dailyItems > 0) {
-                advice.push(`Venda +${dailyItems} itens/dia (P.A) para ultrapassar a ${next.name}.`);
-            }
-        }
+    if (curr.paActual < targetStore.paTarget) {
+        const itemsNeeded = Math.ceil((targetStore.paTarget * curr.salesActual) - curr.itemsActual);
+        if (itemsNeeded > 0) advice.push(`Venda +${itemsNeeded} itens no total para atingir P.A ${targetStore.paTarget.toFixed(2)}.`);
+    }
 
-        // Ticket Médio
-        if (curr.ticketActual < next.ticketActual) {
-            const tktDiff = next.ticketActual - curr.ticketActual;
-            advice.push(`Aumente o Ticket Médio em R$ ${formatDecimal(tktDiff)} para ultrapassar a ${next.name}.`);
-        }
-    } else {
-        // Metas para BATER A PRÓPRIA META (caso seja o 1º ou não haja próxima)
-        const revDiff = Math.max(curr.revenueTarget - curr.revenueActual, 0);
-        const dailyRev = revDiff / remainingDays;
-        
-        if (revDiff > 0) {
-            advice.push(`Venda R$ ${formatDecimal(dailyRev)}/dia para bater a meta.`);
-        }
+    if (curr.ticketActual < targetStore.ticketTarget) {
+        const tktDiff = targetStore.ticketTarget - curr.ticketActual;
+        advice.push(`Aumente o Ticket Médio em R$ ${formatDecimal(tktDiff)}.`);
+    }
 
-        if (curr.paActual < curr.paTarget) {
-            const totalItemsNeeded = Math.ceil((curr.paTarget * curr.salesActual) - curr.itemsActual);
-            const dailyItems = Math.ceil(totalItemsNeeded / remainingDays);
-            if (dailyItems > 0) {
-                advice.push(`Venda +${dailyItems} itens/dia (P.A) para atingir a meta.`);
-            }
-        }
-
-        if (curr.ticketActual < curr.ticketTarget) {
-            const tktDiff = curr.ticketTarget - curr.ticketActual;
-            advice.push(`Aumente o Ticket Médio em R$ ${formatDecimal(tktDiff)} para atingir a meta.`);
-        }
+    if (curr.puActual > targetStore.puTarget) {
+        const puDiff = curr.puActual - targetStore.puTarget;
+        advice.push(`Reduza o P.U em R$ ${formatDecimal(puDiff)} (foco em itens de menor valor).`);
     }
 
     return advice;
   };
 
   const getRevenueToPass = (curr: any, target: any) => {
-    // Nova métrica: Meta 50%, P.A 40%, P.U 5%, Ticket 5%
-    // Score = (Rev/Tgt * 0.5) + (PA/Tgt * 0.4) + (PUTgt/PU * 0.05) + (Tkt/Tgt * 0.05)
+    // Nova métrica: Faturamento 50%, P.A 50%
+    // Score = (Rev/Tgt * 0.5) + (PA/Tgt * 0.5)
     
     if (!curr.revenueTarget || curr.revenueTarget <= 0) return null;
 
@@ -411,9 +347,7 @@ const DashboardManager: React.FC<DashboardManagerProps> = ({ user, stores, perfo
     };
 
     const otherMetricsWeight = (
-        (safeRatio(curr.paActual, curr.paTarget, 'higher') * 0.40) +
-        (safeRatio(curr.puActual, curr.puTarget, 'lower') * 0.05) +
-        (safeRatio(curr.ticketActual, curr.ticketTarget, 'higher') * 0.05)
+        (safeRatio(curr.paActual, curr.paTarget, 'higher') * 0.50)
     );
 
     const targetScoreDecimal = target.score / 100;
@@ -440,17 +374,6 @@ const DashboardManager: React.FC<DashboardManagerProps> = ({ user, stores, perfo
                     </h2>
                     <p className="text-[9px] font-bold text-slate-400 uppercase mt-1 tracking-widest">Painel Gerencial Real</p>
                 </div>
-                {user.role === UserRole.ADMIN && (
-                    <select 
-                        value={selectedStoreId}
-                        onChange={e => handleStoreSelect(e.target.value)}
-                        className="bg-slate-50 px-4 py-2 rounded-xl text-[10px] font-black text-blue-900 uppercase border-none outline-none cursor-pointer ml-2"
-                    >
-                        {stores.map(s => (
-                            <option key={s.id} value={s.id}>{s.name} #{s.number}</option>
-                        ))}
-                    </select>
-                )}
             </div>
             <div className="flex items-center gap-3">
                 <div className="flex items-center gap-2">
@@ -505,7 +428,7 @@ const DashboardManager: React.FC<DashboardManagerProps> = ({ user, stores, perfo
                 <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
                     <KPICard label="Faturamento" value={myPerformance.revAct} target={myPerformance.revTgt} icon={DollarSign} />
                     <KPICard label="P.A Médio" value={myPerformance.paAct} target={myPerformance.paTgt} icon={ShoppingBag} type="decimal" />
-                    <KPICard label="P.U Médio" value={myPerformance.puAct} target={myPerformance.puTgt} icon={Percent} type="decimal" />
+                    <KPICard label="P.U Médio" value={myPerformance.puAct} target={myPerformance.puTgt} icon={Percent} type="decimal" mode="lower" />
                     <KPICard label="Ticket Médio" value={myPerformance.tktAct} target={myPerformance.tktTgt} icon={Users} type="currency" />
                 </div>
 
@@ -516,15 +439,14 @@ const DashboardManager: React.FC<DashboardManagerProps> = ({ user, stores, perfo
                                 <div className="p-3 bg-blue-50 text-blue-600 rounded-2xl shadow-inner"><Trophy size={24} /></div>
                                 <div>
                                     <h3 className="text-sm font-black text-slate-900 uppercase italic tracking-tighter">Ranking <span className="text-blue-600">Ponderado</span></h3>
-                                    <p className="text-[9px] font-bold text-slate-400 uppercase tracking-widest mt-0.5">Equilíbrio de Metas (50/40/5/5)</p>
+                                    <p className="text-[9px] font-bold text-slate-400 uppercase tracking-widest mt-0.5">Equilíbrio de Metas (50/50)</p>
                                 </div>
                             </div>
                         </div>
 
                         <div className="grid grid-cols-1 gap-4">
                             {weightedRanking.map((item, idx) => {
-                                const isMe = user.storeId && item.storeId === user.storeId;
-                                const isSelected = item.storeId === selectedStoreId;
+                                const isMe = myStore && item.storeNumber === myStore.number;
                                 const score = item.score;
                                  const getTier = (i: number) => {
                                     if (i === 0) return { label: 'Diamante', icon: <Gem className="text-cyan-400" size={16} />, color: 'bg-cyan-50 text-cyan-600 border-cyan-200', bar: 'bg-cyan-500' };
@@ -546,11 +468,7 @@ const DashboardManager: React.FC<DashboardManagerProps> = ({ user, stores, perfo
                                 const advice = getDetailedAdvice(item, weightedRanking[idx - 1]);
 
                                 return (
-                                    <div 
-                                        key={idx} 
-                                        onClick={() => user.role === UserRole.ADMIN && handleStoreSelect(item.storeId)}
-                                        className={`p-5 md:p-8 rounded-[32px] border transition-all duration-500 ${isSelected ? 'bg-white border-blue-200 ring-8 ring-blue-50 shadow-2xl shadow-blue-900/10 scale-[1.02] z-20' : 'bg-slate-50/50 border-transparent hover:bg-white hover:border-slate-100 hover:shadow-xl'} ${user.role === UserRole.ADMIN ? 'cursor-pointer' : ''}`}
-                                    >
+                                    <div key={idx} className={`p-5 md:p-8 rounded-[32px] border transition-all duration-500 ${isMe ? 'bg-white border-blue-200 ring-8 ring-blue-50 shadow-2xl shadow-blue-900/10 scale-[1.02] z-20' : 'bg-slate-50/50 border-transparent hover:bg-white hover:border-slate-100 hover:shadow-xl'}`}>
                                         <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-6">
                                             <div className="flex items-center gap-6">
                                                 <div className={`w-14 h-14 rounded-2xl flex flex-col items-center justify-center font-black italic text-xl shadow-lg ${idx === 0 ? 'bg-amber-400 text-white' : idx === 1 ? 'bg-slate-300 text-white' : idx === 2 ? 'bg-orange-400 text-white' : 'bg-white text-slate-400 border border-slate-100'}`}>
@@ -559,18 +477,13 @@ const DashboardManager: React.FC<DashboardManagerProps> = ({ user, stores, perfo
                                                 </div>
                                                 <div>
                                                     <div className="flex items-center gap-3 mb-1">
-                                                        <p className={`text-lg font-black uppercase italic ${isSelected ? 'text-blue-950 underline decoration-blue-500 decoration-4 underline-offset-4' : 'text-slate-900'}`}>Loja {item.storeNumber}</p>
+                                                        <p className={`text-lg font-black uppercase italic ${isMe ? 'text-blue-950 underline decoration-blue-500 decoration-4 underline-offset-4' : 'text-slate-900'}`}>Loja {item.storeNumber}</p>
                                                         <span className={`${tier.color} text-[8px] font-black px-2 py-0.5 rounded-full uppercase tracking-widest border`}>
                                                             {tier.label}
                                                         </span>
                                                         {isMe && (
                                                             <span className="bg-blue-600 text-white text-[7px] font-black px-2 py-0.5 rounded-full uppercase tracking-widest animate-pulse">
                                                                 Sua Loja
-                                                            </span>
-                                                        )}
-                                                        {isSelected && !isMe && user.role === UserRole.ADMIN && (
-                                                            <span className="bg-slate-900 text-white text-[7px] font-black px-2 py-0.5 rounded-full uppercase tracking-widest">
-                                                                Visualizando
                                                             </span>
                                                         )}
                                                     </div>
@@ -609,7 +522,10 @@ const DashboardManager: React.FC<DashboardManagerProps> = ({ user, stores, perfo
                                                         </div>
                                                         <p className="text-[11px] font-black text-slate-900 italic leading-none mb-1">{item.paActual.toFixed(2)}</p>
                                                         <div className="w-10 h-1 bg-slate-100 rounded-full overflow-hidden">
-                                                            <div className="h-full bg-blue-400" style={{ width: `${Math.min((item.paActual / item.paTarget) * 100, 100)}%` }} />
+                                                            <div 
+                                                                className={`h-full ${item.paActual >= item.paTarget ? 'bg-green-500' : 'bg-blue-500'}`} 
+                                                                style={{ width: `${Math.min((item.paActual / item.paTarget) * 100, 100)}%` }} 
+                                                            />
                                                         </div>
                                                     </div>
                                                     <div className="flex flex-col items-center">
@@ -619,7 +535,10 @@ const DashboardManager: React.FC<DashboardManagerProps> = ({ user, stores, perfo
                                                         </div>
                                                         <p className="text-[11px] font-black text-slate-900 italic leading-none mb-1">{item.puActual.toFixed(2)}</p>
                                                         <div className="w-10 h-1 bg-slate-100 rounded-full overflow-hidden">
-                                                            <div className="h-full bg-emerald-400" style={{ width: `${Math.min((item.puTarget / item.puActual) * 100, 100)}%` }} />
+                                                            <div 
+                                                                className={`h-full ${item.puActual <= item.puTarget ? 'bg-green-500' : 'bg-blue-500'}`} 
+                                                                style={{ width: `${Math.min((item.puTarget / item.puActual) * 100, 100)}%` }} 
+                                                            />
                                                         </div>
                                                     </div>
                                                     <div className="flex flex-col items-center">
@@ -629,7 +548,10 @@ const DashboardManager: React.FC<DashboardManagerProps> = ({ user, stores, perfo
                                                         </div>
                                                         <p className="text-[11px] font-black text-slate-900 italic leading-none mb-1">{formatCurrency(item.ticketActual)}</p>
                                                         <div className="w-10 h-1 bg-slate-100 rounded-full overflow-hidden">
-                                                            <div className="h-full bg-indigo-400" style={{ width: `${Math.min((item.ticketActual / item.ticketTarget) * 100, 100)}%` }} />
+                                                            <div 
+                                                                className={`h-full ${item.ticketActual >= item.ticketTarget ? 'bg-green-500' : 'bg-blue-500'}`} 
+                                                                style={{ width: `${Math.min((item.ticketActual / item.ticketTarget) * 100, 100)}%` }} 
+                                                            />
                                                         </div>
                                                     </div>
                                                 </div>
@@ -654,15 +576,15 @@ const DashboardManager: React.FC<DashboardManagerProps> = ({ user, stores, perfo
                     <div className="lg:col-span-1 space-y-6 order-1 lg:order-2">
                         {/* Card Plano de Ação */}
                         {(() => {
-                            const myIdx = scoreBasedRanking.findIndex(item => myStore && item.storeNumber === myStore.number);
+                            const myIdx = weightedRanking.findIndex(item => myStore && item.storeNumber === myStore.number);
                             if (myIdx > 0) {
-                                const curr = scoreBasedRanking[myIdx];
-                                const nextStore = scoreBasedRanking[myIdx - 1];
+                                const curr = weightedRanking[myIdx];
+                                const nextStore = weightedRanking[myIdx - 1];
                                 const diff = nextStore.score - curr.score;
                                 const advice = getDetailedAdvice(curr, nextStore);
                                 
                                 // Pegar as 3 lojas acima para mostrar quanto falta
-                                const storesAbove = scoreBasedRanking.slice(Math.max(0, myIdx - 3), myIdx).reverse();
+                                const storesAbove = weightedRanking.slice(Math.max(0, myIdx - 3), myIdx).reverse();
 
                                 return (
                                     <div className="bg-blue-950 text-white p-8 rounded-[48px] shadow-xl flex flex-col gap-6 border border-blue-800/50 animate-in slide-in-from-right duration-700">
@@ -690,11 +612,9 @@ const DashboardManager: React.FC<DashboardManagerProps> = ({ user, stores, perfo
                                             </div>
 
                                             <div className="pt-4 border-t border-blue-800/50 space-y-3">
-                                                <p className="text-[9px] font-black uppercase tracking-widest text-blue-400 mb-2">Metas de Ultrapassagem (Diário)</p>
+                                                <p className="text-[9px] font-black uppercase tracking-widest text-blue-400 mb-2">Metas de Ultrapassagem</p>
                                                 {storesAbove.map((s, i) => {
                                                     const neededRev = getRevenueToPass(curr, s);
-                                                    const remainingDays = getRemainingWorkDays(selectedMonth, curr.storeId);
-                                                    
                                                     if (neededRev === null) {
                                                         return (
                                                             <div key={i} className="flex justify-between items-center bg-blue-900/20 p-3 rounded-2xl border border-blue-800/20">
@@ -703,12 +623,9 @@ const DashboardManager: React.FC<DashboardManagerProps> = ({ user, stores, perfo
                                                             </div>
                                                         );
                                                     }
-                                                    
-                                                    const dailyNeeded = neededRev / remainingDays;
-                                                    
                                                     return (
                                                         <div key={i} className="flex justify-between items-center bg-blue-900/20 p-3 rounded-2xl border border-blue-800/20">
-                                                            <p className="text-[10px] font-bold text-blue-100">Vender <span className="text-emerald-400">R$ {formatDecimal(dailyNeeded)}/dia</span></p>
+                                                            <p className="text-[10px] font-bold text-blue-100">Vender <span className="text-emerald-400">{formatCurrency(neededRev)}</span></p>
                                                             <p className="text-[8px] font-black uppercase text-blue-400">Passar Loja {s.storeNumber}</p>
                                                         </div>
                                                     );

@@ -210,7 +210,7 @@ const AdminSettings: React.FC<AdminSettingsProps> = ({ stores, onAddStore, onUpd
             </div>
 
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-                {stores.sort((a,b) => (parseInt(a.number) || 0) - (parseInt(b.number) || 0)).map(store => (
+                {stores.sort((a,b) => a.name.localeCompare(b.name)).map(store => (
                     <div key={store.id} className={`p-8 rounded-[40px] shadow-sm border transition-all hover:shadow-xl relative overflow-hidden ${store.status === 'active' ? 'bg-white border-gray-100' : 'bg-gray-50 border-gray-200 opacity-75 grayscale'}`}>
                         {loadingStoreId === store.id && (
                             <div className="absolute inset-0 bg-white/60 backdrop-blur-[2px] z-20 rounded-[40px] flex items-center justify-center font-black text-blue-600 uppercase text-[10px] italic">

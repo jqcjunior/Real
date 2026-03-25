@@ -381,15 +381,20 @@ const CashRegisterModule: React.FC<CashRegisterModuleProps> = ({
         if (!selectedStoreId) return;
         setIsLoadingTotals(true);
         try {
-            // SENIOR FIX: Busca direta na tabela de pagamentos para evitar divergências
+            // SENIOR FIX: Busca correta na tabela de pagamentos de sorvete
             const { data, error } = await supabase
-                .from('sale_payments')
-                .select('amount, payment_method, sales!inner(store_id, sale_date, status)')
-                .eq('sales.store_id', selectedStoreId)
-                .eq('sales.sale_date', selectedDate)
-                .eq('sales.status', 'active');
+                .from('ice_cream_daily_sales_payments')
+                .select('amount, payment_method, ice_cream_sales!inner(store_id, status, created_at)')
+                .eq('ice_cream_sales.store_id', selectedStoreId)
+                .eq('ice_cream_sales.status', 'completed');
 
             if (error) throw error;
+
+            // Filtrar por data no lado do cliente para simplificar (ou usar cast no SQL se necessário)
+            const filteredData = data?.filter(p => {
+                const saleDate = String((p as any).ice_cream_sales.created_at || '').split('T')[0];
+                return saleDate === selectedDate;
+            });
 
             const totals: Record<string, number> = {
                 'Pix': 0,
@@ -399,7 +404,7 @@ const CashRegisterModule: React.FC<CashRegisterModuleProps> = ({
                 'Voucher': 0
             };
 
-            data?.forEach(p => {
+            filteredData?.forEach(p => {
                 const method = p.payment_method;
                 if (totals[method] !== undefined) {
                     totals[method] += Number(p.amount);

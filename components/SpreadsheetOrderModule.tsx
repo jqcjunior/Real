@@ -355,25 +355,31 @@ const SpreadsheetOrderModule = ({ user, onClose }: { user: any, onClose: () => v
   const safeSet = (cell: ExcelJS.Cell | undefined, val: any) => {
     if (!cell) return;
 
-    if (typeof val === "string") {
-      const cleanedVal = val
-        .replace(/\./g, "")   // remove milhar
-        .replace(",", ".");  // converte decimal
+    let finalValue = val;
 
-      const num = Number(cleanedVal);
-
-      if (!isNaN(num) && val.trim() !== "") {
-        cell.value = num;
-        return;
+    // Tentativa de conversão numérica para strings que parecem números
+    if (typeof val === 'string' && val.trim() !== '') {
+      // Remove pontos de milhar e troca vírgula por ponto
+      const normalized = val.replace(/\./g, '').replace(',', '.');
+      const num = Number(normalized);
+      // Verifica se é um número finito e se a string normalizada corresponde a um padrão numérico
+      if (isFinite(num) && /^-?\d+(\.\d+)?$/.test(normalized)) {
+        finalValue = num;
       }
     }
 
-    if (typeof val === "number" && isFinite(val)) {
-      cell.value = val;
-      return;
+    if (cell.formula) {
+      // Preserva a fórmula existente mas atualiza o valor exibido (result)
+      // Isso é crucial para não quebrar vínculos de fórmulas compartilhadas (Shared Formulas)
+      // e manter a lógica de replicação da planilha.
+      if (typeof cell.formula === 'string') {
+        cell.value = { formula: cell.formula, result: finalValue ?? "" };
+      } else {
+        cell.value = { ...(cell.formula as object), result: finalValue ?? "" } as any;
+      }
+    } else {
+      cell.value = finalValue ?? "";
     }
-
-    cell.value = val ?? "";
   };
 
   const generateAndDownload = async (workbook: ExcelJS.Workbook, fileName: string) => {
@@ -709,7 +715,7 @@ const SpreadsheetOrderModule = ({ user, onClose }: { user: any, onClose: () => v
           const r = 36 + idx; // Começa na linha 36
           
           if (l) {
-            safeSet(sheet.getCell(`B${r}`), l.referencia);
+            safeSet(sheet.getCell(`C${r}`), l.referencia);
             safeSet(sheet.getCell(`H${r}`), l.tipo);
             safeSet(sheet.getCell(`R${r}`), l.corEscolhida || "");
             safeSet(sheet.getCell(`S${r}`), l.cor2 || "");

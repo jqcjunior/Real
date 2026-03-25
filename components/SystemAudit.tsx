@@ -72,9 +72,12 @@ const SystemAudit: React.FC<SystemAuditProps> = ({ logs, receipts, store, cashEr
             ? (!selectedStoreId || c.storeId === selectedStoreId)
             : c.storeId === currentUser?.storeId;
           
-          return matchesDate && matchesUser && matchesSearch && matchesStore;
+          // Se for uma venda de sorvete cancelada, não deve aparecer no financeiro
+          const isCanceledIceCream = iceCreamSales.some(s => s.saleCode === c.saleCode && s.status === 'canceled');
+          
+          return matchesDate && matchesUser && matchesSearch && matchesStore && !isCanceledIceCream;
       });
-  }, [cardSales, startDate, endDate, filterUser, searchTerm, currentUser, selectedStoreId]);
+  }, [cardSales, iceCreamSales, startDate, endDate, filterUser, searchTerm, currentUser, selectedStoreId]);
 
   const stats = useMemo(() => {
     const filteredSales = iceCreamSales.filter(s => {
@@ -83,7 +86,8 @@ const SystemAudit: React.FC<SystemAuditProps> = ({ logs, receipts, store, cashEr
       const matchesStore = currentUser?.role === UserRole.ADMIN 
         ? (!selectedStoreId || s.storeId === selectedStoreId)
         : s.storeId === currentUser?.storeId;
-      return matchesDate && matchesStore;
+      const isCompleted = s.status === 'completed';
+      return matchesDate && matchesStore && isCompleted;
     });
 
     const totalValue = filteredSales.reduce((acc, curr) => acc + (curr.totalValue || 0), 0);

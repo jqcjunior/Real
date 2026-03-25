@@ -293,14 +293,11 @@ const DashboardAdmin: React.FC<DashboardAdminProps> = ({ stores, performanceData
             revenueForecast,
             storeCount: stores.length,
             currentData: storeStats.sort((a, b) => {
-                // Novo Ranking Ponderado: Meta 40%, PA 30%, Ticket 15%, PU 10%, Itens 5%
+                // Novo Ranking Ponderado: Meta 50%, PA 50%
                 const getScore = (s: any) => {
                     const pF = Math.min(calcAttainment(s.revenueActual, s.revenueTarget, 'higher'), 120);
                     const pPA = Math.min(calcAttainment(s.paActual, s.paTarget, 'higher'), 120);
-                    const pT = Math.min(calcAttainment(s.averageTicket, s.ticketTarget, 'higher'), 120);
-                    const pPU = Math.min(calcAttainment(s.puActual, s.puTarget, 'lower'), 120);
-                    const pI = Math.min(calcAttainment(s.itemsActual, s.itemsTarget, 'higher'), 120);
-                    return (pF * 0.40) + (pPA * 0.30) + (pT * 0.15) + (pPU * 0.10) + (pI * 0.05);
+                    return (pF * 0.50) + (pPA * 0.50);
                 };
                 return getScore(b) - getScore(a);
             })
@@ -477,10 +474,7 @@ const DashboardAdmin: React.FC<DashboardAdminProps> = ({ stores, performanceData
                         const getScore = (s: any) => {
                             const pF = Math.min(calcAttainment(s.revenueActual, s.revenueTarget, 'higher'), 120);
                             const pPA = Math.min(calcAttainment(s.paActual, s.paTarget, 'higher'), 120);
-                            const pT = Math.min(calcAttainment(s.averageTicket, s.ticketTarget, 'higher'), 120);
-                            const pPU = Math.min(calcAttainment(s.puActual, s.puTarget, 'lower'), 120);
-                            const pI = Math.min(calcAttainment(s.itemsActual, s.itemsTarget, 'higher'), 120);
-                            return (pF * 0.40) + (pPA * 0.30) + (pT * 0.15) + (pPU * 0.10) + (pI * 0.05);
+                            return (pF * 0.50) + (pPA * 0.50);
                         };
                         
                         const score = getScore(d);
@@ -598,7 +592,10 @@ const DashboardAdmin: React.FC<DashboardAdminProps> = ({ stores, performanceData
                                             </div>
                                             <p className="text-xs font-black text-blue-950 italic leading-none mb-1">{d.paActual.toFixed(2)}</p>
                                             <div className="w-12 h-1 bg-slate-100 rounded-full overflow-hidden">
-                                                <div className="h-full bg-blue-400" style={{ width: `${Math.min((d.paActual / d.paTarget) * 100, 100)}%` }} />
+                                                <div 
+                                                    className={`h-full ${d.paActual >= d.paTarget ? 'bg-green-500' : 'bg-blue-500'}`} 
+                                                    style={{ width: `${Math.min((d.paActual / d.paTarget) * 100, 100)}%` }} 
+                                                />
                                             </div>
                                         </div>
                                         <div className="flex flex-col items-end">
@@ -608,7 +605,10 @@ const DashboardAdmin: React.FC<DashboardAdminProps> = ({ stores, performanceData
                                             </div>
                                             <p className="text-xs font-black text-blue-950 italic leading-none mb-1">{d.puActual.toFixed(2)}</p>
                                             <div className="w-12 h-1 bg-slate-100 rounded-full overflow-hidden">
-                                                <div className="h-full bg-emerald-400" style={{ width: `${Math.min((d.puTarget / d.puActual) * 100, 100)}%` }} />
+                                                <div 
+                                                    className={`h-full ${d.puActual <= d.puTarget ? 'bg-green-500' : 'bg-blue-500'}`} 
+                                                    style={{ width: `${Math.min((d.puTarget / d.puActual) * 100, 100)}%` }} 
+                                                />
                                             </div>
                                         </div>
                                         <div className="flex flex-col items-end">
@@ -618,7 +618,10 @@ const DashboardAdmin: React.FC<DashboardAdminProps> = ({ stores, performanceData
                                             </div>
                                             <p className="text-xs font-black text-blue-950 italic leading-none mb-1">{formatCurrency(d.averageTicket)}</p>
                                             <div className="w-12 h-1 bg-slate-100 rounded-full overflow-hidden">
-                                                <div className="h-full bg-indigo-400" style={{ width: `${Math.min((d.averageTicket / d.ticketTarget) * 100, 100)}%` }} />
+                                                <div 
+                                                    className={`h-full ${d.averageTicket >= d.ticketTarget ? 'bg-green-500' : 'bg-blue-500'}`} 
+                                                    style={{ width: `${Math.min((d.averageTicket / d.ticketTarget) * 100, 100)}%` }} 
+                                                />
                                             </div>
                                         </div>
                                     </div>

@@ -189,8 +189,8 @@ const App: React.FC = () => {
                 itemsActual: Number(x.items_actual || 0), 
                 itemsTarget: Number(x.items_target || 0), 
                 salesActual: Number(x.sales_actual || 0), 
-                paActual: Number(x.pa_actual || 0), 
-                puActual: Number(x.pu_actual || 0), 
+                paActual: Number(x.pa_actual || x.items_per_ticket || 0), 
+                puActual: Number(x.pu_actual || x.unit_price_average || 0), 
                 averageTicket: Number(x.ticket_actual || x.average_ticket || 0), 
                 percentMeta: Number(x.percent_meta || 0), 
                 paTarget: Number(x.pa_target || 0), 
@@ -248,6 +248,9 @@ const App: React.FC = () => {
             .on('postgres_changes', { event: '*', schema: 'public', table: 'ice_cream_sales' }, () => fetchData())
             .on('postgres_changes', { event: '*', schema: 'public', table: 'ice_cream_daily_sales' }, () => fetchData())
             .on('postgres_changes', { event: '*', schema: 'public', table: 'gestao_compras' }, () => fetchData())
+            .on('postgres_changes', { event: '*', schema: 'public', table: 'monthly_performance_actual' }, () => fetchData())
+            .on('postgres_changes', { event: '*', schema: 'public', table: 'monthly_goals' }, () => fetchData())
+            .on('postgres_changes', { event: '*', schema: 'public', table: 'stores' }, () => fetchData())
             .subscribe();
         return () => { supabase.removeChannel(channel); };
     }, []);
@@ -598,6 +601,10 @@ const App: React.FC = () => {
                             onCancelSale={async (code, reason) => { 
                                 await supabase.from('ice_cream_daily_sales').update({ status: 'canceled', cancel_reason: reason }).eq('sale_code', code); 
                                 await supabase.from('ice_cream_sales').update({ status: 'canceled' }).eq('sale_code', code);
+                                // Remove do financeiro de cartões se existir
+                                await supabase.from('financial_card_sales').delete().eq('sale_code', code);
+                                // Remove registros de pagamentos detalhados
+                                await supabase.from('ice_cream_daily_sales_payments').delete().eq('sale_code', code);
                                 await fetchData(); 
                             }} 
                             onUpdatePrice={async (id, p) => { await supabase.from('ice_cream_items').update({ price: p }).eq('id', id); await fetchData(); }} 
