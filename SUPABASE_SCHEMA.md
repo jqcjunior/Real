@@ -36,6 +36,21 @@ create table public.financial_card_sales (
 );
 ```
 
+### 3. Tabela de Vendas PIX (Auditoria)
+```sql
+create table public.financial_pix_sales (
+    id uuid default gen_random_uuid() primary key,
+    store_id uuid references public.stores(id) on delete cascade,
+    user_id uuid references public.admin_users(id),
+    user_name text,
+    date date not null,
+    sale_code text, -- Número da Ficha
+    value numeric(10,2) not null,
+    client_name text,
+    created_at timestamptz default now()
+);
+```
+
 ### 4. Tabela de Gestão de Compras (Importação Planilha)
 ```sql
 create table public.gestao_compras (

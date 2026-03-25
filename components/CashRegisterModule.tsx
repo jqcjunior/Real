@@ -3,7 +3,7 @@ import { User, IceCreamDailySale, Receipt, CashError, UserRole, Store } from '..
 import { formatCurrency, BRAND_LOGO } from '../constants';
 import { 
     DollarSign, Save, Calendar, FileText, CreditCard, AlertTriangle, 
-    Plus, Trash2, Printer, Loader2, CreditCard as CardIcon, Trash, CheckCircle2, User as UserIcon, PenTool, Edit3, X, Check, Settings, Settings2
+    Plus, Trash2, Printer, Loader2, CreditCard as CardIcon, Trash, CheckCircle2, User as UserIcon, PenTool, Edit3, X, Check, Settings, Settings2, XCircle
 } from 'lucide-react';
 import { supabase } from '../services/supabaseClient';
 
@@ -22,6 +22,7 @@ interface CashRegisterModuleProps {
     user: User;
     stores: Store[];
     sales: IceCreamDailySale[];
+    pixSales: any[];
     closures: any[];
     receipts: Receipt[];
     errors: CashError[];
@@ -337,11 +338,14 @@ export const printErrorsDoc = (title: string, dateInfo: string, storeName: strin
 const CashRegisterModule: React.FC<CashRegisterModuleProps> = ({ 
     user, stores, receipts, errors, finances, onAddReceipt, onAddError, onDeleteError, onAddClosure, onAddLog 
 }) => {
-    const [activeTab, setActiveTab] = useState<'recibos' | 'cartoes' | 'quebras' | 'fechamento'>('recibos');
+    const [activeTab, setActiveTab] = useState<'recibos' | 'cartoes' | 'pix' | 'quebras' | 'fechamento'>('recibos');
     const [isSubmitting, setIsSubmitting] = useState(false);
     const [selectedDate, setSelectedDate] = useState(new Date().toISOString().split('T')[0]);
     const [selectedStoreId, setSelectedStoreId] = useState(user.storeId || '');
     const [dailyTotals, setDailyTotals] = useState<Record<string, number>>({});
+    const [manualCards, setManualCards] = useState<any[]>([]);
+    const [manualPix, setManualPix] = useState<any[]>([]);
+    const [canceledSales, setCanceledSales] = useState<any[]>([]);
     const [isLoadingTotals, setIsLoadingTotals] = useState(false);
     
     const [availableBrands, setAvailableBrands] = useState<CardBrand[]>([]);
@@ -350,6 +354,13 @@ const CashRegisterModule: React.FC<CashRegisterModuleProps> = ({
     const [cardBrandInput, setCardBrandInput] = useState('');
     const [showBrandManager, setShowBrandManager] = useState(false);
     const [newBrandName, setNewBrandName] = useState('');
+
+    const [stagedPix, setStagedPix] = useState<any[]>([]);
+    const [pixValueInput, setPixValueInput] = useState('');
+    const [pixTicketInput, setPixTicketInput] = useState('');
+    const [pixClientInput, setPixClientInput] = useState('');
+
+    const [receiptForm, setReceiptForm] = useState({ recipient: '', value: '', reference: '' });
 
     const selectedStore = useMemo(() => stores.find(s => s.id === selectedStoreId), [stores, selectedStoreId]);
     const payerName = useMemo(() => {
@@ -381,17 +392,53 @@ const CashRegisterModule: React.FC<CashRegisterModuleProps> = ({
         if (!selectedStoreId) return;
         setIsLoadingTotals(true);
         try {
-            // SENIOR FIX: Busca correta na tabela de pagamentos de sorvete
-            const { data, error } = await supabase
+            // Busca pagamentos de sorvete
+            const { data: iceCreamPayments, error: iceCreamError } = await supabase
                 .from('ice_cream_daily_sales_payments')
                 .select('amount, payment_method, ice_cream_sales!inner(store_id, status, created_at)')
                 .eq('ice_cream_sales.store_id', selectedStoreId)
                 .eq('ice_cream_sales.status', 'completed');
 
-            if (error) throw error;
+            if (iceCreamError) throw iceCreamError;
 
-            // Filtrar por data no lado do cliente para simplificar (ou usar cast no SQL se necessário)
-            const filteredData = data?.filter(p => {
+            // Busca lançamentos manuais de cartões
+            const { data: manualCards, error: cardError } = await supabase
+                .from('financial_card_sales')
+                .select('value, date')
+                .eq('store_id', selectedStoreId)
+                .eq('date', selectedDate);
+
+            if (cardError) throw cardError;
+
+            // Busca lançamentos manuais de PIX
+            const { data: manualPixData, error: pixError } = await supabase
+                .from('financial_pix_sales')
+                .select('*')
+                .eq('store_id', selectedStoreId)
+                .eq('date', selectedDate);
+
+            if (pixError) throw pixError;
+
+            // Busca vendas canceladas
+            const { data: canceledData, error: canceledError } = await supabase
+                .from('ice_cream_sales')
+                .select('*')
+                .eq('store_id', selectedStoreId)
+                .eq('status', 'canceled');
+
+            if (canceledError) throw canceledError;
+
+            setManualCards(manualCards || []);
+            setManualPix(manualPixData || []);
+            
+            const filteredCanceled = canceledData?.filter(s => {
+                const saleDate = String(s.created_at || '').split('T')[0];
+                return saleDate === selectedDate;
+            }) || [];
+            setCanceledSales(filteredCanceled);
+
+            // Filtrar pagamentos de sorvete por data
+            const filteredIceCream = iceCreamPayments?.filter(p => {
                 const saleDate = String((p as any).ice_cream_sales.created_at || '').split('T')[0];
                 return saleDate === selectedDate;
             });
@@ -404,13 +451,22 @@ const CashRegisterModule: React.FC<CashRegisterModuleProps> = ({
                 'Voucher': 0
             };
 
-            filteredData?.forEach(p => {
+            // Soma sorvete
+            filteredIceCream?.forEach(p => {
                 const method = p.payment_method;
                 if (totals[method] !== undefined) {
                     totals[method] += Number(p.amount);
-                } else {
-                    totals[method] = Number(p.amount);
                 }
+            });
+
+            // Soma cartões manuais
+            manualCards?.forEach(c => {
+                totals['Cartão'] += Number(c.value);
+            });
+
+            // Soma PIX manuais
+            manualPix?.forEach(p => {
+                totals['Pix'] += Number(p.value);
             });
 
             setDailyTotals(totals);
@@ -502,7 +558,43 @@ const CashRegisterModule: React.FC<CashRegisterModuleProps> = ({
         finally { setIsSubmitting(false); }
     };
 
-    const [receiptForm, setReceiptForm] = useState({ recipient: '', value: '', reference: '' });
+    const handleAddStagedPix = (e: React.FormEvent) => {
+        e.preventDefault();
+        const val = parseFloat(pixValueInput.replace(',', '.'));
+        if (isNaN(val) || val <= 0) return;
+        setStagedPix(prev => [{ 
+            id: `stg-pix-${Date.now()}-${Math.random()}`, 
+            ticket: pixTicketInput, 
+            value: val, 
+            client: pixClientInput.toUpperCase() 
+        }, ...prev]);
+        setPixValueInput('');
+        setPixTicketInput('');
+        setPixClientInput('');
+    };
+
+    const handleValidateAndSavePix = async () => {
+        if (stagedPix.length === 0) return;
+        setIsSubmitting(true);
+        try {
+            const entries = stagedPix.map(p => ({ 
+                store_id: selectedStoreId, 
+                user_id: user.id, 
+                user_name: user.name, 
+                date: selectedDate, 
+                sale_code: p.ticket, // Número da Ficha
+                value: p.value, 
+                client_name: p.client
+            }));
+            const { error } = await supabase.from('financial_pix_sales').insert(entries);
+            if (error) throw error;
+            const totalPix = stagedPix.reduce((a, b) => a + b.value, 0);
+            if (onAddLog) await onAddLog('VALIDAÇÃO PIX', `Lançamento de ${entries.length} Pix na loja ${selectedStoreId} totalizando ${formatCurrency(totalPix)}`);
+            setStagedPix([]);
+            alert("Vendas Pix validadas!");
+        } catch (e: any) { alert("Erro: " + e.message); } 
+        finally { setIsSubmitting(false); }
+    };
     const [errorForm, setErrorForm] = useState({ value: '', reason: '', type: 'shortage' as 'shortage' | 'surplus' });
 
     const handleSaveReceipt = async (e: React.FormEvent) => {
@@ -559,6 +651,7 @@ const CashRegisterModule: React.FC<CashRegisterModuleProps> = ({
                     {[
                         { id: 'recibos', label: 'Recibos', icon: FileText }, 
                         { id: 'cartoes', label: 'Cartões', icon: CreditCard }, 
+                        { id: 'pix', label: 'Pix', icon: DollarSign },
                         { id: 'quebras', label: 'Quebra', icon: AlertTriangle },
                         { id: 'fechamento', label: 'Fechamento', icon: CheckCircle2 }
                     ].map(tab => (
@@ -671,6 +764,180 @@ const CashRegisterModule: React.FC<CashRegisterModuleProps> = ({
                                     </button>
                                 </div>
                             </div>
+
+                            {/* Lista de Lançamentos do Dia */}
+                            <div className="lg:col-span-12 bg-white rounded-[32px] shadow-sm border border-gray-100 overflow-hidden">
+                                <div className="px-6 py-4 border-b bg-gray-50/50 flex justify-between items-center">
+                                    <h3 className="text-xs font-black uppercase italic text-blue-950 flex items-center gap-2">
+                                        <CreditCard size={16} className="text-blue-600" /> Lançamentos de Cartão Confirmados ({new Date(selectedDate + 'T12:00:00').toLocaleDateString('pt-BR')})
+                                    </h3>
+                                    <span className="text-xs font-black text-blue-600">{formatCurrency(manualCards.reduce((a, b) => a + Number(b.value), 0))}</span>
+                                </div>
+                                <div className="overflow-x-auto">
+                                    <table className="w-full text-left">
+                                        <thead className="bg-gray-50 text-[9px] font-black text-gray-400 uppercase tracking-widest border-b">
+                                            <tr>
+                                                <th className="px-6 py-3">Bandeira</th>
+                                                <th className="px-6 py-3">Usuário</th>
+                                                <th className="px-6 py-3 text-right">Valor</th>
+                                                <th className="px-6 py-3 text-center">Ações</th>
+                                            </tr>
+                                        </thead>
+                                        <tbody className="divide-y divide-gray-50 font-bold text-[10px]">
+                                            {manualCards.map((c) => (
+                                                <tr key={c.id} className="hover:bg-gray-50/50 transition-all">
+                                                    <td className="px-6 py-3 flex items-center gap-2">
+                                                        <img src={getCardFlagIcon(c.brand)} className="w-4 h-4 object-contain" alt="" />
+                                                        <span className="uppercase text-blue-950">{c.brand}</span>
+                                                    </td>
+                                                    <td className="px-6 py-3 text-gray-400 uppercase">{c.user_name}</td>
+                                                    <td className="px-6 py-3 text-right text-blue-900 font-black">{formatCurrency(c.value)}</td>
+                                                    <td className="px-6 py-3 text-center">
+                                                        <button 
+                                                            onClick={async () => {
+                                                                if (!window.confirm("Deseja excluir este lançamento?")) return;
+                                                                try {
+                                                                    const { error } = await supabase.from('financial_card_sales').delete().eq('id', c.id);
+                                                                    if (error) throw error;
+                                                                    fetchDailyTotals();
+                                                                    alert("Lançamento excluído!");
+                                                                } catch (e: any) { alert("Erro: " + e.message); }
+                                                            }}
+                                                            className="p-1 text-red-300 hover:text-red-600 transition-all"
+                                                        >
+                                                            <Trash2 size={14} />
+                                                        </button>
+                                                    </td>
+                                                </tr>
+                                            ))}
+                                            {manualCards.length === 0 && (
+                                                <tr>
+                                                    <td colSpan={4} className="px-6 py-12 text-center text-gray-400 uppercase italic text-[9px] tracking-widest">Nenhum lançamento manual hoje</td>
+                                                </tr>
+                                            )}
+                                        </tbody>
+                                    </table>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                )}
+
+                {activeTab === 'pix' && (
+                    <div className="max-w-7xl mx-auto space-y-6 animate-in slide-in-from-right-4 duration-300">
+                        <div className="grid grid-cols-1 lg:grid-cols-12 gap-6">
+                            <div className="lg:col-span-4 bg-white p-6 rounded-[32px] shadow-sm border border-gray-100 flex flex-col h-fit">
+                                <div className="flex justify-between items-center mb-6">
+                                    <h3 className="text-base font-black text-gray-900 uppercase italic tracking-tighter flex items-center gap-2"><DollarSign className="text-teal-600" size={20} /> Novo Lançamento <span className="text-teal-600">Pix</span></h3>
+                                </div>
+                                <form onSubmit={handleAddStagedPix} className="space-y-4">
+                                    <div className="space-y-1">
+                                        <label className="text-[9px] font-black text-gray-400 uppercase ml-2">Número da Ficha</label>
+                                        <input required value={pixTicketInput} onChange={e => setPixTicketInput(e.target.value)} className="w-full p-4 bg-gray-50 border-none rounded-[20px] font-black text-lg outline-none focus:ring-4 focus:ring-teal-500/20" placeholder="0000" />
+                                    </div>
+                                    <div className="space-y-1">
+                                        <label className="text-[9px] font-black text-gray-400 uppercase ml-2">Nome do Cliente</label>
+                                        <input required value={pixClientInput} onChange={e => setPixClientInput(e.target.value)} className="w-full p-4 bg-gray-50 border-none rounded-[20px] font-black text-lg uppercase outline-none focus:ring-4 focus:ring-teal-500/20" placeholder="NOME DO CLIENTE" />
+                                    </div>
+                                    <div className="space-y-1">
+                                        <label className="text-[9px] font-black text-gray-400 uppercase ml-2">Valor do Pix</label>
+                                        <input required value={pixValueInput} onChange={e => setPixValueInput(e.target.value)} className="w-full p-4 bg-gray-950 text-white border-none rounded-[20px] font-black text-2xl text-center outline-none focus:ring-4 focus:ring-teal-500/20" placeholder="0,00" />
+                                    </div>
+                                    <button type="submit" className="w-full py-4 bg-teal-600 text-white rounded-[20px] font-black uppercase text-[10px] shadow-xl active:scale-95 transition-all border-b-4 border-teal-800 flex items-center justify-center gap-2"><Plus size={16}/> ADICIONAR</button>
+                                </form>
+                            </div>
+                            <div className="lg:col-span-8 bg-white rounded-[32px] shadow-xl border border-gray-100 flex flex-col min-h-[500px] overflow-hidden">
+                                <div className="px-6 py-4 border-b flex justify-between items-center bg-gray-50/50">
+                                    <div>
+                                        <h3 className="text-base font-black text-blue-950 uppercase italic tracking-tighter flex items-center gap-2">
+                                            Mesa de <span className="text-teal-600">Conferência Pix</span>
+                                        </h3>
+                                        <p className="text-[8px] font-black text-gray-400 uppercase tracking-widest leading-none mt-1">Role para conferir os itens lançados</p>
+                                    </div>
+                                    <div className="text-right">
+                                        <p className="text-[7px] font-black text-gray-400 uppercase leading-none">Total na Mesa</p>
+                                        <p className="text-xl font-black text-teal-700 italic leading-none mt-1">{formatCurrency(stagedPix.reduce((a, b) => a + b.value, 0))}</p>
+                                    </div>
+                                </div>
+                                <div className="flex-1 overflow-y-auto no-scrollbar p-3 space-y-1 bg-[#fcfdfe] max-h-[400px]">
+                                    {stagedPix.map((p) => (
+                                        <div key={p.id} className="flex items-center justify-between px-4 py-2 bg-white rounded-xl border border-gray-100 group hover:border-teal-200 hover:shadow-sm transition-all animate-in slide-in-from-left-2 duration-200">
+                                            <div className="flex items-center gap-3">
+                                                <div className="w-8 h-8 rounded-full bg-teal-50 flex items-center justify-center text-teal-600 font-black text-[10px]">PX</div>
+                                                <div>
+                                                    <p className="text-[9px] font-black text-blue-950 uppercase italic leading-none">Ficha: {p.ticket}</p>
+                                                    <p className="text-[7px] text-gray-400 uppercase font-bold mt-1">{p.client}</p>
+                                                </div>
+                                            </div>
+                                            <div className="flex items-center gap-4">
+                                                <span className="text-xs font-black text-gray-900">{formatCurrency(p.value)}</span>
+                                                <button onClick={() => setStagedPix(stagedPix.filter(x => x.id !== p.id))} className="p-1.5 text-red-200 hover:text-red-500 transition-all opacity-0 group-hover:opacity-100"><Trash2 size={14}/></button>
+                                            </div>
+                                        </div>
+                                    ))}
+                                    {stagedPix.length === 0 && (<div className="h-full flex flex-col items-center justify-center opacity-10 grayscale py-32"><DollarSign size={48} className="mb-2" /><p className="text-[10px] font-black uppercase tracking-widest">Mesa Vazia</p></div>)}
+                                </div>
+                                <div className="p-4 bg-white border-t grid grid-cols-2 gap-3 shadow-inner">
+                                    <button onClick={() => setStagedPix([])} className="py-3 bg-gray-100 text-gray-400 rounded-xl font-black uppercase text-[9px] hover:bg-gray-200 transition-all">Limpar</button>
+                                    <button onClick={handleValidateAndSavePix} disabled={isSubmitting || stagedPix.length === 0} className="py-3 bg-teal-600 text-white rounded-xl font-black uppercase text-[9px] shadow-lg active:scale-95 border-b-4 border-teal-950 flex items-center justify-center gap-2 hover:bg-teal-700 transition-all">
+                                        {isSubmitting ? <Loader2 className="animate-spin" size={14}/> : <CheckCircle2 size={14}/>} VALIDAR & LANÇAR
+                                    </button>
+                                </div>
+                            </div>
+
+                            {/* Lista de Lançamentos do Dia */}
+                            <div className="lg:col-span-12 bg-white rounded-[32px] shadow-sm border border-gray-100 overflow-hidden">
+                                <div className="px-6 py-4 border-b bg-gray-50/50 flex justify-between items-center">
+                                    <h3 className="text-xs font-black uppercase italic text-blue-950 flex items-center gap-2">
+                                        <DollarSign size={16} className="text-teal-600" /> Lançamentos de Pix Confirmados ({new Date(selectedDate + 'T12:00:00').toLocaleDateString('pt-BR')})
+                                    </h3>
+                                    <span className="text-xs font-black text-teal-600">{formatCurrency(manualPix.reduce((a, b) => a + Number(b.value), 0))}</span>
+                                </div>
+                                <div className="overflow-x-auto">
+                                    <table className="w-full text-left">
+                                        <thead className="bg-gray-50 text-[9px] font-black text-gray-400 uppercase tracking-widest border-b">
+                                            <tr>
+                                                <th className="px-6 py-3">Ficha</th>
+                                                <th className="px-6 py-3">Cliente</th>
+                                                <th className="px-6 py-3">Usuário</th>
+                                                <th className="px-6 py-3 text-right">Valor</th>
+                                                <th className="px-6 py-3 text-center">Ações</th>
+                                            </tr>
+                                        </thead>
+                                        <tbody className="divide-y divide-gray-50 font-bold text-[10px]">
+                                            {manualPix.map((p) => (
+                                                <tr key={p.id} className="hover:bg-gray-50/50 transition-all">
+                                                    <td className="px-6 py-3 text-blue-950 font-black">#{p.sale_code}</td>
+                                                    <td className="px-6 py-3 text-gray-600 uppercase">{p.client_name || '---'}</td>
+                                                    <td className="px-6 py-3 text-gray-400 uppercase">{p.user_name}</td>
+                                                    <td className="px-6 py-3 text-right text-teal-700 font-black">{formatCurrency(p.value)}</td>
+                                                    <td className="px-6 py-3 text-center">
+                                                        <button 
+                                                            onClick={async () => {
+                                                                if (!window.confirm("Deseja excluir este lançamento?")) return;
+                                                                try {
+                                                                    const { error } = await supabase.from('financial_pix_sales').delete().eq('id', p.id);
+                                                                    if (error) throw error;
+                                                                    fetchDailyTotals();
+                                                                    alert("Lançamento excluído!");
+                                                                } catch (e: any) { alert("Erro: " + e.message); }
+                                                            }}
+                                                            className="p-1 text-red-300 hover:text-red-600 transition-all"
+                                                        >
+                                                            <Trash2 size={14} />
+                                                        </button>
+                                                    </td>
+                                                </tr>
+                                            ))}
+                                            {manualPix.length === 0 && (
+                                                <tr>
+                                                    <td colSpan={5} className="px-6 py-12 text-center text-gray-400 uppercase italic text-[9px] tracking-widest">Nenhum lançamento manual hoje</td>
+                                                </tr>
+                                            )}
+                                        </tbody>
+                                    </table>
+                                </div>
+                            </div>
                         </div>
                     </div>
                 )}
@@ -773,6 +1040,30 @@ const CashRegisterModule: React.FC<CashRegisterModuleProps> = ({
                                     </span>
                                 </div>
                             </div>
+
+                            {/* Vendas Canceladas */}
+                            {canceledSales.length > 0 && (
+                                <div className="mt-8 bg-red-50 rounded-[32px] border border-red-100 overflow-hidden">
+                                    <div className="px-6 py-4 border-b border-red-100 flex justify-between items-center bg-red-100/30">
+                                        <h4 className="text-[10px] font-black text-red-700 uppercase tracking-widest flex items-center gap-2">
+                                            <XCircle size={16} /> Vendas Canceladas no Dia ({canceledSales.length})
+                                        </h4>
+                                        <span className="text-xs font-black text-red-700">{formatCurrency(canceledSales.reduce((a, b) => a + Number(b.total_amount), 0))}</span>
+                                    </div>
+                                    <div className="p-4 space-y-2">
+                                        {canceledSales.map(s => (
+                                            <div key={s.id} className="flex justify-between items-center p-3 bg-white rounded-xl border border-red-50 shadow-sm">
+                                                <div className="flex flex-col">
+                                                    <span className="text-[10px] font-black text-red-900 uppercase">#{s.sale_code} - {new Date(s.created_at).toLocaleTimeString()}</span>
+                                                    <span className="text-[9px] font-bold text-gray-400 uppercase mt-1">Motivo: <span className="text-red-600 italic">{s.cancel_reason}</span></span>
+                                                    <span className="text-[8px] font-black text-gray-400 uppercase">Por: {s.canceled_by_name || s.canceled_by}</span>
+                                                </div>
+                                                <span className="font-black text-red-700 text-sm">{formatCurrency(s.total_amount)}</span>
+                                            </div>
+                                        ))}
+                                    </div>
+                                </div>
+                            )}
 
                             <div className="mt-12 p-6 bg-amber-50 rounded-3xl border border-amber-100 flex gap-4 items-start">
                                 <AlertTriangle className="text-amber-600 shrink-0" size={24} />

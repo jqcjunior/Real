@@ -114,6 +114,7 @@ const IceCreamModule: React.FC<IceCreamModuleProps> = ({
 
   const [partners, setPartners] = useState<StoreProfitPartner[]>([]);
   const [expandedEmployee, setExpandedEmployee] = useState<string | null>(null);
+  const [showCanceledDetails, setShowCanceledDetails] = useState(false);
   
   const [newInsumo, setNewInsumo] = useState({ name: '', unit: 'un', initial: '' });
   const [purchaseForm, setPurchaseForm] = useState<Record<string, string>>({}); 
@@ -189,6 +190,12 @@ const dreStats = useMemo(() => {
     let monthIn = 0;
     const monthMethods = { pix: 0, money: 0, card: 0, fiado: 0 };
     const monthFiadoDetails: any[] = [];
+    
+    let monthCanceledTotal = 0;
+    const monthCanceledDetails: any[] = [];
+
+    let dayCanceledTotal = 0;
+    const dayCanceledDetails: any[] = [];
 
     let dayIn = 0;
     const dayMethods = { pix: 0, money: 0, card: 0, fiado: 0 };
@@ -196,12 +203,39 @@ const dreStats = useMemo(() => {
     const monthSalesHeaders = (salesHeaders ?? []).filter(s => {
         if (!s.created_at) return false;
         const d = new Date(s.created_at);
-        return d >= monthStart && d < monthEnd && s.status === 'completed' && s.store_id === effectiveStoreId;
+        return d >= monthStart && d < monthEnd && s.store_id === effectiveStoreId;
     });
 
     monthSalesHeaders.forEach(sale => {
         const d = new Date(sale.created_at);
         const isDaySale = d >= dayStart && d < dayEnd;
+
+        if (sale.status === 'canceled') {
+            const val = Number(sale.total_amount || 0);
+            monthCanceledTotal += val;
+            monthCanceledDetails.push({
+                id: sale.id,
+                saleCode: sale.sale_code,
+                createdAt: sale.created_at,
+                totalValue: val,
+                canceledBy: sale.canceled_by_name || 'N/A',
+                cancelReason: sale.cancel_reason || 'N/A'
+            });
+            if (isDaySale) {
+                dayCanceledTotal += val;
+                dayCanceledDetails.push({
+                    id: sale.id,
+                    saleCode: sale.sale_code,
+                    createdAt: sale.created_at,
+                    totalValue: val,
+                    canceledBy: sale.canceled_by_name || 'N/A',
+                    cancelReason: sale.cancel_reason || 'N/A'
+                });
+            }
+            return;
+        }
+
+        if (sale.status !== 'completed') return;
 
         const payments = (salePayments ?? []).filter(p => p.sale_id === sale.id);
         
@@ -335,6 +369,15 @@ const dreStats = useMemo(() => {
         profit: monthProfit,
         monthProfit,
         monthFiadoDetails: monthFiadoDetails.sort((a, b) =>
+            String(b.createdAt || '').localeCompare(String(a.createdAt || ''))
+        ),
+        monthCanceledTotal,
+        monthCanceledDetails: monthCanceledDetails.sort((a, b) =>
+            String(b.createdAt || '').localeCompare(String(a.createdAt || ''))
+        ),
+        dayCanceledTotal,
+        dayCanceledCount: dayCanceledDetails.length,
+        dayCanceledDetails: dayCanceledDetails.sort((a, b) =>
             String(b.createdAt || '').localeCompare(String(a.createdAt || ''))
         ),
         dayIn,
@@ -503,7 +546,21 @@ const dreStats = useMemo(() => {
       resumoPagamentos: resumoPagamentosFinal,
       resumoPagamentosQtd,
       totalGeral,
-      totalItens
+      totalItens,
+      totalCanceledValue: (salesHeaders ?? []).filter(s => {
+          if (s.store_id !== effectiveStoreId) return false;
+          if (s.status !== 'canceled') return false;
+          if (!s.created_at) return false;
+          const localDate = new Date(s.created_at).toLocaleDateString('en-CA');
+          return !filterPrefixPayments || localDate.startsWith(filterPrefixPayments);
+      }).reduce((acc, s) => acc + Number(s.total_amount || 0), 0),
+      totalCanceledCount: (salesHeaders ?? []).filter(s => {
+          if (s.store_id !== effectiveStoreId) return false;
+          if (s.status !== 'canceled') return false;
+          if (!s.created_at) return false;
+          const localDate = new Date(s.created_at).toLocaleDateString('en-CA');
+          return !filterPrefixPayments || localDate.startsWith(filterPrefixPayments);
+      }).length
     };
   }, [sales, auditYear, auditMonth, auditDay, effectiveStoreId, salePayments, salesHeaders]);
 
@@ -567,6 +624,7 @@ const dreStats = useMemo(() => {
                 <div class="section-title">RESUMO OPERACIONAL DO PERÍODO</div>
                 <div class="kpi"><span>Total de Sangrias</span> <span>${formatCurrency(dreStats.monthSangriaTotal)}</span></div>
                 <div class="kpi"><span>Total de Avarias</span> <span>${dreStats.monthWastageTotal.toFixed(2)}</span></div>
+                <div class="kpi"><span>Vendas Canceladas</span> <span>${formatCurrency(dreStats.monthCanceledTotal)}</span></div>
                 <div class="kpi"><span>Margem Líquida (%)</span> <span>${dreStats.monthIn > 0 ? ((dreStats.profit / dreStats.monthIn) * 100).toFixed(1) : '0.0'}%</span></div>
             </div>
 
@@ -598,6 +656,21 @@ const dreStats = useMemo(() => {
                         ${monthFiadoGrouped.length > 0 
                             ? monthFiadoGrouped.map(f => `<tr><td>${f.name}</td><td class="text-right">${formatCurrency(f.total)}</td></tr>`).join('')
                             : '<tr><td colspan="2" style="text-align:center; color:#94a3b8; font-style:italic;">Nenhum débito registrado no período</td></tr>'
+                        }
+                    </tbody>
+                </table>
+            </div>
+
+            <div class="section">
+                <div class="section-title">Detalhamento de Vendas Canceladas</div>
+                <table>
+                    <thead>
+                        <tr><th>Código</th><th>Data</th><th>Cancelado Por</th><th>Motivo</th><th class="text-right">Valor</th></tr>
+                    </thead>
+                    <tbody>
+                        ${dreStats.monthCanceledDetails.length > 0 
+                            ? dreStats.monthCanceledDetails.map(c => `<tr><td>#${c.saleCode}</td><td>${new Date(c.createdAt).toLocaleDateString()}</td><td>${c.canceledBy}</td><td>${c.cancelReason}</td><td class="text-right">${formatCurrency(c.totalValue)}</td></tr>`).join('')
+                            : '<tr><td colspan="5" style="text-align:center; color:#94a3b8; font-style:italic;">Nenhuma venda cancelada no período</td></tr>'
                         }
                     </tbody>
                 </table>
@@ -1139,6 +1212,40 @@ const dreStats = useMemo(() => {
                                 </div>
                             </div>
 
+                            {/* Vendas Canceladas - Detalhamento Diário */}
+                            <div className="bg-white p-8 rounded-[40px] border border-gray-100 shadow-sm">
+                                <div className="flex justify-between items-center mb-6">
+                                    <h4 className="text-[10px] font-black text-red-500 uppercase tracking-widest flex items-center gap-2">
+                                        <XCircle size={16} /> Vendas Canceladas no Dia ({dreStats.dayCanceledCount})
+                                    </h4>
+                                    <button 
+                                        onClick={() => setShowCanceledDetails(!showCanceledDetails)}
+                                        className="px-4 py-2 bg-gray-50 rounded-xl text-[10px] font-black uppercase hover:bg-gray-100 transition-all flex items-center gap-2"
+                                    >
+                                        {showCanceledDetails ? <ChevronUp size={14}/> : <ChevronDown size={14}/>}
+                                        {showCanceledDetails ? 'Ocultar Detalhes' : 'Ver Detalhes'}
+                                    </button>
+                                </div>
+                                
+                                {showCanceledDetails && (
+                                    <div className="space-y-3 animate-in slide-in-from-top-2 duration-300">
+                                        {dreStats.dayCanceledDetails.map(c => (
+                                            <div key={c.id} className="flex justify-between items-center p-4 bg-red-50/50 rounded-2xl border border-red-100">
+                                                <div className="flex flex-col">
+                                                    <span className="text-[10px] font-black text-red-900 uppercase">#{c.saleCode} - {new Date(c.createdAt).toLocaleTimeString()}</span>
+                                                    <span className="text-[9px] font-bold text-gray-500 uppercase mt-1">Motivo: <span className="text-red-600 italic">{c.cancelReason}</span></span>
+                                                    <span className="text-[8px] font-black text-gray-400 uppercase">Por: {c.canceledBy}</span>
+                                                </div>
+                                                <span className="font-black text-red-700 text-sm">{formatCurrency(c.totalValue)}</span>
+                                            </div>
+                                        ))}
+                                        {dreStats.dayCanceledDetails.length === 0 && (
+                                            <p className="text-center text-[9px] text-gray-400 uppercase italic py-4">Nenhum cancelamento hoje</p>
+                                        )}
+                                    </div>
+                                )}
+                            </div>
+
                             <div className="bg-white p-8 rounded-[40px] border border-gray-100 shadow-sm">
                                 <h4 className="text-[10px] font-black text-gray-400 uppercase tracking-widest mb-6 flex items-center gap-2">
                                     <Activity size={16} className="text-blue-600" /> RESUMO OPERACIONAL DO PERÍODO
@@ -1231,7 +1338,7 @@ const dreStats = useMemo(() => {
                                 <h4 className="text-[10px] font-black text-gray-400 uppercase tracking-[0.2em] mb-6 flex items-center gap-2">
                                     <Activity size={16} className="text-blue-600" /> RESUMO OPERACIONAL DO PERÍODO
                                 </h4>
-                                <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+                                <div className="grid grid-cols-1 md:grid-cols-4 gap-6">
                                     <div className="p-4 bg-gray-50 rounded-2xl border border-gray-100">
                                         <p className="text-[9px] font-black text-gray-400 uppercase">Total de Sangrias</p>
                                         <p className="text-xl font-black text-red-600 italic">{formatCurrency(dreStats.monthSangriaTotal)}</p>
@@ -1239,6 +1346,10 @@ const dreStats = useMemo(() => {
                                     <div className="p-4 bg-gray-50 rounded-2xl border border-gray-100">
                                         <p className="text-[9px] font-black text-gray-400 uppercase">Total de Avarias</p>
                                         <p className="text-xl font-black text-orange-600 italic">{dreStats.monthWastageTotal.toFixed(2)}</p>
+                                    </div>
+                                    <div className="p-4 bg-gray-50 rounded-2xl border border-gray-100">
+                                        <p className="text-[9px] font-black text-gray-400 uppercase">Vendas Canceladas</p>
+                                        <p className="text-xl font-black text-gray-600 italic">{formatCurrency(dreStats.monthCanceledTotal)}</p>
                                     </div>
                                     <div className="p-4 bg-blue-950 rounded-2xl border border-blue-900 text-white">
                                         <p className="text-[9px] font-black text-blue-300 uppercase">Margem Líquida (%)</p>
@@ -1326,6 +1437,54 @@ const dreStats = useMemo(() => {
                             </table>
                         </div>
                     </div>
+
+                    <div className="bg-white rounded-[40px] shadow-xl border border-gray-100 overflow-hidden">
+                        <div className="p-6 bg-gray-50 border-b border-gray-100 flex justify-between items-center">
+                            <div>
+                                <h4 className="text-xs font-black uppercase text-gray-700 flex items-center gap-2"><XCircle size={16} className="text-gray-400" /> Vendas Canceladas - Detalhamento Mensal</h4>
+                                <p className="text-[9px] font-bold text-gray-400 uppercase mt-1">Histórico de cancelamentos do período</p>
+                            </div>
+                            <button 
+                                onClick={() => setShowCanceledDetails(!showCanceledDetails)}
+                                className="px-4 py-2 bg-white border rounded-xl text-[10px] font-black uppercase hover:bg-gray-50 transition-all flex items-center gap-2"
+                            >
+                                {showCanceledDetails ? <ChevronUp size={14}/> : <ChevronDown size={14}/>}
+                                {showCanceledDetails ? 'Ocultar Detalhes' : 'Ver Detalhes'}
+                            </button>
+                        </div>
+                        {showCanceledDetails && (
+                            <div className="overflow-x-auto animate-in slide-in-from-top-2 duration-300">
+                                <table className="w-full text-left">
+                                    <thead className="bg-gray-50 text-[9px] font-black text-gray-400 uppercase tracking-widest border-b">
+                                        <tr>
+                                            <th className="px-8 py-4">Código / Data</th>
+                                            <th className="px-8 py-4">Cancelado Por</th>
+                                            <th className="px-8 py-4">Motivo</th>
+                                            <th className="px-8 py-4 text-right">Valor Estornado</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody className="divide-y divide-gray-50 font-bold text-[10px]">
+                                        {dreStats.monthCanceledDetails.map(c => (
+                                            <tr key={c.id} className="hover:bg-gray-50/50 transition-all">
+                                                <td className="px-8 py-4">
+                                                    <span className="block text-blue-950 font-black">#{c.saleCode}</span>
+                                                    <span className="text-[9px] text-gray-400">{new Date(c.createdAt).toLocaleString()}</span>
+                                                </td>
+                                                <td className="px-8 py-4 uppercase text-gray-600">{c.canceledBy}</td>
+                                                <td className="px-8 py-4 uppercase text-gray-400 italic max-w-xs truncate">{c.cancelReason}</td>
+                                                <td className="px-8 py-4 text-right text-gray-900 font-black italic">{formatCurrency(c.totalValue)}</td>
+                                            </tr>
+                                        ))}
+                                        {dreStats.monthCanceledDetails.length === 0 && (
+                                            <tr>
+                                                <td colSpan={4} className="px-8 py-10 text-center text-gray-400 uppercase italic text-[9px]">Nenhum cancelamento registrado</td>
+                                            </tr>
+                                        )}
+                                    </tbody>
+                                </table>
+                            </div>
+                        )}
+                    </div>
                 </div>
             )}
 
@@ -1409,17 +1568,24 @@ const dreStats = useMemo(() => {
                                 </h4>
                                 <button onClick={() => setShowDaySummary(false)} className="text-gray-400 hover:text-red-500 transition-all"><X size={24}/></button>
                             </div>
-                            <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-                                {auditSummary.resumoItens.map(([name, data]: any) => (
-                                    <div key={name} className="bg-gray-50 p-4 rounded-3xl border border-gray-100">
-                                        <p className="text-xs font-black text-blue-900 uppercase italic truncate mb-1">{name}</p>
+                                <div className="grid grid-cols-1 md:grid-cols-4 gap-6">
+                                    {auditSummary.resumoItens.map(([name, data]: any) => (
+                                        <div key={name} className="bg-gray-50 p-4 rounded-3xl border border-gray-100">
+                                            <p className="text-xs font-black text-blue-900 uppercase italic truncate mb-1">{name}</p>
+                                            <div className="flex justify-between items-end">
+                                                <p className="text-[10px] font-bold text-gray-400 uppercase">{data.qtd} unidades</p>
+                                                <p className="text-sm font-black text-blue-600">{formatCurrency(data.total)}</p>
+                                            </div>
+                                        </div>
+                                    ))}
+                                    <div className="bg-red-50 p-4 rounded-3xl border border-red-100">
+                                        <p className="text-xs font-black text-red-900 uppercase italic truncate mb-1">Vendas Canceladas</p>
                                         <div className="flex justify-between items-end">
-                                            <p className="text-[10px] font-bold text-gray-400 uppercase">{data.qtd} unidades</p>
-                                            <p className="text-sm font-black text-blue-600">{formatCurrency(data.total)}</p>
+                                            <p className="text-[10px] font-bold text-red-400 uppercase">{auditSummary.totalCanceledCount} vendas</p>
+                                            <p className="text-sm font-black text-red-600">{formatCurrency(auditSummary.totalCanceledValue)}</p>
                                         </div>
                                     </div>
-                                ))}
-                            </div>
+                                </div>
                             <div className="mt-8 pt-6 border-t border-dashed border-gray-200">
                                 <h5 className="text-[10px] font-black text-gray-400 uppercase tracking-widest mb-4 flex items-center gap-2">
                                     <Wallet size={14} className="text-blue-600" /> Resumo Financeiro por Método
@@ -1463,6 +1629,10 @@ const dreStats = useMemo(() => {
                         <div className="flex items-center gap-2">
                             <span className="text-[9px] font-black text-gray-400 uppercase tracking-widest">Total de itens vendidos:</span>
                             <span className="text-xs font-black text-blue-700">{auditSummary.totalItens} itens</span>
+                        </div>
+                        <div className="flex items-center gap-2">
+                            <span className="text-[9px] font-black text-red-400 uppercase tracking-widest">Vendas Canceladas:</span>
+                            <span className="text-xs font-black text-red-700">{auditSummary.totalCanceledCount} ({formatCurrency(auditSummary.totalCanceledValue)})</span>
                         </div>
                     </div>
 

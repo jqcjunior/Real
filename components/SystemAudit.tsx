@@ -13,13 +13,14 @@ interface SystemAuditProps {
   iceCreamSales: IceCreamDailySale[];
   icPromissories: IceCreamPromissoryNote[];
   cardSales?: CreditCardSale[];
+  pixSales?: any[];
   currentUser?: User;
   closures: CashRegisterClosure[];
   stores: Store[];
 }
 
-const SystemAudit: React.FC<SystemAuditProps> = ({ logs, receipts, store, cashErrors, iceCreamSales, icPromissories, cardSales = [], currentUser, closures, stores }) => {
-  const [activeTab, setActiveTab] = useState<'logs' | 'receipts' | 'cash_errors' | 'vendas_cartao' | 'fechamentos'>('logs');
+const SystemAudit: React.FC<SystemAuditProps> = ({ logs, receipts, store, cashErrors, iceCreamSales, icPromissories, cardSales = [], pixSales = [], currentUser, closures, stores }) => {
+  const [activeTab, setActiveTab] = useState<'logs' | 'receipts' | 'cash_errors' | 'vendas_cartao' | 'vendas_pix' | 'fechamentos'>('logs');
   const [searchTerm, setSearchTerm] = useState('');
   const [selectedStoreId, setSelectedStoreId] = useState('');
   
@@ -40,10 +41,11 @@ const SystemAudit: React.FC<SystemAuditProps> = ({ logs, receipts, store, cashEr
     const users = new Set<string>();
     logs.forEach(l => { if(l.userName) users.add(l.userName); });
     cardSales.forEach(c => { if(c.userName) users.add(c.userName); });
+    pixSales.forEach(p => { if(p.userName) users.add(p.userName); });
     return Array.from(users).sort();
-  }, [logs, cardSales]);
+  }, [logs, cardSales, pixSales]);
 
-  const handleDeleteFinance = async (id: string, table: 'financial_card_sales') => {
+  const handleDeleteFinance = async (id: string, table: 'financial_card_sales' | 'financial_pix_sales') => {
       if (!isManagement) return;
       if (!window.confirm("Deseja realmente EXCLUIR este registro permanentemente?")) return;
       try {
@@ -78,6 +80,23 @@ const SystemAudit: React.FC<SystemAuditProps> = ({ logs, receipts, store, cashEr
           return matchesDate && matchesUser && matchesSearch && matchesStore && !isCanceledIceCream;
       });
   }, [cardSales, iceCreamSales, startDate, endDate, filterUser, searchTerm, currentUser, selectedStoreId]);
+
+  const filteredPixSales = useMemo(() => {
+      return (pixSales || []).filter(p => {
+          const saleDate = String(p.date || '').split('T')[0];
+          const matchesDate = checkDateInRange(saleDate);
+          const matchesUser = filterUser === 'all' || p.userName === filterUser;
+          const matchesSearch = searchTerm === '' || 
+                                (p.clientName || '').toLowerCase().includes(searchTerm.toLowerCase()) || 
+                                (p.saleCode || '').toLowerCase().includes(searchTerm.toLowerCase());
+          
+          const matchesStore = currentUser?.role === UserRole.ADMIN 
+            ? (!selectedStoreId || p.storeId === selectedStoreId)
+            : p.storeId === currentUser?.storeId;
+          
+          return matchesDate && matchesUser && matchesSearch && matchesStore;
+      });
+  }, [pixSales, startDate, endDate, filterUser, searchTerm, currentUser, selectedStoreId]);
 
   const stats = useMemo(() => {
     const filteredSales = iceCreamSales.filter(s => {
@@ -126,6 +145,7 @@ const SystemAudit: React.FC<SystemAuditProps> = ({ logs, receipts, store, cashEr
         <div className="flex bg-white p-1 rounded-2xl border border-gray-200 shadow-sm overflow-x-auto no-scrollbar w-full lg:w-auto">
             <button onClick={() => setActiveTab('logs')} className={`flex-1 lg:flex-none px-6 py-2.5 rounded-xl text-[10px] font-black uppercase transition-all whitespace-nowrap ${activeTab === 'logs' ? 'bg-gray-950 text-white shadow-lg' : 'text-gray-400 hover:text-gray-900'}`}>Log de Atividade</button>
             <button onClick={() => setActiveTab('vendas_cartao')} className={`flex-1 lg:flex-none px-6 py-2.5 rounded-xl text-[10px] font-black uppercase transition-all whitespace-nowrap flex items-center justify-center gap-2 ${activeTab === 'vendas_cartao' ? 'bg-blue-600 text-white shadow-lg' : 'text-gray-400 hover:text-gray-900'}`}><CreditCard size={14}/> Vendas Cartão</button>
+            <button onClick={() => setActiveTab('vendas_pix')} className={`flex-1 lg:flex-none px-6 py-2.5 rounded-xl text-[10px] font-black uppercase transition-all whitespace-nowrap flex items-center justify-center gap-2 ${activeTab === 'vendas_pix' ? 'bg-teal-600 text-white shadow-lg' : 'text-gray-400 hover:text-gray-900'}`}><DollarSign size={14}/> Vendas Pix</button>
             <button onClick={() => setActiveTab('receipts')} className={`flex-1 lg:flex-none px-6 py-2.5 rounded-xl text-[10px] font-black uppercase transition-all whitespace-nowrap ${activeTab === 'receipts' ? 'bg-gray-900 text-white shadow-lg' : 'text-gray-400 hover:text-gray-900'}`}>Recibos</button>
             <button onClick={() => setActiveTab('cash_errors')} className={`flex-1 lg:flex-none px-6 py-2.5 rounded-xl text-[10px] font-black uppercase transition-all whitespace-nowrap ${activeTab === 'cash_errors' ? 'bg-red-600 text-white shadow-lg' : 'text-gray-400 hover:text-gray-900'}`}>Quebras</button>
             <button onClick={() => setActiveTab('fechamentos')} className={`flex-1 lg:flex-none px-6 py-2.5 rounded-xl text-[10px] font-black uppercase transition-all whitespace-nowrap ${activeTab === 'fechamentos' ? 'bg-emerald-600 text-white shadow-lg' : 'text-gray-400 hover:text-gray-900'}`}>Fechamentos</button>
@@ -250,6 +270,38 @@ const SystemAudit: React.FC<SystemAuditProps> = ({ logs, receipts, store, cashEr
                             </tr>
                         ))}
                         {filteredCardSales.length === 0 && <tr><td colSpan={5} className="py-20 text-center text-gray-400 uppercase font-black text-xs italic tracking-widest">Nenhum lançamento de cartão no período selecionado.</td></tr>}
+                    </tbody>
+                </table>
+            </div>
+        )}
+
+        {activeTab === 'vendas_pix' && (
+            <div className="overflow-x-auto">
+                <table className="w-full text-left min-w-[1000px]">
+                    <thead className="bg-gray-50/80 text-[10px] font-black text-gray-400 uppercase tracking-widest border-b">
+                        <tr><th className="px-8 py-5">Horário / Ficha</th><th className="px-8 py-5">Operador</th><th className="px-8 py-5">Cliente</th><th className="px-8 py-5 text-right">Valor</th>{isManagement && <th className="px-8 py-5 text-center">Gestão</th>}</tr>
+                    </thead>
+                    <tbody className="divide-y divide-gray-50 font-bold text-xs">
+                        {filteredPixSales.map(p => (
+                            <tr key={p.id} className="hover:bg-gray-50 transition-colors">
+                                <td className="px-8 py-5">
+                                  <div className="text-[10px] font-black text-teal-900">#{p.saleCode}</div>
+                                  <div className="text-[8px] text-gray-400 mt-0.5">
+                                    {new Date(p.date + 'T12:00:00').toLocaleDateString('pt-BR')} 
+                                    {p.createdAt ? ` às ${new Date(p.createdAt).toLocaleTimeString()}` : ''}
+                                  </div>
+                                </td>
+                                <td className="px-8 py-5 uppercase italic text-gray-700">{p.userName || 'Sistema'}</td>
+                                <td className="px-8 py-5 uppercase text-gray-600 italic text-[10px]">{p.clientName || 'NÃO INFORMADO'}</td>
+                                <td className="px-8 py-5 text-right font-black text-teal-900 italic text-sm">{formatCurrency(p.value)}</td>
+                                {isManagement && (
+                                    <td className="px-8 py-5 text-center">
+                                        <button onClick={() => handleDeleteFinance(p.id, 'financial_pix_sales')} className="p-2 text-red-300 hover:text-red-600 transition-all"><Trash2 size={16}/></button>
+                                    </td>
+                                )}
+                            </tr>
+                        ))}
+                        {filteredPixSales.length === 0 && <tr><td colSpan={5} className="py-20 text-center text-gray-400 uppercase font-black text-xs italic tracking-widest">Nenhum lançamento de Pix no período selecionado.</td></tr>}
                     </tbody>
                 </table>
             </div>

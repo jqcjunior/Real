@@ -392,6 +392,18 @@ export interface CreditCardSale {
   createdAt?: string;
 }
 
+export interface PixSale {
+  id: string;
+  storeId: string;
+  userId: string;
+  userName: string;
+  date: string;
+  saleCode: string; // Número da Ficha
+  value: number;
+  clientName: string;
+  createdAt?: string;
+}
+
 export type AdminRoleLevel = 'admin' | 'manager' | 'cashier' | 'sorvete';
 
 export interface AdminUser {
