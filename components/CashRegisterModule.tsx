@@ -11,6 +11,7 @@ interface CardEntry {
     id: string;
     brand: string;
     value: number;
+    ticket: string;
 }
 
 interface CardBrand {
@@ -164,62 +165,162 @@ export const printReceiptDoc = (r: any) => {
     printWindow.document.close();
 };
 
-export const printCardSummaryDoc = (date: string, storeName: string, cards: CardEntry[], operator: string) => {
-    const printWindow = window.open('', '_blank', 'width=450,height=600');
+export const printCardSummaryDoc = (date: string, storeName: string, cards: any[], operator: string) => {
+    const printWindow = window.open('', '_blank', 'width=400,height=600');
     if (!printWindow) return;
+    
+    const totalValue = cards.reduce((a, b) => a + b.value, 0);
+    
+    // Agrupar por bandeira para o resumo
     const totalsByBrand: Record<string, number> = {};
     cards.forEach(c => { totalsByBrand[c.brand] = (totalsByBrand[c.brand] || 0) + c.value; });
-    const totalValue = cards.reduce((a, b) => a + b.value, 0);
+
     const html = `
         <html>
         <head>
             <script src="https://cdn.tailwindcss.com"></script>
             <style>
-                @page { size: 110mm 130mm; margin: 0; }
+                @page { size: 80mm auto; margin: 0; }
                 body { 
                     margin: 0; 
-                    padding: 5mm; 
+                    padding: 4mm; 
                     font-family: 'Courier New', Courier, monospace; 
                     -webkit-print-color-adjust: exact; 
                     print-color-adjust: exact;
-                    width: 110mm;
-                    height: 130mm;
+                    width: 80mm;
                     box-sizing: border-box;
                     background: white;
+                    font-size: 10px;
                 }
-                .dashed-line { border-top: 1px dashed #000; margin: 5px 0; }
-                .text-small { font-size: 9px; }
-                .text-medium { font-size: 11px; }
-                .text-large { font-size: 14px; }
+                .dashed-line { border-top: 1px dashed #000; margin: 4px 0; }
+                .grid-container {
+                    display: grid;
+                    grid-template-columns: repeat(2, 1fr);
+                    gap: 4px;
+                }
+                @media print {
+                    body { width: 80mm; }
+                }
             </style>
         </head>
         <body>
             <div class="text-center mb-2">
-                <h1 class="text-medium font-black uppercase">Resumo de Conferência</h1>
-                <p class="text-small font-bold">Auditoria de Cartões</p>
+                <h1 class="text-[12px] font-black uppercase">Resumo de Cartões</h1>
+                <p class="text-[9px] font-bold">Conferência de Lançamentos</p>
             </div>
             <div class="dashed-line"></div>
-            <div class="text-small space-y-1">
+            <div class="text-[9px] space-y-0.5">
                 <p><strong>DATA:</strong> ${new Date(date + 'T12:00:00').toLocaleDateString('pt-BR')}</p>
                 <p><strong>LOJA:</strong> ${storeName}</p>
                 <p><strong>OPERADOR:</strong> ${operator}</p>
             </div>
             <div class="dashed-line"></div>
+            
             <div class="mt-2">
-                <p class="text-small font-black uppercase mb-1">Totais por Bandeira:</p>
-                <div class="space-y-1">
+                <p class="text-[9px] font-black uppercase mb-1">Detalhamento (Ficha | Valor):</p>
+                <div class="grid-container">
+                    ${cards.map((c, idx) => `
+                        <div class="flex justify-between border-b border-gray-100 pb-0.5">
+                            <span class="font-bold">#${c.ticket || (idx + 1)}</span>
+                            <span>${new Intl.NumberFormat('pt-BR', { minimumFractionDigits: 2 }).format(c.value)}</span>
+                        </div>
+                    `).join('')}
+                </div>
+            </div>
+
+            <div class="dashed-line"></div>
+            <div class="mt-2">
+                <p class="text-[9px] font-black uppercase mb-1">Totais por Bandeira:</p>
+                <div class="space-y-0.5">
                     ${Object.entries(totalsByBrand).map(([brand, val]) => `
-                        <div class="flex justify-between text-small">
+                        <div class="flex justify-between">
                             <span>${brand}</span>
                             <span class="font-bold">${new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(val)}</span>
                         </div>
                     `).join('')}
                 </div>
             </div>
+            
             <div class="dashed-line"></div>
-            <div class="flex justify-between items-center mt-2">
-                <span class="text-medium font-black">TOTAL GERAL:</span>
-                <span class="text-large font-black">${new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(totalValue)}</span>
+            <div class="flex justify-between items-center mt-1">
+                <span class="text-[11px] font-black">TOTAL GERAL:</span>
+                <span class="text-[13px] font-black">${new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(totalValue)}</span>
+            </div>
+            <div class="dashed-line"></div>
+            <div class="mt-4 text-center">
+                <div class="border-t border-black pt-1 text-[8px] font-bold uppercase">Assinatura do Operador</div>
+            </div>
+            <script>window.onload = () => { setTimeout(() => { window.print(); window.close(); }, 500); }</script>
+        </body>
+        </html>
+    `;
+    printWindow.document.write(html);
+    printWindow.document.close();
+};
+
+export const printPixSummaryDoc = (date: string, storeName: string, pixEntries: any[], operator: string) => {
+    const printWindow = window.open('', '_blank', 'width=400,height=600');
+    if (!printWindow) return;
+    
+    const totalValue = pixEntries.reduce((a, b) => a + b.value, 0);
+
+    const html = `
+        <html>
+        <head>
+            <script src="https://cdn.tailwindcss.com"></script>
+            <style>
+                @page { size: 80mm auto; margin: 0; }
+                body { 
+                    margin: 0; 
+                    padding: 4mm; 
+                    font-family: 'Courier New', Courier, monospace; 
+                    -webkit-print-color-adjust: exact; 
+                    print-color-adjust: exact;
+                    width: 80mm;
+                    box-sizing: border-box;
+                    background: white;
+                    font-size: 10px;
+                }
+                .dashed-line { border-top: 1px dashed #000; margin: 4px 0; }
+                .grid-container {
+                    display: grid;
+                    grid-template-columns: repeat(2, 1fr);
+                    gap: 4px;
+                }
+                @media print {
+                    body { width: 80mm; }
+                }
+            </style>
+        </head>
+        <body>
+            <div class="text-center mb-2">
+                <h1 class="text-[12px] font-black uppercase">Resumo de Pix</h1>
+                <p class="text-[9px] font-bold">Conferência de Lançamentos</p>
+            </div>
+            <div class="dashed-line"></div>
+            <div class="text-[9px] space-y-0.5">
+                <p><strong>DATA:</strong> ${new Date(date + 'T12:00:00').toLocaleDateString('pt-BR')}</p>
+                <p><strong>LOJA:</strong> ${storeName}</p>
+                <p><strong>OPERADOR:</strong> ${operator}</p>
+            </div>
+            <div class="dashed-line"></div>
+            
+            <div class="mt-2">
+                <p class="text-[9px] font-black uppercase mb-1">Detalhamento (Ficha | Valor):</p>
+                <div class="grid-container">
+                    ${pixEntries.map((p) => `
+                        <div class="flex justify-between border-b border-gray-100 pb-0.5">
+                            <span class="font-bold">#${p.ticket}</span>
+                            <span>${new Intl.NumberFormat('pt-BR', { minimumFractionDigits: 2 }).format(p.value)}</span>
+                        </div>
+                    `).join('')}
+                </div>
+            </div>
+
+            <div class="dashed-line"></div>
+            <div class="flex justify-between items-center mt-1">
+                <span class="text-[11px] font-black">TOTAL GERAL:</span>
+                <span class="text-[13px] font-black">${new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(totalValue)}</span>
             </div>
             <div class="dashed-line"></div>
             <div class="mt-4 text-center">
@@ -351,6 +452,7 @@ const CashRegisterModule: React.FC<CashRegisterModuleProps> = ({
     const [availableBrands, setAvailableBrands] = useState<CardBrand[]>([]);
     const [stagedCards, setStagedCards] = useState<CardEntry[]>([]);
     const [cardValueInput, setCardValueInput] = useState('');
+    const [cardTicketInput, setCardTicketInput] = useState('');
     const [cardBrandInput, setCardBrandInput] = useState('');
     const [showBrandManager, setShowBrandManager] = useState(false);
     const [newBrandName, setNewBrandName] = useState('');
@@ -565,8 +667,9 @@ const CashRegisterModule: React.FC<CashRegisterModuleProps> = ({
         e.preventDefault();
         const val = parseFloat(cardValueInput.replace(',', '.'));
         if (isNaN(val) || val <= 0) return;
-        setStagedCards(prev => [{ id: `stg-${Date.now()}-${Math.random()}`, brand: cardBrandInput, value: val }, ...prev]);
+        setStagedCards(prev => [{ id: `stg-${Date.now()}-${Math.random()}`, brand: cardBrandInput, value: val, ticket: cardTicketInput }, ...prev]);
         setCardValueInput('');
+        setCardTicketInput('');
     };
 
     const handleValidateAndSaveCards = async () => {
@@ -581,7 +684,7 @@ const CashRegisterModule: React.FC<CashRegisterModuleProps> = ({
                 date: selectedDate, 
                 brand: c.brand, 
                 value: c.value, 
-                sale_code: saleCode 
+                sale_code: c.ticket || saleCode 
             }));
             const { error } = await supabase.from('financial_card_sales').insert(entries);
             if (error) throw error;
@@ -598,6 +701,7 @@ const CashRegisterModule: React.FC<CashRegisterModuleProps> = ({
             });
 
             setStagedCards([]);
+            fetchDailyTotals();
             showToast("Sucesso!");
         } catch (e: any) { showToast("Erro: " + e.message, "error"); } 
         finally { setIsSubmitting(false); }
@@ -686,11 +790,70 @@ const CashRegisterModule: React.FC<CashRegisterModuleProps> = ({
             if (error) throw error;
             const totalPix = stagedPix.reduce((a, b) => a + b.value, 0);
             if (onAddLog) await onAddLog('VALIDAÇÃO PIX', `Lançamento de ${entries.length} Pix na loja ${selectedStoreId} totalizando ${formatCurrency(totalPix)}`);
+            
+            setConfirmModal({
+                isOpen: true,
+                title: 'Vendas Validadas',
+                message: 'Vendas validadas! Deseja imprimir o resumo de conferência?',
+                onConfirm: () => {
+                    printPixSummaryDoc(selectedDate, payerName, stagedPix, user.name);
+                    setConfirmModal(prev => ({ ...prev, isOpen: false }));
+                }
+            });
+
             setStagedPix([]);
+            fetchDailyTotals();
             showToast("Vendas Pix validadas!");
         } catch (e: any) { showToast("Erro: " + e.message, "error"); } 
         finally { setIsSubmitting(false); }
     };
+    const [editingCard, setEditingCard] = useState<any | null>(null);
+    const [editingPix, setEditingPix] = useState<any | null>(null);
+
+    const handleUpdateCard = async (e: React.FormEvent) => {
+        e.preventDefault();
+        if (!editingCard) return;
+        setIsSubmitting(true);
+        try {
+            const val = parseFloat(String(editingCard.value).replace(',', '.'));
+            const { error } = await supabase
+                .from('financial_card_sales')
+                .update({ 
+                    brand: editingCard.brand, 
+                    value: val, 
+                    sale_code: editingCard.sale_code 
+                })
+                .eq('id', editingCard.id);
+            if (error) throw error;
+            showToast("Lançamento atualizado!");
+            setEditingCard(null);
+            fetchDailyTotals();
+        } catch (e: any) { showToast("Erro: " + e.message, "error"); }
+        finally { setIsSubmitting(false); }
+    };
+
+    const handleUpdatePix = async (e: React.FormEvent) => {
+        e.preventDefault();
+        if (!editingPix) return;
+        setIsSubmitting(true);
+        try {
+            const val = parseFloat(String(editingPix.value).replace(',', '.'));
+            const { error } = await supabase
+                .from('financial_pix_sales')
+                .update({ 
+                    payer_name: editingPix.payer_name, 
+                    value: val, 
+                    sale_code: editingPix.sale_code 
+                })
+                .eq('id', editingPix.id);
+            if (error) throw error;
+            showToast("Lançamento atualizado!");
+            setEditingPix(null);
+            fetchDailyTotals();
+        } catch (e: any) { showToast("Erro: " + e.message, "error"); }
+        finally { setIsSubmitting(false); }
+    };
+
     const [errorForm, setErrorForm] = useState({ value: '', reason: '', type: 'shortage' as 'shortage' | 'surplus' });
 
     const handleSaveReceipt = async (e: React.FormEvent) => {
@@ -799,6 +962,15 @@ const CashRegisterModule: React.FC<CashRegisterModuleProps> = ({
                                             ))}
                                         </div>
                                     </div>
+                                    <div className="space-y-1">
+                                        <label className="text-[9px] font-black text-gray-400 uppercase ml-2">Número da Ficha</label>
+                                        <input 
+                                            value={cardTicketInput} 
+                                            onChange={e => setCardTicketInput(e.target.value)} 
+                                            className="w-full p-4 bg-gray-50 border-none rounded-[20px] font-black text-lg outline-none focus:ring-4 focus:ring-green-500/20" 
+                                            placeholder="0000" 
+                                        />
+                                    </div>
                                     <div className="space-y-1"><label className="text-[9px] font-black text-gray-400 uppercase ml-2">Valor do Comprovante</label><input required value={cardValueInput} onChange={e => setCardValueInput(e.target.value)} className="w-full p-4 bg-gray-950 text-white border-none rounded-[20px] font-black text-2xl text-center outline-none focus:ring-4 focus:ring-green-500/20" placeholder="0,00" /></div>
                                     <button type="submit" className="w-full py-4 bg-green-600 text-white rounded-[20px] font-black uppercase text-[10px] shadow-xl active:scale-95 transition-all border-b-4 border-green-800 flex items-center justify-center gap-2"><Plus size={16}/> ADICIONAR</button>
                                 </form>
@@ -873,6 +1045,7 @@ const CashRegisterModule: React.FC<CashRegisterModuleProps> = ({
                                     <table className="w-full text-left">
                                         <thead className="bg-gray-50 text-[9px] font-black text-gray-400 uppercase tracking-widest border-b">
                                             <tr>
+                                                <th className="px-6 py-3">Ficha</th>
                                                 <th className="px-6 py-3">Bandeira</th>
                                                 <th className="px-6 py-3">Usuário</th>
                                                 <th className="px-6 py-3 text-right">Valor</th>
@@ -882,13 +1055,20 @@ const CashRegisterModule: React.FC<CashRegisterModuleProps> = ({
                                         <tbody className="divide-y divide-gray-50 font-bold text-[10px]">
                                             {manualCards.map((c) => (
                                                 <tr key={c.id} className="hover:bg-gray-50/50 transition-all">
+                                                    <td className="px-6 py-3 text-blue-600 font-black">#{c.sale_code || '---'}</td>
                                                     <td className="px-6 py-3 flex items-center gap-2">
                                                         <img src={getCardFlagIcon(c.brand)} className="w-4 h-4 object-contain" alt="" />
                                                         <span className="uppercase text-blue-950">{c.brand}</span>
                                                     </td>
                                                     <td className="px-6 py-3 text-gray-400 uppercase">{c.user_name}</td>
                                                     <td className="px-6 py-3 text-right text-blue-900 font-black">{formatCurrency(c.value)}</td>
-                                                    <td className="px-6 py-3 text-center">
+                                                    <td className="px-6 py-3 text-center flex items-center justify-center gap-2">
+                                                        <button 
+                                                            onClick={() => setEditingCard(c)}
+                                                            className="p-1 text-blue-300 hover:text-blue-600 transition-all"
+                                                        >
+                                                            <Edit3 size={14} />
+                                                        </button>
                                                         <button 
                                                             onClick={() => {
                                                                 setConfirmModal({
@@ -1052,7 +1232,13 @@ const CashRegisterModule: React.FC<CashRegisterModuleProps> = ({
                                                     <td className="px-6 py-3 text-gray-600 uppercase">{p.payer_name || '---'}</td>
                                                     <td className="px-6 py-3 text-gray-400 uppercase">{p.user_name}</td>
                                                     <td className="px-6 py-3 text-right text-teal-700 font-black">{formatCurrency(p.value)}</td>
-                                                    <td className="px-6 py-3 text-center">
+                                                    <td className="px-6 py-3 text-center flex items-center justify-center gap-2">
+                                                        <button 
+                                                            onClick={() => setEditingPix(p)}
+                                                            className="p-1 text-blue-300 hover:text-blue-600 transition-all"
+                                                        >
+                                                            <Edit3 size={14} />
+                                                        </button>
                                                         <button 
                                                             onClick={() => {
                                                                 setConfirmModal({
@@ -1277,6 +1463,89 @@ const CashRegisterModule: React.FC<CashRegisterModuleProps> = ({
                 </div>
             )}
             {/* Modal de Confirmação Customizado */}
+            {/* Modais de Edição */}
+            {editingCard && (
+                <div className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm animate-in fade-in duration-200">
+                    <div className="bg-white w-full max-w-md rounded-[32px] shadow-2xl overflow-hidden animate-in zoom-in-95 duration-200">
+                        <div className="bg-blue-900 px-8 py-6 flex justify-between items-center">
+                            <h3 className="text-white font-black uppercase italic tracking-tighter flex items-center gap-2"><Edit3 size={20}/> Editar Cartão</h3>
+                            <button onClick={() => setEditingCard(null)} className="text-white/60 hover:text-white transition-all"><X size={24}/></button>
+                        </div>
+                        <form onSubmit={handleUpdateCard} className="p-8 space-y-6">
+                            <div className="space-y-1">
+                                <label className="text-[10px] font-black text-gray-400 uppercase ml-2">Ficha</label>
+                                <input 
+                                    value={editingCard.sale_code} 
+                                    onChange={e => setEditingCard({...editingCard, sale_code: e.target.value})} 
+                                    className="w-full p-4 bg-gray-50 border-none rounded-2xl font-black text-blue-950 uppercase outline-none focus:ring-4 focus:ring-blue-500/20" 
+                                />
+                            </div>
+                            <div className="space-y-1">
+                                <label className="text-[10px] font-black text-gray-400 uppercase ml-2">Bandeira</label>
+                                <select 
+                                    value={editingCard.brand} 
+                                    onChange={e => setEditingCard({...editingCard, brand: e.target.value})}
+                                    className="w-full p-4 bg-gray-50 border-none rounded-2xl font-black text-blue-950 uppercase outline-none focus:ring-4 focus:ring-blue-500/20"
+                                >
+                                    {availableBrands.map(b => <option key={b.id} value={b.name}>{b.name}</option>)}
+                                </select>
+                            </div>
+                            <div className="space-y-1">
+                                <label className="text-[10px] font-black text-gray-400 uppercase ml-2">Valor</label>
+                                <input 
+                                    value={editingCard.value} 
+                                    onChange={e => setEditingCard({...editingCard, value: e.target.value})} 
+                                    className="w-full p-4 bg-blue-50 border-none rounded-2xl font-black text-blue-900 text-xl text-center outline-none focus:ring-4 focus:ring-blue-500/20" 
+                                />
+                            </div>
+                            <button type="submit" disabled={isSubmitting} className="w-full py-5 bg-blue-900 text-white rounded-[24px] font-black uppercase text-xs shadow-xl active:scale-95 transition-all flex items-center justify-center gap-3">
+                                {isSubmitting ? <Loader2 className="animate-spin" /> : <Save size={18}/>} SALVAR ALTERAÇÕES
+                            </button>
+                        </form>
+                    </div>
+                </div>
+            )}
+
+            {editingPix && (
+                <div className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm animate-in fade-in duration-200">
+                    <div className="bg-white w-full max-w-md rounded-[32px] shadow-2xl overflow-hidden animate-in zoom-in-95 duration-200">
+                        <div className="bg-teal-900 px-8 py-6 flex justify-between items-center">
+                            <h3 className="text-white font-black uppercase italic tracking-tighter flex items-center gap-2"><Edit3 size={20}/> Editar Pix</h3>
+                            <button onClick={() => setEditingPix(null)} className="text-white/60 hover:text-white transition-all"><X size={24}/></button>
+                        </div>
+                        <form onSubmit={handleUpdatePix} className="p-8 space-y-6">
+                            <div className="space-y-1">
+                                <label className="text-[10px] font-black text-gray-400 uppercase ml-2">Ficha</label>
+                                <input 
+                                    value={editingPix.sale_code} 
+                                    onChange={e => setEditingPix({...editingPix, sale_code: e.target.value})} 
+                                    className="w-full p-4 bg-gray-50 border-none rounded-2xl font-black text-blue-950 uppercase outline-none focus:ring-4 focus:ring-teal-500/20" 
+                                />
+                            </div>
+                            <div className="space-y-1">
+                                <label className="text-[10px] font-black text-gray-400 uppercase ml-2">Cliente</label>
+                                <input 
+                                    value={editingPix.payer_name} 
+                                    onChange={e => setEditingPix({...editingPix, payer_name: e.target.value})} 
+                                    className="w-full p-4 bg-gray-50 border-none rounded-2xl font-black text-blue-950 uppercase outline-none focus:ring-4 focus:ring-teal-500/20" 
+                                />
+                            </div>
+                            <div className="space-y-1">
+                                <label className="text-[10px] font-black text-gray-400 uppercase ml-2">Valor</label>
+                                <input 
+                                    value={editingPix.value} 
+                                    onChange={e => setEditingPix({...editingPix, value: e.target.value})} 
+                                    className="w-full p-4 bg-teal-50 border-none rounded-2xl font-black text-teal-900 text-xl text-center outline-none focus:ring-4 focus:ring-teal-500/20" 
+                                />
+                            </div>
+                            <button type="submit" disabled={isSubmitting} className="w-full py-5 bg-teal-900 text-white rounded-[24px] font-black uppercase text-xs shadow-xl active:scale-95 transition-all flex items-center justify-center gap-3">
+                                {isSubmitting ? <Loader2 className="animate-spin" /> : <Save size={18}/>} SALVAR ALTERAÇÕES
+                            </button>
+                        </form>
+                    </div>
+                </div>
+            )}
+
             {confirmModal.isOpen && (
                 <div className="fixed inset-0 bg-black/60 backdrop-blur-sm flex items-center justify-center z-[300] p-4">
                     <div className="bg-white rounded-[32px] w-full max-w-sm shadow-2xl animate-in zoom-in duration-200 overflow-hidden">
