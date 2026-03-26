@@ -27,8 +27,8 @@ const AdminUsersManagement: React.FC<AdminUsersManagementProps> = ({ currentUser
 
     const filteredAdmins = admins
         .filter(admin => {
-            const matchesSearch = admin.name.toLowerCase().includes(searchTerm.toLowerCase()) || 
-                                 admin.email.toLowerCase().includes(searchTerm.toLowerCase());
+            const matchesSearch = (admin.name || '').toLowerCase().includes(searchTerm.toLowerCase()) || 
+                                 (admin.email || '').toLowerCase().includes(searchTerm.toLowerCase());
             const matchesRole = selectedRole === 'all' || admin.role_level === selectedRole;
             return matchesSearch && matchesRole;
         })

@@ -4,7 +4,7 @@ import { formatCurrency } from '../constants';
 
 // Lógica de imagens otimizada para alta resolução e fidelidade visual
 const getCategoryImage = (category: string, name: string) => {
-    const itemName = name.toLowerCase();
+    const itemName = (name || '').toLowerCase();
     // Sundae agora usa a mesma imagem do Copinho
     if (category === 'Sundae') return 'https://img.icons8.com/color/144/ice-cream-bowl.png';
     if (['Casquinha', 'Cascão', 'Cascão Trufado'].includes(category)) return 'https://img.icons8.com/color/144/ice-cream-cone.png';

@@ -35,7 +35,7 @@ interface CashRegisterModuleProps {
 
 // Mapeador de Ícones de Bandeiras - Atualizado com Elo Oficial
 export const getCardFlagIcon = (brandName: string) => {
-    const name = brandName.toLowerCase();
+    const name = (brandName || '').toLowerCase();
     // Bandeira Elo (Oficial Colorida)
     if (name.includes('elo')) return 'https://upload.wikimedia.org/wikipedia/commons/thumb/e/e3/Elo_logo.svg/1024px-Elo_logo.svg.png';
     if (name.includes('visa')) return 'https://img.icons8.com/color/48/visa.png';

@@ -424,7 +424,7 @@ const dreStats = useMemo(() => {
       if (auditSearch) {
         const search = auditSearch.toLowerCase();
         return (
-          s.productName.toLowerCase().includes(search) ||
+          (s.productName || '').toLowerCase().includes(search) ||
           s.saleCode?.toLowerCase().includes(search) ||
           s.buyer_name?.toLowerCase().includes(search)
         );

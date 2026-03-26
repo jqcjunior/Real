@@ -53,14 +53,14 @@ const DashboardAdmin: React.FC<DashboardAdminProps> = ({ stores, performanceData
                 const keys = Object.keys(row);
                 // 1. Busca exata (ignorando case e espaços)
                 let foundKey = keys.find(k => 
-                    aliases.some(a => k.trim().toLowerCase() === a.toLowerCase())
+                    aliases.some(a => (k || '').trim().toLowerCase() === (a || '').toLowerCase())
                 );
                 
                 // 2. Busca parcial se não encontrar exata
                 if (!foundKey) {
                     foundKey = keys.find(k => {
-                        const normalizedK = k.trim().toLowerCase();
-                        return aliases.some(a => normalizedK.includes(a.toLowerCase()));
+                        const normalizedK = (k || '').trim().toLowerCase();
+                        return aliases.some(a => normalizedK.includes((a || '').toLowerCase()));
                     });
                 }
                 return foundKey ? row[foundKey] : "";
