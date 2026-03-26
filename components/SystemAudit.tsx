@@ -33,6 +33,31 @@ const SystemAudit: React.FC<SystemAuditProps> = ({ logs, receipts, store, cashEr
   
   const [filterUser, setFilterUser] = useState('all');
   const [showDailySummary, setShowDailySummary] = useState(false);
+  const [confirmModal, setConfirmModal] = useState<{
+    isOpen: boolean;
+    title: string;
+    message: string;
+    onConfirm: () => void;
+  }>({
+    isOpen: false,
+    title: '',
+    message: '',
+    onConfirm: () => {}
+  });
+  const [toast, setToast] = useState<{
+    show: boolean;
+    message: string;
+    type: 'success' | 'error';
+  }>({
+    show: false,
+    message: '',
+    type: 'success'
+  });
+
+  const showToast = (message: string, type: 'success' | 'error' = 'success') => {
+    setToast({ show: true, message, type });
+    setTimeout(() => setToast({ ...toast, show: false }), 3000);
+  };
 
   const isManagement = currentUser?.role === UserRole.ADMIN || currentUser?.role === UserRole.MANAGER;
 
@@ -47,12 +72,23 @@ const SystemAudit: React.FC<SystemAuditProps> = ({ logs, receipts, store, cashEr
 
   const handleDeleteFinance = async (id: string, table: 'financial_card_sales' | 'financial_pix_sales') => {
       if (!isManagement) return;
-      if (!window.confirm("Deseja realmente EXCLUIR este registro permanentemente?")) return;
-      try {
-          const { error } = await supabase.from(table).delete().eq('id', id);
-          if (error) throw error;
-          alert("Registro removido com sucesso!");
-      } catch (e) { alert("Erro ao excluir."); }
+      
+      setConfirmModal({
+        isOpen: true,
+        title: 'Confirmar Exclusão',
+        message: 'Deseja realmente EXCLUIR este registro permanentemente?',
+        onConfirm: async () => {
+          try {
+              const { error } = await supabase.from(table).delete().eq('id', id);
+              if (error) throw error;
+              showToast("Registro removido com sucesso!");
+              setConfirmModal(prev => ({ ...prev, isOpen: false }));
+          } catch (e) { 
+              showToast("Erro ao excluir.", "error");
+              setConfirmModal(prev => ({ ...prev, isOpen: false }));
+          }
+        }
+      });
   };
 
   const checkDateInRange = (dateStr: string) => {
@@ -488,6 +524,44 @@ const SystemAudit: React.FC<SystemAuditProps> = ({ logs, receipts, store, cashEr
                 </button>
             </div>
           </div>
+        </div>
+      )}
+      {/* Modal de Confirmação Customizado */}
+      {confirmModal.isOpen && (
+        <div className="fixed inset-0 bg-black/60 backdrop-blur-sm flex items-center justify-center z-[300] p-4">
+          <div className="bg-white rounded-[32px] w-full max-w-sm shadow-2xl animate-in zoom-in duration-200 overflow-hidden">
+            <div className="p-8 text-center">
+              <div className="w-16 h-16 bg-red-50 text-red-600 rounded-full flex items-center justify-center mx-auto mb-6">
+                <AlertTriangle size={32} />
+              </div>
+              <h3 className="text-xl font-black text-gray-900 uppercase italic tracking-tighter mb-2">{confirmModal.title}</h3>
+              <p className="text-sm font-bold text-gray-500 leading-relaxed">{confirmModal.message}</p>
+            </div>
+            <div className="flex border-t border-gray-100">
+              <button 
+                onClick={() => setConfirmModal(prev => ({ ...prev, isOpen: false }))}
+                className="flex-1 py-6 text-[10px] font-black uppercase text-gray-400 hover:bg-gray-50 transition-colors"
+              >
+                Cancelar
+              </button>
+              <button 
+                onClick={confirmModal.onConfirm}
+                className="flex-1 py-6 text-[10px] font-black uppercase text-red-600 hover:bg-red-50 transition-colors border-l border-gray-100"
+              >
+                Confirmar Exclusão
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Toast de Notificação */}
+      {toast.show && (
+        <div className={`fixed bottom-24 left-1/2 -translate-x-1/2 z-[400] px-6 py-3 rounded-2xl shadow-2xl animate-in slide-in-from-bottom-4 duration-300 flex items-center gap-3 border ${
+          toast.type === 'success' ? 'bg-emerald-600 border-emerald-500 text-white' : 'bg-red-600 border-red-500 text-white'
+        }`}>
+          {toast.type === 'success' ? <CheckCircle2 size={18} /> : <AlertTriangle size={18} />}
+          <span className="text-[10px] font-black uppercase tracking-widest">{toast.message}</span>
         </div>
       )}
     </div>

@@ -359,8 +359,35 @@ const CashRegisterModule: React.FC<CashRegisterModuleProps> = ({
     const [pixValueInput, setPixValueInput] = useState('');
     const [pixTicketInput, setPixTicketInput] = useState('');
     const [pixClientInput, setPixClientInput] = useState('');
+    const [clientSuggestions, setClientSuggestions] = useState<string[]>([]);
+    const [showSuggestions, setShowSuggestions] = useState(false);
 
     const [receiptForm, setReceiptForm] = useState({ recipient: '', value: '', reference: '' });
+    const [confirmModal, setConfirmModal] = useState<{
+        isOpen: boolean;
+        title: string;
+        message: string;
+        onConfirm: () => void;
+    }>({
+        isOpen: false,
+        title: '',
+        message: '',
+        onConfirm: () => {}
+    });
+    const [toast, setToast] = useState<{
+        show: boolean;
+        message: string;
+        type: 'success' | 'error';
+    }>({
+        show: false,
+        message: '',
+        type: 'success'
+    });
+
+    const showToast = (message: string, type: 'success' | 'error' = 'success') => {
+        setToast({ show: true, message, type });
+        setTimeout(() => setToast(prev => ({ ...prev, show: false })), 3000);
+    };
 
     const selectedStore = useMemo(() => stores.find(s => s.id === selectedStoreId), [stores, selectedStoreId]);
     const payerName = useMemo(() => {
@@ -496,16 +523,24 @@ const CashRegisterModule: React.FC<CashRegisterModuleProps> = ({
             if (error) throw error;
             setNewBrandName('');
             await fetchBrands();
-        } catch (e: any) { alert("Erro: " + e.message); } 
+        } catch (e: any) { showToast("Erro: " + e.message, "error"); } 
         finally { setIsSubmitting(false); }
     };
 
     const handleDeleteBrand = async (id: string) => {
-        if (!window.confirm("Deseja remover esta bandeira?")) return;
-        try {
-            await supabase.from('financial_card_brands').delete().eq('id', id);
-            await fetchBrands();
-        } catch (e) { alert("Erro."); }
+        setConfirmModal({
+            isOpen: true,
+            title: 'Remover Bandeira',
+            message: 'Deseja remover esta bandeira?',
+            onConfirm: async () => {
+                try {
+                    await supabase.from('financial_card_brands').delete().eq('id', id);
+                    await fetchBrands();
+                    showToast("Bandeira removida!");
+                } catch (e) { showToast("Erro ao remover bandeira.", "error"); }
+                setConfirmModal(prev => ({ ...prev, isOpen: false }));
+            }
+        });
     };
 
     const nextReceiptNumber = useMemo(() => {
@@ -551,48 +586,109 @@ const CashRegisterModule: React.FC<CashRegisterModuleProps> = ({
             const { error } = await supabase.from('financial_card_sales').insert(entries);
             if (error) throw error;
             if (onAddLog) await onAddLog('VALIDAÇÃO CARTÕES', `Lançamento de ${entries.length} cartões na loja ${selectedStoreId} totalizando ${formatCurrency(totalStagedValue)}`);
-            if (window.confirm("Vendas validadas! Deseja imprimir o resumo de conferência?")) { printCardSummaryDoc(selectedDate, payerName, stagedCards, user.name); }
+            
+            setConfirmModal({
+                isOpen: true,
+                title: 'Vendas Validadas',
+                message: 'Vendas validadas! Deseja imprimir o resumo de conferência?',
+                onConfirm: () => {
+                    printCardSummaryDoc(selectedDate, payerName, stagedCards, user.name);
+                    setConfirmModal(prev => ({ ...prev, isOpen: false }));
+                }
+            });
+
             setStagedCards([]);
-            alert("Sucesso!");
-        } catch (e: any) { alert("Erro: " + e.message); } 
+            showToast("Sucesso!");
+        } catch (e: any) { showToast("Erro: " + e.message, "error"); } 
         finally { setIsSubmitting(false); }
     };
 
+    // Autocomplete de Clientes PIX
+    useEffect(() => {
+        const timer = setTimeout(async () => {
+            if (pixClientInput.length < 2) {
+                setClientSuggestions([]);
+                return;
+            }
+            try {
+                const { data, error } = await supabase
+                    .from('financial_pix_sales')
+                    .select('payer_name')
+                    .ilike('payer_name', `%${pixClientInput}%`)
+                    .limit(10);
+                
+                if (error) throw error;
+                if (data) {
+                    const unique = [...new Set(data.map(item => item.payer_name).filter(Boolean))];
+                    setClientSuggestions(unique as string[]);
+                }
+            } catch (e) {
+                console.error("Erro ao buscar clientes:", e);
+            }
+        }, 300);
+
+        return () => clearTimeout(timer);
+    }, [pixClientInput]);
+
+    // Fechar sugestões ao clicar fora
+    useEffect(() => {
+        const handleClickOutside = () => setShowSuggestions(false);
+        window.addEventListener('click', handleClickOutside);
+        return () => window.removeEventListener('click', handleClickOutside);
+    }, []);
+
+    const today = new Date().toISOString().split('T')[0];
+
     const handleAddStagedPix = (e: React.FormEvent) => {
         e.preventDefault();
+        if (selectedDate !== today) {
+            showToast("Lançamentos Pix só podem ser feitos na data de hoje.", "error");
+            return;
+        }
+        const clientName = pixClientInput.trim().toUpperCase();
+        if (!clientName) {
+            showToast("O nome do cliente é obrigatório.", "error");
+            return;
+        }
         const val = parseFloat(pixValueInput.replace(',', '.'));
         if (isNaN(val) || val <= 0) return;
         setStagedPix(prev => [{ 
             id: `stg-pix-${Date.now()}-${Math.random()}`, 
             ticket: pixTicketInput, 
             value: val, 
-            client: pixClientInput.toUpperCase() 
+            client: clientName 
         }, ...prev]);
         setPixValueInput('');
         setPixTicketInput('');
         setPixClientInput('');
+        setClientSuggestions([]);
+        setShowSuggestions(false);
     };
 
     const handleValidateAndSavePix = async () => {
         if (stagedPix.length === 0) return;
+        if (selectedDate !== today) {
+            showToast("Lançamentos Pix só podem ser feitos na data de hoje.", "error");
+            return;
+        }
         setIsSubmitting(true);
         try {
             const entries = stagedPix.map(p => ({ 
                 store_id: selectedStoreId, 
                 user_id: user.id, 
                 user_name: user.name, 
-                date: selectedDate, 
+                // date: selectedDate, // Removido para ser definido exclusivamente pelo backend
                 sale_code: p.ticket, // Número da Ficha
                 value: p.value, 
-                client_name: p.client
+                payer_name: p.client
             }));
             const { error } = await supabase.from('financial_pix_sales').insert(entries);
             if (error) throw error;
             const totalPix = stagedPix.reduce((a, b) => a + b.value, 0);
             if (onAddLog) await onAddLog('VALIDAÇÃO PIX', `Lançamento de ${entries.length} Pix na loja ${selectedStoreId} totalizando ${formatCurrency(totalPix)}`);
             setStagedPix([]);
-            alert("Vendas Pix validadas!");
-        } catch (e: any) { alert("Erro: " + e.message); } 
+            showToast("Vendas Pix validadas!");
+        } catch (e: any) { showToast("Erro: " + e.message, "error"); } 
         finally { setIsSubmitting(false); }
     };
     const [errorForm, setErrorForm] = useState({ value: '', reason: '', type: 'shortage' as 'shortage' | 'surplus' });
@@ -617,8 +713,8 @@ const CashRegisterModule: React.FC<CashRegisterModuleProps> = ({
             await onAddReceipt(rData);
             printReceiptDoc(rData);
             setReceiptForm({ recipient: '', value: '', reference: '' });
-            alert("Recibo emitido!");
-        } catch (error) { alert("Erro."); }
+            showToast("Recibo emitido!");
+        } catch (error) { showToast("Erro.", "error"); }
         finally { setIsSubmitting(false); }
     };
 
@@ -794,14 +890,21 @@ const CashRegisterModule: React.FC<CashRegisterModuleProps> = ({
                                                     <td className="px-6 py-3 text-right text-blue-900 font-black">{formatCurrency(c.value)}</td>
                                                     <td className="px-6 py-3 text-center">
                                                         <button 
-                                                            onClick={async () => {
-                                                                if (!window.confirm("Deseja excluir este lançamento?")) return;
-                                                                try {
-                                                                    const { error } = await supabase.from('financial_card_sales').delete().eq('id', c.id);
-                                                                    if (error) throw error;
-                                                                    fetchDailyTotals();
-                                                                    alert("Lançamento excluído!");
-                                                                } catch (e: any) { alert("Erro: " + e.message); }
+                                                            onClick={() => {
+                                                                setConfirmModal({
+                                                                    isOpen: true,
+                                                                    title: 'Excluir Lançamento',
+                                                                    message: 'Deseja excluir este lançamento?',
+                                                                    onConfirm: async () => {
+                                                                        try {
+                                                                            const { error } = await supabase.from('financial_card_sales').delete().eq('id', c.id);
+                                                                            if (error) throw error;
+                                                                            fetchDailyTotals();
+                                                                            showToast("Lançamento excluído!");
+                                                                        } catch (e: any) { showToast("Erro: " + e.message, "error"); }
+                                                                        setConfirmModal(prev => ({ ...prev, isOpen: false }));
+                                                                    }
+                                                                });
                                                             }}
                                                             className="p-1 text-red-300 hover:text-red-600 transition-all"
                                                         >
@@ -831,19 +934,57 @@ const CashRegisterModule: React.FC<CashRegisterModuleProps> = ({
                                     <h3 className="text-base font-black text-gray-900 uppercase italic tracking-tighter flex items-center gap-2"><DollarSign className="text-teal-600" size={20} /> Novo Lançamento <span className="text-teal-600">Pix</span></h3>
                                 </div>
                                 <form onSubmit={handleAddStagedPix} className="space-y-4">
+                                    {selectedDate !== today && (
+                                        <div className="p-3 bg-amber-50 border border-amber-200 rounded-xl flex items-center gap-2 text-amber-700 text-[10px] font-bold uppercase italic">
+                                            <AlertTriangle size={14} /> Lançamentos Pix bloqueados para datas retroativas.
+                                        </div>
+                                    )}
                                     <div className="space-y-1">
                                         <label className="text-[9px] font-black text-gray-400 uppercase ml-2">Número da Ficha</label>
-                                        <input required value={pixTicketInput} onChange={e => setPixTicketInput(e.target.value)} className="w-full p-4 bg-gray-50 border-none rounded-[20px] font-black text-lg outline-none focus:ring-4 focus:ring-teal-500/20" placeholder="0000" />
+                                        <input required disabled={selectedDate !== today} value={pixTicketInput} onChange={e => setPixTicketInput(e.target.value)} className="w-full p-4 bg-gray-50 border-none rounded-[20px] font-black text-lg outline-none focus:ring-4 focus:ring-teal-500/20 disabled:opacity-50" placeholder="0000" />
                                     </div>
-                                    <div className="space-y-1">
+                                    <div className="space-y-1 relative" onClick={e => e.stopPropagation()}>
                                         <label className="text-[9px] font-black text-gray-400 uppercase ml-2">Nome do Cliente</label>
-                                        <input required value={pixClientInput} onChange={e => setPixClientInput(e.target.value)} className="w-full p-4 bg-gray-50 border-none rounded-[20px] font-black text-lg uppercase outline-none focus:ring-4 focus:ring-teal-500/20" placeholder="NOME DO CLIENTE" />
+                                        <input 
+                                            required 
+                                            disabled={selectedDate !== today} 
+                                            value={pixClientInput} 
+                                            onChange={e => {
+                                                setPixClientInput(e.target.value);
+                                                setShowSuggestions(true);
+                                            }} 
+                                            onFocus={(e) => {
+                                                e.stopPropagation();
+                                                setShowSuggestions(true);
+                                            }}
+                                            className="w-full p-4 bg-gray-50 border-none rounded-[20px] font-black text-lg uppercase outline-none focus:ring-4 focus:ring-teal-500/20 disabled:opacity-50" 
+                                            placeholder="NOME DO CLIENTE" 
+                                            autoComplete="off"
+                                        />
+                                        {showSuggestions && clientSuggestions.length > 0 && (
+                                            <div className="absolute z-50 w-full mt-1 bg-white border border-gray-100 rounded-2xl shadow-2xl overflow-hidden animate-in fade-in zoom-in-95 duration-200">
+                                                {clientSuggestions.map((name, idx) => (
+                                                    <button
+                                                        key={idx}
+                                                        type="button"
+                                                        onClick={() => {
+                                                            setPixClientInput(name);
+                                                            setClientSuggestions([]);
+                                                            setShowSuggestions(false);
+                                                        }}
+                                                        className="w-full px-4 py-3 text-left text-[10px] font-black uppercase text-blue-950 hover:bg-teal-50 transition-colors border-b border-gray-50 last:border-none"
+                                                    >
+                                                        {name}
+                                                    </button>
+                                                ))}
+                                            </div>
+                                        )}
                                     </div>
                                     <div className="space-y-1">
                                         <label className="text-[9px] font-black text-gray-400 uppercase ml-2">Valor do Pix</label>
-                                        <input required value={pixValueInput} onChange={e => setPixValueInput(e.target.value)} className="w-full p-4 bg-gray-950 text-white border-none rounded-[20px] font-black text-2xl text-center outline-none focus:ring-4 focus:ring-teal-500/20" placeholder="0,00" />
+                                        <input required disabled={selectedDate !== today} value={pixValueInput} onChange={e => setPixValueInput(e.target.value)} className="w-full p-4 bg-gray-950 text-white border-none rounded-[20px] font-black text-2xl text-center outline-none focus:ring-4 focus:ring-teal-500/20 disabled:opacity-50" placeholder="0,00" />
                                     </div>
-                                    <button type="submit" className="w-full py-4 bg-teal-600 text-white rounded-[20px] font-black uppercase text-[10px] shadow-xl active:scale-95 transition-all border-b-4 border-teal-800 flex items-center justify-center gap-2"><Plus size={16}/> ADICIONAR</button>
+                                    <button type="submit" disabled={selectedDate !== today} className="w-full py-4 bg-teal-600 text-white rounded-[20px] font-black uppercase text-[10px] shadow-xl active:scale-95 transition-all border-b-4 border-teal-800 flex items-center justify-center gap-2 disabled:bg-gray-400 disabled:border-gray-500 disabled:cursor-not-allowed"><Plus size={16}/> ADICIONAR</button>
                                 </form>
                             </div>
                             <div className="lg:col-span-8 bg-white rounded-[32px] shadow-xl border border-gray-100 flex flex-col min-h-[500px] overflow-hidden">
@@ -908,19 +1049,26 @@ const CashRegisterModule: React.FC<CashRegisterModuleProps> = ({
                                             {manualPix.map((p) => (
                                                 <tr key={p.id} className="hover:bg-gray-50/50 transition-all">
                                                     <td className="px-6 py-3 text-blue-950 font-black">#{p.sale_code}</td>
-                                                    <td className="px-6 py-3 text-gray-600 uppercase">{p.client_name || '---'}</td>
+                                                    <td className="px-6 py-3 text-gray-600 uppercase">{p.payer_name || '---'}</td>
                                                     <td className="px-6 py-3 text-gray-400 uppercase">{p.user_name}</td>
                                                     <td className="px-6 py-3 text-right text-teal-700 font-black">{formatCurrency(p.value)}</td>
                                                     <td className="px-6 py-3 text-center">
                                                         <button 
-                                                            onClick={async () => {
-                                                                if (!window.confirm("Deseja excluir este lançamento?")) return;
-                                                                try {
-                                                                    const { error } = await supabase.from('financial_pix_sales').delete().eq('id', p.id);
-                                                                    if (error) throw error;
-                                                                    fetchDailyTotals();
-                                                                    alert("Lançamento excluído!");
-                                                                } catch (e: any) { alert("Erro: " + e.message); }
+                                                            onClick={() => {
+                                                                setConfirmModal({
+                                                                    isOpen: true,
+                                                                    title: 'Excluir Lançamento',
+                                                                    message: 'Deseja excluir este lançamento?',
+                                                                    onConfirm: async () => {
+                                                                        try {
+                                                                            const { error } = await supabase.from('financial_pix_sales').delete().eq('id', p.id);
+                                                                            if (error) throw error;
+                                                                            fetchDailyTotals();
+                                                                            showToast("Lançamento excluído!");
+                                                                        } catch (e: any) { showToast("Erro: " + e.message, "error"); }
+                                                                        setConfirmModal(prev => ({ ...prev, isOpen: false }));
+                                                                    }
+                                                                });
                                                             }}
                                                             className="p-1 text-red-300 hover:text-red-600 transition-all"
                                                         >
@@ -977,7 +1125,7 @@ const CashRegisterModule: React.FC<CashRegisterModuleProps> = ({
                             </div>
                             <form onSubmit={async (e) => { 
                                 e.preventDefault(); 
-                                if (!selectedStoreId) { alert("Selecione uma loja primeiro."); return; }
+                                if (!selectedStoreId) { showToast("Selecione uma loja primeiro.", "error"); return; }
                                 setIsSubmitting(true); 
                                 try { 
                                     await onAddError({ 
@@ -990,8 +1138,8 @@ const CashRegisterModule: React.FC<CashRegisterModuleProps> = ({
                                         reason: errorForm.reason.toUpperCase() 
                                     }); 
                                     setErrorForm({ value: '', reason: '', type: 'shortage' }); 
-                                    alert("Sucesso!"); 
-                                } catch { alert("Erro."); } 
+                                    showToast("Sucesso!"); 
+                                } catch { showToast("Erro.", "error"); } 
                                 finally { setIsSubmitting(false); } 
                             }} className="space-y-6">
                                 <div className="space-y-2"><label className="text-[10px] font-black text-gray-400 uppercase ml-2">Tipo</label><div className="flex bg-gray-100 p-1 rounded-2xl"><button type="button" onClick={() => setErrorForm({...errorForm, type: 'shortage'})} className={`flex-1 py-4 rounded-xl text-[10px] font-black uppercase transition-all ${errorForm.type === 'shortage' ? 'bg-red-600 text-white shadow-lg' : 'text-gray-400'}`}>Falta (-)</button><button type="button" onClick={() => setErrorForm({...errorForm, type: 'surplus'})} className={`flex-1 py-4 rounded-xl text-[10px] font-black uppercase transition-all ${errorForm.type === 'surplus' ? 'bg-green-600 text-white shadow-lg' : 'text-gray-400'}`}>Sobra (+)</button></div></div>
@@ -1077,26 +1225,33 @@ const CashRegisterModule: React.FC<CashRegisterModuleProps> = ({
                             </div>
 
                             <button 
-                                onClick={async () => {
+                                onClick={() => {
                                     if (!selectedStoreId) return;
-                                    if (!window.confirm("Deseja realizar o fechamento do caixa para esta data?")) return;
-                                    setIsSubmitting(true);
-                                    try {
-                                        const totalSales = (Object.values(dailyTotals) as number[]).reduce((acc, val) => acc + val, 0);
-                                        await onAddClosure({
-                                            storeId: selectedStoreId,
-                                            totalSales,
-                                            totalExpenses: 0,
-                                            balance: totalSales,
-                                            notes: `Fechamento automático via sistema em ${selectedDate}`,
-                                            date: selectedDate
-                                        });
-                                        alert("Caixa fechado com sucesso!");
-                                    } catch {
-                                        alert("Erro ao fechar caixa.");
-                                    } finally {
-                                        setIsSubmitting(false);
-                                    }
+                                    setConfirmModal({
+                                        isOpen: true,
+                                        title: 'Fechar Caixa',
+                                        message: 'Deseja realizar o fechamento do caixa para esta data?',
+                                        onConfirm: async () => {
+                                            setIsSubmitting(true);
+                                            try {
+                                                const totalSales = (Object.values(dailyTotals) as number[]).reduce((acc, val) => acc + val, 0);
+                                                await onAddClosure({
+                                                    storeId: selectedStoreId,
+                                                    totalSales,
+                                                    totalExpenses: 0,
+                                                    balance: totalSales,
+                                                    notes: `Fechamento automático via sistema em ${selectedDate}`,
+                                                    date: selectedDate
+                                                });
+                                                showToast("Caixa fechado com sucesso!");
+                                            } catch {
+                                                showToast("Erro ao fechar caixa.", "error");
+                                            } finally {
+                                                setIsSubmitting(false);
+                                            }
+                                            setConfirmModal(prev => ({ ...prev, isOpen: false }));
+                                        }
+                                    });
                                 }}
                                 disabled={isSubmitting || Object.keys(dailyTotals).length === 0}
                                 className="w-full mt-6 py-5 bg-blue-900 text-white rounded-[28px] font-black uppercase text-xs shadow-xl active:scale-95 border-b-4 border-blue-950 flex items-center justify-center gap-3"
@@ -1119,6 +1274,44 @@ const CashRegisterModule: React.FC<CashRegisterModuleProps> = ({
                             </div>
                         </div>
                     </div>
+                </div>
+            )}
+            {/* Modal de Confirmação Customizado */}
+            {confirmModal.isOpen && (
+                <div className="fixed inset-0 bg-black/60 backdrop-blur-sm flex items-center justify-center z-[300] p-4">
+                    <div className="bg-white rounded-[32px] w-full max-w-sm shadow-2xl animate-in zoom-in duration-200 overflow-hidden">
+                        <div className="p-8 text-center">
+                            <div className="w-16 h-16 bg-blue-50 text-blue-600 rounded-full flex items-center justify-center mx-auto mb-6">
+                                <AlertTriangle size={32} />
+                            </div>
+                            <h3 className="text-xl font-black text-gray-900 uppercase italic tracking-tighter mb-2">{confirmModal.title}</h3>
+                            <p className="text-sm font-bold text-gray-500 leading-relaxed">{confirmModal.message}</p>
+                        </div>
+                        <div className="flex border-t border-gray-100">
+                            <button 
+                                onClick={() => setConfirmModal(prev => ({ ...prev, isOpen: false }))}
+                                className="flex-1 py-6 text-[10px] font-black uppercase text-gray-400 hover:bg-gray-50 transition-colors"
+                            >
+                                Cancelar
+                            </button>
+                            <button 
+                                onClick={confirmModal.onConfirm}
+                                className="flex-1 py-6 text-[10px] font-black uppercase text-blue-600 hover:bg-blue-50 transition-colors border-l border-gray-100"
+                            >
+                                Confirmar
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            )}
+
+            {/* Toast de Notificação */}
+            {toast.show && (
+                <div className={`fixed bottom-24 left-1/2 -translate-x-1/2 z-[400] px-6 py-3 rounded-2xl shadow-2xl animate-in slide-in-from-bottom-4 duration-300 flex items-center gap-3 border ${
+                    toast.type === 'success' ? 'bg-emerald-600 border-emerald-500 text-white' : 'bg-red-600 border-red-500 text-white'
+                }`}>
+                    {toast.type === 'success' ? <CheckCircle2 size={18} /> : <AlertTriangle size={18} />}
+                    <span className="text-[10px] font-black uppercase tracking-widest">{toast.message}</span>
                 </div>
             )}
         </div>

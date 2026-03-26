@@ -46,7 +46,7 @@ create table public.financial_pix_sales (
     date date not null,
     sale_code text, -- Número da Ficha
     value numeric(10,2) not null,
-    client_name text,
+    payer_name text,
     created_at timestamptz default now()
 );
 ```
