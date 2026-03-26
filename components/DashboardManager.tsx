@@ -217,10 +217,18 @@ const DashboardManager: React.FC<DashboardManagerProps> = ({ user, stores, perfo
           };
 
           const pF = calcPercent(p.revenueActual, p.revenueTarget, 'higher');
-          const paActual = Number(monthData.find(md => String(md.storeId || md.store_id) === storeId)?.paActual || 0);
+          const perfItem = monthData.find(md => String(md.storeId || md.store_id) === storeId);
+          
+          let paActual = Number(perfItem?.paActual || 0);
+          if (paActual === 0 && p.salesActual > 0) paActual = p.itemsActual / p.salesActual;
+          
+          let tktActual = Number(perfItem?.averageTicket || 0);
+          if (tktActual === 0 && p.salesActual > 0) tktActual = p.revenueActual / p.salesActual;
+          
+          let puActual = Number(perfItem?.puActual || 0);
+          if (puActual === 0 && p.itemsActual > 0) puActual = p.revenueActual / p.itemsActual;
+
           const pPA = calcPercent(paActual, p.paTarget, 'higher');
-          const tktActual = Number(monthData.find(md => String(md.storeId || md.store_id) === storeId)?.averageTicket || 0);
-          const puActual = Number(monthData.find(md => String(md.storeId || md.store_id) === storeId)?.puActual || 0);
 
           // Nova métrica: Faturamento 50%, P.A 50%
           const scoreFinal = (pF * 0.50) + (pPA * 0.50);
@@ -302,36 +310,61 @@ const DashboardManager: React.FC<DashboardManagerProps> = ({ user, stores, perfo
     return Math.max(remainingCount, 1);
   };
 
-  const getDetailedAdvice = (curr: any, next?: any) => {
+  const getDetailedAdvice = (curr: any, next: any, idx: number) => {
     const remainingDays = getRemainingWorkDays(selectedMonth, curr.storeId);
-    const targetStore = next || curr;
+    const adviceParts = [];
     
-    // Se for o próprio curr, as metas são dele mesmo
-    const revDiff = Math.max(targetStore.revenueTarget - curr.revenueActual, 0);
-    const dailyRev = revDiff / remainingDays;
-    
-    let advice = [];
-    
+    // 1. Meta de Faturamento (Sempre mostra)
+    const revDiff = Math.max(curr.revenueTarget - curr.revenueActual, 0);
     if (revDiff > 0) {
-        advice.push(`Venda R$ ${formatDecimal(dailyRev)}/dia para bater a meta.`);
+        const dailyRev = revDiff / remainingDays;
+        adviceParts.push(`Venda R$ ${formatDecimal(dailyRev)}/dia para bater a meta.`);
+    } else {
+        adviceParts.push(`Meta de faturamento atingida!`);
     }
 
-    if (curr.paActual < targetStore.paTarget) {
-        const itemsNeeded = Math.ceil((targetStore.paTarget * curr.salesActual) - curr.itemsActual);
-        if (itemsNeeded > 0) advice.push(`Venda +${itemsNeeded} itens no total para atingir P.A ${targetStore.paTarget.toFixed(2)}.`);
+    // Para lojas 02 em diante (idx > 0)
+    if (idx > 0) {
+        // 2. Ticket Médio
+        if (curr.ticketActual < curr.ticketTarget) {
+            const tktDiff = curr.ticketTarget - curr.ticketActual;
+            const totalTktNeeded = tktDiff * curr.salesActual;
+            adviceParts.push(`Aumente R$ ${formatDecimal(totalTktNeeded)} em vendas para bater o Ticket.`);
+        }
+
+        // 3. P.A
+        if (curr.paActual < curr.paTarget) {
+            const paDiff = curr.paTarget - curr.paActual;
+            const itemsNeeded = Math.ceil(paDiff * curr.salesActual);
+            const revForPA = itemsNeeded * (curr.puActual || 0);
+            adviceParts.push(`Aumente R$ ${formatDecimal(revForPA)} em vendas para bater o P.A.`);
+        }
+
+        // 4. P.U
+        if (curr.puActual > curr.puTarget) {
+            const puDiff = curr.puActual - curr.puTarget;
+            adviceParts.push(`Reduza o P.U em R$ ${formatDecimal(puDiff)}.`);
+        }
+
+        // 5. Ultrapassar a loja à frente
+        if (next) {
+            const currPAAttainment = Math.min((curr.paActual / curr.paTarget), 1.2);
+            const nextScoreDecimal = (next.score || 0) / 100;
+            const neededRevAttainment = (nextScoreDecimal - (currPAAttainment * 0.5)) / 0.5;
+            
+            if (neededRevAttainment <= 1.2) {
+                const neededTotalRev = neededRevAttainment * curr.revenueTarget;
+                const extraRevNeeded = Math.max(neededTotalRev - curr.revenueActual, 0);
+                if (extraRevNeeded > 0) {
+                    adviceParts.push(`Venda mais R$ ${formatDecimal(extraRevNeeded)} para ultrapassar a Loja ${next.storeNumber}.`);
+                }
+            } else {
+                adviceParts.push(`Para ultrapassar a Loja ${next.storeNumber}, melhore também seu P.A.`);
+            }
+        }
     }
 
-    if (curr.ticketActual < targetStore.ticketTarget) {
-        const tktDiff = targetStore.ticketTarget - curr.ticketActual;
-        advice.push(`Aumente o Ticket Médio em R$ ${formatDecimal(tktDiff)}.`);
-    }
-
-    if (curr.puActual > targetStore.puTarget) {
-        const puDiff = curr.puActual - targetStore.puTarget;
-        advice.push(`Reduza o P.U em R$ ${formatDecimal(puDiff)} (foco em itens de menor valor).`);
-    }
-
-    return advice;
+    return adviceParts;
   };
 
   const getRevenueToPass = (curr: any, target: any) => {
@@ -465,7 +498,7 @@ const DashboardManager: React.FC<DashboardManagerProps> = ({ user, stores, perfo
 
                                 const tier = getTier(idx);
                                 const textColor = tier.color.split(' ')[1];
-                                const advice = getDetailedAdvice(item, weightedRanking[idx - 1]);
+                                const advice = getDetailedAdvice(item, weightedRanking[idx - 1], idx);
 
                                 return (
                                     <div key={idx} className={`p-5 md:p-8 rounded-[32px] border transition-all duration-500 ${isMe ? 'bg-white border-blue-200 ring-8 ring-blue-50 shadow-2xl shadow-blue-900/10 scale-[1.02] z-20' : 'bg-slate-50/50 border-transparent hover:bg-white hover:border-slate-100 hover:shadow-xl'}`}>
@@ -562,7 +595,7 @@ const DashboardManager: React.FC<DashboardManagerProps> = ({ user, stores, perfo
                                             <div className="mt-4 pt-4 border-t border-slate-100 space-y-1">
                                                 {advice.map((line, i) => (
                                                     <div key={i} className="text-[9px] font-bold text-slate-500 flex items-center gap-2">
-                                                        <div className="w-1 h-1 rounded-full bg-blue-400 shrink-0" /> {line}
+                                                        <Zap size={10} className="text-blue-400 shrink-0" /> {line}
                                                     </div>
                                                 ))}
                                             </div>
@@ -581,7 +614,7 @@ const DashboardManager: React.FC<DashboardManagerProps> = ({ user, stores, perfo
                                 const curr = weightedRanking[myIdx];
                                 const nextStore = weightedRanking[myIdx - 1];
                                 const diff = nextStore.score - curr.score;
-                                const advice = getDetailedAdvice(curr, nextStore);
+                                const advice = getDetailedAdvice(curr, nextStore, myIdx);
                                 
                                 // Pegar as 3 lojas acima para mostrar quanto falta
                                 const storesAbove = weightedRanking.slice(Math.max(0, myIdx - 3), myIdx).reverse();

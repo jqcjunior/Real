@@ -196,9 +196,14 @@ const DashboardAdmin: React.FC<DashboardAdminProps> = ({ stores, performanceData
             const itemsTarget = Number(perf?.itemsTarget || goal?.itemsTarget || 0);
             const salesActual = Number(perf?.salesActual || 0);
             
-            const paActual = Number(perf?.paActual || 0);
-            const puActual = Number(perf?.puActual || 0);
-            const averageTicket = Number(perf?.averageTicket || 0);
+            let paActual = Number(perf?.paActual || 0);
+            if (paActual === 0 && salesActual > 0) paActual = itemsActual / salesActual;
+            
+            let puActual = Number(perf?.puActual || 0);
+            if (puActual === 0 && itemsActual > 0) puActual = revenueActual / itemsActual;
+            
+            let averageTicket = Number(perf?.averageTicket || 0);
+            if (averageTicket === 0 && salesActual > 0) averageTicket = revenueActual / salesActual;
 
             const paTarget = Number(perf?.paTarget || goal?.paTarget || 0);
             const puTarget = Number(perf?.puTarget || goal?.puTarget || 0);
@@ -518,29 +523,61 @@ const DashboardAdmin: React.FC<DashboardAdminProps> = ({ stores, performanceData
                             return Math.max(count, 1);
                         };
 
-                        const getDetailedAdvice = (curr: any, next: any) => {
+                        const getDetailedAdvice = (curr: any, next: any, idx: number) => {
                             const remainingDays = getRemainingWorkDays(selectedMonth);
-                            const diff = getScore(next) - getScore(curr);
+                            const adviceParts = [];
                             
-                            const revDiff = Math.max(next.revenueTarget - curr.revenueActual, 0);
-                            const dailyRev = revDiff / remainingDays;
-                            
-                            let advice = `Melhore seu score em ${diff.toFixed(1)}% para alcançar a Loja ${next.storeNumber}. `;
-                            
+                            // 1. Meta de Faturamento (Sempre mostra)
+                            const revDiff = Math.max(curr.revenueTarget - curr.revenueActual, 0);
                             if (revDiff > 0) {
-                                advice += `Venda R$ ${dailyRev.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}/dia para bater a meta. `;
+                                const dailyRev = revDiff / remainingDays;
+                                adviceParts.push(`Venda R$ ${dailyRev.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}/dia para bater a meta.`);
+                            } else {
+                                adviceParts.push(`Meta de faturamento atingida!`);
                             }
 
-                            if (curr.paActual < next.paTarget) {
-                                const itemsNeeded = Math.ceil((next.paTarget * curr.salesActual) - curr.itemsActual);
-                                if (itemsNeeded > 0) advice += `Venda +${itemsNeeded} itens para atingir P.A ${next.paTarget.toFixed(2)}. `;
+                            // Para lojas 02 em diante (idx > 0)
+                            if (idx > 0) {
+                                // 2. Ticket Médio
+                                if (curr.averageTicket < curr.ticketTarget) {
+                                    const tktDiff = curr.ticketTarget - curr.averageTicket;
+                                    const totalTktNeeded = tktDiff * curr.salesActual;
+                                    adviceParts.push(`Aumente R$ ${totalTktNeeded.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} em vendas para bater o Ticket.`);
+                                }
+
+                                // 3. P.A
+                                if (curr.paActual < curr.paTarget) {
+                                    const paDiff = curr.paTarget - curr.paActual;
+                                    const itemsNeeded = Math.ceil(paDiff * curr.salesActual);
+                                    const revForPA = itemsNeeded * (curr.puActual || 0);
+                                    adviceParts.push(`Aumente R$ ${revForPA.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} em vendas para bater o P.A.`);
+                                }
+
+                                // 4. P.U
+                                if (curr.puActual > curr.puTarget) {
+                                    const puDiff = curr.puActual - curr.puTarget;
+                                    adviceParts.push(`Reduza o P.U em R$ ${puDiff.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}.`);
+                                }
+
+                                // 5. Ultrapassar a loja à frente
+                                if (next) {
+                                    const currPAAttainment = Math.min((curr.paActual / curr.paTarget), 1.2);
+                                    const nextScoreDecimal = getScore(next) / 100;
+                                    const neededRevAttainment = (nextScoreDecimal - (currPAAttainment * 0.5)) / 0.5;
+                                    
+                                    if (neededRevAttainment <= 1.2) {
+                                        const neededTotalRev = neededRevAttainment * curr.revenueTarget;
+                                        const extraRevNeeded = Math.max(neededTotalRev - curr.revenueActual, 0);
+                                        if (extraRevNeeded > 0) {
+                                            adviceParts.push(`Venda mais R$ ${extraRevNeeded.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} para ultrapassar a Loja ${next.storeNumber}.`);
+                                        }
+                                    } else {
+                                        adviceParts.push(`Para ultrapassar a Loja ${next.storeNumber}, melhore também seu P.A.`);
+                                    }
+                                }
                             }
 
-                            if (curr.puActual > next.puTarget) {
-                                advice += `Reduza o P.U em R$ ${(curr.puActual - next.puTarget).toFixed(2)}. `;
-                            }
-
-                            return advice;
+                            return adviceParts.join(' ');
                         };
 
                         return (
@@ -627,16 +664,14 @@ const DashboardAdmin: React.FC<DashboardAdminProps> = ({ stores, performanceData
                                     </div>
                                 </div>
 
-                                {nextStore && (
-                                    <div className={`mt-6 pt-6 border-t border-slate-100/50 flex items-start gap-3 p-4 rounded-2xl ${index >= stats.currentData.length - 3 ? 'bg-rose-50/30' : 'bg-blue-50/30'}`}>
-                                        <div className={`p-1.5 rounded-lg ${index >= stats.currentData.length - 3 ? 'bg-rose-100 text-rose-600' : 'bg-blue-100 text-blue-600'}`}>
-                                            <TrendingDown size={14} className={index >= stats.currentData.length - 3 ? '' : 'rotate-180'} />
-                                        </div>
-                                        <p className="text-[10px] font-medium text-slate-600 leading-relaxed">
-                                            <span className="font-black text-blue-900 uppercase tracking-tighter">Plano de Ação:</span> {getDetailedAdvice(d, nextStore)}
-                                        </p>
+                                <div className={`mt-6 pt-6 border-t border-slate-100/50 flex items-start gap-3 p-4 rounded-2xl ${index >= stats.currentData.length - 3 ? 'bg-rose-50/30' : 'bg-blue-50/30'}`}>
+                                    <div className={`p-1.5 rounded-lg ${index >= stats.currentData.length - 3 ? 'bg-rose-100 text-rose-600' : 'bg-blue-100 text-blue-600'}`}>
+                                        <Zap size={14} className={index >= stats.currentData.length - 3 ? 'text-rose-600' : 'text-blue-600'} />
                                     </div>
-                                )}
+                                    <p className="text-[10px] font-medium text-slate-600 leading-relaxed">
+                                        <span className="font-black text-blue-900 uppercase tracking-tighter">Plano de Ação:</span> {getDetailedAdvice(d, nextStore, index)}
+                                    </p>
+                                </div>
                             </div>
                         );
                     })}
