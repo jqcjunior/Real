@@ -438,9 +438,9 @@ const App: React.FC = () => {
                         if (visibleItems.length === 0) return null;
                         return (
                             <div key={section.title} className="space-y-1">
-                                <h3 className="px-4 text-[10px] font-black uppercase text-slate-400 dark:text-slate-500 tracking-widest mb-2">{section.title}</h3>
+                                <h3 className="px-4 text-[10px] font-black uppercase text-slate-400 dark:text-slate-400 tracking-widest mb-2">{section.title}</h3>
                                 {visibleItems.map(item => (
-                                    <button key={item.id} onClick={() => { setCurrentView(item.id); setIsSidebarOpen(false); }} className={`w-full text-left py-2.5 px-4 rounded-xl font-black uppercase text-[10px] flex items-center gap-4 transition-all ${currentView === item.id ? 'bg-blue-600 text-white shadow-lg shadow-blue-200 dark:shadow-blue-900/20' : 'text-slate-500 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white hover:bg-slate-50 dark:hover:bg-slate-800'}`}><item.icon size={20} /> {item.label}</button>
+                                    <button key={item.id} onClick={() => { setCurrentView(item.id); setIsSidebarOpen(false); }} className={`w-full text-left py-2.5 px-4 rounded-xl font-black uppercase text-[10px] flex items-center gap-4 transition-all ${currentView === item.id ? 'bg-blue-600 text-white shadow-lg shadow-blue-200 dark:shadow-blue-900/20' : 'text-slate-500 dark:text-slate-300 hover:text-slate-900 dark:hover:text-white hover:bg-slate-50 dark:hover:bg-slate-800'}`}><item.icon size={20} /> {item.label}</button>
                                 ))}
                             </div>
                         );
@@ -449,7 +449,7 @@ const App: React.FC = () => {
                 <div className="mt-8 space-y-2">
                     <button 
                         onClick={() => setIsChangePasswordOpen(true)}
-                        className="w-full flex items-center gap-4 p-4 text-slate-500 dark:text-slate-400 font-black uppercase text-[10px] hover:bg-slate-50 dark:hover:bg-slate-800 hover:text-slate-900 dark:hover:text-white rounded-xl transition-all border border-slate-100 dark:border-slate-800"
+                        className="w-full flex items-center gap-4 p-4 text-slate-500 dark:text-slate-300 font-black uppercase text-[10px] hover:bg-slate-50 dark:hover:bg-slate-800 hover:text-slate-900 dark:hover:text-white rounded-xl transition-all border border-slate-100 dark:border-slate-800"
                     >
                         <Lock size={18} /> Alterar Senha
                     </button>
@@ -467,11 +467,11 @@ const App: React.FC = () => {
                         <button onClick={() => setIsSidebarOpen(!isSidebarOpen)} className="p-2 text-slate-400 hover:text-slate-900 dark:hover:text-white">
                             <Menu size={24} />
                         </button>
-                        <span className="text-[10px] md:text-xs font-black uppercase text-slate-400 dark:text-slate-500 flex items-center gap-2 md:gap-3">
+                        <span className="text-[10px] md:text-xs font-black uppercase text-slate-400 dark:text-slate-400 flex items-center gap-2 md:gap-3">
                             <UserCog size={18} className="hidden xs:block"/> Sessão: <span className="text-slate-900 dark:text-white italic truncate max-w-[100px] md:max-w-none">{user?.name}</span>
                             <button 
                                 onClick={() => setIsChangePasswordOpen(true)}
-                                className="p-1.5 bg-slate-100 dark:bg-slate-800 text-slate-500 dark:text-slate-400 rounded-lg hover:bg-blue-600 hover:text-white transition-all shadow-sm border border-slate-200 dark:border-slate-700"
+                                className="p-1.5 bg-slate-100 dark:bg-slate-800 text-slate-500 dark:text-slate-300 rounded-lg hover:bg-blue-600 hover:text-white transition-all shadow-sm border border-slate-200 dark:border-slate-700"
                                 title="Alterar Senha"
                             >
                                 <Lock size={14} />
@@ -481,7 +481,7 @@ const App: React.FC = () => {
                     <div className="flex items-center gap-2 md:gap-4">
                         <button 
                             onClick={() => setTheme(theme === 'light' ? 'dark' : 'light')}
-                            className="p-2.5 bg-slate-100 dark:bg-slate-800 text-slate-500 dark:text-slate-400 rounded-xl hover:bg-blue-600 hover:text-white transition-all shadow-sm border border-slate-200 dark:border-slate-700 flex items-center gap-2"
+                            className="p-2.5 bg-slate-100 dark:bg-slate-800 text-slate-500 dark:text-slate-300 rounded-xl hover:bg-blue-600 hover:text-white transition-all shadow-sm border border-slate-200 dark:border-slate-700 flex items-center gap-2"
                             title={theme === 'light' ? 'Modo Escuro' : 'Modo Claro'}
                         >
                             {theme === 'light' ? <Moon size={18} /> : <Sun size={18} />}

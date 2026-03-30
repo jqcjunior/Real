@@ -4,7 +4,7 @@ import { Demand, DemandMessage, DemandPriority, DemandStatus, User, Store } from
 import { 
     AlertCircle, Clock, Store as StoreIcon, Filter, Search, 
     Send, CheckCircle, XCircle, MessageSquare, ChevronRight,
-    ArrowLeft, Loader2, Calendar
+    ArrowLeft, Loader2, Calendar, Plus, Edit2, Trash2, Check, X, ClipboardList
 } from 'lucide-react';
 import { formatDistanceToNow } from 'date-fns';
 import { ptBR } from 'date-fns/locale';
@@ -21,6 +21,19 @@ const OSDemandsModule: React.FC<OSDemandsModuleProps> = ({ user, stores }) => {
     const [newMessage, setNewMessage] = useState('');
     const [isLoading, setIsLoading] = useState(true);
     const [isSending, setIsSending] = useState(false);
+    const [isModalOpen, setIsModalOpen] = useState(false);
+    const [isSubmitting, setIsSubmitting] = useState(false);
+    const [showMobileDetails, setShowMobileDetails] = useState(false);
+    
+    // Form state
+    const [editingDemand, setEditingDemand] = useState<Demand | null>(null);
+    const [formData, setFormData] = useState({
+        title: '',
+        description: '',
+        category: 'Manutenção',
+        priority: 'media' as DemandPriority,
+        store_id: user.storeId || ''
+    });
     
     // Filters
     const [statusFilter, setStatusFilter] = useState<DemandStatus | 'todos'>('todos');
@@ -129,15 +142,7 @@ const OSDemandsModule: React.FC<OSDemandsModuleProps> = ({ user, stores }) => {
 
             // 2. Automation: If Admin sends message in 'aberta' OS, change to 'em_andamento'
             if (isAdmin && selectedDemand.status === 'aberta') {
-                const { error: updateError } = await supabase
-                    .from('demands')
-                    .update({ status: 'em_andamento' })
-                    .eq('id', selectedDemand.id);
-
-                if (!updateError) {
-                    setSelectedDemand(prev => prev ? { ...prev, status: 'em_andamento' } : null);
-                    setDemands(prev => prev.map(d => d.id === selectedDemand.id ? { ...d, status: 'em_andamento' } : d));
-                }
+                await handleUpdateStatus(selectedDemand.id, 'em_andamento');
             }
 
             setNewMessage('');
@@ -148,21 +153,123 @@ const OSDemandsModule: React.FC<OSDemandsModuleProps> = ({ user, stores }) => {
         }
     };
 
-    const handleFinalizeDemand = async () => {
-        if (!selectedDemand) return;
+    const handleUpdateStatus = async (id: string, status: DemandStatus) => {
+        try {
+            const { error } = await supabase
+                .from('demands')
+                .update({ status })
+                .eq('id', id);
+
+            if (error) throw error;
+
+            if (selectedDemand?.id === id) {
+                setSelectedDemand(prev => prev ? { ...prev, status } : null);
+            }
+            setDemands(prev => prev.map(d => d.id === id ? { ...d, status } : d));
+            
+            // Add a system message about status change
+            await supabase.from('demand_messages').insert([{
+                demand_id: id,
+                sender_name: 'Sistema',
+                message: `Status alterado para: ${getStatusLabel(status)}`,
+                is_admin: true,
+                read: true
+            }]);
+        } catch (err) {
+            console.error('Erro ao atualizar status:', err);
+        }
+    };
+
+    const handleSaveDemand = async (e: React.FormEvent) => {
+        e.preventDefault();
+        if (!formData.title || !formData.description || !formData.store_id || isSubmitting) return;
+
+        setIsSubmitting(true);
+        try {
+            if (editingDemand) {
+                const { error } = await supabase
+                    .from('demands')
+                    .update({
+                        title: formData.title,
+                        description: formData.description,
+                        category: formData.category,
+                        priority: formData.priority,
+                        store_id: formData.store_id
+                    })
+                    .eq('id', editingDemand.id);
+
+                if (error) throw error;
+            } else {
+                const { error } = await supabase
+                    .from('demands')
+                    .insert([{
+                        ...formData,
+                        status: 'aberta',
+                        created_by: user.id,
+                        sla_hours: formData.priority === 'urgente' ? 4 : formData.priority === 'alta' ? 24 : 48
+                    }]);
+
+                if (error) throw error;
+            }
+
+            setIsModalOpen(false);
+            setEditingDemand(null);
+            setFormData({
+                title: '',
+                description: '',
+                category: 'Manutenção',
+                priority: 'media',
+                store_id: user.storeId || ''
+            });
+            fetchDemands();
+        } catch (err) {
+            console.error('Erro ao salvar demanda:', err);
+        } finally {
+            setIsSubmitting(false);
+        }
+    };
+
+    const handleDeleteDemand = async (id: string) => {
+        if (!window.confirm('Tem certeza que deseja excluir esta demanda?')) return;
 
         try {
             const { error } = await supabase
                 .from('demands')
-                .update({ status: 'resolvida' })
-                .eq('id', selectedDemand.id);
+                .delete()
+                .eq('id', id);
 
             if (error) throw error;
 
-            setSelectedDemand(prev => prev ? { ...prev, status: 'resolvida' } : null);
-            setDemands(prev => prev.map(d => d.id === selectedDemand.id ? { ...d, status: 'resolvida' } : d));
+            if (selectedDemand?.id === id) setSelectedDemand(null);
+            setDemands(prev => prev.filter(d => d.id !== id));
         } catch (err) {
-            console.error('Erro ao finalizar demanda:', err);
+            console.error('Erro ao excluir demanda:', err);
+        }
+    };
+
+    const openEditModal = (demand: Demand) => {
+        setEditingDemand(demand);
+        setFormData({
+            title: demand.title,
+            description: demand.description,
+            category: demand.category,
+            priority: demand.priority,
+            store_id: demand.store_id
+        });
+        setIsModalOpen(true);
+    };
+
+    const handleFinalizeDemand = () => {
+        if (!selectedDemand) return;
+        if (window.confirm('Deseja marcar esta demanda como resolvida?')) {
+            handleUpdateStatus(selectedDemand.id, 'resolvida');
+        }
+    };
+
+    const handleCancelDemand = () => {
+        if (!selectedDemand) return;
+        if (window.confirm('Deseja realmente cancelar esta demanda?')) {
+            handleUpdateStatus(selectedDemand.id, 'cancelada');
         }
     };
 
@@ -218,6 +325,7 @@ const OSDemandsModule: React.FC<OSDemandsModuleProps> = ({ user, stores }) => {
                     --text: #1e293b;
                     --text-muted: #64748b;
                     --border: #e2e8f0;
+                    --chat-bg: #f1f5f9;
                     
                     background: var(--bg);
                     color: var(--text);
@@ -229,13 +337,14 @@ const OSDemandsModule: React.FC<OSDemandsModuleProps> = ({ user, stores }) => {
                 }
 
                 .dark .os-module-container {
-                    --bg: #020617;
-                    --surface: #0f172a;
-                    --card: #1e293b;
-                    --accent: #f59e0b;
-                    --text: #f8fafc;
+                    --bg: #0f172a;
+                    --surface: #1e293b;
+                    --card: #334155;
+                    --accent: #fbbf24;
+                    --text: #f1f5f9;
                     --text-muted: #94a3b8;
-                    --border: #334155;
+                    --border: #475569;
+                    --chat-bg: #0f172a;
                 }
 
                 .os-header {
@@ -296,6 +405,28 @@ const OSDemandsModule: React.FC<OSDemandsModuleProps> = ({ user, stores }) => {
                     overflow: hidden;
                 }
 
+                @media (max-width: 1023px) {
+                    .os-main-content {
+                        grid-template-columns: 1fr;
+                    }
+                    .os-sidebar {
+                        display: none;
+                    }
+                    .os-details-panel {
+                        position: fixed;
+                        top: 0;
+                        left: 0;
+                        right: 0;
+                        bottom: 0;
+                        z-index: 100;
+                        transform: translateX(100%);
+                        transition: transform 0.3s ease;
+                    }
+                    .os-details-panel.mobile-open {
+                        transform: translateX(0);
+                    }
+                }
+
                 .os-sidebar {
                     border-right: 1px solid var(--border);
                     padding: 20px;
@@ -303,6 +434,31 @@ const OSDemandsModule: React.FC<OSDemandsModuleProps> = ({ user, stores }) => {
                     flex-direction: column;
                     gap: 24px;
                     background: var(--surface);
+                }
+
+                .new-demand-btn {
+                    width: 100%;
+                    background: var(--accent);
+                    color: #000;
+                    border: none;
+                    padding: 14px;
+                    border-radius: 12px;
+                    font-size: 12px;
+                    font-weight: 900;
+                    text-transform: uppercase;
+                    cursor: pointer;
+                    display: flex;
+                    align-items: center;
+                    justify-content: center;
+                    gap: 8px;
+                    transition: all 0.2s;
+                    box-shadow: 0 4px 12px rgba(232, 184, 109, 0.2);
+                    margin-bottom: 8px;
+                }
+
+                .new-demand-btn:hover {
+                    transform: translateY(-2px);
+                    box-shadow: 0 6px 16px rgba(232, 184, 109, 0.3);
                 }
 
                 .filter-group h5 {
@@ -496,7 +652,7 @@ const OSDemandsModule: React.FC<OSDemandsModuleProps> = ({ user, stores }) => {
                     display: flex;
                     flex-direction: column;
                     overflow: hidden;
-                    background: #f1f5f9;
+                    background: var(--chat-bg);
                 }
 
                 .messages-list {
@@ -528,7 +684,7 @@ const OSDemandsModule: React.FC<OSDemandsModuleProps> = ({ user, stores }) => {
 
                 .message-store {
                     align-self: flex-start;
-                    background: var(--card);
+                    background: var(--surface);
                     color: var(--text);
                     border-bottom-left-radius: 4px;
                     border: 1px solid var(--border);
@@ -601,7 +757,6 @@ const OSDemandsModule: React.FC<OSDemandsModuleProps> = ({ user, stores }) => {
 
                 .finalize-btn {
                     width: 100%;
-                    margin-top: 16px;
                     background: #10b981;
                     color: white;
                     border: none;
@@ -623,6 +778,122 @@ const OSDemandsModule: React.FC<OSDemandsModuleProps> = ({ user, stores }) => {
                     background: #059669;
                     transform: translateY(-1px);
                     box-shadow: 0 6px 16px rgba(16, 185, 129, 0.3);
+                }
+
+                .action-btn-group {
+                    display: grid;
+                    grid-template-columns: 1fr 1fr;
+                    gap: 8px;
+                    margin-top: 16px;
+                }
+
+                .action-btn-secondary {
+                    background: var(--bg);
+                    color: var(--text);
+                    border: 1px solid var(--border);
+                    padding: 10px;
+                    border-radius: 10px;
+                    font-size: 11px;
+                    font-weight: 700;
+                    text-transform: uppercase;
+                    cursor: pointer;
+                    display: flex;
+                    align-items: center;
+                    justify-content: center;
+                    gap: 6px;
+                    transition: all 0.2s;
+                }
+
+                .action-btn-secondary:hover {
+                    background: var(--border);
+                }
+
+                .action-btn-danger {
+                    background: rgba(239, 68, 68, 0.1);
+                    color: #ef4444;
+                    border: 1px solid rgba(239, 68, 68, 0.2);
+                    padding: 10px;
+                    border-radius: 10px;
+                    font-size: 11px;
+                    font-weight: 700;
+                    text-transform: uppercase;
+                    cursor: pointer;
+                    display: flex;
+                    align-items: center;
+                    justify-content: center;
+                    gap: 6px;
+                    transition: all 0.2s;
+                }
+
+                .action-btn-danger:hover {
+                    background: #ef4444;
+                    color: white;
+                }
+
+                .modal-overlay {
+                    position: fixed;
+                    top: 0;
+                    left: 0;
+                    right: 0;
+                    bottom: 0;
+                    background: rgba(0, 0, 0, 0.6);
+                    backdrop-filter: blur(4px);
+                    display: flex;
+                    align-items: center;
+                    justify-content: center;
+                    z-index: 1000;
+                    padding: 20px;
+                }
+
+                .modal-content {
+                    background: var(--surface);
+                    width: 100%;
+                    max-width: 500px;
+                    border-radius: 24px;
+                    padding: 32px;
+                    box-shadow: 0 20px 25px -5px rgba(0, 0, 0, 0.1), 0 10px 10px -5px rgba(0, 0, 0, 0.04);
+                    border: 1px solid var(--border);
+                }
+
+                .modal-content h2 {
+                    margin: 0 0 24px 0;
+                    font-size: 24px;
+                    font-weight: 800;
+                    color: var(--text);
+                }
+
+                .form-group {
+                    margin-bottom: 20px;
+                }
+
+                .form-group label {
+                    display: block;
+                    font-size: 12px;
+                    font-weight: 700;
+                    text-transform: uppercase;
+                    color: var(--text-muted);
+                    margin-bottom: 8px;
+                    letter-spacing: 0.05em;
+                }
+
+                .form-group select {
+                    width: 100%;
+                    background: var(--bg);
+                    border: 1px solid var(--border);
+                    border-radius: 12px;
+                    padding: 12px 16px;
+                    color: var(--text);
+                    font-size: 14px;
+                    outline: none;
+                    transition: all 0.2s;
+                    cursor: pointer;
+                }
+
+                .form-group input:focus, 
+                .form-group textarea:focus, 
+                .form-group select:focus {
+                    border-color: var(--accent);
+                    box-shadow: 0 0 0 3px rgba(232, 184, 109, 0.1);
                 }
 
                 .empty-state {
@@ -648,6 +919,33 @@ const OSDemandsModule: React.FC<OSDemandsModuleProps> = ({ user, stores }) => {
             `}</style>
 
             <div className="os-header">
+                <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 mb-6">
+                    <div className="flex items-center gap-4">
+                        <div className="w-12 h-12 rounded-2xl bg-amber-100 dark:bg-amber-900/30 flex items-center justify-center text-amber-600 dark:text-amber-400">
+                            <ClipboardList size={24} />
+                        </div>
+                        <div>
+                            <h1 className="text-xl font-black uppercase tracking-tight">Demanda OS</h1>
+                            <p className="text-xs text-slate-500 dark:text-slate-400 font-bold uppercase">Gerenciamento de Ordens de Serviço</p>
+                        </div>
+                    </div>
+                    <button 
+                        className="new-demand-btn sm:w-auto"
+                        onClick={() => {
+                            setEditingDemand(null);
+                            setFormData({
+                                title: '',
+                                description: '',
+                                category: 'Manutenção',
+                                priority: 'media',
+                                store_id: user.storeId || ''
+                            });
+                            setIsModalOpen(true);
+                        }}
+                    >
+                        <Plus size={18} /> Nova Demanda
+                    </button>
+                </div>
                 <div className="kpi-grid">
                     <div className="kpi-card">
                         <div className="kpi-icon" style={{ background: 'rgba(224, 92, 92, 0.1)', color: '#E05C5C' }}>
@@ -682,6 +980,23 @@ const OSDemandsModule: React.FC<OSDemandsModuleProps> = ({ user, stores }) => {
             <div className="os-main-content">
                 {/* Coluna Esquerda: Filtros */}
                 <div className="os-sidebar">
+                    <button 
+                        className="new-demand-btn"
+                        onClick={() => {
+                            setEditingDemand(null);
+                            setFormData({
+                                title: '',
+                                description: '',
+                                category: 'Manutenção',
+                                priority: 'media',
+                                store_id: user.storeId || ''
+                            });
+                            setIsModalOpen(true);
+                        }}
+                    >
+                        <Plus size={18} /> Nova Demanda
+                    </button>
+
                     <div className="filter-group">
                         <h5>Status</h5>
                         <button 
@@ -740,6 +1055,24 @@ const OSDemandsModule: React.FC<OSDemandsModuleProps> = ({ user, stores }) => {
                     </div>
 
                     <div className="os-list no-scrollbar">
+                        <button 
+                            className="new-demand-btn lg:hidden w-full"
+                            style={{ margin: '0 0 16px 0' }}
+                            onClick={() => {
+                                setEditingDemand(null);
+                                setFormData({
+                                    title: '',
+                                    description: '',
+                                    category: 'Manutenção',
+                                    priority: 'media',
+                                    store_id: user.storeId || ''
+                                });
+                                setIsModalOpen(true);
+                            }}
+                        >
+                            <Plus size={18} /> Nova Demanda
+                        </button>
+
                         {isLoading ? (
                             <div className="empty-state">
                                 <Loader2 className="animate-spin" size={32} />
@@ -755,7 +1088,10 @@ const OSDemandsModule: React.FC<OSDemandsModuleProps> = ({ user, stores }) => {
                                 <div 
                                     key={demand.id} 
                                     className={`demand-card ${selectedDemand?.id === demand.id ? 'active' : ''}`}
-                                    onClick={() => setSelectedDemand(demand)}
+                                    onClick={() => {
+                                        setSelectedDemand(demand);
+                                        setShowMobileDetails(true);
+                                    }}
                                 >
                                     <div 
                                         className="priority-indicator" 
@@ -781,10 +1117,22 @@ const OSDemandsModule: React.FC<OSDemandsModuleProps> = ({ user, stores }) => {
                 </div>
 
                 {/* Coluna Direita: Detalhes e Chat */}
-                <div className="os-details-panel">
+                <div className={`os-details-panel ${showMobileDetails ? 'mobile-open' : ''}`}>
                     {selectedDemand ? (
                         <>
                             <div className="details-header">
+                                <div className="flex items-center justify-between mb-4 lg:hidden">
+                                    <button 
+                                        className="p-2 -ml-2 text-slate-400 hover:text-slate-900 dark:hover:text-white flex items-center gap-2 font-bold text-xs uppercase"
+                                        onClick={() => setShowMobileDetails(false)}
+                                    >
+                                        <ArrowLeft size={18} /> Voltar
+                                    </button>
+                                    <span className={`status-badge status-${selectedDemand.status}`}>
+                                        {getStatusLabel(selectedDemand.status)}
+                                    </span>
+                                </div>
+
                                 <div className="demand-meta" style={{ marginBottom: '8px' }}>
                                     <span style={{ color: getPriorityColor(selectedDemand.priority), fontWeight: 700, textTransform: 'uppercase' }}>
                                         Prioridade {selectedDemand.priority}
@@ -797,10 +1145,52 @@ const OSDemandsModule: React.FC<OSDemandsModuleProps> = ({ user, stores }) => {
                                     {selectedDemand.description}
                                 </p>
                                 
-                                {selectedDemand.status !== 'resolvida' && user.role === 'ADMIN' && (
-                                    <button className="finalize-btn" onClick={handleFinalizeDemand}>
-                                        <CheckCircle size={16} /> Finalizar Demanda
-                                    </button>
+                                {selectedDemand.status !== 'resolvida' && selectedDemand.status !== 'cancelada' && (
+                                    <div className="action-btn-group">
+                                        <button 
+                                            className="finalize-btn" 
+                                            style={{ gridColumn: 'span 2' }} 
+                                            onClick={handleFinalizeDemand}
+                                        >
+                                            <CheckCircle size={18} /> Resolvido Demanda
+                                        </button>
+                                        
+                                        {(user.role === 'ADMIN' || user.id === selectedDemand.created_by) && (
+                                            <button 
+                                                className="action-btn-secondary" 
+                                                onClick={() => openEditModal(selectedDemand)}
+                                            >
+                                                <Edit2 size={16} /> Editar Demanda
+                                            </button>
+                                        )}
+                                        
+                                        {(user.role === 'ADMIN' || user.id === selectedDemand.created_by) && (
+                                            <button 
+                                                className="action-btn-danger" 
+                                                onClick={handleCancelDemand}
+                                            >
+                                                <X size={16} /> Finalizar Demanda
+                                            </button>
+                                        )}
+
+                                        {user.role === 'ADMIN' && (
+                                            <button 
+                                                className="action-btn-danger" 
+                                                style={{ gridColumn: 'span 2', marginTop: '4px' }} 
+                                                onClick={() => handleDeleteDemand(selectedDemand.id)}
+                                            >
+                                                <Trash2 size={16} /> Excluir Permanentemente
+                                            </button>
+                                        )}
+                                    </div>
+                                )}
+
+                                {(selectedDemand.status === 'resolvida' || selectedDemand.status === 'cancelada') && user.role === 'ADMIN' && (
+                                    <div className="mt-4">
+                                        <button className="action-btn-secondary w-full" onClick={() => handleUpdateStatus(selectedDemand.id, 'aberta')}>
+                                            <Plus size={14} /> Reabrir Chamado
+                                        </button>
+                                    </div>
                                 )}
                             </div>
 
@@ -852,6 +1242,96 @@ const OSDemandsModule: React.FC<OSDemandsModuleProps> = ({ user, stores }) => {
                     )}
                 </div>
             </div>
+
+            {isModalOpen && (
+                <div className="modal-overlay" onClick={() => setIsModalOpen(false)}>
+                    <div className="modal-content" onClick={e => e.stopPropagation()}>
+                        <h2>{editingDemand ? 'Editar Demanda' : 'Nova Demanda'}</h2>
+                        <form onSubmit={handleSaveDemand}>
+                            <div className="form-group">
+                                <label>Título</label>
+                                <input 
+                                    type="text" 
+                                    value={formData.title}
+                                    onChange={e => setFormData({...formData, title: e.target.value})}
+                                    placeholder="Ex: Ar condicionado quebrado"
+                                    required
+                                />
+                            </div>
+                            <div className="form-group">
+                                <label>Descrição</label>
+                                <textarea 
+                                    value={formData.description}
+                                    onChange={e => setFormData({...formData, description: e.target.value})}
+                                    placeholder="Descreva o problema em detalhes..."
+                                    rows={4}
+                                    required
+                                />
+                            </div>
+                            <div className="grid grid-cols-2 gap-4">
+                                <div className="form-group">
+                                    <label>Categoria</label>
+                                    <select 
+                                        value={formData.category}
+                                        onChange={e => setFormData({...formData, category: e.target.value})}
+                                    >
+                                        <option value="Manutenção">Manutenção</option>
+                                        <option value="TI / Sistemas">TI / Sistemas</option>
+                                        <option value="Financeiro">Financeiro</option>
+                                        <option value="RH">RH</option>
+                                        <option value="Outros">Outros</option>
+                                    </select>
+                                </div>
+                                <div className="form-group">
+                                    <label>Prioridade</label>
+                                    <select 
+                                        value={formData.priority}
+                                        onChange={e => setFormData({...formData, priority: e.target.value as DemandPriority})}
+                                    >
+                                        <option value="baixa">Baixa</option>
+                                        <option value="media">Média</option>
+                                        <option value="alta">Alta</option>
+                                        <option value="urgente">Urgente</option>
+                                    </select>
+                                </div>
+                            </div>
+                            {user.role === 'ADMIN' && (
+                                <div className="form-group">
+                                    <label>Loja</label>
+                                    <select 
+                                        value={formData.store_id}
+                                        onChange={e => setFormData({...formData, store_id: e.target.value})}
+                                        required
+                                    >
+                                        <option value="">Selecione uma loja</option>
+                                        {stores.map(s => (
+                                            <option key={s.id} value={s.id}>Loja {s.number} - {s.name}</option>
+                                        ))}
+                                    </select>
+                                </div>
+                            )}
+                            <div className="flex gap-3 mt-8">
+                                <button 
+                                    type="button" 
+                                    className="filter-btn" 
+                                    style={{ flex: 1, textAlign: 'center' }}
+                                    onClick={() => setIsModalOpen(false)}
+                                >
+                                    Cancelar
+                                </button>
+                                <button 
+                                    type="submit" 
+                                    className="new-demand-btn" 
+                                    style={{ flex: 2, marginBottom: 0 }}
+                                    disabled={isSubmitting}
+                                >
+                                    {isSubmitting ? <Loader2 className="animate-spin" /> : editingDemand ? 'Salvar Alterações' : 'Criar Demanda'}
+                                </button>
+                            </div>
+                        </form>
+                    </div>
+                </div>
+            )}
         </section>
     );
 };

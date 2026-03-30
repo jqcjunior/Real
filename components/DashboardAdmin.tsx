@@ -404,7 +404,7 @@ const DashboardAdmin: React.FC<DashboardAdminProps> = ({ stores, performanceData
                                 const [year] = selectedMonth.split('-');
                                 setSelectedMonth(`${year}-${e.target.value}`);
                             }}
-                            className="flex-1 bg-gray-50 dark:bg-slate-800 border border-gray-100 dark:border-slate-700 rounded-xl px-4 py-3.5 text-xs font-black uppercase text-blue-900 dark:text-blue-100 outline-none focus:ring-4 focus:ring-blue-50 dark:focus:ring-blue-900/20 transition-all"
+                            className="flex-1 bg-gray-50 dark:bg-slate-800 border border-gray-200 dark:border-slate-700 rounded-xl px-4 py-3.5 text-xs font-black uppercase text-slate-900 dark:text-white outline-none focus:ring-4 focus:ring-blue-50 dark:focus:ring-blue-900/20 transition-all appearance-none cursor-pointer"
                         >
                             <option value="01">Janeiro</option>
                             <option value="02">Fevereiro</option>
@@ -426,7 +426,7 @@ const DashboardAdmin: React.FC<DashboardAdminProps> = ({ stores, performanceData
                                 const [, month] = selectedMonth.split('-');
                                 setSelectedMonth(`${e.target.value}-${month}`);
                             }}
-                            className="w-24 bg-gray-50 dark:bg-slate-800 border border-gray-100 dark:border-slate-700 rounded-xl px-4 py-3.5 text-xs font-black uppercase text-blue-900 dark:text-blue-100 outline-none focus:ring-4 focus:ring-blue-50 dark:focus:ring-blue-900/20 transition-all"
+                            className="w-24 bg-gray-50 dark:bg-slate-800 border border-gray-200 dark:border-slate-700 rounded-xl px-4 py-3.5 text-xs font-black uppercase text-blue-900 dark:text-blue-100 outline-none focus:ring-4 focus:ring-blue-50 dark:focus:ring-blue-900/20 transition-all appearance-none cursor-pointer"
                         >
                             {(() => {
                                 const years = [];

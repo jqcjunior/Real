@@ -76,11 +76,19 @@ const GoalRegistration: React.FC<GoalRegistrationProps> = ({
         </div>
 
         <div className="flex items-center gap-2">
-            <div className="flex bg-slate-100 dark:bg-slate-800 p-1 rounded-xl">
-                <select value={selectedMonth} onChange={e => setSelectedMonth(Number(e.target.value))} className="bg-white dark:bg-slate-900 px-3 py-1.5 rounded-lg text-[10px] font-black uppercase text-slate-700 dark:text-slate-300 outline-none border-none cursor-pointer">
+            <div className="flex bg-slate-100 dark:bg-slate-800 p-1 rounded-xl border border-slate-200 dark:border-slate-700">
+                <select 
+                    value={selectedMonth} 
+                    onChange={e => setSelectedMonth(Number(e.target.value))} 
+                    className="bg-white dark:bg-slate-900 px-4 py-2 rounded-lg text-[10px] font-black uppercase text-slate-700 dark:text-white outline-none border-none cursor-pointer appearance-none min-w-[110px]"
+                >
                     {months.map(m => <option key={m.value} value={m.value}>{m.label}</option>)}
                 </select>
-                <select value={selectedYear} onChange={e => setSelectedYear(Number(e.target.value))} className="bg-transparent px-3 py-1.5 text-[10px] font-black text-slate-400 dark:text-slate-500 outline-none border-none cursor-pointer">
+                <select 
+                    value={selectedYear} 
+                    onChange={e => setSelectedYear(Number(e.target.value))} 
+                    className="bg-transparent px-4 py-2 text-[10px] font-black text-slate-400 dark:text-slate-500 outline-none border-none cursor-pointer appearance-none min-w-[70px]"
+                >
                     {[2024, 2025, 2026].map(y => <option key={y} value={y}>{y}</option>)}
                 </select>
             </div>

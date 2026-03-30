@@ -132,22 +132,22 @@ const AdminUsersManagement: React.FC<AdminUsersManagementProps> = ({ currentUser
     };
 
     return (
-        <div className="p-4 md:p-10 space-y-6 md:space-y-8 max-w-7xl mx-auto animate-in fade-in duration-500">
-            <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-6 bg-white p-6 md:p-8 rounded-[32px] md:rounded-[40px] shadow-sm border border-gray-100">
+        <div className="p-4 md:p-10 space-y-6 md:space-y-8 max-w-7xl mx-auto animate-in fade-in duration-500 bg-slate-50 dark:bg-slate-950 min-h-full">
+            <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-6 bg-white dark:bg-slate-900 p-6 md:p-8 rounded-[32px] md:rounded-[40px] shadow-sm border border-gray-100 dark:border-slate-800">
                 <div className="flex items-center gap-4">
-                    <div className="p-4 bg-blue-50 text-blue-700 rounded-2xl"><UsersIcon size={32} /></div>
+                    <div className="p-4 bg-blue-50 dark:bg-blue-900/20 text-blue-700 dark:text-blue-400 rounded-2xl"><UsersIcon size={32} /></div>
                     <div>
-                        <h2 className="text-2xl md:text-3xl font-black text-gray-900 uppercase italic tracking-tighter leading-none">Gestão de <span className="text-red-600">Usuários</span></h2>
-                        <p className="text-gray-400 font-bold text-[9px] uppercase tracking-widest mt-1">Matriz de Acessos Corporativos</p>
+                        <h2 className="text-2xl md:text-3xl font-black text-gray-900 dark:text-white uppercase italic tracking-tighter leading-none">Gestão de <span className="text-red-600">Usuários</span></h2>
+                        <p className="text-gray-400 dark:text-slate-500 font-bold text-[9px] uppercase tracking-widest mt-1">Matriz de Acessos Corporativos</p>
                     </div>
                 </div>
-                <button onClick={() => { setEditingId(null); setIsModalOpen(true); }} className="w-full md:w-auto bg-gray-950 text-white px-8 py-4 rounded-2xl font-black uppercase text-[10px] shadow-xl hover:bg-black transition-all active:scale-95 border-b-4 border-red-700 flex items-center justify-center gap-2">
+                <button onClick={() => { setEditingId(null); setIsModalOpen(true); }} className="w-full md:w-auto bg-gray-950 dark:bg-slate-800 text-white px-8 py-4 rounded-2xl font-black uppercase text-[10px] shadow-xl hover:bg-black dark:hover:bg-slate-700 transition-all active:scale-95 border-b-4 border-red-700 flex items-center justify-center gap-2">
                     <UserPlus size={18} /> Novo Usuário
                 </button>
             </div>
 
-            <div className="bg-white rounded-[32px] md:rounded-[40px] shadow-sm border border-gray-100 overflow-hidden">
-                <div className="p-6 border-b bg-gray-50/30 space-y-4">
+            <div className="bg-white dark:bg-slate-900 rounded-[32px] md:rounded-[40px] shadow-sm border border-gray-100 dark:border-slate-800 overflow-hidden">
+                <div className="p-6 border-b dark:border-slate-800 bg-gray-50/30 dark:bg-slate-800/30 space-y-4">
                     <div className="flex flex-wrap gap-2">
                         <button 
                             onClick={() => setSelectedRole('all')}
@@ -252,7 +252,7 @@ const AdminUsersManagement: React.FC<AdminUsersManagementProps> = ({ currentUser
                             <div className="grid grid-cols-2 gap-4">
                                 <div className="space-y-2">
                                     <label className="text-[9px] font-black text-gray-400 uppercase ml-2 tracking-widest">Papel</label>
-                                    <select value={formData.role_level} onChange={e => setFormData({...formData, role_level: e.target.value as AdminRoleLevel})} className="w-full p-4 bg-gray-50 rounded-2xl font-black uppercase text-xs outline-none cursor-pointer">
+                                    <select value={formData.role_level} onChange={e => setFormData({...formData, role_level: e.target.value as AdminRoleLevel})} className="w-full p-4 bg-gray-50 dark:bg-slate-800 border border-gray-200 dark:border-slate-700 rounded-2xl font-black uppercase text-xs text-slate-900 dark:text-white outline-none cursor-pointer">
                                         <option value="admin">Administrador</option>
                                         <option value="manager">Gerente</option>
                                         <option value="cashier">Caixa</option>
@@ -261,7 +261,7 @@ const AdminUsersManagement: React.FC<AdminUsersManagementProps> = ({ currentUser
                                 </div>
                                 <div className="space-y-2">
                                     <label className="text-[9px] font-black text-gray-400 uppercase ml-2 tracking-widest">Unidade</label>
-                                    <select value={formData.store_id || ''} onChange={e => setFormData({...formData, store_id: e.target.value || null})} className="w-full p-4 bg-gray-50 rounded-2xl font-black uppercase text-xs outline-none cursor-pointer">
+                                    <select value={formData.store_id || ''} onChange={e => setFormData({...formData, store_id: e.target.value || null})} className="w-full p-4 bg-gray-50 dark:bg-slate-800 border border-gray-200 dark:border-slate-700 rounded-2xl font-black uppercase text-xs text-slate-900 dark:text-white outline-none cursor-pointer">
                                         <option value="">TODAS AS LOJAS</option>
                                         {[...stores].sort((a, b) => a.name.localeCompare(b.name)).map(s => <option key={s.id} value={s.id}>#{s.number} - {s.name}</option>)}
                                     </select>

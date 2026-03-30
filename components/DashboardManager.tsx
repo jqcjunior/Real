@@ -416,7 +416,7 @@ const DashboardManager: React.FC<DashboardManagerProps> = ({ user, stores, perfo
                             const [year] = selectedMonth.split('-');
                             setSelectedMonth(`${year}-${e.target.value}`);
                         }}
-                        className="flex-1 bg-slate-50 dark:bg-slate-800 px-4 py-2 rounded-xl text-[10px] font-black text-blue-900 dark:text-blue-100 uppercase border-none outline-none cursor-pointer"
+                        className="flex-1 bg-slate-50 dark:bg-slate-800 px-4 py-2 rounded-xl text-[10px] font-black text-slate-900 dark:text-white uppercase border-none outline-none cursor-pointer"
                     >
                         <option value="01">Janeiro</option>
                         <option value="02">Fevereiro</option>
@@ -438,7 +438,7 @@ const DashboardManager: React.FC<DashboardManagerProps> = ({ user, stores, perfo
                             const [, month] = selectedMonth.split('-');
                             setSelectedMonth(`${e.target.value}-${month}`);
                         }}
-                        className="bg-slate-50 dark:bg-slate-800 px-4 py-2 rounded-xl text-[10px] font-black text-blue-900 dark:text-blue-100 uppercase border-none outline-none cursor-pointer"
+                        className="bg-slate-50 dark:bg-slate-800 px-4 py-2 rounded-xl text-[10px] font-black text-slate-900 dark:text-white uppercase border-none outline-none cursor-pointer"
                     >
                         {(() => {
                             const years = [];

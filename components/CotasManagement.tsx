@@ -561,7 +561,7 @@ const handleUpdateMix = async (category: string, value: string) => {
                     <h1 className="text-sm font-black uppercase italic leading-none tracking-tight text-blue-900">Engenharia <span className="text-blue-800 font-black">de Compras</span></h1>
                     <div className="flex items-center gap-2 mt-1">
                         {isAdmin ? (
-                            <select value={viewStoreId} onChange={e => setManualStoreId(e.target.value)} className="bg-white border border-gray-200 rounded px-2 py-1 text-[10px] font-black uppercase text-blue-900 outline-none shadow-sm w-full lg:w-auto">
+                            <select value={viewStoreId} onChange={e => setManualStoreId(e.target.value)} className="bg-white dark:bg-slate-800 border border-gray-200 dark:border-slate-700 rounded px-2 py-1 text-[10px] font-black uppercase text-blue-900 dark:text-white outline-none shadow-sm w-full lg:w-auto">
                                 {activeStores.map(s => (
                                   <option key={s.id} value={s.id}>Loja {s.number} - {s.city}</option>
                                 ))}
@@ -594,7 +594,7 @@ const handleUpdateMix = async (category: string, value: string) => {
                 <div className="grid grid-cols-2 lg:flex items-center gap-3 w-full lg:w-auto">
                     <div className="flex items-center gap-2">
                         <span className="text-[9px] font-bold text-gray-500 uppercase">Inicio:</span>
-                        <select value={simStartMonth} onChange={e => setSimStartMonth(e.target.value)} className="bg-white border rounded px-2 py-1 text-[9px] font-black uppercase outline-none flex-1 lg:w-auto">
+                        <select value={simStartMonth} onChange={e => setSimStartMonth(e.target.value)} className="bg-white dark:bg-slate-800 border border-gray-200 dark:border-slate-700 rounded px-2 py-1 text-[9px] font-black uppercase text-slate-900 dark:text-white outline-none flex-1 lg:w-auto">
                             {timeline.map(m => <option key={m.key} value={m.key}>{m.label}</option>)}
                         </select>
                     </div>
@@ -924,7 +924,7 @@ const handleUpdateMix = async (category: string, value: string) => {
                             </div>
                             <div className="space-y-1">
                                 <label className="text-[8px] font-black text-gray-400 uppercase ml-2">Classificação</label>
-                                <select required value={selectedCategoryId} onChange={e => setSelectedCategoryId(e.target.value)} className="w-full p-2 bg-gray-50 rounded-xl font-black text-gray-900 uppercase outline-none text-[9px]">
+                                <select required value={selectedCategoryId} onChange={e => setSelectedCategoryId(e.target.value)} className="w-full p-2 bg-gray-50 dark:bg-slate-800 rounded-xl font-black text-gray-900 dark:text-white uppercase outline-none text-[9px]">
                                     <option value="">SELECIONE...</option>
                                     {(Object.entries(groupedCategories) as [string, QuotaCategory[]][]).map(([parent, cats]) => (
                                         <optgroup key={parent} label={parent}>
@@ -937,7 +937,7 @@ const handleUpdateMix = async (category: string, value: string) => {
                         <div className="grid grid-cols-3 gap-3">
                             <div className="space-y-1">
                                 <label className="text-[8px] font-black text-gray-400 uppercase ml-2">Embarque</label>
-                                <select value={shipmentMonth} onChange={e => setShipmentMonth(e.target.value)} className="w-full p-2 bg-gray-50 rounded-xl font-black text-gray-900 outline-none text-[9px]">
+                                <select value={shipmentMonth} onChange={e => setShipmentMonth(e.target.value)} className="w-full p-2 bg-gray-50 dark:bg-slate-800 rounded-xl font-black text-gray-900 dark:text-white outline-none text-[9px]">
                                     {timeline.map(m => <option key={m.key} value={m.key}>{m.label}</option>)}
                                 </select>
                             </div>

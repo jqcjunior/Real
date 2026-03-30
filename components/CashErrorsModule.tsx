@@ -146,9 +146,13 @@ const CashErrorsModule: React.FC<CashErrorsModuleProps> = ({ user, store, stores
             <div className="bg-white p-6 rounded-xl shadow-lg border max-w-2xl mx-auto animate-in zoom-in duration-200">
                 <form onSubmit={handleSave} className="space-y-5">
                     {isAdmin && (
-                        <div>
-                            <label className="block text-xs font-bold text-gray-500 uppercase mb-1">Loja</label>
-                            <select value={formData.storeId} onChange={e => setFormData({...formData, storeId: e.target.value})} className="w-full p-3 border rounded-lg outline-none">
+                        <div className="mb-4">
+                            <label className="block text-xs font-black text-gray-400 dark:text-slate-500 uppercase mb-2 ml-2">Loja</label>
+                            <select 
+                                value={formData.storeId} 
+                                onChange={e => setFormData({...formData, storeId: e.target.value})} 
+                                className="w-full p-4 bg-gray-50 dark:bg-slate-800 border border-gray-200 dark:border-slate-700 rounded-2xl font-black uppercase text-xs text-slate-900 dark:text-white outline-none cursor-pointer appearance-none"
+                            >
                                 {[...stores].sort((a, b) => (parseInt(a.number) || 0) - (parseInt(b.number) || 0)).map(s => <option key={s.id} value={s.id}>{s.number} - {s.name}</option>)}
                             </select>
                         </div>
@@ -183,12 +187,20 @@ const CashErrorsModule: React.FC<CashErrorsModuleProps> = ({ user, store, stores
 
         {activeTab === 'list' && (
             <div className="space-y-6">
-                <div className="bg-white p-4 rounded-xl border flex justify-between items-center">
+                <div className="bg-white dark:bg-slate-900 p-4 rounded-2xl border dark:border-slate-800 flex justify-between items-center shadow-sm">
                     <div className="flex gap-3">
-                        <select value={filterMonth} onChange={e => setFilterMonth(Number(e.target.value))} className="p-2 border rounded-lg outline-none">
+                        <select 
+                            value={filterMonth} 
+                            onChange={e => setFilterMonth(Number(e.target.value))} 
+                            className="p-3 bg-gray-50 dark:bg-slate-800 border border-gray-200 dark:border-slate-700 rounded-xl font-black uppercase text-[10px] text-slate-900 dark:text-white outline-none cursor-pointer appearance-none min-w-[120px]"
+                        >
                             {MONTHS.map(m => <option key={m.value} value={m.value}>{m.label}</option>)}
                         </select>
-                        <select value={filterYear} onChange={e => setFilterYear(Number(e.target.value))} className="p-2 border rounded-lg outline-none">
+                        <select 
+                            value={filterYear} 
+                            onChange={e => setFilterYear(Number(e.target.value))} 
+                            className="p-3 bg-gray-50 dark:bg-slate-800 border border-gray-200 dark:border-slate-700 rounded-xl font-black uppercase text-[10px] text-slate-900 dark:text-white outline-none cursor-pointer appearance-none min-w-[80px]"
+                        >
                             {availableYears.map(y => <option key={y} value={y}>{y}</option>)}
                         </select>
                     </div>

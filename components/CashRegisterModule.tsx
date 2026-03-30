@@ -891,16 +891,16 @@ const CashRegisterModule: React.FC<CashRegisterModuleProps> = ({
                     </div>
 
                     {user.role === UserRole.ADMIN && (
-                        <div className="flex items-center gap-2 bg-gray-50 px-4 py-2 rounded-2xl border border-gray-200 shadow-inner">
+                        <div className="flex items-center gap-2 bg-gray-50 dark:bg-slate-800 px-4 py-2 rounded-2xl border border-gray-200 dark:border-slate-700 shadow-inner">
                             <Settings2 size={16} className="text-blue-600" />
                             <select 
                                 value={selectedStoreId} 
                                 onChange={(e) => setSelectedStoreId(e.target.value)}
-                                className="bg-transparent border-none text-[10px] font-black text-gray-700 uppercase outline-none cursor-pointer"
+                                className="bg-gray-50 dark:bg-slate-800 border border-gray-200 dark:border-slate-700 rounded-xl px-4 py-2 text-[10px] font-black text-gray-700 dark:text-white uppercase outline-none cursor-pointer min-w-[150px] appearance-none"
                             >
                                 <option value="">SELECIONE UMA LOJA</option>
                                 {[...stores].sort((a, b) => (parseInt(a.number) || 0) - (parseInt(b.number) || 0)).map(s => (
-                                    <option key={s.id} value={s.id}>LOJA {s.number} - {s.city}</option>
+                                    <option key={s.id} value={s.id}>LOJA {s.number} - {s.name}</option>
                                 ))}
                             </select>
                         </div>
@@ -1485,7 +1485,7 @@ const CashRegisterModule: React.FC<CashRegisterModuleProps> = ({
                                 <select 
                                     value={editingCard.brand} 
                                     onChange={e => setEditingCard({...editingCard, brand: e.target.value})}
-                                    className="w-full p-4 bg-gray-50 border-none rounded-2xl font-black text-blue-950 uppercase outline-none focus:ring-4 focus:ring-blue-500/20"
+                                    className="w-full p-4 bg-gray-50 dark:bg-slate-800 border border-gray-200 dark:border-slate-700 rounded-2xl font-black text-blue-950 dark:text-white uppercase outline-none focus:ring-4 focus:ring-blue-500/20"
                                 >
                                     {availableBrands.map(b => <option key={b.id} value={b.name}>{b.name}</option>)}
                                 </select>
