@@ -25,6 +25,7 @@ import PurchaseAuthorization from './components/PurchaseAuthorization';
 import TermoAutorizacao from './components/TermoAutorizacao';
 import SystemAudit from './components/SystemAudit';
 import SpreadsheetOrderModule from './components/SpreadsheetOrderModule';
+import OSDemandsModule from './components/OSDemandsModule';
 import LoginScreen from './components/LoginScreen';
 import NotificationHeader from './components/NotificationHeader';
 import ChangePasswordModal from './components/ChangePasswordModal';
@@ -32,7 +33,8 @@ import ChangePasswordModal from './components/ChangePasswordModal';
 // Ícones
 import { 
     LayoutDashboard, Target, ShoppingBag, Calculator, IceCream as IceCreamIcon, 
-    DollarSign, AlertCircle, Calendar, LogOut, Loader2, Menu, X, ClipboardList, Shield, UserCog, Users, ShieldAlert, Settings, FileSignature, FileText, Download, Lock
+    DollarSign, AlertCircle, Calendar, LogOut, Loader2, Menu, X, ClipboardList, Shield, UserCog, Users, ShieldAlert, Settings, FileSignature, FileText, Download, Lock,
+    Sun, Moon
 } from 'lucide-react';
 
 const App: React.FC = () => {
@@ -41,12 +43,52 @@ const App: React.FC = () => {
     const [isLoading, setIsLoading] = useState(true);
     const [isSidebarOpen, setIsSidebarOpen] = useState(false);
     const [isChangePasswordOpen, setIsChangePasswordOpen] = useState(false);
+    const [theme, setTheme] = useState<'light' | 'dark'>(() => {
+        const saved = localStorage.getItem('theme');
+        return (saved as 'light' | 'dark') || 'light';
+    });
 
     useEffect(() => {
         if (window.innerWidth >= 1024) {
             setIsSidebarOpen(true);
         }
+        bootstrapPermissions();
     }, []);
+
+    useEffect(() => {
+        const root = window.document.documentElement;
+        if (theme === 'dark') {
+            root.classList.add('dark');
+        } else {
+            root.classList.remove('dark');
+        }
+        localStorage.setItem('theme', theme);
+    }, [theme]);
+
+    const bootstrapPermissions = async () => {
+        try {
+            const { data: existing } = await supabase
+                .from('page_permissions')
+                .select('id')
+                .eq('page_key', 'MODULE_DEMANDS')
+                .single();
+
+            if (!existing) {
+                await supabase.from('page_permissions').insert([{
+                    page_key: 'MODULE_DEMANDS',
+                    label: 'Demanda OS',
+                    module_group: 'Inteligência',
+                    allow_admin: true,
+                    allow_manager: false,
+                    allow_cashier: false,
+                    allow_sorvete: false,
+                    sort_order: 55
+                }]);
+            }
+        } catch (err) {
+            console.error("Erro ao registrar permissão Demanda OS:", err);
+        }
+    };
 
     const [userPermissions, setUserPermissions] = useState<string[]>([]);
     const [userCount, setUserCount] = useState<number | null>(null);
@@ -366,29 +408,28 @@ const App: React.FC = () => {
     );
     
     return (
-        <div className="flex h-screen bg-gray-950 text-white overflow-hidden font-sans relative">
+        <div className="flex h-screen bg-slate-50 dark:bg-slate-950 text-slate-900 dark:text-slate-100 overflow-hidden font-sans relative transition-colors duration-300">
             {/* Overlay for mobile/tablet */}
             {isSidebarOpen && ( 
-                <div className="fixed inset-0 bg-black/60 backdrop-blur-sm z-[90] lg:hidden" onClick={() => setIsSidebarOpen(false)} /> 
+                <div className="fixed inset-0 bg-slate-900/40 backdrop-blur-sm z-[90]" onClick={() => setIsSidebarOpen(false)} /> 
             )}
             
             <aside className={`
-                fixed inset-y-0 left-0 z-[100] w-72 bg-gray-950 border-r border-white/5 flex flex-col p-6 transition-all duration-300 transform
+                fixed inset-y-0 left-0 z-[100] w-72 bg-white dark:bg-slate-900 border-r border-slate-200 dark:border-slate-800 flex flex-col p-6 transition-all duration-300 transform
                 ${isSidebarOpen ? 'translate-x-0' : '-translate-x-full'}
-                lg:relative lg:translate-x-0 ${!isSidebarOpen ? 'lg:hidden' : 'lg:flex'}
             `}>
                 <div className="flex items-center justify-between mb-8">
                     <div className="flex items-center gap-4">
-                        <img src={BRAND_LOGO} alt="Logo" className="h-10 w-auto object-contain" />
-                        <h1 className="text-xl font-black italic uppercase">ADMIN</h1>
+                        <img src={BRAND_LOGO} alt="Logo" className="h-10 w-auto object-contain dark:brightness-125" />
+                        <h1 className="text-xl font-black italic uppercase text-slate-900 dark:text-white">ADMIN</h1>
                     </div>
-                    <button onClick={() => setIsSidebarOpen(false)} className="p-2 text-gray-500 hover:text-white lg:hidden">
+                    <button onClick={() => setIsSidebarOpen(false)} className="p-2 text-slate-400 hover:text-slate-900 dark:hover:text-white">
                         <X size={24} />
                     </button>
                 </div>
                 <nav className="flex-1 space-y-6 overflow-y-auto no-scrollbar">
                     {[
-                        { title: 'Inteligência', items: [ { id: 'dashboard_rede', label: 'Dashboard Rede', icon: LayoutDashboard, perm: 'MODULE_DASHBOARD_ADMIN' }, { id: 'dashboard_loja', label: 'Dashboard Loja', icon: LayoutDashboard, perm: 'MODULE_DASHBOARD_MANAGER' }, { id: 'metas', label: 'Metas', icon: Target, perm: 'MODULE_METAS' }, { id: 'cotas', label: 'Cotas OTB', icon: Calculator, perm: 'MODULE_COTAS' }, { id: 'compras', label: 'Compras', icon: ShoppingBag, perm: 'MODULE_PURCHASES' } ] },
+                        { title: 'Inteligência', items: [ { id: 'dashboard_rede', label: 'Dashboard Rede', icon: LayoutDashboard, perm: 'MODULE_DASHBOARD_ADMIN' }, { id: 'dashboard_loja', label: 'Dashboard Loja', icon: LayoutDashboard, perm: 'MODULE_DASHBOARD_MANAGER' }, { id: 'metas', label: 'Metas', icon: Target, perm: 'MODULE_METAS' }, { id: 'cotas', label: 'Cotas OTB', icon: Calculator, perm: 'MODULE_COTAS' }, { id: 'compras', label: 'Compras', icon: ShoppingBag, perm: 'MODULE_PURCHASES' }, { id: 'os_demandas', label: 'Demanda OS', icon: ClipboardList, perm: 'MODULE_DEMANDS' } ] },
                         { title: 'Operacional', items: [ { id: 'pdv_gelateria', label: 'PDV Gelateria', icon: IceCreamIcon, perm: 'MODULE_ICECREAM', requiredFeature: stores.find(s => s.id === user.storeId)?.has_gelateria || user.role === UserRole.ICE_CREAM }, { id: 'caixa', label: 'Caixa', icon: ClipboardList, perm: 'MODULE_CASH_REGISTER' }, { id: 'agenda', label: 'Agenda Semanal', icon: Calendar, perm: 'MODULE_AGENDA' } ] },
                         { title: 'Documentos', items: [ { id: 'autoriz_compra', label: 'Autoriz. Compra', icon: FileSignature, perm: 'MODULE_AUTORIZ_COMPRA' }, { id: 'termo_condicional', label: 'Termo Condicional', icon: FileText, perm: 'MODULE_TERMO_CONDICIONAL' }, { id: 'downloads', label: 'Downloads', icon: Download, perm: 'MODULE_DOWNLOADS' } ] },
                         { title: 'Administração', items: [ { id: 'users', label: 'Usuários', icon: Users, perm: 'MODULE_ADMIN_USERS' }, { id: 'access', label: 'Acessos', icon: ShieldAlert, perm: 'MODULE_ACCESS_CONTROL' }, { id: 'audit', label: 'Auditoria', icon: Shield, perm: 'MODULE_AUDIT' }, { id: 'settings', label: 'Configurações', icon: Settings, perm: 'MODULE_SETTINGS' } ] }
@@ -397,9 +438,9 @@ const App: React.FC = () => {
                         if (visibleItems.length === 0) return null;
                         return (
                             <div key={section.title} className="space-y-1">
-                                <h3 className="px-4 text-[10px] font-black uppercase text-gray-600 tracking-widest mb-2">{section.title}</h3>
+                                <h3 className="px-4 text-[10px] font-black uppercase text-slate-400 dark:text-slate-500 tracking-widest mb-2">{section.title}</h3>
                                 {visibleItems.map(item => (
-                                    <button key={item.id} onClick={() => { setCurrentView(item.id); setIsSidebarOpen(false); }} className={`w-full text-left py-2.5 px-4 rounded-xl font-black uppercase text-[10px] flex items-center gap-4 transition-all ${currentView === item.id ? 'bg-blue-600 text-white shadow-lg' : 'text-gray-500 hover:text-white hover:bg-white/5'}`}><item.icon size={20} /> {item.label}</button>
+                                    <button key={item.id} onClick={() => { setCurrentView(item.id); setIsSidebarOpen(false); }} className={`w-full text-left py-2.5 px-4 rounded-xl font-black uppercase text-[10px] flex items-center gap-4 transition-all ${currentView === item.id ? 'bg-blue-600 text-white shadow-lg shadow-blue-200 dark:shadow-blue-900/20' : 'text-slate-500 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white hover:bg-slate-50 dark:hover:bg-slate-800'}`}><item.icon size={20} /> {item.label}</button>
                                 ))}
                             </div>
                         );
@@ -408,36 +449,44 @@ const App: React.FC = () => {
                 <div className="mt-8 space-y-2">
                     <button 
                         onClick={() => setIsChangePasswordOpen(true)}
-                        className="w-full flex items-center gap-4 p-4 text-gray-400 font-black uppercase text-[10px] hover:bg-white/5 hover:text-white rounded-xl transition-all border border-white/5"
+                        className="w-full flex items-center gap-4 p-4 text-slate-500 dark:text-slate-400 font-black uppercase text-[10px] hover:bg-slate-50 dark:hover:bg-slate-800 hover:text-slate-900 dark:hover:text-white rounded-xl transition-all border border-slate-100 dark:border-slate-800"
                     >
                         <Lock size={18} /> Alterar Senha
                     </button>
                     <button 
                         onClick={() => window.location.reload()} 
-                        className="w-full flex items-center gap-4 p-4 text-red-500 font-black uppercase text-[10px] hover:bg-red-500/10 rounded-xl transition-all border border-red-500/20"
+                        className="w-full flex items-center gap-4 p-4 text-red-500 font-black uppercase text-[10px] hover:bg-red-50/50 dark:hover:bg-red-900/20 rounded-xl transition-all border border-red-100 dark:border-red-900/30"
                     >
                         <LogOut size={18} /> Sair
                     </button>
                 </div>
             </aside>
-            <div className="flex-1 flex flex-col h-full bg-[#f3f4f6] overflow-hidden text-blue-950">
-                <header className="h-16 border-b border-gray-100 bg-white items-center justify-between px-4 md:px-6 flex shrink-0 z-50">
+            <div className="flex-1 flex flex-col h-full bg-slate-50 dark:bg-slate-950 overflow-hidden text-slate-900 dark:text-slate-100 transition-colors duration-300">
+                <header className="h-16 border-b border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 items-center justify-between px-4 md:px-6 flex shrink-0 z-50 transition-colors duration-300">
                     <div className="flex items-center gap-2 md:gap-4">
-                        <button onClick={() => setIsSidebarOpen(!isSidebarOpen)} className="p-2 text-blue-900">
+                        <button onClick={() => setIsSidebarOpen(!isSidebarOpen)} className="p-2 text-slate-400 hover:text-slate-900 dark:hover:text-white">
                             <Menu size={24} />
                         </button>
-                        <span className="text-[10px] md:text-xs font-black uppercase text-gray-400 flex items-center gap-2 md:gap-3">
-                            <UserCog size={18} className="hidden xs:block"/> Sessão: <span className="text-blue-950 italic truncate max-w-[100px] md:max-w-none">{user?.name}</span>
+                        <span className="text-[10px] md:text-xs font-black uppercase text-slate-400 dark:text-slate-500 flex items-center gap-2 md:gap-3">
+                            <UserCog size={18} className="hidden xs:block"/> Sessão: <span className="text-slate-900 dark:text-white italic truncate max-w-[100px] md:max-w-none">{user?.name}</span>
                             <button 
                                 onClick={() => setIsChangePasswordOpen(true)}
-                                className="p-1.5 bg-gray-100 text-gray-500 rounded-lg hover:bg-blue-600 hover:text-white transition-all shadow-sm border border-gray-200"
+                                className="p-1.5 bg-slate-100 dark:bg-slate-800 text-slate-500 dark:text-slate-400 rounded-lg hover:bg-blue-600 hover:text-white transition-all shadow-sm border border-slate-200 dark:border-slate-700"
                                 title="Alterar Senha"
                             >
                                 <Lock size={14} />
                             </button>
                         </span>
                     </div>
-                    <div className="flex items-center gap-4">
+                    <div className="flex items-center gap-2 md:gap-4">
+                        <button 
+                            onClick={() => setTheme(theme === 'light' ? 'dark' : 'light')}
+                            className="p-2.5 bg-slate-100 dark:bg-slate-800 text-slate-500 dark:text-slate-400 rounded-xl hover:bg-blue-600 hover:text-white transition-all shadow-sm border border-slate-200 dark:border-slate-700 flex items-center gap-2"
+                            title={theme === 'light' ? 'Modo Escuro' : 'Modo Claro'}
+                        >
+                            {theme === 'light' ? <Moon size={18} /> : <Sun size={18} />}
+                            <span className="hidden sm:inline text-[10px] font-black uppercase">{theme === 'light' ? 'Escuro' : 'Claro'}</span>
+                        </button>
                         <NotificationHeader user={user!} stores={stores} agenda={agenda} onNavigate={setCurrentView} />
                     </div>
                 </header>
@@ -637,6 +686,7 @@ const App: React.FC = () => {
                         if (currentView === 'audit' && can('MODULE_AUDIT')) return <SystemAudit currentUser={user!} logs={logs} receipts={receipts} cashErrors={cashErrors} iceCreamSales={iceCreamSales} icPromissories={icPromissories} cardSales={cardSales} pixSales={pixSales} closures={closures} stores={stores} />;
                         if (currentView === 'settings' && can('MODULE_SETTINGS')) return <AdminSettings stores={stores} onAddStore={async (s) => { await supabase.from('stores').insert([s]); fetchData(); }} onUpdateStore={async (s) => { await supabase.from('stores').update(s).eq('id', s.id); fetchData(); }} onDeleteStore={async (id) => { await supabase.from('stores').delete().eq('id', id); fetchData(); }} />;
                         if (currentView === 'spreadsheet_order' && can('MODULE_PURCHASES')) return <SpreadsheetOrderModule user={user!} onClose={() => setCurrentView('compras')} />;
+                        if (currentView === 'os_demandas' && can('MODULE_DEMANDS')) return <OSDemandsModule user={user!} stores={stores} />;
                         return <div className="flex items-center justify-center h-full text-gray-400 uppercase tracking-widest font-black text-sm">Selecione um módulo no menu</div>;
                     })()}
                 </main>

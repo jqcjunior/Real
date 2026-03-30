@@ -34,12 +34,12 @@ export const ProductGrid: React.FC<ProductGridProps> = ({ items, selectedCategor
                 <button 
                     key={item.id} 
                     onClick={() => onAddToCart(item)} 
-                    className="bg-white p-2 rounded-2xl border border-gray-100 hover:border-blue-600 hover:shadow-md transition-all flex flex-col items-center text-center group shadow-sm h-full min-h-[140px]"
+                    className="bg-white dark:bg-slate-900 p-2 rounded-2xl border border-gray-100 dark:border-slate-800 hover:border-blue-600 dark:hover:border-blue-500 hover:shadow-md transition-all flex flex-col items-center text-center group shadow-sm h-full min-h-[140px]"
                 >
-                    <div className="w-full aspect-square bg-gray-50 rounded-xl mb-2 flex items-center justify-center overflow-hidden relative">
+                    <div className="w-full aspect-square bg-gray-50 dark:bg-slate-800 rounded-xl mb-2 flex items-center justify-center overflow-hidden relative">
                         <img 
                             src={item.image_url || getCategoryImage(item.category, item.name)} 
-                            className="w-full h-full object-contain p-2 transition-transform duration-300 group-hover:scale-110" 
+                            className="w-full h-full object-contain p-2 transition-transform duration-300 group-hover:scale-110 dark:brightness-110" 
                             alt={item.name}
                             loading="lazy"
                             onError={(e) => {
@@ -49,10 +49,10 @@ export const ProductGrid: React.FC<ProductGridProps> = ({ items, selectedCategor
                     </div>
                     
                     <div className="flex flex-col justify-between flex-1 w-full">
-                        <h4 className="font-black text-gray-900 uppercase text-[9px] leading-tight line-clamp-2 min-h-[2.5em] flex items-center justify-center">
+                        <h4 className="font-black text-gray-900 dark:text-white uppercase text-[9px] leading-tight line-clamp-2 min-h-[2.5em] flex items-center justify-center">
                             {item.name}
                         </h4>
-                        <p className="text-sm font-black text-blue-900 italic leading-none mt-1">
+                        <p className="text-sm font-black text-blue-900 dark:text-blue-400 italic leading-none mt-1">
                             {formatCurrency(item.price)}
                         </p>
                     </div>

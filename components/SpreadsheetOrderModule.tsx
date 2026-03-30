@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useMemo } from "react";
 import * as XLSX from "xlsx";
-import ExcelJS from "exceljs";
+import ExcelJS from 'exceljs';
+import { saveAs } from 'file-saver';
 import { 
   Download, Trash2, X, ShoppingBag, ListFilter, Layers, Calendar, Zap, Percent, Hash, Info, Plus, ChevronRight, CreditCard
 } from "lucide-react";
@@ -101,6 +102,45 @@ const SpreadsheetOrderModule = ({ user, onClose }: { user: any, onClose: () => v
     prazos: "" 
   });
 
+  const [itens, setItens] = useState<any[]>([]);
+  const [itemAtual, setItemAtual] = useState({
+    referencia: "",
+    tipo: "",
+    modelo: "Fem",
+    cor1: "",
+    cor2: "",
+    cor3: "",
+    valorCompra: 0,
+    precoVenda: 0,
+    color1_id: null,
+    color2_id: null,
+    color3_id: null,
+    type_id: null,
+    reference_id: null
+  });
+  const [isSaving, setIsSaving] = useState(false);
+  const [dbSuggestions, setDbSuggestions] = useState({
+    marcas: [] as string[],
+    fornecedores: [] as string[],
+    tipos: [] as string[],
+    cores: [] as string[],
+    referencias: [] as string[]
+  });
+
+  const formatPhone = (v: string) => {
+    if (!v) return "";
+    v = v.replace(/\D/g, "");
+    if (v.length > 11) v = v.slice(0, 11);
+    if (v.length > 10) {
+      return `(${v.slice(0, 2)}) ${v.slice(2, 7)}-${v.slice(7)}`;
+    } else if (v.length > 5) {
+      return `(${v.slice(0, 2)}) ${v.slice(2, 6)}-${v.slice(6)}`;
+    } else if (v.length > 2) {
+      return `(${v.slice(0, 2)}) ${v.slice(2)}`;
+    }
+    return v;
+  };
+
   const [localTemplate, setLocalTemplate] = useState<ArrayBuffer | null>(null);
 
   const handleTemplateUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -108,6 +148,12 @@ const SpreadsheetOrderModule = ({ user, onClose }: { user: any, onClose: () => v
     if (file) {
       try {
         const buffer = await file.arrayBuffer();
+        // Validação obrigatória do header do arquivo (PK)
+        const bytes = new Uint8Array(buffer.slice(0, 4));
+        if (bytes[0] !== 0x50 || bytes[1] !== 0x4B) {
+          alert("Arquivo inválido: selecione um arquivo Excel (.xlsx) válido.");
+          return;
+        }
         setLocalTemplate(buffer);
         alert("✅ Template carregado com sucesso! Agora o sistema usará este arquivo local para as exportações.");
       } catch (err) {
@@ -117,56 +163,12 @@ const SpreadsheetOrderModule = ({ user, onClose }: { user: any, onClose: () => v
     }
   };
 
-  // Auto-fill supplier details based on Marca
-  useEffect(() => {
-    if (pedido.marca) {
-      const savedBrands = localStorage.getItem("order_brands_cache");
-      if (savedBrands) {
-        const brandsMap = JSON.parse(savedBrands);
-        const brandDetails = brandsMap[pedido.marca.toUpperCase()];
-        if (brandDetails) {
-          setPedido(prev => ({
-            ...prev,
-            fornecedor: prev.fornecedor || brandDetails.fornecedor || "",
-            representante: prev.representante || brandDetails.representante || "",
-            telefone: prev.telefone || brandDetails.telefone || "",
-            email: prev.email || brandDetails.email || ""
-          }));
-        }
-      }
-    }
-  }, [pedido.marca]);
-
-  const [isSaving, setIsSaving] = useState(false);
-
-  const formatPhone = (val: string) => {
-    const digits = val.replace(/\D/g, "");
-    if (digits.length <= 2) return digits;
-    if (digits.length <= 7) return `(${digits.slice(0, 2)}) ${digits.slice(2)}`;
-    return `(${digits.slice(0, 2)}) ${digits.slice(2, 7)}-${digits.slice(7, 11)}`;
-  };
-
-  const [itens, setItens] = useState<any[]>([]);
-  const [itemAtual, setItemAtual] = useState({ 
-    referencia: "", tipo: "", cor1: "", cor2: "", cor3: "", 
-    color1_id: null as string | null, color2_id: null as string | null, color3_id: null as string | null,
-    modelo: "Fem" as keyof typeof TAMANHOS, valorCompra: 0, precoVenda: 0 
-  });
-
-  const [dbSuggestions, setDbSuggestions] = useState({
-    marcas: [] as string[],
-    fornecedores: [] as string[],
-    tipos: [] as string[],
-    cores: [] as string[],
-    referencias: [] as string[]
-  });
-  
-  // Auto-preenchimento por Marca
+  // CORRIGIDO: Consolidado useEffect de auto-fill da marca priorizando Supabase com fallback para localStorage
   useEffect(() => {
     const autoFillBrand = async () => {
       if (!pedido.marca) return;
       try {
-        // Busca no último pedido realizado desta marca (Pedido_Header conforme solicitado)
+        // 1. Prioridade: Supabase (último pedido)
         const { data: lastOrder } = await supabase
           .from('Pedido_Header')
           .select('fornecedor, representante, telefone, email')
@@ -183,6 +185,23 @@ const SpreadsheetOrderModule = ({ user, onClose }: { user: any, onClose: () => v
             telefone: last.telefone || prev.telefone,
             email: last.email || prev.email
           }));
+          return;
+        }
+
+        // 2. Fallback: localStorage cache
+        const savedBrands = localStorage.getItem("order_brands_cache");
+        if (savedBrands) {
+          const brandsMap = JSON.parse(savedBrands);
+          const brandDetails = brandsMap[pedido.marca.toUpperCase()];
+          if (brandDetails) {
+            setPedido(prev => ({
+              ...prev,
+              fornecedor: prev.fornecedor || brandDetails.fornecedor || "",
+              representante: prev.representante || brandDetails.representante || "",
+              telefone: prev.telefone || brandDetails.telefone || "",
+              email: prev.email || brandDetails.email || ""
+            }));
+          }
         }
       } catch (err) {
         console.error("Erro no auto-fill:", err);
@@ -340,59 +359,83 @@ const SpreadsheetOrderModule = ({ user, onClose }: { user: any, onClose: () => v
     }
   }, [itemAtual.valorCompra, pedido.markup, pedido.desconto]);
 
-  const setCell = (
-    ws: any,
-    r: number,
-    c: number,
-    value: any
-  ) => {
-    const cell = ws.getRow(r + 1).getCell(c + 1);
-    cell.value = value;
+  const toExcelDate = (dateStr: string): Date | null => {
+    if (!dateStr) return null;
+    const parts = dateStr.split('-');
+    if (parts.length !== 3) return null;
+    return new Date(parseInt(parts[0]), parseInt(parts[1]) - 1, parseInt(parts[2]));
+  };
+
+  const setCell = (ws: any, addr: string, value: any) => {
+    if (value === null || value === undefined) return;
+    if (!ws[addr]) return;
+    if (ws[addr].f) return;
+    ws[addr].v = value;
+    if (ws[addr].w) delete ws[addr].w;
+  };
+
+  const forcedSetCell = (ws: any, addr: string, value: any, isDate = false) => {
+    if (value === null || value === undefined || value === "") return;
+    if (ws[addr]?.f) return; // nunca sobrescreve fórmulas
+    if (!ws[addr]) {
+      ws[addr] = {};
+    }
+    if (isDate && value instanceof Date) {
+      ws[addr].t = 'd';
+      ws[addr].v = value;
+      ws[addr].z = 'DD/MM/YYYY';
+    } else if (typeof value === 'number') {
+      ws[addr].t = 'n';
+      ws[addr].v = value;
+    } else {
+      ws[addr].t = 's';
+      ws[addr].v = String(value);
+    }
+    if (ws[addr].w) delete ws[addr].w;
   };
 
   const fetchTemplate = () => fetch("https://rwwomakjhmglgoowbmsl.supabase.co/storage/v1/object/public/template/Template.xlsx");
 
-  const safeSet = (cell: ExcelJS.Cell | undefined, val: any) => {
-    if (!cell) return;
-
-    let finalValue = val;
-
-    // Tentativa de conversão numérica para strings que parecem números
-    if (typeof val === 'string' && val.trim() !== '') {
-      // Remove pontos de milhar e troca vírgula por ponto
-      const normalized = val.replace(/\./g, '').replace(',', '.');
-      const num = Number(normalized);
-      // Verifica se é um número finito e se a string normalizada corresponde a um padrão numérico
-      if (isFinite(num) && /^-?\d+(\.\d+)?$/.test(normalized)) {
-        finalValue = num;
+  useEffect(() => {
+    const prefetch = async () => {
+      if (!localTemplate) {
+        try {
+          const response = await fetchTemplate();
+          const buffer = await response.arrayBuffer();
+          const bytes = new Uint8Array(buffer.slice(0, 4));
+          if (bytes[0] === 0x50 && bytes[1] === 0x4B) {
+            setLocalTemplate(buffer);
+          }
+        } catch (err) {
+          console.error("Erro no prefetch do template:", err);
+        }
       }
-    }
+    };
+    prefetch();
+  }, []);
 
-    if (cell.formula) {
-      // Preserva a fórmula existente mas atualiza o valor exibido (result)
-      // Isso é crucial para não quebrar vínculos de fórmulas compartilhadas (Shared Formulas)
-      // e manter a lógica de replicação da planilha.
-      if (typeof cell.formula === 'string') {
-        cell.value = { formula: cell.formula, result: finalValue ?? "" };
-      } else {
-        cell.value = { ...(cell.formula as object), result: finalValue ?? "" } as any;
-      }
-    } else {
-      cell.value = finalValue ?? "";
+  // CORRIGIDO: downloadWorkbook com try-catch e setTimeout para evitar erro de permissão
+  const downloadWorkbook = (wb: XLSX.WorkBook, fileName: string) => {
+    try {
+      const wbout = XLSX.write(wb, { bookType: "xlsx", type: "array" });
+      const blob = new Blob([wbout], {
+        type: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+      });
+      const url = window.URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = fileName;
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+      // CORRIGIDO: Adicionado setTimeout de 1500ms antes do revokeObjectURL
+      setTimeout(() => {
+        window.URL.revokeObjectURL(url);
+      }, 1500);
+    } catch (err) {
+      console.error("Erro ao baixar planilha:", err);
+      alert("Erro ao realizar o download do arquivo Excel. Tente novamente.");
     }
-  };
-
-  const generateAndDownload = async (workbook: ExcelJS.Workbook, fileName: string) => {
-    const buffer = await workbook.xlsx.writeBuffer();
-    const blob = new Blob([buffer], {
-      type: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-    });
-    const url = window.URL.createObjectURL(blob);
-    const anchor = document.createElement("a");
-    anchor.href = url;
-    anchor.download = fileName;
-    anchor.click();
-    window.URL.revokeObjectURL(url);
   };
 
   const exportarPlanilhaFinal = async (hD?: any) => {
@@ -403,35 +446,24 @@ const SpreadsheetOrderModule = ({ user, onClose }: { user: any, onClose: () => v
 
     try {
       const dataHeader = hD || pedido;
-      let templateBuffer: ArrayBuffer;
-
-      // Prioridade para template carregado localmente
-      if (localTemplate) {
-        console.log("Usando template carregado localmente.");
-        templateBuffer = localTemplate;
-      } else {
-        try {
-          const response = await fetchTemplate();
-          templateBuffer = await response.arrayBuffer();
-          
-          // Validação obrigatória do header do arquivo (PK)
-          const bytes = new Uint8Array(templateBuffer.slice(0, 4));
-          if (bytes[0] !== 0x50 || bytes[1] !== 0x4B) {
-            throw new Error("Arquivo inválido: não é um Excel válido (PK não encontrada)");
-          }
-        } catch (fetchErr: any) {
-          console.error("Erro ao buscar template:", fetchErr);
-          alert(`Erro ao baixar template: ${fetchErr.message}. Tente carregar o arquivo .xlsx manualmente.`);
-          return;
-        }
-      }
+      const templateUrl = "https://rwwomakjhmglgoowbmsl.supabase.co/storage/v1/object/public/template/Template.xlsx";
       
-      const workbook = new ExcelJS.Workbook();
-      await workbook.xlsx.load(templateBuffer);
-      const sheet = workbook.getWorksheet(1);
-      if (!sheet) throw new Error("Planilha não encontrada no template.");
+      let arrayBuffer: ArrayBuffer;
+      if (localTemplate) {
+        arrayBuffer = localTemplate;
+      } else {
+        const response = await fetch(templateUrl);
+        arrayBuffer = await response.arrayBuffer();
+      }
 
-      // --- 01 - CABEÇALHO (COORDENADAS EXATAS) ---
+      const workbook = new ExcelJS.Workbook();
+      await workbook.xlsx.load(arrayBuffer);
+      const worksheet = workbook.getWorksheet(1); // Pega a primeira aba (PEDIDO)
+
+      if (!worksheet) {
+        throw new Error("Aba 'PEDIDO' não encontrada no template.");
+      }
+
       const comprador = dataHeader.comprador || pedido.comprador;
       const marca = dataHeader.marca || pedido.marca;
       const representante = dataHeader.representante || pedido.representante;
@@ -441,91 +473,126 @@ const SpreadsheetOrderModule = ({ user, onClose }: { user: any, onClose: () => v
       const embInicio = dataHeader.embarqueInicio || dataHeader.embarque_inicio || pedido.embarqueInicio;
       const embFim = dataHeader.embarqueFim || dataHeader.embarque_fim || pedido.embarqueFim;
       const prazos = dataHeader.prazos || pedido.prazos;
+      const numPedido = dataHeader.numero_pedido || pedido.numero_pedido;
 
-      safeSet(sheet.getCell('AA2'), (comprador || "").toUpperCase());
-      safeSet(sheet.getCell('N3'), (marca || "").toUpperCase());
-      safeSet(sheet.getCell('AA3'), (representante || "").toUpperCase());
-      safeSet(sheet.getCell('AN3'), telefone || "");
-      safeSet(sheet.getCell('N4'), (fornecedor || "").toUpperCase());
-      safeSet(sheet.getCell('AA4'), (email || "").toLowerCase());
-      
-      const fmtDate = (d: string) => {
-        if (!d) return "";
-        const parts = d.split('-');
-        return parts.length === 3 ? `${parts[2]}/${parts[1]}/${parts[0]}` : d;
+      // Helper to set value only if not a formula
+      const safeSet = (addr: string, value: any) => {
+        const cell = worksheet.getCell(addr);
+        if (cell.formula) return;
+        cell.value = value;
       };
-      
-      safeSet(sheet.getCell('AA5'), fmtDate(embInicio));
-      safeSet(sheet.getCell('AH5'), fmtDate(embFim));
-      safeSet(sheet.getCell('Z6'), Number(dataHeader.desconto || pedido.desconto) / 100);
-      safeSet(sheet.getCell('AF6'), Number(dataHeader.markup || pedido.markup));
-      
-      // Data de Emissão e Frete
-      safeSet(sheet.getCell('AN2'), fmtDate(new Date().toISOString().split('T')[0]));
-      safeSet(sheet.getCell('AN4'), "CIF");
 
-      // Prazos e Vencimentos (N5, Q5, T5 e N6, Q6, T6)
-      if (prazos && embFim) {
+      // Helper for vencimentos
+      const getVencimentoTexto = (dataBase: string, prazoDias: number) => {
+        if (!dataBase) return "";
+        const date = new Date(dataBase + "T12:00:00");
+        if (prazoDias % 30 === 0) {
+          date.setMonth(date.getMonth() + (prazoDias / 30));
+        } else {
+          date.setDate(date.getDate() + prazoDias);
+        }
+        const meses = ["Janeiro", "Fevereiro", "Março", "Abril", "Maio", "Junho", "Julho", "Agosto", "Setembro", "Outubro", "Novembro", "Dezembro"];
+        return `${meses[date.getMonth()]}/${date.getFullYear().toString().slice(-2)}`;
+      };
+
+      // --- 1. CABEÇALHO ---
+      if (numPedido) safeSet('N2', numPedido);
+      if (marca) safeSet('N3', marca.toUpperCase());
+      if (fornecedor) safeSet('N4', fornecedor.toUpperCase());
+      if (comprador) safeSet('AA2', comprador.toUpperCase());
+      if (representante) safeSet('AA3', representante.toUpperCase());
+      if (telefone) safeSet('AN3', telefone);
+      if (email) safeSet('AA4', email.toLowerCase());
+      
+      if (embInicio) {
+        const d = toExcelDate(embInicio);
+        if (d) {
+          const cell = worksheet.getCell('AA5');
+          cell.value = d;
+          cell.numFmt = 'DD/MM/YYYY';
+        }
+      }
+      if (embFim) {
+        const d = toExcelDate(embFim);
+        if (d) {
+          const cell = worksheet.getCell('AH5');
+          cell.value = d;
+          cell.numFmt = 'DD/MM/YYYY';
+        }
+      }
+      
+      safeSet('Z6', (dataHeader.desconto || pedido.desconto || 0) / 100);
+      safeSet('AF6', (dataHeader.markup || pedido.markup || 0));
+      
+      const todayCell = worksheet.getCell('AN2');
+      todayCell.value = new Date();
+      todayCell.numFmt = 'DD/MM/YYYY';
+      
+      safeSet('AN4', "CIF");
+
+      // Prazos e Vencimentos
+      if (prazos) {
         const pArray = prazos.split('/');
-        const baseDate = new Date(embFim + "T12:00:00");
-        const mesesNomes = ["Janeiro", "Fevereiro", "Março", "Abril", "Maio", "Junho", "Julho", "Agosto", "Setembro", "Outubro", "Novembro", "Dezembro"];
         const colPrazos = ['N', 'Q', 'T'];
-
         pArray.forEach((p: string, i: number) => {
           if (i > 2) return;
           const col = colPrazos[i];
           const dias = parseInt(p.trim());
           if (!isNaN(dias)) {
-            safeSet(sheet.getCell(`${col}5`), dias);
-            const dVenc = new Date(baseDate);
-            dVenc.setDate(dVenc.getDate() + dias);
-            const mesNome = mesesNomes[dVenc.getMonth()];
-            const anoCurto = dVenc.getFullYear().toString().slice(-2);
-            safeSet(sheet.getCell(`${col}6`), `${mesNome}/${anoCurto}`);
+            safeSet(`${col}5`, dias);
+            if (embFim) {
+              safeSet(`${col}6`, getVencimentoTexto(embFim, dias));
+            }
           }
         });
       }
 
-      // --- 02 - DEFINIÇÃO DE GRADES (LINHAS 14-18) ---
-      const allPossibleSizes = ["UN","P","M","G","GG","16","17","18","19","20","21","22","23","24","25","26","27","28","29","30","31","32","33","34","35","36","37","38","39","40","41","42","43","44","45","46","47","48"];
-      const colSizes = ["D","E","F","G","H","I","J","K","L","M","N","O","P","Q","R","S","T","U","V","W","X","Y","Z","AA","AB","AC","AD","AE","AF","AG","AH","AI","AJ","AK","AL","AM","AN","AO"];
+      // --- 2. CONSTANTES FISCAIS ---
+      safeSet('BF21', 49);         // IPI
+      safeSet('BF22', 70);         // PIS
+      safeSet('BF23', 70);         // COFINS
+      safeSet('BF24', "000");      // ICMS
+      safeSet('BF26', "UN");       // Unidade
+      safeSet('BF27', "64042000"); // NCM
+      safeSet('BF29', "2805900");  // CEST
+      safeSet('BE37', "T");        // IPPT e FAIXA
+
+      // --- 3. GRADES (LINHAS 14-18) ---
+      const allPossibleSizes = ["UN","P","M","G","GG","15","16","17","18","19","20","21","22","23","24","25","26","27","28","29","30","31","32","33","34","35","36","37","38","39","40","41","42","43","44","45","46","47","48"];
       
       const lotesIds = Array.from(new Set(lotesFinalizados.map(l => l.idVinculo)));
       lotesIds.slice(0, 5).forEach((idV, idx) => {
-        const row = 14 + idx;
+        const rowNum = 14 + idx;
         const primeiroItemDoLote = lotesFinalizados.find(l => l.idVinculo === idV);
         if (primeiroItemDoLote) {
-          safeSet(sheet.getCell(`B${row}`), primeiroItemDoLote.gradeLetra);
+          safeSet(`B${rowNum}`, primeiroItemDoLote.gradeLetra);
           const gradeInfo = gradesSalvas.find(g => g.letra === primeiroItemDoLote.gradeLetra);
           if (gradeInfo) {
             Object.entries(gradeInfo.valores).forEach(([tam, qtd]) => {
               const sIdx = allPossibleSizes.indexOf(tam === "17/18" ? "18" : tam);
-              if (sIdx !== -1 && Number(qtd) > 0) {
-                safeSet(sheet.getCell(`${colSizes[sIdx]}${row}`), Number(qtd));
+              if (sIdx !== -1 && (qtd as any) > 0) {
+                // Column D is 4th column
+                const colNum = 4 + sIdx;
+                const cell = worksheet.getRow(rowNum).getCell(colNum);
+                if (!cell.formula) cell.value = qtd as any;
               }
             });
           }
         }
       });
 
-      // --- 03 - LOJAS (LINHAS 23-27) ---
+      // --- 4. LOJAS POR LOTE (LINHAS 23-27) ---
       lotesIds.slice(0, 5).forEach((idV, idx) => {
-        const row = 23 + idx;
-        const lojasDoLote = lotesFinalizados.filter(l => l.idVinculo === idV).map(l => l.loja);
-        lojasDoLote.forEach(numLoja => {
-          const lojaNum = parseInt(numLoja);
-          if (!isNaN(lojaNum)) {
-            const colIdx = 3 + lojaNum; // Loja 01 = Col 4 (D)
-            if (colIdx >= 4 && colIdx <= 41) { // D até AO
-              const colLetter = colSizes[colIdx - 4];
-              safeSet(sheet.getCell(`${colLetter}${row}`), numLoja);
-            }
-          }
+        const rowNum = 23 + idx;
+        const lojasDoLote = [...new Set(lotesFinalizados.filter(l => l.idVinculo === idV).map(l => l.loja))];
+        lojasDoLote.forEach((numLoja, lIdx) => {
+          const colNum = 4 + lIdx;
+          const cell = worksheet.getRow(rowNum).getCell(colNum);
+          if (!cell.formula) cell.value = numLoja as any;
         });
       });
 
-      // --- 04 - PRODUTOS (LINHA 36+) ---
-      // Agrupar por referência e cor para evitar duplicidade de linhas
+      // --- 5. ITENS (LINHA 36+) ---
       const itensUnicos = lotesFinalizados.reduce((acc: any[], curr) => {
         const exists = acc.find(it => it.referencia === curr.referencia && it.corEscolhida === curr.corEscolhida);
         if (!exists) acc.push(curr);
@@ -534,28 +601,64 @@ const SpreadsheetOrderModule = ({ user, onClose }: { user: any, onClose: () => v
 
       itensUnicos.forEach((it, idx) => {
         if (!it) return;
-        const row = 36 + idx; // Começa na linha 36 conforme solicitado
-        if (row > 166) return;
+        const rowNum = 36 + idx;
+        if (rowNum > 166) return;
 
-        safeSet(sheet.getCell(`C${row}`), it.referencia);
-        safeSet(sheet.getCell(`H${row}`), it.tipo);
-        safeSet(sheet.getCell(`R${row}`), it.corEscolhida || it.cor1 || "");
-        safeSet(sheet.getCell(`S${row}`), it.cor2 || "");
-        safeSet(sheet.getCell(`T${row}`), it.cor3 || "");
-        safeSet(sheet.getCell(`AL${row}`), Number(it.valorCompra));
-        safeSet(sheet.getCell(`AO${row}`), Number(it.precoVenda || it.valorVenda));
+        const row = worksheet.getRow(rowNum);
+        
+        // B = Seq
+        const cellB = row.getCell(2);
+        if (!cellB.formula) cellB.value = idx + 1;
 
-        // Vínculo de Letra da Grade (X, AA, AD, AG, AJ)
+        // C = Referência
+        const cellC = row.getCell(3);
+        if (!cellC.formula) cellC.value = it.referencia.trim().toUpperCase();
+
+        // H = Tipo
+        const cellH = row.getCell(8);
+        if (!cellH.formula) cellH.value = it.tipo.trim().toUpperCase();
+
+        // R = Cor 1
+        const cellR = row.getCell(18);
+        if (!cellR.formula) cellR.value = (it.corEscolhida || it.cor1).trim().toUpperCase();
+
+        // U = Modelo
+        const cellU = row.getCell(21);
+        if (!cellU.formula) cellU.value = it.modelo;
+
+        // AL = Preço Custo
+        const cellAL = row.getCell(38);
+        if (!cellAL.formula) cellAL.value = it.valorCompra;
+
+        // AO = Preço Venda
+        const cellAO = row.getCell(41);
+        if (!cellAO.formula) cellAO.value = it.precoVenda || it.valorVenda;
+
+        // X, AA, AD, AG, AJ = Letra da Grade do Lote
         lotesIds.slice(0, 5).forEach((idV, lIdx) => {
           const loteItem = lotesFinalizados.find(l => l.idVinculo === idV && l.referencia === it.referencia && l.corEscolhida === it.corEscolhida);
           if (loteItem) {
-            const colGrade = ['X', 'AA', 'AD', 'AG', 'AJ'][lIdx];
-            safeSet(sheet.getCell(`${colGrade}${row}`), loteItem.gradeLetra);
+            const colGradeNum = [24, 27, 30, 33, 36][lIdx]; // X, AA, AD, AG, AJ
+            const cellGrade = row.getCell(colGradeNum);
+            if (!cellGrade.formula) cellGrade.value = loteItem.gradeLetra;
           }
         });
+
+        // Mapeamento das Grades por Loja (AT+)
+        // As lojas começam na coluna 46 (AT)
+        const lotesDesteItem = lotesFinalizados.filter(l => l.referencia === it.referencia && l.corEscolhida === it.corEscolhida);
+        lotesDesteItem.forEach(l => {
+          const lojaNum = parseInt(l.loja);
+          if (!isNaN(lojaNum)) {
+            const colDestino = 45 + lojaNum; 
+            const cellLoja = row.getCell(colDestino);
+            if (!cellLoja.formula) cellLoja.value = l.gradeLetra as any;
+          }
+        });
+
+        row.commit();
       });
 
-      // Salvar dados da marca no cache para auto-preenchimento futuro
       if (marca) {
         const savedBrands = localStorage.getItem("order_brands_cache");
         const brandsMap = savedBrands ? JSON.parse(savedBrands) : {};
@@ -568,14 +671,17 @@ const SpreadsheetOrderModule = ({ user, onClose }: { user: any, onClose: () => v
         localStorage.setItem("order_brands_cache", JSON.stringify(brandsMap));
       }
 
-      await generateAndDownload(workbook, `Pedido_Consolidado_${(marca || "FINAL")}.xlsx`);
+      const buffer = await workbook.xlsx.writeBuffer();
+      const blob = new Blob([buffer], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' });
+      saveAs(blob, `Pedido_Final_${(marca || "CONSOLIDADO")}_${new Date().getTime()}.xlsx`);
 
     } catch (err) {
-      console.error("Erro na exportação:", err);
-      alert("Erro ao gerar planilha. Verifique se o template é um arquivo .xlsx válido.");
+      console.error("Erro na exportação ExcelJS:", err);
+      alert("Erro ao gerar planilha: " + (err instanceof Error ? err.message : "Erro desconhecido"));
     }
   };
 
+  // CORRIGIDO: exportarPedidosPorLoja refatorado para usar JSZip e evitar bloqueio de múltiplos downloads
   const exportarPedidosPorLoja = async () => {
     if (lotesFinalizados.length === 0) {
       alert("Nenhum lote encontrado.");
@@ -591,12 +697,6 @@ const SpreadsheetOrderModule = ({ user, onClose }: { user: any, onClose: () => v
         try {
           const response = await fetchTemplate();
           templateBuffer = await response.arrayBuffer();
-          
-          // Validação obrigatória do header do arquivo (PK)
-          const bytes = new Uint8Array(templateBuffer.slice(0, 4));
-          if (bytes[0] !== 0x50 || bytes[1] !== 0x4B) {
-            throw new Error("Arquivo inválido: não é um Excel válido (PK não encontrada)");
-          }
         } catch (fetchErr: any) {
           console.error("Erro ao buscar template:", fetchErr);
           alert(`Erro ao baixar template: ${fetchErr.message}. Tente carregar o arquivo .xlsx manualmente.`);
@@ -604,166 +704,174 @@ const SpreadsheetOrderModule = ({ user, onClose }: { user: any, onClose: () => v
         }
       }
 
+      // Validação obrigatória do header do arquivo (PK)
+      const bytes = new Uint8Array(templateBuffer.slice(0, 4));
+      if (bytes[0] !== 0x50 || bytes[1] !== 0x4B) {
+        throw new Error("Arquivo inválido: não é um Excel válido (PK não encontrada)");
+      }
+
+      const JSZip = (await import("jszip")).default;
+      const zip = new JSZip();
       const lojasUnicas = [...new Set(lotesFinalizados.map((l) => l.loja))].sort();
 
-      for (const loja of lojasUnicas) {
-        const workbook = new ExcelJS.Workbook();
-        await workbook.xlsx.load(templateBuffer);
-        const sheet = workbook.getWorksheet(1);
-        if (!sheet) continue;
+      // Helper for vencimentos
+      const getVencimentoTexto = (dataBase: string, prazoDias: number) => {
+        if (!dataBase) return "";
+        const date = new Date(dataBase + "T12:00:00");
+        if (prazoDias % 30 === 0) {
+          date.setMonth(date.getMonth() + (prazoDias / 30));
+        } else {
+          date.setDate(date.getDate() + prazoDias);
+        }
+        const meses = ["Janeiro", "Fevereiro", "Março", "Abril", "Maio", "Junho", "Julho", "Agosto", "Setembro", "Outubro", "Novembro", "Dezembro"];
+        return `${meses[date.getMonth()]}/${date.getFullYear().toString().slice(-2)}`;
+      };
 
-        // --- 1. CABEÇALHO ---
-        safeSet(sheet.getCell('N2'), pedido.numero_pedido || "");
-        safeSet(sheet.getCell('N3'), pedido.marca.toUpperCase());
-        safeSet(sheet.getCell('N4'), pedido.fornecedor.toUpperCase());
-        safeSet(sheet.getCell('AA3'), pedido.representante.toUpperCase());
-        safeSet(sheet.getCell('AN3'), pedido.telefone);
-        safeSet(sheet.getCell('AA4'), pedido.email);
-        safeSet(sheet.getCell('AA2'), pedido.comprador.toUpperCase());
+      for (const loja of lojasUnicas as string[]) {
+        const wb = XLSX.read(templateBuffer, {
+          type: "array",
+          cellStyles: true,
+          cellNF: true,
+          cellDates: true,
+          cellText: false
+        });
         
-        const formatDate = (dateStr: string) => {
-          if (!dateStr) return "";
-          const parts = dateStr.split('-');
-          if (parts.length !== 3) return dateStr;
-          const [year, month, day] = parts;
-          return `${day}/${month}/${year}`;
-        };
+        const sheetName = wb.SheetNames.find(n => n.trim().toUpperCase() === "PEDIDO");
 
-        const formatMonthYear = (date: Date) => {
-          const months = ["Janeiro", "Fevereiro", "Março", "Abril", "Maio", "Junho", "Julho", "Agosto", "Setembro", "Outubro", "Novembro", "Dezembro"];
-          return `${months[date.getMonth()]}/${date.getFullYear().toString().slice(-2)}`;
-        };
+        if (!sheetName) continue;
+        const ws = wb.Sheets[sheetName];
+
+        // --- 1. CABEÇALHO (Aba PEDIDO) ---
+        if (pedido.numero_pedido) forcedSetCell(ws, 'N2', pedido.numero_pedido);
+        if (pedido.marca) forcedSetCell(ws, 'N3', pedido.marca.toUpperCase());
+        if (pedido.fornecedor) forcedSetCell(ws, 'N4', pedido.fornecedor.toUpperCase());
+        if (pedido.comprador) forcedSetCell(ws, 'AA2', pedido.comprador.toUpperCase());
+        if (pedido.representante) forcedSetCell(ws, 'AA3', pedido.representante.toUpperCase());
+        if (pedido.telefone) forcedSetCell(ws, 'AN3', pedido.telefone);
+        if (pedido.email) forcedSetCell(ws, 'AA4', pedido.email.toLowerCase());
         
-        safeSet(sheet.getCell('AN2'), formatDate(new Date().toISOString().split('T')[0]));
-        safeSet(sheet.getCell('AN4'), "CIF");
-        safeSet(sheet.getCell('AA5'), formatDate(pedido.embarqueInicio));
-        safeSet(sheet.getCell('AH5'), formatDate(pedido.embarqueFim));
-        safeSet(sheet.getCell('Z6'), Number(pedido.desconto) / 100);
-        safeSet(sheet.getCell('AF6'), Number(pedido.markup));
+        forcedSetCell(ws, 'AN2', new Date(), true);
+        forcedSetCell(ws, 'AN4', "CIF");
 
-        // --- 2. PRAZOS E VENCIMENTOS ---
+        if (pedido.embarqueInicio) {
+          forcedSetCell(ws, 'AA5', toExcelDate(pedido.embarqueInicio), true);
+        }
+
+        if (pedido.embarqueFim) {
+          forcedSetCell(ws, 'AH5', toExcelDate(pedido.embarqueFim), true);
+        }
+
+        forcedSetCell(ws, 'Z6', (pedido.desconto || 0) / 100);
+        forcedSetCell(ws, 'AF6', (pedido.markup || 0));
+
+        // Prazos e Vencimentos
         if (pedido.prazos) {
           const prazosArr = pedido.prazos.split('/');
           const colPrazos = ['N', 'Q', 'T'];
           prazosArr.forEach((p, i) => {
             if (i > 2) return;
-            const val = parseInt(p);
+            const val = parseInt(p.trim());
             if (!isNaN(val)) {
               const col = colPrazos[i];
-              safeSet(sheet.getCell(`${col}5`), val);
-              
+              forcedSetCell(ws, `${col}5`, val);
               if (pedido.embarqueFim) {
-                const d = new Date(pedido.embarqueFim + "T12:00:00");
-                d.setDate(d.getDate() + val);
-                safeSet(sheet.getCell(`${col}6`), formatMonthYear(d));
+                forcedSetCell(ws, `${col}6`, getVencimentoTexto(pedido.embarqueFim, val));
               }
             }
           });
         }
 
-        // --- 3. RESUMO DE GRADES (LINHAS 14-18) ---
-        const allPossibleSizes = ["UN", "P", "M", "G", "GG", "15", "16", "17", "18", "19", "20", "21", "22", "23", "24", "25", "26", "27", "28", "29", "30", "31", "32", "33", "34", "35", "36", "37", "38", "39", "40", "41", "42", "43", "44", "45", "46", "47"];
-        const colSizes = ["D","E","F","G","H","I","J","K","L","M","N","O","P","Q","R","S","T","U","V","W","X","Y","Z","AA","AB","AC","AD","AE","AF","AG","AH","AI","AJ","AK","AL","AM","AN","AO"];
+        // --- 2. CONSTANTES FISCAIS (Aba PEDIDO) ---
+        forcedSetCell(ws, 'BF21', 49);
+        forcedSetCell(ws, 'BF22', 70);
+        forcedSetCell(ws, 'BF23', 70);
+        forcedSetCell(ws, 'BF24', "000");
+        forcedSetCell(ws, 'BF26', "UN");
+        forcedSetCell(ws, 'BF27', "64042000");
+        forcedSetCell(ws, 'BF29', "2805900");
+        forcedSetCell(ws, 'BE37', "T");
+
+        // --- 3. GRADES (LINHAS 14-18) ---
+        const allPossibleSizes = ["UN","P","M","G","GG","15","16","17","18","19","20","21","22","23","24","25","26","27","28","29","30","31","32","33","34","35","36","37","38","39","40","41","42","43","44","45","46","47","48"];
+        const colSizes = ["D","E","F","G","H","I","J","K","L","M","N","O","P","Q","R","S","T","U","V","W","X","Y","Z","AA","AB","AC","AD","AE","AF","AG","AH","AI","AJ","AK","AL","AM","AN","AO","AP","AQ"];
         
         const idsVinculosGrades = [...new Set(lotesFinalizados.map(l => l.idVinculo))].slice(0, 5);
         idsVinculosGrades.forEach((idV, idx) => {
           const row = 14 + idx;
           const l = lotesFinalizados.find(item => item.idVinculo === idV);
           if (l) {
-            safeSet(sheet.getCell(`B${row}`), l.gradeLetra);
+            forcedSetCell(ws, `B${row}`, l.gradeLetra);
             const gradeInfo = gradesSalvas.find(g => g.letra === l.gradeLetra);
             if (gradeInfo) {
               Object.entries(gradeInfo.valores).forEach(([tam, qtd]) => {
-                if (Number(qtd) > 0) {
-                  const sIdx = allPossibleSizes.indexOf(tam === "17/18" ? "18" : tam);
-                  if (sIdx !== -1) {
-                    safeSet(sheet.getCell(`${colSizes[sIdx]}${row}`), Number(qtd));
-                  }
+                const sIdx = allPossibleSizes.indexOf(tam === "17/18" ? "18" : tam);
+                if (sIdx !== -1 && (qtd as any) > 0) {
+                  forcedSetCell(ws, `${colSizes[sIdx]}${row}`, qtd);
                 }
               });
             }
           }
         });
 
-        const lotesDaLoja = lotesFinalizados.filter((l) => l.loja === loja);
-        
-        // Agrupar lotes para saber o índice do lote (0 a 4)
-        const lotesAgrupadosExport = Object.values(
-          lotesFinalizados.reduce((acc, l) => {
-            if (!acc[l.idVinculo]) {
-              acc[l.idVinculo] = { idVinculo: l.idVinculo, grade: l.gradeLetra, lojas: new Set<string>() };
-            }
-            acc[l.idVinculo].lojas.add(l.loja);
-            return acc;
-          }, {} as Record<string, { idVinculo: string, grade: string, lojas: Set<string> }>)
-        );
-
-        // --- 4. MARCAÇÃO DE LOJAS (LINHAS 23-27) ---
-        lotesAgrupadosExport.forEach((la: any, idx) => {
-          if (idx >= 5) return;
-          const rowNum = 23 + idx;
-          la.lojas.forEach((lojaId: string) => {
-            const lojaNum = parseInt(lojaId);
-            if (!isNaN(lojaNum) && lojaNum >= 1 && lojaNum <= 120) {
-              const colIdx = 3 + lojaNum; // D=4, E=5...
-              safeSet(sheet.getRow(rowNum).getCell(colIdx), lojaId);
+        // --- 4. LOJAS POR LOTE (LINHAS 23-27) ---
+        idsVinculosGrades.forEach((idV, idx) => {
+          const row = 23 + idx;
+          const lojasDoLote = [...new Set(lotesFinalizados.filter(l => l.idVinculo === idV).map(l => l.loja))];
+          lojasDoLote.forEach((numLoja, lIdx) => {
+            if (lIdx < colSizes.length) {
+              const colLetter = colSizes[lIdx];
+              forcedSetCell(ws, `${colLetter}${row}`, numLoja);
             }
           });
         });
 
+        // --- 5. ITENS (LINHA 36+) ---
+        const lotesDaLoja = lotesFinalizados.filter((l) => l.loja === loja);
+        
         lotesDaLoja.forEach((l, idx) => {
-          const r = 36 + idx; // Começa na linha 36
-          
-          if (l) {
-            safeSet(sheet.getCell(`C${r}`), l.referencia);
-            safeSet(sheet.getCell(`H${r}`), l.tipo);
-            safeSet(sheet.getCell(`R${r}`), l.corEscolhida || "");
-            safeSet(sheet.getCell(`S${r}`), l.cor2 || "");
-            safeSet(sheet.getCell(`T${r}`), l.cor3 || "");
-            
-            safeSet(sheet.getCell(`AL${r}`), Number(l.valorCompra));
-            safeSet(sheet.getCell(`AO${r}`), Number(l.precoVenda));
+          const r = 36 + idx;
+          if (r > 166) return;
 
-            const loteIndex = lotesAgrupadosExport.findIndex((la: any) => la.idVinculo === l.idVinculo);
-            if (loteIndex !== -1 && loteIndex < 5) {
-              const colsGrade = ['X', 'AA', 'AD', 'AG', 'AJ'];
-              const colsQtd = ['AS', 'AV', 'AY', 'BB', 'BE'];
-              
-              safeSet(sheet.getCell(`${colsGrade[loteIndex]}${r}`), l.gradeLetra);
-              
-              // Qtd para esta loja específica (total da grade)
-              const gradeInfo = gradesSalvas.find(g => g.letra === l.gradeLetra);
-              safeSet(sheet.getCell(`${colsQtd[loteIndex]}${r}`), gradeInfo?.total || 0);
-            }
+          forcedSetCell(ws, `B${r}`, idx + 1); // Número sequencial
+          if (l.referencia) forcedSetCell(ws, `C${r}`, l.referencia.trim().toUpperCase());
+          if (l.tipo) forcedSetCell(ws, `H${r}`, l.tipo.trim().toUpperCase());
+          if (l.corEscolhida || l.cor1) forcedSetCell(ws, `R${r}`, (l.corEscolhida || l.cor1).trim().toUpperCase());
+          if (l.modelo) forcedSetCell(ws, `U${r}`, l.modelo);
+          if (l.valorCompra) forcedSetCell(ws, `AL${r}`, l.valorCompra);
+          if (l.precoVenda) forcedSetCell(ws, `AO${r}`, l.precoVenda);
+
+          const loteIndex = idsVinculosGrades.indexOf(l.idVinculo);
+          if (loteIndex !== -1) {
+            const colGrade = ['X', 'AA', 'AD', 'AG', 'AJ'][loteIndex];
+            forcedSetCell(ws, `${colGrade}${r}`, l.gradeLetra);
+          }
+
+          // Mapeamento da Grade para esta Loja (AT+)
+          const lojaNum = parseInt(loja as string);
+          if (!isNaN(lojaNum)) {
+            const colLetter = XLSX.utils.encode_col(45 + lojaNum);
+            forcedSetCell(ws, `${colLetter}${r}`, l.gradeLetra);
           }
         });
 
-        // --- 5. IDENTIFICAÇÃO DA LOJA ---
-        safeSet(sheet.getCell('D25'), loja as any);
+        // --- 6. IDENTIFICAÇÃO DA LOJA ---
+        forcedSetCell(ws, 'D25', loja);
 
-        // --- 6. PLANILHA "Exportar Use" ---
-        let exportUseSheet = workbook.getWorksheet("Exportar Use");
-        if (exportUseSheet) {
-          lotesDaLoja.forEach((l, idx) => {
-            const r = 2 + idx; // Começa na linha 2
-            safeSet(exportUseSheet.getCell(`Q${r}`), VALORES_FISCAIS.IPPT);
-            safeSet(exportUseSheet.getCell(`T${r}`), VALORES_FISCAIS.NCM);
-            safeSet(exportUseSheet.getCell(`U${r}`), VALORES_FISCAIS.CEST);
-            safeSet(exportUseSheet.getCell(`V${r}`), VALORES_FISCAIS.UNIDADE);
-            safeSet(exportUseSheet.getCell(`Y${r}`), VALORES_FISCAIS.IPI);
-            safeSet(exportUseSheet.getCell(`Z${r}`), VALORES_FISCAIS.PIS);
-            safeSet(exportUseSheet.getCell(`AA${r}`), VALORES_FISCAIS.COFINS);
-            safeSet(exportUseSheet.getCell(`AB${r}`), VALORES_FISCAIS.ICMS);
-            safeSet(exportUseSheet.getCell(`AM${r}`), Number(l.precoVenda));
-            safeSet(exportUseSheet.getCell(`AS${r}`), VALORES_FISCAIS.FAIXA);
-          });
-        }
 
-        await generateAndDownload(workbook, `Pedido_Loja_${loja}_${(pedido.marca || "FINAL")}.xlsx`);
-        await new Promise((resolve) => setTimeout(resolve, 100));
+        const wbout = XLSX.write(wb, { bookType: "xlsx", type: "array" });
+        zip.file(`Pedido_Loja_${loja}_${(pedido.marca || "FINAL")}.xlsx`, wbout);
       }
 
-      console.log("Pedidos por loja exportados com sucesso!");
+      const zipContent = await zip.generateAsync({ type: "blob" });
+      const url = window.URL.createObjectURL(zipContent);
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = `Pedidos_Por_Loja_${pedido.marca || "FINAL"}.zip`;
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+      setTimeout(() => window.URL.revokeObjectURL(url), 1500);
+
     } catch (err) {
       console.error("Erro ao exportar pedidos por loja:", err);
       alert(`Erro ao exportar pedidos por loja: ${err instanceof Error ? err.message : "Erro desconhecido"}`);
@@ -794,8 +902,8 @@ const SpreadsheetOrderModule = ({ user, onClose }: { user: any, onClose: () => v
         telefone: pedido.telefone,
         email: pedido.email.trim().toLowerCase(),
         comprador: pedido.comprador.trim().toUpperCase(),
-        desconto: Number(pedido.desconto),
-        markup: Number(pedido.markup),
+        desconto: pedido.desconto,
+        markup: pedido.markup,
         // Correção de data vazia para NULL
         embarque_inicio: pedido.embarqueInicio || null,
         embarque_fim: pedido.embarqueFim || null,
@@ -868,49 +976,6 @@ const SpreadsheetOrderModule = ({ user, onClose }: { user: any, onClose: () => v
     }
   };
 
-  const handleSalvarEExportar = async () => {
-    const hD = await salvarPedidoCompleto();
-    if (hD) {
-      alert("✅ Pedido salvo no banco! Gerando planilha consolidada...");
-      
-      // Save brand details to cache for auto-fill
-      if (pedido.marca) {
-        const savedBrands = localStorage.getItem("order_brands_cache");
-        const brandsMap = savedBrands ? JSON.parse(savedBrands) : {};
-        brandsMap[pedido.marca.toUpperCase()] = {
-          fornecedor: pedido.fornecedor,
-          representante: pedido.representante,
-          telefone: pedido.telefone,
-          email: pedido.email
-        };
-        localStorage.setItem("order_brands_cache", JSON.stringify(brandsMap));
-      }
-
-      await exportarPlanilhaFinal(hD);
-      
-      // Resetar tudo para novo pedido
-      setPedido({ 
-        numero_pedido: "",
-        marca: "", 
-        fornecedor: "", 
-        representante: "",
-        telefone: "",
-        email: "",
-        comprador: user?.name || "",
-        embarqueInicio: "", 
-        embarqueFim: "", 
-        desconto: 0, 
-        markup: 2.6, 
-        prazos: "" 
-      });
-      setItens([]);
-      setGradesSalvas([]);
-      setLotesFinalizados([]);
-      setPersistAssignments({});
-      setEtapa(1);
-    }
-  };
-
   useEffect(() => {
     const fetchNextOrderNumber = async () => {
       try {
@@ -938,37 +1003,20 @@ const SpreadsheetOrderModule = ({ user, onClose }: { user: any, onClose: () => v
     fetchNextOrderNumber();
   }, []);
 
-  // Auto-preenchimento de fornecedor baseado na marca
-  useEffect(() => {
-    if (pedido.marca) {
-      const cachedData = localStorage.getItem(`brand_data_${pedido.marca.toUpperCase()}`);
-      if (cachedData) {
-        try {
-          const data = JSON.parse(cachedData);
-          setPedido(prev => ({
-            ...prev,
-            fornecedor: data.fornecedor || prev.fornecedor,
-            representante: data.representante || prev.representante,
-            telefone: data.telefone || prev.telefone,
-            email: data.email || prev.email
-          }));
-        } catch (e) {
-          console.error("Erro ao carregar cache da marca", e);
-        }
-      }
-    }
-  }, [pedido.marca]);
+  // Auto-preenchimento de fornecedor baseado na marca (Removido por redundância)
 
   // Salvar dados da marca no cache ao sair do campo
   const salvarCacheMarca = () => {
-    if (pedido.marca && pedido.fornecedor) {
-      const data = {
+    if (pedido.marca) {
+      const savedBrands = localStorage.getItem("order_brands_cache");
+      const brandsMap = savedBrands ? JSON.parse(savedBrands) : {};
+      brandsMap[pedido.marca.toUpperCase()] = {
         fornecedor: pedido.fornecedor,
         representante: pedido.representante,
         telefone: pedido.telefone,
         email: pedido.email
       };
-      localStorage.setItem(`brand_data_${pedido.marca.toUpperCase()}`, JSON.stringify(data));
+      localStorage.setItem("order_brands_cache", JSON.stringify(brandsMap));
     }
   };
 
@@ -1115,11 +1163,11 @@ const SpreadsheetOrderModule = ({ user, onClose }: { user: any, onClose: () => v
                 <div className="grid grid-cols-2 gap-4">
                   <div className="space-y-1">
                     <label className="text-[9px] font-black text-blue-500 uppercase ml-2 flex items-center gap-1"><Zap size={10}/> Markup</label>
-                    <input type="number" step="0.1" className="w-full p-3 bg-blue-50/50 rounded-xl font-black text-center text-blue-900 outline-none min-h-[44px] text-xs" value={pedido.markup || ""} onChange={e => setPedido({...pedido, markup: Number(e.target.value)})} />
+                    <input type="number" step="0.1" className="w-full p-3 bg-blue-50/50 rounded-xl font-black text-center text-blue-900 outline-none min-h-[44px] text-xs" value={pedido.markup || ""} onChange={e => setPedido({...pedido, markup: e.target.value})} />
                   </div>
                   <div className="space-y-1">
                     <label className="text-[9px] font-black text-red-500 uppercase ml-2 flex items-center gap-1"><Percent size={10}/> Desconto %</label>
-                    <input type="number" className="w-full p-3 bg-red-50/50 rounded-xl font-black text-center text-red-900 outline-none min-h-[44px] text-xs" value={pedido.desconto || ""} onChange={e => setPedido({...pedido, desconto: Number(e.target.value)})} />
+                    <input type="number" className="w-full p-3 bg-red-50/50 rounded-xl font-black text-center text-red-900 outline-none min-h-[44px] text-xs" value={pedido.desconto || ""} onChange={e => setPedido({...pedido, desconto: e.target.value})} />
                   </div>
                 </div>
                 <div className="col-span-2 space-y-2 pt-2 border-t border-slate-50">
@@ -1230,7 +1278,7 @@ const SpreadsheetOrderModule = ({ user, onClose }: { user: any, onClose: () => v
                   </div>
                 </div>
                 <div className="bg-slate-900 p-4 sm:p-6 rounded-3xl text-white flex justify-between items-center shadow-lg border-b-4 border-blue-600">
-                  <div><p className="text-[8px] font-black text-slate-500 uppercase tracking-widest">Custo Fábrica</p><div className="flex items-center font-black text-lg sm:text-xl"><span className="text-blue-500 mr-1">R$</span><input type="number" className="bg-transparent w-20 outline-none min-h-[44px] [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none" value={itemAtual.valorCompra || ""} onChange={e => setItemAtual({...itemAtual, valorCompra: Number(e.target.value)})} /></div></div>
+                  <div><p className="text-[8px] font-black text-slate-500 uppercase tracking-widest">Custo Fábrica</p><div className="flex items-center font-black text-lg sm:text-xl"><span className="text-blue-500 mr-1">R$</span><input type="number" className="bg-transparent w-20 outline-none min-h-[44px] [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none" value={itemAtual.valorCompra || ""} onChange={e => setItemAtual({...itemAtual, valorCompra: e.target.value})} /></div></div>
                   <div className="text-right border-l border-white/10 pl-4 sm:pl-6"><p className="text-[8px] font-black text-blue-400 uppercase mb-1">Valor de Venda</p><p className="text-xl sm:text-3xl font-black text-yellow-400 italic leading-none">R$ {itemAtual.precoVenda.toFixed(2)}</p></div>
                 </div>
                 <button 
@@ -1547,11 +1595,14 @@ const SpreadsheetOrderModule = ({ user, onClose }: { user: any, onClose: () => v
             >
               <Layers size={18}/> {isSaving ? 'Salvando...' : '💾 Salvar Pedido'}
             </button>
-            <button onClick={handleSalvarEExportar} className="flex-1 md:flex-none md:w-48 bg-red-600 text-white px-4 py-3 rounded-xl font-black text-[9px] uppercase shadow-lg hover:bg-red-700 transition-all border-b-4 border-red-900 active:scale-95 flex items-center justify-center gap-2 min-h-[44px]">
+            <button 
+              onClick={() => exportarPlanilhaFinal()} 
+              className="flex-1 md:flex-none md:w-48 bg-red-600 text-white px-4 py-3 rounded-xl font-black text-[9px] uppercase shadow-lg hover:bg-red-700 transition-all border-b-4 border-red-900 active:scale-95 flex items-center justify-center gap-2 min-h-[44px]"
+            >
               <Download size={18}/> Exportar Excel
             </button>
             <button
-              onClick={exportarPedidosPorLoja}
+              onClick={() => exportarPedidosPorLoja()}
               className="flex-1 md:flex-none md:w-48 bg-blue-700 text-white px-4 py-3 rounded-xl font-black text-[9px] uppercase shadow-lg hover:bg-blue-800 transition-all border-b-4 border-blue-900 active:scale-95 flex items-center justify-center gap-2 min-h-[44px]"
             >
               <Download size={18}/> Pedidos por Loja

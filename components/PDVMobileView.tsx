@@ -168,14 +168,14 @@ const PDVMobileView: React.FC<PDVMobileViewProps> = (props) => {
     };
 
     return (
-        <div className="flex flex-col h-full bg-[#F8F9FA] text-gray-900 font-sans relative overflow-hidden">
-            <header className="px-6 py-4 bg-white border-b border-gray-100 flex items-center justify-between shrink-0">
+        <div className="flex flex-col h-full bg-[#F8F9FA] dark:bg-slate-950 text-gray-900 dark:text-slate-100 font-sans relative overflow-hidden transition-colors duration-300">
+            <header className="px-6 py-4 bg-white dark:bg-slate-900 border-b border-gray-100 dark:border-slate-800 flex items-center justify-between shrink-0 transition-colors duration-300">
                 {step !== 'categories' ? (
-                    <button onClick={() => setStep(step === 'cart' ? 'products' : 'categories')} className="p-2 -ml-2 text-gray-400 active:text-blue-600">
+                    <button onClick={() => setStep(step === 'cart' ? 'products' : 'categories')} className="p-2 -ml-2 text-gray-400 dark:text-slate-500 active:text-blue-600 dark:active:text-blue-400">
                         <ChevronLeft size={24} />
                     </button>
                 ) : <div className="w-8" />}
-                <h1 className="text-sm font-black uppercase tracking-widest text-blue-950 italic">
+                <h1 className="text-sm font-black uppercase tracking-widest text-blue-950 dark:text-white italic">
                     Gelateria <span className="text-red-600">Real</span>
                 </h1>
                 <div className="w-8" />
@@ -188,12 +188,12 @@ const PDVMobileView: React.FC<PDVMobileViewProps> = (props) => {
                             <button 
                                 key={cat} 
                                 onClick={() => { props.setSelectedCategory(cat as any); setStep('products'); }} 
-                                className="bg-white rounded-[28px] p-6 shadow-[4px_4px_10px_rgba(0,0,0,0.03)] border border-gray-50 flex flex-col items-center gap-3 active:scale-95 transition-all"
+                                className="bg-white dark:bg-slate-900 rounded-[28px] p-6 shadow-[4px_4px_10px_rgba(0,0,0,0.03)] dark:shadow-[4px_4px_10px_rgba(0,0,0,0.2)] border border-gray-50 dark:border-slate-800 flex flex-col items-center gap-3 active:scale-95 transition-all"
                             >
                                 <div className="w-16 h-16 flex items-center justify-center">
                                     <img src={getCategoryImage(cat, cat)} className="w-full h-full object-contain" alt={cat} />
                                 </div>
-                                <span className="font-black uppercase text-[10px] text-blue-950 tracking-tighter">{cat}</span>
+                                <span className="font-black uppercase text-[10px] text-blue-950 dark:text-white tracking-tighter">{cat}</span>
                             </button>
                         ))}
                     </div>
@@ -253,33 +253,33 @@ const PDVMobileView: React.FC<PDVMobileViewProps> = (props) => {
                             </div>
 
                             {props.paymentMethod === 'Dinheiro' && (
-                                <div className="p-4 bg-[#F1F3F6] rounded-2xl space-y-2 animate-in zoom-in duration-200">
+                                <div className="p-4 bg-[#F1F3F6] dark:bg-slate-800 rounded-2xl space-y-2 animate-in zoom-in duration-200">
                                     <div className="flex justify-between items-center">
-                                        <span className="text-[9px] font-black uppercase text-gray-500">Valor Recebido</span>
+                                        <span className="text-[9px] font-black uppercase text-gray-500 dark:text-slate-400">Valor Recebido</span>
                                         <input 
                                             value={amountPaid} 
                                             onChange={e => setAmountPaid(e.target.value)} 
                                             placeholder="0,00" 
-                                            className="w-24 text-right bg-white rounded-lg p-2 font-black text-sm outline-none shadow-inner" 
+                                            className="w-24 text-right bg-white dark:bg-slate-900 dark:text-white rounded-lg p-2 font-black text-sm outline-none shadow-inner" 
                                         />
                                     </div>
-                                    <div className="flex justify-between border-t border-gray-200 pt-2">
-                                        <span className="text-[9px] font-black uppercase text-green-600">Troco</span>
-                                        <span className="font-black text-green-700">{formatCurrency(changeDue)}</span>
+                                    <div className="flex justify-between border-t border-gray-200 dark:border-slate-700 pt-2">
+                                        <span className="text-[9px] font-black uppercase text-green-600 dark:text-green-400">Troco</span>
+                                        <span className="font-black text-green-700 dark:text-green-300">{formatCurrency(changeDue)}</span>
                                     </div>
                                 </div>
                             )}
 
                             {props.paymentMethod === 'Misto' && (
-                                <div className="p-4 bg-blue-50 rounded-2xl space-y-2 animate-in zoom-in duration-200 border border-blue-100">
+                                <div className="p-4 bg-blue-50 dark:bg-blue-900/20 rounded-2xl space-y-2 animate-in zoom-in duration-200 border border-blue-100 dark:border-blue-900/30">
                                     {(['Pix', 'Dinheiro', 'Cartão', 'Fiado'] as const).map(m => (
-                                        <div key={m} className="flex justify-between items-center bg-white px-3 py-2 rounded-xl border border-blue-50 shadow-sm">
-                                            <label className="text-[10px] font-black text-gray-400 uppercase">{m}</label>
+                                        <div key={m} className="flex justify-between items-center bg-white dark:bg-slate-900 px-3 py-2 rounded-xl border border-blue-50 dark:border-blue-900/30 shadow-sm">
+                                            <label className="text-[10px] font-black text-gray-400 dark:text-slate-500 uppercase">{m}</label>
                                             <input 
                                                 value={props.mistoValues[m] || ''} 
                                                 onChange={e => props.setMistoValues({...props.mistoValues, [m]: e.target.value})} 
                                                 placeholder="0,00" 
-                                                className="w-24 text-right font-black text-blue-900 text-xs outline-none bg-transparent" 
+                                                className="w-24 text-right font-black text-blue-900 dark:text-blue-400 text-xs outline-none bg-transparent" 
                                             />
                                         </div>
                                     ))}
@@ -288,13 +288,13 @@ const PDVMobileView: React.FC<PDVMobileViewProps> = (props) => {
 
                             {(props.paymentMethod === 'Fiado' || (props.paymentMethod === 'Misto' && props.mistoValues?.['Fiado'])) && (
                                 <div className="space-y-2 animate-in slide-in-from-top-2 duration-200">
-                                    <label className="text-[9px] font-black text-red-500 uppercase ml-1">Colaborador</label>
+                                    <label className="text-[9px] font-black text-red-500 dark:text-red-400 uppercase ml-1">Colaborador</label>
                                     <input 
                                         value={props.buyerName} 
                                         onChange={e => props.setBuyerName(e.target.value.toUpperCase())} 
                                         list="mobile-buyers-list"
                                         placeholder="NOME DO FUNCIONÁRIO..." 
-                                        className="w-full p-4 bg-red-50 border-none rounded-2xl font-black uppercase text-[11px] outline-none shadow-inner" 
+                                        className="w-full p-4 bg-red-50 dark:bg-red-900/20 dark:text-white border-none rounded-2xl font-black uppercase text-[11px] outline-none shadow-inner" 
                                     />
                                     <datalist id="mobile-buyers-list">
                                         {(props.existingBuyerNames || []).map(n => <option key={n} value={n} />)}
@@ -307,13 +307,13 @@ const PDVMobileView: React.FC<PDVMobileViewProps> = (props) => {
             </main>
 
             {props.cart?.length > 0 && (
-                <div className="fixed bottom-0 left-0 right-0 bg-white px-6 py-6 pb-10 shadow-[0_-10px_30px_rgba(0,0,0,0.05)] rounded-t-[40px] z-50 animate-in slide-in-from-bottom duration-500">
+                <div className="fixed bottom-0 left-0 right-0 bg-white dark:bg-slate-900 px-6 py-6 pb-10 shadow-[0_-10px_30px_rgba(0,0,0,0.05)] dark:shadow-[0_-10px_30px_rgba(0,0,0,0.3)] rounded-t-[40px] z-50 animate-in slide-in-from-bottom duration-500">
                     <div className="flex justify-between items-center mb-5">
                         <div className="flex flex-col">
-                            <span className="text-[9px] font-black text-gray-400 uppercase tracking-widest leading-none mb-1">Total Final</span>
-                            <span className="text-2xl font-black italic text-blue-950 leading-none">{formatCurrency(cartTotal)}</span>
+                            <span className="text-[9px] font-black text-gray-400 dark:text-slate-500 uppercase tracking-widest leading-none mb-1">Total Final</span>
+                            <span className="text-2xl font-black italic text-blue-950 dark:text-white leading-none">{formatCurrency(cartTotal)}</span>
                         </div>
-                        <div className="bg-[#F8F9FA] px-4 py-2 rounded-2xl font-black text-[10px] text-blue-900 border border-gray-100">
+                        <div className="bg-[#F8F9FA] dark:bg-slate-800 px-4 py-2 rounded-2xl font-black text-[10px] text-blue-900 dark:text-blue-400 border border-gray-100 dark:border-slate-700">
                             {props.cart.length} ITENS
                         </div>
                     </div>

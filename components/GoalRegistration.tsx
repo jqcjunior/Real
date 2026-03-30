@@ -64,39 +64,39 @@ const GoalRegistration: React.FC<GoalRegistrationProps> = ({
   };
 
   return (
-    <div className="p-4 md:p-6 space-y-6 flex flex-col h-full bg-[#F8FAFC] pb-24 max-w-[1400px] mx-auto">
+    <div className="p-4 md:p-6 space-y-6 flex flex-col h-full bg-[#F8FAFC] dark:bg-slate-950 pb-24 max-w-[1400px] mx-auto">
       
-      <div className="bg-white p-6 rounded-3xl shadow-sm border border-slate-100 flex flex-col md:flex-row justify-between items-center gap-4">
+      <div className="bg-white dark:bg-slate-900 p-6 rounded-3xl shadow-sm border border-slate-100 dark:border-slate-800 flex flex-col md:flex-row justify-between items-center gap-4">
         <div className="flex items-center gap-4">
-          <div className="p-3 bg-red-600 text-white rounded-2xl shadow-xl shadow-red-100"><Target size={20} /></div>
+          <div className="p-3 bg-red-600 text-white rounded-2xl shadow-xl shadow-red-100 dark:shadow-red-900/20"><Target size={20} /></div>
           <div>
-            <h2 className="text-lg font-black uppercase italic tracking-tighter text-slate-900 leading-none">Cadastro de <span className="text-red-600">Metas</span></h2>
-            <p className="text-slate-400 text-[9px] uppercase font-black tracking-widest mt-1">Definição Estratégica da Rede</p>
+            <h2 className="text-lg font-black uppercase italic tracking-tighter text-slate-900 dark:text-white leading-none">Cadastro de <span className="text-red-600">Metas</span></h2>
+            <p className="text-slate-400 dark:text-slate-500 text-[9px] uppercase font-black tracking-widest mt-1">Definição Estratégica da Rede</p>
           </div>
         </div>
 
         <div className="flex items-center gap-2">
-            <div className="flex bg-slate-100 p-1 rounded-xl">
-                <select value={selectedMonth} onChange={e => setSelectedMonth(Number(e.target.value))} className="bg-white px-3 py-1.5 rounded-lg text-[10px] font-black uppercase text-slate-700 outline-none border-none cursor-pointer">
+            <div className="flex bg-slate-100 dark:bg-slate-800 p-1 rounded-xl">
+                <select value={selectedMonth} onChange={e => setSelectedMonth(Number(e.target.value))} className="bg-white dark:bg-slate-900 px-3 py-1.5 rounded-lg text-[10px] font-black uppercase text-slate-700 dark:text-slate-300 outline-none border-none cursor-pointer">
                     {months.map(m => <option key={m.value} value={m.value}>{m.label}</option>)}
                 </select>
-                <select value={selectedYear} onChange={e => setSelectedYear(Number(e.target.value))} className="bg-transparent px-3 py-1.5 text-[10px] font-black text-slate-400 outline-none border-none cursor-pointer">
+                <select value={selectedYear} onChange={e => setSelectedYear(Number(e.target.value))} className="bg-transparent px-3 py-1.5 text-[10px] font-black text-slate-400 dark:text-slate-500 outline-none border-none cursor-pointer">
                     {[2024, 2025, 2026].map(y => <option key={y} value={y}>{y}</option>)}
                 </select>
             </div>
-            <button onClick={handleSave} disabled={saveStatus === 'saving'} className="bg-slate-950 text-white px-6 py-2.5 rounded-xl font-black text-[10px] uppercase tracking-widest shadow-xl hover:bg-blue-600 transition-all active:scale-95 border-b-2 border-red-700 disabled:opacity-50 flex items-center gap-2">
+            <button onClick={handleSave} disabled={saveStatus === 'saving'} className="bg-slate-950 dark:bg-white dark:text-slate-950 text-white px-6 py-2.5 rounded-xl font-black text-[10px] uppercase tracking-widest shadow-xl hover:bg-blue-600 dark:hover:bg-blue-500 transition-all active:scale-95 border-b-2 border-red-700 disabled:opacity-50 flex items-center gap-2">
                 {saveStatus === 'saving' ? <Loader2 className="animate-spin" size={14} /> : (saveStatus === 'success' ? <CheckCircle2 size={14}/> : <Save size={14} />)}
                 {saveStatus === 'saving' ? 'Gravando...' : (saveStatus === 'success' ? 'Salvo!' : 'Efetivar Metas')}
             </button>
         </div>
       </div>
 
-      <div className="bg-white rounded-[32px] shadow-sm border border-slate-100 overflow-hidden flex-1">
+      <div className="bg-white dark:bg-slate-900 rounded-[32px] shadow-sm border border-slate-100 dark:border-slate-800 overflow-hidden flex-1">
         <div className="overflow-x-auto no-scrollbar h-full">
           <table className="w-full text-left border-collapse">
-            <thead className="sticky top-0 bg-white z-20">
-              <tr className="bg-slate-50 text-[8px] font-black uppercase text-slate-400 tracking-widest border-b">
-                <th className="px-6 py-4 w-48 sticky left-0 bg-slate-50 border-r">Unidade / Cidade</th>
+            <thead className="sticky top-0 bg-white dark:bg-slate-900 z-20">
+              <tr className="bg-slate-50 dark:bg-slate-800 text-[8px] font-black uppercase text-slate-400 dark:text-slate-500 tracking-widest border-b dark:border-slate-700">
+                <th className="px-6 py-4 w-48 sticky left-0 bg-slate-50 dark:bg-slate-800 border-r dark:border-slate-700">Unidade / Cidade</th>
                 <th className="px-4 py-4 text-center">Dias Úteis</th>
                 <th className="px-4 py-4 text-center">Faturamento (R$)</th>
                 <th className="px-4 py-4 text-center">Itens (PR)</th>
@@ -105,35 +105,35 @@ const GoalRegistration: React.FC<GoalRegistrationProps> = ({
                 <th className="px-4 py-4 text-center">Ticket Médio</th>
               </tr>
             </thead>
-            <tbody className="divide-y divide-slate-50">
+            <tbody className="divide-y divide-slate-50 dark:divide-slate-800">
               {activeStores.map((store) => {
                 const row = formData[store.id];
                 if (!row) return null;
                 return (
-                  <tr key={store.id} className="hover:bg-blue-50/30 transition-all group">
-                    <td className="px-6 py-3 sticky left-0 bg-white group-hover:bg-blue-50/50 z-10 border-r">
+                  <tr key={store.id} className="hover:bg-blue-50/30 dark:hover:bg-blue-900/10 transition-all group">
+                    <td className="px-6 py-3 sticky left-0 bg-white dark:bg-slate-900 group-hover:bg-blue-50/50 dark:group-hover:bg-blue-900/20 z-10 border-r dark:border-slate-800">
                       <div className="flex flex-col">
-                        <span className="text-[10px] font-black text-slate-900 uppercase italic leading-none mb-0.5">#{store.number} - {store.name.substring(0,10)}</span>
-                        <span className="text-[8px] font-bold text-slate-400 uppercase truncate">{store.city}</span>
+                        <span className="text-[10px] font-black text-slate-900 dark:text-white uppercase italic leading-none mb-0.5">#{store.number} - {store.name.substring(0,10)}</span>
+                        <span className="text-[8px] font-bold text-slate-400 dark:text-slate-500 uppercase truncate">{store.city}</span>
                       </div>
                     </td>
                     <td className="px-3 py-2">
-                      <input type="number" value={row.businessDays || ''} onChange={e => handleChange(store.id, 'businessDays', e.target.value)} className="w-full p-2 bg-slate-50 border-none rounded-lg font-black text-slate-900 text-center text-[11px] outline-none focus:bg-white focus:ring-2 focus:ring-blue-100" placeholder="26" />
+                      <input type="number" value={row.businessDays || ''} onChange={e => handleChange(store.id, 'businessDays', e.target.value)} className="w-full p-2 bg-slate-50 dark:bg-slate-800 border-none rounded-lg font-black text-slate-900 dark:text-slate-100 text-center text-[11px] outline-none focus:bg-white dark:focus:bg-slate-700 focus:ring-2 focus:ring-blue-100 dark:focus:ring-blue-900/30" placeholder="26" />
                     </td>
                     <td className="px-3 py-2">
-                      <input type="number" value={row.revenueTarget || ''} onChange={e => handleChange(store.id, 'revenueTarget', e.target.value)} className="w-full p-2 bg-slate-50 border-none rounded-lg font-black text-slate-900 text-center text-[11px] outline-none focus:bg-white focus:ring-2 focus:ring-blue-100" placeholder="0" />
+                      <input type="number" value={row.revenueTarget || ''} onChange={e => handleChange(store.id, 'revenueTarget', e.target.value)} className="w-full p-2 bg-slate-50 dark:bg-slate-800 border-none rounded-lg font-black text-slate-900 dark:text-slate-100 text-center text-[11px] outline-none focus:bg-white dark:focus:bg-slate-700 focus:ring-2 focus:ring-blue-100 dark:focus:ring-blue-900/30" placeholder="0" />
                     </td>
                     <td className="px-3 py-2">
-                      <input type="number" value={row.itemsTarget || ''} onChange={e => handleChange(store.id, 'itemsTarget', e.target.value)} className="w-full p-2 bg-slate-50 border-none rounded-lg font-black text-slate-600 text-center text-[11px] outline-none focus:bg-white focus:ring-2 focus:ring-blue-100" placeholder="0" />
+                      <input type="number" value={row.itemsTarget || ''} onChange={e => handleChange(store.id, 'itemsTarget', e.target.value)} className="w-full p-2 bg-slate-50 dark:bg-slate-800 border-none rounded-lg font-black text-slate-600 dark:text-slate-400 text-center text-[11px] outline-none focus:bg-white dark:focus:bg-slate-700 focus:ring-2 focus:ring-blue-100 dark:focus:ring-blue-900/30" placeholder="0" />
                     </td>
                     <td className="px-3 py-2">
-                      <input type="text" value={row.paTarget || ''} onChange={e => handleChange(store.id, 'paTarget', e.target.value)} className="w-full p-2 bg-purple-50 border-none rounded-lg font-black text-purple-700 text-center text-[11px] outline-none focus:bg-white focus:ring-2 focus:ring-purple-100" placeholder="0,00" />
+                      <input type="text" value={row.paTarget || ''} onChange={e => handleChange(store.id, 'paTarget', e.target.value)} className="w-full p-2 bg-purple-50 dark:bg-purple-900/20 border-none rounded-lg font-black text-purple-700 dark:text-purple-400 text-center text-[11px] outline-none focus:bg-white dark:focus:bg-slate-700 focus:ring-2 focus:ring-purple-100 dark:focus:ring-purple-900/30" placeholder="0,00" />
                     </td>
                     <td className="px-3 py-2">
-                      <input type="number" value={row.puTarget || ''} onChange={e => handleChange(store.id, 'puTarget', e.target.value)} className="w-full p-2 bg-slate-50 border-none rounded-lg font-black text-orange-700 text-center text-[11px] outline-none focus:bg-white focus:ring-2 focus:ring-orange-100" placeholder="0" />
+                      <input type="number" value={row.puTarget || ''} onChange={e => handleChange(store.id, 'puTarget', e.target.value)} className="w-full p-2 bg-slate-50 dark:bg-slate-800 border-none rounded-lg font-black text-orange-700 dark:text-orange-400 text-center text-[11px] outline-none focus:bg-white dark:focus:bg-slate-700 focus:ring-2 focus:ring-orange-100 dark:focus:ring-orange-900/30" placeholder="0" />
                     </td>
                     <td className="px-3 py-2">
-                      <input type="number" value={row.ticketTarget || ''} onChange={e => handleChange(store.id, 'ticketTarget', e.target.value)} className="w-full p-2 bg-emerald-50 border-none rounded-lg font-black text-emerald-700 text-center text-[11px] outline-none focus:bg-white focus:ring-2 focus:ring-emerald-100" placeholder="0" />
+                      <input type="number" value={row.ticketTarget || ''} onChange={e => handleChange(store.id, 'ticketTarget', e.target.value)} className="w-full p-2 bg-emerald-50 dark:bg-emerald-900/20 border-none rounded-lg font-black text-emerald-700 dark:text-emerald-400 text-center text-[11px] outline-none focus:bg-white dark:focus:bg-slate-700 focus:ring-2 focus:ring-emerald-100 dark:focus:ring-emerald-900/30" placeholder="0" />
                     </td>
                   </tr>
                 );

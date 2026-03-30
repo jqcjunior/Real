@@ -1056,28 +1056,28 @@ const dreStats = useMemo(() => {
   };
 
   return (
-    <div className="flex flex-col h-full bg-gray-50 overflow-hidden font-sans relative">
-        <div className="bg-white border-b px-4 md:px-6 py-2 flex flex-col md:flex-row justify-between items-center gap-2 z-40 shadow-sm shrink-0">
+    <div className="flex flex-col h-full bg-gray-50 dark:bg-slate-950 overflow-hidden font-sans relative transition-colors duration-300">
+        <div className="bg-white dark:bg-slate-900 border-b border-slate-200 dark:border-slate-800 px-4 md:px-6 py-2 flex flex-col md:flex-row justify-between items-center gap-2 z-40 shadow-sm shrink-0 transition-colors duration-300">
             <div className="flex items-center gap-2">
-                <div className="p-1.5 bg-blue-900 rounded-xl text-white shadow-lg shrink-0"><IceCream size={18} /></div>
+                <div className="p-1.5 bg-blue-900 dark:bg-blue-700 rounded-xl text-white shadow-lg shrink-0"><IceCream size={18} /></div>
                 <div className="truncate">
-                    <h2 className="text-sm md:text-base font-black uppercase italic tracking-tighter text-blue-950 leading-none">Gelateria <span className="text-red-600">Real</span></h2>
+                    <h2 className="text-sm md:text-base font-black uppercase italic tracking-tighter text-blue-950 dark:text-white leading-none">Gelateria <span className="text-red-600">Real</span></h2>
                     <div className="flex items-center gap-1 mt-0.5">
-                        <p className="text-[7px] font-black text-gray-400 uppercase tracking-widest leading-none">Unidade</p>
+                        <p className="text-[7px] font-black text-gray-400 dark:text-slate-500 uppercase tracking-widest leading-none">Unidade</p>
                         {isAdmin ? (
-                            <select value={effectiveStoreId} onChange={(e) => setManualStoreId(e.target.value)} className="bg-transparent border-none text-[8px] font-black text-blue-600 uppercase outline-none focus:ring-0 p-0 h-auto min-h-0">
-                                {[...stores].sort((a, b) => parseInt(a.number || '0') - parseInt(b.number || '0')).map(s => <option key={s.id} value={s.id}>{s.number} - {s.city}</option>)}
+                            <select value={effectiveStoreId} onChange={(e) => setManualStoreId(e.target.value)} className="bg-transparent border-none text-[8px] font-black text-blue-600 dark:text-blue-400 uppercase outline-none focus:ring-0 p-0 h-auto min-h-0">
+                                {[...stores].sort((a, b) => parseInt(a.number || '0') - parseInt(b.number || '0')).map(s => <option key={s.id} value={s.id} className="dark:bg-slate-900">{s.number} - {s.city}</option>)}
                             </select>
-                        ) : <span className="text-[8px] font-black text-blue-600 uppercase">{stores.find(s => s.id === effectiveStoreId)?.number} - {stores.find(s => s.id === effectiveStoreId)?.city}</span>}
+                        ) : <span className="text-[8px] font-black text-blue-600 dark:text-blue-400 uppercase">{stores.find(s => s.id === effectiveStoreId)?.number} - {stores.find(s => s.id === effectiveStoreId)?.city}</span>}
                     </div>
                 </div>
             </div>
-            <div className="flex flex-wrap bg-gray-100 p-0.5 rounded-xl overflow-x-auto no-scrollbar w-full md:w-auto max-w-full">
+            <div className="flex flex-wrap bg-gray-100 dark:bg-slate-800 p-0.5 rounded-xl overflow-x-auto no-scrollbar w-full md:w-auto max-w-full transition-colors duration-300">
                 {visibleTabs.map(tab => (
                     <button 
                         key={tab.label} 
                         onClick={() => setActiveTab(tab.view as any)} 
-                        className={`flex-1 sm:flex-none px-3 py-2 rounded-lg text-[8px] md:text-[9px] font-black uppercase transition-all flex items-center justify-center gap-1.5 whitespace-nowrap ${activeTab === tab.view ? 'bg-white text-blue-900 shadow-sm' : 'text-gray-400 hover:text-blue-900 hover:bg-white/50'}`}
+                        className={`flex-1 sm:flex-none px-3 py-2 rounded-lg text-[8px] md:text-[9px] font-black uppercase transition-all flex items-center justify-center gap-1.5 whitespace-nowrap ${activeTab === tab.view ? 'bg-white dark:bg-slate-700 text-blue-900 dark:text-white shadow-sm' : 'text-gray-400 dark:text-slate-500 hover:text-blue-900 dark:hover:text-white hover:bg-white/50 dark:hover:bg-slate-700/50'}`}
                     >
                         <tab.icon size={12}/> {tab.label}
                     </button>

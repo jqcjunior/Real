@@ -39,21 +39,21 @@ const KPICard = ({ label, value, target, icon: Icon, type = 'currency', mode = '
   };
 
   return (
-    <div className="bg-white p-6 rounded-[40px] shadow-sm border border-slate-100 flex flex-col justify-between hover:border-blue-200 transition-all group min-h-[160px]">
+    <div className="bg-white dark:bg-slate-900 p-6 rounded-[40px] shadow-sm border border-slate-100 dark:border-slate-800 flex flex-col justify-between hover:border-blue-200 dark:hover:border-blue-800 transition-all group min-h-[160px]">
       <div className="flex justify-between items-start mb-3">
-        <div className={`p-2.5 rounded-2xl ${isOk ? 'bg-green-50' : isWarning ? 'bg-red-50' : 'bg-blue-50'} ${isOk ? 'text-green-600' : isWarning ? 'text-red-600' : 'text-blue-600'}`}>
+        <div className={`p-2.5 rounded-2xl ${isOk ? 'bg-green-50 dark:bg-green-900/20' : isWarning ? 'bg-red-50 dark:bg-red-900/20' : 'bg-blue-50 dark:bg-blue-900/20'} ${isOk ? 'text-green-600 dark:text-green-400' : isWarning ? 'text-red-600 dark:text-red-400' : 'text-blue-600 dark:text-blue-400'}`}>
           <Icon size={20} />
         </div>
       </div>
       
-      <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-2">{label}</p>
+      <p className="text-[10px] font-black text-slate-400 dark:text-slate-500 uppercase tracking-widest mb-2">{label}</p>
       
       <div className="flex items-baseline justify-between gap-2 mb-1">
-        <h3 className={`text-2xl font-black italic tracking-tighter ${textColor}`}>
+        <h3 className={`text-2xl font-black italic tracking-tighter ${isOk ? 'text-green-600 dark:text-green-400' : isWarning ? 'text-red-600 dark:text-red-400' : 'text-blue-900 dark:text-white'}`}>
           {formatValue(value)}
         </h3>
         {target !== undefined && target > 0 && (
-          <span className="text-[10px] font-bold text-slate-300 italic">
+          <span className="text-[10px] font-bold text-slate-300 dark:text-slate-600 italic">
             {formatValue(value)} / {formatValue(target)}
           </span>
         )}
@@ -61,13 +61,13 @@ const KPICard = ({ label, value, target, icon: Icon, type = 'currency', mode = '
       
       {target !== undefined && target > 0 && (
         <div className="flex items-center gap-3">
-          <div className="flex-1 bg-slate-50 h-1 rounded-full overflow-hidden">
+          <div className="flex-1 bg-slate-50 dark:bg-slate-800 h-1 rounded-full overflow-hidden">
             <div 
               className={`h-full transition-all duration-1000 ${barColor}`} 
               style={{ width: `${Math.min(ating, 100)}%` }} 
             />
           </div>
-          <span className={`text-[10px] font-black min-w-[35px] text-right ${textColor}`}>
+          <span className={`text-[10px] font-black min-w-[35px] text-right ${isOk ? 'text-green-600 dark:text-green-400' : isWarning ? 'text-red-600 dark:text-red-400' : 'text-blue-900 dark:text-white'}`}>
             {ating.toFixed(1)}%
           </span>
         </div>
@@ -397,26 +397,26 @@ const DashboardManager: React.FC<DashboardManagerProps> = ({ user, stores, perfo
   };
 
   return (
-    <div className="p-4 md:p-6 space-y-6 pb-16 min-h-full bg-[#F8FAFC] animate-in fade-in duration-500">
-        <div className="bg-white p-6 rounded-3xl shadow-sm border border-slate-100 flex justify-between items-center">
+    <div className="p-4 md:p-6 space-y-6 pb-16 min-h-full bg-slate-50 dark:bg-slate-950 transition-colors duration-300 animate-in fade-in duration-500">
+        <div className="bg-white dark:bg-slate-900 p-6 rounded-3xl shadow-sm border border-slate-100 dark:border-slate-800 flex flex-col sm:flex-row justify-between items-center gap-4">
             <div className="flex items-center gap-4">
                 <div className="p-2.5 bg-blue-700 rounded-xl text-white shadow-lg"><ShoppingBag size={20} /></div>
                 <div>
-                    <h2 className="text-lg font-black text-slate-900 uppercase italic leading-none">
-                        {myStore?.name} <span className="text-blue-700">#{myStore?.number}</span>
+                    <h2 className="text-lg font-black text-slate-900 dark:text-white uppercase italic leading-none">
+                        {myStore?.name} <span className="text-blue-700 dark:text-blue-400">#{myStore?.number}</span>
                     </h2>
-                    <p className="text-[9px] font-bold text-slate-400 uppercase mt-1 tracking-widest">Painel Gerencial Real</p>
+                    <p className="text-[9px] font-bold text-slate-400 dark:text-slate-500 uppercase mt-1 tracking-widest">Painel Gerencial Real</p>
                 </div>
             </div>
-            <div className="flex items-center gap-3">
-                <div className="flex items-center gap-2">
+            <div className="flex items-center gap-3 w-full sm:w-auto">
+                <div className="flex items-center gap-2 flex-1 sm:flex-none">
                     <select 
                         value={selectedMonth.split('-')[1]} 
                         onChange={e => {
                             const [year] = selectedMonth.split('-');
                             setSelectedMonth(`${year}-${e.target.value}`);
                         }}
-                        className="bg-slate-50 px-4 py-2 rounded-xl text-[10px] font-black text-blue-900 uppercase border-none outline-none cursor-pointer"
+                        className="flex-1 bg-slate-50 dark:bg-slate-800 px-4 py-2 rounded-xl text-[10px] font-black text-blue-900 dark:text-blue-100 uppercase border-none outline-none cursor-pointer"
                     >
                         <option value="01">Janeiro</option>
                         <option value="02">Fevereiro</option>
@@ -438,7 +438,7 @@ const DashboardManager: React.FC<DashboardManagerProps> = ({ user, stores, perfo
                             const [, month] = selectedMonth.split('-');
                             setSelectedMonth(`${e.target.value}-${month}`);
                         }}
-                        className="bg-slate-50 px-4 py-2 rounded-xl text-[10px] font-black text-blue-900 uppercase border-none outline-none cursor-pointer"
+                        className="bg-slate-50 dark:bg-slate-800 px-4 py-2 rounded-xl text-[10px] font-black text-blue-900 dark:text-blue-100 uppercase border-none outline-none cursor-pointer"
                     >
                         {(() => {
                             const years = [];
@@ -450,7 +450,7 @@ const DashboardManager: React.FC<DashboardManagerProps> = ({ user, stores, perfo
                         })()}
                     </select>
                 </div>
-                <button onClick={handleGenerateInsight} disabled={isLoadingAi} className="p-2.5 bg-slate-900 text-white rounded-xl shadow-lg active:scale-95 transition-all">
+                <button onClick={handleGenerateInsight} disabled={isLoadingAi} className="p-2.5 bg-slate-900 dark:bg-slate-800 text-white rounded-xl shadow-lg active:scale-95 transition-all">
                     {isLoadingAi ? <Loader2 className="animate-spin" size={16} /> : <Sparkles className="text-amber-400" size={16} />}
                 </button>
             </div>
@@ -466,13 +466,13 @@ const DashboardManager: React.FC<DashboardManagerProps> = ({ user, stores, perfo
                 </div>
 
                 <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-                    <div className="lg:col-span-2 bg-white p-6 md:p-10 rounded-[48px] shadow-sm border border-slate-100 order-2 lg:order-1">
+                    <div className="lg:col-span-2 bg-white dark:bg-slate-900 p-6 md:p-10 rounded-[48px] shadow-sm border border-slate-100 dark:border-slate-800 order-2 lg:order-1">
                         <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-6 mb-10">
                             <div className="flex items-center gap-4">
-                                <div className="p-3 bg-blue-50 text-blue-600 rounded-2xl shadow-inner"><Trophy size={24} /></div>
+                                <div className="p-3 bg-blue-50 dark:bg-blue-900/20 text-blue-600 dark:text-blue-400 rounded-2xl shadow-inner"><Trophy size={24} /></div>
                                 <div>
-                                    <h3 className="text-sm font-black text-slate-900 uppercase italic tracking-tighter">Ranking <span className="text-blue-600">Ponderado</span></h3>
-                                    <p className="text-[9px] font-bold text-slate-400 uppercase tracking-widest mt-0.5">Equilíbrio de Metas (50/50)</p>
+                                    <h3 className="text-sm font-black text-slate-900 dark:text-white uppercase italic tracking-tighter">Ranking <span className="text-blue-600 dark:text-blue-400">Ponderado</span></h3>
+                                    <p className="text-[9px] font-bold text-slate-400 dark:text-slate-500 uppercase tracking-widest mt-0.5">Equilíbrio de Metas (50/50)</p>
                                 </div>
                             </div>
                         </div>
@@ -482,18 +482,18 @@ const DashboardManager: React.FC<DashboardManagerProps> = ({ user, stores, perfo
                                 const isMe = myStore && item.storeNumber === myStore.number;
                                 const score = item.score;
                                  const getTier = (i: number) => {
-                                    if (i === 0) return { label: 'Diamante', icon: <Gem className="text-cyan-400" size={16} />, color: 'bg-cyan-50 text-cyan-600 border-cyan-200', bar: 'bg-cyan-500' };
-                                    if (i === 1) return { label: 'Esmeralda', icon: <Gem className="text-emerald-400" size={16} />, color: 'bg-emerald-50 text-emerald-600 border-emerald-200', bar: 'bg-emerald-500' };
-                                    if (i === 2) return { label: 'Ouro', icon: <Trophy className="text-amber-400" size={16} />, color: 'bg-amber-50 text-amber-600 border-amber-200', bar: 'bg-amber-500' };
-                                    if (i === 3) return { label: 'Prata', icon: <Medal className="text-slate-400" size={16} />, color: 'bg-slate-50 text-slate-600 border-slate-200', bar: 'bg-slate-400' };
-                                    if (i === 4) return { label: 'Bronze', icon: <Medal className="text-orange-400" size={16} />, color: 'bg-orange-50 text-orange-600 border-orange-200', bar: 'bg-orange-500' };
-                                    if (i === 5) return { label: 'Ouro', icon: <Zap className="text-amber-400" size={16} />, color: 'bg-amber-50 text-amber-600 border-amber-100', bar: 'bg-amber-400' };
-                                    if (i === 6) return { label: 'Prata', icon: <Zap className="text-slate-400" size={16} />, color: 'bg-slate-50 text-slate-600 border-slate-100', bar: 'bg-slate-300' };
-                                    if (i === 7) return { label: 'Bronze', icon: <Zap className="text-orange-400" size={16} />, color: 'bg-orange-50 text-orange-600 border-orange-100', bar: 'bg-orange-300' };
-                                    if (i >= 8 && i <= 12) return { label: 'Subindo', icon: <TrendingUp className="text-blue-400" size={16} />, color: 'bg-blue-50 text-blue-600 border-blue-100', bar: 'bg-blue-400' };
-                                    if (i >= 13 && i <= 17) return { label: 'Neutro', icon: <Minus className="text-slate-400" size={16} />, color: 'bg-slate-50 text-slate-400 border-slate-100', bar: 'bg-slate-200' };
-                                    if (i >= weightedRanking.length - 3) return { label: 'Rebaixamento', icon: <TrendingDown className="text-rose-400" size={16} />, color: 'bg-rose-50 text-rose-600 border-rose-100', bar: 'bg-rose-400' };
-                                    return { label: 'Neutro', icon: <Minus className="text-slate-400" size={16} />, color: 'bg-slate-50 text-slate-400 border-slate-100', bar: 'bg-slate-200' };
+                                    if (i === 0) return { label: 'Diamante', icon: <Gem className="text-cyan-400" size={16} />, color: 'bg-cyan-50 dark:bg-cyan-900/20 text-cyan-600 dark:text-cyan-400 border-cyan-200 dark:border-cyan-800', bar: 'bg-cyan-500' };
+                                    if (i === 1) return { label: 'Esmeralda', icon: <Gem className="text-emerald-400" size={16} />, color: 'bg-emerald-50 dark:bg-emerald-900/20 text-emerald-600 dark:text-emerald-400 border-emerald-200 dark:border-emerald-800', bar: 'bg-emerald-500' };
+                                    if (i === 2) return { label: 'Ouro', icon: <Trophy className="text-amber-400" size={16} />, color: 'bg-amber-50 dark:bg-amber-900/20 text-amber-600 dark:text-amber-400 border-amber-200 dark:border-amber-800', bar: 'bg-amber-500' };
+                                    if (i === 3) return { label: 'Prata', icon: <Medal className="text-slate-400" size={16} />, color: 'bg-slate-50 dark:bg-slate-800 text-slate-600 dark:text-slate-400 border-slate-200 dark:border-slate-700', bar: 'bg-slate-400' };
+                                    if (i === 4) return { label: 'Bronze', icon: <Medal className="text-orange-400" size={16} />, color: 'bg-orange-50 dark:bg-orange-900/20 text-orange-600 dark:text-orange-400 border-orange-200 dark:border-orange-800', bar: 'bg-orange-500' };
+                                    if (i === 5) return { label: 'Ouro', icon: <Zap className="text-amber-400" size={16} />, color: 'bg-amber-50 dark:bg-amber-900/20 text-amber-600 dark:text-amber-400 border-amber-100 dark:border-amber-900/30', bar: 'bg-amber-400' };
+                                    if (i === 6) return { label: 'Prata', icon: <Zap className="text-slate-400" size={16} />, color: 'bg-slate-50 dark:bg-slate-800 text-slate-600 dark:text-slate-400 border-slate-100 dark:border-slate-700', bar: 'bg-slate-300' };
+                                    if (i === 7) return { label: 'Bronze', icon: <Zap className="text-orange-400" size={16} />, color: 'bg-orange-50 dark:bg-orange-900/20 text-orange-600 dark:text-orange-400 border-orange-100 dark:border-orange-900/30', bar: 'bg-orange-300' };
+                                    if (i >= 8 && i <= 12) return { label: 'Subindo', icon: <TrendingUp className="text-blue-400" size={16} />, color: 'bg-blue-50 dark:bg-blue-900/20 text-blue-600 dark:text-blue-400 border-blue-100 dark:border-blue-900/30', bar: 'bg-blue-400' };
+                                    if (i >= 13 && i <= 17) return { label: 'Neutro', icon: <Minus className="text-slate-400" size={16} />, color: 'bg-slate-50 dark:bg-slate-800 text-slate-400 dark:text-slate-500 border-slate-100 dark:border-slate-700', bar: 'bg-slate-200' };
+                                    if (i >= weightedRanking.length - 3) return { label: 'Rebaixamento', icon: <TrendingDown className="text-rose-400" size={16} />, color: 'bg-rose-50 dark:bg-rose-900/20 text-rose-600 dark:text-rose-400 border-rose-100 dark:border-rose-900/30', bar: 'bg-rose-400' };
+                                    return { label: 'Neutro', icon: <Minus className="text-slate-400" size={16} />, color: 'bg-slate-50 dark:bg-slate-800 text-slate-400 dark:text-slate-500 border-slate-100 dark:border-slate-700', bar: 'bg-slate-200' };
                                 };
 
                                 const tier = getTier(idx);
@@ -501,16 +501,16 @@ const DashboardManager: React.FC<DashboardManagerProps> = ({ user, stores, perfo
                                 const advice = getDetailedAdvice(item, weightedRanking[idx - 1], idx);
 
                                 return (
-                                    <div key={idx} className={`p-5 md:p-8 rounded-[32px] border transition-all duration-500 ${isMe ? 'bg-white border-blue-200 ring-8 ring-blue-50 shadow-2xl shadow-blue-900/10 scale-[1.02] z-20' : 'bg-slate-50/50 border-transparent hover:bg-white hover:border-slate-100 hover:shadow-xl'}`}>
+                                    <div key={idx} className={`p-5 md:p-8 rounded-[32px] border transition-all duration-500 ${isMe ? 'bg-white dark:bg-slate-900 border-blue-200 dark:border-blue-800 ring-8 ring-blue-50 dark:ring-blue-900/20 shadow-2xl shadow-blue-900/10 dark:shadow-blue-950/40 scale-[1.02] z-20' : 'bg-slate-50/50 dark:bg-slate-900/40 border-transparent hover:bg-white dark:hover:bg-slate-900 hover:border-slate-100 dark:hover:border-slate-800 hover:shadow-xl'}`}>
                                         <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-6">
                                             <div className="flex items-center gap-6">
-                                                <div className={`w-14 h-14 rounded-2xl flex flex-col items-center justify-center font-black italic text-xl shadow-lg ${idx === 0 ? 'bg-amber-400 text-white' : idx === 1 ? 'bg-slate-300 text-white' : idx === 2 ? 'bg-orange-400 text-white' : 'bg-white text-slate-400 border border-slate-100'}`}>
+                                                <div className={`w-14 h-14 rounded-2xl flex flex-col items-center justify-center font-black italic text-xl shadow-lg ${idx === 0 ? 'bg-amber-400 text-white' : idx === 1 ? 'bg-slate-300 text-white' : idx === 2 ? 'bg-orange-400 text-white' : 'bg-white dark:bg-slate-800 text-slate-400 dark:text-slate-500 border border-slate-100 dark:border-slate-700'}`}>
                                                     <span className="text-[10px] uppercase not-italic font-bold opacity-60 mb-0.5">{String(idx + 1).padStart(2, '0')}</span>
                                                     {tier.icon}
                                                 </div>
                                                 <div>
                                                     <div className="flex items-center gap-3 mb-1">
-                                                        <p className={`text-lg font-black uppercase italic ${isMe ? 'text-blue-950 underline decoration-blue-500 decoration-4 underline-offset-4' : 'text-slate-900'}`}>Loja {item.storeNumber}</p>
+                                                        <p className={`text-lg font-black uppercase italic ${isMe ? 'text-blue-950 dark:text-white underline decoration-blue-500 decoration-4 underline-offset-4' : 'text-slate-900 dark:text-white'}`}>Loja {item.storeNumber}</p>
                                                         <span className={`${tier.color} text-[8px] font-black px-2 py-0.5 rounded-full uppercase tracking-widest border`}>
                                                             {tier.label}
                                                         </span>
@@ -520,41 +520,41 @@ const DashboardManager: React.FC<DashboardManagerProps> = ({ user, stores, perfo
                                                             </span>
                                                         )}
                                                     </div>
-                                                    <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">{item.city}</p>
+                                                    <p className="text-[10px] font-bold text-slate-400 dark:text-slate-500 uppercase tracking-widest">{item.city}</p>
                                                 </div>
                                             </div>
 
                                             <div className="flex-1 w-full md:max-w-md">
                                                 <div className="flex justify-between items-end mb-2">
-                                                    <p className="text-[9px] font-black text-slate-400 uppercase tracking-widest">Performance Global</p>
+                                                    <p className="text-[9px] font-black text-slate-400 dark:text-slate-500 uppercase tracking-widest">Performance Global</p>
                                                     <p className={`text-xl font-black italic ${textColor}`}>{score.toFixed(1)}%</p>
                                                 </div>
-                                                <div className="h-2 bg-slate-100 rounded-full overflow-hidden shadow-inner mb-4">
+                                                <div className="h-2 bg-slate-100 dark:bg-slate-800 rounded-full overflow-hidden shadow-inner mb-4">
                                                     <div className={`h-full transition-all duration-1000 ${tier.bar}`} style={{ width: `${Math.min(score, 100)}%` }} />
                                                 </div>
 
                                                 <div className={`grid gap-4 justify-center ${isMe ? 'grid-cols-2 md:grid-cols-4' : 'grid-cols-1 md:grid-cols-3'}`}>
                                                     {isMe && (
                                                         <div className="flex flex-col items-center md:items-end">
-                                                            <p className="text-[7px] font-black text-slate-300 uppercase">Faturamento</p>
-                                                            <div className="bg-blue-50 text-blue-600 text-[8px] font-black px-2 py-1 rounded-full uppercase tracking-tighter mb-1 border border-blue-100 shadow-sm">
+                                                            <p className="text-[7px] font-black text-slate-300 dark:text-slate-600 uppercase">Faturamento</p>
+                                                            <div className="bg-blue-50 dark:bg-blue-900/20 text-blue-600 dark:text-blue-400 text-[8px] font-black px-2 py-1 rounded-full uppercase tracking-tighter mb-1 border border-blue-100 dark:border-blue-900/30 shadow-sm">
                                                                 Meta: {formatCurrency(item.revenueTarget)}
                                                             </div>
-                                                            <p className="text-[11px] font-black text-slate-900 italic leading-none mb-1">{formatCurrency(item.revenueActual)}</p>
+                                                            <p className="text-[11px] font-black text-slate-900 dark:text-slate-100 italic leading-none mb-1">{formatCurrency(item.revenueActual)}</p>
                                                             {item.revenueActual < item.revenueTarget && (
-                                                                <p className="text-[7px] font-bold text-blue-500 uppercase">
+                                                                <p className="text-[7px] font-bold text-blue-500 dark:text-blue-400 uppercase leading-none">
                                                                     R$ {((item.revenueTarget - item.revenueActual) / getRemainingWorkDays(selectedMonth, item.storeId)).toLocaleString('pt-BR', { maximumFractionDigits: 0 })}/dia
                                                                 </p>
                                                             )}
                                                         </div>
                                                     )}
                                                     <div className="flex flex-col items-center">
-                                                        <p className="text-[7px] font-black text-slate-300 uppercase">P.A</p>
-                                                        <div className="bg-blue-50 text-blue-600 text-[8px] font-black px-2 py-1 rounded-full uppercase tracking-tighter mb-1 border border-blue-100 shadow-sm">
+                                                        <p className="text-[7px] font-black text-slate-300 dark:text-slate-600 uppercase">P.A</p>
+                                                        <div className="bg-blue-50 dark:bg-blue-900/20 text-blue-600 dark:text-blue-400 text-[8px] font-black px-2 py-1 rounded-full uppercase tracking-tighter mb-1 border border-blue-100 dark:border-blue-900/30 shadow-sm">
                                                             Meta: {item.paTarget.toFixed(2)}
                                                         </div>
-                                                        <p className="text-[11px] font-black text-slate-900 italic leading-none mb-1">{item.paActual.toFixed(2)}</p>
-                                                        <div className="w-10 h-1 bg-slate-100 rounded-full overflow-hidden">
+                                                        <p className="text-[11px] font-black text-slate-900 dark:text-slate-100 italic leading-none mb-1">{item.paActual.toFixed(2)}</p>
+                                                        <div className="w-10 h-1 bg-slate-100 dark:bg-slate-800 rounded-full overflow-hidden">
                                                             <div 
                                                                 className={`h-full ${item.paActual >= item.paTarget ? 'bg-green-500' : 'bg-blue-500'}`} 
                                                                 style={{ width: `${Math.min((item.paActual / item.paTarget) * 100, 100)}%` }} 
@@ -562,12 +562,12 @@ const DashboardManager: React.FC<DashboardManagerProps> = ({ user, stores, perfo
                                                         </div>
                                                     </div>
                                                     <div className="flex flex-col items-center">
-                                                        <p className="text-[7px] font-black text-slate-300 uppercase">P.U</p>
-                                                        <div className="bg-emerald-50 text-emerald-600 text-[8px] font-black px-2 py-1 rounded-full uppercase tracking-tighter mb-1 border border-emerald-100 shadow-sm">
+                                                        <p className="text-[7px] font-black text-slate-300 dark:text-slate-600 uppercase">P.U</p>
+                                                        <div className="bg-emerald-50 dark:bg-emerald-900/20 text-emerald-600 dark:text-emerald-400 text-[8px] font-black px-2 py-1 rounded-full uppercase tracking-tighter mb-1 border border-emerald-100 dark:border-emerald-900/30 shadow-sm">
                                                             Meta: {item.puTarget.toFixed(2)}
                                                         </div>
-                                                        <p className="text-[11px] font-black text-slate-900 italic leading-none mb-1">{item.puActual.toFixed(2)}</p>
-                                                        <div className="w-10 h-1 bg-slate-100 rounded-full overflow-hidden">
+                                                        <p className="text-[11px] font-black text-slate-900 dark:text-slate-100 italic leading-none mb-1">{item.puActual.toFixed(2)}</p>
+                                                        <div className="w-10 h-1 bg-slate-100 dark:bg-slate-800 rounded-full overflow-hidden">
                                                             <div 
                                                                 className={`h-full ${item.puActual <= item.puTarget ? 'bg-green-500' : 'bg-blue-500'}`} 
                                                                 style={{ width: `${Math.min((item.puTarget / item.puActual) * 100, 100)}%` }} 
@@ -575,12 +575,12 @@ const DashboardManager: React.FC<DashboardManagerProps> = ({ user, stores, perfo
                                                         </div>
                                                     </div>
                                                     <div className="flex flex-col items-center">
-                                                        <p className="text-[7px] font-black text-slate-300 uppercase">Ticket</p>
-                                                        <div className="bg-indigo-50 text-indigo-600 text-[8px] font-black px-2 py-1 rounded-full uppercase tracking-tighter mb-1 border border-indigo-100 shadow-sm">
+                                                        <p className="text-[7px] font-black text-slate-300 dark:text-slate-600 uppercase">Ticket</p>
+                                                        <div className="bg-indigo-50 dark:bg-indigo-900/20 text-indigo-600 dark:text-indigo-400 text-[8px] font-black px-2 py-1 rounded-full uppercase tracking-tighter mb-1 border border-indigo-100 dark:border-indigo-900/30 shadow-sm">
                                                             Meta: {formatCurrency(item.ticketTarget)}
                                                         </div>
-                                                        <p className="text-[11px] font-black text-slate-900 italic leading-none mb-1">{formatCurrency(item.ticketActual)}</p>
-                                                        <div className="w-10 h-1 bg-slate-100 rounded-full overflow-hidden">
+                                                        <p className="text-[11px] font-black text-slate-900 dark:text-slate-100 italic leading-none mb-1">{formatCurrency(item.ticketActual)}</p>
+                                                        <div className="w-10 h-1 bg-slate-100 dark:bg-slate-800 rounded-full overflow-hidden">
                                                             <div 
                                                                 className={`h-full ${item.ticketActual >= item.ticketTarget ? 'bg-green-500' : 'bg-blue-500'}`} 
                                                                 style={{ width: `${Math.min((item.ticketActual / item.ticketTarget) * 100, 100)}%` }} 
@@ -592,9 +592,9 @@ const DashboardManager: React.FC<DashboardManagerProps> = ({ user, stores, perfo
                                         </div>
 
                                         {advice.length > 0 && (
-                                            <div className="mt-4 pt-4 border-t border-slate-100 space-y-1">
+                                            <div className="mt-4 pt-4 border-t border-slate-100 dark:border-slate-800 space-y-1">
                                                 {advice.map((line, i) => (
-                                                    <div key={i} className="text-[9px] font-bold text-slate-500 flex items-center gap-2">
+                                                    <div key={i} className="text-[9px] font-bold text-slate-500 dark:text-slate-400 flex items-center gap-2">
                                                         <Zap size={10} className="text-blue-400 shrink-0" /> {line}
                                                     </div>
                                                 ))}
@@ -693,13 +693,13 @@ const DashboardManager: React.FC<DashboardManagerProps> = ({ user, stores, perfo
         
         {aiInsight && (
            <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-sm flex items-center justify-center z-[100] p-4">
-               <div className="bg-white rounded-[40px] w-full max-w-xl shadow-2xl animate-in zoom-in duration-300 overflow-hidden">
-                    <div className="p-6 bg-slate-900 text-white flex justify-between items-center">
+               <div className="bg-white dark:bg-slate-900 rounded-[40px] w-full max-w-xl shadow-2xl animate-in zoom-in duration-300 overflow-hidden">
+                    <div className="p-6 bg-slate-900 dark:bg-slate-800 text-white flex justify-between items-center">
                         <h3 className="text-sm font-black uppercase italic tracking-tighter flex items-center gap-2"><BrainCircuit className="text-blue-500" size={18} /> Consultoria <span className="text-blue-500">Gemini Pro</span></h3>
                         <button onClick={() => setAiInsight('')} className="hover:text-red-400 transition-colors"><X size={20} /></button>
                     </div>
                     <div className="p-8">
-                        <div className="bg-slate-50 p-6 rounded-2xl text-slate-700 text-xs font-medium leading-relaxed max-h-[50vh] overflow-y-auto no-scrollbar shadow-inner">
+                        <div className="bg-slate-50 dark:bg-slate-800 p-6 rounded-2xl text-slate-700 dark:text-slate-300 text-xs font-medium leading-relaxed max-h-[50vh] overflow-y-auto no-scrollbar shadow-inner">
                             {aiInsight.split('\n').map((line, i) => <p key={i} className="mb-3">{line}</p>)}
                         </div>
                         <button onClick={() => setAiInsight('')} className="w-full mt-6 py-4 bg-blue-600 text-white rounded-xl font-black uppercase text-[10px] tracking-widest active:scale-95 transition-all">Entendido</button>

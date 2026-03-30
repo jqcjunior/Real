@@ -433,6 +433,38 @@ export interface PurchasingManagement {
 }
 
 /* =========================
+   🔹 DEMANDAS (OS)
+========================= */
+export type DemandPriority = 'urgente' | 'alta' | 'media' | 'baixa';
+export type DemandStatus = 'aberta' | 'em_andamento' | 'resolvida' | 'cancelada';
+
+export interface Demand {
+  id: string;
+  store_id: string;
+  title: string;
+  description: string;
+  category: string;
+  priority: DemandPriority;
+  status: DemandStatus;
+  sla_hours: number;
+  created_at: string;
+  created_by: string;
+  // Join fields
+  store_name?: string;
+  store_number?: string;
+}
+
+export interface DemandMessage {
+  id: string;
+  demand_id: string;
+  sender_name: string;
+  message: string;
+  is_admin: boolean;
+  read: boolean;
+  created_at: string;
+}
+
+/* =========================
    🔹 QUESTIONÁRIOS DE COMPRAS
 ========================= */
 export interface Questionnaire {
