@@ -497,3 +497,59 @@ export interface QuestionnaireAnswer {
   comment: string;
   created_at: string;
 }
+
+/* =========================
+   DASHBOARD PA
+========================= */
+export interface PAParameters {
+  id: string;
+  min_pa: number;
+  max_pa: number;
+  award_value: number;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface PAWeek {
+  id: string;
+  week_number: number;
+  month: number;
+  year: number;
+  start_date: string;
+  end_date: string;
+  is_active: boolean;
+  created_at: string;
+}
+
+export interface PASale {
+  id: string;
+  week_id: string;
+  store_id: string;
+  seller_name: string;
+  total_sales: number;
+  pa_value: number;
+  items_sold: number;
+  is_eligible: boolean;
+  award_amount: number;
+  created_at: string;
+}
+
+export interface PAAward {
+  id: string;
+  week_id: string;
+  store_id: string;
+  seller_name: string;
+  amount: number;
+  status: 'pending' | 'paid';
+  paid_at?: string;
+  created_at: string;
+}
+
+export interface PAStoreSummary {
+  store_id: string;
+  store_name: string;
+  total_sales: number;
+  avg_pa: number;
+  total_awards: number;
+  eligible_sellers: number;
+}

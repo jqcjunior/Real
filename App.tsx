@@ -26,6 +26,7 @@ import TermoAutorizacao from './components/TermoAutorizacao';
 import SystemAudit from './components/SystemAudit';
 import SpreadsheetOrderModule from './components/SpreadsheetOrderModule';
 import OSDemandsModule from './components/OSDemandsModule';
+import DashboardPAModule from './components/dashboardPA/DashboardPAModule';
 import LoginScreen from './components/LoginScreen';
 import NotificationHeader from './components/NotificationHeader';
 import ChangePasswordModal from './components/ChangePasswordModal';
@@ -34,7 +35,7 @@ import ChangePasswordModal from './components/ChangePasswordModal';
 import { 
     LayoutDashboard, Target, ShoppingBag, Calculator, IceCream as IceCreamIcon, 
     DollarSign, AlertCircle, Calendar, LogOut, Loader2, Menu, X, ClipboardList, Shield, UserCog, Users, ShieldAlert, Settings, FileSignature, FileText, Download, Lock,
-    Sun, Moon
+    Sun, Moon, Trophy
 } from 'lucide-react';
 
 const App: React.FC = () => {
@@ -83,6 +84,25 @@ const App: React.FC = () => {
                     allow_cashier: false,
                     allow_sorvete: false,
                     sort_order: 55
+                }]);
+            }
+
+            const { data: existingPA } = await supabase
+                .from('page_permissions')
+                .select('id')
+                .eq('page_key', 'MODULE_DASHBOARD_PA')
+                .single();
+
+            if (!existingPA) {
+                await supabase.from('page_permissions').insert([{
+                    page_key: 'MODULE_DASHBOARD_PA',
+                    label: 'Dashboard P.A.',
+                    module_group: 'Inteligência',
+                    allow_admin: true,
+                    allow_manager: true,
+                    allow_cashier: false,
+                    allow_sorvete: false,
+                    sort_order: 56
                 }]);
             }
         } catch (err) {
@@ -429,7 +449,7 @@ const App: React.FC = () => {
                 </div>
                 <nav className="flex-1 space-y-6 overflow-y-auto no-scrollbar">
                     {[
-                        { title: 'Inteligência', items: [ { id: 'dashboard_rede', label: 'Dashboard Rede', icon: LayoutDashboard, perm: 'MODULE_DASHBOARD_ADMIN' }, { id: 'dashboard_loja', label: 'Dashboard Loja', icon: LayoutDashboard, perm: 'MODULE_DASHBOARD_MANAGER' }, { id: 'metas', label: 'Metas', icon: Target, perm: 'MODULE_METAS' }, { id: 'cotas', label: 'Cotas OTB', icon: Calculator, perm: 'MODULE_COTAS' }, { id: 'compras', label: 'Compras', icon: ShoppingBag, perm: 'MODULE_PURCHASES' }, { id: 'os_demandas', label: 'Demanda OS', icon: ClipboardList, perm: 'MODULE_DEMANDS' } ] },
+                        { title: 'Inteligência', items: [ { id: 'dashboard_rede', label: 'Dashboard Rede', icon: LayoutDashboard, perm: 'MODULE_DASHBOARD_ADMIN' }, { id: 'dashboard_loja', label: 'Dashboard Loja', icon: LayoutDashboard, perm: 'MODULE_DASHBOARD_MANAGER' }, { id: 'dashboard_pa', label: 'Dashboard P.A.', icon: Trophy, perm: 'MODULE_DASHBOARD_PA' }, { id: 'metas', label: 'Metas', icon: Target, perm: 'MODULE_METAS' }, { id: 'cotas', label: 'Cotas OTB', icon: Calculator, perm: 'MODULE_COTAS' }, { id: 'compras', label: 'Compras', icon: ShoppingBag, perm: 'MODULE_PURCHASES' }, { id: 'os_demandas', label: 'Demanda OS', icon: ClipboardList, perm: 'MODULE_DEMANDS' } ] },
                         { title: 'Operacional', items: [ { id: 'pdv_gelateria', label: 'PDV Gelateria', icon: IceCreamIcon, perm: 'MODULE_ICECREAM', requiredFeature: stores.find(s => s.id === user.storeId)?.has_gelateria || user.role === UserRole.ICE_CREAM }, { id: 'caixa', label: 'Caixa', icon: ClipboardList, perm: 'MODULE_CASH_REGISTER' }, { id: 'agenda', label: 'Agenda Semanal', icon: Calendar, perm: 'MODULE_AGENDA' } ] },
                         { title: 'Documentos', items: [ { id: 'autoriz_compra', label: 'Autoriz. Compra', icon: FileSignature, perm: 'MODULE_AUTORIZ_COMPRA' }, { id: 'termo_condicional', label: 'Termo Condicional', icon: FileText, perm: 'MODULE_TERMO_CONDICIONAL' }, { id: 'downloads', label: 'Downloads', icon: Download, perm: 'MODULE_DOWNLOADS' } ] },
                         { title: 'Administração', items: [ { id: 'users', label: 'Usuários', icon: Users, perm: 'MODULE_ADMIN_USERS' }, { id: 'access', label: 'Acessos', icon: ShieldAlert, perm: 'MODULE_ACCESS_CONTROL' }, { id: 'audit', label: 'Auditoria', icon: Shield, perm: 'MODULE_AUDIT' }, { id: 'settings', label: 'Configurações', icon: Settings, perm: 'MODULE_SETTINGS' } ] }
@@ -687,6 +707,7 @@ const App: React.FC = () => {
                         if (currentView === 'settings' && can('MODULE_SETTINGS')) return <AdminSettings stores={stores} onAddStore={async (s) => { await supabase.from('stores').insert([s]); fetchData(); }} onUpdateStore={async (s) => { await supabase.from('stores').update(s).eq('id', s.id); fetchData(); }} onDeleteStore={async (id) => { await supabase.from('stores').delete().eq('id', id); fetchData(); }} />;
                         if (currentView === 'spreadsheet_order' && can('MODULE_PURCHASES')) return <SpreadsheetOrderModule user={user!} onClose={() => setCurrentView('compras')} />;
                         if (currentView === 'os_demandas' && can('MODULE_DEMANDS')) return <OSDemandsModule user={user!} stores={stores} />;
+                        if (currentView === 'dashboard_pa' && can('MODULE_DASHBOARD_PA')) return <DashboardPAModule user={user!} stores={stores} />;
                         return <div className="flex items-center justify-center h-full text-gray-400 uppercase tracking-widest font-black text-sm">Selecione um módulo no menu</div>;
                     })()}
                 </main>

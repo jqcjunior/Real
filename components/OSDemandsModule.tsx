@@ -30,10 +30,12 @@ const OSDemandsModule: React.FC<OSDemandsModuleProps> = ({ user, stores }) => {
     const [formData, setFormData] = useState({
         title: '',
         description: '',
-        category: 'Manutenção',
+        category: 'Solicitação',
         priority: 'media' as DemandPriority,
         store_id: user.storeId || ''
     });
+    const [titleSuggestions, setTitleSuggestions] = useState<string[]>([]);
+    const [showSuggestions, setShowSuggestions] = useState(false);
     
     // Filters
     const [statusFilter, setStatusFilter] = useState<DemandStatus | 'todos'>('todos');
@@ -42,11 +44,28 @@ const OSDemandsModule: React.FC<OSDemandsModuleProps> = ({ user, stores }) => {
 
     const chatEndRef = useRef<HTMLDivElement>(null);
 
-    const categories = ['todos', ...new Set(demands.map(d => d.category))];
+    const demandCategories = ['Marca', 'Produto', 'Reposição', 'Solicitação', 'Reclamação', 'Indicação', 'Meta', 'Prioridade'];
+    const categories = ['todos', ...demandCategories];
 
     useEffect(() => {
         fetchDemands();
     }, []);
+
+    useEffect(() => {
+        if (formData.title.length > 1) {
+            const suggestions = demands
+                .map(d => d.title)
+                .filter((title, index, self) => 
+                    title.toLowerCase().includes(formData.title.toLowerCase()) && 
+                    self.indexOf(title) === index
+                )
+                .slice(0, 5);
+            setTitleSuggestions(suggestions);
+            setShowSuggestions(suggestions.length > 0);
+        } else {
+            setShowSuggestions(false);
+        }
+    }, [formData.title, demands]);
 
     useEffect(() => {
         if (selectedDemand) {
@@ -54,12 +73,11 @@ const OSDemandsModule: React.FC<OSDemandsModuleProps> = ({ user, stores }) => {
             // Subscribe to new messages for this demand
             const channel = supabase.channel(`demand-${selectedDemand.id}`)
                 .on('postgres_changes', { 
-                    event: 'INSERT', 
+                    event: '*', 
                     schema: 'public', 
-                    table: 'demand_messages',
-                    filter: `demand_id=eq.${selectedDemand.id}`
-                }, (payload) => {
-                    setMessages(prev => [...prev, payload.new as DemandMessage]);
+                    table: 'demands'
+                }, () => {
+                    fetchDemands();
                 })
                 .subscribe();
 
@@ -84,7 +102,7 @@ const OSDemandsModule: React.FC<OSDemandsModuleProps> = ({ user, stores }) => {
                 .from('demands')
                 .select(`
                     *,
-                    stores (name, number)
+                    stores (id, name, number)
                 `)
                 .order('created_at', { ascending: false });
 
@@ -194,7 +212,8 @@ const OSDemandsModule: React.FC<OSDemandsModuleProps> = ({ user, stores }) => {
                         description: formData.description,
                         category: formData.category,
                         priority: formData.priority,
-                        store_id: formData.store_id
+                        store_id: formData.store_id,
+                        updated_at: new Date().toISOString()
                     })
                     .eq('id', editingDemand.id);
 
@@ -206,7 +225,9 @@ const OSDemandsModule: React.FC<OSDemandsModuleProps> = ({ user, stores }) => {
                         ...formData,
                         status: 'aberta',
                         created_by: user.id,
-                        sla_hours: formData.priority === 'urgente' ? 4 : formData.priority === 'alta' ? 24 : 48
+                        sla_hours: formData.priority === 'urgente' ? 4 : formData.priority === 'alta' ? 24 : 48,
+                        created_at: new Date().toISOString(),
+                        updated_at: new Date().toISOString()
                     }]);
 
                 if (error) throw error;
@@ -217,13 +238,14 @@ const OSDemandsModule: React.FC<OSDemandsModuleProps> = ({ user, stores }) => {
             setFormData({
                 title: '',
                 description: '',
-                category: 'Manutenção',
+                category: 'Solicitação',
                 priority: 'media',
                 store_id: user.storeId || ''
             });
             fetchDemands();
-        } catch (err) {
+        } catch (err: any) {
             console.error('Erro ao salvar demanda:', err);
+            alert(`Erro ao salvar demanda: ${err.message || 'Erro desconhecido'}. Verifique se a categoria selecionada é permitida no banco de dados.`);
         } finally {
             setIsSubmitting(false);
         }
@@ -296,11 +318,21 @@ const OSDemandsModule: React.FC<OSDemandsModuleProps> = ({ user, stores }) => {
 
     const getPriorityColor = (priority: DemandPriority) => {
         switch (priority) {
-            case 'urgente': return '#E05C5C';
-            case 'alta': return '#e8b86d';
-            case 'media': return '#3b82f6';
-            case 'baixa': return '#10b981';
+            case 'urgente': return 'linear-gradient(135deg, #ef4444 0%, #991b1b 100%)';
+            case 'alta': return 'linear-gradient(135deg, #f97316 0%, #c2410c 100%)';
+            case 'media': return 'linear-gradient(135deg, #3b82f6 0%, #1d4ed8 100%)';
+            case 'baixa': return 'linear-gradient(135deg, #10b981 0%, #047857 100%)';
             default: return '#9ca3af';
+        }
+    };
+
+    const getPriorityLabel = (priority: DemandPriority) => {
+        switch (priority) {
+            case 'urgente': return 'Urgente 🚨';
+            case 'alta': return 'Alta ⚡';
+            case 'media': return 'Média 🟦';
+            case 'baixa': return 'Baixa ✅';
+            default: return priority;
         }
     };
 
@@ -322,6 +354,7 @@ const OSDemandsModule: React.FC<OSDemandsModuleProps> = ({ user, stores }) => {
                     --surface: #ffffff;
                     --card: #ffffff;
                     --accent: #e8b86d;
+                    --accent-gradient: linear-gradient(135deg, #e8b86d 0%, #b48a4d 100%);
                     --text: #1e293b;
                     --text-muted: #64748b;
                     --border: #e2e8f0;
@@ -341,6 +374,7 @@ const OSDemandsModule: React.FC<OSDemandsModuleProps> = ({ user, stores }) => {
                     --surface: #1e293b;
                     --card: #334155;
                     --accent: #fbbf24;
+                    --accent-gradient: linear-gradient(135deg, #fbbf24 0%, #d97706 100%);
                     --text: #f1f5f9;
                     --text-muted: #94a3b8;
                     --border: #475569;
@@ -438,7 +472,7 @@ const OSDemandsModule: React.FC<OSDemandsModuleProps> = ({ user, stores }) => {
 
                 .new-demand-btn {
                     width: 100%;
-                    background: var(--accent);
+                    background: var(--accent-gradient);
                     color: #000;
                     border: none;
                     padding: 14px;
@@ -452,7 +486,7 @@ const OSDemandsModule: React.FC<OSDemandsModuleProps> = ({ user, stores }) => {
                     justify-content: center;
                     gap: 8px;
                     transition: all 0.2s;
-                    box-shadow: 0 4px 12px rgba(232, 184, 109, 0.2);
+                    box-shadow: 0 4px 12px rgba(180, 138, 77, 0.2);
                     margin-bottom: 8px;
                 }
 
@@ -857,9 +891,40 @@ const OSDemandsModule: React.FC<OSDemandsModuleProps> = ({ user, stores }) => {
 
                 .modal-content h2 {
                     margin: 0 0 24px 0;
-                    font-size: 24px;
-                    font-weight: 800;
+                    font-size: 28px;
+                    font-weight: 900;
                     color: var(--text);
+                    background: var(--accent-gradient);
+                    -webkit-background-clip: text;
+                    -webkit-text-fill-color: transparent;
+                    text-transform: uppercase;
+                    letter-spacing: -0.02em;
+                }
+
+                .suggestions-list {
+                    position: absolute;
+                    top: 100%;
+                    left: 0;
+                    right: 0;
+                    background: var(--surface);
+                    border: 1px solid var(--border);
+                    border-radius: 12px;
+                    margin-top: 4px;
+                    z-index: 10;
+                    box-shadow: 0 10px 15px -3px rgba(0, 0, 0, 0.1);
+                    overflow: hidden;
+                }
+
+                .suggestion-item {
+                    padding: 10px 16px;
+                    font-size: 13px;
+                    cursor: pointer;
+                    transition: background 0.2s;
+                    color: var(--text);
+                }
+
+                .suggestion-item:hover {
+                    background: rgba(232, 184, 109, 0.1);
                 }
 
                 .form-group {
@@ -936,7 +1001,7 @@ const OSDemandsModule: React.FC<OSDemandsModuleProps> = ({ user, stores }) => {
                             setFormData({
                                 title: '',
                                 description: '',
-                                category: 'Manutenção',
+                                category: 'Solicitação',
                                 priority: 'media',
                                 store_id: user.storeId || ''
                             });
@@ -987,7 +1052,7 @@ const OSDemandsModule: React.FC<OSDemandsModuleProps> = ({ user, stores }) => {
                             setFormData({
                                 title: '',
                                 description: '',
-                                category: 'Manutenção',
+                                category: 'Solicitação',
                                 priority: 'media',
                                 store_id: user.storeId || ''
                             });
@@ -1063,7 +1128,7 @@ const OSDemandsModule: React.FC<OSDemandsModuleProps> = ({ user, stores }) => {
                                 setFormData({
                                     title: '',
                                     description: '',
-                                    category: 'Manutenção',
+                                    category: 'Solicitação',
                                     priority: 'media',
                                     store_id: user.storeId || ''
                                 });
@@ -1134,11 +1199,18 @@ const OSDemandsModule: React.FC<OSDemandsModuleProps> = ({ user, stores }) => {
                                 </div>
 
                                 <div className="demand-meta" style={{ marginBottom: '8px' }}>
-                                    <span style={{ color: getPriorityColor(selectedDemand.priority), fontWeight: 700, textTransform: 'uppercase' }}>
-                                        Prioridade {selectedDemand.priority}
+                                    <span style={{ 
+                                        background: getPriorityColor(selectedDemand.priority), 
+                                        color: 'white',
+                                        padding: '2px 8px',
+                                        borderRadius: '6px',
+                                        fontWeight: 800, 
+                                        textTransform: 'uppercase' 
+                                    }}>
+                                        {getPriorityLabel(selectedDemand.priority)}
                                     </span>
                                     <span>•</span>
-                                    <span>{selectedDemand.category}</span>
+                                    <span className="font-bold">{selectedDemand.category}</span>
                                 </div>
                                 <h2>{selectedDemand.title}</h2>
                                 <p style={{ fontSize: '13px', color: 'var(--text-muted)', margin: '8px 0' }}>
@@ -1248,15 +1320,34 @@ const OSDemandsModule: React.FC<OSDemandsModuleProps> = ({ user, stores }) => {
                     <div className="modal-content" onClick={e => e.stopPropagation()}>
                         <h2>{editingDemand ? 'Editar Demanda' : 'Nova Demanda'}</h2>
                         <form onSubmit={handleSaveDemand}>
-                            <div className="form-group">
+                            <div className="form-group relative">
                                 <label>Título</label>
                                 <input 
                                     type="text" 
                                     value={formData.title}
                                     onChange={e => setFormData({...formData, title: e.target.value})}
+                                    onFocus={() => setShowSuggestions(titleSuggestions.length > 0)}
+                                    onBlur={() => setTimeout(() => setShowSuggestions(false), 200)}
                                     placeholder="Ex: Ar condicionado quebrado"
                                     required
+                                    autoComplete="off"
                                 />
+                                {showSuggestions && (
+                                    <div className="suggestions-list">
+                                        {titleSuggestions.map((suggestion, idx) => (
+                                            <div 
+                                                key={idx} 
+                                                className="suggestion-item"
+                                                onClick={() => {
+                                                    setFormData({...formData, title: suggestion});
+                                                    setShowSuggestions(false);
+                                                }}
+                                            >
+                                                {suggestion}
+                                            </div>
+                                        ))}
+                                    </div>
+                                )}
                             </div>
                             <div className="form-group">
                                 <label>Descrição</label>
@@ -1275,11 +1366,9 @@ const OSDemandsModule: React.FC<OSDemandsModuleProps> = ({ user, stores }) => {
                                         value={formData.category}
                                         onChange={e => setFormData({...formData, category: e.target.value})}
                                     >
-                                        <option value="Manutenção">Manutenção</option>
-                                        <option value="TI / Sistemas">TI / Sistemas</option>
-                                        <option value="Financeiro">Financeiro</option>
-                                        <option value="RH">RH</option>
-                                        <option value="Outros">Outros</option>
+                                        {demandCategories.map(cat => (
+                                            <option key={cat} value={cat}>{cat}</option>
+                                        ))}
                                     </select>
                                 </div>
                                 <div className="form-group">
@@ -1288,10 +1377,10 @@ const OSDemandsModule: React.FC<OSDemandsModuleProps> = ({ user, stores }) => {
                                         value={formData.priority}
                                         onChange={e => setFormData({...formData, priority: e.target.value as DemandPriority})}
                                     >
-                                        <option value="baixa">Baixa</option>
-                                        <option value="media">Média</option>
-                                        <option value="alta">Alta</option>
-                                        <option value="urgente">Urgente</option>
+                                        <option value="baixa">Baixa ✅</option>
+                                        <option value="media">Média 🟦</option>
+                                        <option value="alta">Alta ⚡</option>
+                                        <option value="urgente">Urgente 🚨</option>
                                     </select>
                                 </div>
                             </div>
@@ -1304,10 +1393,28 @@ const OSDemandsModule: React.FC<OSDemandsModuleProps> = ({ user, stores }) => {
                                         required
                                     >
                                         <option value="">Selecione uma loja</option>
-                                        {stores.map(s => (
-                                            <option key={s.id} value={s.id}>Loja {s.number} - {s.name}</option>
-                                        ))}
+                                        {stores
+                                            .sort((a, b) => parseInt(a.number) - parseInt(b.number))
+                                            .map(s => {
+                                                const storeLabel = s.name.toLowerCase() === `loja ${s.number} - loja ${s.number}`.toLowerCase() || s.name.toLowerCase() === `loja ${s.number}`.toLowerCase()
+                                                    ? `Loja ${s.number}`
+                                                    : s.name.toLowerCase().includes(`loja ${s.number}`) 
+                                                        ? s.name 
+                                                        : `Loja ${s.number} - ${s.name}`;
+                                                return (
+                                                    <option key={s.id} value={s.id}>{storeLabel}</option>
+                                                );
+                                            })
+                                        }
                                     </select>
+                                </div>
+                            )}
+                            {user.role !== 'ADMIN' && (
+                                <div className="form-group">
+                                    <label>Loja</label>
+                                    <div className="p-3 bg-slate-100 dark:bg-slate-800 rounded-lg text-sm font-bold">
+                                        {stores.find(s => s.id === user.storeId)?.name || 'Sua Loja'}
+                                    </div>
                                 </div>
                             )}
                             <div className="flex gap-3 mt-8">
