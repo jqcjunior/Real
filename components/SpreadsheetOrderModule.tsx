@@ -415,7 +415,7 @@ const SpreadsheetOrderModule = ({ user, onClose }: { user: any, onClose: () => v
 
   // CORRIGIDO: downloadWorkbook com try-catch e setTimeout para evitar erro de permissão
   const downloadWorkbook = async (wb: any, fileName: string) => {
-    const XLSX = (await import('xlsx')).default;
+    const XLSX = await import('xlsx');
     try {
       const wbout = XLSX.write(wb, { bookType: "xlsx", type: "array" });
       const blob = new Blob([wbout], {
@@ -683,7 +683,7 @@ const SpreadsheetOrderModule = ({ user, onClose }: { user: any, onClose: () => v
 
   // CORRIGIDO: exportarPedidosPorLoja refatorado para usar JSZip e evitar bloqueio de múltiplos downloads
   const exportarPedidosPorLoja = async () => {
-    const XLSX = (await import('xlsx')).default;
+    const XLSX = await import('xlsx');
     if (lotesFinalizados.length === 0) {
       alert("Nenhum lote encontrado.");
       return;

@@ -34,14 +34,14 @@ const DashboardAdmin: React.FC<DashboardAdminProps> = ({ stores, performanceData
     };
 
     const handleFileUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
-        const XLSX = (await import('xlsx')).default;
+        const XLSX = await import('xlsx');
         const file = e.target.files?.[0];
         if (!file) return;
 
         setIsImporting(true);
         try {
-            const data = await file.arrayBuffer();
-            const workbook = XLSX.read(data);
+            const arrayBuffer = await file.arrayBuffer();
+            const workbook = XLSX.read(arrayBuffer, { type: 'array' });
             const worksheet = workbook.Sheets[workbook.SheetNames[0]];
             const jsonData = XLSX.utils.sheet_to_json(worksheet, {
                 defval: "",

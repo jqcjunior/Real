@@ -121,12 +121,12 @@ const DashboardPurchases: React.FC<DashboardPurchasesProps> = ({ stores, data, m
   }, [currentData]);
 
   const handleProcessImport = async () => {
-      const XLSX = (await import('xlsx')).default;
+      const XLSX = await import('xlsx');
       if (!selectedFile) return;
       setIsProcessing(true);
       try {
         const arrayBuffer = await selectedFile.arrayBuffer();
-        const workbook = XLSX.read(arrayBuffer);
+        const workbook = XLSX.read(arrayBuffer, { type: 'array' });
         const jsonData = XLSX.utils.sheet_to_json(workbook.Sheets[workbook.SheetNames[0]], { header: 1 }) as any[][];
         let headerRowIndex = -1;
         for (let i = 0; i < 20 && i < jsonData.length; i++) {
@@ -203,12 +203,12 @@ const DashboardPurchases: React.FC<DashboardPurchasesProps> = ({ stores, data, m
   }, [filteredManagementData]);
 
   const handleProcessManagementImport = async () => {
-      const XLSX = (await import('xlsx')).default;
+      const XLSX = await import('xlsx');
       if (!selectedManagementFile) return;
       setIsProcessing(true);
       try {
           const arrayBuffer = await selectedManagementFile.arrayBuffer();
-          const workbook = XLSX.read(arrayBuffer);
+          const workbook = XLSX.read(arrayBuffer, { type: 'array' });
           const sheetName = workbook.SheetNames[0];
           const jsonData = XLSX.utils.sheet_to_json(workbook.Sheets[sheetName], { header: 1 }) as any[][];
           

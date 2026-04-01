@@ -90,12 +90,10 @@ const DashboardPAGerente: React.FC<DashboardPAGerenteProps> = ({ user, store }) 
     if (!file || !selectedWeek) return;
 
     setImporting(true);
-    const reader = new FileReader();
-    reader.onload = async (evt) => {
-      try {
-        const bstr = evt.target?.result;
-        const XLSX = (await import('xlsx')).default;
-        const wb = XLSX.read(bstr, { type: 'binary' });
+    try {
+        const XLSX = await import('xlsx');
+        const arrayBuffer = await file.arrayBuffer();
+        const wb = XLSX.read(arrayBuffer, { type: 'array' });
         const wsname = wb.SheetNames[0];
         const ws = wb.Sheets[wsname];
         const data = XLSX.utils.sheet_to_json(ws);
@@ -137,8 +135,6 @@ const DashboardPAGerente: React.FC<DashboardPAGerenteProps> = ({ user, store }) 
         setImporting(false);
         if (fileInputRef.current) fileInputRef.current.value = '';
       }
-    };
-    reader.readAsBinaryString(file);
   };
 
   const totalStoreSales = sales.reduce((acc, curr) => acc + curr.total_vendas, 0);

@@ -134,12 +134,10 @@ const DashboardPAAdmin: React.FC<DashboardPAAdminProps> = ({ user, stores }) => 
     if (!file || !importWeekId || !importStoreId) return;
 
     setImporting(true);
-    const reader = new FileReader();
-    reader.onload = async (evt) => {
-      try {
-        const bstr = evt.target?.result;
-        const XLSX = (await import('xlsx')).default;
-        const wb = XLSX.read(bstr, { type: 'binary' });
+    try {
+        const XLSX = await import('xlsx');
+        const arrayBuffer = await file.arrayBuffer();
+        const wb = XLSX.read(arrayBuffer, { type: 'array' });
         const ws = wb.Sheets[wb.SheetNames[0]];
         const data = XLSX.utils.sheet_to_json(ws);
 
@@ -170,8 +168,6 @@ const DashboardPAAdmin: React.FC<DashboardPAAdminProps> = ({ user, stores }) => 
       } finally {
         setImporting(false);
       }
-    };
-    reader.readAsBinaryString(file);
   };
 
   const handleCreateWeek = async (e: React.FormEvent) => {
