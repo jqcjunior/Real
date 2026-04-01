@@ -52,7 +52,7 @@ export const dashboardPAService = {
     return data;
   },
 
-  async updateWeekStatus(weekId: string, status: 'aberta' | 'bloqueada'): Promise<void> {
+  async updateWeekStatus(weekId: string, status: 'aberta' | 'bloqueada' | 'recibos_impressos' | 'reaberta'): Promise<void> {
     const { error } = await supabase
       .from('Dashboard_PA_Semanas')
       .update({ status })
@@ -61,29 +61,56 @@ export const dashboardPAService = {
     if (error) throw error;
   },
 
+  async marcarRecibosImpressos(weekId: string, impressoPor: string): Promise<void> {
+    const { error } = await supabase
+      .from('Dashboard_PA_Semanas')
+      .update({
+        status: 'recibos_impressos',
+        recibos_impressos_em: new Date().toISOString(),
+        recibos_impressos_por: impressoPor
+      })
+      .eq('id', weekId);
+    if (error) throw error;
+  },
+
   // Sales & Awards
   async getStoreSales(weekId: string, storeId: string): Promise<PASale[]> {
-    // Join Vendas with Premiacoes
-    const { data, error } = await supabase
+    // Query 1: busca vendas
+    const { data: vendas, error: vendasError } = await supabase
       .from('Dashboard_PA_Vendas')
-      .select(`
-        *,
-        premiacao:Dashboard_PA_Premiacoes(*)
-      `)
+      .select('*')
       .eq('semana_id', weekId)
       .eq('store_id', storeId)
-      .order('pa', { ascending: false }) as any;
-    
-    if (error) throw error;
-    
-    return (data || []).map((venda: any) => ({
-      ...venda,
-      atingiu_meta: venda.premiacao?.[0]?.atingiu_meta || false,
-      valor_premio: venda.premiacao?.[0]?.valor_premio || 0,
-      faixas_acima: venda.premiacao?.[0]?.faixas_acima || 0,
-      pa_atingido: venda.premiacao?.[0]?.pa_atingido || venda.pa,
-      pa_meta: venda.premiacao?.[0]?.pa_meta || 0
-    }));
+      .order('pa', { ascending: false });
+
+    if (vendasError) throw vendasError;
+    if (!vendas || vendas.length === 0) return [];
+
+    // Query 2: busca premiações pelos IDs das vendas
+    const vendaIds = vendas.map(v => v.id);
+    const { data: premiacoes, error: premiacoesError } = await supabase
+      .from('Dashboard_PA_Premiacoes')
+      .select('*')
+      .in('venda_id', vendaIds);
+
+    if (premiacoesError) throw premiacoesError;
+
+    // Mapeia premiação para cada venda
+    const premiacaoMap = new Map(
+      (premiacoes || []).map(p => [p.venda_id, p])
+    );
+
+    return vendas.map(venda => {
+      const premiacao = premiacaoMap.get(venda.id);
+      return {
+        ...venda,
+        atingiu_meta: premiacao?.atingiu_meta || false,
+        valor_premio: premiacao?.valor_premio || 0,
+        faixas_acima: premiacao?.faixas_acima || 0,
+        pa_atingido: premiacao?.pa_atingido || venda.pa,
+        pa_meta: premiacao?.pa_meta || 0
+      };
+    });
   },
 
   async importSales(weekId: string, storeId: string, rows: any[], importadoPor: string): Promise<void> {
@@ -160,31 +187,36 @@ export const dashboardPAService = {
   },
 
   async getAdminSummary(weekId: string): Promise<PAStoreSummary[]> {
-    // This is a bit complex for a single query if we want aggregates
-    // Let's fetch all sales and awards for the week and aggregate in JS
-    const { data, error } = await supabase
+    // Query 1: busca vendas com nome da loja
+    const { data: vendas, error } = await supabase
       .from('Dashboard_PA_Vendas')
-      .select(`
-        store_id,
-        stores (name),
-        total_vendas,
-        pa,
-        premiacao:Dashboard_PA_Premiacoes(valor_premio, atingiu_meta)
-      `)
+      .select('*, stores(name)')
       .eq('semana_id', weekId);
 
     if (error) throw error;
+    if (!vendas || vendas.length === 0) return [];
+
+    // Query 2: busca premiações
+    const vendaIds = vendas.map(v => v.id);
+    const { data: premiacoes } = await supabase
+      .from('Dashboard_PA_Premiacoes')
+      .select('venda_id, valor_premio, atingiu_meta')
+      .in('venda_id', vendaIds);
+
+    const premiacaoMap = new Map(
+      (premiacoes || []).map(p => [p.venda_id, p])
+    );
 
     const summaryMap = new Map<string, any>();
 
-    data.forEach((item: any) => {
-      const storeId = item.store_id;
+    vendas.forEach((item: any) => {
+      const sid = item.store_id;
       const storeName = item.stores?.name || 'Loja Desconhecida';
-      const premiacao = item.premiacao?.[0];
+      const premiacao = premiacaoMap.get(item.id);
 
-      if (!summaryMap.has(storeId)) {
-        summaryMap.set(storeId, {
-          store_id: storeId,
+      if (!summaryMap.has(sid)) {
+        summaryMap.set(sid, {
+          store_id: sid,
           store_name: storeName,
           total_sales: 0,
           total_pa: 0,
@@ -194,12 +226,12 @@ export const dashboardPAService = {
         });
       }
 
-      const summary = summaryMap.get(storeId)!;
-      summary.total_sales += Number(item.total_vendas || 0);
-      summary.total_pa += Number(item.pa || 0);
-      summary.count += 1;
-      summary.total_awards += Number(premiacao?.valor_premio || 0);
-      if (premiacao?.atingiu_meta) summary.eligible_sellers += 1;
+      const s = summaryMap.get(sid)!;
+      s.total_sales += Number(item.total_vendas || 0);
+      s.total_pa += Number(item.pa || 0);
+      s.count += 1;
+      s.total_awards += Number(premiacao?.valor_premio || 0);
+      if (premiacao?.atingiu_meta) s.eligible_sellers += 1;
     });
 
     return Array.from(summaryMap.values()).map(s => ({

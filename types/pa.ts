@@ -14,13 +14,15 @@ export interface PAParameters {
 export interface PAWeek {
   id: string;
   store_id: string;
-  data_inicio: string;
-  data_fim: string;
-  mes_ref: number;
+  data_inicio: string; // Segunda-feira
+  data_fim: string;    // Sexta-feira (pode ser do mês seguinte)
+  mes_ref: number;     // Mês de referência (mês da segunda-feira)
   ano_ref: number;
-  status: 'aberta' | 'importada' | 'bloqueada' | 'reaberta';
+  status: 'aberta' | 'importada' | 'bloqueada' | 'reaberta' | 'recibos_impressos';
   liberada_por?: string;
   liberada_em?: string;
+  recibos_impressos_em?: string;
+  recibos_impressos_por?: string;
   created_at?: string;
 }
 

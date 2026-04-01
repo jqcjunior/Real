@@ -29,6 +29,11 @@ interface DashboardPAAdminProps {
   stores: Store[];
 }
 
+const parseLocalDate = (dateStr: string): Date => {
+  const [year, month, day] = dateStr.split('-').map(Number);
+  return new Date(year, month - 1, day); // sem conversão UTC
+};
+
 const DashboardPAAdmin: React.FC<DashboardPAAdminProps> = ({ user, stores }) => {
   const [selectedMonth, setSelectedMonth] = useState(new Date().getMonth() + 1);
   const [selectedYear, setSelectedYear] = useState(new Date().getFullYear());
@@ -154,6 +159,33 @@ const DashboardPAAdmin: React.FC<DashboardPAAdminProps> = ({ user, stores }) => 
 
         const headers = rawData[headerRowIndex];
         const dataRows = rawData.slice(headerRowIndex + 1);
+
+        // Validação de data no import
+        const week = weeks.find(w => w.id === importWeekId);
+        if (week) {
+          const titleRow = rawData.find(row => 
+            row.some(cell => String(cell || '').toUpperCase().includes('PERÍODO'))
+          );
+          
+          if (titleRow) {
+            const titleText = titleRow.find(cell => String(cell || '').toUpperCase().includes('PERÍODO'));
+            const dates = titleText.match(/(\d{2}\/\d{2}\/\d{4})/g);
+            
+            if (dates && dates.length >= 2) {
+              const [d1, m1, y1] = dates[0].split('/');
+              const [d2, m2, y2] = dates[1].split('/');
+              const arquivoInicio = parseLocalDate(y1 + '-' + m1 + '-' + d1).toISOString().split('T')[0];
+              const arquivoFim = parseLocalDate(y2 + '-' + m2 + '-' + d2).toISOString().split('T')[0];
+              
+              const dataFimSexta = week.data_fim;
+              const dataFimSabado = new Date(parseLocalDate(week.data_fim).getTime() + 86400000).toISOString().split('T')[0];
+
+              if (arquivoInicio !== week.data_inicio || (arquivoFim !== dataFimSexta && arquivoFim !== dataFimSabado)) {
+                throw new Error(`As datas do arquivo (${dates[0]} a ${dates[1]}) não coincidem com a semana selecionada.`);
+              }
+            }
+          }
+        }
 
         // Mapeia usando os índices das colunas encontradas
         const colIdx = (name: string) =>
@@ -352,7 +384,7 @@ const DashboardPAAdmin: React.FC<DashboardPAAdminProps> = ({ user, stores }) => 
                     {weeks.length === 0 && <option value="">Nenhuma semana</option>}
                     {weeks.map(w => (
                       <option key={w.id} value={w.id}>
-                        {stores.find(s => s.id === w.store_id)?.number} - {format(new Date(w.data_inicio), 'dd/MM')} a {format(new Date(w.data_fim), 'dd/MM')}
+                        {stores.find(s => s.id === w.store_id)?.number} - {format(parseLocalDate(w.data_inicio), 'dd/MM')} a {format(parseLocalDate(w.data_fim), 'dd/MM')}
                       </option>
                     ))}
                   </select>
@@ -648,12 +680,14 @@ const DashboardPAAdmin: React.FC<DashboardPAAdminProps> = ({ user, stores }) => 
                 >
                   <div className="flex justify-between items-center border-b border-slate-100 dark:border-slate-700 pb-2">
                     <span className="font-black italic uppercase tracking-tighter text-slate-900 dark:text-white">
-                      {format(new Date(week.data_inicio), 'dd/MM')} a {format(new Date(week.data_fim), 'dd/MM')}
+                      {format(parseLocalDate(week.data_inicio), 'dd/MM')} a {format(parseLocalDate(week.data_fim), 'dd/MM')}
                     </span>
                     <span className={`px-3 py-1 rounded-full font-black italic uppercase tracking-tighter text-[10px] ${
-                      week.status === 'aberta' ? 'bg-emerald-500/10 text-emerald-500' : 'bg-red-500/10 text-red-500'
+                      week.status === 'aberta' ? 'bg-emerald-500/10 text-emerald-500' : 
+                      week.status === 'recibos_impressos' ? 'bg-blue-500/10 text-blue-500' :
+                      'bg-red-500/10 text-red-500'
                     }`}>
-                      {week.status}
+                      {week.status === 'recibos_impressos' ? 'RECIBOS IMPRESSOS' : week.status.toUpperCase()}
                     </span>
                   </div>
                   <div className="flex justify-between items-center">
@@ -664,9 +698,12 @@ const DashboardPAAdmin: React.FC<DashboardPAAdminProps> = ({ user, stores }) => 
                         await dashboardPAService.updateWeekStatus(week.id, newStatus);
                         loadStoreWeeks(selectedStoreId);
                       }}
-                      className="font-black italic uppercase tracking-tighter text-xs text-orange-500 hover:underline"
+                      className={`font-black italic uppercase tracking-tighter text-xs hover:underline ${
+                        week.status === 'recibos_impressos' ? 'text-red-500' : 'text-orange-500'
+                      }`}
+                      title={week.status === 'recibos_impressos' ? 'Recibos já impressos' : ''}
                     >
-                      {week.status === 'aberta' ? 'Fechar' : 'Abrir'}
+                      {week.status === 'recibos_impressos' ? 'Reabrir' : week.status === 'aberta' ? 'Fechar' : 'Abrir'}
                     </button>
                   </div>
                 </motion.div>
@@ -678,53 +715,67 @@ const DashboardPAAdmin: React.FC<DashboardPAAdminProps> = ({ user, stores }) => 
               <table className="w-full text-left border-collapse">
               <thead>
                 <tr className="border-bottom border-slate-50 dark:border-slate-800/50">
-                  <th className="p-6 font-black italic uppercase tracking-tighter text-xs text-slate-400">Período</th>
+                  <th className="p-6 font-black italic uppercase tracking-tighter text-xs text-slate-400">Período (Seg-Sex)</th>
+                  <th className="p-6 font-black italic uppercase tracking-tighter text-xs text-slate-400 text-center">Pagamento (Sábado)</th>
                   <th className="p-6 font-black italic uppercase tracking-tighter text-xs text-slate-400 text-center">Referência</th>
                   <th className="p-6 font-black italic uppercase tracking-tighter text-xs text-slate-400 text-center">Status</th>
                   <th className="p-6 font-black italic uppercase tracking-tighter text-xs text-slate-400 text-right">Ações</th>
                 </tr>
               </thead>
               <tbody>
-                {weeks.map((week, i) => (
-                  <motion.tr 
-                    initial={{ opacity: 0, y: 10 }}
-                    animate={{ opacity: 1, y: 0 }}
-                    transition={{ delay: i * 0.05 }}
-                    key={week.id} 
-                    className="group border-b border-slate-50 dark:border-slate-800/50"
-                  >
-                    <td className="p-6">
-                      <div className="flex items-center gap-3">
-                        <Calendar className="w-5 h-5 text-orange-500" />
-                        <span className="font-black italic uppercase tracking-tighter text-slate-900 dark:text-white">
-                          {format(new Date(week.data_inicio), 'dd/MM/yyyy')} a {format(new Date(week.data_fim), 'dd/MM/yyyy')}
+                {weeks.map((week, i) => {
+                  const dataPagamento = new Date(parseLocalDate(week.data_fim).getTime() + 86400000);
+                  return (
+                    <motion.tr 
+                      initial={{ opacity: 0, y: 10 }}
+                      animate={{ opacity: 1, y: 0 }}
+                      transition={{ delay: i * 0.05 }}
+                      key={week.id} 
+                      className="group border-b border-slate-50 dark:border-slate-800/50"
+                    >
+                      <td className="p-6">
+                        <div className="flex items-center gap-3">
+                          <Calendar className="w-5 h-5 text-orange-500" />
+                          <span className="font-black italic uppercase tracking-tighter text-slate-900 dark:text-white">
+                            {format(parseLocalDate(week.data_inicio), 'dd/MM/yyyy')} a {format(parseLocalDate(week.data_fim), 'dd/MM/yyyy')}
+                          </span>
+                        </div>
+                      </td>
+                      <td className="p-6 text-center">
+                        <span className="font-black italic uppercase tracking-tighter text-slate-600 dark:text-slate-400">
+                          {format(dataPagamento, 'dd/MM/yyyy')}
                         </span>
-                      </div>
-                    </td>
-                    <td className="p-6 text-center font-black italic uppercase tracking-tighter text-slate-600 dark:text-slate-400">
-                      {week.mes_ref.toString().padStart(2, '0')}/{week.ano_ref}
-                    </td>
-                    <td className="p-6 text-center">
-                      <span className={`px-4 py-1 rounded-full font-black italic uppercase tracking-tighter text-[10px] ${
-                        week.status === 'aberta' ? 'bg-emerald-500/10 text-emerald-500' : 'bg-slate-100 dark:bg-slate-800 text-slate-400'
-                      }`}>
-                        {week.status}
-                      </span>
-                    </td>
-                    <td className="p-6 text-right">
-                      <button 
-                        onClick={async () => {
-                          const newStatus = week.status === 'aberta' ? 'bloqueada' : 'aberta';
-                          await dashboardPAService.updateWeekStatus(week.id, newStatus);
-                          loadStoreWeeks(selectedStoreId);
-                        }}
-                        className="font-black italic uppercase tracking-tighter text-xs text-orange-500 hover:underline"
-                      >
-                        {week.status === 'aberta' ? 'Fechar' : 'Abrir'}
-                      </button>
-                    </td>
-                  </motion.tr>
-                ))}
+                      </td>
+                      <td className="p-6 text-center font-black italic uppercase tracking-tighter text-slate-600 dark:text-slate-400">
+                        {week.mes_ref.toString().padStart(2, '0')}/{week.ano_ref}
+                      </td>
+                      <td className="p-6 text-center">
+                        <span className={`px-4 py-1 rounded-full font-black italic uppercase tracking-tighter text-[10px] ${
+                          week.status === 'aberta' ? 'bg-emerald-500/10 text-emerald-500' : 
+                          week.status === 'recibos_impressos' ? 'bg-blue-500/10 text-blue-500' :
+                          'bg-slate-100 dark:bg-slate-800 text-slate-400'
+                        }`}>
+                          {week.status === 'recibos_impressos' ? 'RECIBOS IMPRESSOS' : week.status.toUpperCase()}
+                        </span>
+                      </td>
+                      <td className="p-6 text-right">
+                        <button 
+                          onClick={async () => {
+                            const newStatus = week.status === 'aberta' ? 'bloqueada' : 'aberta';
+                            await dashboardPAService.updateWeekStatus(week.id, newStatus);
+                            loadStoreWeeks(selectedStoreId);
+                          }}
+                          className={`font-black italic uppercase tracking-tighter text-xs hover:underline ${
+                            week.status === 'recibos_impressos' ? 'text-red-500' : 'text-orange-500'
+                          }`}
+                          title={week.status === 'recibos_impressos' ? 'Recibos já impressos' : ''}
+                        >
+                          {week.status === 'recibos_impressos' ? 'Reabrir' : week.status === 'aberta' ? 'Fechar' : 'Abrir'}
+                        </button>
+                      </td>
+                    </motion.tr>
+                  );
+                })}
               </tbody>
             </table>
           </div>
@@ -757,7 +808,7 @@ const DashboardPAAdmin: React.FC<DashboardPAAdminProps> = ({ user, stores }) => 
                     <select value={importWeekId} onChange={(e) => setImportWeekId(e.target.value)} className="w-full bg-slate-50 dark:bg-slate-800 rounded-[16px] p-4 font-black italic uppercase tracking-tighter text-xs outline-none focus:ring-2 ring-orange-500/50 transition-all">
                       <option value="">Selecionar Semana</option>
                       {weeks.filter(w => !importStoreId || w.store_id === importStoreId).map(w => (
-                        <option key={w.id} value={w.id}>{format(new Date(w.data_inicio), 'dd/MM')} a {format(new Date(w.data_fim), 'dd/MM')}</option>
+                        <option key={w.id} value={w.id}>{format(parseLocalDate(w.data_inicio), 'dd/MM')} a {format(parseLocalDate(w.data_fim), 'dd/MM')}</option>
                       ))}
                     </select>
                   </div>
