@@ -96,29 +96,54 @@ const DashboardPAGerente: React.FC<DashboardPAGerenteProps> = ({ user, store }) 
         const wb = XLSX.read(arrayBuffer, { type: 'array' });
         const wsname = wb.SheetNames[0];
         const ws = wb.Sheets[wsname];
-        const data = XLSX.utils.sheet_to_json(ws);
 
-        // Map XLS columns to our structure
-        const mappedData = data.map((row: any) => {
-          // Normalize keys to uppercase to handle variations
-          const upperRow: any = {};
-          Object.keys(row).forEach(key => {
-            upperRow[key.toUpperCase()] = row[key];
-          });
+        // Converte tudo para array de arrays para encontrar o cabeçalho
+        const rawData: any[][] = XLSX.utils.sheet_to_json(ws, { header: 1 });
 
+        // Encontra a linha que contém 'Vendedor' — independente de quantas linhas de título existam
+        const headerRowIndex = rawData.findIndex(row =>
+          row.some(cell => String(cell || '').trim().toLowerCase() === 'vendedor')
+        );
+
+        if (headerRowIndex === -1) {
+          throw new Error('Formato inválido: coluna "Vendedor" não encontrada no arquivo.');
+        }
+
+        const headers = rawData[headerRowIndex];
+        const dataRows = rawData.slice(headerRowIndex + 1);
+
+        // Mapeia usando os índices das colunas encontradas
+        const colIdx = (name: string) =>
+          headers.findIndex((h: any) => String(h || '').trim().toLowerCase() === name.toLowerCase());
+
+        const iVendedor   = colIdx('Vendedor');
+        const iDias       = colIdx('Dias');
+        const iVendas     = colIdx('Vendas');
+        const iItens      = colIdx('Itens');
+        const iPA         = colIdx('P.A.');
+        const iTotalVenda = colIdx('Total Vendas');
+
+        const mappedData = dataRows.map(row => {
+          const vendedor = String(row[iVendedor] || '');
+          const partes = vendedor.match(/^\d+-(\d+)\s+(.+)$/);
           return {
-            cod_vendedor: upperRow['CÓDIGO'] || upperRow['COD'] || upperRow['CODIGO'] || '',
-            nome_vendedor: upperRow['VENDEDOR'] || upperRow['NOME'] || '',
-            dias_trabalhados: Number(upperRow['DIAS'] || 0),
-            qtde_vendas: Number(upperRow['QTDE VENDAS'] || upperRow['QTD VENDAS'] || upperRow['VENDAS'] || 0),
-            perc_vendas: String(upperRow['% VENDAS'] || upperRow['PERC VENDAS'] || '0%'),
-            qtde_itens: Number(upperRow['QTDE ITENS'] || upperRow['QTD ITENS'] || upperRow['ITENS'] || 0),
-            perc_itens: String(upperRow['% ITENS'] || upperRow['PERC ITENS'] || '0%'),
-            pa: Number(upperRow['PA'] || upperRow['P.A.'] || 0),
-            total_vendas: Number(upperRow['TOTAL'] || upperRow['VENDAS R$'] || 0),
-            perc_total: String(upperRow['% TOTAL'] || upperRow['PERC TOTAL'] || '0%')
+            cod_vendedor:     partes ? partes[1] : vendedor,
+            nome_vendedor:    partes ? partes[2].trim() : vendedor,
+            dias_trabalhados: Number(row[iDias]       || 0),
+            qtde_vendas:      Number(row[iVendas]     || 0),
+            perc_vendas:      '0%',
+            qtde_itens:       Number(row[iItens]      || 0),
+            perc_itens:       '0%',
+            pa:               Number(row[iPA]         || 0),
+            total_vendas:     Number(row[iTotalVenda] || 0),
+            perc_total:       '0%'
           };
-        }).filter(s => s.nome_vendedor && !isNaN(s.pa));
+        }).filter(s =>
+          s.nome_vendedor &&
+          s.nome_vendedor.toUpperCase() !== 'TOTAL' &&
+          !isNaN(s.pa) &&
+          s.pa > 0
+        );
 
         if (mappedData.length === 0) {
           throw new Error('Nenhum dado válido encontrado no arquivo.');
