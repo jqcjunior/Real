@@ -17,7 +17,6 @@ import { dashboardPAService } from '../../services/dashboardPAService';
 import { PAWeek, PASale, PAParameters } from '../../types/pa';
 import { format } from 'date-fns';
 import { ptBR } from 'date-fns/locale';
-import * as XLSX from 'xlsx';
 
 interface DashboardPAGerenteProps {
   user: any;
@@ -94,6 +93,7 @@ const DashboardPAGerente: React.FC<DashboardPAGerenteProps> = ({ user, store }) 
     const reader = new FileReader();
     reader.onload = async (evt) => {
       try {
+        const XLSX = await import('xlsx');
         const bstr = evt.target?.result;
         const wb = XLSX.read(bstr, { type: 'binary' });
         const wsname = wb.SheetNames[0];

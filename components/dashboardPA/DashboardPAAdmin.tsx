@@ -23,7 +23,6 @@ import { PAWeek, PAStoreSummary, PAParameters } from '../../types/pa';
 import { Store } from '../../types';
 import { format } from 'date-fns';
 import { ptBR } from 'date-fns/locale';
-import * as XLSX from 'xlsx';
 
 interface DashboardPAAdminProps {
   user: any;
@@ -138,6 +137,7 @@ const DashboardPAAdmin: React.FC<DashboardPAAdminProps> = ({ user, stores }) => 
     const reader = new FileReader();
     reader.onload = async (evt) => {
       try {
+        const XLSX = await import('xlsx');
         const bstr = evt.target?.result;
         const wb = XLSX.read(bstr, { type: 'binary' });
         const ws = wb.Sheets[wb.SheetNames[0]];

@@ -1,7 +1,6 @@
 import React, { useState, useMemo, useRef } from 'react';
 import { Store, MonthlyPerformance, MonthlyGoal, IceCreamSangria } from '../types';
 import { formatCurrency } from '../constants';
-import * as XLSX from 'xlsx';
 import { 
     LayoutDashboard, DollarSign, ShoppingBag, Target, Users, 
     RefreshCw, Loader2, BarChart3, Upload, FileSpreadsheet, CheckCircle2,
@@ -40,6 +39,7 @@ const DashboardAdmin: React.FC<DashboardAdminProps> = ({ stores, performanceData
 
         setIsImporting(true);
         try {
+            const XLSX = await import('xlsx');
             const data = await file.arrayBuffer();
             const workbook = XLSX.read(data);
             const worksheet = workbook.Sheets[workbook.SheetNames[0]];
