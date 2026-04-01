@@ -602,7 +602,7 @@ const DashboardPAAdmin: React.FC<DashboardPAAdminProps> = ({ user, stores }) => 
                     <td className="p-6 text-right">
                       <button 
                         onClick={async () => {
-                          const newStatus = week.status === 'aberta' ? 'fechada' : 'aberta';
+                          const newStatus = week.status === 'aberta' ? 'bloqueada' : 'aberta';
                           await dashboardPAService.updateWeekStatus(week.id, newStatus);
                           loadStoreWeeks(selectedStoreId);
                         }}

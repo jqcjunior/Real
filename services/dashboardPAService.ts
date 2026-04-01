@@ -5,7 +5,7 @@ export const dashboardPAService = {
   // Parameters
   async getParameters(storeId: string): Promise<PAParameters | null> {
     const { data, error } = await supabase
-      .from('Dashboard_P.A_Parametros')
+      .from('Dashboard_PA_Parametros')
       .select('*')
       .eq('store_id', storeId)
       .maybeSingle();
@@ -16,7 +16,7 @@ export const dashboardPAService = {
 
   async upsertParameters(params: PAParameters): Promise<void> {
     const { error } = await supabase
-      .from('Dashboard_P.A_Parametros')
+      .from('Dashboard_PA_Parametros')
       .upsert({
         ...params,
         updated_at: new Date().toISOString()
@@ -30,7 +30,7 @@ export const dashboardPAService = {
   // Weeks
   async getWeeks(storeId: string, year: number, month: number): Promise<PAWeek[]> {
     const { data, error } = await supabase
-      .from('Dashboard_P.A_Semanas')
+      .from('Dashboard_PA_Semanas')
       .select('*')
       .eq('store_id', storeId)
       .eq('ano_ref', year)
@@ -43,7 +43,7 @@ export const dashboardPAService = {
 
   async createWeek(week: Omit<PAWeek, 'id'>): Promise<PAWeek> {
     const { data, error } = await supabase
-      .from('Dashboard_P.A_Semanas')
+      .from('Dashboard_PA_Semanas')
       .insert([week])
       .select()
       .single();
@@ -52,9 +52,9 @@ export const dashboardPAService = {
     return data;
   },
 
-  async updateWeekStatus(weekId: string, status: 'aberta' | 'fechada'): Promise<void> {
+  async updateWeekStatus(weekId: string, status: 'aberta' | 'bloqueada'): Promise<void> {
     const { error } = await supabase
-      .from('Dashboard_P.A_Semanas')
+      .from('Dashboard_PA_Semanas')
       .update({ status })
       .eq('id', weekId);
     
@@ -65,10 +65,10 @@ export const dashboardPAService = {
   async getStoreSales(weekId: string, storeId: string): Promise<PASale[]> {
     // Join Vendas with Premiacoes
     const { data, error } = await supabase
-      .from('Dashboard_P.A_Vendas')
+      .from('Dashboard_PA_Vendas')
       .select(`
         *,
-        premiacao:Dashboard_P.A_Premiacoes(*)
+        premiacao:Dashboard_PA_Premiacoes(*)
       `)
       .eq('semana_id', weekId)
       .eq('store_id', storeId)
@@ -111,7 +111,7 @@ export const dashboardPAService = {
 
     // 3. Upsert sales
     const { data: insertedSales, error: salesError } = await supabase
-      .from('Dashboard_P.A_Vendas')
+      .from('Dashboard_PA_Vendas')
       .upsert(salesToUpsert, { onConflict: 'semana_id,cod_vendedor' })
       .select();
 
@@ -153,7 +153,7 @@ export const dashboardPAService = {
     });
 
     const { error: awardsError } = await supabase
-      .from('Dashboard_P.A_Premiacoes')
+      .from('Dashboard_PA_Premiacoes')
       .upsert(awardsToUpsert, { onConflict: 'venda_id' });
 
     if (awardsError) throw awardsError;
@@ -163,13 +163,13 @@ export const dashboardPAService = {
     // This is a bit complex for a single query if we want aggregates
     // Let's fetch all sales and awards for the week and aggregate in JS
     const { data, error } = await supabase
-      .from('Dashboard_P.A_Vendas')
+      .from('Dashboard_PA_Vendas')
       .select(`
         store_id,
         stores (name),
         total_vendas,
         pa,
-        premiacao:Dashboard_P.A_Premiacoes(valor_premio, atingiu_meta)
+        premiacao:Dashboard_PA_Premiacoes(valor_premio, atingiu_meta)
       `)
       .eq('semana_id', weekId);
 
@@ -214,7 +214,7 @@ export const dashboardPAService = {
 
   async getAllWeeks(year: number, month: number): Promise<PAWeek[]> {
     const { data, error } = await supabase
-      .from('Dashboard_P.A_Semanas')
+      .from('Dashboard_PA_Semanas')
       .select('*')
       .eq('ano_ref', year)
       .eq('mes_ref', month)

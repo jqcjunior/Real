@@ -18,7 +18,7 @@ export interface PAWeek {
   data_fim: string;
   mes_ref: number;
   ano_ref: number;
-  status: 'aberta' | 'fechada';
+  status: 'aberta' | 'importada' | 'bloqueada' | 'reaberta';
   liberada_por?: string;
   liberada_em?: string;
   created_at?: string;
