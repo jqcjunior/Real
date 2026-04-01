@@ -1,5 +1,4 @@
 import React, { useState, useMemo, useRef } from 'react';
-import * as XLSX from 'xlsx';
 import { Store, MonthlyPerformance, MonthlyGoal, IceCreamSangria } from '../types';
 import { formatCurrency } from '../constants';
 import { 
@@ -35,6 +34,7 @@ const DashboardAdmin: React.FC<DashboardAdminProps> = ({ stores, performanceData
     };
 
     const handleFileUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+        const XLSX = (await import('xlsx')).default;
         const file = e.target.files?.[0];
         if (!file) return;
 

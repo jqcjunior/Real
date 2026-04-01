@@ -1,5 +1,4 @@
 import React, { useState, useEffect, useMemo } from "react";
-import * as XLSX from 'xlsx';
 import ExcelJS from 'exceljs';
 import { saveAs } from 'file-saver';
 import { 
@@ -416,6 +415,7 @@ const SpreadsheetOrderModule = ({ user, onClose }: { user: any, onClose: () => v
 
   // CORRIGIDO: downloadWorkbook com try-catch e setTimeout para evitar erro de permissão
   const downloadWorkbook = async (wb: any, fileName: string) => {
+    const XLSX = (await import('xlsx')).default;
     try {
       const wbout = XLSX.write(wb, { bookType: "xlsx", type: "array" });
       const blob = new Blob([wbout], {
@@ -683,6 +683,7 @@ const SpreadsheetOrderModule = ({ user, onClose }: { user: any, onClose: () => v
 
   // CORRIGIDO: exportarPedidosPorLoja refatorado para usar JSZip e evitar bloqueio de múltiplos downloads
   const exportarPedidosPorLoja = async () => {
+    const XLSX = (await import('xlsx')).default;
     if (lotesFinalizados.length === 0) {
       alert("Nenhum lote encontrado.");
       return;
