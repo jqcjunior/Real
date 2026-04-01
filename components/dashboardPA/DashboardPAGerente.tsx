@@ -93,8 +93,8 @@ const DashboardPAGerente: React.FC<DashboardPAGerenteProps> = ({ user, store }) 
     const reader = new FileReader();
     reader.onload = async (evt) => {
       try {
-        const XLSX = await import('xlsx');
         const bstr = evt.target?.result;
+        const XLSX = (await import('xlsx')).default;
         const wb = XLSX.read(bstr, { type: 'binary' });
         const wsname = wb.SheetNames[0];
         const ws = wb.Sheets[wsname];
@@ -274,7 +274,48 @@ const DashboardPAGerente: React.FC<DashboardPAGerenteProps> = ({ user, store }) 
         </h2>
 
         <div className="bg-white dark:bg-slate-900 rounded-[48px] border border-slate-100 dark:border-slate-800 shadow-sm overflow-hidden">
-          <div className="overflow-x-auto">
+          {/* Mobile: cards */}
+          <div className="md:hidden space-y-3 p-4">
+            {sales.map((row, i) => (
+              <motion.div 
+                initial={{ opacity: 0, y: 10 }}
+                animate={{ opacity: 1, y: 0 }}
+                transition={{ delay: i * 0.05 }}
+                key={row.id}
+                className="bg-slate-50 dark:bg-slate-800/50 rounded-[24px] p-4 space-y-2"
+              >
+                <div className="flex justify-between items-center border-b border-slate-100 dark:border-slate-700 pb-2">
+                  <span className="font-black italic uppercase tracking-tighter text-slate-900 dark:text-white">{row.nome_vendedor}</span>
+                  <span className="px-3 py-1 rounded-full bg-orange-500/10 text-orange-500 font-black italic uppercase tracking-tighter text-[10px]">
+                    PA: {row.pa.toFixed(2)}
+                  </span>
+                </div>
+                <div className="grid grid-cols-2 gap-2 text-[10px]">
+                  <div>
+                    <p className="text-slate-400 font-black italic uppercase tracking-tighter">Vendas</p>
+                    <p className="text-slate-900 dark:text-white font-black italic uppercase tracking-tighter">R$ {row.total_vendas.toLocaleString()}</p>
+                  </div>
+                  <div>
+                    <p className="text-slate-400 font-black italic uppercase tracking-tighter">Itens</p>
+                    <p className="text-slate-900 dark:text-white font-black italic uppercase tracking-tighter">{row.qtde_itens}</p>
+                  </div>
+                  <div>
+                    <p className="text-slate-400 font-black italic uppercase tracking-tighter">Prêmio</p>
+                    <p className="text-emerald-500 font-black italic uppercase tracking-tighter">R$ {row.valor_premio?.toLocaleString() || '-'}</p>
+                  </div>
+                  <div>
+                    <p className="text-slate-400 font-black italic uppercase tracking-tighter">Status</p>
+                    <p className={`${row.atingiu_meta ? 'text-emerald-500' : 'text-red-500'} font-black italic uppercase tracking-tighter`}>
+                      {row.atingiu_meta ? 'Premiado' : 'Não Atingiu'}
+                    </p>
+                  </div>
+                </div>
+              </motion.div>
+            ))}
+          </div>
+
+          {/* Desktop: table */}
+          <div className="hidden md:block overflow-x-auto">
             <table className="w-full text-left border-collapse">
               <thead>
                 <tr className="border-bottom border-slate-50 dark:border-slate-800/50">
@@ -375,7 +416,7 @@ const DashboardPAGerente: React.FC<DashboardPAGerenteProps> = ({ user, store }) 
               initial={{ opacity: 0, scale: 0.95, y: 20 }}
               animate={{ opacity: 1, scale: 1, y: 0 }}
               exit={{ opacity: 0, scale: 0.95, y: 20 }}
-              className="relative w-full max-w-xl bg-white dark:bg-slate-900 rounded-[48px] p-12 shadow-2xl overflow-hidden"
+              className="relative w-full max-w-xl bg-white dark:bg-slate-900 rounded-[32px] md:rounded-[48px] p-6 md:p-12 shadow-2xl overflow-hidden max-h-[90vh] overflow-y-auto"
             >
               <button 
                 onClick={() => setShowImportModal(false)}

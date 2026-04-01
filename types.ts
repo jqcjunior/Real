@@ -464,6 +464,14 @@ export interface DemandMessage {
   created_at: string;
 }
 
+export interface DemandCategory {
+  id: string;
+  name: string;
+  label: string;
+  is_active: boolean;
+  created_at?: string;
+}
+
 /* =========================
    🔹 QUESTIONÁRIOS DE COMPRAS
 ========================= */

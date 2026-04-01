@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { supabase } from '../services/supabaseClient';
-import { Demand, DemandMessage, DemandPriority, DemandStatus, User, Store } from '../types';
+import { Demand, DemandMessage, DemandPriority, DemandStatus, User, Store, DemandCategory } from '../types';
+import DemandCategoriesManager from './DemandCategoriesManager';
 import { 
     AlertCircle, Clock, Store as StoreIcon, Filter, Search, 
     Send, CheckCircle, XCircle, MessageSquare, ChevronRight,
@@ -24,13 +25,14 @@ const OSDemandsModule: React.FC<OSDemandsModuleProps> = ({ user, stores }) => {
     const [isModalOpen, setIsModalOpen] = useState(false);
     const [isSubmitting, setIsSubmitting] = useState(false);
     const [showMobileDetails, setShowMobileDetails] = useState(false);
+    const [dynamicCategories, setDynamicCategories] = useState<DemandCategory[]>([]);
     
     // Form state
     const [editingDemand, setEditingDemand] = useState<Demand | null>(null);
     const [formData, setFormData] = useState({
         title: '',
         description: '',
-        category: 'Solicitação',
+        category: dynamicCategories[0]?.label || '',
         priority: 'media' as DemandPriority,
         store_id: user.storeId || ''
     });
@@ -41,15 +43,51 @@ const OSDemandsModule: React.FC<OSDemandsModuleProps> = ({ user, stores }) => {
     const [statusFilter, setStatusFilter] = useState<DemandStatus | 'todos'>('todos');
     const [categoryFilter, setCategoryFilter] = useState<string>('todos');
     const [searchTerm, setSearchTerm] = useState('');
+    const [confirmModal, setConfirmModal] = useState<{
+        isOpen: boolean;
+        title: string;
+        message: string;
+        onConfirm: () => void;
+        type: 'danger' | 'info';
+    }>({
+        isOpen: false,
+        title: '',
+        message: '',
+        onConfirm: () => {},
+        type: 'info'
+    });
 
     const chatEndRef = useRef<HTMLDivElement>(null);
 
-    const demandCategories = ['Marca', 'Produto', 'Reposição', 'Solicitação', 'Reclamação', 'Indicação', 'Meta', 'Prioridade'];
-    const categories = ['todos', ...demandCategories];
+    const categories = ['todos', ...dynamicCategories.map(c => c.label)];
 
     useEffect(() => {
         fetchDemands();
+        fetchDynamicCategories();
     }, []);
+
+    const fetchDynamicCategories = async () => {
+        try {
+            const { data, error } = await supabase
+                .from('demands_categories')
+                .select('*')
+                .eq('is_active', true)
+                .order('label', { ascending: true });
+
+            if (error) throw error;
+            setDynamicCategories(data || []);
+            
+            // If we have categories and the current category is not in the list, update it
+            if (data && data.length > 0) {
+                const labels = data.map(c => c.label);
+                if (!labels.includes(formData.category)) {
+                    setFormData(prev => ({ ...prev, category: data[0].label }));
+                }
+            }
+        } catch (err) {
+            console.error('Erro ao buscar categorias dinâmicas:', err);
+        }
+    };
 
     useEffect(() => {
         if (formData.title.length > 1) {
@@ -245,35 +283,49 @@ const OSDemandsModule: React.FC<OSDemandsModuleProps> = ({ user, stores }) => {
             setFormData({
                 title: '',
                 description: '',
-                category: 'Solicitação',
+                category: dynamicCategories[0]?.label || '',
                 priority: 'media',
                 store_id: user.storeId || ''
             });
             fetchDemands();
         } catch (err: any) {
             console.error('Erro ao salvar demanda:', err);
-            alert(`Erro ao salvar demanda: ${err.message || 'Erro desconhecido'}. Verifique se a categoria selecionada é permitida no banco de dados.`);
+            setConfirmModal({
+                isOpen: true,
+                title: 'Erro ao Salvar',
+                message: `Erro ao salvar demanda: ${err.message || 'Erro desconhecido'}. Verifique se a categoria selecionada é permitida no banco de dados.`,
+                onConfirm: () => setConfirmModal(prev => ({ ...prev, isOpen: false })),
+                type: 'info'
+            });
         } finally {
             setIsSubmitting(false);
         }
     };
 
     const handleDeleteDemand = async (id: string) => {
-        if (!window.confirm('Tem certeza que deseja excluir esta demanda?')) return;
+        setConfirmModal({
+            isOpen: true,
+            title: 'Excluir Demanda',
+            message: 'Tem certeza que deseja excluir esta demanda permanentemente?',
+            type: 'danger',
+            onConfirm: async () => {
+                try {
+                    const { error } = await supabase
+                        .from('demands')
+                        .delete()
+                        .eq('id', id);
 
-        try {
-            const { error } = await supabase
-                .from('demands')
-                .delete()
-                .eq('id', id);
+                    if (error) throw error;
 
-            if (error) throw error;
-
-            if (selectedDemand?.id === id) setSelectedDemand(null);
-            setDemands(prev => prev.filter(d => d.id !== id));
-        } catch (err) {
-            console.error('Erro ao excluir demanda:', err);
-        }
+                    if (selectedDemand?.id === id) setSelectedDemand(null);
+                    setDemands(prev => prev.filter(d => d.id !== id));
+                    setConfirmModal(prev => ({ ...prev, isOpen: false }));
+                } catch (err) {
+                    console.error('Erro ao excluir demanda:', err);
+                    setConfirmModal(prev => ({ ...prev, isOpen: false }));
+                }
+            }
+        });
     };
 
     const openEditModal = (demand: Demand) => {
@@ -290,16 +342,30 @@ const OSDemandsModule: React.FC<OSDemandsModuleProps> = ({ user, stores }) => {
 
     const handleFinalizeDemand = () => {
         if (!selectedDemand) return;
-        if (window.confirm('Deseja marcar esta demanda como resolvida?')) {
-            handleUpdateStatus(selectedDemand.id, 'resolvida');
-        }
+        setConfirmModal({
+            isOpen: true,
+            title: 'Finalizar Demanda',
+            message: 'Deseja marcar esta demanda como resolvida?',
+            type: 'info',
+            onConfirm: () => {
+                handleUpdateStatus(selectedDemand.id, 'resolvida');
+                setConfirmModal(prev => ({ ...prev, isOpen: false }));
+            }
+        });
     };
 
     const handleCancelDemand = () => {
         if (!selectedDemand) return;
-        if (window.confirm('Deseja realmente cancelar esta demanda?')) {
-            handleUpdateStatus(selectedDemand.id, 'cancelada');
-        }
+        setConfirmModal({
+            isOpen: true,
+            title: 'Cancelar Demanda',
+            message: 'Deseja realmente cancelar esta demanda?',
+            type: 'danger',
+            onConfirm: () => {
+                handleUpdateStatus(selectedDemand.id, 'cancelada');
+                setConfirmModal(prev => ({ ...prev, isOpen: false }));
+            }
+        });
     };
 
     // KPIs
@@ -908,6 +974,97 @@ const OSDemandsModule: React.FC<OSDemandsModuleProps> = ({ user, stores }) => {
                     letter-spacing: -0.02em;
                 }
 
+                .confirm-modal-overlay {
+                    position: fixed;
+                    top: 0;
+                    left: 0;
+                    right: 0;
+                    bottom: 0;
+                    background: rgba(0, 0, 0, 0.7);
+                    backdrop-filter: blur(4px);
+                    display: flex;
+                    align-items: center;
+                    justify-content: center;
+                    z-index: 1000;
+                    padding: 20px;
+                }
+
+                .confirm-modal-content {
+                    background: var(--surface);
+                    border-radius: 24px;
+                    padding: 32px;
+                    width: 100%;
+                    max-width: 400px;
+                    text-align: center;
+                    box-shadow: 0 25px 50px -12px rgba(0, 0, 0, 0.5);
+                    border: 1px solid var(--border);
+                }
+
+                .confirm-modal-icon {
+                    width: 64px;
+                    height: 64px;
+                    border-radius: 20px;
+                    display: flex;
+                    align-items: center;
+                    justify-content: center;
+                    margin: 0 auto 20px;
+                }
+
+                .confirm-modal-icon.danger {
+                    background: rgba(239, 68, 68, 0.1);
+                    color: #ef4444;
+                }
+
+                .confirm-modal-icon.info {
+                    background: rgba(59, 130, 246, 0.1);
+                    color: #3b82f6;
+                }
+
+                .confirm-modal-title {
+                    font-size: 1.25rem;
+                    font-weight: 800;
+                    margin-bottom: 12px;
+                    color: var(--text);
+                }
+
+                .confirm-modal-message {
+                    font-size: 0.95rem;
+                    color: var(--text-muted);
+                    line-height: 1.6;
+                    margin-bottom: 24px;
+                }
+
+                .confirm-modal-actions {
+                    display: flex;
+                    gap: 12px;
+                }
+
+                .confirm-modal-btn {
+                    flex: 1;
+                    padding: 12px;
+                    border-radius: 12px;
+                    font-weight: 700;
+                    font-size: 0.9rem;
+                    cursor: pointer;
+                    transition: all 0.2s;
+                    border: none;
+                }
+
+                .confirm-modal-btn-cancel {
+                    background: var(--bg);
+                    color: var(--text);
+                }
+
+                .confirm-modal-btn-confirm {
+                    background: var(--accent-gradient);
+                    color: #000;
+                }
+
+                .confirm-modal-btn-confirm.danger {
+                    background: linear-gradient(135deg, #ef4444 0%, #991b1b 100%);
+                    color: white;
+                }
+
                 .suggestions-list {
                     position: absolute;
                     top: 100%;
@@ -1007,7 +1164,12 @@ const OSDemandsModule: React.FC<OSDemandsModuleProps> = ({ user, stores }) => {
                             <ClipboardList size={24} />
                         </div>
                         <div>
-                            <h1 className="text-xl font-black uppercase tracking-tight">Demanda OS</h1>
+                            <div className="flex items-center gap-2">
+                                <h1 className="text-xl font-black uppercase tracking-tight">Demanda OS</h1>
+                                {user.role === 'ADMIN' && (
+                                    <DemandCategoriesManager onCategoriesChange={fetchDynamicCategories} />
+                                )}
+                            </div>
                             <p className="text-xs text-slate-500 dark:text-slate-400 font-bold uppercase">Gerenciamento de Ordens de Serviço</p>
                         </div>
                     </div>
@@ -1018,7 +1180,7 @@ const OSDemandsModule: React.FC<OSDemandsModuleProps> = ({ user, stores }) => {
                             setFormData({
                                 title: '',
                                 description: '',
-                                category: 'Solicitação',
+                                category: dynamicCategories[0]?.label || '',
                                 priority: 'media',
                                 store_id: user.storeId || ''
                             });
@@ -1069,7 +1231,7 @@ const OSDemandsModule: React.FC<OSDemandsModuleProps> = ({ user, stores }) => {
                             setFormData({
                                 title: '',
                                 description: '',
-                                category: 'Solicitação',
+                                category: dynamicCategories[0]?.label || '',
                                 priority: 'media',
                                 store_id: user.storeId || ''
                             });
@@ -1145,7 +1307,7 @@ const OSDemandsModule: React.FC<OSDemandsModuleProps> = ({ user, stores }) => {
                                 setFormData({
                                     title: '',
                                     description: '',
-                                    category: 'Solicitação',
+                                    category: dynamicCategories[0]?.label || '',
                                     priority: 'media',
                                     store_id: user.storeId || ''
                                 });
@@ -1383,8 +1545,8 @@ const OSDemandsModule: React.FC<OSDemandsModuleProps> = ({ user, stores }) => {
                                         value={formData.category}
                                         onChange={e => setFormData({...formData, category: e.target.value})}
                                     >
-                                        {demandCategories.map(cat => (
-                                            <option key={cat} value={cat}>{cat}</option>
+                                        {dynamicCategories.map(cat => (
+                                            <option key={cat.id} value={cat.label}>{cat.label}</option>
                                         ))}
                                     </select>
                                 </div>
@@ -1453,6 +1615,42 @@ const OSDemandsModule: React.FC<OSDemandsModuleProps> = ({ user, stores }) => {
                                 </button>
                             </div>
                         </form>
+                    </div>
+                </div>
+            )}
+
+            {confirmModal.isOpen && (
+                <div className="confirm-modal-overlay" onClick={() => setConfirmModal(prev => ({ ...prev, isOpen: false }))}>
+                    <div className="confirm-modal-content" onClick={e => e.stopPropagation()}>
+                        <div className={`confirm-modal-icon ${confirmModal.type}`}>
+                            {confirmModal.type === 'danger' ? <Trash2 size={32} /> : <AlertCircle size={32} />}
+                        </div>
+                        <h3 className="confirm-modal-title">{confirmModal.title}</h3>
+                        <p className="confirm-modal-message">{confirmModal.message}</p>
+                        <div className="confirm-modal-actions">
+                            <button 
+                                className="confirm-modal-btn confirm-modal-btn-cancel"
+                                onClick={() => setConfirmModal(prev => ({ ...prev, isOpen: false }))}
+                            >
+                                {confirmModal.type === 'danger' ? 'Cancelar' : 'Fechar'}
+                            </button>
+                            {confirmModal.type === 'danger' && (
+                                <button 
+                                    className="confirm-modal-btn confirm-modal-btn-confirm danger"
+                                    onClick={confirmModal.onConfirm}
+                                >
+                                    Confirmar
+                                </button>
+                            )}
+                            {confirmModal.type === 'info' && confirmModal.title !== 'Erro ao Salvar' && (
+                                <button 
+                                    className="confirm-modal-btn confirm-modal-btn-confirm"
+                                    onClick={confirmModal.onConfirm}
+                                >
+                                    Confirmar
+                                </button>
+                            )}
+                        </div>
                     </div>
                 </div>
             )}

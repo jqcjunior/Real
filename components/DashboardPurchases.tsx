@@ -1,5 +1,6 @@
 
 import React, { useState, useMemo, useRef } from 'react';
+import * as XLSX from 'xlsx';
 import { Store, ProductPerformance, User, AdminUser, PurchasingManagement } from '../types';
 import { formatCurrency } from '../constants';
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer, PieChart, Pie, Cell } from 'recharts';
@@ -124,7 +125,6 @@ const DashboardPurchases: React.FC<DashboardPurchasesProps> = ({ stores, data, m
       if (!selectedFile) return;
       setIsProcessing(true);
       try {
-        const XLSX = await import('xlsx');
         const arrayBuffer = await selectedFile.arrayBuffer();
         const workbook = XLSX.read(arrayBuffer);
         const jsonData = XLSX.utils.sheet_to_json(workbook.Sheets[workbook.SheetNames[0]], { header: 1 }) as any[][];
@@ -206,7 +206,6 @@ const DashboardPurchases: React.FC<DashboardPurchasesProps> = ({ stores, data, m
       if (!selectedManagementFile) return;
       setIsProcessing(true);
       try {
-          const XLSX = await import('xlsx');
           const arrayBuffer = await selectedManagementFile.arrayBuffer();
           const workbook = XLSX.read(arrayBuffer);
           const sheetName = workbook.SheetNames[0];

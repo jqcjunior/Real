@@ -137,8 +137,8 @@ const DashboardPAAdmin: React.FC<DashboardPAAdminProps> = ({ user, stores }) => 
     const reader = new FileReader();
     reader.onload = async (evt) => {
       try {
-        const XLSX = await import('xlsx');
         const bstr = evt.target?.result;
+        const XLSX = (await import('xlsx')).default;
         const wb = XLSX.read(bstr, { type: 'binary' });
         const ws = wb.Sheets[wb.SheetNames[0]];
         const data = XLSX.utils.sheet_to_json(ws);
@@ -262,12 +262,12 @@ const DashboardPAAdmin: React.FC<DashboardPAAdminProps> = ({ user, stores }) => 
             </select>
           </div>
 
-          <div className="flex items-center gap-2 bg-white dark:bg-slate-900 p-2 rounded-[32px] border border-slate-100 dark:border-slate-800 shadow-sm">
+          <div className="flex items-center gap-2 bg-white dark:bg-slate-900 p-2 rounded-[32px] border border-slate-100 dark:border-slate-800 shadow-sm overflow-x-auto max-w-full no-scrollbar">
             {(['overview', 'parameters', 'weeks'] as const).map((tab) => (
             <button
               key={tab}
               onClick={() => setActiveTab(tab)}
-              className={`px-6 py-3 rounded-[24px] font-black italic uppercase tracking-tighter text-sm transition-all ${
+              className={`px-6 py-3 rounded-[24px] font-black italic uppercase tracking-tighter text-sm transition-all whitespace-nowrap ${
                 activeTab === tab 
                   ? 'bg-orange-500 text-white shadow-lg shadow-orange-500/20' 
                   : 'text-slate-400 hover:text-slate-600 dark:hover:text-slate-200'
@@ -346,7 +346,55 @@ const DashboardPAAdmin: React.FC<DashboardPAAdminProps> = ({ user, stores }) => 
               </div>
 
               <div className="bg-white dark:bg-slate-900 rounded-[48px] border border-slate-100 dark:border-slate-800 shadow-sm overflow-hidden">
-                <div className="overflow-x-auto">
+                {/* Mobile: cards */}
+                <div className="md:hidden space-y-3 p-4">
+                  {summary.map((row, i) => (
+                    <motion.div 
+                      initial={{ opacity: 0, y: 10 }}
+                      animate={{ opacity: 1, y: 0 }}
+                      transition={{ delay: i * 0.05 }}
+                      key={row.store_id}
+                      className="bg-slate-50 dark:bg-slate-800/50 rounded-[24px] p-4 space-y-2"
+                    >
+                      <div className="flex justify-between items-center border-b border-slate-100 dark:border-slate-700 pb-2">
+                        <span className="font-black italic uppercase tracking-tighter text-slate-900 dark:text-white">{row.store_name}</span>
+                        <span className="px-3 py-1 rounded-full bg-orange-500/10 text-orange-500 font-black italic uppercase tracking-tighter text-[10px]">
+                          PA: {row.avg_pa.toFixed(2)}
+                        </span>
+                      </div>
+                      <div className="grid grid-cols-2 gap-2 text-[10px]">
+                        <div>
+                          <p className="text-slate-400 font-black italic uppercase tracking-tighter">Vendas</p>
+                          <p className="text-slate-900 dark:text-white font-black italic uppercase tracking-tighter">R$ {row.total_sales.toLocaleString()}</p>
+                        </div>
+                        <div>
+                          <p className="text-slate-400 font-black italic uppercase tracking-tighter">Premiados</p>
+                          <p className="text-slate-900 dark:text-white font-black italic uppercase tracking-tighter">{row.eligible_sellers}</p>
+                        </div>
+                        <div>
+                          <p className="text-slate-400 font-black italic uppercase tracking-tighter">Total Prêmios</p>
+                          <p className="text-emerald-500 font-black italic uppercase tracking-tighter">R$ {row.total_awards.toLocaleString()}</p>
+                        </div>
+                        <div className="flex items-end justify-end">
+                          <button 
+                            onClick={() => {
+                              setImportStoreId(row.store_id);
+                              setImportWeekId(selectedWeek || '');
+                              setShowImportModal(true);
+                            }}
+                            className="flex items-center gap-1 px-3 py-1 bg-orange-500 text-white rounded-full font-black italic uppercase tracking-tighter text-[8px]"
+                          >
+                            <Upload className="w-2 h-2" />
+                            <span>Importar</span>
+                          </button>
+                        </div>
+                      </div>
+                    </motion.div>
+                  ))}
+                </div>
+
+                {/* Desktop: table */}
+                <div className="hidden md:block overflow-x-auto">
                   <table className="w-full text-left border-collapse">
                     <thead>
                       <tr className="border-bottom border-slate-50 dark:border-slate-800/50">
@@ -563,7 +611,46 @@ const DashboardPAAdmin: React.FC<DashboardPAAdminProps> = ({ user, stores }) => 
           </div>
 
           <div className="bg-white dark:bg-slate-900 rounded-[48px] border border-slate-100 dark:border-slate-800 shadow-sm overflow-hidden">
-            <table className="w-full text-left border-collapse">
+            {/* Mobile: cards */}
+            <div className="md:hidden space-y-3 p-4">
+              {weeks.map((week, i) => (
+                <motion.div 
+                  initial={{ opacity: 0, y: 10 }}
+                  animate={{ opacity: 1, y: 0 }}
+                  transition={{ delay: i * 0.05 }}
+                  key={week.id}
+                  className="bg-slate-50 dark:bg-slate-800/50 rounded-[24px] p-4 space-y-2"
+                >
+                  <div className="flex justify-between items-center border-b border-slate-100 dark:border-slate-700 pb-2">
+                    <span className="font-black italic uppercase tracking-tighter text-slate-900 dark:text-white">
+                      {format(new Date(week.data_inicio), 'dd/MM')} a {format(new Date(week.data_fim), 'dd/MM')}
+                    </span>
+                    <span className={`px-3 py-1 rounded-full font-black italic uppercase tracking-tighter text-[10px] ${
+                      week.status === 'aberta' ? 'bg-emerald-500/10 text-emerald-500' : 'bg-red-500/10 text-red-500'
+                    }`}>
+                      {week.status}
+                    </span>
+                  </div>
+                  <div className="flex justify-between items-center">
+                    <span className="text-slate-400 font-black italic uppercase tracking-tighter text-[10px]">Ações</span>
+                    <button 
+                      onClick={async () => {
+                        const newStatus = week.status === 'aberta' ? 'bloqueada' : 'aberta';
+                        await dashboardPAService.updateWeekStatus(week.id, newStatus);
+                        loadStoreWeeks(selectedStoreId);
+                      }}
+                      className="font-black italic uppercase tracking-tighter text-xs text-orange-500 hover:underline"
+                    >
+                      {week.status === 'aberta' ? 'Fechar' : 'Abrir'}
+                    </button>
+                  </div>
+                </motion.div>
+              ))}
+            </div>
+
+            {/* Desktop: table */}
+            <div className="hidden md:block overflow-x-auto">
+              <table className="w-full text-left border-collapse">
               <thead>
                 <tr className="border-bottom border-slate-50 dark:border-slate-800/50">
                   <th className="p-6 font-black italic uppercase tracking-tighter text-xs text-slate-400">Período</th>
@@ -617,6 +704,7 @@ const DashboardPAAdmin: React.FC<DashboardPAAdminProps> = ({ user, stores }) => 
             </table>
           </div>
         </div>
+      </div>
       )}
 
       {/* Import Modal */}
@@ -624,7 +712,7 @@ const DashboardPAAdmin: React.FC<DashboardPAAdminProps> = ({ user, stores }) => 
         {showImportModal && (
           <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
             <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} onClick={() => setShowImportModal(false)} className="absolute inset-0 bg-slate-950/80 backdrop-blur-sm" />
-            <motion.div initial={{ opacity: 0, scale: 0.95, y: 20 }} animate={{ opacity: 1, scale: 1, y: 0 }} exit={{ opacity: 0, scale: 0.95, y: 20 }} className="relative w-full max-w-xl bg-white dark:bg-slate-900 rounded-[48px] p-12 shadow-2xl overflow-hidden">
+            <motion.div initial={{ opacity: 0, scale: 0.95, y: 20 }} animate={{ opacity: 1, scale: 1, y: 0 }} exit={{ opacity: 0, scale: 0.95, y: 20 }} className="relative w-full max-w-xl bg-white dark:bg-slate-900 rounded-[32px] md:rounded-[48px] p-6 md:p-12 shadow-2xl overflow-hidden max-h-[90vh] overflow-y-auto">
               <button onClick={() => setShowImportModal(false)} className="absolute top-8 right-8 p-2 text-slate-400 hover:text-slate-600 dark:hover:text-slate-200 transition-all"><X className="w-6 h-6" /></button>
               <div className="space-y-8">
                 <div className="space-y-2">
@@ -674,7 +762,7 @@ const DashboardPAAdmin: React.FC<DashboardPAAdminProps> = ({ user, stores }) => 
         {showNewWeekModal && (
           <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
             <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} onClick={() => setShowNewWeekModal(false)} className="absolute inset-0 bg-slate-950/80 backdrop-blur-sm" />
-            <motion.div initial={{ opacity: 0, scale: 0.95, y: 20 }} animate={{ opacity: 1, scale: 1, y: 0 }} exit={{ opacity: 0, scale: 0.95, y: 20 }} className="relative w-full max-w-xl bg-white dark:bg-slate-900 rounded-[48px] p-12 shadow-2xl">
+            <motion.div initial={{ opacity: 0, scale: 0.95, y: 20 }} animate={{ opacity: 1, scale: 1, y: 0 }} exit={{ opacity: 0, scale: 0.95, y: 20 }} className="relative w-full max-w-xl bg-white dark:bg-slate-900 rounded-[32px] md:rounded-[48px] p-6 md:p-12 shadow-2xl max-h-[90vh] overflow-y-auto">
               <button onClick={() => setShowNewWeekModal(false)} className="absolute top-8 right-8 p-2 text-slate-400 hover:text-slate-600 transition-all"><X className="w-6 h-6" /></button>
               <h3 className="text-3xl font-black italic uppercase tracking-tighter text-slate-900 dark:text-white mb-8">Nova <span className="text-orange-500">Semana</span></h3>
               <form onSubmit={handleCreateWeek} className="space-y-6">

@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useMemo } from "react";
+import * as XLSX from 'xlsx';
 import ExcelJS from 'exceljs';
 import { saveAs } from 'file-saver';
 import { 
@@ -416,7 +417,6 @@ const SpreadsheetOrderModule = ({ user, onClose }: { user: any, onClose: () => v
   // CORRIGIDO: downloadWorkbook com try-catch e setTimeout para evitar erro de permissão
   const downloadWorkbook = async (wb: any, fileName: string) => {
     try {
-      const XLSX = await import('xlsx');
       const wbout = XLSX.write(wb, { bookType: "xlsx", type: "array" });
       const blob = new Blob([wbout], {
         type: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
@@ -689,7 +689,6 @@ const SpreadsheetOrderModule = ({ user, onClose }: { user: any, onClose: () => v
     }
 
     try {
-      const XLSX = await import('xlsx');
       let templateBuffer: ArrayBuffer;
 
       if (localTemplate) {
