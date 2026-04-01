@@ -1,170 +1,226 @@
 import { supabase } from './supabaseClient';
-import { PAParameters, PAWeek, PASale, PAAward, PAStoreSummary } from '../types';
+import { PAParameters, PAWeek, PASale, PAStoreSummary } from '../types/pa';
 
 export const dashboardPAService = {
   // Parameters
-  async getParameters(): Promise<PAParameters | null> {
+  async getParameters(storeId: string): Promise<PAParameters | null> {
     const { data, error } = await supabase
-      .from('pa_parameters')
+      .from('Dashboard_P.A_Parametros')
       .select('*')
-      .single();
+      .eq('store_id', storeId)
+      .maybeSingle();
     
-    if (error && error.code !== 'PGRST116') throw error;
+    if (error) throw error;
     return data;
   },
 
-  async updateParameters(params: Partial<PAParameters>): Promise<void> {
-    const existing = await this.getParameters();
+  async upsertParameters(params: PAParameters): Promise<void> {
+    const { error } = await supabase
+      .from('Dashboard_P.A_Parametros')
+      .upsert({
+        ...params,
+        updated_at: new Date().toISOString()
+      }, {
+        onConflict: 'store_id'
+      });
     
-    if (existing) {
-      const { error } = await supabase
-        .from('pa_parameters')
-        .update({ ...params, updated_at: new Date().toISOString() })
-        .eq('id', existing.id);
-      if (error) throw error;
-    } else {
-      const { error } = await supabase
-        .from('pa_parameters')
-        .insert([{ ...params }]);
-      if (error) throw error;
-    }
+    if (error) throw error;
   },
 
   // Weeks
-  async getWeeks(year: number, month: number): Promise<PAWeek[]> {
+  async getWeeks(storeId: string, year: number, month: number): Promise<PAWeek[]> {
     const { data, error } = await supabase
-      .from('pa_weeks')
+      .from('Dashboard_P.A_Semanas')
       .select('*')
-      .eq('year', year)
-      .eq('month', month)
-      .order('week_number', { ascending: true });
+      .eq('store_id', storeId)
+      .eq('ano_ref', year)
+      .eq('mes_ref', month)
+      .order('data_inicio', { ascending: true });
     
     if (error) throw error;
     return data || [];
   },
 
-  async createWeek(week: Omit<PAWeek, 'id' | 'created_at'>): Promise<void> {
+  async createWeek(week: Omit<PAWeek, 'id'>): Promise<PAWeek> {
+    const { data, error } = await supabase
+      .from('Dashboard_P.A_Semanas')
+      .insert([week])
+      .select()
+      .single();
+    
+    if (error) throw error;
+    return data;
+  },
+
+  async updateWeekStatus(weekId: string, status: 'aberta' | 'fechada'): Promise<void> {
     const { error } = await supabase
-      .from('pa_weeks')
-      .insert([week]);
+      .from('Dashboard_P.A_Semanas')
+      .update({ status })
+      .eq('id', weekId);
+    
     if (error) throw error;
   },
 
   // Sales & Awards
-  async importSales(weekId: string, storeId: string, salesData: any[]): Promise<void> {
-    const params = await this.getParameters();
-    if (!params) throw new Error('Parâmetros do P.A. não configurados.');
+  async getStoreSales(weekId: string, storeId: string): Promise<PASale[]> {
+    // Join Vendas with Premiacoes
+    const { data, error } = await supabase
+      .from('Dashboard_P.A_Vendas')
+      .select(`
+        *,
+        premiacao:Dashboard_P.A_Premiacoes(*)
+      `)
+      .eq('semana_id', weekId)
+      .eq('store_id', storeId)
+      .order('pa', { ascending: false }) as any;
+    
+    if (error) throw error;
+    
+    return (data || []).map((venda: any) => ({
+      ...venda,
+      atingiu_meta: venda.premiacao?.[0]?.atingiu_meta || false,
+      valor_premio: venda.premiacao?.[0]?.valor_premio || 0,
+      faixas_acima: venda.premiacao?.[0]?.faixas_acima || 0,
+      pa_atingido: venda.premiacao?.[0]?.pa_atingido || venda.pa,
+      pa_meta: venda.premiacao?.[0]?.pa_meta || 0
+    }));
+  },
 
-    const salesToInsert = salesData.map(sale => {
-      const isEligible = sale.pa_value >= params.min_pa;
-      const awardAmount = isEligible ? params.award_value : 0;
+  async importSales(weekId: string, storeId: string, rows: any[], importadoPor: string): Promise<void> {
+    // 1. Get parameters for the store
+    const params = await this.getParameters(storeId);
+    if (!params) throw new Error('Parâmetros do P.A. não configurados para esta loja.');
 
-      return {
-        week_id: weekId,
-        store_id: storeId,
-        seller_name: sale.seller_name,
-        total_sales: sale.total_sales,
-        pa_value: sale.pa_value,
-        items_sold: sale.items_sold,
-        is_eligible: isEligible,
-        award_amount: awardAmount
-      };
-    });
+    // 2. Prepare sales data
+    const salesToUpsert = rows.map(row => ({
+      semana_id: weekId,
+      store_id: storeId,
+      cod_vendedor: String(row.cod_vendedor),
+      nome_vendedor: row.nome_vendedor,
+      dias_trabalhados: row.dias_trabalhados || 0,
+      qtde_vendas: row.qtde_vendas || 0,
+      perc_vendas: row.perc_vendas || '0%',
+      qtde_itens: row.qtde_itens || 0,
+      perc_itens: row.perc_itens || '0%',
+      pa: Number(row.pa) || 0,
+      total_vendas: Number(row.total_vendas) || 0,
+      perc_total: row.perc_total || '0%',
+      importado_por: importadoPor,
+      importado_em: new Date().toISOString()
+    }));
 
-    // Delete existing sales for this week/store to avoid duplicates
-    await supabase
-      .from('pa_sales')
-      .delete()
-      .eq('week_id', weekId)
-      .eq('store_id', storeId);
-
+    // 3. Upsert sales
     const { data: insertedSales, error: salesError } = await supabase
-      .from('pa_sales')
-      .insert(salesToInsert)
+      .from('Dashboard_P.A_Vendas')
+      .upsert(salesToUpsert, { onConflict: 'semana_id,cod_vendedor' })
       .select();
 
     if (salesError) throw salesError;
 
-    // Create awards for eligible sellers
-    const awardsToInsert = insertedSales
-      .filter(s => s.is_eligible)
-      .map(s => ({
-        sale_id: s.id,
+    // 4. Calculate and upsert awards
+    const awardsToUpsert = insertedSales.map(venda => {
+      const pa = Number(venda.pa);
+      const pa_inicial = Number(params.pa_inicial);
+      const incremento_pa = Number(params.incremento_pa);
+      const valor_base = Number(params.valor_base);
+      const incremento_valor = Number(params.incremento_valor);
+
+      let atingiu_meta = false;
+      let faixas_acima = 0;
+      let valor_premio = 0;
+
+      if (pa >= pa_inicial) {
+        atingiu_meta = true;
+        // Calculate bands above the initial one
+        // Example: pa=1.68, pa_inicial=1.60, inc=0.05 -> 1.68 - 1.60 = 0.08. 0.08 / 0.05 = 1.6 -> floor is 1.
+        faixas_acima = Math.floor(Math.max(0, pa - pa_inicial) / incremento_pa);
+        valor_premio = valor_base + (faixas_acima * incremento_valor);
+      }
+
+      return {
+        venda_id: venda.id,
+        semana_id: weekId,
         store_id: storeId,
-        seller_name: s.seller_name,
-        amount: s.award_amount,
-        status: 'PENDENTE'
-      }));
+        cod_vendedor: venda.cod_vendedor,
+        nome_vendedor: venda.nome_vendedor,
+        pa_atingido: pa,
+        pa_meta: pa_inicial,
+        faixas_acima: faixas_acima,
+        valor_premio: valor_premio,
+        atingiu_meta: atingiu_meta,
+        calculado_em: new Date().toISOString()
+      };
+    });
 
-    if (awardsToInsert.length > 0) {
-      const { error: awardsError } = await supabase
-        .from('pa_awards')
-        .insert(awardsToInsert);
-      if (awardsError) throw awardsError;
-    }
-  },
+    const { error: awardsError } = await supabase
+      .from('Dashboard_P.A_Premiacoes')
+      .upsert(awardsToUpsert, { onConflict: 'venda_id' });
 
-  async getStoreSales(weekId: string, storeId: string): Promise<PASale[]> {
-    const { data, error } = await supabase
-      .from('pa_sales')
-      .select('*')
-      .eq('week_id', weekId)
-      .eq('store_id', storeId)
-      .order('pa_value', { ascending: false });
-    
-    if (error) throw error;
-    return data || [];
+    if (awardsError) throw awardsError;
   },
 
   async getAdminSummary(weekId: string): Promise<PAStoreSummary[]> {
+    // This is a bit complex for a single query if we want aggregates
+    // Let's fetch all sales and awards for the week and aggregate in JS
     const { data, error } = await supabase
-      .from('pa_sales')
+      .from('Dashboard_P.A_Vendas')
       .select(`
         store_id,
         stores (name),
-        total_sales,
-        pa_value,
-        award_amount,
-        is_eligible
+        total_vendas,
+        pa,
+        premiacao:Dashboard_P.A_Premiacoes(valor_premio, atingiu_meta)
       `)
-      .eq('week_id', weekId);
+      .eq('semana_id', weekId);
 
     if (error) throw error;
 
-    const summaryMap = new Map<string, PAStoreSummary>();
+    const summaryMap = new Map<string, any>();
 
     data.forEach((item: any) => {
       const storeId = item.store_id;
       const storeName = item.stores?.name || 'Loja Desconhecida';
+      const premiacao = item.premiacao?.[0];
 
       if (!summaryMap.has(storeId)) {
         summaryMap.set(storeId, {
           store_id: storeId,
           store_name: storeName,
           total_sales: 0,
-          avg_pa: 0,
+          total_pa: 0,
+          count: 0,
           total_awards: 0,
           eligible_sellers: 0
         });
       }
 
       const summary = summaryMap.get(storeId)!;
-      summary.total_sales += Number(item.total_sales);
-      summary.total_awards += Number(item.award_amount);
-      if (item.is_eligible) summary.eligible_sellers += 1;
-      
-      // We'll calculate avg_pa later or keep a count
+      summary.total_sales += Number(item.total_vendas || 0);
+      summary.total_pa += Number(item.pa || 0);
+      summary.count += 1;
+      summary.total_awards += Number(premiacao?.valor_premio || 0);
+      if (premiacao?.atingiu_meta) summary.eligible_sellers += 1;
     });
 
-    // Finalize averages
-    return Array.from(summaryMap.values());
+    return Array.from(summaryMap.values()).map(s => ({
+      store_id: s.store_id,
+      store_name: s.store_name,
+      total_sales: s.total_sales,
+      avg_pa: s.count > 0 ? s.total_pa / s.count : 0,
+      eligible_sellers: s.eligible_sellers,
+      total_awards: s.total_awards
+    }));
   },
 
-  async markAwardAsPaid(awardId: string): Promise<void> {
-    const { error } = await supabase
-      .from('pa_awards')
-      .update({ status: 'PAGO', paid_at: new Date().toISOString() })
-      .eq('id', awardId);
+  async getAllWeeks(year: number, month: number): Promise<PAWeek[]> {
+    const { data, error } = await supabase
+      .from('Dashboard_P.A_Semanas')
+      .select('*')
+      .eq('ano_ref', year)
+      .eq('mes_ref', month)
+      .order('data_inicio', { ascending: true });
+    
     if (error) throw error;
+    return data || [];
   }
 };

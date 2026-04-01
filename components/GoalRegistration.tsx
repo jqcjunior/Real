@@ -27,7 +27,7 @@ const GoalRegistration: React.FC<GoalRegistrationProps> = ({
   ];
 
   const activeStores = useMemo(
-    () => (stores || []).filter(s => s.status !== 'inactive').sort((a, b) => a.name.localeCompare(b.name)),
+    () => (stores || []).filter(s => s.status !== 'inactive').sort((a, b) => Number(a.number) - Number(b.number)),
     [stores]
   );
 

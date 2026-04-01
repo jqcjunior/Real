@@ -263,7 +263,7 @@ const AdminUsersManagement: React.FC<AdminUsersManagementProps> = ({ currentUser
                                     <label className="text-[9px] font-black text-gray-400 uppercase ml-2 tracking-widest">Unidade</label>
                                     <select value={formData.store_id || ''} onChange={e => setFormData({...formData, store_id: e.target.value || null})} className="w-full p-4 bg-gray-50 dark:bg-slate-800 border border-gray-200 dark:border-slate-700 rounded-2xl font-black uppercase text-xs text-slate-900 dark:text-white outline-none cursor-pointer">
                                         <option value="">TODAS AS LOJAS</option>
-                                        {[...stores].sort((a, b) => a.name.localeCompare(b.name)).map(s => <option key={s.id} value={s.id}>#{s.number} - {s.name}</option>)}
+                                        {[...stores].sort((a, b) => (parseInt(a.number) || 0) - (parseInt(b.number) || 0)).map(s => <option key={s.id} value={s.id}>#{s.number} - {s.name}</option>)}
                                     </select>
                                 </div>
                             </div>

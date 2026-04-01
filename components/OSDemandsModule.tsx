@@ -98,13 +98,20 @@ const OSDemandsModule: React.FC<OSDemandsModuleProps> = ({ user, stores }) => {
     const fetchDemands = async () => {
         setIsLoading(true);
         try {
-            const { data, error } = await supabase
+            let query = supabase
                 .from('demands')
                 .select(`
                     *,
                     stores (id, name, number)
                 `)
                 .order('created_at', { ascending: false });
+
+            // Se não for ADMIN, filtra apenas as demandas da própria loja
+            if (user.role !== 'ADMIN' && user.storeId) {
+                query = query.eq('store_id', user.storeId);
+            }
+
+            const { data, error } = await query;
 
             if (error) throw error;
 
@@ -941,6 +948,8 @@ const OSDemandsModule: React.FC<OSDemandsModuleProps> = ({ user, stores }) => {
                     letter-spacing: 0.05em;
                 }
 
+                .form-group input,
+                .form-group textarea,
                 .form-group select {
                     width: 100%;
                     background: var(--bg);
@@ -951,7 +960,15 @@ const OSDemandsModule: React.FC<OSDemandsModuleProps> = ({ user, stores }) => {
                     font-size: 14px;
                     outline: none;
                     transition: all 0.2s;
+                }
+
+                .form-group select {
                     cursor: pointer;
+                }
+
+                .form-group textarea {
+                    resize: vertical;
+                    min-height: 100px;
                 }
 
                 .form-group input:focus, 

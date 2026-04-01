@@ -242,7 +242,7 @@ const App: React.FC = () => {
                 managerName: x.manager_name,
                 managerEmail: x.manager_email,
                 managerPhone: x.manager_phone
-            })));
+            })).sort((a, b) => Number(a.number) - Number(b.number)));
             if(sls) setSales(sls);
             if(slsp) setSalePayments(slsp.map(x => ({ ...x, amount: Number(x.amount || 0) })));
             if(p) setPerformanceData(p.map(x => ({ 
