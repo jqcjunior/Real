@@ -51,12 +51,10 @@ const DashboardAdmin: React.FC<DashboardAdminProps> = ({ stores, performanceData
             const mappedData = jsonData.map(row => {
             const getValue = (row: any, aliases: string[]) => {
                 const keys = Object.keys(row);
-                // 1. Busca exata (ignorando case e espaços)
                 let foundKey = keys.find(k => 
                     aliases.some(a => (k || '').trim().toLowerCase() === (a || '').toLowerCase())
                 );
                 
-                // 2. Busca parcial se não encontrar exata
                 if (!foundKey) {
                     foundKey = keys.find(k => {
                         const normalizedK = (k || '').trim().toLowerCase();
@@ -69,32 +67,26 @@ const DashboardAdmin: React.FC<DashboardAdminProps> = ({ stores, performanceData
                 const parseBRL = (value: any) => {
                     if (value === null || value === undefined || value === "") return 0;
 
-                    // 🔥 Caso o XLSX já tenha retornado número, NÃO mexer
                     if (typeof value === "number") {
                         return value;
                     }
 
                     let str = String(value).trim();
-                    
-                    // Remove símbolos de moeda e espaços extras
                     str = str.replace(/[R$\s]/g, "");
 
-                    // 🔥 Caso seja formato brasileiro: 498.544,25
                     if (str.includes(",")) {
                         const normalized = str
-                            .replace(/\./g, "")   // remove separador de milhar
-                            .replace(",", ".");  // troca decimal
+                            .replace(/\./g, "")
+                            .replace(",", ".");
 
                         const num = Number(normalized);
                         return isNaN(num) ? 0 : num;
                     }
 
-                    // 🔥 Caso já esteja em formato válido tipo "245784.55"
                     const num = Number(str);
                     return isNaN(num) ? 0 : num;
                 };
 
-                // Tentativa de encontrar a loja por número ou nome
                 const storeRaw = getValue(row, ["loja", "filial", "unidade", "loja"]);
                 const storeNum = String(storeRaw || '').replace(/\D/g, '').replace(/^0+/, '');
                 const targetStore = stores.find(s => s.number === storeNum);
@@ -146,25 +138,13 @@ const DashboardAdmin: React.FC<DashboardAdminProps> = ({ stores, performanceData
             return gMonth === selectedMonth;
         });
 
-        // Agrupar performance por loja para somar caso existam duplicatas (ex: múltiplos dias ou importações)
         const perfByStore = monthPerf.reduce((acc, p) => {
             const id = String(p.storeId || p.store_id);
             if (!acc[id]) {
                 acc[id] = { 
-                    revenueActual: 0,
-                    itemsActual: 0,
-                    salesActual: 0,
-
-                    paActual: 0,
-                    puActual: 0,
-                    averageTicket: 0,
-
-                    revenueTarget: 0,
-                    itemsTarget: 0,
-                    paTarget: 0,
-                    puTarget: 0,
-                    ticketTarget: 0,
-
+                    revenueActual: 0, itemsActual: 0, salesActual: 0,
+                    paActual: 0, puActual: 0, averageTicket: 0,
+                    revenueTarget: 0, itemsTarget: 0, paTarget: 0, puTarget: 0, ticketTarget: 0,
                     businessDays: 26
                 };
             }
@@ -175,7 +155,6 @@ const DashboardAdmin: React.FC<DashboardAdminProps> = ({ stores, performanceData
             acc[id].puActual += Number(p.puActual || 0);
             acc[id].averageTicket += Number(p.averageTicket || 0);
             
-            // Para metas, pegamos o valor máximo encontrado (evita somar metas duplicadas)
             acc[id].revenueTarget = Math.max(acc[id].revenueTarget, Number(p.revenueTarget || 0));
             acc[id].itemsTarget = Math.max(acc[id].itemsTarget, Number(p.itemsTarget || 0));
             acc[id].paTarget = Math.max(acc[id].paTarget, Number(p.paTarget || 0));
@@ -185,7 +164,6 @@ const DashboardAdmin: React.FC<DashboardAdminProps> = ({ stores, performanceData
             return acc;
         }, {} as Record<string, any>);
 
-        // Garantir que todas as lojas apareçam, mesmo sem dados de performance no mês
         const storeStats = stores.map(store => {
             const perf = perfByStore[String(store.id)];
             const goal = monthGoals.find(g => String(g.storeId) === String(store.id));
@@ -239,7 +217,6 @@ const DashboardAdmin: React.FC<DashboardAdminProps> = ({ stores, performanceData
         
         const totalSales = storeStats.reduce((acc, curr) => acc + curr.salesActual, 0);
         
-        // Para médias da rede, usamos a média aritmética dos targets das lojas que possuem metas cadastradas
         const storesWithGoals = storeStats.filter(s => s.revenueTarget > 0);
         const avgPATarget = storesWithGoals.length > 0 
             ? storesWithGoals.reduce((acc, curr) => acc + curr.paTarget, 0) / storesWithGoals.length 
@@ -269,7 +246,6 @@ const DashboardAdmin: React.FC<DashboardAdminProps> = ({ stores, performanceData
             : 0;
         const ticketAttainment = calcAttainment(avgTicket, avgTicketTarget, 'higher');
 
-        // Previsão de Receita
         const now = new Date();
         const currentMonthStr = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`;
         let elapsedDays = now.getDate();
@@ -298,7 +274,6 @@ const DashboardAdmin: React.FC<DashboardAdminProps> = ({ stores, performanceData
             revenueForecast,
             storeCount: stores.length,
             currentData: storeStats.sort((a, b) => {
-                // Novo Ranking Ponderado: Meta 50%, PA 50%
                 const getScore = (s: any) => {
                     const pF = Math.min(calcAttainment(s.revenueActual, s.revenueTarget, 'higher'), 120);
                     const pPA = Math.min(calcAttainment(s.paActual, s.paTarget, 'higher'), 120);
@@ -334,35 +309,35 @@ const DashboardAdmin: React.FC<DashboardAdminProps> = ({ stores, performanceData
         };
 
         return (
-            <div className={`bg-white dark:bg-slate-900 p-5 md:p-6 rounded-[32px] shadow-sm border border-slate-100 dark:border-slate-800 group hover:border-blue-200 dark:hover:border-blue-800 transition-all ${isPrimary ? 'ring-2 ring-blue-50 dark:ring-blue-900/20' : ''}`}>
-                <div className="flex justify-between items-start mb-4">
-                    <div className={`p-2.5 rounded-2xl ${isSuccess ? 'bg-emerald-50 dark:bg-emerald-900/20' : isWarning ? 'bg-rose-50 dark:bg-rose-900/20' : 'bg-blue-50 dark:bg-blue-900/20'} ${isSuccess ? 'text-emerald-600 dark:text-emerald-400' : isWarning ? 'text-rose-600 dark:text-rose-400' : 'text-blue-600 dark:text-blue-400'}`}>
+            <div className={`bg-white dark:bg-slate-900 p-4 sm:p-5 md:p-6 rounded-2xl sm:rounded-[32px] shadow-sm border border-slate-100 dark:border-slate-800 group hover:border-blue-200 dark:hover:border-blue-800 transition-all ${isPrimary ? 'ring-2 ring-blue-50 dark:ring-blue-900/20' : ''}`}>
+                <div className="flex justify-between items-start mb-3 sm:mb-4">
+                    <div className={`p-2 sm:p-2.5 rounded-xl sm:rounded-2xl ${isSuccess ? 'bg-emerald-50 dark:bg-emerald-900/20' : isWarning ? 'bg-rose-50 dark:bg-rose-900/20' : 'bg-blue-50 dark:bg-blue-900/20'} ${isSuccess ? 'text-emerald-600 dark:text-emerald-400' : isWarning ? 'text-rose-600 dark:text-rose-400' : 'text-blue-600 dark:text-blue-400'}`}>
                         {React.cloneElement(icon as React.ReactElement, { size: isPrimary ? 22 : 18 })}
                     </div>
                     {target > 0 && (
-                        <span className={`text-[10px] font-black px-2 py-1 rounded-lg ${isSuccess ? 'bg-emerald-100 dark:bg-emerald-900/40 text-emerald-700 dark:text-emerald-300' : 'bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-400'}`}>
+                        <span className={`text-[9px] sm:text-[10px] font-black px-1.5 sm:px-2 py-0.5 sm:py-1 rounded-lg ${isSuccess ? 'bg-emerald-100 dark:bg-emerald-900/40 text-emerald-700 dark:text-emerald-300' : 'bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-400'}`}>
                             {percent.toFixed(1)}%
                         </span>
                     )}
                 </div>
                 
-                <p className="text-[9px] font-black text-slate-400 dark:text-slate-500 uppercase tracking-[0.15em] mb-1.5">{title}</p>
+                <p className="text-[8px] sm:text-[9px] font-black text-slate-400 dark:text-slate-500 uppercase tracking-[0.15em] mb-1 sm:mb-1.5">{title}</p>
                 
                 <div className="flex items-baseline justify-between gap-2">
-                    <h3 className={`text-xl md:text-2xl font-black italic tracking-tighter ${isSuccess ? 'text-emerald-600 dark:text-emerald-400' : isWarning ? 'text-rose-600 dark:text-rose-400' : 'text-blue-900 dark:text-white'}`}>
+                    <h3 className={`text-lg sm:text-xl md:text-2xl font-black italic tracking-tighter ${isSuccess ? 'text-emerald-600 dark:text-emerald-400' : isWarning ? 'text-rose-600 dark:text-rose-400' : 'text-blue-900 dark:text-white'}`}>
                         {formatValue(actual)}
                     </h3>
                 </div>
                 
                 {target > 0 && (
-                    <div className="mt-4 space-y-2">
+                    <div className="mt-3 sm:mt-4 space-y-2">
                         <div className={`w-full bg-slate-50 dark:bg-slate-800 rounded-full overflow-hidden ${isPrimary ? 'h-1.5' : 'h-1'}`}>
                             <div 
                                 className={`h-full transition-all duration-1000 ${barColor}`} 
                                 style={{ width: `${Math.min(percent, 100)}%` }} 
                             />
                         </div>
-                        <p className="text-[9px] font-bold text-slate-300 dark:text-slate-600 italic text-right">
+                        <p className="text-[8px] sm:text-[9px] font-bold text-slate-300 dark:text-slate-600 italic text-right">
                             Meta: {formatValue(target)}
                         </p>
                     </div>
@@ -371,89 +346,171 @@ const DashboardAdmin: React.FC<DashboardAdminProps> = ({ stores, performanceData
         );
     };
 
+    const getRemainingWorkDays = (monthStr: string) => {
+        const [year, month] = monthStr.split('-').map(Number);
+        const now = new Date();
+        const lastDay = new Date(year, month, 0).getDate();
+        const currentYear = now.getFullYear();
+        const currentMonth = now.getMonth() + 1;
+        let startDay = 1;
+        if (year === currentYear && month === currentMonth) {
+            startDay = now.getDate();
+        } else if (year < currentYear || (year === currentYear && month < currentMonth)) {
+            return 1;
+        }
+        let count = 0;
+        for (let d = startDay; d <= lastDay; d++) {
+            const date = new Date(year, month - 1, d);
+            if (date.getDay() !== 0) count++;
+        }
+        return Math.max(count, 1);
+    };
+
+    const getDetailedAdvice = (curr: any, next: any, idx: number) => {
+        const remainingDays = getRemainingWorkDays(selectedMonth);
+        const adviceParts = [];
+        
+        const revDiff = Math.max(curr.revenueTarget - curr.revenueActual, 0);
+        if (revDiff > 0) {
+            const dailyRev = revDiff / remainingDays;
+            adviceParts.push(`Venda R$ ${dailyRev.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}/dia para bater a meta.`);
+        } else {
+            adviceParts.push(`Meta de faturamento atingida!`);
+        }
+
+        if (idx > 0) {
+            if (curr.averageTicket < curr.ticketTarget) {
+                const tktDiff = curr.ticketTarget - curr.averageTicket;
+                const totalTktNeeded = tktDiff * curr.salesActual;
+                adviceParts.push(`Aumente R$ ${totalTktNeeded.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} em vendas para bater o Ticket.`);
+            }
+
+            if (curr.paActual < curr.paTarget) {
+                const paDiff = curr.paTarget - curr.paActual;
+                const itemsNeeded = Math.ceil(paDiff * curr.salesActual);
+                const revForPA = itemsNeeded * (curr.puActual || 0);
+                adviceParts.push(`Aumente R$ ${revForPA.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} em vendas para bater o P.A.`);
+            }
+
+            if (curr.puActual > curr.puTarget) {
+                const puDiff = curr.puActual - curr.puTarget;
+                adviceParts.push(`Reduza o P.U em R$ ${puDiff.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}.`);
+            }
+
+            if (next) {
+                const getScore = (s: any) => {
+                    const pF = Math.min(calcAttainment(s.revenueActual, s.revenueTarget, 'higher'), 120);
+                    const pPA = Math.min(calcAttainment(s.paActual, s.paTarget, 'higher'), 120);
+                    return (pF * 0.50) + (pPA * 0.50);
+                };
+                
+                const currPAAttainment = Math.min((curr.paActual / curr.paTarget), 1.2);
+                const nextScoreDecimal = getScore(next) / 100;
+                const neededRevAttainment = (nextScoreDecimal - (currPAAttainment * 0.5)) / 0.5;
+                
+                if (neededRevAttainment <= 1.2) {
+                    const neededTotalRev = neededRevAttainment * curr.revenueTarget;
+                    const extraRevNeeded = Math.max(neededTotalRev - curr.revenueActual, 0);
+                    if (extraRevNeeded > 0) {
+                        adviceParts.push(`Venda mais R$ ${extraRevNeeded.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} para ultrapassar a Loja ${next.storeNumber}.`);
+                    }
+                } else {
+                    adviceParts.push(`Para ultrapassar a Loja ${next.storeNumber}, melhore também seu P.A.`);
+                }
+            }
+        }
+
+        return adviceParts.join(' ');
+    };
+
     return (
-        <div className="p-4 md:p-8 space-y-6 animate-in fade-in duration-500 pb-20 bg-slate-50 dark:bg-slate-950 transition-colors duration-300">
-            {/* Header com Botões de Ação */}
-            <div className="flex flex-col lg:flex-row justify-between items-start lg:items-center gap-6 bg-white dark:bg-slate-900 p-8 rounded-[40px] shadow-sm border border-gray-100 dark:border-slate-800">
-                <div className="flex items-center gap-4">
-                    <div className="p-4 bg-blue-900 dark:bg-blue-700 text-white rounded-3xl shadow-xl">
-                        <LayoutDashboard size={32} />
+        <div className="p-3 sm:p-4 md:p-8 space-y-4 sm:space-y-6 animate-in fade-in duration-500 pb-16 sm:pb-20 bg-slate-50 dark:bg-slate-950 transition-colors duration-300">
+            {/* Header */}
+            <div className="flex flex-col gap-4 sm:gap-6 bg-white dark:bg-slate-900 p-4 sm:p-6 md:p-8 rounded-3xl sm:rounded-[40px] shadow-sm border border-gray-100 dark:border-slate-800">
+                <div className="flex items-center gap-3 sm:gap-4">
+                    <div className="p-2.5 sm:p-3 md:p-4 bg-blue-900 dark:bg-blue-700 text-white rounded-2xl sm:rounded-3xl shadow-xl">
+                        <LayoutDashboard size={24} className="sm:hidden" />
+                        <LayoutDashboard size={28} className="hidden sm:block md:hidden" />
+                        <LayoutDashboard size={32} className="hidden md:block" />
                     </div>
-                    <div>
-                        <h2 className="text-2xl md:text-3xl font-black text-blue-950 dark:text-white uppercase italic tracking-tighter leading-none">Dashboard <span className="text-red-600">Rede Real</span></h2>
-                        <p className="text-[10px] font-black text-gray-400 dark:text-slate-500 uppercase tracking-widest mt-1">Visão Estratégica Consolidada</p>
+                    <div className="flex-1 min-w-0">
+                        <h2 className="text-xl sm:text-2xl md:text-3xl font-black text-blue-950 dark:text-white uppercase italic tracking-tighter leading-none truncate">Dashboard <span className="text-red-600">Rede Real</span></h2>
+                        <p className="text-[9px] sm:text-[10px] font-black text-gray-400 dark:text-slate-500 uppercase tracking-widest mt-0.5 sm:mt-1">Visão Estratégica Consolidada</p>
                     </div>
                 </div>
 
-                <div className="flex flex-col sm:flex-row flex-wrap items-center gap-3 w-full lg:w-auto">
+                <div className="flex flex-col gap-3">
                     <input type="file" ref={fileInputRef} onChange={handleFileUpload} accept=".xlsx, .xls" hidden />
                     
                     <button 
                         onClick={() => fileInputRef.current?.click()}
                         disabled={isImporting}
-                        className="w-full sm:flex-1 lg:flex-none flex items-center justify-center gap-2 bg-green-600 text-white px-6 py-3.5 rounded-2xl font-black uppercase text-[10px] shadow-lg border-b-4 border-green-800 hover:bg-green-700 transition-all active:scale-95 disabled:opacity-50"
+                        className="w-full flex items-center justify-center gap-2 bg-green-600 text-white px-4 sm:px-6 py-3 sm:py-3.5 rounded-xl sm:rounded-2xl font-black uppercase text-[9px] sm:text-[10px] shadow-lg border-b-4 border-green-800 hover:bg-green-700 transition-all active:scale-95 disabled:opacity-50"
                     >
                         {isImporting ? <Loader2 size={16} className="animate-spin" /> : <FileSpreadsheet size={16} />}
                         Importar XLSX
                     </button>
 
-                    <div className="flex items-center gap-2 w-full sm:flex-1 lg:flex-none">
-                        <select 
-                            value={selectedMonth.split('-')[1]} 
-                            onChange={e => {
-                                const [year] = selectedMonth.split('-');
-                                setSelectedMonth(`${year}-${e.target.value}`);
-                            }}
-                            className="flex-1 bg-gray-50 dark:bg-slate-800 border border-gray-200 dark:border-slate-700 rounded-xl px-4 py-3.5 text-xs font-black uppercase text-slate-900 dark:text-white outline-none focus:ring-4 focus:ring-blue-50 dark:focus:ring-blue-900/20 transition-all appearance-none cursor-pointer"
-                        >
-                            <option value="01">Janeiro</option>
-                            <option value="02">Fevereiro</option>
-                            <option value="03">Março</option>
-                            <option value="04">Abril</option>
-                            <option value="05">Maio</option>
-                            <option value="06">Junho</option>
-                            <option value="07">Julho</option>
-                            <option value="08">Agosto</option>
-                            <option value="09">Setembro</option>
-                            <option value="10">Outubro</option>
-                            <option value="11">Novembro</option>
-                            <option value="12">Dezembro</option>
-                        </select>
+                    <div className="flex flex-col sm:flex-row items-stretch gap-2">
+                        <div className="flex items-center gap-2 flex-1">
+                            <select 
+                                value={selectedMonth.split('-')[1]} 
+                                onChange={e => {
+                                    const [year] = selectedMonth.split('-');
+                                    setSelectedMonth(`${year}-${e.target.value}`);
+                                }}
+                                className="flex-1 bg-gray-50 dark:bg-slate-800 border border-gray-200 dark:border-slate-700 rounded-xl px-3 sm:px-4 py-2.5 sm:py-3.5 text-[10px] sm:text-xs font-black uppercase text-slate-900 dark:text-white outline-none focus:ring-4 focus:ring-blue-50 dark:focus:ring-blue-900/20 transition-all appearance-none cursor-pointer"
+                            >
+                                <option value="01">Janeiro</option>
+                                <option value="02">Fevereiro</option>
+                                <option value="03">Março</option>
+                                <option value="04">Abril</option>
+                                <option value="05">Maio</option>
+                                <option value="06">Junho</option>
+                                <option value="07">Julho</option>
+                                <option value="08">Agosto</option>
+                                <option value="09">Setembro</option>
+                                <option value="10">Outubro</option>
+                                <option value="11">Novembro</option>
+                                <option value="12">Dezembro</option>
+                            </select>
 
-                        <select 
-                            value={selectedMonth.split('-')[0]} 
-                            onChange={e => {
-                                const [, month] = selectedMonth.split('-');
-                                setSelectedMonth(`${e.target.value}-${month}`);
-                            }}
-                            className="w-24 bg-gray-50 dark:bg-slate-800 border border-gray-200 dark:border-slate-700 rounded-xl px-4 py-3.5 text-xs font-black uppercase text-blue-900 dark:text-blue-100 outline-none focus:ring-4 focus:ring-blue-50 dark:focus:ring-blue-900/20 transition-all appearance-none cursor-pointer"
+                            <select 
+                                value={selectedMonth.split('-')[0]} 
+                                onChange={e => {
+                                    const [, month] = selectedMonth.split('-');
+                                    setSelectedMonth(`${e.target.value}-${month}`);
+                                }}
+                                className="w-20 sm:w-24 bg-gray-50 dark:bg-slate-800 border border-gray-200 dark:border-slate-700 rounded-xl px-3 sm:px-4 py-2.5 sm:py-3.5 text-[10px] sm:text-xs font-black uppercase text-blue-900 dark:text-blue-100 outline-none focus:ring-4 focus:ring-blue-50 dark:focus:ring-blue-900/20 transition-all appearance-none cursor-pointer"
+                            >
+                                {(() => {
+                                    const years = [];
+                                    const currentYear = new Date().getFullYear();
+                                    for (let y = currentYear + 1; y >= 2024; y--) {
+                                        years.push(<option key={y} value={y}>{y}</option>);
+                                    }
+                                    return years;
+                                })()}
+                            </select>
+                        </div>
+
+                        <button 
+                            onClick={handleRefresh}
+                            disabled={isRefreshing}
+                            className="p-3 sm:p-3.5 bg-gray-950 dark:bg-slate-800 text-white rounded-xl shadow-lg hover:bg-black dark:hover:bg-slate-700 transition-all flex items-center justify-center active:scale-95 disabled:opacity-50"
                         >
-                            {(() => {
-                                const years = [];
-                                const currentYear = new Date().getFullYear();
-                                for (let y = currentYear + 1; y >= 2024; y--) {
-                                    years.push(<option key={y} value={y}>{y}</option>);
-                                }
-                                return years;
-                            })()}
-                        </select>
+                            {isRefreshing ? <Loader2 size={18} className="animate-spin sm:hidden" /> : <RefreshCw size={18} className="sm:hidden" />}
+                            {isRefreshing ? <Loader2 size={20} className="animate-spin hidden sm:block" /> : <RefreshCw size={20} className="hidden sm:block" />}
+                        </button>
                     </div>
-
-                    <button 
-                        onClick={handleRefresh}
-                        disabled={isRefreshing}
-                        className="w-full sm:w-auto p-3.5 bg-gray-950 dark:bg-slate-800 text-white rounded-xl shadow-lg hover:bg-black dark:hover:bg-slate-700 transition-all flex items-center justify-center active:scale-95 disabled:opacity-50"
-                    >
-                        {isRefreshing ? <Loader2 size={20} className="animate-spin" /> : <RefreshCw size={20} />}
-                    </button>
                 </div>
             </div>
 
             {/* KPI Grid */}
-            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 md:gap-6">
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3 sm:gap-4 md:gap-6">
                 <div className="relative group">
                     {renderKPICard('Faturamento Rede', stats.totalRevenue, stats.totalTarget, stats.attainment, <DollarSign size={24}/>, 'currency', true)}
-                    <div className="absolute -bottom-2 left-1/2 -translate-x-1/2 bg-blue-950 text-white text-[8px] font-black px-2 py-0.5 rounded-full opacity-0 group-hover:opacity-100 transition-opacity whitespace-nowrap">
+                    <div className="absolute -bottom-2 left-1/2 -translate-x-1/2 bg-blue-950 text-white text-[7px] sm:text-[8px] font-black px-2 py-0.5 rounded-full opacity-0 group-hover:opacity-100 transition-opacity whitespace-nowrap">
                         Previsão: {formatCurrency(stats.revenueForecast)}
                     </div>
                 </div>
@@ -462,19 +519,21 @@ const DashboardAdmin: React.FC<DashboardAdminProps> = ({ stores, performanceData
                 {renderKPICard('Ticket Médio Rede', stats.avgTicket, stats.avgTicketTarget, stats.ticketAttainment, <Users size={24}/>, 'currency')}
             </div>
 
-            {/* Ranking Operacional Section */}
-            <div className="bg-white dark:bg-slate-900 p-6 md:p-10 rounded-[48px] shadow-sm border border-slate-100 dark:border-slate-800">
-                <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4 mb-10">
-                    <h3 className="text-sm font-black text-blue-950 dark:text-white uppercase italic tracking-tighter flex items-center gap-3">
-                        <BarChart3 className="text-blue-600 dark:text-blue-400" size={20} /> Ranking <span className="text-blue-600 dark:text-blue-400">Ponderado de Performance</span>
+            {/* Ranking Section */}
+            <div className="bg-white dark:bg-slate-900 p-4 sm:p-6 md:p-10 rounded-3xl sm:rounded-[48px] shadow-sm border border-slate-100 dark:border-slate-800">
+                <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 mb-6 sm:mb-10">
+                    <h3 className="text-xs sm:text-sm font-black text-blue-950 dark:text-white uppercase italic tracking-tighter flex items-center gap-2 sm:gap-3">
+                        <BarChart3 className="text-blue-600 dark:text-blue-400" size={18} className="sm:hidden" />
+                        <BarChart3 className="text-blue-600 dark:text-blue-400" size={20} className="hidden sm:block" />
+                        Ranking <span className="text-blue-600 dark:text-blue-400">Ponderado de Performance</span>
                     </h3>
-                    <div className="flex items-center gap-2 bg-slate-50 dark:bg-slate-800 px-4 py-2 rounded-2xl border border-slate-100 dark:border-slate-700">
-                        <div className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse"></div>
-                        <span className="text-[9px] font-black text-slate-400 dark:text-slate-500 uppercase tracking-widest">Atualizado em Tempo Real</span>
+                    <div className="flex items-center gap-2 bg-slate-50 dark:bg-slate-800 px-3 sm:px-4 py-1.5 sm:py-2 rounded-xl sm:rounded-2xl border border-slate-100 dark:border-slate-700">
+                        <div className="w-1.5 h-1.5 sm:w-2 sm:h-2 rounded-full bg-emerald-500 animate-pulse"></div>
+                        <span className="text-[8px] sm:text-[9px] font-black text-slate-400 dark:text-slate-500 uppercase tracking-widest">Atualizado em Tempo Real</span>
                     </div>
                 </div>
                 
-                <div className="grid grid-cols-1 gap-4">
+                <div className="grid grid-cols-1 gap-3 sm:gap-4">
                     {stats.currentData.map((d, index) => {
                         const getScore = (s: any) => {
                             const pF = Math.min(calcAttainment(s.revenueActual, s.revenueTarget, 'higher'), 120);
@@ -486,191 +545,117 @@ const DashboardAdmin: React.FC<DashboardAdminProps> = ({ stores, performanceData
                         const nextStore = stats.currentData[index - 1];
                         
                         const getTier = (idx: number) => {
-                            if (idx === 0) return { label: 'Diamante', icon: <Gem className="text-cyan-400" size={16} />, color: 'bg-cyan-50 dark:bg-cyan-900/20 text-cyan-600 dark:text-cyan-400 border-cyan-200 dark:border-cyan-800', bar: 'bg-cyan-500' };
-                            if (idx === 1) return { label: 'Esmeralda', icon: <Gem className="text-emerald-400" size={16} />, color: 'bg-emerald-50 dark:bg-emerald-900/20 text-emerald-600 dark:text-emerald-400 border-emerald-200 dark:border-emerald-800', bar: 'bg-emerald-500' };
-                            if (idx === 2) return { label: 'Ouro', icon: <Trophy className="text-amber-400" size={16} />, color: 'bg-amber-50 dark:bg-amber-900/20 text-amber-600 dark:text-amber-400 border-amber-200 dark:border-amber-800', bar: 'bg-amber-500' };
-                            if (idx === 3) return { label: 'Prata', icon: <Medal className="text-slate-400" size={16} />, color: 'bg-slate-50 dark:bg-slate-800 text-slate-600 dark:text-slate-400 border-slate-200 dark:border-slate-700', bar: 'bg-slate-400' };
-                            if (idx === 4) return { label: 'Bronze', icon: <Medal className="text-orange-400" size={16} />, color: 'bg-orange-50 dark:bg-orange-900/20 text-orange-600 dark:text-orange-400 border-orange-200 dark:border-orange-800', bar: 'bg-orange-500' };
-                            if (idx === 5) return { label: 'Ouro', icon: <Zap className="text-amber-400" size={16} />, color: 'bg-amber-50 dark:bg-amber-900/20 text-amber-600 dark:text-amber-400 border-amber-100 dark:border-amber-900/30', bar: 'bg-amber-400' };
-                            if (idx === 6) return { label: 'Prata', icon: <Zap className="text-slate-400" size={16} />, color: 'bg-slate-50 dark:bg-slate-800 text-slate-600 dark:text-slate-400 border-slate-100 dark:border-slate-700', bar: 'bg-slate-300' };
-                            if (idx === 7) return { label: 'Bronze', icon: <Zap className="text-orange-400" size={16} />, color: 'bg-orange-50 dark:bg-orange-900/20 text-orange-600 dark:text-orange-400 border-orange-100 dark:border-orange-900/30', bar: 'bg-orange-300' };
-                            if (idx >= 8 && idx <= 12) return { label: 'Subindo', icon: <TrendingDown className="text-blue-400 rotate-180" size={16} />, color: 'bg-blue-50 dark:bg-blue-900/20 text-blue-600 dark:text-blue-400 border-blue-100 dark:border-blue-900/30', bar: 'bg-blue-400' };
-                            if (idx >= 13 && idx <= 17) return { label: 'Neutro', icon: <Minus className="text-slate-400" size={16} />, color: 'bg-slate-50 dark:bg-slate-800 text-slate-400 dark:text-slate-500 border-slate-100 dark:border-slate-700', bar: 'bg-slate-200' };
-                            if (idx >= stats.currentData.length - 3) return { label: 'Rebaixamento', icon: <TrendingDown className="text-rose-400" size={16} />, color: 'bg-rose-50 dark:bg-rose-900/20 text-rose-600 dark:text-rose-400 border-rose-100 dark:border-rose-900/30', bar: 'bg-rose-400' };
-                            return { label: 'Neutro', icon: <Minus className="text-slate-400" size={16} />, color: 'bg-slate-50 dark:bg-slate-800 text-slate-400 dark:text-slate-500 border-slate-100 dark:border-slate-700', bar: 'bg-slate-200' };
+                            if (idx === 0) return { label: 'Diamante', icon: <Gem className="text-cyan-400" size={14} />, color: 'bg-cyan-50 dark:bg-cyan-900/20 text-cyan-600 dark:text-cyan-400 border-cyan-200 dark:border-cyan-800', bar: 'bg-cyan-500' };
+                            if (idx === 1) return { label: 'Esmeralda', icon: <Gem className="text-emerald-400" size={14} />, color: 'bg-emerald-50 dark:bg-emerald-900/20 text-emerald-600 dark:text-emerald-400 border-emerald-200 dark:border-emerald-800', bar: 'bg-emerald-500' };
+                            if (idx === 2) return { label: 'Ouro', icon: <Trophy className="text-amber-400" size={14} />, color: 'bg-amber-50 dark:bg-amber-900/20 text-amber-600 dark:text-amber-400 border-amber-200 dark:border-amber-800', bar: 'bg-amber-500' };
+                            if (idx === 3) return { label: 'Prata', icon: <Medal className="text-slate-400" size={14} />, color: 'bg-slate-50 dark:bg-slate-800 text-slate-600 dark:text-slate-400 border-slate-200 dark:border-slate-700', bar: 'bg-slate-400' };
+                            if (idx === 4) return { label: 'Bronze', icon: <Medal className="text-orange-400" size={14} />, color: 'bg-orange-50 dark:bg-orange-900/20 text-orange-600 dark:text-orange-400 border-orange-200 dark:border-orange-800', bar: 'bg-orange-500' };
+                            if (idx >= 8 && idx <= 12) return { label: 'Subindo', icon: <TrendingDown className="text-blue-400 rotate-180" size={14} />, color: 'bg-blue-50 dark:bg-blue-900/20 text-blue-600 dark:text-blue-400 border-blue-100 dark:border-blue-900/30', bar: 'bg-blue-400' };
+                            if (idx >= stats.currentData.length - 3) return { label: 'Rebaixamento', icon: <TrendingDown className="text-rose-400" size={14} />, color: 'bg-rose-50 dark:bg-rose-900/20 text-rose-600 dark:text-rose-400 border-rose-100 dark:border-rose-900/30', bar: 'bg-rose-400' };
+                            return { label: 'Neutro', icon: <Minus className="text-slate-400" size={14} />, color: 'bg-slate-50 dark:bg-slate-800 text-slate-400 dark:text-slate-500 border-slate-100 dark:border-slate-700', bar: 'bg-slate-200' };
                         };
 
                         const tier = getTier(index);
                         const textColor = tier.color.split(' ')[1];
 
-                        const getRemainingWorkDays = (monthStr: string) => {
-                            const [year, month] = monthStr.split('-').map(Number);
-                            const now = new Date();
-                            const lastDay = new Date(year, month, 0).getDate();
-                            const currentYear = now.getFullYear();
-                            const currentMonth = now.getMonth() + 1;
-                            let startDay = 1;
-                            if (year === currentYear && month === currentMonth) {
-                                startDay = now.getDate();
-                            } else if (year < currentYear || (year === currentYear && month < currentMonth)) {
-                                return 1;
-                            }
-                            let count = 0;
-                            for (let d = startDay; d <= lastDay; d++) {
-                                const date = new Date(year, month - 1, d);
-                                if (date.getDay() !== 0) count++;
-                            }
-                            return Math.max(count, 1);
-                        };
-
-                        const getDetailedAdvice = (curr: any, next: any, idx: number) => {
-                            const remainingDays = getRemainingWorkDays(selectedMonth);
-                            const adviceParts = [];
-                            
-                            // 1. Meta de Faturamento (Sempre mostra)
-                            const revDiff = Math.max(curr.revenueTarget - curr.revenueActual, 0);
-                            if (revDiff > 0) {
-                                const dailyRev = revDiff / remainingDays;
-                                adviceParts.push(`Venda R$ ${dailyRev.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}/dia para bater a meta.`);
-                            } else {
-                                adviceParts.push(`Meta de faturamento atingida!`);
-                            }
-
-                            // Para lojas 02 em diante (idx > 0)
-                            if (idx > 0) {
-                                // 2. Ticket Médio
-                                if (curr.averageTicket < curr.ticketTarget) {
-                                    const tktDiff = curr.ticketTarget - curr.averageTicket;
-                                    const totalTktNeeded = tktDiff * curr.salesActual;
-                                    adviceParts.push(`Aumente R$ ${totalTktNeeded.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} em vendas para bater o Ticket.`);
-                                }
-
-                                // 3. P.A
-                                if (curr.paActual < curr.paTarget) {
-                                    const paDiff = curr.paTarget - curr.paActual;
-                                    const itemsNeeded = Math.ceil(paDiff * curr.salesActual);
-                                    const revForPA = itemsNeeded * (curr.puActual || 0);
-                                    adviceParts.push(`Aumente R$ ${revForPA.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} em vendas para bater o P.A.`);
-                                }
-
-                                // 4. P.U
-                                if (curr.puActual > curr.puTarget) {
-                                    const puDiff = curr.puActual - curr.puTarget;
-                                    adviceParts.push(`Reduza o P.U em R$ ${puDiff.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}.`);
-                                }
-
-                                // 5. Ultrapassar a loja à frente
-                                if (next) {
-                                    const currPAAttainment = Math.min((curr.paActual / curr.paTarget), 1.2);
-                                    const nextScoreDecimal = getScore(next) / 100;
-                                    const neededRevAttainment = (nextScoreDecimal - (currPAAttainment * 0.5)) / 0.5;
-                                    
-                                    if (neededRevAttainment <= 1.2) {
-                                        const neededTotalRev = neededRevAttainment * curr.revenueTarget;
-                                        const extraRevNeeded = Math.max(neededTotalRev - curr.revenueActual, 0);
-                                        if (extraRevNeeded > 0) {
-                                            adviceParts.push(`Venda mais R$ ${extraRevNeeded.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} para ultrapassar a Loja ${next.storeNumber}.`);
-                                        }
-                                    } else {
-                                        adviceParts.push(`Para ultrapassar a Loja ${next.storeNumber}, melhore também seu P.A.`);
-                                    }
-                                }
-                            }
-
-                            return adviceParts.join(' ');
-                        };
-
                         return (
-                            <div key={d.storeId} className={`group relative p-5 md:p-8 rounded-[32px] border transition-all duration-500 ${index < 3 ? 'bg-white dark:bg-slate-900 shadow-xl shadow-blue-900/5 dark:shadow-blue-950/20 border-slate-100 dark:border-slate-800' : 'bg-slate-50/50 dark:bg-slate-900/40 hover:bg-white dark:hover:bg-slate-900 border-transparent hover:border-slate-100 dark:hover:border-slate-800 hover:shadow-lg'}`}>
-                                <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-6">
-                                    <div className="flex items-center gap-6">
-                                        <div className={`w-14 h-14 rounded-2xl flex flex-col items-center justify-center font-black italic text-xl shadow-lg ${index === 0 ? 'bg-amber-400 text-white' : index === 1 ? 'bg-slate-300 text-white' : index === 2 ? 'bg-orange-400 text-white' : 'bg-white dark:bg-slate-800 text-slate-400 dark:text-slate-500 border border-slate-100 dark:border-slate-700'}`}>
-                                            <span className="text-[10px] uppercase not-italic font-bold opacity-60 mb-0.5">{String(index + 1).padStart(2, '0')}</span>
+                            <div key={d.storeId} className={`group relative p-4 sm:p-5 md:p-8 rounded-2xl sm:rounded-[32px] border transition-all duration-500 ${index < 3 ? 'bg-white dark:bg-slate-900 shadow-xl shadow-blue-900/5 dark:shadow-blue-950/20 border-slate-100 dark:border-slate-800' : 'bg-slate-50/50 dark:bg-slate-900/40 hover:bg-white dark:hover:bg-slate-900 border-transparent hover:border-slate-100 dark:hover:border-slate-800 hover:shadow-lg'}`}>
+                                <div className="flex flex-col gap-4 sm:gap-6">
+                                    {/* Header */}
+                                    <div className="flex items-center gap-3 sm:gap-6">
+                                        <div className={`w-12 h-12 sm:w-14 sm:h-14 rounded-xl sm:rounded-2xl flex flex-col items-center justify-center font-black italic text-lg sm:text-xl shadow-lg ${index === 0 ? 'bg-amber-400 text-white' : index === 1 ? 'bg-slate-300 text-white' : index === 2 ? 'bg-orange-400 text-white' : 'bg-white dark:bg-slate-800 text-slate-400 dark:text-slate-500 border border-slate-100 dark:border-slate-700'}`}>
+                                            <span className="text-[9px] sm:text-[10px] uppercase not-italic font-bold opacity-60 mb-0.5">{String(index + 1).padStart(2, '0')}</span>
                                             {tier.icon}
                                         </div>
-                                        <div>
-                                            <div className="flex items-center gap-3 mb-1">
-                                                <p className="text-lg font-black text-blue-950 dark:text-white uppercase italic leading-none">Loja {d.storeNumber}</p>
-                                                <span className={`${tier.color} text-[8px] font-black px-2 py-0.5 rounded-full uppercase tracking-widest border`}>
+                                        <div className="flex-1 min-w-0">
+                                            <div className="flex flex-wrap items-center gap-2 sm:gap-3 mb-1">
+                                                <p className="text-base sm:text-lg font-black text-blue-950 dark:text-white uppercase italic leading-none">Loja {d.storeNumber}</p>
+                                                <span className={`${tier.color} text-[7px] sm:text-[8px] font-black px-1.5 sm:px-2 py-0.5 rounded-full uppercase tracking-widest border`}>
                                                     {tier.label}
                                                 </span>
                                             </div>
-                                            <p className="text-[10px] font-bold text-slate-400 dark:text-slate-500 uppercase tracking-widest">{d.city}</p>
+                                            <p className="text-[9px] sm:text-[10px] font-bold text-slate-400 dark:text-slate-500 uppercase tracking-widest truncate">{d.city}</p>
                                         </div>
                                     </div>
 
-                                    <div className="flex-1 w-full md:max-w-md">
-                                        <div className="flex justify-between items-end mb-2">
-                                            <p className="text-[9px] font-black text-slate-400 dark:text-slate-500 uppercase tracking-widest">Performance Global</p>
-                                            <p className={`text-xl font-black italic ${textColor}`}>{score.toFixed(1)}%</p>
+                                    {/* Performance Bar */}
+                                    <div className="flex flex-col sm:flex-row sm:justify-between sm:items-center gap-4 sm:gap-6">
+                                        <div className="flex-1 w-full">
+                                            <div className="flex justify-between items-end mb-2">
+                                                <p className="text-[8px] sm:text-[9px] font-black text-slate-400 dark:text-slate-500 uppercase tracking-widest">Performance Global</p>
+                                                <p className={`text-lg sm:text-xl font-black italic ${textColor}`}>{score.toFixed(1)}%</p>
+                                            </div>
+                                            <div className="h-1.5 sm:h-2 bg-slate-100 dark:bg-slate-800 rounded-full overflow-hidden shadow-inner">
+                                                <div className={`h-full transition-all duration-1000 ${tier.bar}`} style={{ width: `${Math.min(score, 100)}%` }} />
+                                            </div>
                                         </div>
-                                        <div className="h-2 bg-slate-100 dark:bg-slate-800 rounded-full overflow-hidden shadow-inner">
-                                            <div className={`h-full transition-all duration-1000 ${tier.bar}`} style={{ width: `${Math.min(score, 100)}%` }} />
+
+                                        {/* Metrics Grid */}
+                                        <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 sm:gap-6 w-full sm:w-auto">
+                                            <div className="flex flex-col items-center sm:items-end">
+                                                <p className="text-[7px] sm:text-[8px] font-black text-slate-300 dark:text-slate-600 uppercase mb-0.5">Faturamento</p>
+                                                <div className="bg-blue-50 dark:bg-blue-900/20 text-blue-600 dark:text-blue-400 text-[7px] sm:text-[8px] font-black px-1.5 sm:px-2 py-0.5 sm:py-1 rounded-full uppercase tracking-tighter mb-1 border border-blue-100 dark:border-blue-900/30 shadow-sm">
+                                                    Meta: {formatCurrency(d.revenueTarget)}
+                                                </div>
+                                                <p className="text-[11px] sm:text-xs font-black text-blue-950 dark:text-blue-100 italic leading-none mb-1">{formatCurrency(d.revenueActual)}</p>
+                                                {d.revenueActual < d.revenueTarget && (
+                                                    <p className="text-[7px] font-bold text-blue-500 dark:text-blue-400 uppercase leading-none">
+                                                        R$ {((d.revenueTarget - d.revenueActual) / getRemainingWorkDays(selectedMonth)).toLocaleString('pt-BR', { maximumFractionDigits: 0 })}/dia
+                                                    </p>
+                                                )}
+                                            </div>
+                                            <div className="flex flex-col items-center sm:items-end">
+                                                <p className="text-[7px] sm:text-[8px] font-black text-slate-300 dark:text-slate-600 uppercase mb-0.5">P.A</p>
+                                                <div className="bg-blue-50 dark:bg-blue-900/20 text-blue-600 dark:text-blue-400 text-[7px] sm:text-[8px] font-black px-1.5 sm:px-2 py-0.5 sm:py-1 rounded-full uppercase tracking-tighter mb-1 border border-blue-100 dark:border-blue-900/30 shadow-sm">
+                                                    Meta: {d.paTarget.toFixed(2)}
+                                                </div>
+                                                <p className="text-[11px] sm:text-xs font-black text-blue-950 dark:text-blue-100 italic leading-none mb-1">{d.paActual.toFixed(2)}</p>
+                                                <div className="w-10 sm:w-12 h-1 bg-slate-100 dark:bg-slate-800 rounded-full overflow-hidden">
+                                                    <div 
+                                                        className={`h-full ${d.paActual >= d.paTarget ? 'bg-green-500' : 'bg-blue-500'}`} 
+                                                        style={{ width: `${Math.min((d.paActual / d.paTarget) * 100, 100)}%` }} 
+                                                    />
+                                                </div>
+                                            </div>
+                                            <div className="flex flex-col items-center sm:items-end">
+                                                <p className="text-[7px] sm:text-[8px] font-black text-slate-300 dark:text-slate-600 uppercase mb-0.5">P.U</p>
+                                                <div className="bg-emerald-50 dark:bg-emerald-900/20 text-emerald-600 dark:text-emerald-400 text-[7px] sm:text-[8px] font-black px-1.5 sm:px-2 py-0.5 sm:py-1 rounded-full uppercase tracking-tighter mb-1 border border-emerald-100 dark:border-emerald-900/30 shadow-sm">
+                                                    Meta: {d.puTarget.toFixed(2)}
+                                                </div>
+                                                <p className="text-[11px] sm:text-xs font-black text-blue-950 dark:text-blue-100 italic leading-none mb-1">{d.puActual.toFixed(2)}</p>
+                                                <div className="w-10 sm:w-12 h-1 bg-slate-100 dark:bg-slate-800 rounded-full overflow-hidden">
+                                                    <div 
+                                                        className={`h-full ${d.puActual <= d.puTarget ? 'bg-green-500' : 'bg-blue-500'}`} 
+                                                        style={{ width: `${Math.min((d.puTarget / d.puActual) * 100, 100)}%` }} 
+                                                    />
+                                                </div>
+                                            </div>
+                                            <div className="flex flex-col items-center sm:items-end">
+                                                <p className="text-[7px] sm:text-[8px] font-black text-slate-300 dark:text-slate-600 uppercase mb-0.5">Ticket</p>
+                                                <div className="bg-indigo-50 dark:bg-indigo-900/20 text-indigo-600 dark:text-indigo-400 text-[7px] sm:text-[8px] font-black px-1.5 sm:px-2 py-0.5 sm:py-1 rounded-full uppercase tracking-tighter mb-1 border border-indigo-100 dark:border-indigo-900/30 shadow-sm">
+                                                    Meta: {formatCurrency(d.ticketTarget)}
+                                                </div>
+                                                <p className="text-[11px] sm:text-xs font-black text-blue-950 dark:text-blue-100 italic leading-none mb-1">{formatCurrency(d.averageTicket)}</p>
+                                                <div className="w-10 sm:w-12 h-1 bg-slate-100 dark:bg-slate-800 rounded-full overflow-hidden">
+                                                    <div 
+                                                        className={`h-full ${d.averageTicket >= d.ticketTarget ? 'bg-green-500' : 'bg-blue-500'}`} 
+                                                        style={{ width: `${Math.min((d.averageTicket / d.ticketTarget) * 100, 100)}%` }} 
+                                                    />
+                                                </div>
+                                            </div>
                                         </div>
                                     </div>
 
-                                    <div className="grid grid-cols-2 md:grid-cols-4 gap-6 w-full md:w-auto">
-                                        <div className="flex flex-col items-end">
-                                            <p className="text-[8px] font-black text-slate-300 dark:text-slate-600 uppercase mb-0.5">Faturamento</p>
-                                            <div className="bg-blue-50 dark:bg-blue-900/20 text-blue-600 dark:text-blue-400 text-[8px] font-black px-2 py-1 rounded-full uppercase tracking-tighter mb-1 border border-blue-100 dark:border-blue-900/30 shadow-sm">
-                                                Meta: {formatCurrency(d.revenueTarget)}
-                                            </div>
-                                            <p className="text-xs font-black text-blue-950 dark:text-blue-100 italic leading-none mb-1">{formatCurrency(d.revenueActual)}</p>
-                                            {d.revenueActual < d.revenueTarget && (
-                                                <p className="text-[7px] font-bold text-blue-500 dark:text-blue-400 uppercase leading-none">
-                                                    R$ {((d.revenueTarget - d.revenueActual) / getRemainingWorkDays(selectedMonth)).toLocaleString('pt-BR', { maximumFractionDigits: 0 })}/dia
-                                                </p>
-                                            )}
+                                    {/* Action Plan */}
+                                    <div className={`pt-4 sm:pt-6 border-t border-slate-100/50 dark:border-slate-800 flex items-start gap-2 sm:gap-3 p-3 sm:p-4 rounded-xl sm:rounded-2xl ${index >= stats.currentData.length - 3 ? 'bg-rose-50/30 dark:bg-rose-900/10' : 'bg-blue-50/30 dark:bg-blue-900/10'}`}>
+                                        <div className={`p-1 sm:p-1.5 rounded-lg ${index >= stats.currentData.length - 3 ? 'bg-rose-100 dark:bg-rose-900 text-rose-600 dark:text-rose-400' : 'bg-blue-100 dark:bg-blue-900 text-blue-600 dark:text-blue-400'}`}>
+                                            <Zap size={12} className="sm:hidden" />
+                                            <Zap size={14} className="hidden sm:block" />
                                         </div>
-                                        <div className="flex flex-col items-end">
-                                            <p className="text-[8px] font-black text-slate-300 dark:text-slate-600 uppercase mb-0.5">P.A</p>
-                                            <div className="bg-blue-50 dark:bg-blue-900/20 text-blue-600 dark:text-blue-400 text-[8px] font-black px-2 py-1 rounded-full uppercase tracking-tighter mb-1 border border-blue-100 dark:border-blue-900/30 shadow-sm">
-                                                Meta: {d.paTarget.toFixed(2)}
-                                            </div>
-                                            <p className="text-xs font-black text-blue-950 dark:text-blue-100 italic leading-none mb-1">{d.paActual.toFixed(2)}</p>
-                                            <div className="w-12 h-1 bg-slate-100 dark:bg-slate-800 rounded-full overflow-hidden">
-                                                <div 
-                                                    className={`h-full ${d.paActual >= d.paTarget ? 'bg-green-500' : 'bg-blue-500'}`} 
-                                                    style={{ width: `${Math.min((d.paActual / d.paTarget) * 100, 100)}%` }} 
-                                                />
-                                            </div>
-                                        </div>
-                                        <div className="flex flex-col items-end">
-                                            <p className="text-[8px] font-black text-slate-300 dark:text-slate-600 uppercase mb-0.5">P.U</p>
-                                            <div className="bg-emerald-50 dark:bg-emerald-900/20 text-emerald-600 dark:text-emerald-400 text-[8px] font-black px-2 py-1 rounded-full uppercase tracking-tighter mb-1 border border-emerald-100 dark:border-emerald-900/30 shadow-sm">
-                                                Meta: {d.puTarget.toFixed(2)}
-                                            </div>
-                                            <p className="text-xs font-black text-blue-950 dark:text-blue-100 italic leading-none mb-1">{d.puActual.toFixed(2)}</p>
-                                            <div className="w-12 h-1 bg-slate-100 dark:bg-slate-800 rounded-full overflow-hidden">
-                                                <div 
-                                                    className={`h-full ${d.puActual <= d.puTarget ? 'bg-green-500' : 'bg-blue-500'}`} 
-                                                    style={{ width: `${Math.min((d.puTarget / d.puActual) * 100, 100)}%` }} 
-                                                />
-                                            </div>
-                                        </div>
-                                        <div className="flex flex-col items-end">
-                                            <p className="text-[8px] font-black text-slate-300 dark:text-slate-600 uppercase mb-0.5">Ticket</p>
-                                            <div className="bg-indigo-50 dark:bg-indigo-900/20 text-indigo-600 dark:text-indigo-400 text-[8px] font-black px-2 py-1 rounded-full uppercase tracking-tighter mb-1 border border-indigo-100 dark:border-indigo-900/30 shadow-sm">
-                                                Meta: {formatCurrency(d.ticketTarget)}
-                                            </div>
-                                            <p className="text-xs font-black text-blue-950 dark:text-blue-100 italic leading-none mb-1">{formatCurrency(d.averageTicket)}</p>
-                                            <div className="w-12 h-1 bg-slate-100 dark:bg-slate-800 rounded-full overflow-hidden">
-                                                <div 
-                                                    className={`h-full ${d.averageTicket >= d.ticketTarget ? 'bg-green-500' : 'bg-blue-500'}`} 
-                                                    style={{ width: `${Math.min((d.averageTicket / d.ticketTarget) * 100, 100)}%` }} 
-                                                />
-                                            </div>
-                                        </div>
+                                        <p className="text-[9px] sm:text-[10px] font-medium text-slate-600 dark:text-slate-400 leading-relaxed flex-1">
+                                            <span className="font-black text-blue-900 dark:text-blue-300 uppercase tracking-tighter">Plano de Ação:</span> {getDetailedAdvice(d, nextStore, index)}
+                                        </p>
                                     </div>
-                                </div>
-
-                                <div className={`mt-6 pt-6 border-t border-slate-100/50 dark:border-slate-800 flex items-start gap-3 p-4 rounded-2xl ${index >= stats.currentData.length - 3 ? 'bg-rose-50/30 dark:bg-rose-900/10' : 'bg-blue-50/30 dark:bg-blue-900/10'}`}>
-                                    <div className={`p-1.5 rounded-lg ${index >= stats.currentData.length - 3 ? 'bg-rose-100 dark:bg-rose-900 text-rose-600 dark:text-rose-400' : 'bg-blue-100 dark:bg-blue-900 text-blue-600 dark:text-blue-400'}`}>
-                                        <Zap size={14} className={index >= stats.currentData.length - 3 ? 'text-rose-600 dark:text-rose-400' : 'text-blue-600 dark:text-blue-400'} />
-                                    </div>
-                                    <p className="text-[10px] font-medium text-slate-600 dark:text-slate-400 leading-relaxed">
-                                        <span className="font-black text-blue-900 dark:text-blue-300 uppercase tracking-tighter">Plano de Ação:</span> {getDetailedAdvice(d, nextStore, index)}
-                                    </p>
                                 </div>
                             </div>
                         );

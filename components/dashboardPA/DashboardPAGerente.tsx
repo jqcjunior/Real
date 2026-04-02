@@ -31,14 +31,62 @@ const parseLocalDate = (dateStr: string): Date => {
   return new Date(year, month - 1, day); // sem conversão UTC
 };
 
-const contarDiasUteis = (inicio: string, fim: string): number => {
+const isDiaElegivel = (date: Date): boolean => {
+  const d = date.getDate();
+  const m = date.getMonth() + 1;
+  const y = date.getFullYear();
+  const dayOfWeek = date.getDay(); // 0 = Domingo, 1 = Segunda, ..., 6 = Sábado
+
+  // Feriados Fixos Nacionais
+  const feriados = [
+    '1-1',   // Ano Novo
+    '21-4',  // Tiradentes
+    '1-5',   // Dia do Trabalho
+    '7-9',   // Independência
+    '12-10', // Padroeira
+    '2-11',  // Finados
+    '15-11', // Proclamação
+    '25-12'  // Natal
+  ];
+
+  if (feriados.includes(`${d}-${m}`)) return false;
+
+  // Sábado nunca é elegível para o P.A. (regra de negócio anterior)
+  if (dayOfWeek === 6) return false;
+
+  // Segunda a Sexta são elegíveis (se não for feriado)
+  if (dayOfWeek >= 1 && dayOfWeek <= 5) return true;
+
+  // Domingos Especiais
+  if (dayOfWeek === 0) {
+    // Junho: Primeiro domingo antes de 24/06 (São João)
+    if (m === 6) {
+      const saoJoao = new Date(y, 5, 24);
+      const diff = saoJoao.getDay() === 0 ? 7 : saoJoao.getDay();
+      const primeiroDomingoAntes = new Date(y, 5, 24 - diff);
+      if (d === primeiroDomingoAntes.getDate()) return true;
+    }
+
+    // Dezembro: Dois domingos antes de 25/12 (Natal)
+    if (m === 12) {
+      const natal = new Date(y, 11, 25);
+      const diff = natal.getDay() === 0 ? 7 : natal.getDay();
+      const primeiroDomingoAntes = new Date(y, 11, 25 - diff);
+      const segundoDomingoAntes = new Date(y, 11, 25 - diff - 7);
+      if (d === primeiroDomingoAntes.getDate() || d === segundoDomingoAntes.getDate()) return true;
+    }
+  }
+
+  return false;
+};
+
+const contarDiasElegiveis = (inicio: string, fim: string): number => {
   let count = 0;
   let d = parseLocalDate(inicio);
   const fimDate = parseLocalDate(fim);
   
   while (d <= fimDate) {
-    const dayOfWeek = d.getDay();
-    if (dayOfWeek >= 1 && dayOfWeek <= 5) { // Seg a Sex
+    if (isDiaElegivel(d)) {
       count++;
     }
     d.setDate(d.getDate() + 1);
@@ -48,8 +96,8 @@ const contarDiasUteis = (inicio: string, fim: string): number => {
 
 const metaSemanaPorDias = (week: PAWeek, goal: { revenue_target: number; business_days: number } | null) => {
   if (!goal || goal.business_days === 0) return 0;
-  const diasUteisSemana = contarDiasUteis(week.data_inicio, week.data_fim);
-  return (goal.revenue_target / goal.business_days) * diasUteisSemana;
+  const diasElegiveisSemana = contarDiasElegiveis(week.data_inicio, week.data_fim);
+  return (goal.revenue_target / goal.business_days) * diasElegiveisSemana;
 };
 
 const DashboardPAGerente: React.FC<DashboardPAGerenteProps> = ({ user, store }) => {
