@@ -98,7 +98,8 @@ export interface IceCreamItem {
   price: number;
   flavor?: string;
   active: boolean;
-  consumptionPerSale: number;
+  consumptionPerSale?: number;
+  consumption_per_sale?: number;
   recipe?: IceCreamRecipeItem[];
   image_url?: string;
   created_at?: string;
@@ -158,8 +159,11 @@ export interface Sale {
   id: string;
   store_id: string;
   total_value: number;
+  total_amount?: number;
   status: 'active' | 'canceled' | 'completed';
   created_by?: string;
+  canceled_by_name?: string;
+  cancel_reason?: string;
   created_at: string;
   sale_code: string;
   buyer_name?: string;
@@ -560,4 +564,20 @@ export interface PAStoreSummary {
   avg_pa: number;
   total_awards: number;
   eligible_sellers: number;
+}
+
+export interface DetailedAdvice {
+  prioridade: string;
+  meta: string;
+  indicadores: string[];
+  ranking: string;
+  acoes: string[];
+  frase?: string;
+}
+
+export interface MotivationalPhrase {
+  id: string;
+  frase: string;
+  categoria: 'atraso' | 'pressao' | 'meta_batida' | 'vendas';
+  created_at?: string;
 }

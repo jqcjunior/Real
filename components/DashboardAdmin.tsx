@@ -139,7 +139,7 @@ const DashboardAdmin: React.FC<DashboardAdminProps> = ({ stores, performanceData
         });
 
         const perfByStore = monthPerf.reduce((acc, p) => {
-            const id = String(p.storeId || p.store_id);
+            const id = String(p.storeId);
             if (!acc[id]) {
                 acc[id] = { 
                     revenueActual: 0, itemsActual: 0, salesActual: 0,
@@ -151,8 +151,8 @@ const DashboardAdmin: React.FC<DashboardAdminProps> = ({ stores, performanceData
             acc[id].revenueActual += Number(p.revenueActual || 0);
             acc[id].itemsActual += Number(p.itemsActual || 0);
             acc[id].salesActual += Number(p.salesActual || 0);
-            acc[id].paActual += Number(p.paActual || 0);
-            acc[id].puActual += Number(p.puActual || 0);
+            acc[id].paActual += Number(p.itemsPerTicket || 0);
+            acc[id].puActual += Number(p.unitPriceAverage || 0);
             acc[id].averageTicket += Number(p.averageTicket || 0);
             
             acc[id].revenueTarget = Math.max(acc[id].revenueTarget, Number(p.revenueTarget || 0));
@@ -312,7 +312,7 @@ const DashboardAdmin: React.FC<DashboardAdminProps> = ({ stores, performanceData
             <div className={`bg-white dark:bg-slate-900 p-4 sm:p-5 md:p-6 rounded-2xl sm:rounded-[32px] shadow-sm border border-slate-100 dark:border-slate-800 group hover:border-blue-200 dark:hover:border-blue-800 transition-all ${isPrimary ? 'ring-2 ring-blue-50 dark:ring-blue-900/20' : ''}`}>
                 <div className="flex justify-between items-start mb-3 sm:mb-4">
                     <div className={`p-2 sm:p-2.5 rounded-xl sm:rounded-2xl ${isSuccess ? 'bg-emerald-50 dark:bg-emerald-900/20' : isWarning ? 'bg-rose-50 dark:bg-rose-900/20' : 'bg-blue-50 dark:bg-blue-900/20'} ${isSuccess ? 'text-emerald-600 dark:text-emerald-400' : isWarning ? 'text-rose-600 dark:text-rose-400' : 'text-blue-600 dark:text-blue-400'}`}>
-                        {React.cloneElement(icon as React.ReactElement, { size: isPrimary ? 22 : 18 })}
+                        {React.cloneElement(icon as React.ReactElement<any>, { size: isPrimary ? 22 : 18 })}
                     </div>
                     {target > 0 && (
                         <span className={`text-[9px] sm:text-[10px] font-black px-1.5 sm:px-2 py-0.5 sm:py-1 rounded-lg ${isSuccess ? 'bg-emerald-100 dark:bg-emerald-900/40 text-emerald-700 dark:text-emerald-300' : 'bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-400'}`}>

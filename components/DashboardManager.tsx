@@ -1,8 +1,8 @@
 import React, { useState, useMemo } from 'react';
-import { User, Store, ProductPerformance, IceCreamSangria, IceCreamStockMovement, IceCreamStock } from '../types';
+import { User, Store, ProductPerformance, IceCreamSangria, IceCreamStockMovement, IceCreamStock, DetailedAdvice, MotivationalPhrase } from '../types';
 import { formatCurrency, formatDecimal } from '../constants';
-import { ShoppingBag, DollarSign, Package, Hash, AlertCircle, Trophy, BarChart3, TrendingUp, Target, Clock, BrainCircuit, Sparkles, Loader2, Zap, X, TrendingDown, Percent, Activity, Users, Medal, Gem, Minus } from 'lucide-react';
-import { analyzePerformance } from '../services/geminiService';
+import { ShoppingBag, DollarSign, Package, Hash, AlertCircle, Trophy, BarChart3, TrendingUp, Target, Clock, BrainCircuit, Sparkles, Loader2, Zap, X, TrendingDown, Percent, Activity, Users, Medal, Gem, Minus, Quote } from 'lucide-react';
+import { supabase } from '../services/supabaseClient';
 
 interface DashboardManagerProps {
   user: User;
@@ -84,7 +84,7 @@ const DashboardManager: React.FC<DashboardManagerProps> = ({ user, stores, perfo
   }, []);
 
   const [selectedMonth, setSelectedMonth] = useState<string>(currentMonthStr);
-  const [aiInsight, setAiInsight] = useState<string>('');
+  const [localInsight, setLocalInsight] = useState<DetailedAdvice | null>(null);
   const [isLoadingAi, setIsLoadingAi] = useState(false);
 
   const myStore = useMemo(() => stores.find(s => s.id === user.storeId) || stores[0], [stores, user.storeId]);
@@ -224,10 +224,35 @@ const DashboardManager: React.FC<DashboardManagerProps> = ({ user, stores, perfo
   const handleGenerateInsight = async () => {
     if (!myStore) return;
     setIsLoadingAi(true);
+    
+    const myIdx = weightedRanking.findIndex(r => r.storeId === myStore.id);
+    const curr = weightedRanking[myIdx];
+    const next = myIdx > 0 ? weightedRanking[myIdx - 1] : null;
+
+    const advice = getDetailedAdvice(curr, next, myIdx);
+    
+    const attainment = (curr.revenueActual / (curr.revenueTarget || 1)) * 100;
+    let category: 'atraso' | 'pressao' | 'meta_batida' | 'vendas' = 'vendas';
+    if (attainment < 70) category = 'atraso';
+    else if (attainment < 100) category = 'pressao';
+    else category = 'meta_batida';
+
     try {
-        const insight = await analyzePerformance(performanceData, stores, 'MANAGER', myStore.id);
-        setAiInsight(insight);
-    } catch (e) { alert("Erro IA"); } finally { setIsLoadingAi(false); }
+      const { data: phrases } = await supabase
+        .from('Motivacional_frases')
+        .select('*')
+        .eq('categoria', category);
+
+      if (phrases && phrases.length > 0) {
+        const dayIndex = new Date().getDate() % phrases.length;
+        advice.frase = phrases[dayIndex].frase;
+      }
+    } catch (e) {
+      console.error("Erro ao buscar frases:", e);
+    }
+
+    setLocalInsight(advice);
+    setIsLoadingAi(false);
   };
 
   const getRemainingWorkDays = (monthStr: string, storeId?: string) => {
@@ -271,55 +296,59 @@ const DashboardManager: React.FC<DashboardManagerProps> = ({ user, stores, perfo
     return Math.max(remainingCount, 1);
   };
 
-  const getDetailedAdvice = (curr: any, next: any, idx: number) => {
+  const getDetailedAdvice = (curr: any, next: any, idx: number): DetailedAdvice => {
     const remainingDays = getRemainingWorkDays(selectedMonth, curr.storeId);
-    const adviceParts = [];
-    
     const revDiff = Math.max(curr.revenueTarget - curr.revenueActual, 0);
-    if (revDiff > 0) {
-        const dailyRev = revDiff / remainingDays;
-        adviceParts.push(`Venda R$ ${formatDecimal(dailyRev)}/dia para bater a meta.`);
-    } else {
-        adviceParts.push(`Meta de faturamento atingida!`);
+    const dailyRev = revDiff / remainingDays;
+    const attainment = (curr.revenueActual / (curr.revenueTarget || 1)) * 100;
+
+    let prioridade = "🟢 No ritmo (100%+)";
+    if (attainment < 70) prioridade = "🔴 Atrasado (abaixo de 70%)";
+    else if (attainment < 100) prioridade = "🟡 Atenção (70% a 99%)";
+
+    const meta = revDiff > 0 
+      ? `Faltam R$ ${formatDecimal(revDiff)} • Venda R$ ${formatDecimal(dailyRev)}/dia`
+      : "Meta de faturamento atingida!";
+
+    const indicadores: string[] = [];
+    if (curr.ticketActual < curr.ticketTarget) {
+      indicadores.push(`Ticket abaixo (-R$ ${formatDecimal(curr.ticketTarget - curr.ticketActual)})`);
+    }
+    if (curr.paActual < curr.paTarget) {
+      indicadores.push(`P.A baixo (${curr.paActual.toFixed(2)} vs ${curr.paTarget.toFixed(2)})`);
+    }
+    if (curr.puActual > curr.puTarget) {
+      indicadores.push(`P.U alto (+R$ ${formatDecimal(curr.puActual - curr.puTarget)})`);
     }
 
-    if (idx > 0) {
-        if (curr.ticketActual < curr.ticketTarget) {
-            const tktDiff = curr.ticketTarget - curr.ticketActual;
-            const totalTktNeeded = tktDiff * curr.salesActual;
-            adviceParts.push(`Aumente R$ ${formatDecimal(totalTktNeeded)} em vendas para bater o Ticket.`);
-        }
-
-        if (curr.paActual < curr.paTarget) {
-            const paDiff = curr.paTarget - curr.paActual;
-            const itemsNeeded = Math.ceil(paDiff * curr.salesActual);
-            const revForPA = itemsNeeded * (curr.puActual || 0);
-            adviceParts.push(`Aumente R$ ${formatDecimal(revForPA)} em vendas para bater o P.A.`);
-        }
-
-        if (curr.puActual > curr.puTarget) {
-            const puDiff = curr.puActual - curr.puTarget;
-            adviceParts.push(`Reduza o P.U em R$ ${formatDecimal(puDiff)}.`);
-        }
-
-        if (next) {
-            const currPAAttainment = Math.min((curr.paActual / curr.paTarget), 1.2);
-            const nextScoreDecimal = (next.score || 0) / 100;
-            const neededRevAttainment = (nextScoreDecimal - (currPAAttainment * 0.5)) / 0.5;
-            
-            if (neededRevAttainment <= 1.2) {
-                const neededTotalRev = neededRevAttainment * curr.revenueTarget;
-                const extraRevNeeded = Math.max(neededTotalRev - curr.revenueActual, 0);
-                if (extraRevNeeded > 0) {
-                    adviceParts.push(`Venda mais R$ ${formatDecimal(extraRevNeeded)} para ultrapassar a Loja ${next.storeNumber}.`);
-                }
-            } else {
-                adviceParts.push(`Para ultrapassar a Loja ${next.storeNumber}, melhore também seu P.A.`);
-            }
-        }
+    let ranking = "Você é o #01 da Rede!";
+    if (next) {
+      const neededRev = getRevenueToPass(curr, next);
+      ranking = neededRev 
+        ? `Faltam R$ ${formatDecimal(neededRev)} para ultrapassar a Loja ${next.storeNumber}`
+        : `Melhore seu P.A para ultrapassar a Loja ${next.storeNumber}`;
     }
 
-    return adviceParts;
+    const acoes: string[] = [];
+    if (curr.paActual < curr.paTarget) {
+      acoes.push("👉 Trabalhar venda adicional (2º item)");
+      acoes.push("👉 Reforçar abordagem ativa com clientes");
+    }
+    if (curr.ticketActual < curr.ticketTarget) {
+      acoes.push("👉 Criar combos ou kits promocionais");
+    }
+    if (curr.puActual > curr.puTarget) {
+      acoes.push("👉 Incentivar produtos de giro (menor valor)");
+      acoes.push("👉 Reduzir resistência de preço");
+    }
+    
+    const finalAcoes = acoes.slice(0, 4);
+    if (finalAcoes.length === 0) {
+      finalAcoes.push("👉 Manter o ritmo e foco no atendimento");
+      finalAcoes.push("👉 Revisar metas diárias com a equipe");
+    }
+
+    return { prioridade, meta, indicadores, ranking, acoes: finalAcoes };
   };
 
   const getRevenueToPass = (curr: any, target: any) => {
@@ -552,9 +581,9 @@ const DashboardManager: React.FC<DashboardManagerProps> = ({ user, stores, perfo
                                             </div>
 
                                             {/* Advice */}
-                                            {advice.length > 0 && (
+                                            {advice.acoes.length > 0 && (
                                                 <div className="pt-3 sm:pt-4 border-t border-slate-100 dark:border-slate-800 space-y-1">
-                                                    {advice.map((line, i) => (
+                                                    {advice.acoes.map((line, i) => (
                                                         <div key={i} className="text-[8px] sm:text-[9px] font-bold text-slate-500 dark:text-slate-400 flex items-start gap-2">
                                                             <Zap size={10} className="text-blue-400 shrink-0 mt-0.5" /> 
                                                             <span className="flex-1">{line}</span>
@@ -600,7 +629,7 @@ const DashboardManager: React.FC<DashboardManagerProps> = ({ user, stores, perfo
                                                 </p>
                                                 
                                                 <div className="bg-blue-900/40 p-4 sm:p-5 rounded-2xl sm:rounded-3xl border border-blue-800/30 space-y-2 sm:space-y-3">
-                                                    {advice.map((line, i) => (
+                                                    {advice.acoes.map((line, i) => (
                                                         <p key={i} className="text-[9px] sm:text-[10px] text-blue-100 font-medium leading-tight flex items-start gap-2">
                                                             <Zap size={10} className="text-amber-400 mt-0.5 shrink-0" /> 
                                                             <span className="flex-1">{line}</span>
@@ -659,26 +688,98 @@ const DashboardManager: React.FC<DashboardManagerProps> = ({ user, stores, perfo
             </div>
         )}
         
-        {/* AI Insight Modal */}
-        {aiInsight && (
+        {/* Local Insight Modal */}
+        {localInsight && (
            <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-sm flex items-center justify-center z-[100] p-3 sm:p-4">
                <div className="bg-white dark:bg-slate-900 rounded-3xl sm:rounded-[40px] w-full max-w-xl shadow-2xl animate-in zoom-in duration-300 overflow-hidden max-h-[90vh] flex flex-col">
                     <div className="p-4 sm:p-6 bg-slate-900 dark:bg-slate-800 text-white flex justify-between items-center shrink-0">
                         <h3 className="text-xs sm:text-sm font-black uppercase italic tracking-tighter flex items-center gap-2">
                             <BrainCircuit className="text-blue-500 sm:hidden" size={16} />
                             <BrainCircuit className="text-blue-500 hidden sm:block" size={18} />
-                            Consultoria <span className="text-blue-500">Gemini Pro</span>
+                            Plano de Ação <span className="text-blue-500">Gerencial</span>
                         </h3>
-                        <button onClick={() => setAiInsight('')} className="hover:text-red-400 transition-colors p-1">
+                        <button onClick={() => setLocalInsight(null)} className="hover:text-red-400 transition-colors p-1">
                             <X size={18} className="sm:hidden" />
                             <X size={20} className="hidden sm:block" />
                         </button>
                     </div>
-                    <div className="p-4 sm:p-8 overflow-y-auto">
-                        <div className="bg-slate-50 dark:bg-slate-800 p-4 sm:p-6 rounded-xl sm:rounded-2xl text-slate-700 dark:text-slate-300 text-[11px] sm:text-xs font-medium leading-relaxed shadow-inner">
-                            {aiInsight.split('\n').map((line, i) => <p key={i} className="mb-2 sm:mb-3">{line}</p>)}
+                    <div className="p-4 sm:p-8 overflow-y-auto space-y-6">
+                        {/* Prioridade */}
+                        <div className="flex items-center gap-3 p-4 bg-slate-50 dark:bg-slate-800 rounded-2xl border border-slate-100 dark:border-slate-700">
+                            <div className="p-2 bg-white dark:bg-slate-900 rounded-xl shadow-sm">
+                                <Zap size={20} className="text-amber-500" />
+                            </div>
+                            <div>
+                                <p className="text-[9px] font-black uppercase tracking-widest text-slate-400 mb-0.5">Prioridade</p>
+                                <p className="text-xs sm:text-sm font-black italic uppercase text-slate-900 dark:text-white">{localInsight.prioridade}</p>
+                            </div>
                         </div>
-                        <button onClick={() => setAiInsight('')} className="w-full mt-4 sm:mt-6 py-3 sm:py-4 bg-blue-600 text-white rounded-xl font-black uppercase text-[9px] sm:text-[10px] tracking-widest active:scale-95 transition-all">Entendido</button>
+
+                        {/* Meta */}
+                        <div className="space-y-2">
+                            <div className="flex items-center gap-2 text-blue-600 dark:text-blue-400">
+                                <Target size={16} />
+                                <span className="text-[10px] font-black uppercase tracking-widest">Meta de Faturamento</span>
+                            </div>
+                            <p className="text-xs sm:text-sm font-bold text-slate-700 dark:text-slate-300 bg-blue-50/50 dark:bg-blue-900/10 p-3 rounded-xl border border-blue-100/50 dark:border-blue-800/30">
+                                {localInsight.meta}
+                            </p>
+                        </div>
+
+                        {/* Indicadores */}
+                        {localInsight.indicadores.length > 0 && (
+                            <div className="space-y-2">
+                                <div className="flex items-center gap-2 text-rose-600 dark:text-rose-400">
+                                    <Activity size={16} />
+                                    <span className="text-[10px] font-black uppercase tracking-widest">Atenção nos Indicadores</span>
+                                </div>
+                                <div className="grid grid-cols-1 gap-2">
+                                    {localInsight.indicadores.map((ind, i) => (
+                                        <div key={i} className="flex items-center gap-2 text-[11px] font-bold text-rose-700 dark:text-rose-300 bg-rose-50/50 dark:bg-rose-900/10 p-2.5 rounded-xl border border-rose-100/50 dark:border-rose-800/30">
+                                            <TrendingDown size={14} />
+                                            {ind}
+                                        </div>
+                                    ))}
+                                </div>
+                            </div>
+                        )}
+
+                        {/* Ranking */}
+                        <div className="space-y-2">
+                            <div className="flex items-center gap-2 text-emerald-600 dark:text-emerald-400">
+                                <Trophy size={16} />
+                                <span className="text-[10px] font-black uppercase tracking-widest">Posicionamento</span>
+                            </div>
+                            <p className="text-xs sm:text-sm font-bold text-slate-700 dark:text-slate-300 bg-emerald-50/50 dark:bg-emerald-900/10 p-3 rounded-xl border border-emerald-100/50 dark:border-emerald-800/30">
+                                {localInsight.ranking}
+                            </p>
+                        </div>
+
+                        {/* Frase Motivacional */}
+                        {localInsight.frase && (
+                            <div className="p-4 bg-gradient-to-br from-blue-600 to-indigo-700 rounded-2xl text-white shadow-lg relative overflow-hidden group">
+                                <Quote className="absolute -right-2 -bottom-2 text-white/10 group-hover:scale-110 transition-transform" size={80} />
+                                <p className="text-[9px] font-black uppercase tracking-[0.2em] text-blue-100 mb-2">Dica do Dia</p>
+                                <p className="text-xs sm:text-sm font-bold italic leading-relaxed relative z-10">"{localInsight.frase}"</p>
+                            </div>
+                        )}
+
+                        {/* Ações Práticas */}
+                        <div className="space-y-3">
+                            <div className="flex items-center gap-2 text-slate-900 dark:text-white">
+                                <Zap size={16} className="text-yellow-500" />
+                                <span className="text-[10px] font-black uppercase tracking-widest">Ações Práticas</span>
+                            </div>
+                            <div className="space-y-2">
+                                {localInsight.acoes.map((acao, i) => (
+                                    <div key={i} className="p-3 bg-white dark:bg-slate-800 border border-slate-100 dark:border-slate-700 rounded-xl text-[11px] sm:text-xs font-bold text-slate-700 dark:text-slate-300 hover:border-blue-200 dark:hover:border-blue-800 transition-colors">
+                                        {acao}
+                                    </div>
+                                ))}
+                            </div>
+                        </div>
+
+                        <button onClick={() => setLocalInsight(null)} className="w-full py-3 sm:py-4 bg-slate-900 dark:bg-slate-700 text-white rounded-2xl font-black uppercase text-[9px] sm:text-[10px] tracking-widest active:scale-95 transition-all shadow-lg hover:bg-black dark:hover:bg-slate-600">Entendido</button>
                     </div>
                </div>
            </div>

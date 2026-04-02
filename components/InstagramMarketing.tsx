@@ -2,7 +2,6 @@
 import React, { useState, useRef, useEffect } from 'react';
 import { User, Store } from '../types';
 import { Upload, Instagram, Download, Type, Image as ImageIcon, DollarSign, LayoutTemplate, Layers, Palette, RefreshCw, Sliders, Move, Sun, Contrast, Droplet, MoveHorizontal, MoveVertical, MousePointer2, Stamp, Globe, Shuffle, ChevronLeft, ChevronRight, Copy, Hexagon, Circle, Square, Star, ZoomIn, Hand, MousePointerClick, PaintBucket, Wand2, History, Save, Check, Loader2 } from 'lucide-react';
-import { generateMarketingImage } from '../services/geminiService';
 import { supabase } from '../services/supabaseClient';
 import { LOGO_URL } from '../constants';
 
@@ -98,39 +97,7 @@ const InstagramMarketing: React.FC<InstagramMarketingProps> = ({ user, store }) 
   }, [activeView]);
 
   const handleAiGenerate = async () => {
-    if (!imagePreview) {
-        alert("Envie uma foto do produto primeiro!");
-        return;
-    }
-    
-    // Fix: Mandatory API Key selection for high-quality image generation via gemini-3-pro-image-preview.
-    const hasKey = await (window as any).aistudio.hasSelectedApiKey();
-    if (!hasKey) {
-        await (window as any).aistudio.openSelectKey();
-    }
-
-    setIsAiGenerating(true);
-    try {
-        const base64 = imagePreview.split(',')[1];
-        const result = await generateMarketingImage(base64, 'image/png', aspectRatio, mode === 'promo' ? 'promo' : 'lifestyle');
-        if (result) {
-            const dataUrl = `data:image/png;base64,${result}`;
-            setImagePreview(dataUrl);
-            setBgStyle('white'); // Clear background style as AI already provides one
-            alert("Cenário gerado com sucesso pela IA!");
-        }
-    } catch (e: any) {
-        // Fix: If request fails with "Requested entity was not found.", reset key selection state via openSelectKey().
-        if (e?.message?.includes("Requested entity was not found.")) {
-            alert("Sua chave de API expirou ou é inválida para este modelo. Por favor, selecione uma chave de um projeto pago.");
-            await (window as any).aistudio.openSelectKey();
-        } else {
-            console.error("Image Gen Error:", e);
-            alert("Erro na geração por IA. Tente novamente.");
-        }
-    } finally {
-        setIsAiGenerating(false);
-    }
+    alert("A geração de cenários por IA foi desativada para reduzir custos operacionais. Utilize os fundos e ferramentas de edição manuais.");
   };
 
   const handleSaveToGallery = async () => {
@@ -321,16 +288,6 @@ const InstagramMarketing: React.FC<InstagramMarketingProps> = ({ user, store }) 
                                 }
                             }} />
                         </div>
-                        {imagePreview && (
-                            <button 
-                                onClick={handleAiGenerate}
-                                disabled={isAiGenerating}
-                                className="w-full py-4 bg-gradient-to-r from-purple-600 to-blue-600 rounded-2xl font-black uppercase text-[10px] tracking-widest shadow-xl flex items-center justify-center gap-2 hover:scale-[1.02] active:scale-95 transition-all disabled:opacity-50"
-                            >
-                                {isAiGenerating ? <Loader2 size={16} className="animate-spin" /> : <Wand2 size={16} />}
-                                Gerar Cenário Publicitário por IA
-                            </button>
-                        )}
                     </div>
 
                     <div className="grid grid-cols-2 gap-4">

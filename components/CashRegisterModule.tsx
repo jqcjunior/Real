@@ -27,6 +27,7 @@ interface CashRegisterModuleProps {
     closures: any[];
     receipts: Receipt[];
     errors: CashError[];
+    finances?: any[];
     onAddClosure: (closure: any) => Promise<void>;
     onAddReceipt: (receipt: any) => Promise<void>;
     onAddError: (error: any) => Promise<void>;

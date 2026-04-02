@@ -39,3 +39,29 @@ select:focus {
     border-color: #fbbf24;
     box-shadow: 0 0 0 3px rgba(251, 191, 36, 0.1);
 }
+
+/* Markdown Styling for AI Insight */
+.markdown-body p {
+    margin-bottom: 1rem;
+}
+.markdown-body p:last-child {
+    margin-bottom: 0;
+}
+.markdown-body strong {
+    font-weight: 900;
+    color: #1e293b;
+}
+.dark .markdown-body strong {
+    color: #f8fafc;
+}
+.markdown-body ul {
+    list-style-type: none;
+    padding-left: 0;
+    margin-bottom: 1rem;
+}
+.markdown-body li {
+    margin-bottom: 0.5rem;
+    display: flex;
+    align-items: flex-start;
+    gap: 0.5rem;
+}

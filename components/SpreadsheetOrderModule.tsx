@@ -1164,11 +1164,11 @@ const SpreadsheetOrderModule = ({ user, onClose }: { user: any, onClose: () => v
                 <div className="grid grid-cols-2 gap-4">
                   <div className="space-y-1">
                     <label className="text-[9px] font-black text-blue-500 uppercase ml-2 flex items-center gap-1"><Zap size={10}/> Markup</label>
-                    <input type="number" step="0.1" className="w-full p-3 bg-blue-50/50 rounded-xl font-black text-center text-blue-900 outline-none min-h-[44px] text-xs" value={pedido.markup || ""} onChange={e => setPedido({...pedido, markup: e.target.value})} />
+                    <input type="number" step="0.1" className="w-full p-3 bg-blue-50/50 rounded-xl font-black text-center text-blue-900 outline-none min-h-[44px] text-xs" value={pedido.markup || ""} onChange={e => setPedido({...pedido, markup: parseFloat(e.target.value) || 0})} />
                   </div>
                   <div className="space-y-1">
                     <label className="text-[9px] font-black text-red-500 uppercase ml-2 flex items-center gap-1"><Percent size={10}/> Desconto %</label>
-                    <input type="number" className="w-full p-3 bg-red-50/50 rounded-xl font-black text-center text-red-900 outline-none min-h-[44px] text-xs" value={pedido.desconto || ""} onChange={e => setPedido({...pedido, desconto: e.target.value})} />
+                    <input type="number" className="w-full p-3 bg-red-50/50 rounded-xl font-black text-center text-red-900 outline-none min-h-[44px] text-xs" value={pedido.desconto || ""} onChange={e => setPedido({...pedido, desconto: parseFloat(e.target.value) || 0})} />
                   </div>
                 </div>
                 <div className="col-span-2 space-y-2 pt-2 border-t border-slate-50">
@@ -1279,7 +1279,7 @@ const SpreadsheetOrderModule = ({ user, onClose }: { user: any, onClose: () => v
                   </div>
                 </div>
                 <div className="bg-slate-900 p-4 sm:p-6 rounded-3xl text-white flex justify-between items-center shadow-lg border-b-4 border-blue-600">
-                  <div><p className="text-[8px] font-black text-slate-500 uppercase tracking-widest">Custo Fábrica</p><div className="flex items-center font-black text-lg sm:text-xl"><span className="text-blue-500 mr-1">R$</span><input type="number" className="bg-transparent w-20 outline-none min-h-[44px] [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none" value={itemAtual.valorCompra || ""} onChange={e => setItemAtual({...itemAtual, valorCompra: e.target.value})} /></div></div>
+                  <div><p className="text-[8px] font-black text-slate-500 uppercase tracking-widest">Custo Fábrica</p><div className="flex items-center font-black text-lg sm:text-xl"><span className="text-blue-500 mr-1">R$</span><input type="number" className="bg-transparent w-20 outline-none min-h-[44px] [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none" value={itemAtual.valorCompra || ""} onChange={e => setItemAtual({...itemAtual, valorCompra: parseFloat(e.target.value) || 0})} /></div></div>
                   <div className="text-right border-l border-white/10 pl-4 sm:pl-6"><p className="text-[8px] font-black text-blue-400 uppercase mb-1">Valor de Venda</p><p className="text-xl sm:text-3xl font-black text-yellow-400 italic leading-none">R$ {itemAtual.precoVenda.toFixed(2)}</p></div>
                 </div>
                 <button 
@@ -1368,7 +1368,7 @@ const SpreadsheetOrderModule = ({ user, onClose }: { user: any, onClose: () => v
                             .map(([tam, qtd]) => (
                               <div key={tam} className="flex items-center border border-blue-50 rounded-lg overflow-hidden bg-white shadow-sm">
                                 <span className="bg-blue-50 px-1.5 py-0.5 text-[9px] font-black text-blue-700 border-r border-blue-50">{tam}</span>
-                                <span className="px-1.5 py-0.5 text-[9px] font-black text-slate-900">{qtd}</span>
+                                <span className="px-1.5 py-0.5 text-[9px] font-black text-slate-900">{qtd as React.ReactNode}</span>
                               </div>
                             ))}
                         </div>
@@ -1737,7 +1737,7 @@ const SpreadsheetOrderModule = ({ user, onClose }: { user: any, onClose: () => v
                                                                             .map(([tam, qtd]) => (
                                                                                 <div key={`${itemLote.referencia}-${tam}`} className="flex items-center border border-blue-100 rounded-md overflow-hidden bg-white shadow-xs">
                                                                                     <span className="bg-blue-50 px-1.5 py-0.5 text-[8px] font-black text-blue-700 border-r border-blue-50">{tam}</span>
-                                                                                    <span className="px-1.5 py-0.5 text-[8px] font-black text-slate-900">{qtd}</span>
+                                                                                    <span className="px-1.5 py-0.5 text-[8px] font-black text-slate-900">{qtd as React.ReactNode}</span>
                                                                                 </div>
                                                                             ))}
                                                                     </div>
