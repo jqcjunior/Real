@@ -665,8 +665,8 @@ const DashboardManager: React.FC<DashboardManagerProps> = ({ user, stores, perfo
                <div className="bg-white dark:bg-slate-900 rounded-3xl sm:rounded-[40px] w-full max-w-xl shadow-2xl animate-in zoom-in duration-300 overflow-hidden max-h-[90vh] flex flex-col">
                     <div className="p-4 sm:p-6 bg-slate-900 dark:bg-slate-800 text-white flex justify-between items-center shrink-0">
                         <h3 className="text-xs sm:text-sm font-black uppercase italic tracking-tighter flex items-center gap-2">
-                            <BrainCircuit className="text-blue-500" size={16} className="sm:hidden" />
-                            <BrainCircuit className="text-blue-500" size={18} className="hidden sm:block" />
+                            <BrainCircuit className="text-blue-500 sm:hidden" size={16} />
+                            <BrainCircuit className="text-blue-500 hidden sm:block" size={18} />
                             Consultoria <span className="text-blue-500">Gemini Pro</span>
                         </h3>
                         <button onClick={() => setAiInsight('')} className="hover:text-red-400 transition-colors p-1">

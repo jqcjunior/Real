@@ -74,7 +74,7 @@ const PDVMobileView: React.FC<PDVMobileViewProps> = (props) => {
     
     // Validação pagamento misto
     const mistoTotal = useMemo(() => 
-        Object.values(props.mistoValues).reduce((acc, val) => 
+        Object.values(props.mistoValues).reduce<number>((acc, val) => 
             acc + (parseFloat(String(val).replace(',', '.')) || 0), 0
         ), 
         [props.mistoValues]

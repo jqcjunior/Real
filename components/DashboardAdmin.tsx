@@ -523,8 +523,8 @@ const DashboardAdmin: React.FC<DashboardAdminProps> = ({ stores, performanceData
             <div className="bg-white dark:bg-slate-900 p-4 sm:p-6 md:p-10 rounded-3xl sm:rounded-[48px] shadow-sm border border-slate-100 dark:border-slate-800">
                 <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 mb-6 sm:mb-10">
                     <h3 className="text-xs sm:text-sm font-black text-blue-950 dark:text-white uppercase italic tracking-tighter flex items-center gap-2 sm:gap-3">
-                        <BarChart3 className="text-blue-600 dark:text-blue-400" size={18} className="sm:hidden" />
-                        <BarChart3 className="text-blue-600 dark:text-blue-400" size={20} className="hidden sm:block" />
+                        <BarChart3 className="text-blue-600 dark:text-blue-400 sm:hidden" size={18} />
+                        <BarChart3 className="text-blue-600 dark:text-blue-400 hidden sm:block" size={20} />
                         Ranking <span className="text-blue-600 dark:text-blue-400">Ponderado de Performance</span>
                     </h3>
                     <div className="flex items-center gap-2 bg-slate-50 dark:bg-slate-800 px-3 sm:px-4 py-1.5 sm:py-2 rounded-xl sm:rounded-2xl border border-slate-100 dark:border-slate-700">
