@@ -2,11 +2,26 @@ import React, { useState, useMemo, useRef } from 'react';
 import { Store, MonthlyPerformance, MonthlyGoal, IceCreamSangria } from '../types';
 import { formatCurrency } from '../constants';
 import { 
-    LayoutDashboard, DollarSign, ShoppingBag, Target, Users, 
-    RefreshCw, Loader2, BarChart3, Upload, FileSpreadsheet, CheckCircle2,
-    TrendingDown, Percent, Medal, Gem, Zap, Trophy, Minus
+    LayoutDashboard, 
+    DollarSign, 
+    ShoppingBag, 
+    Target, 
+    Users, 
+    RefreshCw, 
+    Loader2, 
+    BarChart3, 
+    FileSpreadsheet,
+    TrendingDown, 
+    Percent, 
+    Medal, 
+    Gem, 
+    Zap, 
+    Trophy, 
+    Minus, 
+    Settings, 
+    Info
 } from 'lucide-react';
-
+ 
 interface DashboardAdminProps {
     stores: Store[];
     performanceData: MonthlyPerformance[];
@@ -15,29 +30,34 @@ interface DashboardAdminProps {
     onImportPerformance: (data: any[]) => Promise<void>;
     onRefresh: () => Promise<void>;
 }
-
+ 
 const DashboardAdmin: React.FC<DashboardAdminProps> = ({ stores, performanceData, goalsData, onImportPerformance, onRefresh, sangrias }) => {
     const currentMonthStr = useMemo(() => {
         const now = new Date();
         return `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`;
     }, []);
-
+ 
     const [selectedMonth, setSelectedMonth] = useState(currentMonthStr);
     const [isRefreshing, setIsRefreshing] = useState(false);
     const [isImporting, setIsImporting] = useState(false);
     const fileInputRef = useRef<HTMLInputElement>(null);
-
+    
+    // 🆕 NOVO: Estado para controlar pesos do ranking
+    const [showWeightConfig, setShowWeightConfig] = useState(false);
+    const [weightRevenue, setWeightRevenue] = useState(50); // Peso da Meta de Faturamento
+    const [weightPA, setWeightPA] = useState(50); // Peso do P.A
+ 
     const handleRefresh = async () => {
         setIsRefreshing(true);
         await onRefresh();
         setIsRefreshing(false);
     };
-
+ 
     const handleFileUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
         const XLSX = await import('xlsx');
         const file = e.target.files?.[0];
         if (!file) return;
-
+ 
         setIsImporting(true);
         try {
             const arrayBuffer = await file.arrayBuffer();
@@ -47,7 +67,7 @@ const DashboardAdmin: React.FC<DashboardAdminProps> = ({ stores, performanceData
                 defval: "",
                 raw: true
             }) as any[];
-
+ 
             const mappedData = jsonData.map(row => {
             const getValue = (row: any, aliases: string[]) => {
                 const keys = Object.keys(row);
@@ -63,36 +83,36 @@ const DashboardAdmin: React.FC<DashboardAdminProps> = ({ stores, performanceData
                 }
                 return foundKey ? row[foundKey] : "";
             };
-
+ 
                 const parseBRL = (value: any) => {
                     if (value === null || value === undefined || value === "") return 0;
-
+ 
                     if (typeof value === "number") {
                         return value;
                     }
-
+ 
                     let str = String(value).trim();
                     str = str.replace(/[R$\s]/g, "");
-
+ 
                     if (str.includes(",")) {
                         const normalized = str
                             .replace(/\./g, "")
                             .replace(",", ".");
-
+ 
                         const num = Number(normalized);
                         return isNaN(num) ? 0 : num;
                     }
-
+ 
                     const num = Number(str);
                     return isNaN(num) ? 0 : num;
                 };
-
+ 
                 const storeRaw = getValue(row, ["loja", "filial", "unidade", "loja"]);
                 const storeNum = String(storeRaw || '').replace(/\D/g, '').replace(/^0+/, '');
                 const targetStore = stores.find(s => s.number === storeNum);
                 
                 if (!targetStore) return null;
-
+ 
                 return {
                     storeId: targetStore.id,
                     month: selectedMonth,
@@ -109,7 +129,7 @@ const DashboardAdmin: React.FC<DashboardAdminProps> = ({ stores, performanceData
                     businessDays: parseBRL(getValue(row, ["período de vendas", "periodo", "j"])) || 26
                 };
             }).filter(Boolean);
-
+ 
             if (mappedData.length > 0) {
                 await onImportPerformance(mappedData);
                 alert(`${mappedData.length} registros importados com sucesso!`);
@@ -123,21 +143,22 @@ const DashboardAdmin: React.FC<DashboardAdminProps> = ({ stores, performanceData
             if (fileInputRef.current) fileInputRef.current.value = '';
         }
     };
-
+ 
     const calcAttainment = (actual: number, target: number, mode: 'higher' | 'lower') => {
         if (!actual || !target) return 0;
         return mode === 'higher'
             ? (actual / target) * 100
             : (target / actual) * 100;
     };
-
+ 
     const stats = useMemo(() => {
         const monthPerf = performanceData.filter(p => p.month === selectedMonth);
         const monthGoals = goalsData.filter(g => {
             const gMonth = `${g.year}-${String(g.month).padStart(2, '0')}`;
             return gMonth === selectedMonth;
         });
-
+ 
+        // 🔧 CORRIGIDO: Agregação correta dos dados por loja
         const perfByStore = monthPerf.reduce((acc, p) => {
             const id = String(p.storeId);
             if (!acc[id]) {
@@ -145,15 +166,16 @@ const DashboardAdmin: React.FC<DashboardAdminProps> = ({ stores, performanceData
                     revenueActual: 0, itemsActual: 0, salesActual: 0,
                     paActual: 0, puActual: 0, averageTicket: 0,
                     revenueTarget: 0, itemsTarget: 0, paTarget: 0, puTarget: 0, ticketTarget: 0,
-                    businessDays: 26
+                    businessDays: 26,
+                    lastRecord: null as any // Guardar último registro para P.A/P.U/Ticket
                 };
             }
             acc[id].revenueActual += Number(p.revenueActual || 0);
             acc[id].itemsActual += Number(p.itemsActual || 0);
             acc[id].salesActual += Number(p.salesActual || 0);
-            acc[id].paActual += Number(p.itemsPerTicket || 0);
-            acc[id].puActual += Number(p.unitPriceAverage || 0);
-            acc[id].averageTicket += Number(p.averageTicket || 0);
+            
+            // 🔧 CORRIGIDO: Guardar último registro ao invés de somar
+            acc[id].lastRecord = p;
             
             acc[id].revenueTarget = Math.max(acc[id].revenueTarget, Number(p.revenueTarget || 0));
             acc[id].itemsTarget = Math.max(acc[id].itemsTarget, Number(p.itemsTarget || 0));
@@ -163,32 +185,41 @@ const DashboardAdmin: React.FC<DashboardAdminProps> = ({ stores, performanceData
             acc[id].businessDays = Number(p.businessDays || 26);
             return acc;
         }, {} as Record<string, any>);
-
+ 
         const storeStats = stores.map(store => {
             const perf = perfByStore[String(store.id)];
             const goal = monthGoals.find(g => String(g.storeId) === String(store.id));
-
+ 
             const revenueActual = Number(perf?.revenueActual || 0);
             const revenueTarget = Number(perf?.revenueTarget || goal?.revenueTarget || 0);
             const itemsActual = Number(perf?.itemsActual || 0);
             const itemsTarget = Number(perf?.itemsTarget || goal?.itemsTarget || 0);
             const salesActual = Number(perf?.salesActual || 0);
             
-            let paActual = Number(perf?.paActual || 0);
-            if (paActual === 0 && salesActual > 0) paActual = itemsActual / salesActual;
+            // 🔧 CORRIGIDO: Buscar P.A do registro ou calcular
+            let paActual = Number(perf?.lastRecord?.paActual || 0);
+            if (paActual === 0 && salesActual > 0) {
+                paActual = itemsActual / salesActual;
+            }
             
-            let puActual = Number(perf?.puActual || 0);
-            if (puActual === 0 && itemsActual > 0) puActual = revenueActual / itemsActual;
+            // 🔧 CORRIGIDO: Buscar P.U do registro ou calcular
+            let puActual = Number(perf?.lastRecord?.puActual || 0);
+            if (puActual === 0 && itemsActual > 0) {
+                puActual = revenueActual / itemsActual;
+            }
             
-            let averageTicket = Number(perf?.averageTicket || 0);
-            if (averageTicket === 0 && salesActual > 0) averageTicket = revenueActual / salesActual;
-
+            // 🔧 CORRIGIDO: Buscar Ticket do registro ou calcular
+            let averageTicket = Number(perf?.lastRecord?.averageTicket || 0);
+            if (averageTicket === 0 && salesActual > 0) {
+                averageTicket = revenueActual / salesActual;
+            }
+ 
             const paTarget = Number(perf?.paTarget || goal?.paTarget || 0);
             const puTarget = Number(perf?.puTarget || goal?.puTarget || 0);
             const ticketTarget = Number(perf?.ticketTarget || goal?.ticketTarget || 0);
             
             const percentMeta = revenueTarget > 0 ? (revenueActual / revenueTarget) * 100 : 0;
-
+ 
             return {
                 storeId: store.id,
                 storeNumber: store.number,
@@ -208,7 +239,7 @@ const DashboardAdmin: React.FC<DashboardAdminProps> = ({ stores, performanceData
                 businessDays: Number(perf?.businessDays || goal?.businessDays || 26)
             };
         });
-
+ 
         const totalRevenue = storeStats.reduce((acc, curr) => acc + curr.revenueActual, 0);
         const totalTarget = storeStats.reduce((acc, curr) => acc + curr.revenueTarget, 0);
         
@@ -227,7 +258,7 @@ const DashboardAdmin: React.FC<DashboardAdminProps> = ({ stores, performanceData
         const avgTicketTarget = storesWithGoals.length > 0 
             ? storesWithGoals.reduce((acc, curr) => acc + curr.ticketTarget, 0) / storesWithGoals.length 
             : 0;
-
+ 
         const attainment = calcAttainment(totalRevenue, totalTarget, 'higher');
         const itemsAttainment = calcAttainment(totalItems, totalItemsTarget, 'higher');
         
@@ -245,7 +276,7 @@ const DashboardAdmin: React.FC<DashboardAdminProps> = ({ stores, performanceData
             ? storeStats.reduce((acc, curr) => acc + curr.averageTicket, 0) / storeStats.length 
             : 0;
         const ticketAttainment = calcAttainment(avgTicket, avgTicketTarget, 'higher');
-
+ 
         const now = new Date();
         const currentMonthStr = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`;
         let elapsedDays = now.getDate();
@@ -254,7 +285,8 @@ const DashboardAdmin: React.FC<DashboardAdminProps> = ({ stores, performanceData
         
         const businessDays = storeStats[0]?.businessDays || 26;
         const revenueForecast = elapsedDays > 0 ? (totalRevenue / elapsedDays) * businessDays : 0;
-
+ 
+        // 🔧 CORRIGIDO: Aplicar pesos dinâmicos ao ranking
         return {
             totalRevenue,
             totalTarget,
@@ -277,13 +309,18 @@ const DashboardAdmin: React.FC<DashboardAdminProps> = ({ stores, performanceData
                 const getScore = (s: any) => {
                     const pF = Math.min(calcAttainment(s.revenueActual, s.revenueTarget, 'higher'), 120);
                     const pPA = Math.min(calcAttainment(s.paActual, s.paTarget, 'higher'), 120);
-                    return (pF * 0.50) + (pPA * 0.50);
+                    
+                    // 🆕 NOVO: Usar pesos configuráveis
+                    const wRev = weightRevenue / 100;
+                    const wPA = weightPA / 100;
+                    
+                    return (pF * wRev) + (pPA * wPA);
                 };
                 return getScore(b) - getScore(a);
             })
         };
-    }, [performanceData, goalsData, selectedMonth, stores, sangrias]);
-
+    }, [performanceData, goalsData, selectedMonth, stores, sangrias, weightRevenue, weightPA]);
+ 
     const renderKPICard = (title: string, actual: number, target: number, percent: number, icon: React.ReactNode, type: 'currency' | 'decimal' | 'integer', isPrimary: boolean = false, mode: 'higher' | 'lower' = 'higher') => {
         const isSuccess = mode === 'higher' ? actual >= (target || 0) : actual <= (target || 999999);
         const isWarning = percent < 80;
@@ -301,13 +338,13 @@ const DashboardAdmin: React.FC<DashboardAdminProps> = ({ stores, performanceData
             barColor = 'bg-amber-500';
             textColor = 'text-amber-600';
         }
-
+ 
         const formatValue = (val: number) => {
             if (type === 'currency') return formatCurrency(val);
             if (type === 'integer') return val.toLocaleString('pt-BR');
             return val.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
         };
-
+ 
         return (
             <div className={`bg-white dark:bg-slate-900 p-4 sm:p-5 md:p-6 rounded-2xl sm:rounded-[32px] shadow-sm border border-slate-100 dark:border-slate-800 group hover:border-blue-200 dark:hover:border-blue-800 transition-all ${isPrimary ? 'ring-2 ring-blue-50 dark:ring-blue-900/20' : ''}`}>
                 <div className="flex justify-between items-start mb-3 sm:mb-4">
@@ -345,7 +382,7 @@ const DashboardAdmin: React.FC<DashboardAdminProps> = ({ stores, performanceData
             </div>
         );
     };
-
+ 
     const getRemainingWorkDays = (monthStr: string) => {
         const [year, month] = monthStr.split('-').map(Number);
         const now = new Date();
@@ -365,7 +402,7 @@ const DashboardAdmin: React.FC<DashboardAdminProps> = ({ stores, performanceData
         }
         return Math.max(count, 1);
     };
-
+ 
     const getDetailedAdvice = (curr: any, next: any, idx: number) => {
         const remainingDays = getRemainingWorkDays(selectedMonth);
         const adviceParts = [];
@@ -377,36 +414,43 @@ const DashboardAdmin: React.FC<DashboardAdminProps> = ({ stores, performanceData
         } else {
             adviceParts.push(`Meta de faturamento atingida!`);
         }
-
+ 
         if (idx > 0) {
             if (curr.averageTicket < curr.ticketTarget) {
                 const tktDiff = curr.ticketTarget - curr.averageTicket;
                 const totalTktNeeded = tktDiff * curr.salesActual;
                 adviceParts.push(`Aumente R$ ${totalTktNeeded.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} em vendas para bater o Ticket.`);
             }
-
+ 
             if (curr.paActual < curr.paTarget) {
                 const paDiff = curr.paTarget - curr.paActual;
                 const itemsNeeded = Math.ceil(paDiff * curr.salesActual);
                 const revForPA = itemsNeeded * (curr.puActual || 0);
                 adviceParts.push(`Aumente R$ ${revForPA.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} em vendas para bater o P.A.`);
             }
-
+ 
             if (curr.puActual > curr.puTarget) {
                 const puDiff = curr.puActual - curr.puTarget;
                 adviceParts.push(`Reduza o P.U em R$ ${puDiff.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}.`);
             }
-
+ 
             if (next) {
                 const getScore = (s: any) => {
                     const pF = Math.min(calcAttainment(s.revenueActual, s.revenueTarget, 'higher'), 120);
                     const pPA = Math.min(calcAttainment(s.paActual, s.paTarget, 'higher'), 120);
-                    return (pF * 0.50) + (pPA * 0.50);
+                    
+                    // 🆕 NOVO: Usar pesos configuráveis
+                    const wRev = weightRevenue / 100;
+                    const wPA = weightPA / 100;
+                    
+                    return (pF * wRev) + (pPA * wPA);
                 };
                 
                 const currPAAttainment = Math.min((curr.paActual / curr.paTarget), 1.2);
                 const nextScoreDecimal = getScore(next) / 100;
-                const neededRevAttainment = (nextScoreDecimal - (currPAAttainment * 0.5)) / 0.5;
+                const wRev = weightRevenue / 100;
+                const wPA = weightPA / 100;
+                const neededRevAttainment = (nextScoreDecimal - (currPAAttainment * wPA)) / wRev;
                 
                 if (neededRevAttainment <= 1.2) {
                     const neededTotalRev = neededRevAttainment * curr.revenueTarget;
@@ -419,10 +463,19 @@ const DashboardAdmin: React.FC<DashboardAdminProps> = ({ stores, performanceData
                 }
             }
         }
-
+ 
         return adviceParts.join(' ');
     };
-
+ 
+    // 🆕 NOVO: Presets de peso para seleção rápida
+    const weightPresets = [
+        { name: 'Balanceado', revenue: 50, pa: 50, description: 'Peso igual para Meta e P.A' },
+        { name: 'Foco Meta', revenue: 70, pa: 30, description: 'Prioriza faturamento' },
+        { name: 'Foco P.A', revenue: 30, pa: 70, description: 'Prioriza produtos/atendimento' },
+        { name: 'Meta Total', revenue: 100, pa: 0, description: 'Apenas faturamento' },
+        { name: 'P.A Total', revenue: 0, pa: 100, description: 'Apenas P.A' },
+    ];
+ 
     return (
         <div className="p-3 sm:p-4 md:p-8 space-y-4 sm:space-y-6 animate-in fade-in duration-500 pb-16 sm:pb-20 bg-slate-50 dark:bg-slate-950 transition-colors duration-300">
             {/* Header */}
@@ -438,7 +491,7 @@ const DashboardAdmin: React.FC<DashboardAdminProps> = ({ stores, performanceData
                         <p className="text-[9px] sm:text-[10px] font-black text-gray-400 dark:text-slate-500 uppercase tracking-widest mt-0.5 sm:mt-1">Visão Estratégica Consolidada</p>
                     </div>
                 </div>
-
+ 
                 <div className="flex flex-col gap-3">
                     <input type="file" ref={fileInputRef} onChange={handleFileUpload} accept=".xlsx, .xls" hidden />
                     
@@ -450,7 +503,7 @@ const DashboardAdmin: React.FC<DashboardAdminProps> = ({ stores, performanceData
                         {isImporting ? <Loader2 size={16} className="animate-spin" /> : <FileSpreadsheet size={16} />}
                         Importar XLSX
                     </button>
-
+ 
                     <div className="flex flex-col sm:flex-row items-stretch gap-2">
                         <div className="flex items-center gap-2 flex-1">
                             <select 
@@ -474,7 +527,7 @@ const DashboardAdmin: React.FC<DashboardAdminProps> = ({ stores, performanceData
                                 <option value="11">Novembro</option>
                                 <option value="12">Dezembro</option>
                             </select>
-
+ 
                             <select 
                                 value={selectedMonth.split('-')[0]} 
                                 onChange={e => {
@@ -493,7 +546,16 @@ const DashboardAdmin: React.FC<DashboardAdminProps> = ({ stores, performanceData
                                 })()}
                             </select>
                         </div>
-
+ 
+                        {/* 🆕 NOVO: Botão de configuração de pesos */}
+                        <button 
+                            onClick={() => setShowWeightConfig(!showWeightConfig)}
+                            className={`p-3 sm:p-3.5 rounded-xl shadow-lg transition-all flex items-center justify-center active:scale-95 ${showWeightConfig ? 'bg-blue-600 text-white' : 'bg-slate-200 dark:bg-slate-700 text-slate-700 dark:text-white hover:bg-slate-300 dark:hover:bg-slate-600'}`}
+                        >
+                            <Settings size={18} className="sm:hidden" />
+                            <Settings size={20} className="hidden sm:block" />
+                        </button>
+ 
                         <button 
                             onClick={handleRefresh}
                             disabled={isRefreshing}
@@ -504,8 +566,114 @@ const DashboardAdmin: React.FC<DashboardAdminProps> = ({ stores, performanceData
                         </button>
                     </div>
                 </div>
+ 
+                {/* 🆕 NOVO: Painel de Configuração de Pesos */}
+                {showWeightConfig && (
+                    <div className="mt-4 p-4 sm:p-6 bg-gradient-to-br from-blue-50 to-indigo-50 dark:from-slate-800 dark:to-slate-900 rounded-2xl sm:rounded-3xl border-2 border-blue-200 dark:border-blue-800 space-y-4 animate-in slide-in-from-top duration-300">
+                        <div className="flex items-center gap-3">
+                            <div className="p-2 bg-blue-600 rounded-xl">
+                                <Settings size={18} className="text-white" />
+                            </div>
+                            <div className="flex-1">
+                                <h3 className="text-xs sm:text-sm font-black text-blue-950 dark:text-white uppercase italic">Configuração do Ranking</h3>
+                                <p className="text-[8px] sm:text-[9px] font-bold text-blue-600 dark:text-blue-400 uppercase tracking-widest">Ajuste os pesos da fórmula</p>
+                            </div>
+                        </div>
+ 
+                        {/* Fórmula Atual */}
+                        <div className="bg-white dark:bg-slate-800 p-3 sm:p-4 rounded-xl border border-blue-100 dark:border-blue-900">
+                            <p className="text-[8px] sm:text-[9px] font-black text-slate-400 dark:text-slate-500 uppercase tracking-widest mb-2">Fórmula Atual</p>
+                            <div className="font-mono text-[10px] sm:text-xs font-black text-blue-950 dark:text-white">
+                                Score = (Meta × <span className="text-blue-600">{weightRevenue}%</span>) + (P.A × <span className="text-indigo-600">{weightPA}%</span>)
+                            </div>
+                        </div>
+ 
+                        {/* Sliders */}
+                        <div className="space-y-4">
+                            <div>
+                                <div className="flex justify-between items-center mb-2">
+                                    <label className="text-[9px] sm:text-[10px] font-black text-slate-700 dark:text-slate-300 uppercase">Peso Meta Faturamento</label>
+                                    <span className="text-xs sm:text-sm font-black text-blue-600 dark:text-blue-400">{weightRevenue}%</span>
+                                </div>
+                                <input 
+                                    type="range" 
+                                    min="0" 
+                                    max="100" 
+                                    step="5"
+                                    value={weightRevenue} 
+                                    onChange={(e) => {
+                                        const newValue = Number(e.target.value);
+                                        setWeightRevenue(newValue);
+                                        setWeightPA(100 - newValue);
+                                    }}
+                                    className="w-full h-2 bg-slate-200 dark:bg-slate-700 rounded-lg appearance-none cursor-pointer accent-blue-600"
+                                />
+                            </div>
+ 
+                            <div>
+                                <div className="flex justify-between items-center mb-2">
+                                    <label className="text-[9px] sm:text-[10px] font-black text-slate-700 dark:text-slate-300 uppercase">Peso P.A (Produtos/Atend.)</label>
+                                    <span className="text-xs sm:text-sm font-black text-indigo-600 dark:text-indigo-400">{weightPA}%</span>
+                                </div>
+                                <input 
+                                    type="range" 
+                                    min="0" 
+                                    max="100" 
+                                    step="5"
+                                    value={weightPA} 
+                                    onChange={(e) => {
+                                        const newValue = Number(e.target.value);
+                                        setWeightPA(newValue);
+                                        setWeightRevenue(100 - newValue);
+                                    }}
+                                    className="w-full h-2 bg-slate-200 dark:bg-slate-700 rounded-lg appearance-none cursor-pointer accent-indigo-600"
+                                />
+                            </div>
+                        </div>
+ 
+                        {/* Presets */}
+                        <div>
+                            <p className="text-[8px] sm:text-[9px] font-black text-slate-400 dark:text-slate-500 uppercase tracking-widest mb-2">Presets Rápidos</p>
+                            <div className="grid grid-cols-2 sm:grid-cols-5 gap-2">
+                                {weightPresets.map((preset, idx) => (
+                                    <button
+                                        key={idx}
+                                        onClick={() => {
+                                            setWeightRevenue(preset.revenue);
+                                            setWeightPA(preset.pa);
+                                        }}
+                                        className={`p-2 sm:p-3 rounded-xl text-[8px] sm:text-[9px] font-black uppercase transition-all border-2 ${
+                                            weightRevenue === preset.revenue && weightPA === preset.pa
+                                                ? 'bg-blue-600 text-white border-blue-700 shadow-lg scale-105'
+                                                : 'bg-white dark:bg-slate-700 text-slate-700 dark:text-slate-300 border-slate-200 dark:border-slate-600 hover:border-blue-300 dark:hover:border-blue-700'
+                                        }`}
+                                    >
+                                        <div className="font-black mb-1">{preset.name}</div>
+                                        <div className="text-[7px] opacity-70">{preset.revenue}/{preset.pa}</div>
+                                    </button>
+                                ))}
+                            </div>
+                        </div>
+ 
+                        {/* Info */}
+                        <div className="flex items-start gap-2 p-3 bg-blue-100 dark:bg-blue-900/30 rounded-xl border border-blue-200 dark:border-blue-800">
+                            <Info size={14} className="text-blue-600 dark:text-blue-400 shrink-0 mt-0.5" />
+                            <p className="text-[8px] sm:text-[9px] font-medium text-blue-900 dark:text-blue-100 leading-relaxed">
+                                A soma dos pesos sempre será 100%. Ajuste conforme a estratégia da rede: mais peso em Meta prioriza faturamento, mais peso em P.A prioriza volume de produtos vendidos por atendimento.
+                            </p>
+                        </div>
+                    </div>
+                )}
+ 
+                {/* Indicador de Fórmula Ativa */}
+                <div className="flex items-center justify-center gap-2 px-4 py-2 bg-gradient-to-r from-blue-100 to-indigo-100 dark:from-blue-900/20 dark:to-indigo-900/20 rounded-xl border border-blue-200 dark:border-blue-800">
+                    <BarChart3 size={14} className="text-blue-600 dark:text-blue-400" />
+                    <p className="text-[8px] sm:text-[9px] font-black text-blue-900 dark:text-blue-100 uppercase">
+                        Ranking: <span className="text-blue-600 dark:text-blue-400">{weightRevenue}% Meta</span> + <span className="text-indigo-600 dark:text-indigo-400">{weightPA}% P.A</span>
+                    </p>
+                </div>
             </div>
-
+ 
             {/* KPI Grid */}
             <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3 sm:gap-4 md:gap-6">
                 <div className="relative group">
@@ -518,7 +686,7 @@ const DashboardAdmin: React.FC<DashboardAdminProps> = ({ stores, performanceData
                 {renderKPICard('P.U Médio Rede', stats.avgPU, stats.avgPUTarget, stats.puAttainment, <Percent size={24}/>, 'decimal', false, 'lower')}
                 {renderKPICard('Ticket Médio Rede', stats.avgTicket, stats.avgTicketTarget, stats.ticketAttainment, <Users size={24}/>, 'currency')}
             </div>
-
+ 
             {/* Ranking Section */}
             <div className="bg-white dark:bg-slate-900 p-4 sm:p-6 md:p-10 rounded-3xl sm:rounded-[48px] shadow-sm border border-slate-100 dark:border-slate-800">
                 <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 mb-6 sm:mb-10">
@@ -538,7 +706,12 @@ const DashboardAdmin: React.FC<DashboardAdminProps> = ({ stores, performanceData
                         const getScore = (s: any) => {
                             const pF = Math.min(calcAttainment(s.revenueActual, s.revenueTarget, 'higher'), 120);
                             const pPA = Math.min(calcAttainment(s.paActual, s.paTarget, 'higher'), 120);
-                            return (pF * 0.50) + (pPA * 0.50);
+                            
+                            // 🆕 NOVO: Usar pesos configuráveis
+                            const wRev = weightRevenue / 100;
+                            const wPA = weightPA / 100;
+                            
+                            return (pF * wRev) + (pPA * wPA);
                         };
                         
                         const score = getScore(d);
@@ -554,10 +727,10 @@ const DashboardAdmin: React.FC<DashboardAdminProps> = ({ stores, performanceData
                             if (idx >= stats.currentData.length - 3) return { label: 'Rebaixamento', icon: <TrendingDown className="text-rose-400" size={14} />, color: 'bg-rose-50 dark:bg-rose-900/20 text-rose-600 dark:text-rose-400 border-rose-100 dark:border-rose-900/30', bar: 'bg-rose-400' };
                             return { label: 'Neutro', icon: <Minus className="text-slate-400" size={14} />, color: 'bg-slate-50 dark:bg-slate-800 text-slate-400 dark:text-slate-500 border-slate-100 dark:border-slate-700', bar: 'bg-slate-200' };
                         };
-
+ 
                         const tier = getTier(index);
                         const textColor = tier.color.split(' ')[1];
-
+ 
                         return (
                             <div key={d.storeId} className={`group relative p-4 sm:p-5 md:p-8 rounded-2xl sm:rounded-[32px] border transition-all duration-500 ${index < 3 ? 'bg-white dark:bg-slate-900 shadow-xl shadow-blue-900/5 dark:shadow-blue-950/20 border-slate-100 dark:border-slate-800' : 'bg-slate-50/50 dark:bg-slate-900/40 hover:bg-white dark:hover:bg-slate-900 border-transparent hover:border-slate-100 dark:hover:border-slate-800 hover:shadow-lg'}`}>
                                 <div className="flex flex-col gap-4 sm:gap-6">
@@ -577,7 +750,7 @@ const DashboardAdmin: React.FC<DashboardAdminProps> = ({ stores, performanceData
                                             <p className="text-[9px] sm:text-[10px] font-bold text-slate-400 dark:text-slate-500 uppercase tracking-widest truncate">{d.city}</p>
                                         </div>
                                     </div>
-
+ 
                                     {/* Performance Bar */}
                                     <div className="flex flex-col sm:flex-row sm:justify-between sm:items-center gap-4 sm:gap-6">
                                         <div className="flex-1 w-full">
@@ -589,7 +762,7 @@ const DashboardAdmin: React.FC<DashboardAdminProps> = ({ stores, performanceData
                                                 <div className={`h-full transition-all duration-1000 ${tier.bar}`} style={{ width: `${Math.min(score, 100)}%` }} />
                                             </div>
                                         </div>
-
+ 
                                         {/* Metrics Grid */}
                                         <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 sm:gap-6 w-full sm:w-auto">
                                             <div className="flex flex-col items-center sm:items-end">
@@ -645,7 +818,7 @@ const DashboardAdmin: React.FC<DashboardAdminProps> = ({ stores, performanceData
                                             </div>
                                         </div>
                                     </div>
-
+ 
                                     {/* Action Plan */}
                                     <div className={`pt-4 sm:pt-6 border-t border-slate-100/50 dark:border-slate-800 flex items-start gap-2 sm:gap-3 p-3 sm:p-4 rounded-xl sm:rounded-2xl ${index >= stats.currentData.length - 3 ? 'bg-rose-50/30 dark:bg-rose-900/10' : 'bg-blue-50/30 dark:bg-blue-900/10'}`}>
                                         <div className={`p-1 sm:p-1.5 rounded-lg ${index >= stats.currentData.length - 3 ? 'bg-rose-100 dark:bg-rose-900 text-rose-600 dark:text-rose-400' : 'bg-blue-100 dark:bg-blue-900 text-blue-600 dark:text-blue-400'}`}>
@@ -665,5 +838,5 @@ const DashboardAdmin: React.FC<DashboardAdminProps> = ({ stores, performanceData
         </div>
     );
 };
-
+ 
 export default DashboardAdmin;
