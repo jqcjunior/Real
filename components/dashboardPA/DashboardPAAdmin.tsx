@@ -1,881 +1,532 @@
-import React, { useState, useEffect, useRef } from 'react';
-import { 
-  Trophy, 
-  TrendingUp, 
-  Users, 
-  Calendar, 
-  Settings, 
-  Upload, 
-  ChevronRight,
-  ArrowUpRight,
-  DollarSign,
-  Store as StoreIcon,
-  Plus,
-  X,
-  FileSpreadsheet,
-  CheckCircle2,
-  AlertCircle,
-  Clock
-} from 'lucide-react';
-import { motion, AnimatePresence } from 'motion/react';
-import { dashboardPAService } from '../../services/dashboardPAService';
-import { PAWeek, PAStoreSummary, PAParameters } from '../../types/pa';
+import React, { useState, useEffect } from 'react';
 import { Store } from '../../types';
-import { format } from 'date-fns';
+import { 
+  BarChart3, 
+  TrendingUp, 
+  Trophy, 
+  Calendar,
+  Filter,
+  Eye,
+  ChevronDown,
+  Medal,
+  Gem,
+  Zap,
+  ArrowUpRight
+} from 'lucide-react';
+import { supabase } from '../../services/supabaseClient';
+import { format, startOfWeek, endOfWeek, addDays } from 'date-fns';
 import { ptBR } from 'date-fns/locale';
-
+ 
 interface DashboardPAAdminProps {
   user: any;
   stores: Store[];
 }
-
-const parseLocalDate = (dateStr: string): Date => {
-  const [year, month, day] = dateStr.split('-').map(Number);
-  return new Date(year, month - 1, day); // sem conversão UTC
-};
-
+ 
+interface WeekData {
+  id: string;
+  data_inicio: string;
+  data_fim: string;
+  store_id: string;
+}
+ 
+interface StoreWeekPerformance {
+  storeId: string;
+  storeNumber: string;
+  storeName: string;
+  city: string;
+  totalVendas: number;
+  paAtingido: number;
+  paMeta: number;
+  qtdeVendedores: number;
+  qtdePremiados: number;
+  totalPremios: number;
+  score: number;
+}
+ 
+type ViewMode = 'semana' | 'mes';
+ 
 const DashboardPAAdmin: React.FC<DashboardPAAdminProps> = ({ user, stores }) => {
+  const [viewMode, setViewMode] = useState<ViewMode>('semana');
   const [selectedMonth, setSelectedMonth] = useState(new Date().getMonth() + 1);
   const [selectedYear, setSelectedYear] = useState(new Date().getFullYear());
-  const [weeks, setWeeks] = useState<PAWeek[]>([]);
-  const [selectedWeek, setSelectedWeek] = useState<string | null>(null);
-  const [summary, setSummary] = useState<PAStoreSummary[]>([]);
-  const [params, setParams] = useState<PAParameters | null>(null);
-  const [loading, setLoading] = useState(true);
-  const [activeTab, setActiveTab] = useState<'overview' | 'parameters' | 'weeks'>('overview');
-  
-  // Admin specific states
-  const [selectedStoreId, setSelectedStoreId] = useState<string>(stores[0]?.id || '');
-  const [showImportModal, setShowImportModal] = useState(false);
-  const [importing, setImporting] = useState(false);
-  const [importStoreId, setImportStoreId] = useState<string>('');
-  const [importWeekId, setImportWeekId] = useState<string>('');
-  const [toast, setToast] = useState<{ message: string; type: 'success' | 'error' } | null>(null);
-  const fileInputRef = useRef<HTMLInputElement>(null);
-
-  // Weeks tab states
-  const [showNewWeekModal, setShowNewWeekModal] = useState(false);
-  const [newWeekData, setNewWeekData] = useState({
-    store_id: stores[0]?.id || '',
-    data_inicio: format(new Date(), 'yyyy-MM-dd'),
-    data_fim: format(new Date(), 'yyyy-MM-dd'),
-    mes_ref: new Date().getMonth() + 1,
-    ano_ref: new Date().getFullYear()
-  });
-
+  const [selectedWeek, setSelectedWeek] = useState<string>('');
+  const [selectedStoreId, setSelectedStoreId] = useState<string>('all');
+  const [weeks, setWeeks] = useState<WeekData[]>([]);
+  const [performance, setPerformance] = useState<StoreWeekPerformance[]>([]);
+  const [loading, setLoading] = useState(false);
+ 
+  // Buscar semanas disponíveis
   useEffect(() => {
-    loadInitialData();
+    loadWeeks();
   }, [selectedMonth, selectedYear]);
-
+ 
+  // Buscar performance quando filtros mudarem
   useEffect(() => {
-    if (selectedWeek) {
-      loadSummary(selectedWeek);
+    if (viewMode === 'semana' && selectedWeek) {
+      loadWeekPerformance();
+    } else if (viewMode === 'mes') {
+      loadMonthPerformance();
     }
-  }, [selectedWeek]);
-
-  useEffect(() => {
-    if (activeTab === 'parameters' && selectedStoreId) {
-      loadStoreParams(selectedStoreId);
-    }
-    if (activeTab === 'weeks' && selectedStoreId) {
-      loadStoreWeeks(selectedStoreId);
-    }
-  }, [activeTab, selectedStoreId, selectedMonth, selectedYear]);
-
-  const showToast = (message: string, type: 'success' | 'error') => {
-    setToast({ message, type });
-    setTimeout(() => setToast(null), 3000);
-  };
-
-  const loadInitialData = async () => {
-    try {
-      setLoading(true);
-      const weeksData = await dashboardPAService.getAllWeeks(selectedYear, selectedMonth);
-      setWeeks(weeksData);
+  }, [viewMode, selectedWeek, selectedMonth, selectedYear, selectedStoreId]);
+ 
+  const loadWeeks = async () => {
+    const { data, error } = await supabase
+      .from('Dashboard_PA_Semanas')
+      .select('id, data_inicio, data_fim, store_id')
+      .gte('data_inicio', `${selectedYear}-${String(selectedMonth).padStart(2, '0')}-01`)
+      .lt('data_inicio', `${selectedYear}-${String(selectedMonth + 1).padStart(2, '0')}-01`)
+      .order('data_inicio', { ascending: true });
+ 
+    if (data && !error) {
+      // Agrupar por semana (mesma data_inicio)
+      const weeksMap = new Map<string, WeekData>();
+      data.forEach(w => {
+        const key = w.data_inicio;
+        if (!weeksMap.has(key)) {
+          weeksMap.set(key, w);
+        }
+      });
       
-      if (weeksData.length > 0) {
-        const activeWeek = weeksData.find(w => w.status === 'aberta') || weeksData[0];
-        setSelectedWeek(activeWeek.id);
-      } else {
-        setSelectedWeek(null);
-        setSummary([]);
+      const uniqueWeeks = Array.from(weeksMap.values());
+      setWeeks(uniqueWeeks);
+      
+      if (uniqueWeeks.length > 0 && !selectedWeek) {
+        setSelectedWeek(uniqueWeeks[0].id);
       }
+    }
+  };
+ 
+  const loadWeekPerformance = async () => {
+    if (!selectedWeek) return;
+    
+    setLoading(true);
+    
+    try {
+      // Buscar todas as semanas com mesma data_inicio
+      const weekInfo = weeks.find(w => w.id === selectedWeek);
+      if (!weekInfo) return;
+ 
+      const { data: allWeeksData } = await supabase
+        .from('Dashboard_PA_Semanas')
+        .select('id, store_id')
+        .eq('data_inicio', weekInfo.data_inicio);
+ 
+      if (!allWeeksData) return;
+ 
+      const weekIds = allWeeksData.map(w => w.id);
+ 
+      // Buscar vendas de todas as lojas nesta semana
+      const { data: salesData } = await supabase
+        .from('Dashboard_PA_Vendas')
+        .select(`
+          id,
+          semana_id,
+          store_id,
+          nome_vendedor,
+          pa,
+          total_vendas,
+          qtde_vendas,
+          qtde_itens
+        `)
+        .in('semana_id', weekIds);
+ 
+      // Buscar premiações
+      const { data: premiosData } = await supabase
+        .from('Dashboard_PA_Premiacoes')
+        .select('semana_id, store_id, valor_premio, atingiu_meta')
+        .in('semana_id', weekIds);
+ 
+      // Buscar parâmetros
+      const { data: paramsData } = await supabase
+        .from('Dashboard_PA_Parametros')
+        .select('store_id, pa_inicial');
+ 
+      // Calcular performance por loja
+      const storesPerformance: StoreWeekPerformance[] = stores
+        .filter(store => selectedStoreId === 'all' || store.id === selectedStoreId)
+        .map(store => {
+          const storeWeek = allWeeksData.find(w => w.store_id === store.id);
+          if (!storeWeek) return null;
+ 
+          const storeSales = salesData?.filter(s => s.store_id === store.id) || [];
+          const storePremios = premiosData?.filter(p => p.store_id === store.id) || [];
+          const storeParams = paramsData?.find(p => p.store_id === store.id);
+ 
+          const totalVendas = storeSales.reduce((acc, s) => acc + (s.total_vendas || 0), 0);
+          const avgPA = storeSales.length > 0 
+            ? storeSales.reduce((acc, s) => acc + (s.pa || 0), 0) / storeSales.length 
+            : 0;
+          const paMeta = storeParams?.pa_inicial || 1.6;
+          const qtdePremiados = storePremios.filter(p => p.atingiu_meta).length;
+          const totalPremios = storePremios.reduce((acc, p) => acc + (p.valor_premio || 0), 0);
+ 
+          // Score: 50% vendas + 50% P.A
+          const scoreVendas = totalVendas > 0 ? Math.min((totalVendas / 50000) * 100, 100) : 0;
+          const scorePA = paMeta > 0 ? Math.min((avgPA / paMeta) * 100, 100) : 0;
+          const score = (scoreVendas * 0.3) + (scorePA * 0.7); // 30% vendas, 70% P.A
+ 
+          return {
+            storeId: store.id,
+            storeNumber: store.number,
+            storeName: store.name,
+            city: store.city,
+            totalVendas,
+            paAtingido: avgPA,
+            paMeta,
+            qtdeVendedores: storeSales.length,
+            qtdePremiados,
+            totalPremios,
+            score
+          };
+        })
+        .filter(Boolean) as StoreWeekPerformance[];
+ 
+      // Ordenar por score
+      storesPerformance.sort((a, b) => b.score - a.score);
+      
+      setPerformance(storesPerformance);
     } catch (error) {
-      console.error('Error loading initial data:', error);
+      console.error('Erro ao carregar performance:', error);
     } finally {
       setLoading(false);
     }
   };
-
-  const loadStoreParams = async (storeId: string) => {
+ 
+  const loadMonthPerformance = async () => {
+    setLoading(true);
+    
     try {
-      const data = await dashboardPAService.getParameters(storeId);
-      setParams(data);
-    } catch (error) {
-      console.error('Error loading params:', error);
-    }
-  };
-
-  const loadStoreWeeks = async (storeId: string) => {
-    try {
-      const data = await dashboardPAService.getWeeks(storeId, selectedYear, selectedMonth);
-      setWeeks(data);
-    } catch (error) {
-      console.error('Error loading weeks:', error);
-    }
-  };
-
-  const loadSummary = async (weekId: string) => {
-    try {
-      const summaryData = await dashboardPAService.getAdminSummary(weekId);
-      setSummary(summaryData);
-    } catch (error) {
-      console.error('Error loading summary:', error);
-    }
-  };
-
-  const handleFileUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0];
-    if (!file || !importWeekId || !importStoreId) return;
-
-    setImporting(true);
-    try {
-        const XLSX = await import('xlsx');
-        const arrayBuffer = await file.arrayBuffer();
-        const wb = XLSX.read(arrayBuffer, { type: 'array' });
-        const ws = wb.Sheets[wb.SheetNames[0]];
-
-        // Converte tudo para array de arrays para encontrar o cabeçalho
-        const rawData: any[][] = XLSX.utils.sheet_to_json(ws, { header: 1 });
-
-        // Encontra a linha que contém 'Vendedor' — independente de quantas linhas de título existam
-        const headerRowIndex = rawData.findIndex(row =>
-          row.some(cell => String(cell || '').trim().toLowerCase() === 'vendedor')
-        );
-
-        if (headerRowIndex === -1) {
-          throw new Error('Formato inválido: coluna "Vendedor" não encontrada no arquivo.');
-        }
-
-        const headers = rawData[headerRowIndex];
-        const dataRows = rawData.slice(headerRowIndex + 1);
-
-        // Validação de data no import
-        const week = weeks.find(w => w.id === importWeekId);
-        if (week) {
-          const titleRow = rawData.find(row => 
-            row.some(cell => String(cell || '').toUpperCase().includes('PERÍODO'))
-          );
-          
-          if (titleRow) {
-            const titleText = titleRow.find(cell => String(cell || '').toUpperCase().includes('PERÍODO'));
-            const dates = titleText.match(/(\d{2}\/\d{2}\/\d{4})/g);
-            
-            if (dates && dates.length >= 2) {
-              const [d1, m1, y1] = dates[0].split('/');
-              const [d2, m2, y2] = dates[1].split('/');
-              const arquivoInicio = parseLocalDate(y1 + '-' + m1 + '-' + d1).toISOString().split('T')[0];
-              const arquivoFim = parseLocalDate(y2 + '-' + m2 + '-' + d2).toISOString().split('T')[0];
-              
-              const dataFimSexta = week.data_fim;
-              const dataFimSabado = new Date(parseLocalDate(week.data_fim).getTime() + 86400000).toISOString().split('T')[0];
-
-              if (arquivoInicio !== week.data_inicio || (arquivoFim !== dataFimSexta && arquivoFim !== dataFimSabado)) {
-                throw new Error(`As datas do arquivo (${dates[0]} a ${dates[1]}) não coincidem com a semana selecionada.`);
-              }
-            }
-          }
-        }
-
-        // Mapeia usando os índices das colunas encontradas
-        const colIdx = (name: string) =>
-          headers.findIndex((h: any) => String(h || '').trim().toLowerCase() === name.toLowerCase());
-
-        const iVendedor   = colIdx('Vendedor');
-        const iDias       = colIdx('Dias');
-        const iVendas     = colIdx('Vendas');
-        const iItens      = colIdx('Itens');
-        const iPA         = colIdx('P.A.');
-        const iTotalVenda = colIdx('Total Vendas');
-
-        const mappedData = dataRows.map(row => {
-          const vendedor = String(row[iVendedor] || '');
-          const partes = vendedor.match(/^\d+-(\d+)\s+(.+)$/);
-          return {
-            cod_vendedor:     partes ? partes[1] : vendedor,
-            nome_vendedor:    partes ? partes[2].trim() : vendedor,
-            dias_trabalhados: Number(row[iDias]       || 0),
-            qtde_vendas:      Number(row[iVendas]     || 0),
-            perc_vendas:      '0%',
-            qtde_itens:       Number(row[iItens]      || 0),
-            perc_itens:       '0%',
-            pa:               Number(row[iPA]         || 0),
-            total_vendas:     Number(row[iTotalVenda] || 0),
-            perc_total:       '0%'
-          };
-        }).filter(s =>
-          s.nome_vendedor &&
-          s.nome_vendedor.toUpperCase() !== 'TOTAL' &&
-          !isNaN(s.pa) &&
-          s.pa > 0
-        );
-
-        await dashboardPAService.importSales(importWeekId, importStoreId, mappedData, user.email || user.name);
-        if (selectedWeek === importWeekId) loadSummary(selectedWeek);
-        setShowImportModal(false);
-        showToast('Importação concluída com sucesso!', 'success');
-      } catch (error: any) {
-        showToast(error.message || 'Erro ao importar.', 'error');
-      } finally {
-        setImporting(false);
+      // Buscar todas as semanas do mês
+      const { data: monthWeeks } = await supabase
+        .from('Dashboard_PA_Semanas')
+        .select('id, store_id')
+        .gte('data_inicio', `${selectedYear}-${String(selectedMonth).padStart(2, '0')}-01`)
+        .lt('data_inicio', `${selectedYear}-${String(selectedMonth + 1).padStart(2, '0')}-01`);
+ 
+      if (!monthWeeks || monthWeeks.length === 0) {
+        setPerformance([]);
+        return;
       }
-  };
-
-  const handleCreateWeek = async (e: React.FormEvent) => {
-    e.preventDefault();
-    try {
-      await dashboardPAService.createWeek({
-        ...newWeekData,
-        status: 'aberta'
-      });
-      showToast('Semana criada com sucesso!', 'success');
-      setShowNewWeekModal(false);
-      loadStoreWeeks(selectedStoreId);
+ 
+      const weekIds = monthWeeks.map(w => w.id);
+ 
+      // Buscar vendas do mês
+      const { data: salesData } = await supabase
+        .from('Dashboard_PA_Vendas')
+        .select('store_id, pa, total_vendas')
+        .in('semana_id', weekIds);
+ 
+      // Buscar premiações do mês
+      const { data: premiosData } = await supabase
+        .from('Dashboard_PA_Premiacoes')
+        .select('store_id, valor_premio, atingiu_meta')
+        .in('semana_id', weekIds);
+ 
+      // Buscar parâmetros
+      const { data: paramsData } = await supabase
+        .from('Dashboard_PA_Parametros')
+        .select('store_id, pa_inicial');
+ 
+      // Calcular performance mensal
+      const storesPerformance: StoreWeekPerformance[] = stores
+        .filter(store => selectedStoreId === 'all' || store.id === selectedStoreId)
+        .map(store => {
+          const storeSales = salesData?.filter(s => s.store_id === store.id) || [];
+          const storePremios = premiosData?.filter(p => p.store_id === store.id) || [];
+          const storeParams = paramsData?.find(p => p.store_id === store.id);
+ 
+          const totalVendas = storeSales.reduce((acc, s) => acc + (s.total_vendas || 0), 0);
+          const avgPA = storeSales.length > 0 
+            ? storeSales.reduce((acc, s) => acc + (s.pa || 0), 0) / storeSales.length 
+            : 0;
+          const paMeta = storeParams?.pa_inicial || 1.6;
+          const qtdePremiados = storePremios.filter(p => p.atingiu_meta).length;
+          const totalPremios = storePremios.reduce((acc, p) => acc + (p.valor_premio || 0), 0);
+ 
+          const scoreVendas = totalVendas > 0 ? Math.min((totalVendas / 200000) * 100, 100) : 0;
+          const scorePA = paMeta > 0 ? Math.min((avgPA / paMeta) * 100, 100) : 0;
+          const score = (scoreVendas * 0.3) + (scorePA * 0.7);
+ 
+          return {
+            storeId: store.id,
+            storeNumber: store.number,
+            storeName: store.name,
+            city: store.city,
+            totalVendas,
+            paAtingido: avgPA,
+            paMeta,
+            qtdeVendedores: storeSales.length,
+            qtdePremiados,
+            totalPremios,
+            score
+          };
+        });
+ 
+      storesPerformance.sort((a, b) => b.score - a.score);
+      setPerformance(storesPerformance);
     } catch (error) {
-      showToast('Erro ao criar semana.', 'error');
+      console.error('Erro ao carregar performance mensal:', error);
+    } finally {
+      setLoading(false);
     }
   };
-
-  const totalSales = summary.reduce((acc, curr) => acc + curr.total_sales, 0);
-  const totalAwards = summary.reduce((acc, curr) => acc + curr.total_awards, 0);
-  const totalEligible = summary.reduce((acc, curr) => acc + curr.eligible_sellers, 0);
-
-  if (loading) {
-    return (
-      <div className="flex items-center justify-center h-screen bg-slate-50 dark:bg-slate-950">
-        <motion.div 
-          animate={{ rotate: 360 }}
-          transition={{ duration: 1, repeat: Infinity, ease: "linear" }}
-          className="w-12 h-12 border-4 border-orange-500 border-t-transparent rounded-full"
-        />
-      </div>
-    );
-  }
-
+ 
+  const getTier = (index: number) => {
+    if (index === 0) return { 
+      label: 'Campeão', 
+      icon: <Gem className="text-cyan-400" size={20} />, 
+      color: 'bg-gradient-to-r from-cyan-500 to-blue-500',
+      textColor: 'text-cyan-600',
+      bgColor: 'bg-cyan-50 dark:bg-cyan-900/20'
+    };
+    if (index === 1) return { 
+      label: 'Vice', 
+      icon: <Trophy className="text-emerald-400" size={20} />, 
+      color: 'bg-gradient-to-r from-emerald-500 to-green-500',
+      textColor: 'text-emerald-600',
+      bgColor: 'bg-emerald-50 dark:bg-emerald-900/20'
+    };
+    if (index === 2) return { 
+      label: 'Terceiro', 
+      icon: <Medal className="text-amber-400" size={20} />, 
+      color: 'bg-gradient-to-r from-amber-500 to-orange-500',
+      textColor: 'text-amber-600',
+      bgColor: 'bg-amber-50 dark:bg-amber-900/20'
+    };
+    return { 
+      label: 'Competidor', 
+      icon: <Zap className="text-slate-400" size={18} />, 
+      color: 'bg-slate-200',
+      textColor: 'text-slate-600',
+      bgColor: 'bg-slate-50 dark:bg-slate-800'
+    };
+  };
+ 
+  const currentWeek = weeks.find(w => w.id === selectedWeek);
+  const weekLabel = currentWeek 
+    ? `${format(new Date(currentWeek.data_inicio + 'T00:00:00'), 'dd/MM')} a ${format(new Date(currentWeek.data_fim + 'T00:00:00'), 'dd/MM')}`
+    : 'Selecione uma semana';
+ 
+  const monthLabel = format(new Date(selectedYear, selectedMonth - 1), 'MMMM', { locale: ptBR });
+ 
   return (
-    <div className="min-h-screen bg-slate-50 dark:bg-slate-950 p-4 md:p-8 space-y-8 pb-24">
-      {/* Toast Notification */}
-      <AnimatePresence>
-        {toast && (
-          <motion.div
-            initial={{ opacity: 0, y: -20 }}
-            animate={{ opacity: 1, y: 0 }}
-            exit={{ opacity: 0, y: -20 }}
-            className={`fixed top-8 left-1/2 -translate-x-1/2 z-[100] px-8 py-4 rounded-[24px] font-black italic uppercase tracking-tighter text-sm shadow-2xl ${
-              toast.type === 'success' ? 'bg-emerald-500 text-white' : 'bg-red-500 text-white'
-            }`}
-          >
-            {toast.message}
-          </motion.div>
-        )}
-      </AnimatePresence>
-
-      {/* Header Section */}
-      <header className="flex flex-col md:flex-row md:items-end justify-between gap-6">
-        <div className="space-y-1">
-          <div className="flex items-center gap-3 text-orange-500">
-            <Trophy className="w-8 h-8" />
-            <span className="font-black italic uppercase tracking-tighter text-xl">Módulo Performance</span>
+    <div className="min-h-screen bg-slate-50 dark:bg-slate-950 p-4 sm:p-6 md:p-8 space-y-6">
+      {/* Header */}
+      <div className="bg-white dark:bg-slate-900 rounded-3xl shadow-sm border border-slate-200 dark:border-slate-800 p-6 space-y-6">
+        <div className="flex items-center gap-4">
+          <div className="p-4 bg-gradient-to-r from-orange-600 to-red-600 rounded-2xl">
+            <BarChart3 className="text-white" size={32} />
           </div>
-          <h1 className="text-4xl md:text-6xl font-black italic uppercase tracking-tighter text-slate-900 dark:text-white leading-none">
-            Dashboard <span className="text-orange-500">P.A.</span>
-          </h1>
-          <p className="text-slate-500 dark:text-slate-400 font-medium uppercase tracking-widest text-xs italic">
-            Gestão de Performance e Premiações Semanais
-          </p>
+          <div className="flex-1">
+            <h1 className="text-2xl sm:text-3xl font-black text-slate-900 dark:text-white uppercase italic">
+              Dashboard P.A <span className="text-orange-600">Admin</span>
+            </h1>
+            <p className="text-xs font-bold text-slate-500 dark:text-slate-400 uppercase tracking-widest">
+              Visão Consolidada da Rede
+            </p>
+          </div>
         </div>
-
-        <div className="flex flex-wrap items-center gap-4">
-          <div className="flex items-center gap-2 bg-white dark:bg-slate-900 p-2 rounded-[32px] border border-slate-100 dark:border-slate-800 shadow-sm">
-            <select 
-              value={selectedMonth} 
-              onChange={(e) => setSelectedMonth(Number(e.target.value))}
-              className="bg-transparent border-none px-4 py-2 font-black italic uppercase tracking-tighter text-xs outline-none"
+ 
+        {/* Filtros */}
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
+          {/* Modo de Visualização */}
+          <div>
+            <label className="text-xs font-black text-slate-500 dark:text-slate-400 uppercase tracking-widest mb-2 block">
+              <Eye className="inline mr-1" size={12} />
+              Visualização
+            </label>
+            <select
+              value={viewMode}
+              onChange={(e) => setViewMode(e.target.value as ViewMode)}
+              className="w-full bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl px-4 py-3 text-sm font-bold text-slate-900 dark:text-white"
             >
-              {Array.from({ length: 12 }, (_, i) => (
-                <option key={i + 1} value={i + 1}>
-                  {format(new Date(2024, i, 1), 'MMMM', { locale: ptBR })}
+              <option value="semana">📅 Por Semana</option>
+              <option value="mes">📆 Por Mês</option>
+            </select>
+          </div>
+ 
+          {/* Mês */}
+          <div>
+            <label className="text-xs font-black text-slate-500 dark:text-slate-400 uppercase tracking-widest mb-2 block">
+              <Calendar className="inline mr-1" size={12} />
+              Mês / Ano
+            </label>
+            <div className="flex gap-2">
+              <select
+                value={selectedMonth}
+                onChange={(e) => setSelectedMonth(Number(e.target.value))}
+                className="flex-1 bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl px-4 py-3 text-sm font-bold text-slate-900 dark:text-white"
+              >
+                {Array.from({ length: 12 }, (_, i) => (
+                  <option key={i + 1} value={i + 1}>
+                    {format(new Date(2024, i), 'MMM', { locale: ptBR })}
+                  </option>
+                ))}
+              </select>
+              <select
+                value={selectedYear}
+                onChange={(e) => setSelectedYear(Number(e.target.value))}
+                className="w-24 bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl px-3 py-3 text-sm font-bold text-slate-900 dark:text-white"
+              >
+                {[2024, 2025, 2026].map(y => (
+                  <option key={y} value={y}>{y}</option>
+                ))}
+              </select>
+            </div>
+          </div>
+ 
+          {/* Semana (só aparece se modo = semana) */}
+          {viewMode === 'semana' && (
+            <div>
+              <label className="text-xs font-black text-slate-500 dark:text-slate-400 uppercase tracking-widest mb-2 block">
+                <Calendar className="inline mr-1" size={12} />
+                Semana
+              </label>
+              <select
+                value={selectedWeek}
+                onChange={(e) => setSelectedWeek(e.target.value)}
+                className="w-full bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl px-4 py-3 text-sm font-bold text-slate-900 dark:text-white"
+              >
+                {weeks.map(w => (
+                  <option key={w.id} value={w.id}>
+                    {format(new Date(w.data_inicio + 'T00:00:00'), 'dd/MM')} a {format(new Date(w.data_fim + 'T00:00:00'), 'dd/MM')}
+                  </option>
+                ))}
+              </select>
+            </div>
+          )}
+ 
+          {/* Filtro de Loja */}
+          <div>
+            <label className="text-xs font-black text-slate-500 dark:text-slate-400 uppercase tracking-widest mb-2 block">
+              <Filter className="inline mr-1" size={12} />
+              Loja
+            </label>
+            <select
+              value={selectedStoreId}
+              onChange={(e) => setSelectedStoreId(e.target.value)}
+              className="w-full bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl px-4 py-3 text-sm font-bold text-slate-900 dark:text-white"
+            >
+              <option value="all">🏪 Todas as Lojas</option>
+              {stores.map(s => (
+                <option key={s.id} value={s.id}>
+                  Loja {s.number} - {s.name}
                 </option>
               ))}
             </select>
-            <select 
-              value={selectedYear} 
-              onChange={(e) => setSelectedYear(Number(e.target.value))}
-              className="bg-transparent border-none px-4 py-2 font-black italic uppercase tracking-tighter text-xs outline-none"
-            >
-              {[2024, 2025, 2026].map(y => (
-                <option key={y} value={y}>{y}</option>
-              ))}
-            </select>
-          </div>
-
-          <div className="flex items-center gap-2 bg-white dark:bg-slate-900 p-2 rounded-[32px] border border-slate-100 dark:border-slate-800 shadow-sm overflow-x-auto max-w-full no-scrollbar">
-            {(['overview', 'parameters', 'weeks'] as const).map((tab) => (
-            <button
-              key={tab}
-              onClick={() => setActiveTab(tab)}
-              className={`px-6 py-3 rounded-[24px] font-black italic uppercase tracking-tighter text-sm transition-all whitespace-nowrap ${
-                activeTab === tab 
-                  ? 'bg-orange-500 text-white shadow-lg shadow-orange-500/20' 
-                  : 'text-slate-400 hover:text-slate-600 dark:hover:text-slate-200'
-              }`}
-            >
-              {tab === 'overview' ? 'Geral' : tab === 'parameters' ? 'Parâmetros' : 'Semanas'}
-            </button>
-          ))}
           </div>
         </div>
-      </header>
-
-      {activeTab === 'overview' && (
-        <>
-          {/* Stats Grid */}
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-            {[
-              { label: 'Vendas Totais', value: `R$ ${totalSales.toLocaleString()}`, icon: TrendingUp, color: 'orange' },
-              { label: 'Premiações', value: `R$ ${totalAwards.toLocaleString()}`, icon: DollarSign, color: 'emerald' },
-              { label: 'Vendedores Premiados', value: totalEligible, icon: Users, color: 'blue' }
-            ].map((stat, i) => (
-              <motion.div
-                initial={{ opacity: 0, y: 20 }}
-                animate={{ opacity: 1, y: 0 }}
-                transition={{ delay: i * 0.1 }}
-                key={stat.label}
-                className="bg-white dark:bg-slate-900 p-8 rounded-[40px] border border-slate-100 dark:border-slate-800 shadow-sm group hover:border-orange-500/50 transition-all"
-              >
-                <div className="flex justify-between items-start mb-4">
-                  <div className={`p-4 rounded-[24px] bg-${stat.color}-500/10 text-${stat.color}-500`}>
-                    <stat.icon className="w-6 h-6" />
-                  </div>
-                </div>
-                <div className="space-y-1">
-                  <p className="text-slate-400 font-black italic uppercase tracking-tighter text-xs">{stat.label}</p>
-                  <p className="text-3xl font-black italic uppercase tracking-tighter text-slate-900 dark:text-white">
-                    {stat.value}
-                  </p>
-                </div>
-              </motion.div>
-            ))}
-          </div>
-
-          {/* Main Content Area */}
-          <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
-            <div className="lg:col-span-2 space-y-6">
-              <div className="flex items-center justify-between">
-                <h2 className="text-2xl font-black italic uppercase tracking-tighter text-slate-900 dark:text-white">
-                  Performance por <span className="text-orange-500">Loja</span>
-                </h2>
-                <div className="flex flex-wrap items-center gap-4">
-                  <select 
-                    value={selectedWeek || ''} 
-                    onChange={(e) => setSelectedWeek(e.target.value)}
-                    className="bg-white dark:bg-slate-900 border border-slate-100 dark:border-slate-800 rounded-[20px] px-4 py-2 font-black italic uppercase tracking-tighter text-xs outline-none focus:border-orange-500 transition-all"
-                  >
-                    {weeks.length === 0 && <option value="">Nenhuma semana</option>}
-                    {weeks.map(w => (
-                      <option key={w.id} value={w.id}>
-                        {stores.find(s => s.id === w.store_id)?.number} - {format(parseLocalDate(w.data_inicio), 'dd/MM')} a {format(parseLocalDate(w.data_fim), 'dd/MM')}
-                      </option>
-                    ))}
-                  </select>
-                  <button 
-                    onClick={() => {
-                      setImportStoreId('');
-                      setImportWeekId('');
-                      setShowImportModal(true);
-                    }}
-                    className="flex items-center gap-2 px-4 py-2 bg-orange-500 text-white rounded-[20px] font-black italic uppercase tracking-tighter text-xs shadow-lg shadow-orange-500/20 hover:bg-orange-600 transition-all"
-                  >
-                    <Upload className="w-4 h-4" />
-                    <span>Importar XLS</span>
-                  </button>
-                </div>
-              </div>
-
-              <div className="bg-white dark:bg-slate-900 rounded-[48px] border border-slate-100 dark:border-slate-800 shadow-sm overflow-hidden">
-                {/* Mobile: cards */}
-                <div className="md:hidden space-y-3 p-4">
-                  {summary.map((row, i) => (
-                    <motion.div 
-                      initial={{ opacity: 0, y: 10 }}
-                      animate={{ opacity: 1, y: 0 }}
-                      transition={{ delay: i * 0.05 }}
-                      key={row.store_id}
-                      className="bg-slate-50 dark:bg-slate-800/50 rounded-[24px] p-4 space-y-2"
-                    >
-                      <div className="flex justify-between items-center border-b border-slate-100 dark:border-slate-700 pb-2">
-                        <span className="font-black italic uppercase tracking-tighter text-slate-900 dark:text-white">{row.store_name}</span>
-                        <span className="px-3 py-1 rounded-full bg-orange-500/10 text-orange-500 font-black italic uppercase tracking-tighter text-[10px]">
-                          PA: {row.avg_pa.toFixed(2)}
-                        </span>
-                      </div>
-                      <div className="grid grid-cols-2 gap-2 text-[10px]">
-                        <div>
-                          <p className="text-slate-400 font-black italic uppercase tracking-tighter">Vendas</p>
-                          <p className="text-slate-900 dark:text-white font-black italic uppercase tracking-tighter">R$ {row.total_sales.toLocaleString()}</p>
-                        </div>
-                        <div>
-                          <p className="text-slate-400 font-black italic uppercase tracking-tighter">Premiados</p>
-                          <p className="text-slate-900 dark:text-white font-black italic uppercase tracking-tighter">{row.eligible_sellers}</p>
-                        </div>
-                        <div>
-                          <p className="text-slate-400 font-black italic uppercase tracking-tighter">Total Prêmios</p>
-                          <p className="text-emerald-500 font-black italic uppercase tracking-tighter">R$ {row.total_awards.toLocaleString()}</p>
-                        </div>
-                        <div className="flex items-end justify-end">
-                          <button 
-                            onClick={() => {
-                              setImportStoreId(row.store_id);
-                              setImportWeekId(selectedWeek || '');
-                              setShowImportModal(true);
-                            }}
-                            className="flex items-center gap-1 px-3 py-1 bg-orange-500 text-white rounded-full font-black italic uppercase tracking-tighter text-[8px]"
-                          >
-                            <Upload className="w-2 h-2" />
-                            <span>Importar</span>
-                          </button>
-                        </div>
-                      </div>
-                    </motion.div>
-                  ))}
-                </div>
-
-                {/* Desktop: table */}
-                <div className="hidden md:block overflow-x-auto">
-                  <table className="w-full text-left border-collapse">
-                    <thead>
-                      <tr className="border-bottom border-slate-50 dark:border-slate-800/50">
-                        <th className="p-6 font-black italic uppercase tracking-tighter text-xs text-slate-400">Loja</th>
-                        <th className="p-6 font-black italic uppercase tracking-tighter text-xs text-slate-400">Vendas</th>
-                        <th className="p-6 font-black italic uppercase tracking-tighter text-xs text-slate-400 text-center">P.A. Médio</th>
-                        <th className="p-6 font-black italic uppercase tracking-tighter text-xs text-slate-400 text-center">Premiados</th>
-                        <th className="p-6 font-black italic uppercase tracking-tighter text-xs text-slate-400 text-right">Total Prêmios</th>
-                        <th className="p-6 font-black italic uppercase tracking-tighter text-xs text-slate-400 text-right">Ações</th>
-                      </tr>
-                    </thead>
-                    <tbody>
-                      {summary.map((row, i) => (
-                        <motion.tr 
-                          initial={{ opacity: 0, x: -20 }}
-                          animate={{ opacity: 1, x: 0 }}
-                          transition={{ delay: i * 0.05 }}
-                          key={row.store_id} 
-                          className="group hover:bg-slate-50 dark:hover:bg-slate-800/50 transition-all"
-                        >
-                          <td className="p-6">
-                            <div className="flex items-center gap-3">
-                              <div className="w-10 h-10 rounded-[16px] bg-orange-500/10 flex items-center justify-center text-orange-500">
-                                <StoreIcon className="w-5 h-5" />
-                              </div>
-                              <span className="font-black italic uppercase tracking-tighter text-slate-900 dark:text-white">{row.store_name}</span>
-                            </div>
-                          </td>
-                          <td className="p-6 font-black italic uppercase tracking-tighter text-slate-900 dark:text-white">
-                            R$ {row.total_sales.toLocaleString()}
-                          </td>
-                          <td className="p-6 text-center">
-                            <span className="px-4 py-1 rounded-full bg-orange-500/10 text-orange-500 font-black italic uppercase tracking-tighter text-xs">
-                              {row.avg_pa.toFixed(2)}
-                            </span>
-                          </td>
-                          <td className="p-6 text-center font-black italic uppercase tracking-tighter text-slate-900 dark:text-white">
-                            {row.eligible_sellers}
-                          </td>
-                          <td className="p-6 text-right font-black italic uppercase tracking-tighter text-emerald-500">
-                            R$ {row.total_awards.toLocaleString()}
-                          </td>
-                          <td className="p-6 text-right">
-                            <button 
-                              onClick={() => {
-                                setImportStoreId(row.store_id);
-                                setImportWeekId(selectedWeek || '');
-                                setShowImportModal(true);
-                              }}
-                              className="p-2 text-orange-500 hover:bg-orange-500/10 rounded-full transition-all"
-                              title="Importar para esta loja"
-                            >
-                              <Upload className="w-4 h-4" />
-                            </button>
-                          </td>
-                        </motion.tr>
-                      ))}
-                    </tbody>
-                  </table>
-                </div>
-              </div>
-            </div>
-
-            <div className="space-y-6">
-              <h2 className="text-2xl font-black italic uppercase tracking-tighter text-slate-900 dark:text-white">
-                Resumo de <span className="text-orange-500">Metas</span>
-              </h2>
-              <div className="bg-white dark:bg-slate-900 rounded-[40px] p-8 border border-slate-100 dark:border-slate-800 space-y-6">
-                <div className="flex items-center justify-between">
-                  <span className="font-black italic uppercase tracking-tighter text-xs text-slate-400">Total de Lojas</span>
-                  <span className="font-black italic uppercase tracking-tighter text-slate-900 dark:text-white">{stores.length}</span>
-                </div>
-                <div className="flex items-center justify-between">
-                  <span className="font-black italic uppercase tracking-tighter text-xs text-slate-400">Lojas com Dados</span>
-                  <span className="font-black italic uppercase tracking-tighter text-slate-900 dark:text-white">{summary.length}</span>
-                </div>
-                <div className="h-2 bg-slate-100 dark:bg-slate-800 rounded-full overflow-hidden">
-                  <motion.div 
-                    initial={{ width: 0 }}
-                    animate={{ width: `${(summary.length / stores.length) * 100}%` }}
-                    className="h-full bg-orange-500"
-                  />
-                </div>
-              </div>
-            </div>
-          </div>
-        </>
-      )}
-
-      {activeTab === 'parameters' && (
-        <div className="max-w-4xl mx-auto space-y-8">
-          <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
-            <h2 className="text-3xl font-black italic uppercase tracking-tighter text-slate-900 dark:text-white">
-              Configurar <span className="text-orange-500">Parâmetros</span>
-            </h2>
-            <select 
-              value={selectedStoreId}
-              onChange={(e) => setSelectedStoreId(e.target.value)}
-              className="bg-white dark:bg-slate-900 border border-slate-100 dark:border-slate-800 rounded-[24px] px-6 py-4 font-black italic uppercase tracking-tighter text-sm outline-none focus:border-orange-500 transition-all shadow-sm"
-            >
-              {stores.map(s => (
-                <option key={s.id} value={s.id}>#{s.number} - {s.name}</option>
-              ))}
-            </select>
-          </div>
-
-          <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
-            <motion.div
-              initial={{ opacity: 0, x: -20 }}
-              animate={{ opacity: 1, x: 0 }}
-              className="bg-white dark:bg-slate-900 rounded-[48px] border border-slate-100 dark:border-slate-800 p-12 shadow-xl"
-            >
-              <form className="space-y-8" onSubmit={async (e) => {
-                e.preventDefault();
-                const formData = new FormData(e.currentTarget);
-                try {
-                  await dashboardPAService.upsertParameters({
-                    store_id: selectedStoreId,
-                    pa_inicial: Number(formData.get('pa_inicial')),
-                    incremento_pa: Number(formData.get('incremento_pa')),
-                    valor_base: Number(formData.get('valor_base')),
-                    incremento_valor: Number(formData.get('incremento_valor')),
-                    criado_por_role: user.role,
-                    criado_por_id: user.id
-                  });
-                  showToast('Parâmetros salvos com sucesso!', 'success');
-                  loadStoreParams(selectedStoreId);
-                } catch (error) {
-                  showToast('Erro ao salvar parâmetros.', 'error');
-                }
-              }}>
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                  <div className="space-y-2">
-                    <label className="font-black italic uppercase tracking-tighter text-xs text-slate-400">P.A. Inicial (Faixa 1)</label>
-                    <input name="pa_inicial" type="number" step="0.01" defaultValue={params?.pa_inicial || 1.60} className="w-full bg-slate-50 dark:bg-slate-800 border-none rounded-[24px] p-6 font-black italic uppercase tracking-tighter text-xl outline-none focus:ring-2 ring-orange-500/50 transition-all" />
-                  </div>
-                  <div className="space-y-2">
-                    <label className="font-black italic uppercase tracking-tighter text-xs text-slate-400">Incremento P.A. (p/ Faixa)</label>
-                    <input name="incremento_pa" type="number" step="0.01" defaultValue={params?.incremento_pa || 0.05} className="w-full bg-slate-50 dark:bg-slate-800 border-none rounded-[24px] p-6 font-black italic uppercase tracking-tighter text-xl outline-none focus:ring-2 ring-orange-500/50 transition-all" />
-                  </div>
-                  <div className="space-y-2">
-                    <label className="font-black italic uppercase tracking-tighter text-xs text-slate-400">Valor Base (Faixa 1)</label>
-                    <input name="valor_base" type="number" step="0.01" defaultValue={params?.valor_base || 30.00} className="w-full bg-slate-50 dark:bg-slate-800 border-none rounded-[24px] p-6 font-black italic uppercase tracking-tighter text-xl outline-none focus:ring-2 ring-orange-500/50 transition-all" />
-                  </div>
-                  <div className="space-y-2">
-                    <label className="font-black italic uppercase tracking-tighter text-xs text-slate-400">Incremento Valor (p/ Faixa)</label>
-                    <input name="incremento_valor" type="number" step="0.01" defaultValue={params?.incremento_valor || 10.00} className="w-full bg-slate-50 dark:bg-slate-800 border-none rounded-[24px] p-6 font-black italic uppercase tracking-tighter text-xl outline-none focus:ring-2 ring-orange-500/50 transition-all" />
-                  </div>
-                </div>
-                <button type="submit" className="w-full py-6 bg-orange-500 text-white rounded-[32px] font-black italic uppercase tracking-tighter shadow-lg shadow-orange-500/20 hover:bg-orange-600 transition-all">
-                  Salvar Parâmetros
-                </button>
-              </form>
-            </motion.div>
-
-            <motion.div
-              initial={{ opacity: 0, x: 20 }}
-              animate={{ opacity: 1, x: 0 }}
-              className="bg-slate-900 rounded-[48px] p-12 text-white space-y-8"
-            >
-              <h3 className="text-2xl font-black italic uppercase tracking-tighter">Prévia das <span className="text-orange-500">Faixas</span></h3>
-              <div className="space-y-4">
-                {[0, 1, 2, 3, 4].map(i => {
-                  const pa = (params?.pa_inicial || 1.60) + (i * (params?.incremento_pa || 0.05));
-                  const valor = (params?.valor_base || 30.00) + (i * (params?.incremento_valor || 10.00));
-                  return (
-                    <div key={i} className="flex items-center justify-between p-4 bg-white/5 rounded-[24px] border border-white/10">
-                      <div className="flex items-center gap-4">
-                        <div className="w-8 h-8 rounded-full bg-orange-500 flex items-center justify-center font-black italic text-xs">{i + 1}</div>
-                        <span className="font-black italic uppercase tracking-tighter text-sm">P.A. ≥ {pa.toFixed(2)}</span>
-                      </div>
-                      <span className="font-black italic uppercase tracking-tighter text-orange-500">R$ {valor.toFixed(2)}</span>
-                    </div>
-                  );
-                })}
-              </div>
-            </motion.div>
-          </div>
-        </div>
-      )}
-
-      {activeTab === 'weeks' && (
-        <div className="max-w-4xl mx-auto space-y-8">
-          <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
-            <h2 className="text-3xl font-black italic uppercase tracking-tighter text-slate-900 dark:text-white">
-              Gestão de <span className="text-orange-500">Semanas</span>
-            </h2>
-            <div className="flex items-center gap-4">
-              <select 
-                value={selectedStoreId}
-                onChange={(e) => setSelectedStoreId(e.target.value)}
-                className="bg-white dark:bg-slate-900 border border-slate-100 dark:border-slate-800 rounded-[24px] px-6 py-4 font-black italic uppercase tracking-tighter text-sm outline-none focus:border-orange-500 transition-all shadow-sm"
-              >
-                {stores.map(s => (
-                  <option key={s.id} value={s.id}>#{s.number} - {s.name}</option>
-                ))}
-              </select>
-              <button 
-                onClick={() => {
-                  setNewWeekData(prev => ({ 
-                    ...prev, 
-                    store_id: selectedStoreId,
-                    mes_ref: selectedMonth,
-                    ano_ref: selectedYear
-                  }));
-                  setShowNewWeekModal(true);
-                }}
-                className="flex items-center gap-2 px-6 py-4 bg-orange-500 text-white rounded-[24px] font-black italic uppercase tracking-tighter text-sm shadow-lg shadow-orange-500/20 hover:bg-orange-600 transition-all"
-              >
-                <Plus className="w-5 h-5" />
-                <span>Nova Semana</span>
-              </button>
-            </div>
-          </div>
-
-          <div className="bg-white dark:bg-slate-900 rounded-[48px] border border-slate-100 dark:border-slate-800 shadow-sm overflow-hidden">
-            {/* Mobile: cards */}
-            <div className="md:hidden space-y-3 p-4">
-              {weeks.map((week, i) => (
-                <motion.div 
-                  initial={{ opacity: 0, y: 10 }}
-                  animate={{ opacity: 1, y: 0 }}
-                  transition={{ delay: i * 0.05 }}
-                  key={week.id}
-                  className="bg-slate-50 dark:bg-slate-800/50 rounded-[24px] p-4 space-y-2"
-                >
-                  <div className="flex justify-between items-center border-b border-slate-100 dark:border-slate-700 pb-2">
-                    <span className="font-black italic uppercase tracking-tighter text-slate-900 dark:text-white">
-                      {format(parseLocalDate(week.data_inicio), 'dd/MM')} a {format(parseLocalDate(week.data_fim), 'dd/MM')}
-                    </span>
-                    <span className={`px-3 py-1 rounded-full font-black italic uppercase tracking-tighter text-[10px] ${
-                      week.status === 'aberta' ? 'bg-emerald-500/10 text-emerald-500' : 
-                      week.status === 'recibos_impressos' ? 'bg-blue-500/10 text-blue-500' :
-                      'bg-red-500/10 text-red-500'
-                    }`}>
-                      {week.status === 'recibos_impressos' ? 'RECIBOS IMPRESSOS' : week.status.toUpperCase()}
-                    </span>
-                  </div>
-                  <div className="flex justify-between items-center">
-                    <span className="text-slate-400 font-black italic uppercase tracking-tighter text-[10px]">Ações</span>
-                    <button 
-                      onClick={async () => {
-                        const newStatus = week.status === 'aberta' ? 'bloqueada' : 'aberta';
-                        await dashboardPAService.updateWeekStatus(week.id, newStatus);
-                        loadStoreWeeks(selectedStoreId);
-                      }}
-                      className={`font-black italic uppercase tracking-tighter text-xs hover:underline ${
-                        week.status === 'recibos_impressos' ? 'text-red-500' : 'text-orange-500'
-                      }`}
-                      title={week.status === 'recibos_impressos' ? 'Recibos já impressos' : ''}
-                    >
-                      {week.status === 'recibos_impressos' ? 'Reabrir' : week.status === 'aberta' ? 'Fechar' : 'Abrir'}
-                    </button>
-                  </div>
-                </motion.div>
-              ))}
-            </div>
-
-            {/* Desktop: table */}
-            <div className="hidden md:block overflow-x-auto">
-              <table className="w-full text-left border-collapse">
-              <thead>
-                <tr className="border-bottom border-slate-50 dark:border-slate-800/50">
-                  <th className="p-6 font-black italic uppercase tracking-tighter text-xs text-slate-400">Período (Seg-Sex)</th>
-                  <th className="p-6 font-black italic uppercase tracking-tighter text-xs text-slate-400 text-center">Pagamento (Sábado)</th>
-                  <th className="p-6 font-black italic uppercase tracking-tighter text-xs text-slate-400 text-center">Referência</th>
-                  <th className="p-6 font-black italic uppercase tracking-tighter text-xs text-slate-400 text-center">Status</th>
-                  <th className="p-6 font-black italic uppercase tracking-tighter text-xs text-slate-400 text-right">Ações</th>
-                </tr>
-              </thead>
-              <tbody>
-                {weeks.map((week, i) => {
-                  const dataPagamento = new Date(parseLocalDate(week.data_fim).getTime() + 86400000);
-                  return (
-                    <motion.tr 
-                      initial={{ opacity: 0, y: 10 }}
-                      animate={{ opacity: 1, y: 0 }}
-                      transition={{ delay: i * 0.05 }}
-                      key={week.id} 
-                      className="group border-b border-slate-50 dark:border-slate-800/50"
-                    >
-                      <td className="p-6">
-                        <div className="flex items-center gap-3">
-                          <Calendar className="w-5 h-5 text-orange-500" />
-                          <span className="font-black italic uppercase tracking-tighter text-slate-900 dark:text-white">
-                            {format(parseLocalDate(week.data_inicio), 'dd/MM/yyyy')} a {format(parseLocalDate(week.data_fim), 'dd/MM/yyyy')}
-                          </span>
-                        </div>
-                      </td>
-                      <td className="p-6 text-center">
-                        <span className="font-black italic uppercase tracking-tighter text-slate-600 dark:text-slate-400">
-                          {format(dataPagamento, 'dd/MM/yyyy')}
-                        </span>
-                      </td>
-                      <td className="p-6 text-center font-black italic uppercase tracking-tighter text-slate-600 dark:text-slate-400">
-                        {week.mes_ref.toString().padStart(2, '0')}/{week.ano_ref}
-                      </td>
-                      <td className="p-6 text-center">
-                        <span className={`px-4 py-1 rounded-full font-black italic uppercase tracking-tighter text-[10px] ${
-                          week.status === 'aberta' ? 'bg-emerald-500/10 text-emerald-500' : 
-                          week.status === 'recibos_impressos' ? 'bg-blue-500/10 text-blue-500' :
-                          'bg-slate-100 dark:bg-slate-800 text-slate-400'
-                        }`}>
-                          {week.status === 'recibos_impressos' ? 'RECIBOS IMPRESSOS' : week.status.toUpperCase()}
-                        </span>
-                      </td>
-                      <td className="p-6 text-right">
-                        <button 
-                          onClick={async () => {
-                            const newStatus = week.status === 'aberta' ? 'bloqueada' : 'aberta';
-                            await dashboardPAService.updateWeekStatus(week.id, newStatus);
-                            loadStoreWeeks(selectedStoreId);
-                          }}
-                          className={`font-black italic uppercase tracking-tighter text-xs hover:underline ${
-                            week.status === 'recibos_impressos' ? 'text-red-500' : 'text-orange-500'
-                          }`}
-                          title={week.status === 'recibos_impressos' ? 'Recibos já impressos' : ''}
-                        >
-                          {week.status === 'recibos_impressos' ? 'Reabrir' : week.status === 'aberta' ? 'Fechar' : 'Abrir'}
-                        </button>
-                      </td>
-                    </motion.tr>
-                  );
-                })}
-              </tbody>
-            </table>
-          </div>
+ 
+        {/* Título da Visualização */}
+        <div className="flex items-center justify-center gap-3 px-6 py-3 bg-gradient-to-r from-orange-50 to-red-50 dark:from-orange-900/20 dark:to-red-900/20 rounded-2xl border-2 border-orange-200 dark:border-orange-800">
+          <Trophy className="text-orange-600" size={20} />
+          <p className="text-sm font-black text-orange-900 dark:text-orange-100 uppercase italic">
+            {viewMode === 'semana' ? `Ranking - Semana ${weekLabel}` : `Ranking - ${monthLabel} ${selectedYear}`}
+          </p>
         </div>
       </div>
-      )}
-
-      {/* Import Modal */}
-      <AnimatePresence>
-        {showImportModal && (
-          <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
-            <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} onClick={() => setShowImportModal(false)} className="absolute inset-0 bg-slate-950/80 backdrop-blur-sm" />
-            <motion.div initial={{ opacity: 0, scale: 0.95, y: 20 }} animate={{ opacity: 1, scale: 1, y: 0 }} exit={{ opacity: 0, scale: 0.95, y: 20 }} className="relative w-full max-w-xl bg-white dark:bg-slate-900 rounded-[32px] md:rounded-[48px] p-6 md:p-12 shadow-2xl overflow-hidden max-h-[90vh] overflow-y-auto">
-              <button onClick={() => setShowImportModal(false)} className="absolute top-8 right-8 p-2 text-slate-400 hover:text-slate-600 dark:hover:text-slate-200 transition-all"><X className="w-6 h-6" /></button>
-              <div className="space-y-8">
-                <div className="space-y-2">
-                  <h3 className="text-3xl font-black italic uppercase tracking-tighter text-slate-900 dark:text-white leading-none">Importar <span className="text-orange-500">XLS</span></h3>
-                  <p className="text-slate-500 dark:text-slate-400 font-black italic uppercase tracking-tighter text-xs">Selecione a loja e a semana para importar os dados.</p>
+ 
+      {/* Ranking */}
+      <div className="space-y-4">
+        {loading && (
+          <div className="flex items-center justify-center py-20">
+            <div className="animate-spin w-12 h-12 border-4 border-orange-500 border-t-transparent rounded-full" />
+          </div>
+        )}
+ 
+        {!loading && performance.length === 0 && (
+          <div className="bg-white dark:bg-slate-900 rounded-3xl p-20 text-center border border-slate-200 dark:border-slate-800">
+            <Trophy className="mx-auto mb-4 text-slate-300" size={64} />
+            <p className="text-lg font-black text-slate-400 uppercase italic">
+              Nenhum dado encontrado
+            </p>
+            <p className="text-sm text-slate-400 mt-2">
+              Selecione outro período ou loja
+            </p>
+          </div>
+        )}
+ 
+        {!loading && performance.map((store, index) => {
+          const tier = getTier(index);
+          
+          return (
+            <div
+              key={store.storeId}
+              className={`${tier.bgColor} rounded-3xl p-6 border-2 ${
+                index < 3 ? 'border-slate-200 dark:border-slate-700 shadow-xl' : 'border-slate-100 dark:border-slate-800'
+              } transition-all hover:shadow-2xl`}
+            >
+              <div className="flex flex-col sm:flex-row items-start sm:items-center gap-6">
+                {/* Posição */}
+                <div className={`${tier.color} w-16 h-16 rounded-2xl flex items-center justify-center text-white font-black text-2xl shadow-lg flex-shrink-0`}>
+                  {index + 1}º
                 </div>
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                  <div className="space-y-1">
-                    <label className="font-black italic uppercase tracking-tighter text-[10px] text-slate-400">Loja</label>
-                    <select value={importStoreId} onChange={(e) => setImportStoreId(e.target.value)} className="w-full bg-slate-50 dark:bg-slate-800 rounded-[16px] p-4 font-black italic uppercase tracking-tighter text-xs outline-none focus:ring-2 ring-orange-500/50 transition-all">
-                      <option value="">Selecionar Loja</option>
-                      {stores.map(s => <option key={s.id} value={s.id}>#{s.number} - {s.name}</option>)}
-                    </select>
+ 
+                {/* Info da Loja */}
+                <div className="flex-1 min-w-0">
+                  <div className="flex items-center gap-3 mb-2">
+                    <h3 className="text-xl font-black text-slate-900 dark:text-white uppercase italic">
+                      Loja {store.storeNumber}
+                    </h3>
+                    <span className={`px-3 py-1 rounded-full text-xs font-black uppercase ${tier.textColor} bg-white dark:bg-slate-800 border-2 border-current`}>
+                      {tier.label}
+                    </span>
                   </div>
-                  <div className="space-y-1">
-                    <label className="font-black italic uppercase tracking-tighter text-[10px] text-slate-400">Semana</label>
-                    <select value={importWeekId} onChange={(e) => setImportWeekId(e.target.value)} className="w-full bg-slate-50 dark:bg-slate-800 rounded-[16px] p-4 font-black italic uppercase tracking-tighter text-xs outline-none focus:ring-2 ring-orange-500/50 transition-all">
-                      <option value="">Selecionar Semana</option>
-                      {weeks.filter(w => !importStoreId || w.store_id === importStoreId).map(w => (
-                        <option key={w.id} value={w.id}>{format(parseLocalDate(w.data_inicio), 'dd/MM')} a {format(parseLocalDate(w.data_fim), 'dd/MM')}</option>
-                      ))}
-                    </select>
+                  <p className="text-sm font-bold text-slate-500 dark:text-slate-400 uppercase">
+                    {store.storeName} • {store.city}
+                  </p>
+                </div>
+ 
+                {/* Métricas */}
+                <div className="grid grid-cols-2 sm:grid-cols-4 gap-4 w-full sm:w-auto">
+                  <div className="bg-white dark:bg-slate-800 rounded-xl p-3 border border-slate-200 dark:border-slate-700">
+                    <p className="text-xs font-black text-slate-400 uppercase mb-1">Score</p>
+                    <p className={`text-lg font-black ${tier.textColor}`}>
+                      {store.score.toFixed(1)}%
+                    </p>
+                  </div>
+ 
+                  <div className="bg-white dark:bg-slate-800 rounded-xl p-3 border border-slate-200 dark:border-slate-700">
+                    <p className="text-xs font-black text-slate-400 uppercase mb-1">P.A</p>
+                    <p className="text-lg font-black text-slate-900 dark:text-white">
+                      {store.paAtingido.toFixed(2)}
+                    </p>
+                    <p className="text-[10px] text-slate-400">Meta: {store.paMeta.toFixed(2)}</p>
+                  </div>
+ 
+                  <div className="bg-white dark:bg-slate-800 rounded-xl p-3 border border-slate-200 dark:border-slate-700">
+                    <p className="text-xs font-black text-slate-400 uppercase mb-1">Vendas</p>
+                    <p className="text-lg font-black text-blue-600">
+                      R$ {(store.totalVendas / 1000).toFixed(0)}k
+                    </p>
+                  </div>
+ 
+                  <div className="bg-white dark:bg-slate-800 rounded-xl p-3 border border-slate-200 dark:border-slate-700">
+                    <p className="text-xs font-black text-slate-400 uppercase mb-1">Premiados</p>
+                    <p className="text-lg font-black text-emerald-600">
+                      {store.qtdePremiados}/{store.qtdeVendedores}
+                    </p>
+                    <p className="text-[10px] text-slate-400">R$ {store.totalPremios.toFixed(0)}</p>
                   </div>
                 </div>
-                <div onClick={() => fileInputRef.current?.click()} className="border-4 border-dashed border-slate-100 dark:border-slate-800 rounded-[40px] p-12 flex flex-col items-center gap-4 cursor-pointer hover:border-orange-500/50 hover:bg-orange-500/5 transition-all group">
-                  <div className="p-6 rounded-[32px] bg-orange-500/10 text-orange-500 group-hover:scale-110 transition-all"><Upload className="w-10 h-10" /></div>
-                  <div className="text-center">
-                    <p className="font-black italic uppercase tracking-tighter text-slate-900 dark:text-white">Clique para selecionar</p>
-                    <p className="text-slate-400 font-black italic uppercase tracking-tighter text-[10px]">Formatos aceitos: .xls, .xlsx</p>
-                  </div>
-                  <input ref={fileInputRef} type="file" accept=".xls,.xlsx" onChange={handleFileUpload} className="hidden" />
-                </div>
-                {importing && (
-                  <div className="flex items-center justify-center gap-3 text-orange-500 font-black italic uppercase tracking-tighter">
-                    <motion.div animate={{ rotate: 360 }} transition={{ duration: 1, repeat: Infinity, ease: "linear" }} className="w-5 h-5 border-2 border-orange-500 border-t-transparent rounded-full" />
-                    <span>Processando...</span>
-                  </div>
-                )}
               </div>
-            </motion.div>
-          </div>
-        )}
-      </AnimatePresence>
-
-      {/* New Week Modal */}
-      <AnimatePresence>
-        {showNewWeekModal && (
-          <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
-            <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} onClick={() => setShowNewWeekModal(false)} className="absolute inset-0 bg-slate-950/80 backdrop-blur-sm" />
-            <motion.div initial={{ opacity: 0, scale: 0.95, y: 20 }} animate={{ opacity: 1, scale: 1, y: 0 }} exit={{ opacity: 0, scale: 0.95, y: 20 }} className="relative w-full max-w-xl bg-white dark:bg-slate-900 rounded-[32px] md:rounded-[48px] p-6 md:p-12 shadow-2xl max-h-[90vh] overflow-y-auto">
-              <button onClick={() => setShowNewWeekModal(false)} className="absolute top-8 right-8 p-2 text-slate-400 hover:text-slate-600 transition-all"><X className="w-6 h-6" /></button>
-              <h3 className="text-3xl font-black italic uppercase tracking-tighter text-slate-900 dark:text-white mb-8">Nova <span className="text-orange-500">Semana</span></h3>
-              <form onSubmit={handleCreateWeek} className="space-y-6">
-                <div className="space-y-2">
-                  <label className="font-black italic uppercase tracking-tighter text-xs text-slate-400">Loja</label>
-                  <select value={newWeekData.store_id} onChange={e => setNewWeekData({...newWeekData, store_id: e.target.value})} className="w-full bg-slate-50 dark:bg-slate-800 rounded-[20px] p-4 font-black italic uppercase tracking-tighter outline-none focus:ring-2 ring-orange-500/50">
-                    {stores.map(s => <option key={s.id} value={s.id}>#{s.number} - {s.name}</option>)}
-                  </select>
-                </div>
-                <div className="grid grid-cols-2 gap-4">
-                  <div className="space-y-2">
-                    <label className="font-black italic uppercase tracking-tighter text-xs text-slate-400">Início</label>
-                    <input type="date" value={newWeekData.data_inicio} onChange={e => setNewWeekData({...newWeekData, data_inicio: e.target.value})} className="w-full bg-slate-50 dark:bg-slate-800 rounded-[20px] p-4 font-black italic uppercase tracking-tighter outline-none focus:ring-2 ring-orange-500/50" />
-                  </div>
-                  <div className="space-y-2">
-                    <label className="font-black italic uppercase tracking-tighter text-xs text-slate-400">Fim</label>
-                    <input type="date" value={newWeekData.data_fim} onChange={e => setNewWeekData({...newWeekData, data_fim: e.target.value})} className="w-full bg-slate-50 dark:bg-slate-800 rounded-[20px] p-4 font-black italic uppercase tracking-tighter outline-none focus:ring-2 ring-orange-500/50" />
-                  </div>
-                </div>
-                <div className="grid grid-cols-2 gap-4">
-                  <div className="space-y-2">
-                    <label className="font-black italic uppercase tracking-tighter text-xs text-slate-400">Mês Ref.</label>
-                    <input type="number" value={newWeekData.mes_ref} onChange={e => setNewWeekData({...newWeekData, mes_ref: Number(e.target.value)})} className="w-full bg-slate-50 dark:bg-slate-800 rounded-[20px] p-4 font-black italic uppercase tracking-tighter outline-none focus:ring-2 ring-orange-500/50" />
-                  </div>
-                  <div className="space-y-2">
-                    <label className="font-black italic uppercase tracking-tighter text-xs text-slate-400">Ano Ref.</label>
-                    <input type="number" value={newWeekData.ano_ref} onChange={e => setNewWeekData({...newWeekData, ano_ref: Number(e.target.value)})} className="w-full bg-slate-50 dark:bg-slate-800 rounded-[20px] p-4 font-black italic uppercase tracking-tighter outline-none focus:ring-2 ring-orange-500/50" />
-                  </div>
-                </div>
-                <button type="submit" className="w-full py-6 bg-orange-500 text-white rounded-[32px] font-black italic uppercase tracking-tighter shadow-lg shadow-orange-500/20 hover:bg-orange-600 transition-all">Criar Semana</button>
-              </form>
-            </motion.div>
-          </div>
-        )}
-      </AnimatePresence>
+            </div>
+          );
+        })}
+      </div>
+ 
+      {/* Footer Info */}
+      {!loading && performance.length > 0 && (
+        <div className="bg-slate-100 dark:bg-slate-900 rounded-2xl p-4 border border-slate-200 dark:border-slate-800">
+          <p className="text-xs font-bold text-slate-500 dark:text-slate-400 text-center uppercase tracking-widest">
+            📊 Exibindo {performance.length} {performance.length === 1 ? 'loja' : 'lojas'} • 
+            Score = 30% Vendas + 70% P.A • 
+            Atualizado em tempo real
+          </p>
+        </div>
+      )}
     </div>
   );
 };
-
+ 
 export default DashboardPAAdmin;
