@@ -2,13 +2,13 @@ import React, { useState, useEffect, useMemo } from 'react';
 import { User, Store, Receipt } from '../types';
 import { formatCurrency, BRAND_LOGO } from '../constants';
 import { Printer, FileText, PenTool } from 'lucide-react';
+import apiService from '../services/apiService';
 
 interface ReceiptsModuleProps {
   user: User;
   stores: Store[];
   receipts: Receipt[];
-  onAddReceipt: (receipt: Receipt) => void;
-  nextReceiptNumber: number;
+  onAddReceipt: (receipt: any) => Promise<any>;
 }
 
 const numberToWords = (value: number): string => {
@@ -17,6 +17,7 @@ const numberToWords = (value: number): string => {
     const dez_vinte = ["dez", "onze", "doze", "treze", "quatorze", "quinze", "dezesseis", "dezessete", "dezoito", "dezenove"];
     const dezenas = ["", "dez", "vinte", "trinta", "quarenta", "cinquenta", "sessenta", "setenta", "oitenta", "noventa"];
     const centenas = ["", "cento", "duzentos", "trezentos", "quatrocentos", "quinhentos", "seiscentos", "setecentos", "oitocentos", "novecentos"];
+    
     const convertGroup = (n: number): string => {
         if (n < 10) return unidades[n];
         if (n < 20) return dez_vinte[n - 10];
@@ -33,9 +34,11 @@ const numberToWords = (value: number): string => {
         }
         return "";
     };
+    
     const integerPart = Math.floor(value);
     const decimalPart = Math.round((value - integerPart) * 100);
     let text = "";
+    
     if (integerPart > 0) {
         if (integerPart === 1) text += "um real";
         else if (integerPart < 1000) text += convertGroup(integerPart) + " reais";
@@ -47,15 +50,20 @@ const numberToWords = (value: number): string => {
             text += " reais";
         }
     }
+    
     if (decimalPart > 0) {
         if (integerPart > 0) text += " e ";
         text += convertGroup(decimalPart) + (decimalPart === 1 ? " centavo" : " centavos");
     }
+    
     return text;
 };
 
-const ReceiptsModule: React.FC<ReceiptsModuleProps> = ({ user, stores, receipts, onAddReceipt, nextReceiptNumber }) => {
+const ReceiptsModule: React.FC<ReceiptsModuleProps> = ({ user, stores, receipts, onAddReceipt }) => {
   const userStore = useMemo(() => stores.find(s => s.id === user.storeId), [stores, user.storeId]);
+  
+  const [nextNumber, setNextNumber] = useState(1);
+  const [isLoading, setIsLoading] = useState(false);
   
   const [receiptData, setReceiptData] = useState({
       value: '',
@@ -69,21 +77,36 @@ const ReceiptsModule: React.FC<ReceiptsModuleProps> = ({ user, stores, receipts,
       if (userStore) {
           setReceiptData(prev => ({
               ...prev,
-              payer: `REAL CALÇADOS LOJA ${userStore.number} ${userStore.city.split(' - ')[0]}`.toUpperCase()
+              payer: `REAL CALÇADOS LOJA ${userStore.number} ${userStore.city?.split(' - ')[0] || ''}`.toUpperCase()
           }));
       }
   }, [userStore]);
 
+  // ✅ Buscar próximo número usando a função do backend
+  useEffect(() => {
+      async function fetchNextNumber() {
+          try {
+              const result = await apiService.getNextReceiptNumber();
+              setNextNumber(result.next_number);
+          } catch (err) {
+              console.error('Erro ao buscar próximo número:', err);
+              setNextNumber(1);
+          }
+      }
+      
+      fetchNextNumber();
+  }, []);
+
   const receiptValueNum = parseFloat(receiptData.value.replace(/\./g, '').replace(',', '.')) || 0;
   const valueInWords = numberToWords(receiptValueNum);
-  const city = userStore?.city.split(' - ')[0] || 'Cidade';
-  const formattedNumber = String(nextReceiptNumber).padStart(4, '0');
+  const city = userStore?.city?.split(' - ')[0] || 'Cidade';
+  const formattedNumber = String(nextNumber).padStart(4, '0');
 
-  const printReceipt = (receipt: Receipt, receiptNumber: string) => {
+  const printReceipt = (receipt: any, receiptNumber: string) => {
       const printWindow = window.open('', '_blank', 'width=900,height=1200');
       if (!printWindow) return;
 
-      const [y, m, d] = receipt.date.split('-').map(Number);
+      const [y, m, d] = receipt.receipt_date.split('-').map(Number);
       const dateObj = new Date(y, m - 1, d);
       const formattedDate = dateObj.toLocaleDateString('pt-BR', { day: 'numeric', month: 'long', year: 'numeric' });
       const formattedValue = formatCurrency(receipt.value);
@@ -122,7 +145,7 @@ const ReceiptsModule: React.FC<ReceiptsModuleProps> = ({ user, stores, receipts,
                     </div>
                     <div class="flex-1 space-y-4 text-xl text-gray-900">
                         <p>Recebi(emos) de <span class="handwritten inline-block min-w-[130mm]">${receipt.payer}</span></p>
-                        <div class="leading-relaxed">A quantia de <span class="handwritten italic bg-gray-50 border-b border-gray-200 block w-full px-4 py-1.5 mt-2 text-lg uppercase min-h-[1.2em]">${receipt.valueInWords}</span></div>
+                        <div class="leading-relaxed">A quantia de <span class="handwritten italic bg-gray-50 border-b border-gray-200 block w-full px-4 py-1.5 mt-2 text-lg uppercase min-h-[1.2em]">${receipt.value_in_words}</span></div>
                         <p>Referente a <span class="handwritten inline-block min-w-[145mm]">${receipt.reference}</span>.</p>
                     </div>
                     <div class="clause">
@@ -143,18 +166,52 @@ const ReceiptsModule: React.FC<ReceiptsModuleProps> = ({ user, stores, receipts,
         </body>
         </html>
       `;
-      printWindow.document.write(htmlContent); printWindow.document.close();
+      printWindow.document.write(htmlContent); 
+      printWindow.document.close();
   };
 
-  const handlePrintAndSave = () => {
+  // ✅ NOVA FUNÇÃO: Usa o backend do Supabase
+  const handlePrintAndSave = async () => {
       if (receiptValueNum <= 0 || !receiptData.payer || !receiptData.recipient) {
-          alert("Preencha todos os campos obrigatórios."); return;
+          alert("Preencha todos os campos obrigatórios."); 
+          return;
       }
-      const newReceipt: Receipt = {
-          id: formattedNumber, storeId: user.storeId, issuerName: user.name, payer: receiptData.payer, recipient: receiptData.recipient, value: receiptValueNum, valueInWords: valueInWords.toUpperCase(), reference: receiptData.reference, date: receiptData.date, createdAt: new Date()
-      };
-      onAddReceipt(newReceipt); printReceipt(newReceipt, formattedNumber);
-      setReceiptData(prev => ({ ...prev, value: '', recipient: '', reference: 'pagamento de serviços' }));
+
+      setIsLoading(true);
+
+      try {
+          // Criar recibo usando a função centralizada no App.tsx
+          const savedReceipt = await onAddReceipt({
+              payer: receiptData.payer,
+              recipient: receiptData.recipient,
+              value: receiptValueNum,
+              valueInWords: valueInWords.toUpperCase(),
+              reference: receiptData.reference,
+              date: receiptData.date
+          });
+
+          // Imprimir
+          printReceipt(savedReceipt, savedReceipt.formatted_number);
+
+          // Atualizar próximo número
+          setNextNumber(savedReceipt.receipt_number + 1);
+          
+          // Limpar formulário
+          setReceiptData(prev => ({ 
+              ...prev, 
+              value: '', 
+              recipient: '', 
+              reference: 'pagamento de serviços' 
+          }));
+
+          alert(`✅ Recibo #${savedReceipt.formatted_number} salvo com sucesso!`);
+
+      } catch (error: any) {
+          console.error('Erro ao salvar recibo:', error);
+          alert(`❌ Erro ao salvar recibo: ${error.message || 'Erro desconhecido'}`);
+      } finally {
+          setIsLoading(false);
+      }
   };
 
   return (
@@ -179,8 +236,12 @@ const ReceiptsModule: React.FC<ReceiptsModuleProps> = ({ user, stores, receipts,
                     <div><label className="block text-xs font-bold text-gray-500 uppercase mb-1">Nome do Recebedor</label><input value={receiptData.recipient} onChange={e => setReceiptData({...receiptData, recipient: e.target.value})} placeholder="Favorecido" className="w-full p-3 bg-gray-50 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none font-medium text-gray-900" /></div>
                     <div><label className="block text-xs font-bold text-gray-500 uppercase mb-1">Referente a</label><input value={receiptData.reference} onChange={e => setReceiptData({...receiptData, reference: e.target.value})} placeholder="Ex: Prestação de serviços" className="w-full p-3 bg-gray-50 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none text-gray-900" /></div>
                     <div><label className="block text-xs font-bold text-gray-500 uppercase mb-1">Data</label><input type="date" value={receiptData.date} onChange={e => setReceiptData({...receiptData, date: e.target.value})} className="w-full p-3 bg-gray-50 border border-gray-300 rounded-lg outline-none" /></div>
-                    <button onClick={handlePrintAndSave} className="w-full mt-4 bg-blue-900 text-white py-4 rounded-lg font-bold hover:bg-black transition-colors flex items-center justify-center gap-2 shadow-lg">
-                        <Printer size={18} /> Salvar e Imprimir (A5 Profissional)
+                    <button 
+                        onClick={handlePrintAndSave} 
+                        disabled={isLoading}
+                        className="w-full mt-4 bg-blue-900 text-white py-4 rounded-lg font-bold hover:bg-black transition-colors flex items-center justify-center gap-2 shadow-lg disabled:opacity-50 disabled:cursor-not-allowed">
+                        <Printer size={18} /> 
+                        {isLoading ? 'Salvando...' : 'Salvar e Imprimir (A5 Profissional)'}
                     </button>
                 </div>
             </div>
@@ -196,12 +257,12 @@ const ReceiptsModule: React.FC<ReceiptsModuleProps> = ({ user, stores, receipts,
                             <div className="text-right">
                                 <h2 className="text-3xl font-black text-gray-200 uppercase leading-none">RECIBO</h2>
                                 <p className="text-xs font-bold text-red-600">Nº {formattedNumber}</p>
-                                <div className="text-2xl font-bold text-gray-900 mt-2 border-2 border-black px-4 py-1 bg-gray-50 inline-block italic">${formatCurrency(receiptValueNum)}</div>
+                                <div className="text-2xl font-bold text-gray-900 mt-2 border-2 border-black px-4 py-1 bg-gray-50 inline-block italic">{formatCurrency(receiptValueNum)}</div>
                             </div>
                         </div>
                         <div className="space-y-8 text-gray-900 text-lg leading-relaxed">
                             <p>Recebi(emos) de <span className="font-bold border-b-2 border-dotted border-black px-2 min-w-[200px] inline-block uppercase italic">{receiptData.payer || '_______________________'}</span></p>
-                            <p>a quantia de <span className="font-bold italic bg-gray-50 px-3 py-1 border border-gray-200 shadow-sm block w-full mt-2 text-gray-800 text-sm uppercase leading-tight">${valueInWords || 'ZERO REAIS'}</span></p>
+                            <p>a quantia de <span className="font-bold italic bg-gray-50 px-3 py-1 border border-gray-200 shadow-sm block w-full mt-2 text-gray-800 text-sm uppercase leading-tight">{valueInWords || 'ZERO REAIS'}</span></p>
                             <p>referente a <span className="border-b-2 border-dotted border-black px-2 min-w-[250px] inline-block italic">{receiptData.reference}</span>.</p>
                             <div className="py-4 text-center text-[9pt] leading-tight text-gray-700 italic border-y border-gray-100 font-serif px-8">"E para maior clareza firmo o presente recibo para que produza os seus efeitos, dando plena, rasa e irrevogável quitação, pelo valor recebido e descrito neste termo."</div>
                         </div>

@@ -22,6 +22,7 @@ const DashboardPAModule: React.FC<DashboardPAModuleProps> = ({
       <DashboardPAAdmin 
         user={user}
         stores={stores}
+        onRefresh={onRefresh}
       />
     );
   }

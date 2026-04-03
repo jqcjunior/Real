@@ -373,6 +373,7 @@ export interface CashError {
 export interface Receipt {
   id: string;
   storeId?: string;
+  receiptNumber?: number;
   issuerName: string;
   payer: string;
   recipient: string;

@@ -6,6 +6,7 @@ import {
     IceCreamStockMovement, StoreProfitPartner, AdminUser, PurchasingManagement
 } from './types';
 import { supabase } from './services/supabaseClient';
+import apiService from './services/apiService';
 import { BRAND_LOGO } from './constants';
 
 // Módulos
@@ -53,7 +54,34 @@ const App: React.FC = () => {
         if (window.innerWidth >= 1024) {
             setIsSidebarOpen(true);
         }
-        bootstrapPermissions();
+        
+        const init = async () => {
+            await bootstrapPermissions();
+            
+            // Recuperar sessão do apiService
+            const savedUser = apiService.getUser();
+            if (savedUser && apiService.isAuthenticated()) {
+                const rawRole = (savedUser.role_level || savedUser.role || '').toUpperCase();
+                const mappedRole = rawRole === 'SORVETE' ? 'ICE_CREAM' : rawRole;
+                
+                const loggedUser: User = {
+                    id: savedUser.id,
+                    name: savedUser.name,
+                    role: mappedRole as UserRole,
+                    email: savedUser.email,
+                    storeId: savedUser.store_id || savedUser.storeId
+                };
+                
+                setUser(loggedUser);
+                await fetchPermissions(loggedUser.role);
+                setCurrentView(loggedUser.role === UserRole.ADMIN ? 'dashboard_rede' : loggedUser.role === UserRole.ICE_CREAM ? 'pdv_gelateria' : 'dashboard_loja');
+            } else {
+                // Se não houver usuário, precisamos garantir que isLoading seja false para mostrar o login
+                setIsLoading(false);
+            }
+        };
+        
+        init();
     }, []);
 
     useEffect(() => {
@@ -199,42 +227,13 @@ const App: React.FC = () => {
 
     const fetchData = async () => {
         try {
+            // Fase 1 — Dados críticos do dashboard
             const [
-                {data: s}, {data: p}, {data: pur}, {data: c}, {data: cs}, {data: cd}, {data: cat}, {data: mix},
-                {data: ici}, {data: ics}, {data: icst}, {data: icp}, {data: r}, {data: ce}, {data: ag}, {data: dl}, {data: cl}, {data: lg},
-                {data: g}, {data: cds}, {data: pxs}, {data: sls}, {data: slsp},
-                {data: sangCat}, {data: sang}, {data: movements}, {data: part}, {data: ausers},
-                {data: pm}
+                {data: s}, {data: p}, {data: g}
             ] = await Promise.all([
                 supabase.from('stores').select('*'),
-                supabase.from('monthly_performance').select('*'), 
-                supabase.from('product_performance').select('*'),
-                supabase.from('cotas_with_category').select('*'),
-                supabase.from('cota_settings').select('*'),
-                supabase.from('cota_debts').select('*'),
-                supabase.from('quota_product_categories').select('*'),
-                supabase.from('quota_mix_parameters').select('*'),
-                supabase.from('ice_cream_items').select('*'),
-                fetchAllRows('ice_cream_daily_sales', 'created_at'),
-                supabase.from('ice_cream_stock').select('*'),
-                supabase.from('ice_cream_promissory_notes').select('*'),
-                supabase.from('financial_receipts').select('*').order('created_at', { ascending: true }),
-                supabase.from('cash_errors').select('*').order('created_at', { ascending: false }),
-                supabase.from('agenda_tasks').select('*').order('due_time', { ascending: true }),
-                supabase.from('downloads').select('*'),
-                supabase.from('cash_register_closures').select('*'),
-                supabase.from('system_logs').select('*').order('created_at', { ascending: false }).limit(200),
-                supabase.from('monthly_goals').select('*'),
-                fetchAllRows('financial_card_sales', 'created_at'),
-                fetchAllRows('financial_pix_sales', 'created_at'),
-                fetchAllRows('ice_cream_sales', 'created_at'),
-                fetchAllRows('ice_cream_daily_sales_payments', 'created_at'),
-                supabase.from('ice_cream_sangria_categoria').select('*'),
-                fetchAllRows('ice_cream_sangria', 'created_at'),
-                fetchAllRows('ice_cream_stock_movements', 'created_at'),
-                supabase.from('store_profit_distribution').select('*'),
-                supabase.from('admin_users').select('*'),
-                supabase.from('gestao_compras').select('*')
+                supabase.from('monthly_performance_actual').select('*'),
+                supabase.from('monthly_goals').select('*')
             ]);
 
             if(s) setStores(s.map(x => ({
@@ -243,8 +242,7 @@ const App: React.FC = () => {
                 managerEmail: x.manager_email,
                 managerPhone: x.manager_phone
             })).sort((a, b) => Number(a.number) - Number(b.number)));
-            if(sls) setSales(sls);
-            if(slsp) setSalePayments(slsp.map(x => ({ ...x, amount: Number(x.amount || 0) })));
+
             if(p) setPerformanceData(p.map(x => ({ 
                 ...x, 
                 storeId: x.store_id, 
@@ -262,7 +260,50 @@ const App: React.FC = () => {
                 ticketTarget: Number(x.ticket_target || 0), 
                 businessDays: Number(x.business_days || 26) 
             })));
+
             if(g) setGoalsData(g.map(x => ({ id: x.id, storeId: x.store_id, year: Number(x.year), month: Number(x.month), revenueTarget: Number(x.revenue_target || 0), itemsTarget: Number(x.items_target || 0), paTarget: Number(x.pa_target || 0), puTarget: Number(x.pu_target || 0), ticketTarget: Number(x.ticket_target || 0), delinquencyTarget: Number(x.delinquency_target || 2.0), businessDays: Number(x.business_days || 26), trend: x.trend || 'stable' })));
+
+            // Chama setIsLoading(false) imediatamente após a Fase 1
+            setIsLoading(false);
+
+            // Fase 2 — Carrega em background
+            const [
+                {data: pur}, {data: c}, {data: cs}, {data: cd}, {data: cat}, {data: mix},
+                {data: ici}, {data: ics}, {data: icst}, {data: icp}, {data: r}, {data: ce}, {data: ag}, {data: dl}, {data: cl}, {data: lg},
+                {data: cds}, {data: pxs}, {data: sls}, {data: slsp},
+                {data: sangCat}, {data: sang}, {data: movements}, {data: part}, {data: ausers},
+                {data: pm}
+            ] = await Promise.all([
+                supabase.from('product_performance').select('*'),
+                supabase.from('cotas_with_category').select('*'),
+                supabase.from('cota_settings').select('*'),
+                supabase.from('cota_debts').select('*'),
+                supabase.from('quota_product_categories').select('*'),
+                supabase.from('quota_mix_parameters').select('*'),
+                supabase.from('ice_cream_items').select('*'),
+                fetchAllRows('ice_cream_daily_sales', 'created_at'),
+                supabase.from('ice_cream_stock').select('*'),
+                supabase.from('ice_cream_promissory_notes').select('*'),
+                supabase.from('financial_receipts').select('*').order('created_at', { ascending: true }),
+                supabase.from('cash_errors').select('*').order('created_at', { ascending: false }),
+                supabase.from('agenda_tasks').select('*').order('due_time', { ascending: true }),
+                supabase.from('downloads').select('*'),
+                supabase.from('cash_register_closures').select('*'),
+                supabase.from('system_logs').select('*').order('created_at', { ascending: false }).limit(200),
+                fetchAllRows('financial_card_sales', 'created_at'),
+                fetchAllRows('financial_pix_sales', 'created_at'),
+                fetchAllRows('ice_cream_sales', 'created_at'),
+                fetchAllRows('ice_cream_daily_sales_payments', 'created_at'),
+                supabase.from('ice_cream_sangria_categoria').select('*'),
+                fetchAllRows('ice_cream_sangria', 'created_at'),
+                fetchAllRows('ice_cream_stock_movements', 'created_at'),
+                supabase.from('store_profit_distribution').select('*'),
+                supabase.from('admin_users').select('*'),
+                supabase.from('gestao_compras').select('*')
+            ]);
+
+            if(sls) setSales(sls);
+            if(slsp) setSalePayments(slsp.map(x => ({ ...x, amount: Number(x.amount || 0) })));
             if(pur) setPurchasingData(pur.map(x => ({...x, storeId: x.store_id, pairsSold: x.pairs_sold})));
             if(c) setCotas(c.map(x => ({ ...x, id: x.id, storeId: x.store_id, totalValue: Number(x.total_value || 0), shipmentDate: x.shipment_date, paymentTerms: x.payment_terms, createdByRole: x.created_by_role, category_id: x.category_id, category_name: x.category_name || x.classification, createdAt: new Date(x.created_at) })));
             if(cs) setCotaSettings(cs.map(x => ({...x, storeId: x.store_id, budgetValue: x.budget_value, managerPercent: x.manager_percent})));
@@ -323,31 +364,33 @@ const App: React.FC = () => {
 
     const handleLogin = async (email: string, pass: string, remember: boolean) => {
         try {
-            const normalizedEmail = email.trim().toLowerCase();
-            const { data: userCheck, error: checkError } = await supabase
-                .from('admin_users')
-                .select('id, status, password')
-                .eq('email', normalizedEmail)
-                .maybeSingle();
-
-            if (checkError || !userCheck) return { success: false, error: 'Usuário não encontrado.' };
-            if (userCheck.status !== 'active') return { success: false, error: 'Acesso inativo.' };
-            if (userCheck.password !== pass) return { success: false, error: 'Senha incorreta.' };
-
-            const { data, error } = await supabase.from('admin_users').select('*').eq('id', userCheck.id).single();
-            if (error || !data) return { success: false, error: 'Erro ao recuperar perfil.' };
+            const result = await apiService.login(email, pass);
             
-            const rawRole = data.role_level.toUpperCase();
+            const rawRole = result.user.role_level.toUpperCase();
             const mappedRole = rawRole === 'SORVETE' ? 'ICE_CREAM' : rawRole;
             await fetchPermissions(mappedRole);
 
-            const loggedUser: User = { id: data.id, name: data.name, role: mappedRole as UserRole, email: data.email, storeId: data.store_id };
+            const loggedUser: User = { 
+                id: result.user.id, 
+                name: result.user.name, 
+                role: mappedRole as UserRole, 
+                email: result.user.email, 
+                storeId: result.user.store_id 
+            };
+            
             setUser(loggedUser);
             setCurrentView(loggedUser.role === UserRole.ADMIN ? 'dashboard_rede' : loggedUser.role === UserRole.ICE_CREAM ? 'pdv_gelateria' : 'dashboard_loja');
             return { success: true, user: loggedUser };
         } catch (err: any) { 
-            return { success: false, error: 'Falha na conexão.' }; 
+            return { success: false, error: err.message || 'Falha na conexão.' }; 
         }
+    };
+
+    const handleLogout = async () => {
+        await apiService.logout();
+        setUser(null);
+        setCurrentView('');
+        window.location.reload();
     };
 
     useEffect(() => { 
@@ -474,7 +517,7 @@ const App: React.FC = () => {
                         <Lock size={18} /> Alterar Senha
                     </button>
                     <button 
-                        onClick={() => window.location.reload()} 
+                        onClick={handleLogout} 
                         className="w-full flex items-center gap-4 p-4 text-red-500 font-black uppercase text-[10px] hover:bg-red-50/50 dark:hover:bg-red-900/20 rounded-xl transition-all border border-red-100 dark:border-red-900/30"
                     >
                         <LogOut size={18} /> Sair
@@ -696,7 +739,54 @@ const App: React.FC = () => {
                             liquidatePromissory={async (id) => { await supabase.from('ice_cream_promissory_notes').update({ status: 'paid' }).eq('id', id); await fetchData(); }} 
                             onDeleteStockItem={async (id) => { if (user?.role === UserRole.ADMIN) { await supabase.from('ice_cream_stock').update({ is_active: false }).eq('id', id); await fetchData(); } }} 
                         />;
-                        if (currentView === 'caixa' && can('MODULE_CASH_REGISTER')) return <CashRegisterModule user={user!} stores={stores} sales={iceCreamSales} pixSales={pixSales} closures={closures} receipts={receipts} errors={cashErrors} onAddClosure={async (c) => { await supabase.from('cash_register_closures').insert([{ store_id: c.storeId || user?.storeId, closed_by: user?.name, total_sales: c.totalSales, total_expenses: c.totalExpenses, balance: c.balance, notes: c.notes, date: c.date }]); addLog('FECHAMENTO CAIXA', `Fechamento da loja ${c.storeId} no valor de ${c.balance}`); fetchData(); }} onAddReceipt={async (r) => { await supabase.from('financial_receipts').insert([{ id: r.id, store_id: r.storeId || user?.storeId, issuer_name: user?.name, payer: r.payer, recipient: r.recipient, value: r.value, value_in_words: r.valueInWords, reference: r.reference, receipt_date: r.date }]); addLog('EMISSÃO RECIBO', `Recibo #${r.id} para ${r.recipient} no valor de ${r.value}`); fetchData(); }} onAddError={async (e) => { await supabase.from('cash_errors').insert([e]); addLog('REGISTRO QUEBRA', `${e.type === 'shortage' ? 'Falta' : 'Sobra'} de ${e.value} na loja ${e.store_id}`); fetchData(); }} onDeleteError={async (id) => { await supabase.from('cash_errors').delete().eq('id', id); addLog('EXCLUSÃO QUEBRA', `Remoção do registro de quebra ID: ${id}`); fetchData(); }} onAddLog={addLog} />;
+                        if (currentView === 'caixa' && can('MODULE_CASH_REGISTER')) return (
+                            <CashRegisterModule 
+                                user={user!} 
+                                stores={stores} 
+                                sales={iceCreamSales} 
+                                pixSales={pixSales} 
+                                closures={closures} 
+                                receipts={receipts} 
+                                errors={cashErrors} 
+                                onAddClosure={async (c) => { 
+                                    await supabase.from('cash_register_closures').insert([{ 
+                                        store_id: c.storeId || user?.storeId, 
+                                        closed_by: user?.name, 
+                                        total_sales: c.totalSales, 
+                                        total_expenses: c.totalExpenses, 
+                                        balance: c.balance, 
+                                        notes: c.notes, 
+                                        date: c.date 
+                                    }]); 
+                                    addLog('FECHAMENTO CAIXA', `Fechamento da loja ${c.storeId} no valor de ${c.balance}`); 
+                                    fetchData(); 
+                                }} 
+                                onAddReceipt={async (r) => { 
+                                    const saved = await apiService.createReceipt({
+                                        payer: r.payer,
+                                        recipient: r.recipient,
+                                        value: r.value,
+                                        value_in_words: r.valueInWords,
+                                        reference: r.reference,
+                                        receipt_date: r.date
+                                    });
+                                    addLog('EMISSÃO RECIBO', `Recibo #${saved.receipt_number} para ${saved.recipient} no valor de ${saved.value}`); 
+                                    fetchData(); 
+                                    return saved;
+                                }} 
+                                onAddError={async (e) => { 
+                                    await supabase.from('cash_errors').insert([e]); 
+                                    addLog('REGISTRO QUEBRA', `${e.type === 'shortage' ? 'Falta' : 'Sobra'} de ${e.value} na loja ${e.store_id}`); 
+                                    fetchData(); 
+                                }} 
+                                onDeleteError={async (id) => { 
+                                    await supabase.from('cash_errors').delete().eq('id', id); 
+                                    addLog('EXCLUSÃO QUEBRA', `Remoção do registro de quebra ID: ${id}`); 
+                                    fetchData(); 
+                                }} 
+                                onAddLog={addLog} 
+                            />
+                        );
                         if (currentView === 'agenda' && can('MODULE_AGENDA')) return <AgendaSystem user={user!} tasks={agenda} onAddTask={async (t) => { await supabase.from('agenda_tasks').insert([{ user_id: user?.id, title: t.title, description: t.description, due_date: t.dueDate, due_time: t.dueTime, priority: t.priority, is_completed: false }]); fetchData(); }} onUpdateTask={async (t) => { await supabase.from('agenda_tasks').update({ is_completed: t.isCompleted }).eq('id', t.id); fetchData(); }} onDeleteTask={async (id) => { await supabase.from('agenda_tasks').delete().eq('id', id); fetchData(); }} />;
                         if (currentView === 'autoriz_compra' && can('MODULE_AUTORIZ_COMPRA')) return <PurchaseAuthorization />;
                         if (currentView === 'termo_condicional' && can('MODULE_TERMO_CONDICIONAL')) return <TermoAutorizacao user={user!} store={stores.find(s => s.id === user?.storeId)} />;

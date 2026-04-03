@@ -14,7 +14,7 @@ interface FinancialModuleProps {
   receipts: Receipt[];
   onAddSale: (sale: CreditCardSale) => Promise<void>;
   onDeleteSale: (id: string) => Promise<void>;
-  onAddReceipt: (receipt: Receipt) => Promise<void>;
+  onAddReceipt: (receipt: any) => Promise<any>;
 }
 
 const FinancialModule: React.FC<FinancialModuleProps> = ({ user, store, sales, receipts, onAddSale, onDeleteSale, onAddReceipt }) => {
@@ -48,7 +48,6 @@ const FinancialModule: React.FC<FinancialModuleProps> = ({ user, store, sales, r
                     stores={store ? [store] : []} 
                     receipts={receipts} 
                     onAddReceipt={onAddReceipt} 
-                    nextReceiptNumber={receipts.length + 1} 
                 />
             </div>
         ) : (

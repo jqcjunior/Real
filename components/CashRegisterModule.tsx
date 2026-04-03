@@ -6,6 +6,7 @@ import {
     Plus, Trash2, Printer, Loader2, CreditCard as CardIcon, Trash, CheckCircle2, User as UserIcon, PenTool, Edit3, X, Check, Settings, Settings2, XCircle
 } from 'lucide-react';
 import { supabase } from '../services/supabaseClient';
+import apiService from '../services/apiService';
 
 interface CardEntry {
     id: string;
@@ -29,7 +30,7 @@ interface CashRegisterModuleProps {
     errors: CashError[];
     finances?: any[];
     onAddClosure: (closure: any) => Promise<void>;
-    onAddReceipt: (receipt: any) => Promise<void>;
+    onAddReceipt: (receipt: any) => Promise<any>;
     onAddError: (error: any) => Promise<void>;
     onDeleteError: (id: string) => Promise<void>;
     onAddLog?: (action: string, details: string) => Promise<void>;
@@ -451,14 +452,12 @@ const CashRegisterModule: React.FC<CashRegisterModuleProps> = ({
     const [isLoadingTotals, setIsLoadingTotals] = useState(false);
     
     const [availableBrands, setAvailableBrands] = useState<CardBrand[]>([]);
-    const [stagedCards, setStagedCards] = useState<CardEntry[]>([]);
     const [cardValueInput, setCardValueInput] = useState('');
     const [cardTicketInput, setCardTicketInput] = useState('');
     const [cardBrandInput, setCardBrandInput] = useState('');
     const [showBrandManager, setShowBrandManager] = useState(false);
     const [newBrandName, setNewBrandName] = useState('');
 
-    const [stagedPix, setStagedPix] = useState<any[]>([]);
     const [pixValueInput, setPixValueInput] = useState('');
     const [pixTicketInput, setPixTicketInput] = useState('');
     const [pixClientInput, setPixClientInput] = useState('');
@@ -534,7 +533,7 @@ const CashRegisterModule: React.FC<CashRegisterModuleProps> = ({
             // Busca lançamentos manuais de cartões
             const { data: manualCards, error: cardError } = await supabase
                 .from('financial_card_sales')
-                .select('value, date')
+                .select('*')
                 .eq('store_id', selectedStoreId)
                 .eq('date', selectedDate);
 
@@ -612,7 +611,7 @@ const CashRegisterModule: React.FC<CashRegisterModuleProps> = ({
     }, []);
 
     useEffect(() => {
-        if (activeTab === 'fechamento') {
+        if (activeTab === 'fechamento' || activeTab === 'cartoes' || activeTab === 'pix') {
             fetchDailyTotals();
         }
     }, [activeTab, selectedDate, selectedStoreId]);
@@ -646,65 +645,44 @@ const CashRegisterModule: React.FC<CashRegisterModuleProps> = ({
         });
     };
 
-    const nextReceiptNumber = useMemo(() => {
-        const storeReceipts = receipts.filter(r => r.storeId === selectedStoreId);
-        if (!storeReceipts || storeReceipts.length === 0) return 1;
-        const maxId = storeReceipts.reduce((max, r) => {
-            const idNum = parseInt(String(r.id).replace(/\D/g, ''));
-            return isNaN(idNum) ? max : Math.max(max, idNum);
-        }, 0);
-        return maxId + 1;
-    }, [receipts, selectedStoreId]);
+    const [nextNumber, setNextNumber] = useState(1);
 
-    const totalsByBrand = useMemo(() => {
-        const res: Record<string, number> = {};
-        stagedCards.forEach(c => { res[c.brand] = (res[c.brand] || 0) + c.value; });
-        return res;
-    }, [stagedCards]);
-
-    const totalStagedValue = stagedCards.reduce((a, b) => a + b.value, 0);
-
-    const handleAddStagedCard = (e: React.FormEvent) => {
-        e.preventDefault();
-        const val = parseFloat(cardValueInput.replace(',', '.'));
-        if (isNaN(val) || val <= 0) return;
-        setStagedCards(prev => [{ id: `stg-${Date.now()}-${Math.random()}`, brand: cardBrandInput, value: val, ticket: cardTicketInput }, ...prev]);
-        setCardValueInput('');
-        setCardTicketInput('');
+    const fetchNextNumber = async () => {
+        try {
+            const result = await apiService.getNextReceiptNumber();
+            setNextNumber(result.next_number);
+        } catch (err) {
+            console.error('Erro ao buscar próximo número:', err);
+            setNextNumber(1);
+        }
     };
 
-    const handleValidateAndSaveCards = async () => {
-        if (stagedCards.length === 0) return;
+    useEffect(() => {
+        fetchNextNumber();
+    }, []);
+
+    const handleAddCard = async (e: React.FormEvent) => {
+        e.preventDefault();
+        const val = parseFloat(cardValueInput.replace(',', '.'));
+        if (isNaN(val) || val <= 0 || !selectedStoreId) return;
         setIsSubmitting(true);
         try {
-            const saleCode = `CARD-${Date.now().toString().slice(-6)}`;
-            const entries = stagedCards.map(c => ({ 
-                store_id: selectedStoreId, 
-                user_id: user.id, 
-                user_name: user.name, 
-                date: selectedDate, 
-                brand: c.brand, 
-                value: c.value, 
-                sale_code: c.ticket || saleCode 
-            }));
-            const { error } = await supabase.from('financial_card_sales').insert(entries);
+            const { error } = await supabase.from('financial_card_sales').insert([{
+                store_id: selectedStoreId,
+                user_id: user.id,
+                user_name: user.name,
+                date: selectedDate,
+                brand: cardBrandInput,
+                value: val,
+                sale_code: cardTicketInput || null
+            }]);
             if (error) throw error;
-            if (onAddLog) await onAddLog('VALIDAÇÃO CARTÕES', `Lançamento de ${entries.length} cartões na loja ${selectedStoreId} totalizando ${formatCurrency(totalStagedValue)}`);
-            
-            setConfirmModal({
-                isOpen: true,
-                title: 'Vendas Validadas',
-                message: 'Vendas validadas! Deseja imprimir o resumo de conferência?',
-                onConfirm: () => {
-                    printCardSummaryDoc(selectedDate, payerName, stagedCards, user.name);
-                    setConfirmModal(prev => ({ ...prev, isOpen: false }));
-                }
-            });
-
-            setStagedCards([]);
-            fetchDailyTotals();
-            showToast("Sucesso!");
-        } catch (e: any) { showToast("Erro: " + e.message, "error"); } 
+            setCardValueInput('');
+            setCardTicketInput('');
+            await fetchDailyTotals();
+            showToast('Lançamento salvo!');
+            if (onAddLog) await onAddLog('LANÇAMENTO CARTÃO', `Cartão ${cardBrandInput} ${formatCurrency(val)} na loja ${selectedStoreId}`);
+        } catch (e: any) { showToast('Erro: ' + e.message, 'error'); }
         finally { setIsSubmitting(false); }
     };
 
@@ -742,70 +720,32 @@ const CashRegisterModule: React.FC<CashRegisterModuleProps> = ({
         return () => window.removeEventListener('click', handleClickOutside);
     }, []);
 
-    const today = new Date().toISOString().split('T')[0];
-
-    const handleAddStagedPix = (e: React.FormEvent) => {
+    const handleAddPix = async (e: React.FormEvent) => {
         e.preventDefault();
-        if (selectedDate !== today) {
-            showToast("Lançamentos Pix só podem ser feitos na data de hoje.", "error");
-            return;
-        }
         const clientName = pixClientInput.trim().toUpperCase();
-        if (!clientName) {
-            showToast("O nome do cliente é obrigatório.", "error");
-            return;
-        }
+        if (!clientName) { showToast('Nome do cliente obrigatório.', 'error'); return; }
         const val = parseFloat(pixValueInput.replace(',', '.'));
-        if (isNaN(val) || val <= 0) return;
-        setStagedPix(prev => [{ 
-            id: `stg-pix-${Date.now()}-${Math.random()}`, 
-            ticket: pixTicketInput, 
-            value: val, 
-            client: clientName 
-        }, ...prev]);
-        setPixValueInput('');
-        setPixTicketInput('');
-        setPixClientInput('');
-        setClientSuggestions([]);
-        setShowSuggestions(false);
-    };
-
-    const handleValidateAndSavePix = async () => {
-        if (stagedPix.length === 0) return;
-        if (selectedDate !== today) {
-            showToast("Lançamentos Pix só podem ser feitos na data de hoje.", "error");
-            return;
-        }
+        if (isNaN(val) || val <= 0 || !selectedStoreId) return;
         setIsSubmitting(true);
         try {
-            const entries = stagedPix.map(p => ({ 
-                store_id: selectedStoreId, 
-                user_id: user.id, 
-                user_name: user.name, 
-                // date: selectedDate, // Removido para ser definido exclusivamente pelo backend
-                sale_code: p.ticket, // Número da Ficha
-                value: p.value, 
-                payer_name: p.client
-            }));
-            const { error } = await supabase.from('financial_pix_sales').insert(entries);
+            const { error } = await supabase.from('financial_pix_sales').insert([{
+                store_id: selectedStoreId,
+                user_id: user.id,
+                user_name: user.name,
+                date: selectedDate,
+                sale_code: pixTicketInput || null,
+                value: val,
+                payer_name: clientName
+            }]);
             if (error) throw error;
-            const totalPix = stagedPix.reduce((a, b) => a + b.value, 0);
-            if (onAddLog) await onAddLog('VALIDAÇÃO PIX', `Lançamento de ${entries.length} Pix na loja ${selectedStoreId} totalizando ${formatCurrency(totalPix)}`);
-            
-            setConfirmModal({
-                isOpen: true,
-                title: 'Vendas Validadas',
-                message: 'Vendas validadas! Deseja imprimir o resumo de conferência?',
-                onConfirm: () => {
-                    printPixSummaryDoc(selectedDate, payerName, stagedPix, user.name);
-                    setConfirmModal(prev => ({ ...prev, isOpen: false }));
-                }
-            });
-
-            setStagedPix([]);
-            fetchDailyTotals();
-            showToast("Vendas Pix validadas!");
-        } catch (e: any) { showToast("Erro: " + e.message, "error"); } 
+            setPixValueInput('');
+            setPixTicketInput('');
+            setPixClientInput('');
+            setClientSuggestions([]);
+            await fetchDailyTotals();
+            showToast('Pix lançado!');
+            if (onAddLog) await onAddLog('LANÇAMENTO PIX', `Pix ${formatCurrency(val)} de ${clientName} na loja ${selectedStoreId}`);
+        } catch (e: any) { showToast('Erro: ' + e.message, 'error'); }
         finally { setIsSubmitting(false); }
     };
     const [editingCard, setEditingCard] = useState<any | null>(null);
@@ -863,9 +803,7 @@ const CashRegisterModule: React.FC<CashRegisterModuleProps> = ({
         if (numericVal <= 0 || !receiptForm.recipient || !selectedStoreId) return;
         setIsSubmitting(true);
         try {
-            const receiptId = String(nextReceiptNumber);
             const rData = { 
-                id: receiptId, 
                 storeId: selectedStoreId,
                 payer: payerName, 
                 recipient: receiptForm.recipient.toUpperCase(), 
@@ -874,9 +812,10 @@ const CashRegisterModule: React.FC<CashRegisterModuleProps> = ({
                 reference: receiptForm.reference.toUpperCase(), 
                 date: selectedDate 
             };
-            await onAddReceipt(rData);
-            printReceiptDoc(rData);
+            const saved = await onAddReceipt(rData);
+            printReceiptDoc(saved || rData);
             setReceiptForm({ recipient: '', value: '', reference: '' });
+            fetchNextNumber(); // Atualiza o próximo número após salvar
             showToast("Recibo emitido!");
         } catch (error) { showToast("Erro.", "error"); }
         finally { setIsSubmitting(false); }
@@ -929,7 +868,7 @@ const CashRegisterModule: React.FC<CashRegisterModuleProps> = ({
                 {activeTab === 'recibos' && (
                     <div className="max-w-2xl mx-auto space-y-6 animate-in fade-in duration-300">
                         <div className="bg-white p-8 rounded-[40px] shadow-sm border border-gray-100 relative overflow-hidden h-fit flex flex-col">
-                            <div className="absolute top-0 right-0 p-8"><div className="text-center bg-blue-50 px-4 py-2 rounded-2xl border border-blue-100 shadow-sm"><p className="text-[8px] font-black text-blue-400 uppercase tracking-widest mb-1">Próximo</p><p className="text-2xl font-black text-blue-900 leading-none">#{String(nextReceiptNumber).padStart(4, '0')}</p></div></div>
+                            <div className="absolute top-0 right-0 p-8"><div className="text-center bg-blue-50 px-4 py-2 rounded-2xl border border-blue-100 shadow-sm"><p className="text-[8px] font-black text-blue-400 uppercase tracking-widest mb-1">Próximo</p><p className="text-2xl font-black text-blue-900 leading-none">#{String(nextNumber).padStart(4, '0')}</p></div></div>
                             <h3 className="text-sm font-black text-gray-900 uppercase italic tracking-tighter mb-8 flex items-center gap-3"><PenTool className="text-blue-600" size={18} /> Novo Recibo Profissional</h3>
                             <form onSubmit={handleSaveReceipt} className="space-y-5">
                                 <div className="space-y-1"><label className="text-[10px] font-black text-gray-400 uppercase ml-2 tracking-widest">Recebedor (Favorecido)</label><input required value={receiptForm.recipient} onChange={e => setReceiptForm({...receiptForm, recipient: e.target.value})} className="w-full p-4 bg-gray-50 border-none rounded-2xl font-black text-blue-950 uppercase italic outline-none focus:ring-4 shadow-inner" placeholder="NOME DE QUEM RECEBE" /></div>
@@ -948,9 +887,9 @@ const CashRegisterModule: React.FC<CashRegisterModuleProps> = ({
                             <div className="lg:col-span-4 bg-white p-6 rounded-[32px] shadow-sm border border-gray-100 flex flex-col h-fit">
                                 <div className="flex justify-between items-center mb-6">
                                     <h3 className="text-base font-black text-gray-900 uppercase italic tracking-tighter flex items-center gap-2"><CardIcon className="text-green-600" size={20} /> Novo <span className="text-green-600">Lançamento</span></h3>
-                                    <button onClick={() => setShowBrandManager(true)} className="p-2 bg-gray-100 text-gray-400 hover:text-blue-600 rounded-xl transition-all shadow-sm"><Settings2 size={16}/></button>
+                                    <button onClick={() => setShowBrandManager(true)} className="p-2 bg-gray-100 text-gray-400 hover:text-blue-600 rounded-xl transition-all shadow-sm" title="Gerenciar Bandeiras"><Settings2 size={16}/></button>
                                 </div>
-                                <form onSubmit={handleAddStagedCard} className="space-y-4">
+                                <form onSubmit={handleAddCard} className="space-y-4">
                                     <div className="space-y-2">
                                         <label className="text-[9px] font-black text-gray-400 uppercase ml-2">Bandeira / Modalidade</label>
                                         <div className="grid grid-cols-2 gap-1.5">
@@ -965,84 +904,38 @@ const CashRegisterModule: React.FC<CashRegisterModuleProps> = ({
                                     </div>
                                     <div className="space-y-1">
                                         <label className="text-[9px] font-black text-gray-400 uppercase ml-2">Número da Ficha</label>
-                                        <input 
-                                            value={cardTicketInput} 
-                                            onChange={e => setCardTicketInput(e.target.value)} 
-                                            className="w-full p-4 bg-gray-50 border-none rounded-[20px] font-black text-lg outline-none focus:ring-4 focus:ring-green-500/20" 
-                                            placeholder="0000" 
-                                        />
+                                        <input value={cardTicketInput} onChange={e => setCardTicketInput(e.target.value)} className="w-full p-4 bg-gray-50 border-none rounded-[20px] font-black text-lg outline-none focus:ring-4 focus:ring-green-500/20" placeholder="0000" />
                                     </div>
-                                    <div className="space-y-1"><label className="text-[9px] font-black text-gray-400 uppercase ml-2">Valor do Comprovante</label><input required value={cardValueInput} onChange={e => setCardValueInput(e.target.value)} className="w-full p-4 bg-gray-950 text-white border-none rounded-[20px] font-black text-2xl text-center outline-none focus:ring-4 focus:ring-green-500/20" placeholder="0,00" /></div>
-                                    <button type="submit" className="w-full py-4 bg-green-600 text-white rounded-[20px] font-black uppercase text-[10px] shadow-xl active:scale-95 transition-all border-b-4 border-green-800 flex items-center justify-center gap-2"><Plus size={16}/> ADICIONAR</button>
+                                    <div className="space-y-1">
+                                        <label className="text-[9px] font-black text-gray-400 uppercase ml-2">Valor do Comprovante</label>
+                                        <input required value={cardValueInput} onChange={e => setCardValueInput(e.target.value)} className="w-full p-4 bg-gray-950 text-white border-none rounded-[20px] font-black text-2xl text-center outline-none focus:ring-4 focus:ring-green-500/20" placeholder="0,00" />
+                                    </div>
+                                    <button type="submit" disabled={isSubmitting || !selectedStoreId} className="w-full py-4 bg-green-600 text-white rounded-[20px] font-black uppercase text-[10px] shadow-xl active:scale-95 transition-all border-b-4 border-green-800 flex items-center justify-center gap-2 disabled:opacity-50">
+                                        {isSubmitting ? <Loader2 className="animate-spin" size={16}/> : <Plus size={16}/>} LANÇAR AGORA
+                                    </button>
                                 </form>
                             </div>
-                            <div className="lg:col-span-8 bg-white rounded-[32px] shadow-xl border border-gray-100 flex flex-col min-h-[500px] overflow-hidden">
+                            <div className="lg:col-span-8 bg-white rounded-[32px] shadow-xl border border-gray-100 flex flex-col overflow-hidden" style={{minHeight: '500px'}}>
                                 <div className="px-6 py-4 border-b flex justify-between items-center bg-gray-50/50">
                                     <div>
                                         <h3 className="text-base font-black text-blue-950 uppercase italic tracking-tighter flex items-center gap-2">
-                                            Mesa de <span className="text-blue-600">Conferência</span>
+                                            <CreditCard size={16} className="text-blue-600" /> Lançamentos <span className="text-blue-600">Confirmados</span>
                                         </h3>
-                                        <p className="text-[8px] font-black text-gray-400 uppercase tracking-widest leading-none mt-1">Role para conferir os itens lançados</p>
+                                        <p className="text-[8px] font-black text-gray-400 uppercase tracking-widest leading-none mt-1">{new Date(selectedDate + 'T12:00:00').toLocaleDateString('pt-BR')} — Adicione quantos quiser</p>
                                     </div>
-                                    <div className="flex items-center gap-4">
-                                        {stagedCards.length > 0 && (
-                                            <button 
-                                                onClick={() => printCardSummaryDoc(selectedDate, stores.find(s => s.id === selectedStoreId)?.city || 'N/A', stagedCards, user.name)}
-                                                className="p-2 bg-blue-50 text-blue-600 rounded-xl hover:bg-blue-600 hover:text-white transition-all flex items-center gap-2 text-[9px] font-black uppercase shadow-sm"
-                                            >
+                                    <div className="flex items-center gap-3">
+                                        {manualCards.length > 0 && (
+                                            <button onClick={() => printCardSummaryDoc(selectedDate, payerName, manualCards.map(c => ({brand: c.brand, value: Number(c.value), ticket: c.sale_code})), user.name)} className="p-2 bg-blue-50 text-blue-600 rounded-xl hover:bg-blue-600 hover:text-white transition-all flex items-center gap-2 text-[9px] font-black uppercase shadow-sm">
                                                 <Printer size={14} /> Imprimir
                                             </button>
                                         )}
                                         <div className="text-right">
-                                            <p className="text-[7px] font-black text-gray-400 uppercase leading-none">Total na Mesa</p>
-                                            <p className="text-xl font-black text-green-700 italic leading-none mt-1">{formatCurrency(totalStagedValue)}</p>
+                                            <p className="text-[7px] font-black text-gray-400 uppercase leading-none">Total do Dia</p>
+                                            <p className="text-xl font-black text-green-700 italic leading-none mt-1">{formatCurrency(manualCards.reduce((a, b) => a + Number(b.value), 0))}</p>
                                         </div>
                                     </div>
                                 </div>
-                                <div className="flex-1 overflow-y-auto no-scrollbar p-3 space-y-1 bg-[#fcfdfe] max-h-[400px]">
-                                    {stagedCards.map((c) => (
-                                        <div key={c.id} className="flex items-center justify-between px-4 py-2 bg-white rounded-xl border border-gray-100 group hover:border-blue-200 hover:shadow-sm transition-all animate-in slide-in-from-left-2 duration-200">
-                                            <div className="flex items-center gap-3">
-                                                <img src={getCardFlagIcon(c.brand)} className="w-5 h-5 object-contain opacity-80" alt="" />
-                                                <div><p className="text-[9px] font-black text-blue-950 uppercase italic leading-none">{c.brand}</p><p className="text-[7px] text-gray-400 uppercase font-bold mt-1">Conferência Pendente</p></div>
-                                            </div>
-                                            <div className="flex items-center gap-4">
-                                                <span className="text-xs font-black text-gray-900">{formatCurrency(c.value)}</span>
-                                                <button onClick={() => setStagedCards(stagedCards.filter(x => x.id !== c.id))} className="p-1.5 text-red-200 hover:text-red-500 transition-all opacity-0 group-hover:opacity-100"><Trash2 size={14}/></button>
-                                            </div>
-                                        </div>
-                                    ))}
-                                    {stagedCards.length === 0 && (<div className="h-full flex flex-col items-center justify-center opacity-10 grayscale py-32"><CardIcon size={48} className="mb-2" /><p className="text-[10px] font-black uppercase tracking-widest">Mesa Vazia</p></div>)}
-                                </div>
-                                {stagedCards.length > 0 && (
-                                    <div className="p-4 bg-blue-50/50 border-t border-blue-50">
-                                        <div className="grid grid-cols-2 md:grid-cols-4 gap-2">
-                                            {Object.entries(totalsByBrand).map(([brand, val]) => (
-                                                <div key={brand} className="bg-white p-2 rounded-lg border border-blue-50 flex justify-between items-center shadow-sm">
-                                                    <span className="text-[7px] font-black text-gray-400 uppercase truncate pr-1">{brand}</span>
-                                                    <span className="text-[9px] font-black text-blue-900">{formatCurrency(val as number)}</span>
-                                                </div>
-                                            ))}
-                                        </div>
-                                    </div>
-                                )}
-                                <div className="p-4 bg-white border-t grid grid-cols-2 gap-3 shadow-inner">
-                                    <button onClick={() => setStagedCards([])} className="py-3 bg-gray-100 text-gray-400 rounded-xl font-black uppercase text-[9px] hover:bg-gray-200 transition-all">Limpar</button>
-                                    <button onClick={handleValidateAndSaveCards} disabled={isSubmitting || stagedCards.length === 0} className="py-3 bg-blue-900 text-white rounded-xl font-black uppercase text-[9px] shadow-lg active:scale-95 border-b-4 border-blue-950 flex items-center justify-center gap-2 hover:bg-blue-800 transition-all">
-                                        {isSubmitting ? <Loader2 className="animate-spin" size={14}/> : <CheckCircle2 size={14}/>} VALIDAR & LANÇAR
-                                    </button>
-                                </div>
-                            </div>
-
-                            {/* Lista de Lançamentos do Dia */}
-                            <div className="lg:col-span-12 bg-white rounded-[32px] shadow-sm border border-gray-100 overflow-hidden">
-                                <div className="px-6 py-4 border-b bg-gray-50/50 flex justify-between items-center">
-                                    <h3 className="text-xs font-black uppercase italic text-blue-950 flex items-center gap-2">
-                                        <CreditCard size={16} className="text-blue-600" /> Lançamentos de Cartão Confirmados ({new Date(selectedDate + 'T12:00:00').toLocaleDateString('pt-BR')})
-                                    </h3>
-                                    <span className="text-xs font-black text-blue-600">{formatCurrency(manualCards.reduce((a, b) => a + Number(b.value), 0))}</span>
-                                </div>
-                                <div className="overflow-x-auto">
+                                <div className="flex-1 overflow-y-auto no-scrollbar overflow-x-auto">
                                     <table className="w-full text-left">
                                         <thead className="bg-gray-50 text-[9px] font-black text-gray-400 uppercase tracking-widest border-b">
                                             <tr>
@@ -1057,47 +950,28 @@ const CashRegisterModule: React.FC<CashRegisterModuleProps> = ({
                                             {manualCards.map((c) => (
                                                 <tr key={c.id} className="hover:bg-gray-50/50 transition-all">
                                                     <td className="px-6 py-3 text-blue-600 font-black">#{c.sale_code || '---'}</td>
-                                                    <td className="px-6 py-3 flex items-center gap-2">
-                                                        <img src={getCardFlagIcon(c.brand)} className="w-4 h-4 object-contain" alt="" />
-                                                        <span className="uppercase text-blue-950">{c.brand}</span>
+                                                    <td className="px-6 py-3">
+                                                        <div className="flex items-center gap-2">
+                                                            <img src={getCardFlagIcon(c.brand)} className="w-4 h-4 object-contain" alt="" />
+                                                            <span className="uppercase text-blue-950">{c.brand}</span>
+                                                        </div>
                                                     </td>
                                                     <td className="px-6 py-3 text-gray-400 uppercase">{c.user_name}</td>
-                                                    <td className="px-6 py-3 text-right text-blue-900 font-black">{formatCurrency(c.value)}</td>
-                                                    <td className="px-6 py-3 text-center flex items-center justify-center gap-2">
-                                                        <button 
-                                                            onClick={() => setEditingCard(c)}
-                                                            className="p-1 text-blue-300 hover:text-blue-600 transition-all"
-                                                        >
-                                                            <Edit3 size={14} />
-                                                        </button>
-                                                        <button 
-                                                            onClick={() => {
-                                                                setConfirmModal({
-                                                                    isOpen: true,
-                                                                    title: 'Excluir Lançamento',
-                                                                    message: 'Deseja excluir este lançamento?',
-                                                                    onConfirm: async () => {
-                                                                        try {
-                                                                            const { error } = await supabase.from('financial_card_sales').delete().eq('id', c.id);
-                                                                            if (error) throw error;
-                                                                            fetchDailyTotals();
-                                                                            showToast("Lançamento excluído!");
-                                                                        } catch (e: any) { showToast("Erro: " + e.message, "error"); }
-                                                                        setConfirmModal(prev => ({ ...prev, isOpen: false }));
-                                                                    }
-                                                                });
-                                                            }}
-                                                            className="p-1 text-red-300 hover:text-red-600 transition-all"
-                                                        >
-                                                            <Trash2 size={14} />
-                                                        </button>
+                                                    <td className="px-6 py-3 text-right text-blue-900 font-black">{formatCurrency(Number(c.value))}</td>
+                                                    <td className="px-6 py-3 text-center">
+                                                        <div className="flex items-center justify-center gap-2">
+                                                            <button onClick={() => setEditingCard(c)} className="p-1 text-blue-300 hover:text-blue-600 transition-all"><Edit3 size={14} /></button>
+                                                            <button onClick={() => { setConfirmModal({ isOpen: true, title: 'Excluir', message: 'Excluir este lançamento?', onConfirm: async () => { try { await supabase.from('financial_card_sales').delete().eq('id', c.id); fetchDailyTotals(); showToast('Excluído!'); } catch (e: any) { showToast('Erro: ' + e.message, 'error'); } setConfirmModal(p => ({...p, isOpen: false})); } }); }} className="p-1 text-red-300 hover:text-red-600 transition-all"><Trash2 size={14} /></button>
+                                                        </div>
                                                     </td>
                                                 </tr>
                                             ))}
                                             {manualCards.length === 0 && (
-                                                <tr>
-                                                    <td colSpan={4} className="px-6 py-12 text-center text-gray-400 uppercase italic text-[9px] tracking-widest">Nenhum lançamento manual hoje</td>
-                                                </tr>
+                                                <tr><td colSpan={5} className="px-6 py-16 text-center">
+                                                    <CardIcon size={32} className="mx-auto mb-3 text-gray-200" />
+                                                    <p className="text-gray-400 uppercase italic text-[9px] tracking-widest">Nenhum lançamento para esta data</p>
+                                                    <p className="text-gray-300 text-[8px] mt-1">Use o formulário ao lado para adicionar</p>
+                                                </td></tr>
                                             )}
                                         </tbody>
                                     </table>
@@ -1114,21 +988,15 @@ const CashRegisterModule: React.FC<CashRegisterModuleProps> = ({
                                 <div className="flex justify-between items-center mb-6">
                                     <h3 className="text-base font-black text-gray-900 uppercase italic tracking-tighter flex items-center gap-2"><DollarSign className="text-teal-600" size={20} /> Novo Lançamento <span className="text-teal-600">Pix</span></h3>
                                 </div>
-                                <form onSubmit={handleAddStagedPix} className="space-y-4">
-                                    {selectedDate !== today && (
-                                        <div className="p-3 bg-amber-50 border border-amber-200 rounded-xl flex items-center gap-2 text-amber-700 text-[10px] font-bold uppercase italic">
-                                            <AlertTriangle size={14} /> Lançamentos Pix bloqueados para datas retroativas.
-                                        </div>
-                                    )}
+                                <form onSubmit={handleAddPix} className="space-y-4">
                                     <div className="space-y-1">
                                         <label className="text-[9px] font-black text-gray-400 uppercase ml-2">Número da Ficha</label>
-                                        <input required disabled={selectedDate !== today} value={pixTicketInput} onChange={e => setPixTicketInput(e.target.value)} className="w-full p-4 bg-gray-50 border-none rounded-[20px] font-black text-lg outline-none focus:ring-4 focus:ring-teal-500/20 disabled:opacity-50" placeholder="0000" />
+                                        <input value={pixTicketInput} onChange={e => setPixTicketInput(e.target.value)} className="w-full p-4 bg-gray-50 border-none rounded-[20px] font-black text-lg outline-none focus:ring-4 focus:ring-teal-500/20" placeholder="0000" />
                                     </div>
                                     <div className="space-y-1 relative" onClick={e => e.stopPropagation()}>
                                         <label className="text-[9px] font-black text-gray-400 uppercase ml-2">Nome do Cliente</label>
                                         <input 
                                             required 
-                                            disabled={selectedDate !== today} 
                                             value={pixClientInput} 
                                             onChange={e => {
                                                 setPixClientInput(e.target.value);
@@ -1163,59 +1031,27 @@ const CashRegisterModule: React.FC<CashRegisterModuleProps> = ({
                                     </div>
                                     <div className="space-y-1">
                                         <label className="text-[9px] font-black text-gray-400 uppercase ml-2">Valor do Pix</label>
-                                        <input required disabled={selectedDate !== today} value={pixValueInput} onChange={e => setPixValueInput(e.target.value)} className="w-full p-4 bg-gray-950 text-white border-none rounded-[20px] font-black text-2xl text-center outline-none focus:ring-4 focus:ring-teal-500/20 disabled:opacity-50" placeholder="0,00" />
+                                        <input required value={pixValueInput} onChange={e => setPixValueInput(e.target.value)} className="w-full p-4 bg-gray-950 text-white border-none rounded-[20px] font-black text-2xl text-center outline-none focus:ring-4 focus:ring-teal-500/20" placeholder="0,00" />
                                     </div>
-                                    <button type="submit" disabled={selectedDate !== today} className="w-full py-4 bg-teal-600 text-white rounded-[20px] font-black uppercase text-[10px] shadow-xl active:scale-95 transition-all border-b-4 border-teal-800 flex items-center justify-center gap-2 disabled:bg-gray-400 disabled:border-gray-500 disabled:cursor-not-allowed"><Plus size={16}/> ADICIONAR</button>
+                                    <button type="submit" disabled={isSubmitting || !selectedStoreId} className="w-full py-4 bg-teal-600 text-white rounded-[20px] font-black uppercase text-[10px] shadow-xl active:scale-95 transition-all border-b-4 border-teal-800 flex items-center justify-center gap-2 disabled:opacity-50">
+                                        {isSubmitting ? <Loader2 className="animate-spin" size={16}/> : <Plus size={16}/>} LANÇAR AGORA
+                                    </button>
                                 </form>
                             </div>
-                            <div className="lg:col-span-8 bg-white rounded-[32px] shadow-xl border border-gray-100 flex flex-col min-h-[500px] overflow-hidden">
+                            <div className="lg:col-span-8 bg-white rounded-[32px] shadow-xl border border-gray-100 flex flex-col overflow-hidden" style={{minHeight: '500px'}}>
                                 <div className="px-6 py-4 border-b flex justify-between items-center bg-gray-50/50">
                                     <div>
                                         <h3 className="text-base font-black text-blue-950 uppercase italic tracking-tighter flex items-center gap-2">
-                                            Mesa de <span className="text-teal-600">Conferência Pix</span>
+                                            <DollarSign size={16} className="text-teal-600" /> Lançamentos <span className="text-teal-600">Pix Confirmados</span>
                                         </h3>
-                                        <p className="text-[8px] font-black text-gray-400 uppercase tracking-widest leading-none mt-1">Role para conferir os itens lançados</p>
+                                        <p className="text-[8px] font-black text-gray-400 uppercase tracking-widest leading-none mt-1">{new Date(selectedDate + 'T12:00:00').toLocaleDateString('pt-BR')} — Adicione quantos quiser</p>
                                     </div>
                                     <div className="text-right">
-                                        <p className="text-[7px] font-black text-gray-400 uppercase leading-none">Total na Mesa</p>
-                                        <p className="text-xl font-black text-teal-700 italic leading-none mt-1">{formatCurrency(stagedPix.reduce((a, b) => a + b.value, 0))}</p>
+                                        <p className="text-[7px] font-black text-gray-400 uppercase leading-none">Total do Dia</p>
+                                        <p className="text-xl font-black text-teal-700 italic leading-none mt-1">{formatCurrency(manualPix.reduce((a, b) => a + Number(b.value), 0))}</p>
                                     </div>
                                 </div>
-                                <div className="flex-1 overflow-y-auto no-scrollbar p-3 space-y-1 bg-[#fcfdfe] max-h-[400px]">
-                                    {stagedPix.map((p) => (
-                                        <div key={p.id} className="flex items-center justify-between px-4 py-2 bg-white rounded-xl border border-gray-100 group hover:border-teal-200 hover:shadow-sm transition-all animate-in slide-in-from-left-2 duration-200">
-                                            <div className="flex items-center gap-3">
-                                                <div className="w-8 h-8 rounded-full bg-teal-50 flex items-center justify-center text-teal-600 font-black text-[10px]">PX</div>
-                                                <div>
-                                                    <p className="text-[9px] font-black text-blue-950 uppercase italic leading-none">Ficha: {p.ticket}</p>
-                                                    <p className="text-[7px] text-gray-400 uppercase font-bold mt-1">{p.client}</p>
-                                                </div>
-                                            </div>
-                                            <div className="flex items-center gap-4">
-                                                <span className="text-xs font-black text-gray-900">{formatCurrency(p.value)}</span>
-                                                <button onClick={() => setStagedPix(stagedPix.filter(x => x.id !== p.id))} className="p-1.5 text-red-200 hover:text-red-500 transition-all opacity-0 group-hover:opacity-100"><Trash2 size={14}/></button>
-                                            </div>
-                                        </div>
-                                    ))}
-                                    {stagedPix.length === 0 && (<div className="h-full flex flex-col items-center justify-center opacity-10 grayscale py-32"><DollarSign size={48} className="mb-2" /><p className="text-[10px] font-black uppercase tracking-widest">Mesa Vazia</p></div>)}
-                                </div>
-                                <div className="p-4 bg-white border-t grid grid-cols-2 gap-3 shadow-inner">
-                                    <button onClick={() => setStagedPix([])} className="py-3 bg-gray-100 text-gray-400 rounded-xl font-black uppercase text-[9px] hover:bg-gray-200 transition-all">Limpar</button>
-                                    <button onClick={handleValidateAndSavePix} disabled={isSubmitting || stagedPix.length === 0} className="py-3 bg-teal-600 text-white rounded-xl font-black uppercase text-[9px] shadow-lg active:scale-95 border-b-4 border-teal-950 flex items-center justify-center gap-2 hover:bg-teal-700 transition-all">
-                                        {isSubmitting ? <Loader2 className="animate-spin" size={14}/> : <CheckCircle2 size={14}/>} VALIDAR & LANÇAR
-                                    </button>
-                                </div>
-                            </div>
-
-                            {/* Lista de Lançamentos do Dia */}
-                            <div className="lg:col-span-12 bg-white rounded-[32px] shadow-sm border border-gray-100 overflow-hidden">
-                                <div className="px-6 py-4 border-b bg-gray-50/50 flex justify-between items-center">
-                                    <h3 className="text-xs font-black uppercase italic text-blue-950 flex items-center gap-2">
-                                        <DollarSign size={16} className="text-teal-600" /> Lançamentos de Pix Confirmados ({new Date(selectedDate + 'T12:00:00').toLocaleDateString('pt-BR')})
-                                    </h3>
-                                    <span className="text-xs font-black text-teal-600">{formatCurrency(manualPix.reduce((a, b) => a + Number(b.value), 0))}</span>
-                                </div>
-                                <div className="overflow-x-auto">
+                                <div className="flex-1 overflow-y-auto no-scrollbar overflow-x-auto">
                                     <table className="w-full text-left">
                                         <thead className="bg-gray-50 text-[9px] font-black text-gray-400 uppercase tracking-widest border-b">
                                             <tr>
@@ -1229,45 +1065,24 @@ const CashRegisterModule: React.FC<CashRegisterModuleProps> = ({
                                         <tbody className="divide-y divide-gray-50 font-bold text-[10px]">
                                             {manualPix.map((p) => (
                                                 <tr key={p.id} className="hover:bg-gray-50/50 transition-all">
-                                                    <td className="px-6 py-3 text-blue-950 font-black">#{p.sale_code}</td>
+                                                    <td className="px-6 py-3 text-blue-950 font-black">#{p.sale_code || '---'}</td>
                                                     <td className="px-6 py-3 text-gray-600 uppercase">{p.payer_name || '---'}</td>
                                                     <td className="px-6 py-3 text-gray-400 uppercase">{p.user_name}</td>
-                                                    <td className="px-6 py-3 text-right text-teal-700 font-black">{formatCurrency(p.value)}</td>
-                                                    <td className="px-6 py-3 text-center flex items-center justify-center gap-2">
-                                                        <button 
-                                                            onClick={() => setEditingPix(p)}
-                                                            className="p-1 text-blue-300 hover:text-blue-600 transition-all"
-                                                        >
-                                                            <Edit3 size={14} />
-                                                        </button>
-                                                        <button 
-                                                            onClick={() => {
-                                                                setConfirmModal({
-                                                                    isOpen: true,
-                                                                    title: 'Excluir Lançamento',
-                                                                    message: 'Deseja excluir este lançamento?',
-                                                                    onConfirm: async () => {
-                                                                        try {
-                                                                            const { error } = await supabase.from('financial_pix_sales').delete().eq('id', p.id);
-                                                                            if (error) throw error;
-                                                                            fetchDailyTotals();
-                                                                            showToast("Lançamento excluído!");
-                                                                        } catch (e: any) { showToast("Erro: " + e.message, "error"); }
-                                                                        setConfirmModal(prev => ({ ...prev, isOpen: false }));
-                                                                    }
-                                                                });
-                                                            }}
-                                                            className="p-1 text-red-300 hover:text-red-600 transition-all"
-                                                        >
-                                                            <Trash2 size={14} />
-                                                        </button>
+                                                    <td className="px-6 py-3 text-right text-teal-700 font-black">{formatCurrency(Number(p.value))}</td>
+                                                    <td className="px-6 py-3 text-center">
+                                                        <div className="flex items-center justify-center gap-2">
+                                                            <button onClick={() => setEditingPix(p)} className="p-1 text-blue-300 hover:text-blue-600 transition-all"><Edit3 size={14} /></button>
+                                                            <button onClick={() => { setConfirmModal({ isOpen: true, title: 'Excluir', message: 'Excluir este lançamento?', onConfirm: async () => { try { await supabase.from('financial_pix_sales').delete().eq('id', p.id); fetchDailyTotals(); showToast('Excluído!'); } catch (e: any) { showToast('Erro: ' + e.message, 'error'); } setConfirmModal(prev => ({...prev, isOpen: false})); } }); }} className="p-1 text-red-300 hover:text-red-600 transition-all"><Trash2 size={14} /></button>
+                                                        </div>
                                                     </td>
                                                 </tr>
                                             ))}
                                             {manualPix.length === 0 && (
-                                                <tr>
-                                                    <td colSpan={5} className="px-6 py-12 text-center text-gray-400 uppercase italic text-[9px] tracking-widest">Nenhum lançamento manual hoje</td>
-                                                </tr>
+                                                <tr><td colSpan={5} className="px-6 py-16 text-center">
+                                                    <DollarSign size={32} className="mx-auto mb-3 text-gray-200" />
+                                                    <p className="text-gray-400 uppercase italic text-[9px] tracking-widest">Nenhum lançamento para esta data</p>
+                                                    <p className="text-gray-300 text-[8px] mt-1">Use o formulário ao lado para adicionar</p>
+                                                </td></tr>
                                             )}
                                         </tbody>
                                     </table>

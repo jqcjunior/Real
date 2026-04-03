@@ -1,16 +1,18 @@
 import React, { useState, useEffect } from 'react';
-import { Store } from '../../types';
+import { Store, User } from '../../types';
 import { 
   BarChart3, Trophy, Calendar, Filter, Eye,
-  Medal, Gem, Zap, Settings, X, Check, ChevronRight, Loader2
+  Medal, Gem, Zap, Settings, X, Check, ChevronRight, Loader2,
+  RotateCcw, Lock, Unlock, AlertCircle
 } from 'lucide-react';
 import { supabase } from '../../services/supabaseClient';
 import { format } from 'date-fns';
 import { ptBR } from 'date-fns/locale';
  
 interface DashboardPAAdminProps {
-  user: any;
+  user: User;
   stores: Store[];
+  onRefresh?: () => Promise<void>;
 }
  
 interface WeekData {
@@ -18,6 +20,7 @@ interface WeekData {
   data_inicio: string;
   data_fim: string;
   store_id: string;
+  status: string;
 }
  
 interface PAParametros {
@@ -340,16 +343,25 @@ const ParametrosModal: React.FC<ParametrosModalProps> = ({ stores, onClose, onSa
 };
  
 // ─── Dashboard Principal ───────────────────────────────────────────────────────
-const DashboardPAAdmin: React.FC<DashboardPAAdminProps> = ({ user, stores }) => {
+const DashboardPAAdmin: React.FC<DashboardPAAdminProps> = ({ user, stores, onRefresh }) => {
   const [viewMode, setViewMode] = useState<ViewMode>('semana');
+  const [activeTab, setActiveTab] = useState<'ranking' | 'semanas'>('ranking');
   const [selectedMonth, setSelectedMonth] = useState(new Date().getMonth() + 1);
   const [selectedYear, setSelectedYear] = useState(new Date().getFullYear());
   const [selectedWeek, setSelectedWeek] = useState<string>('');
   const [selectedStoreId, setSelectedStoreId] = useState<string>('all');
   const [weeks, setWeeks] = useState<WeekData[]>([]);
+  const [allWeeks, setAllWeeks] = useState<WeekData[]>([]);
   const [performance, setPerformance] = useState<StoreWeekPerformance[]>([]);
   const [loading, setLoading] = useState(false);
   const [showParamsModal, setShowParamsModal] = useState(false);
+  const [reopeningId, setReopeningId] = useState<string | null>(null);
+  const [toast, setToast] = useState<{ message: string; type: 'success' | 'error' } | null>(null);
+
+  const showToast = (message: string, type: 'success' | 'error') => {
+    setToast({ message, type });
+    setTimeout(() => setToast(null), 3000);
+  };
  
   useEffect(() => { loadWeeks(); }, [selectedMonth, selectedYear]);
  
@@ -361,12 +373,13 @@ const DashboardPAAdmin: React.FC<DashboardPAAdminProps> = ({ user, stores }) => 
   const loadWeeks = async () => {
     const { data, error } = await supabase
       .from('Dashboard_PA_Semanas')
-      .select('id, data_inicio, data_fim, store_id')
+      .select('id, data_inicio, data_fim, store_id, status')
       .gte('data_inicio', `${selectedYear}-${String(selectedMonth).padStart(2, '0')}-01`)
       .lt('data_inicio', `${selectedYear}-${String(selectedMonth + 1).padStart(2, '0')}-01`)
       .order('data_inicio', { ascending: true });
  
     if (data && !error) {
+      setAllWeeks(data);
       const weeksMap = new Map<string, WeekData>();
       data.forEach(w => { if (!weeksMap.has(w.data_inicio)) weeksMap.set(w.data_inicio, w); });
       const uniqueWeeks = Array.from(weeksMap.values());
@@ -374,7 +387,35 @@ const DashboardPAAdmin: React.FC<DashboardPAAdminProps> = ({ user, stores }) => 
       if (uniqueWeeks.length > 0 && !selectedWeek) setSelectedWeek(uniqueWeeks[0].id);
     }
   };
- 
+
+  const handleReabrirSemana = async (weekId: string) => {
+    setReopeningId(weekId);
+    try {
+      const { data, error } = await supabase.rpc('fn_admin_reabrir_semana', { 
+        p_semana_id: weekId,
+        p_admin_id: user.id
+      });
+      
+      if (error) {
+        console.error('Erro Supabase:', error);
+        throw error;
+      }
+      
+      if (data?.success) {
+        showToast('Semana reaberta com sucesso!', 'success');
+        await loadWeeks();
+        if (onRefresh) await onRefresh();
+      } else {
+        throw new Error(data?.error || 'Erro ao reabrir semana');
+      }
+    } catch (err: any) {
+      console.error('Erro ao reabrir semana:', err);
+      showToast('Erro ao reabrir semana: ' + (err.message || ''), 'error');
+    } finally {
+      setReopeningId(null);
+    }
+  };
+
   const loadWeekPerformance = async () => {
     if (!selectedWeek) return;
     setLoading(true);
@@ -483,6 +524,15 @@ const DashboardPAAdmin: React.FC<DashboardPAAdminProps> = ({ user, stores }) => 
  
   return (
     <div className="min-h-screen bg-slate-50 dark:bg-slate-950 p-4 sm:p-6 md:p-8 space-y-6">
+      {/* Toast Notification */}
+      {toast && (
+        <div className={`fixed top-8 left-1/2 -translate-x-1/2 z-[300] px-8 py-4 rounded-[24px] font-black italic uppercase tracking-tighter text-sm shadow-2xl animate-in fade-in slide-in-from-top-4 duration-300 ${
+          toast.type === 'success' ? 'bg-emerald-500 text-white' : 'bg-red-500 text-white'
+        }`}>
+          {toast.message}
+        </div>
+      )}
+
       {/* Modal de Parâmetros */}
       {showParamsModal && (
         <ParametrosModal
@@ -576,97 +626,222 @@ const DashboardPAAdmin: React.FC<DashboardPAAdminProps> = ({ user, stores }) => 
         {/* Título da Visualização */}
         <div className="flex items-center justify-center gap-3 px-6 py-3 bg-gradient-to-r from-orange-50 to-red-50 dark:from-orange-900/20 dark:to-red-900/20 rounded-2xl border-2 border-orange-200 dark:border-orange-800">
           <Trophy className="text-orange-600" size={20} />
-          <p className="text-sm font-black text-orange-900 dark:text-orange-100 uppercase italic">
-            {viewMode === 'semana' ? `Ranking — Semana ${weekLabel}` : `Ranking — ${monthLabel} ${selectedYear}`}
-          </p>
+          <h2 className="text-sm font-black text-slate-900 dark:text-white uppercase italic">
+            {activeTab === 'ranking' ? 'Ranking de Performance' : 'Gerenciamento de Semanas'}
+          </h2>
         </div>
       </div>
- 
-      {/* Ranking */}
-      <div className="space-y-4">
-        {loading && (
-          <div className="flex items-center justify-center py-20">
-            <div className="animate-spin w-12 h-12 border-4 border-orange-500 border-t-transparent rounded-full" />
-          </div>
-        )}
- 
-        {!loading && performance.length === 0 && (
-          <div className="bg-white dark:bg-slate-900 rounded-3xl p-20 text-center border border-slate-200 dark:border-slate-800">
-            <Trophy className="mx-auto mb-4 text-slate-300" size={64} />
-            <p className="text-lg font-black text-slate-400 uppercase italic">Nenhum dado encontrado</p>
-            <p className="text-sm text-slate-400 mt-2">Selecione outro período ou loja</p>
-          </div>
-        )}
- 
-        {!loading && performance.map((store, index) => {
-          const tier = getTier(index);
-          return (
-            <div key={store.storeId} className={`${tier.bgColor} rounded-3xl p-6 border-2 ${index < 3 ? 'border-slate-200 dark:border-slate-700 shadow-xl' : 'border-slate-100 dark:border-slate-800'} transition-all hover:shadow-2xl`}>
-              <div className="flex flex-col sm:flex-row items-start sm:items-center gap-6">
-                <div className={`${tier.color} w-16 h-16 rounded-2xl flex items-center justify-center text-white font-black text-2xl shadow-lg flex-shrink-0`}>
-                  {index + 1}º
-                </div>
- 
-                <div className="flex-1 min-w-0">
-                  <div className="flex items-center gap-3 mb-2">
-                    <h3 className="text-xl font-black text-slate-900 dark:text-white uppercase italic">
-                      Loja {store.storeNumber}
-                    </h3>
-                    <span className={`px-3 py-1 rounded-full text-xs font-black uppercase ${tier.textColor} bg-white dark:bg-slate-800 border-2 border-current`}>
-                      {tier.label}
-                    </span>
-                  </div>
-                  <p className="text-sm font-bold text-slate-500 dark:text-slate-400 uppercase">
-                    {store.storeName} • {store.city}
-                  </p>
-                  {store.params && (
-                    <p className="text-[10px] font-bold text-slate-400 dark:text-slate-500 mt-1">
-                      Meta P.A: {store.params.pa_inicial.toFixed(2)} • Base: R$ {store.params.valor_base.toFixed(2)} • +R$ {(store.params.incremento_valor * 100).toFixed(2)} a cada +{store.params.incremento_pa} P.A
-                    </p>
-                  )}
-                </div>
- 
-                <div className="grid grid-cols-2 sm:grid-cols-5 gap-3 w-full sm:w-auto">
-                  <div className="bg-white dark:bg-slate-800 rounded-xl p-3 border border-slate-200 dark:border-slate-700">
-                    <p className="text-xs font-black text-slate-400 uppercase mb-1">Score</p>
-                    <p className={`text-lg font-black ${tier.textColor}`}>{store.score.toFixed(1)}%</p>
-                  </div>
-                  <div className="bg-white dark:bg-slate-800 rounded-xl p-3 border border-slate-200 dark:border-slate-700">
-                    <p className="text-xs font-black text-slate-400 uppercase mb-1">P.A</p>
-                    <p className="text-lg font-black text-slate-900 dark:text-white">{store.paAtingido.toFixed(2)}</p>
-                    <p className="text-[10px] text-slate-400">Meta: {store.paMeta.toFixed(2)}</p>
-                  </div>
-                  <div className="bg-white dark:bg-slate-800 rounded-xl p-3 border border-slate-200 dark:border-slate-700">
-                    <p className="text-xs font-black text-slate-400 uppercase mb-1">Vendas</p>
-                    <p className="text-lg font-black text-blue-600">R$ {(store.totalVendas / 1000).toFixed(0)}k</p>
-                  </div>
-                  <div className="bg-white dark:bg-slate-800 rounded-xl p-3 border border-slate-200 dark:border-slate-700">
-                    <p className="text-xs font-black text-slate-400 uppercase mb-1">Premiados</p>
-                    <p className="text-lg font-black text-emerald-600">{store.qtdePremiados}/{store.qtdeVendedores}</p>
-                    <p className="text-[10px] text-slate-400">R$ {store.totalPremios.toFixed(0)}</p>
-                  </div>
-                  <div className={`rounded-xl p-3 border-2 ${store.valorPremioCalc > 0 ? 'bg-emerald-50 dark:bg-emerald-900/20 border-emerald-300 dark:border-emerald-700' : 'bg-slate-50 dark:bg-slate-800 border-slate-200 dark:border-slate-700'}`}>
-                    <p className="text-xs font-black text-slate-400 uppercase mb-1">Prêmio</p>
-                    <p className={`text-lg font-black ${store.valorPremioCalc > 0 ? 'text-emerald-600' : 'text-slate-400'}`}>
-                      {store.valorPremioCalc > 0 ? `R$ ${store.valorPremioCalc.toFixed(2)}` : '—'}
-                    </p>
-                    <p className="text-[10px] text-slate-400">{store.valorPremioCalc > 0 ? 'pelo P.A médio' : 'abaixo da meta'}</p>
-                  </div>
-                </div>
-              </div>
-            </div>
-          );
-        })}
+
+      {/* Tabs */}
+      <div className="bg-white dark:bg-slate-900 rounded-2xl shadow-sm border border-slate-200 dark:border-slate-800 p-2">
+        <div className="flex gap-2 overflow-x-auto">
+          <button
+            onClick={() => setActiveTab('ranking')}
+            className={`flex items-center gap-2 px-6 py-3 rounded-xl font-black uppercase text-xs transition-all whitespace-nowrap ${
+              activeTab === 'ranking'
+                ? 'bg-gradient-to-r from-orange-600 to-red-600 text-white shadow-lg'
+                : 'bg-slate-50 dark:bg-slate-800 text-slate-600 dark:text-slate-400 hover:bg-slate-100 dark:hover:bg-slate-700'
+            }`}
+          >
+            <Trophy size={16} />
+            Ranking de Lojas
+          </button>
+
+          <button
+            onClick={() => setActiveTab('semanas')}
+            className={`flex items-center gap-2 px-6 py-3 rounded-xl font-black uppercase text-xs transition-all whitespace-nowrap ${
+              activeTab === 'semanas'
+                ? 'bg-gradient-to-r from-blue-600 to-indigo-600 text-white shadow-lg'
+                : 'bg-slate-50 dark:bg-slate-800 text-slate-600 dark:text-slate-400 hover:bg-slate-100 dark:hover:bg-slate-700'
+            }`}
+          >
+            <Calendar size={16} />
+            Gerenciar Semanas
+          </button>
+        </div>
       </div>
- 
-      {!loading && performance.length > 0 && (
-        <div className="bg-slate-100 dark:bg-slate-900 rounded-2xl p-4 border border-slate-200 dark:border-slate-800">
-          <p className="text-xs font-bold text-slate-500 dark:text-slate-400 text-center uppercase tracking-widest">
-            📊 Exibindo {performance.length} {performance.length === 1 ? 'loja' : 'lojas'} •
-            Score = 30% Vendas + 70% P.A •
-            Prêmio = Valor Base + Incremento por P.A •
-            Atualizado em tempo real
-          </p>
+
+      {activeTab === 'ranking' ? (
+        <>
+          {/* Ranking */}
+          <div className="space-y-4">
+            {loading && (
+              <div className="flex items-center justify-center py-20">
+                <div className="animate-spin w-12 h-12 border-4 border-orange-500 border-t-transparent rounded-full" />
+              </div>
+            )}
+
+            {!loading && performance.length === 0 && (
+              <div className="bg-white dark:bg-slate-900 rounded-3xl p-20 text-center border border-slate-200 dark:border-slate-800">
+                <Trophy className="mx-auto mb-4 text-slate-300" size={64} />
+                <p className="text-lg font-black text-slate-400 uppercase italic">Nenhum dado encontrado</p>
+                <p className="text-sm text-slate-400 mt-2">Selecione outro período ou loja</p>
+              </div>
+            )}
+
+            {!loading && performance.map((store, index) => {
+              const tier = getTier(index);
+              return (
+                <div key={store.storeId} className={`${tier.bgColor} rounded-3xl p-6 border-2 ${index < 3 ? 'border-slate-200 dark:border-slate-700 shadow-xl' : 'border-slate-100 dark:border-slate-800'} transition-all hover:shadow-2xl`}>
+                  <div className="flex flex-col sm:flex-row items-start sm:items-center gap-6">
+                    <div className={`${tier.color} w-16 h-16 rounded-2xl flex items-center justify-center text-white font-black text-2xl shadow-lg flex-shrink-0`}>
+                      {index + 1}º
+                    </div>
+
+                    <div className="flex-1 min-w-0">
+                      <div className="flex items-center gap-3 mb-2">
+                        <h3 className="text-xl font-black text-slate-900 dark:text-white uppercase italic">
+                          Loja {store.storeNumber}
+                        </h3>
+                        <span className={`px-3 py-1 rounded-full text-xs font-black uppercase ${tier.textColor} bg-white dark:bg-slate-800 border-2 border-current`}>
+                          {tier.label}
+                        </span>
+                      </div>
+                      <p className="text-sm font-bold text-slate-500 dark:text-slate-400 uppercase">
+                        {store.storeName} • {store.city}
+                      </p>
+                      {store.params && (
+                        <p className="text-[10px] font-bold text-slate-400 dark:text-slate-500 mt-1">
+                          Meta P.A: {store.params.pa_inicial.toFixed(2)} • Base: R$ {store.params.valor_base.toFixed(2)} • +R$ {(store.params.incremento_valor * 100).toFixed(2)} a cada +{store.params.incremento_pa} P.A
+                        </p>
+                      )}
+                    </div>
+
+                    <div className="grid grid-cols-2 sm:grid-cols-5 gap-3 w-full sm:w-auto">
+                      <div className="bg-white dark:bg-slate-800 rounded-xl p-3 border border-slate-200 dark:border-slate-700">
+                        <p className="text-xs font-black text-slate-400 uppercase mb-1">Score</p>
+                        <p className={`text-lg font-black ${tier.textColor}`}>{store.score.toFixed(1)}%</p>
+                      </div>
+                      <div className="bg-white dark:bg-slate-800 rounded-xl p-3 border border-slate-200 dark:border-slate-700">
+                        <p className="text-xs font-black text-slate-400 uppercase mb-1">P.A</p>
+                        <p className="text-lg font-black text-slate-900 dark:text-white">{store.paAtingido.toFixed(2)}</p>
+                        <p className="text-[10px] text-slate-400">Meta: {store.paMeta.toFixed(2)}</p>
+                      </div>
+                      <div className="bg-white dark:bg-slate-800 rounded-xl p-3 border border-slate-200 dark:border-slate-700">
+                        <p className="text-xs font-black text-slate-400 uppercase mb-1">Vendas</p>
+                        <p className="text-lg font-black text-blue-600">R$ {(store.totalVendas / 1000).toFixed(0)}k</p>
+                      </div>
+                      <div className="bg-white dark:bg-slate-800 rounded-xl p-3 border border-slate-200 dark:border-slate-700">
+                        <p className="text-xs font-black text-slate-400 uppercase mb-1">Premiados</p>
+                        <p className="text-lg font-black text-emerald-600">{store.qtdePremiados}/{store.qtdeVendedores}</p>
+                        <p className="text-[10px] text-slate-400">R$ {store.totalPremios.toFixed(0)}</p>
+                      </div>
+                      <div className={`rounded-xl p-3 border-2 ${store.valorPremioCalc > 0 ? 'bg-emerald-50 dark:bg-emerald-900/20 border-emerald-300 dark:border-emerald-700' : 'bg-slate-50 dark:bg-slate-800 border-slate-200 dark:border-slate-700'}`}>
+                        <p className="text-xs font-black text-slate-400 uppercase mb-1">Prêmio</p>
+                        <p className={`text-lg font-black ${store.valorPremioCalc > 0 ? 'text-emerald-600' : 'text-slate-400'}`}>
+                          {store.valorPremioCalc > 0 ? `R$ ${store.valorPremioCalc.toFixed(2)}` : '—'}
+                        </p>
+                        <p className="text-[10px] text-slate-400">{store.valorPremioCalc > 0 ? 'pelo P.A médio' : 'abaixo da meta'}</p>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+
+          {!loading && performance.length > 0 && (
+            <div className="bg-slate-100 dark:bg-slate-900 rounded-2xl p-4 border border-slate-200 dark:border-slate-800">
+              <p className="text-xs font-bold text-slate-500 dark:text-slate-400 text-center uppercase tracking-widest">
+                📊 Exibindo {performance.length} {performance.length === 1 ? 'loja' : 'lojas'} •
+                Score = 30% Vendas + 70% P.A •
+                Prêmio = Valor Base + Incremento por P.A •
+                Atualizado em tempo real
+              </p>
+            </div>
+          )}
+        </>
+      ) : (
+        <div className="space-y-4">
+          <div className="bg-white dark:bg-slate-900 rounded-3xl border border-slate-200 dark:border-slate-800 overflow-hidden shadow-sm">
+            <div className="overflow-x-auto">
+              <table className="w-full text-left border-collapse">
+                <thead>
+                  <tr className="bg-slate-50 dark:bg-slate-800/50 border-b border-slate-100 dark:border-slate-800">
+                    <th className="px-6 py-4 text-[10px] font-black text-slate-400 uppercase tracking-widest">Loja</th>
+                    <th className="px-6 py-4 text-[10px] font-black text-slate-400 uppercase tracking-widest">Período</th>
+                    <th className="px-6 py-4 text-[10px] font-black text-slate-400 uppercase tracking-widest">Status</th>
+                    <th className="px-6 py-4 text-[10px] font-black text-slate-400 uppercase tracking-widest text-right">Ações</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {allWeeks
+                    .filter(w => selectedStoreId === 'all' || w.store_id === selectedStoreId)
+                    .map((w) => {
+                      const store = stores.find(s => s.id === w.store_id);
+                      const isFinalized = w.status === 'recibos_impressos' || w.status === 'bloqueada';
+                      const isReopening = reopeningId === w.id;
+
+                      return (
+                        <tr key={w.id} className="border-b border-slate-50 dark:border-slate-800/50 hover:bg-slate-50/50 dark:hover:bg-slate-800/30 transition-all">
+                          <td className="px-6 py-4">
+                            <div className="flex items-center gap-3">
+                              <div className="w-8 h-8 rounded-lg bg-slate-100 dark:bg-slate-800 flex items-center justify-center text-[10px] font-black text-slate-500">
+                                {store?.number || '??'}
+                              </div>
+                              <div>
+                                <p className="text-xs font-black text-slate-900 dark:text-white uppercase italic">{store?.name || 'Loja Desconhecida'}</p>
+                                <p className="text-[10px] font-bold text-slate-400 uppercase">{store?.city}</p>
+                              </div>
+                            </div>
+                          </td>
+                          <td className="px-6 py-4">
+                            <div className="flex items-center gap-2 text-slate-600 dark:text-slate-400">
+                              <Calendar size={14} />
+                              <span className="text-xs font-bold uppercase tracking-tighter">
+                                {format(new Date(w.data_inicio + 'T00:00:00'), 'dd/MM')} a {format(new Date(w.data_fim + 'T00:00:00'), 'dd/MM')}
+                              </span>
+                            </div>
+                          </td>
+                          <td className="px-6 py-4">
+                            <div className="flex items-center gap-2">
+                              {w.status === 'aberta' && <div className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse" />}
+                              {w.status === 'importada' && <div className="w-2 h-2 rounded-full bg-blue-500" />}
+                              {w.status === 'bloqueada' && <Lock size={14} className="text-amber-500" />}
+                              {w.status === 'recibos_impressos' && <Check size={14} className="text-emerald-500" />}
+                              <span className={`text-[10px] font-black uppercase italic ${
+                                w.status === 'aberta' ? 'text-emerald-600' :
+                                w.status === 'importada' ? 'text-blue-600' :
+                                w.status === 'bloqueada' ? 'text-amber-600' :
+                                'text-slate-600'
+                              }`}>
+                                {w.status.replace('_', ' ')}
+                              </span>
+                            </div>
+                          </td>
+                          <td className="px-6 py-4 text-right">
+                            {isFinalized && (
+                              <button
+                                onClick={() => handleReabrirSemana(w.id)}
+                                disabled={isReopening}
+                                className="inline-flex items-center gap-2 px-4 py-2 bg-amber-100 dark:bg-amber-900/30 text-amber-600 dark:text-amber-400 rounded-xl font-black uppercase text-[10px] hover:bg-amber-200 dark:hover:bg-amber-900/50 transition-all disabled:opacity-50"
+                              >
+                                {isReopening ? (
+                                  <Loader2 size={12} className="animate-spin" />
+                                ) : (
+                                  <RotateCcw size={12} />
+                                )}
+                                Reabrir Semana
+                              </button>
+                            )}
+                            {!isFinalized && (
+                              <span className="text-[10px] font-bold text-slate-300 uppercase italic">Em andamento</span>
+                            )}
+                          </td>
+                        </tr>
+                      );
+                    })}
+                </tbody>
+              </table>
+            </div>
+          </div>
+
+          {allWeeks.filter(w => selectedStoreId === 'all' || w.store_id === selectedStoreId).length === 0 && (
+            <div className="bg-white dark:bg-slate-900 rounded-3xl p-12 text-center border border-slate-200 dark:border-slate-800">
+              <AlertCircle className="mx-auto mb-4 text-slate-300" size={48} />
+              <p className="text-sm font-black text-slate-400 uppercase italic">Nenhuma semana encontrada para este período</p>
+            </div>
+          )}
         </div>
       )}
     </div>
