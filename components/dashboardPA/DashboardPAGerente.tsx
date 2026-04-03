@@ -802,7 +802,7 @@ const DashboardPAGerente: React.FC<DashboardPAGerenteProps> = ({ user, store }) 
                       </div>
                       <div>
                         <p className="text-slate-400 font-black italic uppercase tracking-tighter">Prêmio</p>
-                        <p className="text-emerald-500 font-black italic uppercase tracking-tighter">R$ {row.valor_premio?.toLocaleString() || '-'}</p>
+                        <p className="text-emerald-500 font-black italic uppercase tracking-tighter">R$ {row.valor_premio?.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 }) || '-'}</p>
                       </div>
                       <div>
                         <p className="text-slate-400 font-black italic uppercase tracking-tighter">Status</p>
@@ -882,7 +882,9 @@ const DashboardPAGerente: React.FC<DashboardPAGerenteProps> = ({ user, store }) 
                           )}
                         </td>
                         <td className="p-6 text-right font-black italic uppercase tracking-tighter text-emerald-500">
-                          {row.atingiu_meta ? `R$ {row.valor_premio}` : '-'}
+                          {row.atingiu_meta 
+                            ? `R$ ${row.valor_premio?.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}` 
+                            : '-'}
                         </td>
                       </motion.tr>
                     ))}

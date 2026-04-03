@@ -249,13 +249,16 @@ const OSDemandsModule: React.FC<OSDemandsModuleProps> = ({ user, stores }) => {
 
         setIsSubmitting(true);
         try {
+            // Garantir que a categoria não seja vazia
+            const categoryToSave = formData.category || (dynamicCategories.length > 0 ? dynamicCategories[0].label : 'Geral');
+
             if (editingDemand) {
                 const { error } = await supabase
                     .from('demands')
                     .update({
                         title: formData.title,
                         description: formData.description,
-                        category: formData.category,
+                        category: categoryToSave,
                         priority: formData.priority,
                         store_id: formData.store_id,
                         updated_at: new Date().toISOString()
@@ -267,7 +270,11 @@ const OSDemandsModule: React.FC<OSDemandsModuleProps> = ({ user, stores }) => {
                 const { error } = await supabase
                     .from('demands')
                     .insert([{
-                        ...formData,
+                        title: formData.title,
+                        description: formData.description,
+                        category: categoryToSave,
+                        priority: formData.priority,
+                        store_id: formData.store_id,
                         status: 'aberta',
                         created_by: user.id,
                         sla_hours: formData.priority === 'urgente' ? 4 : formData.priority === 'alta' ? 24 : 48,
@@ -290,10 +297,18 @@ const OSDemandsModule: React.FC<OSDemandsModuleProps> = ({ user, stores }) => {
             fetchDemands();
         } catch (err: any) {
             console.error('Erro ao salvar demanda:', err);
+            
+            let errorMessage = err.message || 'Erro desconhecido';
+            
+            // Tratamento específico para erro de chave estrangeira
+            if (err.code === '23503' && err.message.includes('demands_created_by_fkey')) {
+                errorMessage = 'Erro de permissão no banco de dados (Constraint de Usuário). Por favor, execute o script SQL de correção no Supabase para vincular a tabela de demandas aos usuários administrativos.';
+            }
+
             setConfirmModal({
                 isOpen: true,
                 title: 'Erro ao Salvar',
-                message: `Erro ao salvar demanda: ${err.message || 'Erro desconhecido'}. Verifique se a categoria selecionada é permitida no banco de dados.`,
+                message: errorMessage,
                 onConfirm: () => setConfirmModal(prev => ({ ...prev, isOpen: false })),
                 type: 'info'
             });

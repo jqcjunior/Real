@@ -2,24 +2,34 @@ import React from 'react';
 import { User, UserRole, Store } from '../../types';
 import DashboardPAAdmin from './DashboardPAAdmin';
 import DashboardPAGerente from './DashboardPAGerente';
-
+ 
 interface DashboardPAModuleProps {
   user: User;
   stores: Store[];
+  onRefresh: () => Promise<void>;
 }
-
-const DashboardPAModule: React.FC<DashboardPAModuleProps> = ({ user, stores }) => {
+ 
+const DashboardPAModule: React.FC<DashboardPAModuleProps> = ({ 
+  user, 
+  stores,
+  onRefresh
+}) => {
   const isAdmin = user.role === UserRole.ADMIN;
   const userStore = stores.find(s => s.id === user.storeId);
-
+ 
   if (isAdmin) {
-    return <DashboardPAAdmin user={user} stores={stores} />;
+    return (
+      <DashboardPAAdmin 
+        user={user}
+        stores={stores}
+      />
+    );
   }
-
+ 
   if (userStore) {
     return <DashboardPAGerente user={user} store={userStore} />;
   }
-
+ 
   return (
     <div className="flex items-center justify-center h-screen bg-slate-50 dark:bg-slate-950">
       <div className="text-center space-y-4">
@@ -33,5 +43,5 @@ const DashboardPAModule: React.FC<DashboardPAModuleProps> = ({ user, stores }) =
     </div>
   );
 };
-
+ 
 export default DashboardPAModule;
