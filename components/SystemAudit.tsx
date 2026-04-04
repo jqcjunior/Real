@@ -20,7 +20,7 @@ interface SystemAuditProps {
 }
 
 const SystemAudit: React.FC<SystemAuditProps> = ({ logs, receipts, store, cashErrors, iceCreamSales, icPromissories, cardSales = [], pixSales = [], currentUser, closures, stores }) => {
-  const [activeTab, setActiveTab] = useState<'logs' | 'receipts' | 'cash_errors' | 'vendas_cartao' | 'vendas_pix' | 'fechamentos'>('logs');
+  const [activeTab, setActiveTab] = useState<'logs' | 'receipts' | 'cash_errors' | 'vendas_cartao' | 'vendas_pix'>('logs');
   const [searchTerm, setSearchTerm] = useState('');
   const [selectedStoreId, setSelectedStoreId] = useState('');
   
@@ -184,7 +184,6 @@ const SystemAudit: React.FC<SystemAuditProps> = ({ logs, receipts, store, cashEr
             <button onClick={() => setActiveTab('vendas_pix')} className={`flex-1 lg:flex-none px-6 py-2.5 rounded-xl text-[10px] font-black uppercase transition-all whitespace-nowrap flex items-center justify-center gap-2 ${activeTab === 'vendas_pix' ? 'bg-teal-600 text-white shadow-lg' : 'text-gray-400 hover:text-gray-900'}`}><DollarSign size={14}/> Vendas Pix</button>
             <button onClick={() => setActiveTab('receipts')} className={`flex-1 lg:flex-none px-6 py-2.5 rounded-xl text-[10px] font-black uppercase transition-all whitespace-nowrap ${activeTab === 'receipts' ? 'bg-gray-900 text-white shadow-lg' : 'text-gray-400 hover:text-gray-900'}`}>Recibos</button>
             <button onClick={() => setActiveTab('cash_errors')} className={`flex-1 lg:flex-none px-6 py-2.5 rounded-xl text-[10px] font-black uppercase transition-all whitespace-nowrap ${activeTab === 'cash_errors' ? 'bg-red-600 text-white shadow-lg' : 'text-gray-400 hover:text-gray-900'}`}>Quebras</button>
-            <button onClick={() => setActiveTab('fechamentos')} className={`flex-1 lg:flex-none px-6 py-2.5 rounded-xl text-[10px] font-black uppercase transition-all whitespace-nowrap ${activeTab === 'fechamentos' ? 'bg-emerald-600 text-white shadow-lg' : 'text-gray-400 hover:text-gray-900'}`}>Fechamentos</button>
         </div>
       </div>
 
@@ -293,7 +292,12 @@ const SystemAudit: React.FC<SystemAuditProps> = ({ logs, receipts, store, cashEr
                                 <td className="px-8 py-5 uppercase italic text-gray-700">{c.userName || 'Sistema'}</td>
                                 <td className="px-8 py-5">
                                     <div className="flex items-center gap-2">
-                                        <img src={getCardFlagIcon(c.brand)} className="w-5 h-5 object-contain" alt="" />
+                                        <img 
+                                            src={getCardFlagIcon(c.brand)} 
+                                            referrerPolicy="no-referrer" 
+                                            className="w-5 h-5 object-contain" 
+                                            alt="" 
+                                        />
                                         <span className="bg-blue-50 text-blue-700 px-2 py-1 rounded border border-blue-100 font-black uppercase text-[9px]">{c.brand}</span>
                                     </div>
                                 </td>
@@ -426,43 +430,7 @@ const SystemAudit: React.FC<SystemAuditProps> = ({ logs, receipts, store, cashEr
                 </table>
             </div>
         )}
-        {activeTab === 'fechamentos' && (
-            <div className="bg-white rounded-[32px] shadow-sm border border-gray-100 overflow-hidden animate-in fade-in duration-300">
-                <table className="w-full text-left border-collapse">
-                    <thead>
-                        <tr className="bg-gray-50/50 border-b border-gray-100">
-                            <th className="px-8 py-4 text-[10px] font-black text-gray-400 uppercase tracking-widest">Data / Responsável</th>
-                            <th className="px-8 py-4 text-[10px] font-black text-gray-400 uppercase tracking-widest">Loja</th>
-                            <th className="px-8 py-4 text-[10px] font-black text-gray-400 uppercase tracking-widest">Vendas</th>
-                            <th className="px-8 py-4 text-[10px] font-black text-gray-400 uppercase tracking-widest">Despesas</th>
-                            <th className="px-8 py-4 text-[10px] font-black text-gray-400 uppercase tracking-widest text-right">Saldo</th>
-                        </tr>
-                    </thead>
-                    <tbody className="divide-y divide-gray-50">
-                        {closures.filter(c => {
-                            const matchesDate = checkDateInRange(c.date);
-                            const matchesStore = currentUser?.role === UserRole.ADMIN || c.storeId === currentUser?.storeId;
-                            const matchesSelectedStore = !selectedStoreId || c.storeId === selectedStoreId;
-                            return matchesDate && matchesStore && matchesSelectedStore;
-                        }).map(c => (
-                            <tr key={c.id} className="hover:bg-gray-50/50 transition-colors group">
-                                <td className="px-8 py-5">
-                                    <div className="text-blue-950 uppercase italic text-xs leading-none mb-1">{c.closedBy}</div>
-                                    <div className="text-[9px] text-gray-400">{new Date(c.date + 'T12:00:00').toLocaleDateString('pt-BR')}</div>
-                                </td>
-                                <td className="px-8 py-5">
-                                    <span className="text-[10px] font-black text-gray-400 uppercase">Loja {stores.find(s => s.id === c.storeId)?.number || 'N/A'}</span>
-                                </td>
-                                <td className="px-8 py-5 text-green-600 font-bold text-xs">{formatCurrency(c.totalSales)}</td>
-                                <td className="px-8 py-5 text-red-600 font-bold text-xs">{formatCurrency(c.totalExpenses)}</td>
-                                <td className="px-8 py-5 text-right font-black text-base italic text-blue-900">{formatCurrency(c.balance)}</td>
-                            </tr>
-                        ))}
-                    </tbody>
-                </table>
-            </div>
-        )}
-      </div>
+    </div>
 
       {/* Modal de Resumo do Dia */}
       {showDailySummary && (

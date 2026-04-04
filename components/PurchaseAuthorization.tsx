@@ -9,7 +9,7 @@ const AuthorizationForm = () => {
       {/* Header with Logo */}
       <div className="flex items-center justify-between mb-2 gap-4">
         <div className="flex items-center gap-2">
-            <img src={BRAND_LOGO} alt="Logo" className="h-10 w-10 object-contain rounded-full border border-black shadow-sm" />
+            <img src={BRAND_LOGO} alt="Logo" referrerPolicy="no-referrer" className="h-10 w-10 object-contain rounded-full border border-black shadow-sm" />
             <div className="text-xl font-black uppercase italic tracking-tighter">Real <span className="text-red-600">Calçados</span></div>
         </div>
         <div className="bg-black text-white flex-1 text-center font-bold uppercase py-1.5 text-sm border-2 border-black">

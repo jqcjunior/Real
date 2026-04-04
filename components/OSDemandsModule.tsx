@@ -18,6 +18,11 @@ interface OSDemandsModuleProps {
 const OSDemandsModule: React.FC<OSDemandsModuleProps> = ({ user, stores }) => {
     const [demands, setDemands] = useState<Demand[]>([]);
     const [selectedDemand, setSelectedDemand] = useState<Demand | null>(null);
+    const selectedDemandRef = useRef<Demand | null>(null);
+
+    useEffect(() => {
+        selectedDemandRef.current = selectedDemand;
+    }, [selectedDemand]);
     const [messages, setMessages] = useState<DemandMessage[]>([]);
     const [newMessage, setNewMessage] = useState('');
     const [isLoading, setIsLoading] = useState(true);
@@ -64,6 +69,21 @@ const OSDemandsModule: React.FC<OSDemandsModuleProps> = ({ user, stores }) => {
     useEffect(() => {
         fetchDemands();
         fetchDynamicCategories();
+
+        // Subscribe to all demand changes
+        const channel = supabase.channel('demands-all')
+            .on('postgres_changes', { 
+                event: '*', 
+                schema: 'public', 
+                table: 'demands'
+            }, () => {
+                fetchDemands(true);
+            })
+            .subscribe();
+
+        return () => {
+            supabase.removeChannel(channel);
+        };
     }, []);
 
     const fetchDynamicCategories = async () => {
@@ -108,14 +128,20 @@ const OSDemandsModule: React.FC<OSDemandsModuleProps> = ({ user, stores }) => {
     useEffect(() => {
         if (selectedDemand) {
             fetchMessages(selectedDemand.id);
+            
             // Subscribe to new messages for this demand
-            const channel = supabase.channel(`demand-${selectedDemand.id}`)
+            const channel = supabase.channel(`messages-${selectedDemand.id}`)
                 .on('postgres_changes', { 
-                    event: '*', 
+                    event: 'INSERT', 
                     schema: 'public', 
-                    table: 'demands'
-                }, () => {
-                    fetchDemands();
+                    table: 'demand_messages',
+                    filter: `demand_id=eq.${selectedDemand.id}`
+                }, (payload) => {
+                    setMessages(prev => {
+                        // Evita duplicatas se a mensagem já foi adicionada localmente
+                        if (prev.some(m => m.id === payload.new.id)) return prev;
+                        return [...prev, payload.new as DemandMessage];
+                    });
                 })
                 .subscribe();
 
@@ -123,7 +149,7 @@ const OSDemandsModule: React.FC<OSDemandsModuleProps> = ({ user, stores }) => {
                 supabase.removeChannel(channel);
             };
         }
-    }, [selectedDemand]);
+    }, [selectedDemand?.id]);
 
     useEffect(() => {
         scrollToBottom();
@@ -133,8 +159,8 @@ const OSDemandsModule: React.FC<OSDemandsModuleProps> = ({ user, stores }) => {
         chatEndRef.current?.scrollIntoView({ behavior: 'smooth' });
     };
 
-    const fetchDemands = async () => {
-        setIsLoading(true);
+    const fetchDemands = async (silent = false) => {
+        if (!silent) setIsLoading(true);
         try {
             let query = supabase
                 .from('demands')
@@ -160,10 +186,19 @@ const OSDemandsModule: React.FC<OSDemandsModuleProps> = ({ user, stores }) => {
             }));
 
             setDemands(mappedDemands);
+            
+            // Update selectedDemand if it's in the new data to keep it in sync
+            const currentSelected = selectedDemandRef.current;
+            if (currentSelected) {
+                const updatedSelected = mappedDemands.find(d => d.id === currentSelected.id);
+                if (updatedSelected && JSON.stringify(updatedSelected) !== JSON.stringify(currentSelected)) {
+                    setSelectedDemand(updatedSelected);
+                }
+            }
         } catch (err) {
             console.error('Erro ao buscar demandas:', err);
         } finally {
-            setIsLoading(false);
+            if (!silent) setIsLoading(false);
         }
     };
 
@@ -355,6 +390,11 @@ const OSDemandsModule: React.FC<OSDemandsModuleProps> = ({ user, stores }) => {
         setIsModalOpen(true);
     };
 
+    const handleAttendDemand = () => {
+        if (!selectedDemand) return;
+        handleUpdateStatus(selectedDemand.id, 'em_andamento');
+    };
+
     const handleFinalizeDemand = () => {
         if (!selectedDemand) return;
         setConfirmModal({
@@ -397,7 +437,8 @@ const OSDemandsModule: React.FC<OSDemandsModuleProps> = ({ user, stores }) => {
     const mostActiveStore = Object.entries(storeActivity).sort((a: any, b: any) => b[1] - a[1])[0]?.[0] || 'N/A';
 
     const filteredDemands = demands.filter(d => {
-        const matchesStatus = statusFilter === 'todos' || d.status === statusFilter;
+        // Mantém a demanda selecionada visível mesmo que mude de status
+        const matchesStatus = statusFilter === 'todos' || d.status === statusFilter || d.id === selectedDemand?.id;
         const matchesCategory = categoryFilter === 'todos' || d.category === categoryFilter;
         const matchesSearch = d.title.toLowerCase().includes(searchTerm.toLowerCase()) || 
                             (d.store_name && d.store_name.toLowerCase().includes(searchTerm.toLowerCase()));
@@ -1410,15 +1451,24 @@ const OSDemandsModule: React.FC<OSDemandsModuleProps> = ({ user, stores }) => {
                                 <p style={{ fontSize: '13px', color: 'var(--text-muted)', margin: '8px 0' }}>
                                     {selectedDemand.description}
                                 </p>
-                                
-                                {selectedDemand.status !== 'resolvida' && selectedDemand.status !== 'cancelada' && (
+                                       {selectedDemand.status !== 'resolvida' && selectedDemand.status !== 'cancelada' && (
                                     <div className="action-btn-group">
+                                        {user.role === 'ADMIN' && selectedDemand.status === 'aberta' && (
+                                            <button 
+                                                className="finalize-btn" 
+                                                style={{ gridColumn: 'span 2', background: 'var(--accent)', color: '#000', marginBottom: '8px' }} 
+                                                onClick={handleAttendDemand}
+                                            >
+                                                <Clock size={18} /> Atender Demanda
+                                            </button>
+                                        )}
+
                                         <button 
                                             className="finalize-btn" 
                                             style={{ gridColumn: 'span 2' }} 
                                             onClick={handleFinalizeDemand}
                                         >
-                                            <CheckCircle size={18} /> Resolvido Demanda
+                                            <CheckCircle size={18} /> Resolver Demanda
                                         </button>
                                         
                                         {(user.role === 'ADMIN' || user.id === selectedDemand.created_by) && (
@@ -1435,7 +1485,7 @@ const OSDemandsModule: React.FC<OSDemandsModuleProps> = ({ user, stores }) => {
                                                 className="action-btn-danger" 
                                                 onClick={handleCancelDemand}
                                             >
-                                                <X size={16} /> Finalizar Demanda
+                                                <XCircle size={16} /> Cancelar Demanda
                                             </button>
                                         )}
 

@@ -275,6 +275,7 @@ const PDVMobileView: React.FC<PDVMobileViewProps> = (props) => {
                                         className="w-full h-full object-contain" 
                                         alt=""
                                         loading="lazy"
+                                        referrerPolicy="no-referrer"
                                     />
                                 </div>
                                 <span className="font-black uppercase text-[9px] sm:text-[10px] text-blue-950 dark:text-white tracking-tighter text-center">
@@ -307,6 +308,7 @@ const PDVMobileView: React.FC<PDVMobileViewProps> = (props) => {
                                             className="w-full h-full object-contain p-2" 
                                             alt=""
                                             loading="lazy"
+                                            referrerPolicy="no-referrer"
                                         />
                                     </div>
                                     <div className="text-left flex-1 min-w-0">

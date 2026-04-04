@@ -82,6 +82,7 @@ const LoginScreen: React.FC<LoginScreenProps> = ({ onLoginAttempt, onRegisterReq
               src={BRAND_LOGO} 
               alt="Real Admin Logo"
               loading="eager"
+              referrerPolicy="no-referrer"
               className="max-h-full w-auto object-contain transition-transform duration-500 hover:scale-105"
             />
           </div>

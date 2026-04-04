@@ -28,6 +28,7 @@ import SystemAudit from './components/SystemAudit';
 import SpreadsheetOrderModule from './components/SpreadsheetOrderModule';
 import OSDemandsModule from './components/OSDemandsModule';
 import DashboardPAModule from './components/dashboardPA/DashboardPAModule';
+import CashErrorsModule from './components/CashErrorsModule';
 import LoginScreen from './components/LoginScreen';
 import NotificationHeader from './components/NotificationHeader';
 import ChangePasswordModal from './components/ChangePasswordModal';
@@ -131,6 +132,25 @@ const App: React.FC = () => {
                     allow_cashier: false,
                     allow_sorvete: false,
                     sort_order: 56
+                }]);
+            }
+
+            const { data: existingCE } = await supabase
+                .from('page_permissions')
+                .select('id')
+                .eq('page_key', 'MODULE_CASH_ERRORS')
+                .single();
+
+            if (!existingCE) {
+                await supabase.from('page_permissions').insert([{
+                    page_key: 'MODULE_CASH_ERRORS',
+                    label: 'Erros de Caixa',
+                    module_group: 'Operacional',
+                    allow_admin: true,
+                    allow_manager: true,
+                    allow_cashier: true,
+                    allow_sorvete: false,
+                    sort_order: 57
                 }]);
             }
         } catch (err) {
@@ -483,7 +503,7 @@ const App: React.FC = () => {
             `}>
                 <div className="flex items-center justify-between mb-8">
                     <div className="flex items-center gap-4">
-                        <img src={BRAND_LOGO} alt="Logo" className="h-10 w-auto object-contain dark:brightness-125" />
+                        <img src={BRAND_LOGO} alt="Logo" referrerPolicy="no-referrer" className="h-10 w-auto object-contain dark:brightness-125" />
                         <h1 className="text-xl font-black italic uppercase text-slate-900 dark:text-white">ADMIN</h1>
                     </div>
                     <button onClick={() => setIsSidebarOpen(false)} className="p-2 text-slate-400 hover:text-slate-900 dark:hover:text-white">
@@ -493,7 +513,7 @@ const App: React.FC = () => {
                 <nav className="flex-1 space-y-6 overflow-y-auto no-scrollbar">
                     {[
                         { title: 'Inteligência', items: [ { id: 'dashboard_rede', label: 'Dashboard Rede', icon: LayoutDashboard, perm: 'MODULE_DASHBOARD_ADMIN' }, { id: 'dashboard_loja', label: 'Dashboard Loja', icon: LayoutDashboard, perm: 'MODULE_DASHBOARD_MANAGER' }, { id: 'dashboard_pa', label: 'Dashboard P.A.', icon: Trophy, perm: 'MODULE_DASHBOARD_PA' }, { id: 'metas', label: 'Metas', icon: Target, perm: 'MODULE_METAS' }, { id: 'cotas', label: 'Cotas OTB', icon: Calculator, perm: 'MODULE_COTAS' }, { id: 'compras', label: 'Compras', icon: ShoppingBag, perm: 'MODULE_PURCHASES' }, { id: 'os_demandas', label: 'Demanda OS', icon: ClipboardList, perm: 'MODULE_DEMANDS' } ] },
-                        { title: 'Operacional', items: [ { id: 'pdv_gelateria', label: 'PDV Gelateria', icon: IceCreamIcon, perm: 'MODULE_ICECREAM', requiredFeature: stores.find(s => s.id === user.storeId)?.has_gelateria || user.role === UserRole.ICE_CREAM }, { id: 'caixa', label: 'Caixa', icon: ClipboardList, perm: 'MODULE_CASH_REGISTER' }, { id: 'agenda', label: 'Agenda Semanal', icon: Calendar, perm: 'MODULE_AGENDA' } ] },
+                        { title: 'Operacional', items: [ { id: 'pdv_gelateria', label: 'PDV Gelateria', icon: IceCreamIcon, perm: 'MODULE_ICECREAM', requiredFeature: stores.find(s => s.id === user.storeId)?.has_gelateria || user.role === UserRole.ICE_CREAM }, { id: 'caixa', label: 'Caixa', icon: ClipboardList, perm: 'MODULE_CASH_REGISTER' }, { id: 'cash_errors', label: 'Erros de Caixa', icon: AlertCircle, perm: 'MODULE_CASH_ERRORS' }, { id: 'agenda', label: 'Agenda Semanal', icon: Calendar, perm: 'MODULE_AGENDA' } ] },
                         { title: 'Documentos', items: [ { id: 'autoriz_compra', label: 'Autoriz. Compra', icon: FileSignature, perm: 'MODULE_AUTORIZ_COMPRA' }, { id: 'termo_condicional', label: 'Termo Condicional', icon: FileText, perm: 'MODULE_TERMO_CONDICIONAL' }, { id: 'downloads', label: 'Downloads', icon: Download, perm: 'MODULE_DOWNLOADS' } ] },
                         { title: 'Administração', items: [ { id: 'users', label: 'Usuários', icon: Users, perm: 'MODULE_ADMIN_USERS' }, { id: 'access', label: 'Acessos', icon: ShieldAlert, perm: 'MODULE_ACCESS_CONTROL' }, { id: 'audit', label: 'Auditoria', icon: Shield, perm: 'MODULE_AUDIT' }, { id: 'settings', label: 'Configurações', icon: Settings, perm: 'MODULE_SETTINGS' } ] }
                     ].map(section => {
@@ -503,7 +523,19 @@ const App: React.FC = () => {
                             <div key={section.title} className="space-y-1">
                                 <h3 className="px-4 text-[10px] font-black uppercase text-slate-400 dark:text-slate-400 tracking-widest mb-2">{section.title}</h3>
                                 {visibleItems.map(item => (
-                                    <button key={item.id} onClick={() => { setCurrentView(item.id); setIsSidebarOpen(false); }} className={`w-full text-left py-2.5 px-4 rounded-xl font-black uppercase text-[10px] flex items-center gap-4 transition-all ${currentView === item.id ? 'bg-blue-600 text-white shadow-lg shadow-blue-200 dark:shadow-blue-900/20' : 'text-slate-500 dark:text-slate-300 hover:text-slate-900 dark:hover:text-white hover:bg-slate-50 dark:hover:bg-slate-800'}`}><item.icon size={20} /> {item.label}</button>
+                                    <button 
+                                        key={item.id} 
+                                        onClick={() => { setCurrentView(item.id); setIsSidebarOpen(false); }} 
+                                        className={`w-full text-left py-2.5 px-4 rounded-xl font-black uppercase text-[10px] flex items-center gap-4 transition-all ${
+                                            currentView === item.id 
+                                                ? item.id === 'cash_errors' 
+                                                    ? 'bg-red-600 text-white shadow-lg shadow-red-200 dark:shadow-red-900/20' 
+                                                    : 'bg-blue-600 text-white shadow-lg shadow-blue-200 dark:shadow-blue-900/20' 
+                                                : 'text-slate-500 dark:text-slate-300 hover:text-slate-900 dark:hover:text-white hover:bg-slate-50 dark:hover:bg-slate-800'
+                                        }`}
+                                    >
+                                        <item.icon size={20} /> {item.label}
+                                    </button>
                                 ))}
                             </div>
                         );
@@ -775,8 +807,10 @@ const App: React.FC = () => {
                                     return saved;
                                 }} 
                                 onAddError={async (e) => { 
-                                    await supabase.from('cash_errors').insert([e]); 
-                                    addLog('REGISTRO QUEBRA', `${e.type === 'shortage' ? 'Falta' : 'Sobra'} de ${e.value} na loja ${e.store_id}`); 
+                                    if (e && Object.keys(e).length > 0) {
+                                        await supabase.from('cash_errors').insert([e]); 
+                                        addLog('REGISTRO QUEBRA', `${e.type === 'shortage' ? 'Falta' : 'Sobra'} de ${e.value} na loja ${e.store_id}`); 
+                                    }
                                     fetchData(); 
                                 }} 
                                 onDeleteError={async (id) => { 
@@ -785,6 +819,17 @@ const App: React.FC = () => {
                                     fetchData(); 
                                 }} 
                                 onAddLog={addLog} 
+                            />
+                        );
+                        if (currentView === 'cash_errors' && can('MODULE_CASH_ERRORS')) return (
+                            <CashErrorsModule 
+                                user={user!} 
+                                store={stores.find(s => s.id === user?.storeId)}
+                                stores={stores}
+                                errors={cashErrors}
+                                onAddError={async () => { await fetchData(); }}
+                                onUpdateError={async (e) => { await supabase.from('cash_errors').update(e).eq('id', e.id); await fetchData(); }}
+                                onDeleteError={async (id) => { await supabase.from('cash_errors').delete().eq('id', id); await fetchData(); }}
                             />
                         );
                         if (currentView === 'agenda' && can('MODULE_AGENDA')) return <AgendaSystem user={user!} tasks={agenda} onAddTask={async (t) => { await supabase.from('agenda_tasks').insert([{ user_id: user?.id, title: t.title, description: t.description, due_date: t.dueDate, due_time: t.dueTime, priority: t.priority, is_completed: false }]); fetchData(); }} onUpdateTask={async (t) => { await supabase.from('agenda_tasks').update({ is_completed: t.isCompleted }).eq('id', t.id); fetchData(); }} onDeleteTask={async (id) => { await supabase.from('agenda_tasks').delete().eq('id', id); fetchData(); }} />;

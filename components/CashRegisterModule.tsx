@@ -7,6 +7,7 @@ import {
 } from 'lucide-react';
 import { supabase } from '../services/supabaseClient';
 import apiService from '../services/apiService';
+import CashErrorsModule from './CashErrorsModule';
 
 interface CardEntry {
     id: string;
@@ -36,19 +37,18 @@ interface CashRegisterModuleProps {
     onAddLog?: (action: string, details: string) => Promise<void>;
 }
 
-// Mapeador de Ícones de Bandeiras - Atualizado com Elo Oficial
+// Mapeador de Ícones de Bandeiras - Atualizado com URLs de Alta Estabilidade (jsDelivr CDN)
 export const getCardFlagIcon = (brandName: string) => {
     const name = (brandName || '').toLowerCase();
-    // Bandeira Elo (Oficial Colorida)
-    if (name.includes('elo')) return 'https://upload.wikimedia.org/wikipedia/commons/thumb/e/e3/Elo_logo.svg/1024px-Elo_logo.svg.png';
-    if (name.includes('visa')) return 'https://img.icons8.com/color/48/visa.png';
-    if (name.includes('master')) return 'https://img.icons8.com/color/48/mastercard.png';
-    if (name.includes('amex') || name.includes('american')) return 'https://img.icons8.com/color/48/amex.png';
-    if (name.includes('diners')) return 'https://img.icons8.com/color/48/diners-club.png';
-    if (name.includes('hiper')) return 'https://upload.wikimedia.org/wikipedia/commons/thumb/b/b8/Hipercard_logo.svg/1280px-Hipercard_logo.svg.png';
-    if (name.includes('alelo')) return 'https://img.icons8.com/color/48/alelo.png';
-    if (name.includes('sodexo')) return 'https://img.icons8.com/color/48/sodexo.png';
-    if (name.includes('cielo')) return 'https://img.icons8.com/color/48/cielo.png';
+    const baseUrl = 'https://cdn.jsdelivr.net/gh/felipehespanhol/bandeiras-cartao@master/png';
+    
+    if (name.includes('elo')) return `${baseUrl}/elo.png`;
+    if (name.includes('hiper')) return `${baseUrl}/hipercard.png`;
+    if (name.includes('visa')) return `${baseUrl}/visa.png`;
+    if (name.includes('master')) return `${baseUrl}/mastercard.png`;
+    if (name.includes('amex') || name.includes('american')) return `${baseUrl}/amex.png`;
+    if (name.includes('diners')) return `${baseUrl}/diners.png`;
+    
     return 'https://img.icons8.com/color/48/credit-card.png';
 };
 
@@ -86,6 +86,20 @@ const numberToWords = (value: number): string => {
 export const printReceiptDoc = (r: any) => {
     const printWindow = window.open('', '_blank', 'width=900,height=1200');
     if (!printWindow) return;
+
+    // Mapeamento robusto de campos (banco vs objeto local)
+    const receiptNumber = r.receipt_number || r.id;
+    const finalNumber = r.formatted_number || (r.receipt_number ? `#${String(r.receipt_number).padStart(4, '0')}` : `#${String(r.id).padStart(4, '0')}`);
+    const valueInWords = r.value_in_words || r.valueInWords || 'UNDEFINED';
+    const dateStr = r.receipt_date || r.date;
+    
+    // Formatação de data robusta (evita fuso horário)
+    let formattedDate = 'Invalid Date';
+    if (dateStr && typeof dateStr === 'string') {
+        const [y, m, d] = dateStr.split('-').map(Number);
+        formattedDate = new Date(y, m - 1, d).toLocaleDateString('pt-BR', { day: 'numeric', month: 'long', year: 'numeric' });
+    }
+
     const html = `
         <html>
         <head>
@@ -116,14 +130,14 @@ export const printReceiptDoc = (r: any) => {
                 <div class="receipt-container">
                     <div class="logo-header">
                         <div class="flex items-center gap-3">
-                            <img src="${BRAND_LOGO}" class="h-14 w-auto" />
+                            <img src="${BRAND_LOGO}" referrerPolicy="no-referrer" class="h-14 w-auto" />
                             <div>
                                 <h1 class="text-2xl font-black uppercase italic leading-none tracking-tighter">Real <span class="text-red-600">Calçados</span></h1>
                                 <p class="text-[8px] font-bold uppercase tracking-[0.3em] mt-1 text-gray-400">Recibo Profissional de Quitação</p>
                             </div>
                         </div>
                         <div class="text-right">
-                            <div class="text-xl font-black text-gray-300 mb-1">Nº <span class="text-red-600">${String(r.id).padStart(4, '0')}</span></div>
+                            <div class="text-xl font-black text-gray-300 mb-1">Nº <span class="text-red-600">${finalNumber}</span></div>
                             <div class="value-box">${new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(r.value)}</div>
                         </div>
                     </div>
@@ -135,7 +149,7 @@ export const printReceiptDoc = (r: any) => {
                         <div class="flex flex-col">
                             <span class="whitespace-nowrap font-medium">A quantia de:</span>
                             <div class="w-full bg-gray-50 border-b border-gray-200 px-4 py-1.5 mt-1 text-base font-bold italic uppercase leading-tight min-h-[1.2em]">
-                                ${r.valueInWords}
+                                ${valueInWords}
                             </div>
                         </div>
                         <div class="flex items-baseline">
@@ -148,7 +162,7 @@ export const printReceiptDoc = (r: any) => {
                     </div>
                     <div class="footer-sign">
                         <div class="text-base font-bold pb-2">
-                            ${new Date(r.date + 'T12:00:00').toLocaleDateString('pt-BR', { day: 'numeric', month: 'long', year: 'numeric' })}
+                            ${formattedDate}
                         </div>
                         <div class="w-[90mm] text-center">
                             <div class="border-t-2 border-black pt-2 mt-8">
@@ -441,7 +455,7 @@ export const printErrorsDoc = (title: string, dateInfo: string, storeName: strin
 const CashRegisterModule: React.FC<CashRegisterModuleProps> = ({ 
     user, stores, receipts, errors, finances, onAddReceipt, onAddError, onDeleteError, onAddClosure, onAddLog 
 }) => {
-    const [activeTab, setActiveTab] = useState<'recibos' | 'cartoes' | 'pix' | 'quebras' | 'fechamento'>('recibos');
+    const [activeTab, setActiveTab] = useState<'recibos' | 'cartoes' | 'pix' | 'quebras'>('recibos');
     const [isSubmitting, setIsSubmitting] = useState(false);
     const [selectedDate, setSelectedDate] = useState(new Date().toISOString().split('T')[0]);
     const [selectedStoreId, setSelectedStoreId] = useState(user.storeId || '');
@@ -501,14 +515,24 @@ const CashRegisterModule: React.FC<CashRegisterModuleProps> = ({
         try {
             const { data, error } = await supabase.from('financial_card_brands').select('*').order('name', { ascending: true });
             if (error) throw error;
+            
+            const requiredDefaults = ['VISA DÉBITO', 'VISA CRÉDITO', 'MASTER DÉBITO', 'MASTER CRÉDITO', 'ELO DÉBITO', 'ELO CRÉDITO', 'AMEX', 'HIPERCARD'];
+            
             if (data && data.length > 0) {
-                setAvailableBrands(data);
-                if (!cardBrandInput) setCardBrandInput(data[0].name);
+                // Garantir que as bandeiras solicitadas (Elo e Hipercard) estejam sempre disponíveis
+                const existingNames = data.map(b => b.name.toUpperCase());
+                const missingDefaults = requiredDefaults.filter(d => !existingNames.includes(d));
+                
+                const merged = [
+                    ...data,
+                    ...missingDefaults.map((n, i) => ({ id: `def-${i}`, name: n }))
+                ].sort((a, b) => a.name.localeCompare(b.name));
+                
+                setAvailableBrands(merged);
+                if (!cardBrandInput) setCardBrandInput(merged[0].name);
             } else {
-                // Default fixado conforme solicitado pelo usuário
-                const defaults = ['VISA DÉBITO', 'VISA CRÉDITO', 'MASTER DÉBITO', 'MASTER CRÉDITO', 'ELO DÉBITO', 'ELO CRÉDITO', 'AMEX', 'HIPERCARD'];
-                setAvailableBrands(defaults.map((n, i) => ({ id: i.toString(), name: n })));
-                if (!cardBrandInput) setCardBrandInput(defaults[0]);
+                setAvailableBrands(requiredDefaults.map((n, i) => ({ id: i.toString(), name: n })));
+                if (!cardBrandInput) setCardBrandInput(requiredDefaults[0]);
             }
         } catch (e) {
             const defaults = ['VISA DÉBITO', 'VISA CRÉDITO', 'MASTER DÉBITO', 'MASTER CRÉDITO', 'ELO DÉBITO', 'ELO CRÉDITO', 'AMEX', 'HIPERCARD'];
@@ -611,7 +635,7 @@ const CashRegisterModule: React.FC<CashRegisterModuleProps> = ({
     }, []);
 
     useEffect(() => {
-        if (activeTab === 'fechamento' || activeTab === 'cartoes' || activeTab === 'pix') {
+        if (activeTab === 'cartoes' || activeTab === 'pix') {
             fetchDailyTotals();
         }
     }, [activeTab, selectedDate, selectedStoreId]);
@@ -851,10 +875,19 @@ const CashRegisterModule: React.FC<CashRegisterModuleProps> = ({
                         { id: 'recibos', label: 'Recibos', icon: FileText }, 
                         { id: 'cartoes', label: 'Cartões', icon: CreditCard }, 
                         { id: 'pix', label: 'Pix', icon: DollarSign },
-                        { id: 'quebras', label: 'Quebra', icon: AlertTriangle },
-                        { id: 'fechamento', label: 'Fechamento', icon: CheckCircle2 }
+                        { id: 'quebras', label: 'Quebra', icon: AlertTriangle }
                     ].map(tab => (
-                        <button key={tab.id} onClick={() => setActiveTab(tab.id as any)} className={`flex-1 sm:flex-none flex items-center justify-center gap-2 px-4 md:px-6 py-2.5 rounded-xl text-[10px] font-black uppercase transition-all whitespace-nowrap ${activeTab === tab.id ? 'bg-white text-blue-900 shadow-md border border-blue-50' : 'text-gray-400 hover:text-gray-600'}`}>
+                        <button 
+                            key={tab.id} 
+                            onClick={() => setActiveTab(tab.id as any)} 
+                            className={`flex-1 sm:flex-none flex items-center justify-center gap-2 px-4 md:px-6 py-2.5 rounded-xl text-[10px] font-black uppercase transition-all whitespace-nowrap ${
+                                activeTab === tab.id 
+                                    ? tab.id === 'quebras' 
+                                        ? 'bg-red-600 text-white shadow-lg shadow-red-100 border border-red-500' 
+                                        : 'bg-white text-blue-900 shadow-md border border-blue-50' 
+                                    : 'text-gray-400 hover:text-gray-600 hover:bg-gray-50'
+                            }`}
+                        >
                             <tab.icon size={14} /> {tab.label}
                         </button>
                     ))}
@@ -895,7 +928,12 @@ const CashRegisterModule: React.FC<CashRegisterModuleProps> = ({
                                         <div className="grid grid-cols-2 gap-1.5">
                                             {availableBrands.map(b => (
                                                 <button key={b.id} type="button" onClick={() => setCardBrandInput(b.name)} className={`p-2.5 rounded-xl text-[8px] font-black uppercase transition-all border-2 text-left flex items-center gap-2 ${cardBrandInput === b.name ? 'bg-green-600 border-green-600 text-white shadow-md' : 'bg-gray-50 border-gray-100 text-gray-400 hover:border-gray-200'}`}>
-                                                    <img src={getCardFlagIcon(b.name)} className="w-4 h-4 object-contain shrink-0" alt="" />
+                                                    <img 
+                                                        src={getCardFlagIcon(b.name)} 
+                                                        referrerPolicy="no-referrer" 
+                                                        className="w-6 h-6 object-contain shrink-0" 
+                                                        alt="" 
+                                                    />
                                                     <span className="truncate">{b.name}</span>
                                                     {cardBrandInput === b.name && <Check size={10} className="ml-auto shrink-0"/>}
                                                 </button>
@@ -952,7 +990,12 @@ const CashRegisterModule: React.FC<CashRegisterModuleProps> = ({
                                                     <td className="px-6 py-3 text-blue-600 font-black">#{c.sale_code || '---'}</td>
                                                     <td className="px-6 py-3">
                                                         <div className="flex items-center gap-2">
-                                                            <img src={getCardFlagIcon(c.brand)} className="w-4 h-4 object-contain" alt="" />
+                                                            <img 
+                                                                src={getCardFlagIcon(c.brand)} 
+                                                                referrerPolicy="no-referrer" 
+                                                                className="w-6 h-6 object-contain" 
+                                                                alt="" 
+                                                            />
                                                             <span className="uppercase text-blue-950">{c.brand}</span>
                                                         </div>
                                                     </td>
@@ -1093,175 +1136,15 @@ const CashRegisterModule: React.FC<CashRegisterModuleProps> = ({
                 )}
 
                 {activeTab === 'quebras' && (
-                    <div className="max-w-xl mx-auto space-y-6 animate-in slide-in-from-bottom-4 duration-300">
-                        <div className="bg-white p-8 rounded-[48px] shadow-sm border border-gray-100">
-                            <div className="flex justify-between items-center mb-8">
-                                <h3 className="text-sm font-black text-gray-900 uppercase italic tracking-tighter flex items-center gap-3"><AlertTriangle className="text-red-600" size={20} /> Registrar Divergência</h3>
-                                <div className="flex gap-2">
-                                    <button 
-                                        onClick={() => {
-                                            const dailyErrors = errors.filter(e => e.storeId === selectedStoreId && e.date === selectedDate);
-                                            printErrorsDoc('RELATÓRIO DIÁRIO', new Date(selectedDate + 'T12:00:00').toLocaleDateString('pt-BR'), payerName, dailyErrors, user.name);
-                                        }}
-                                        className="p-2 bg-gray-100 text-gray-600 rounded-xl hover:bg-blue-600 hover:text-white transition-all shadow-sm"
-                                        title="Imprimir Erros do Dia"
-                                    >
-                                        <Printer size={16} />
-                                    </button>
-                                    <button 
-                                        onClick={() => {
-                                            const [year, month] = selectedDate.split('-');
-                                            const monthlyErrors = errors.filter(e => {
-                                                const [eYear, eMonth] = e.date.split('-');
-                                                return e.storeId === selectedStoreId && eYear === year && eMonth === month;
-                                            });
-                                            const monthName = new Date(parseInt(year), parseInt(month) - 1).toLocaleDateString('pt-BR', { month: 'long', year: 'numeric' });
-                                            printErrorsDoc('RELATÓRIO MENSAL', monthName.toUpperCase(), payerName, monthlyErrors, user.name);
-                                        }}
-                                        className="p-2 bg-gray-100 text-gray-600 rounded-xl hover:bg-blue-600 hover:text-white transition-all shadow-sm"
-                                        title="Imprimir Erros do Mês"
-                                    >
-                                        <Calendar size={16} />
-                                    </button>
-                                </div>
-                            </div>
-                            <form onSubmit={async (e) => { 
-                                e.preventDefault(); 
-                                if (!selectedStoreId) { showToast("Selecione uma loja primeiro.", "error"); return; }
-                                setIsSubmitting(true); 
-                                try { 
-                                    await onAddError({ 
-                                        store_id: selectedStoreId, 
-                                        user_id: user.id, 
-                                        user_name: user.name, 
-                                        error_date: selectedDate, 
-                                        value: parseFloat(errorForm.value.replace(',', '.')), 
-                                        type: errorForm.type, 
-                                        reason: errorForm.reason.toUpperCase() 
-                                    }); 
-                                    setErrorForm({ value: '', reason: '', type: 'shortage' }); 
-                                    showToast("Sucesso!"); 
-                                } catch { showToast("Erro.", "error"); } 
-                                finally { setIsSubmitting(false); } 
-                            }} className="space-y-6">
-                                <div className="space-y-2"><label className="text-[10px] font-black text-gray-400 uppercase ml-2">Tipo</label><div className="flex bg-gray-100 p-1 rounded-2xl"><button type="button" onClick={() => setErrorForm({...errorForm, type: 'shortage'})} className={`flex-1 py-4 rounded-xl text-[10px] font-black uppercase transition-all ${errorForm.type === 'shortage' ? 'bg-red-600 text-white shadow-lg' : 'text-gray-400'}`}>Falta (-)</button><button type="button" onClick={() => setErrorForm({...errorForm, type: 'surplus'})} className={`flex-1 py-4 rounded-xl text-[10px] font-black uppercase transition-all ${errorForm.type === 'surplus' ? 'bg-green-600 text-white shadow-lg' : 'text-gray-400'}`}>Sobra (+)</button></div></div>
-                                <div className="space-y-2"><label className="text-[10px] font-black text-gray-400 uppercase ml-2">Valor</label><input required value={errorForm.value} onChange={e => setErrorForm({...errorForm, value: e.target.value})} className="w-full p-5 bg-gray-50 border-none rounded-[24px] font-black text-2xl text-center text-blue-950 shadow-inner" placeholder="0,00" /></div>
-                                <div className="space-y-2"><label className="text-[10px] font-black text-gray-400 uppercase ml-2">Motivo</label><textarea required value={errorForm.reason} onChange={e => setErrorForm({...errorForm, reason: e.target.value})} className="w-full p-5 bg-gray-50 border-none rounded-[24px] font-bold text-xs text-gray-700 h-32 shadow-inner no-scrollbar" placeholder="MOTIVO DA DIVERGÊNCIA..." /></div>
-                                <button type="submit" disabled={isSubmitting} className="w-full py-5 bg-gray-950 text-white rounded-[28px] font-black uppercase text-xs shadow-xl active:scale-95 border-b-4 border-slate-700 flex items-center justify-center gap-3">{isSubmitting ? <Loader2 className="animate-spin" /> : <Save size={18}/>} REGISTRAR</button>
-                            </form>
-                        </div>
-                    </div>
-                )}
-                {activeTab === 'fechamento' && (
-                    <div className="max-w-4xl mx-auto space-y-6 animate-in fade-in duration-300">
-                        <div className="bg-white p-8 rounded-[40px] shadow-sm border border-gray-100">
-                            <div className="flex justify-between items-center mb-8">
-                                <div>
-                                    <h3 className="text-sm font-black text-gray-900 uppercase italic tracking-tighter flex items-center gap-3">
-                                        <CheckCircle2 className="text-blue-600" size={20} /> Conferência de Caixa Diário
-                                    </h3>
-                                    <p className="text-[10px] text-gray-400 font-bold uppercase mt-1">Valores consolidados por forma de pagamento</p>
-                                </div>
-                                <button 
-                                    onClick={fetchDailyTotals}
-                                    className="p-2 bg-blue-50 text-blue-600 rounded-xl hover:bg-blue-100 transition-all"
-                                >
-                                    <Loader2 className={isLoadingTotals ? 'animate-spin' : ''} size={20} />
-                                </button>
-                            </div>
-
-                            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-                                {Object.entries(dailyTotals).map(([method, total]) => (
-                                    <div key={method} className="bg-gray-50 p-6 rounded-3xl border border-gray-100 flex flex-col gap-2">
-                                        <div className="flex items-center gap-2">
-                                            {method === 'Pix' && <div className="w-2 h-2 rounded-full bg-teal-400" />}
-                                            {method === 'Dinheiro' && <div className="w-2 h-2 rounded-full bg-green-400" />}
-                                            {method === 'Cartão' && <div className="w-2 h-2 rounded-full bg-blue-400" />}
-                                            {method === 'Fiado' && <div className="w-2 h-2 rounded-full bg-red-400" />}
-                                            <span className="text-[10px] font-black text-gray-400 uppercase tracking-widest">{method}</span>
-                                        </div>
-                                        <span className="text-2xl font-black text-blue-950 italic">{formatCurrency(total as number)}</span>
-                                    </div>
-                                ))}
-                                <div className="bg-blue-900 p-6 rounded-3xl border border-blue-950 flex flex-col gap-2 shadow-xl md:col-span-2 lg:col-span-1">
-                                    <span className="text-[10px] font-black text-blue-300 uppercase tracking-widest">Total Geral</span>
-                                    <span className="text-2xl font-black text-white italic">
-                                        {formatCurrency((Object.values(dailyTotals) as number[]).reduce((acc: number, val: number) => acc + val, 0))}
-                                    </span>
-                                </div>
-                            </div>
-
-                            {/* Vendas Canceladas */}
-                            {canceledSales.length > 0 && (
-                                <div className="mt-8 bg-red-50 rounded-[32px] border border-red-100 overflow-hidden">
-                                    <div className="px-6 py-4 border-b border-red-100 flex justify-between items-center bg-red-100/30">
-                                        <h4 className="text-[10px] font-black text-red-700 uppercase tracking-widest flex items-center gap-2">
-                                            <XCircle size={16} /> Vendas Canceladas no Dia ({canceledSales.length})
-                                        </h4>
-                                        <span className="text-xs font-black text-red-700">{formatCurrency(canceledSales.reduce((a, b) => a + Number(b.total_amount), 0))}</span>
-                                    </div>
-                                    <div className="p-4 space-y-2">
-                                        {canceledSales.map(s => (
-                                            <div key={s.id} className="flex justify-between items-center p-3 bg-white rounded-xl border border-red-50 shadow-sm">
-                                                <div className="flex flex-col">
-                                                    <span className="text-[10px] font-black text-red-900 uppercase">#{s.sale_code} - {new Date(s.created_at).toLocaleTimeString()}</span>
-                                                    <span className="text-[9px] font-bold text-gray-400 uppercase mt-1">Motivo: <span className="text-red-600 italic">{s.cancel_reason}</span></span>
-                                                    <span className="text-[8px] font-black text-gray-400 uppercase">Por: {s.canceled_by_name || s.canceled_by}</span>
-                                                </div>
-                                                <span className="font-black text-red-700 text-sm">{formatCurrency(s.total_amount)}</span>
-                                            </div>
-                                        ))}
-                                    </div>
-                                </div>
-                            )}
-
-                            <div className="mt-12 p-6 bg-amber-50 rounded-3xl border border-amber-100 flex gap-4 items-start">
-                                <AlertTriangle className="text-amber-600 shrink-0" size={24} />
-                                <div>
-                                    <p className="text-xs font-black text-amber-900 uppercase italic">Atenção Auditoria</p>
-                                    <p className="text-[10px] text-amber-700 font-medium leading-relaxed mt-1">
-                                        Os valores acima são extraídos diretamente da tabela de pagamentos atômicos. 
-                                        Qualquer divergência com o valor físico deve ser registrada na aba "Quebra" para fins de auditoria.
-                                    </p>
-                                </div>
-                            </div>
-
-                            <button 
-                                onClick={() => {
-                                    if (!selectedStoreId) return;
-                                    setConfirmModal({
-                                        isOpen: true,
-                                        title: 'Fechar Caixa',
-                                        message: 'Deseja realizar o fechamento do caixa para esta data?',
-                                        onConfirm: async () => {
-                                            setIsSubmitting(true);
-                                            try {
-                                                const totalSales = (Object.values(dailyTotals) as number[]).reduce((acc, val) => acc + val, 0);
-                                                await onAddClosure({
-                                                    storeId: selectedStoreId,
-                                                    totalSales,
-                                                    totalExpenses: 0,
-                                                    balance: totalSales,
-                                                    notes: `Fechamento automático via sistema em ${selectedDate}`,
-                                                    date: selectedDate
-                                                });
-                                                showToast("Caixa fechado com sucesso!");
-                                            } catch {
-                                                showToast("Erro ao fechar caixa.", "error");
-                                            } finally {
-                                                setIsSubmitting(false);
-                                            }
-                                            setConfirmModal(prev => ({ ...prev, isOpen: false }));
-                                        }
-                                    });
-                                }}
-                                disabled={isSubmitting || Object.keys(dailyTotals).length === 0}
-                                className="w-full mt-6 py-5 bg-blue-900 text-white rounded-[28px] font-black uppercase text-xs shadow-xl active:scale-95 border-b-4 border-blue-950 flex items-center justify-center gap-3"
-                            >
-                                {isSubmitting ? <Loader2 className="animate-spin" /> : <CheckCircle2 size={18}/>} FECHAR CAIXA & SALVAR
-                            </button>
-                        </div>
-                    </div>
+                    <CashErrorsModule 
+                        user={user}
+                        store={stores.find(s => s.id === selectedStoreId)}
+                        stores={stores}
+                        errors={errors}
+                        onAddError={onAddError}
+                        onUpdateError={async (e) => { await supabase.from('cash_errors').update(e).eq('id', e.id); }}
+                        onDeleteError={onDeleteError}
+                    />
                 )}
             </div>
 
@@ -1272,7 +1155,20 @@ const CashRegisterModule: React.FC<CashRegisterModuleProps> = ({
                         <div className="p-8 space-y-6">
                             <div className="flex gap-2"><input value={newBrandName} onChange={e => setNewBrandName(e.target.value)} placeholder="NOVA BANDEIRA..." className="flex-1 p-3 bg-gray-50 rounded-xl font-black uppercase text-[10px] outline-none border border-gray-200" /><button onClick={handleAddBrand} disabled={isSubmitting} className="bg-blue-600 text-white p-3 rounded-xl hover:bg-blue-700 transition-all flex items-center justify-center min-w-[48px]">{isSubmitting ? <Loader2 className="animate-spin" size={18} /> : <Plus size={18}/>}</button></div>
                             <div className="space-y-2 max-h-[300px] overflow-y-auto no-scrollbar">
-                                {availableBrands.map(b => (<div key={b.id} className="flex justify-between items-center p-3 bg-gray-50 rounded-xl border border-gray-100 group"><div className="flex items-center gap-3"><img src={getCardFlagIcon(b.name)} className="w-5 h-5 object-contain" alt="" /><span className="text-[10px] font-black text-gray-700 uppercase">{b.name}</span></div><button onClick={() => handleDeleteBrand(b.id)} className="text-red-300 hover:text-red-600 opacity-0 group-hover:opacity-100 transition-all"><Trash2 size={14}/></button></div>))}
+                                {availableBrands.map(b => (
+                                    <div key={b.id} className="flex justify-between items-center p-3 bg-gray-50 rounded-xl border border-gray-100 group">
+                                        <div className="flex items-center gap-3">
+                                            <img 
+                                                src={getCardFlagIcon(b.name)} 
+                                                referrerPolicy="no-referrer" 
+                                                className="w-5 h-5 object-contain" 
+                                                alt="" 
+                                            />
+                                            <span className="text-[10px] font-black text-gray-700 uppercase">{b.name}</span>
+                                        </div>
+                                        <button onClick={() => handleDeleteBrand(b.id)} className="text-red-300 hover:text-red-600 opacity-0 group-hover:opacity-100 transition-all"><Trash2 size={14}/></button>
+                                    </div>
+                                ))}
                             </div>
                         </div>
                     </div>

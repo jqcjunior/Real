@@ -102,13 +102,21 @@ const ReceiptsModule: React.FC<ReceiptsModuleProps> = ({ user, stores, receipts,
   const city = userStore?.city?.split(' - ')[0] || 'Cidade';
   const formattedNumber = String(nextNumber).padStart(4, '0');
 
-  const printReceipt = (receipt: any, receiptNumber: string) => {
+  const printReceipt = (receipt: any, receiptNumber?: string) => {
       const printWindow = window.open('', '_blank', 'width=900,height=1200');
       if (!printWindow) return;
 
-      const [y, m, d] = receipt.receipt_date.split('-').map(Number);
-      const dateObj = new Date(y, m - 1, d);
-      const formattedDate = dateObj.toLocaleDateString('pt-BR', { day: 'numeric', month: 'long', year: 'numeric' });
+      // Mapeamento robusto de campos
+      const finalNumber = receiptNumber || (receipt.receipt_number ? `#${String(receipt.receipt_number).padStart(4, '0')}` : `#${String(receipt.id).padStart(4, '0')}`);
+      const valueInWords = receipt.value_in_words || receipt.valueInWords || 'UNDEFINED';
+      const dateStr = receipt.receipt_date || receipt.date;
+      
+      let formattedDate = 'Invalid Date';
+      if (dateStr) {
+          const [y, m, d] = dateStr.split('-').map(Number);
+          formattedDate = new Date(y, m - 1, d).toLocaleDateString('pt-BR', { day: 'numeric', month: 'long', year: 'numeric' });
+      }
+
       const formattedValue = formatCurrency(receipt.value);
 
       const htmlContent = `
@@ -135,17 +143,17 @@ const ReceiptsModule: React.FC<ReceiptsModuleProps> = ({ user, stores, receipts,
                             <img src="${BRAND_LOGO}" style="height: 65px; width: auto;" />
                             <div>
                                 <h1 class="text-3xl font-black uppercase italic leading-none tracking-tighter">Real <span class="text-red-600">Calçados</span></h1>
-                                <p class="text-[10px] font-bold uppercase tracking-[0.3em] mt-1 text-gray-500">Gestão de Finanças Corporativas</p>
+                                <p class="text-[10px] font-bold uppercase tracking-[0.3em] mt-1 text-gray-400">Gestão de Finanças Corporativas</p>
                             </div>
                         </div>
                         <div class="text-right">
-                            <div class="text-2xl font-black text-gray-300">RECIBO Nº <span class="text-red-600">${receiptNumber}</span></div>
+                            <div class="text-2xl font-black text-gray-300">RECIBO Nº <span class="text-red-600">${finalNumber}</span></div>
                             <div class="value-display mt-2">${formattedValue}</div>
                         </div>
                     </div>
                     <div class="flex-1 space-y-4 text-xl text-gray-900">
                         <p>Recebi(emos) de <span class="handwritten inline-block min-w-[130mm]">${receipt.payer}</span></p>
-                        <div class="leading-relaxed">A quantia de <span class="handwritten italic bg-gray-50 border-b border-gray-200 block w-full px-4 py-1.5 mt-2 text-lg uppercase min-h-[1.2em]">${receipt.value_in_words}</span></div>
+                        <div class="leading-relaxed">A quantia de <span class="handwritten italic bg-gray-50 border-b border-gray-200 block w-full px-4 py-1.5 mt-2 text-lg uppercase min-h-[1.2em]">${valueInWords}</span></div>
                         <p>Referente a <span class="handwritten inline-block min-w-[145mm]">${receipt.reference}</span>.</p>
                     </div>
                     <div class="clause">
@@ -251,7 +259,7 @@ const ReceiptsModule: React.FC<ReceiptsModuleProps> = ({ user, stores, receipts,
                     <div className="relative z-10">
                         <div className="flex justify-between items-center mb-8 border-b-2 border-black pb-4">
                             <div className="flex items-center gap-4">
-                                <img src={BRAND_LOGO} alt="Logo" className="h-16 w-auto object-contain" />
+                                <img src={BRAND_LOGO} alt="Logo" referrerPolicy="no-referrer" className="h-16 w-auto object-contain" />
                                 <div><div className="text-2xl font-black text-gray-900 uppercase italic tracking-tighter leading-none">Real <span className="text-red-600">Calçados</span></div><p className="text-[8px] text-gray-500 font-black uppercase tracking-[0.2em] mt-1">Recibo Oficial de Quitação</p></div>
                             </div>
                             <div className="text-right">

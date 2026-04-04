@@ -1776,7 +1776,7 @@ const dreStats = useMemo(() => {
                                     <button onClick={() => onDeleteItem(item.id)} className="p-2 bg-red-50 text-red-600 rounded-lg hover:bg-red-100"><Trash size={14}/></button>
                                 </div>
                                 <div className="w-16 h-16 bg-gray-50 rounded-2xl mb-4 flex items-center justify-center overflow-hidden shrink-0">
-                                    <img src={item.image_url || getCategoryIconEdit(item.category, item.name)} className="w-full h-full object-contain p-2" />
+                                    <img src={item.image_url || getCategoryIconEdit(item.category, item.name)} referrerPolicy="no-referrer" className="w-full h-full object-contain p-2" />
                                 </div>
                                 <h4 className="text-xs font-black text-blue-950 uppercase italic tracking-tighter mb-1 truncate pr-16">{item.name}</h4>
                                 <p className="text-[9px] font-bold text-gray-400 uppercase mb-3">{item.category}</p>
