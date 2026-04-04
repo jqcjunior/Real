@@ -22,7 +22,7 @@ const MONTHS = [
 ];
 
 const CashErrorsModule: React.FC<CashErrorsModuleProps> = ({ user, store, stores, errors, onAddError, onUpdateError, onDeleteError }) => {
-  const [activeTab, setActiveTab] = useState<'list' | 'new'>('list');
+  const [activeTab, setActiveTab] = useState<'list' | 'new'>('new');
   const [isSubmitting, setIsSubmitting] = useState(false);
   
   const currentDate = new Date();

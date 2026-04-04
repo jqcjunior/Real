@@ -12,7 +12,22 @@ interface CreditCardsModuleProps {
   onDeleteSale: (id: string) => void;
 }
 
-const CARD_BRANDS = ['Visa', 'Mastercard', 'Elo', 'Hipercard', 'Amex', 'Alelo', 'Sodexo', 'Outros'];
+const CARD_BRANDS = ['Visa', 'Mastercard', 'Elo Débito', 'Elo Crédito', 'Hipercard', 'Amex', 'Alelo', 'Sodexo', 'Outros'];
+
+const getBrandBadge = (brand: string) => {
+  const baseClasses = "px-2 py-1 rounded text-[10px] font-black uppercase border shadow-sm flex items-center gap-1.5";
+  switch (brand) {
+    case 'Visa': return <span className={`${baseClasses} bg-blue-600 text-white border-blue-700`}><CreditCard size={10}/> Visa</span>;
+    case 'Mastercard': return <span className={`${baseClasses} bg-orange-600 text-white border-orange-700`}><CreditCard size={10}/> Master</span>;
+    case 'Elo Débito': return <span className={`${baseClasses} bg-blue-100 text-blue-800 border-blue-200`}><CreditCard size={10}/> Elo Déb</span>;
+    case 'Elo Crédito': return <span className={`${baseClasses} bg-blue-800 text-white border-blue-900`}><CreditCard size={10}/> Elo Créd</span>;
+    case 'Hipercard': return <span className={`${baseClasses} bg-red-600 text-white border-red-700`}><CreditCard size={10}/> Hiper</span>;
+    case 'Amex': return <span className={`${baseClasses} bg-green-100 text-green-800 border-green-200`}><CreditCard size={10}/> Amex</span>;
+    case 'Alelo': return <span className={`${baseClasses} bg-green-600 text-white border-green-700`}><CreditCard size={10}/> Alelo</span>;
+    case 'Sodexo': return <span className={`${baseClasses} bg-red-100 text-red-800 border-red-200`}><CreditCard size={10}/> Sodexo</span>;
+    default: return <span className={`${baseClasses} bg-gray-100 text-gray-700 border-gray-200`}><CreditCard size={10}/> {brand}</span>;
+  }
+};
 
 const CreditCardsModule: React.FC<CreditCardsModuleProps> = ({ user, store, sales, onAddSale, onUpdateSale, onDeleteSale }) => {
   const [formData, setFormData] = useState({
@@ -161,9 +176,7 @@ const CreditCardsModule: React.FC<CreditCardsModuleProps> = ({ user, store, sale
                                             {new Date(sale.date).toLocaleDateString('pt-BR')}
                                         </td>
                                         <td className="p-4">
-                                            <span className="bg-gray-100 text-gray-700 px-2 py-1 rounded text-xs font-bold border border-gray-200">
-                                                {sale.brand}
-                                            </span>
+                                            {getBrandBadge(sale.brand)}
                                         </td>
                                         <td className="p-4 text-gray-500 font-mono text-xs">
                                             {sale.authorizationCode || '-'}

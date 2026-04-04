@@ -27,6 +27,7 @@ const OSDemandsModule: React.FC<OSDemandsModuleProps> = ({ user, stores }) => {
     const [newMessage, setNewMessage] = useState('');
     const [isLoading, setIsLoading] = useState(true);
     const [isSending, setIsSending] = useState(false);
+    const [isUpdatingStatus, setIsUpdatingStatus] = useState(false);
     const [isModalOpen, setIsModalOpen] = useState(false);
     const [isSubmitting, setIsSubmitting] = useState(false);
     const [showMobileDetails, setShowMobileDetails] = useState(false);
@@ -252,6 +253,8 @@ const OSDemandsModule: React.FC<OSDemandsModuleProps> = ({ user, stores }) => {
     };
 
     const handleUpdateStatus = async (id: string, status: DemandStatus) => {
+        if (isUpdatingStatus) return;
+        setIsUpdatingStatus(true);
         try {
             const { error } = await supabase
                 .from('demands')
@@ -275,6 +278,8 @@ const OSDemandsModule: React.FC<OSDemandsModuleProps> = ({ user, stores }) => {
             }]);
         } catch (err) {
             console.error('Erro ao atualizar status:', err);
+        } finally {
+            setIsUpdatingStatus(false);
         }
     };
 
@@ -1458,8 +1463,9 @@ const OSDemandsModule: React.FC<OSDemandsModuleProps> = ({ user, stores }) => {
                                                 className="finalize-btn" 
                                                 style={{ gridColumn: 'span 2', background: 'var(--accent)', color: '#000', marginBottom: '8px' }} 
                                                 onClick={handleAttendDemand}
+                                                disabled={isUpdatingStatus}
                                             >
-                                                <Clock size={18} /> Atender Demanda
+                                                {isUpdatingStatus ? <Loader2 className="animate-spin" size={18} /> : <Clock size={18} />} Atender Demanda
                                             </button>
                                         )}
 

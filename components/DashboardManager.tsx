@@ -1,5 +1,5 @@
 import React, { useState, useMemo } from 'react';
-import { User, Store, ProductPerformance, IceCreamSangria, IceCreamStockMovement, IceCreamStock, DetailedAdvice, MotivationalPhrase } from '../types';
+import { User, Store, MonthlyGoal, MonthlyPerformance, ProductPerformance, IceCreamSangria, IceCreamStockMovement, IceCreamStock, DetailedAdvice, MotivationalPhrase } from '../types';
 import { formatCurrency, formatDecimal } from '../constants';
 import { ShoppingBag, DollarSign, Package, Hash, AlertCircle, Trophy, BarChart3, TrendingUp, Target, Clock, BrainCircuit, Sparkles, Loader2, Zap, X, TrendingDown, Percent, Activity, Users, Medal, Gem, Minus, Quote } from 'lucide-react';
 import { supabase } from '../services/supabaseClient';
@@ -8,6 +8,7 @@ interface DashboardManagerProps {
   user: User;
   stores: Store[];
   performanceData: any[]; 
+  goalsData: MonthlyGoal[];
   purchasingData: ProductPerformance[];
   sangrias: IceCreamSangria[];
   stockMovements: IceCreamStockMovement[];
@@ -77,7 +78,7 @@ const KPICard = ({ label, value, target, icon: Icon, type = 'currency', mode = '
   );
 };
 
-const DashboardManager: React.FC<DashboardManagerProps> = ({ user, stores, performanceData, sangrias, stockMovements, stock }) => {
+const DashboardManager: React.FC<DashboardManagerProps> = ({ user, stores, performanceData, goalsData, sangrias, stockMovements, stock }) => {
   const currentMonthStr = useMemo(() => {
     const now = new Date();
     return `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`;
@@ -87,7 +88,7 @@ const DashboardManager: React.FC<DashboardManagerProps> = ({ user, stores, perfo
   const [localInsight, setLocalInsight] = useState<DetailedAdvice | null>(null);
   const [isLoadingAi, setIsLoadingAi] = useState(false);
 
-  const myStore = useMemo(() => stores.find(s => s.id === user.storeId) || stores[0], [stores, user.storeId]);
+  const myStore = useMemo(() => stores.find(s => String(s.id) === String(user.storeId)) || stores[0], [stores, user.storeId]);
 
   const calcAttainment = (actual: number, target: number, mode: 'higher' | 'lower') => {
       if (!actual || !target) return 0;
@@ -98,12 +99,16 @@ const DashboardManager: React.FC<DashboardManagerProps> = ({ user, stores, perfo
 
   const myPerformance = useMemo(() => {
       if (!myStore) return null;
+      
       const storeMonthData = performanceData.filter(pd => 
         String(pd.month) === selectedMonth && 
         String(pd.storeId || pd.store_id) === String(myStore.id)
       );
       
-      if (storeMonthData.length === 0) return null;
+      const storeMonthGoal = goalsData.find(g => {
+        const gMonth = `${g.year}-${String(g.month).padStart(2, '0')}`;
+        return gMonth === selectedMonth && String(g.storeId) === String(myStore.id);
+      });
 
       const aggregated = storeMonthData.reduce((acc, curr) => ({
         revenueActual: acc.revenueActual + Number(curr.revenueActual || 0),
@@ -123,17 +128,20 @@ const DashboardManager: React.FC<DashboardManagerProps> = ({ user, stores, perfo
         averageTicket: 0, ticketTarget: 0
       });
 
+      // Fallback para metas se não houver no performanceData
+      const finalRevenueTarget = aggregated.revenueTarget || Number(storeMonthGoal?.revenueTarget || 0);
+      const finalItemsTarget = aggregated.itemsTarget || Number(storeMonthGoal?.itemsTarget || 0);
+      const finalPATarget = (aggregated.paTarget / (storeMonthData.length || 1)) || Number(storeMonthGoal?.paTarget || 0);
+      const finalPUTarget = (aggregated.puTarget / (storeMonthData.length || 1)) || Number(storeMonthGoal?.puTarget || 0);
+      const finalTicketTarget = (aggregated.ticketTarget / (storeMonthData.length || 1)) || Number(storeMonthGoal?.ticketTarget || 0);
+
       const finalPA = Number(storeMonthData[0]?.paActual || 0);
       const finalPU = Number(storeMonthData[0]?.puActual || 0);
       const finalTicket = Number(storeMonthData[0]?.averageTicket || 0);
 
-      const finalPATarget = aggregated.paTarget / storeMonthData.length;
-      const finalPUTarget = aggregated.puTarget / storeMonthData.length;
-      const finalTicketTarget = aggregated.ticketTarget / storeMonthData.length;
-
       return {
         revAct: aggregated.revenueActual,
-        revTgt: aggregated.revenueTarget,
+        revTgt: finalRevenueTarget,
         paAct: finalPA,
         paTgt: finalPATarget,
         puAct: finalPU,
@@ -141,17 +149,21 @@ const DashboardManager: React.FC<DashboardManagerProps> = ({ user, stores, perfo
         tktAct: finalTicket,
         tktTgt: finalTicketTarget,
         itemsAct: aggregated.itemsActual,
-        itemsTgt: aggregated.itemsTarget,
-        ating: calcAttainment(aggregated.revenueActual, aggregated.revenueTarget, 'higher'),
+        itemsTgt: finalItemsTarget,
+        ating: calcAttainment(aggregated.revenueActual, finalRevenueTarget, 'higher'),
         paAting: calcAttainment(finalPA, finalPATarget, 'higher'),
         puAting: calcAttainment(finalPU, finalPUTarget, 'lower'),
         tktAting: calcAttainment(finalTicket, finalTicketTarget, 'higher'),
-        itemsAting: calcAttainment(aggregated.itemsActual, aggregated.itemsTarget, 'higher')
+        itemsAting: calcAttainment(aggregated.itemsActual, finalItemsTarget, 'higher')
       };
-  }, [performanceData, selectedMonth, myStore, sangrias, stockMovements, stock]);
+  }, [performanceData, goalsData, selectedMonth, myStore, sangrias, stockMovements, stock]);
 
   const weightedRanking = useMemo(() => {
       const monthData = performanceData.filter(p => String(p.month) === selectedMonth);
+      const monthGoals = goalsData.filter(g => {
+        const gMonth = `${g.year}-${String(g.month).padStart(2, '0')}`;
+        return gMonth === selectedMonth;
+      });
       
       const storeAggregation = monthData.reduce((acc, p) => {
           const id = String(p.storeId || p.store_id);
@@ -175,9 +187,10 @@ const DashboardManager: React.FC<DashboardManagerProps> = ({ user, stores, perfo
           return acc;
       }, {} as Record<string, any>);
 
-      const ranked = Object.keys(storeAggregation).map(storeId => {
+      const ranked = stores.map(store => {
+          const storeId = String(store.id);
           const p = storeAggregation[storeId];
-          const store = stores.find(s => String(s.id) === storeId);
+          const goal = monthGoals.find(g => String(g.storeId) === storeId);
           
           const calcPercent = (act: number, tgt: number, mode: 'higher' | 'lower') => {
               if (!tgt || tgt <= 0) return 0;
@@ -185,47 +198,54 @@ const DashboardManager: React.FC<DashboardManagerProps> = ({ user, stores, perfo
               return Math.min(val, 120);
           };
 
-          const pF = calcPercent(p.revenueActual, p.revenueTarget, 'higher');
+          const revenueActual = Number(p?.revenueActual || 0);
+          const revenueTarget = Number(p?.revenueTarget || goal?.revenueTarget || 0);
+          const pF = calcPercent(revenueActual, revenueTarget, 'higher');
+          
           const perfItem = monthData.find(md => String(md.storeId || md.store_id) === storeId);
           
           let paActual = Number(perfItem?.paActual || 0);
-          if (paActual === 0 && p.salesActual > 0) paActual = p.itemsActual / p.salesActual;
+          const itemsActual = Number(p?.itemsActual || 0);
+          const salesActual = Number(p?.salesActual || 0);
+          if (paActual === 0 && salesActual > 0) paActual = itemsActual / salesActual;
           
           let tktActual = Number(perfItem?.averageTicket || 0);
-          if (tktActual === 0 && p.salesActual > 0) tktActual = p.revenueActual / p.salesActual;
+          if (tktActual === 0 && salesActual > 0) tktActual = revenueActual / salesActual;
           
           let puActual = Number(perfItem?.puActual || 0);
-          if (puActual === 0 && p.itemsActual > 0) puActual = p.revenueActual / p.itemsActual;
+          if (puActual === 0 && itemsActual > 0) puActual = revenueActual / itemsActual;
 
-          const pPA = calcPercent(paActual, p.paTarget, 'higher');
+          const paTarget = Number(p?.paTarget || goal?.paTarget || 0);
+          const pPA = calcPercent(paActual, paTarget, 'higher');
+          
           const scoreFinal = (pF * 0.50) + (pPA * 0.50);
 
           return {
               storeId,
-              storeNumber: store?.number || '?',
-              city: store?.city || '?',
+              storeNumber: store.number,
+              city: store.city,
               score: scoreFinal,
-              revenueActual: p.revenueActual,
-              revenueTarget: p.revenueTarget,
+              revenueActual,
+              revenueTarget,
               paActual,
-              paTarget: p.paTarget,
+              paTarget,
               ticketActual: tktActual,
-              ticketTarget: p.ticketTarget,
+              ticketTarget: Number(p?.ticketTarget || goal?.ticketTarget || 0),
               puActual,
-              puTarget: p.puTarget,
-              salesActual: p.salesActual,
-              itemsActual: p.itemsActual
+              puTarget: Number(p?.puTarget || goal?.puTarget || 0),
+              salesActual,
+              itemsActual
           };
       });
 
       return ranked.sort((a, b) => b.score - a.score);
-  }, [performanceData, selectedMonth, stores]);
+  }, [performanceData, goalsData, selectedMonth, stores]);
 
   const handleGenerateInsight = async () => {
     if (!myStore) return;
     setIsLoadingAi(true);
     
-    const myIdx = weightedRanking.findIndex(r => r.storeId === myStore.id);
+    const myIdx = weightedRanking.findIndex(r => String(r.storeId) === String(myStore.id));
     const curr = weightedRanking[myIdx];
     const next = myIdx > 0 ? weightedRanking[myIdx - 1] : null;
 
