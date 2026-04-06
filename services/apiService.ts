@@ -19,9 +19,9 @@ class ApiService {
       if (error) throw error;
 
       if (data.success) {
-        // Salvar token no localStorage
-        localStorage.setItem('auth_token', data.token);
-        localStorage.setItem('user', JSON.stringify(data.user));
+        // Salvar token no sessionStorage (não persiste após fechar a aba)
+        sessionStorage.setItem('auth_token', data.token);
+        sessionStorage.setItem('user', JSON.stringify(data.user));
         return data;
       } else {
         throw new Error(data.error);
@@ -41,12 +41,12 @@ class ApiService {
       if (token) {
         await supabase.rpc('fn_logout', { p_token: token });
       }
-      localStorage.removeItem('auth_token');
-      localStorage.removeItem('user');
+      sessionStorage.removeItem('auth_token');
+      sessionStorage.removeItem('user');
     } catch (error) {
       console.error('Erro no logout:', error);
-      localStorage.removeItem('auth_token');
-      localStorage.removeItem('user');
+      sessionStorage.removeItem('auth_token');
+      sessionStorage.removeItem('user');
     }
   }
 
@@ -54,7 +54,7 @@ class ApiService {
    * Pegar token do localStorage
    */
   getToken(): string | null {
-    return localStorage.getItem('auth_token');
+    return sessionStorage.getItem('auth_token');
   }
 
   /**
@@ -62,11 +62,11 @@ class ApiService {
    */
   getUser() {
     try {
-      const userStr = localStorage.getItem('user');
+      const userStr = sessionStorage.getItem('user');
       return userStr ? JSON.parse(userStr) : null;
     } catch (error) {
-      console.error('Erro ao ler usuário do localStorage:', error);
-      localStorage.removeItem('user');
+      console.error('Erro ao ler usuário do sessionStorage:', error);
+      sessionStorage.removeItem('user');
       return null;
     }
   }

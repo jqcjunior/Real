@@ -58,9 +58,9 @@ const App: React.FC = () => {
         const init = async () => {
             await bootstrapPermissions();
             
-            // Recuperar sessão do apiService
-            const savedUser = apiService.getUser();
-            if (savedUser && apiService.isAuthenticated()) {
+            // Recuperar sessão do apiService (Desativado para sempre solicitar senha)
+            const savedUser = null; // apiService.getUser();
+            if (false && savedUser && apiService.isAuthenticated()) {
                 const rawRole = (savedUser.role_level || savedUser.role || '').toUpperCase();
                 const mappedRole = rawRole === 'SORVETE' ? 'ICE_CREAM' : rawRole;
                 

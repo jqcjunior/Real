@@ -15,7 +15,7 @@ const BRAZIL_STATES = ['AC', 'AL', 'AP', 'AM', 'BA', 'CE', 'DF', 'ES', 'GO', 'MA
 const LoginScreen: React.FC<LoginScreenProps> = ({ onLoginAttempt, onRegisterRequest }) => {
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
-  const [rememberMe, setRememberMe] = useState(true);
+  const [rememberMe, setRememberMe] = useState(false);
   const [error, setError] = useState('');
   const [isLoading, setIsLoading] = useState(false);
   const [showRegisterModal, setShowRegisterModal] = useState(false);
@@ -101,7 +101,7 @@ const LoginScreen: React.FC<LoginScreenProps> = ({ onLoginAttempt, onRegisterReq
             </div>
             <div className="space-y-2">
                 <label className="block text-[10px] font-black text-gray-700 uppercase tracking-widest ml-1">Senha de Acesso</label>
-                <input type="password" required value={password} onChange={(e) => setPassword(e.target.value)} className="w-full px-5 py-4 bg-gray-50 border border-gray-200 rounded-[24px] focus:bg-white focus:border-blue-500 outline-none transition-all text-gray-900 font-bold text-sm shadow-inner placeholder-gray-400" placeholder="••••••••" />
+                <input type="password" required value={password} onChange={(e) => setPassword(e.target.value)} autoComplete="off" className="w-full px-5 py-4 bg-gray-50 border border-gray-200 rounded-[24px] focus:bg-white focus:border-blue-500 outline-none transition-all text-gray-900 font-bold text-sm shadow-inner placeholder-gray-400" placeholder="••••••••" />
             </div>
             <div className="flex items-center justify-between px-1">
                 <label className="flex items-center gap-2 cursor-pointer group">
