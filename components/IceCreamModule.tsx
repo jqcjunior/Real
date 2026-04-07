@@ -624,7 +624,7 @@ const dreStats = useMemo(() => {
         <!DOCTYPE html>
         <html>
         <head>
-            <title>DRE Mensal - Gelateria Real</title>
+            <title>DRE Mensal - Sorveteria Real</title>
             <style>
                 @page { size: A4; margin: 15mm; }
                 body { font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; padding: 0; color: #1e293b; line-height: 1.4; }
@@ -645,7 +645,7 @@ const dreStats = useMemo(() => {
         <body>
             <div class="header">
                 <div>
-                    <h2>GELATERIA REAL</h2>
+                    <h2>SORVETERIA REAL</h2>
                     <p>Relatório Gerencial de Resultados</p>
                 </div>
                 <div class="text-right">
@@ -774,7 +774,7 @@ const dreStats = useMemo(() => {
             </style>
         </head>
         <body>
-            <div class="text-center bold" style="font-size: 12px;">GELATERIA REAL</div>
+            <div class="text-center bold" style="font-size: 12px;">SORVETERIA REAL</div>
             <hr/>
             <div class="flex"><span class="bold">CÓDIGO:</span> <span class="bold">#${saleCode}</span></div>
             <div class="flex"><span>DATA:</span> <span>${new Date().toLocaleString('pt-BR', { day: '2-digit', month: '2-digit', year: '2-digit', hour: '2-digit', minute: '2-digit' })}</span></div>
@@ -893,19 +893,109 @@ const dreStats = useMemo(() => {
 
   const handleCancelSale = async () => {
     if (!showCancelModal) return;
+    
+    console.time('⏱️ Cancelamento total');
+    
     const targetSales = sales.filter(s => s.saleCode === showCancelModal.code);
-    if (targetSales.length === 0) return;
+    
+    if (targetSales.length === 0) {
+      alert("Venda não encontrada.");
+      return;
+    }
+    
+    const saleHeader = salesHeaders?.find(s => s.sale_code === showCancelModal.code);
+    
+    if (!saleHeader) {
+      alert("Cabeçalho da venda não encontrado.");
+      return;
+    }
+    
     setIsSubmitting(true);
+    
     try {
+      console.time('⏱️ 1. Estorno de estoque');
+      
+      const stockUpdates: Promise<void>[] = [];
+      
       for (const soldItem of targetSales) {
-        const itemDef = items.find(it => it.id === soldItem.itemId) || items.find(it => it.name === soldItem.productName);
+        const itemDef = items.find(it => it.id === soldItem.itemId) || 
+                        items.find(it => it.name === soldItem.productName);
+        
         if (itemDef?.recipe) {
-          for (const ingredient of itemDef.recipe) { await onUpdateStock(effectiveStoreId, String(ingredient.stock_base_name).toUpperCase(), (ingredient.quantity * soldItem.unitsSold), '', 'adjustment'); }
+          for (const ingredient of itemDef.recipe) {
+            stockUpdates.push(
+              onUpdateStock(
+                effectiveStoreId,
+                String(ingredient.stock_base_name).toUpperCase(),
+                (ingredient.quantity * soldItem.unitsSold),
+                '',
+                'adjustment'
+              )
+            );
+          }
         }
       }
-      await onCancelSale(showCancelModal.code, cancelReason);
-      setShowCancelModal(null); setCancelReason(''); alert("Estorno realizado!");
-    } catch (e) { alert("Erro no estorno."); } finally { setIsSubmitting(false); }
+      
+      if (stockUpdates.length > 0) {
+        console.log(`🔄 Executando ${stockUpdates.length} atualizações de estoque...`);
+        await Promise.all(stockUpdates);
+        console.log(`✅ ${stockUpdates.length} atualizações de estoque concluídas!`);
+      }
+      
+      console.timeEnd('⏱️ 1. Estorno de estoque');
+      
+      console.time('⏱️ 2. Cancelamento no banco');
+      
+      const [salesUpdate, dailySalesUpdate] = await Promise.all([
+        supabase
+          .from('ice_cream_sales')
+          .update({ 
+            status: 'canceled',
+            cancel_reason: cancelReason || 'Cancelado manualmente',
+            canceled_by: user.id,
+            canceled_by_name: user.name,
+            canceled_at: new Date().toISOString()
+          })
+          .eq('id', saleHeader.id),
+        
+        supabase
+          .from('ice_cream_daily_sales')
+          .update({ status: 'canceled' })
+          .eq('sale_id', saleHeader.id),
+
+        // Limpeza financeira (essencial para integridade do DRE)
+        supabase.from('financial_card_sales').delete().eq('sale_code', showCancelModal.code),
+        supabase.from('financial_pix_sales').delete().eq('sale_code', showCancelModal.code),
+        supabase.from('ice_cream_daily_sales_payments').delete().eq('sale_code', showCancelModal.code)
+      ]);
+      
+      console.timeEnd('⏱️ 2. Cancelamento no banco');
+      
+      if (salesUpdate.error) {
+        console.error('❌ Erro ice_cream_sales:', salesUpdate.error);
+        throw new Error(`Erro: ${salesUpdate.error.message}`);
+      }
+      
+      if (dailySalesUpdate.error) {
+        console.error('❌ Erro ice_cream_daily_sales:', dailySalesUpdate.error);
+        throw new Error(`Erro: ${dailySalesUpdate.error.message}`);
+      }
+      
+      console.timeEnd('⏱️ Cancelamento total');
+      
+      setShowCancelModal(null);
+      setCancelReason('');
+      
+      alert("✅ Venda cancelada com sucesso!");
+      
+      window.location.reload();
+      
+    } catch (error: any) {
+      console.error('❌ Erro no cancelamento:', error);
+      alert(`❌ Erro: ${error?.message || 'Erro desconhecido'}`);
+    } finally {
+      setIsSubmitting(false);
+    }
   };
 
   const handleSaveProductForm = async (e: React.FormEvent) => {
@@ -1022,7 +1112,7 @@ const dreStats = useMemo(() => {
 
   const handlePrintDRE = () => {
     const dDate = new Date(displayDate + 'T00:00:00');
-    const storeName = stores.find(s => s.id === effectiveStoreId)?.name || 'Gelateria';
+    const storeName = stores.find(s => s.id === effectiveStoreId)?.name || 'Sorveteria Real';
     const dateStr = dDate.toLocaleDateString('pt-BR', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' });
     
     const paymentSummary = {
@@ -1088,7 +1178,7 @@ const dreStats = useMemo(() => {
         </head>
         <body>
           <div class="header">
-            <h1>🍦 DRE DIÁRIO - GELATERIA</h1>
+            <h1>🍦 DRE DIÁRIO - SORVETERIA REAL</h1>
             <h2>${storeName}</h2>
             <p>${dateStr}</p>
           </div>
@@ -1154,7 +1244,7 @@ const dreStats = useMemo(() => {
           </div>
           
           <div class="footer">
-            Gerado em: ${new Date().toLocaleString('pt-BR')} | Sistema de Gestão Gelateria
+            Gerado em: ${new Date().toLocaleString('pt-BR')} | Sistema de Gestão Sorveteria Real
           </div>
           
           <script>
@@ -1311,7 +1401,7 @@ const dreStats = useMemo(() => {
             <div className="flex items-center gap-2">
                 <div className="p-1.5 bg-blue-900 dark:bg-blue-700 rounded-xl text-white shadow-lg shrink-0"><IceCream size={18} /></div>
                 <div className="truncate">
-                    <h2 className="text-sm md:text-base font-black uppercase italic tracking-tighter text-blue-950 dark:text-white leading-none">Gelateria <span className="text-red-600">Real</span></h2>
+                    <h2 className="text-sm md:text-base font-black uppercase italic tracking-tighter text-blue-950 dark:text-white leading-none">Sorveteria <span className="text-red-600">Real</span></h2>
                     <div className="flex items-center gap-1 mt-0.5">
                         <p className="text-[7px] font-black text-gray-400 dark:text-slate-500 uppercase tracking-widest leading-none">Unidade</p>
                         {isAdmin ? (
@@ -2078,7 +2168,7 @@ const dreStats = useMemo(() => {
                     
                     <div className="flex-1 overflow-y-auto p-4 flex justify-center bg-gray-100 no-scrollbar">
                         <div className="bg-white w-[58mm] min-h-[100mm] h-fit shadow-lg p-3 text-black font-mono text-[9px] relative border-l border-r border-gray-200 mx-auto">
-                            <div className="text-center font-black text-[11px] mb-2">GELATERIA REAL</div>
+                            <div className="text-center font-black text-[11px] mb-2">SORVETERIA REAL</div>
                             <div className="border-t border-dashed border-black my-2"></div>
                             
                             <div className="flex justify-between">

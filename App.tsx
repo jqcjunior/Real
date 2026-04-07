@@ -74,7 +74,7 @@ const App: React.FC = () => {
                 
                 setUser(loggedUser);
                 await fetchPermissions(loggedUser.role);
-                setCurrentView(loggedUser.role === UserRole.ADMIN ? 'dashboard_rede' : loggedUser.role === UserRole.ICE_CREAM ? 'pdv_gelateria' : 'dashboard_loja');
+                setCurrentView(loggedUser.role === UserRole.ADMIN ? 'dashboard_rede' : loggedUser.role === UserRole.ICE_CREAM ? 'pdv_sorveteria' : 'dashboard_loja');
             } else {
                 // Se não houver usuário, precisamos garantir que isLoading seja false para mostrar o login
                 setIsLoading(false);
@@ -380,7 +380,7 @@ const App: React.FC = () => {
             };
             
             setUser(loggedUser);
-            setCurrentView(loggedUser.role === UserRole.ADMIN ? 'dashboard_rede' : loggedUser.role === UserRole.ICE_CREAM ? 'pdv_gelateria' : 'dashboard_loja');
+            setCurrentView(loggedUser.role === UserRole.ADMIN ? 'dashboard_rede' : loggedUser.role === UserRole.ICE_CREAM ? 'pdv_sorveteria' : 'dashboard_loja');
             return { success: true, user: loggedUser };
         } catch (err: any) { 
             return { success: false, error: err.message || 'Falha na conexão.' }; 
@@ -494,7 +494,7 @@ const App: React.FC = () => {
                 <nav className="flex-1 space-y-6 overflow-y-auto no-scrollbar">
                     {[
                         { title: 'Inteligência', items: [ { id: 'dashboard_rede', label: 'Dashboard Rede', icon: LayoutDashboard, perm: 'MODULE_DASHBOARD_ADMIN' }, { id: 'dashboard_loja', label: 'Dashboard Loja', icon: LayoutDashboard, perm: 'MODULE_DASHBOARD_MANAGER' }, { id: 'dashboard_pa', label: 'Dashboard P.A.', icon: Trophy, perm: 'MODULE_DASHBOARD_PA' }, { id: 'metas', label: 'Metas', icon: Target, perm: 'MODULE_METAS' }, { id: 'cotas', label: 'Cotas OTB', icon: Calculator, perm: 'MODULE_COTAS' }, { id: 'compras', label: 'Compras', icon: ShoppingBag, perm: 'MODULE_PURCHASES' }, { id: 'os_demandas', label: 'Demanda OS', icon: ClipboardList, perm: 'MODULE_DEMANDS' } ] },
-                        { title: 'Operacional', items: [ { id: 'pdv_gelateria', label: 'PDV Gelateria', icon: IceCreamIcon, perm: 'MODULE_ICECREAM', requiredFeature: stores.find(s => s.id === user.storeId)?.has_gelateria || user.role === UserRole.ICE_CREAM }, { id: 'caixa', label: 'Caixa', icon: ClipboardList, perm: 'MODULE_CASH_REGISTER' }, { id: 'agenda', label: 'Agenda Semanal', icon: Calendar, perm: 'MODULE_AGENDA' } ] },
+                        { title: 'Operacional', items: [ { id: 'pdv_sorveteria', label: 'PDV Sorveteria Real', icon: IceCreamIcon, perm: 'MODULE_ICECREAM', requiredFeature: stores.find(s => s.id === user.storeId)?.has_gelateria || user.role === UserRole.ICE_CREAM }, { id: 'caixa', label: 'Caixa', icon: ClipboardList, perm: 'MODULE_CASH_REGISTER' }, { id: 'agenda', label: 'Agenda Semanal', icon: Calendar, perm: 'MODULE_AGENDA' } ] },
                         { title: 'Documentos', items: [ { id: 'autoriz_compra', label: 'Autoriz. Compra', icon: FileSignature, perm: 'MODULE_AUTORIZ_COMPRA' }, { id: 'termo_condicional', label: 'Termo Condicional', icon: FileText, perm: 'MODULE_TERMO_CONDICIONAL' }, { id: 'downloads', label: 'Downloads', icon: Download, perm: 'MODULE_DOWNLOADS' } ] },
                         { title: 'Administração', items: [ { id: 'users', label: 'Usuários', icon: Users, perm: 'MODULE_ADMIN_USERS' }, { id: 'access', label: 'Acessos', icon: ShieldAlert, perm: 'MODULE_ACCESS_CONTROL' }, { id: 'audit', label: 'Auditoria', icon: Shield, perm: 'MODULE_AUDIT' }, { id: 'settings', label: 'Configurações', icon: Settings, perm: 'MODULE_SETTINGS' } ] }
                     ].map(section => {
@@ -630,7 +630,7 @@ const App: React.FC = () => {
                             }}
                             onOpenSpreadsheetModule={() => setCurrentView('spreadsheet_order')} 
                         />;
-                        if (currentView === 'pdv_gelateria' && can('MODULE_ICECREAM')) return <IceCreamModule 
+                        if (currentView === 'pdv_sorveteria' && can('MODULE_ICECREAM')) return <IceCreamModule 
                             user={user!} stores={stores} items={iceCreamItems} sales={iceCreamSales} salesHeaders={sales} salePayments={salePayments}
                             stock={iceCreamStock} promissories={icPromissories} can={can}
                             sangriaCategories={icSangriaCategories}
@@ -725,15 +725,39 @@ const App: React.FC = () => {
                                 }
                                 fetchData(); 
                             }}
-                            onCancelSale={async (code, reason) => { 
-                                await supabase.from('ice_cream_daily_sales').update({ status: 'canceled', cancel_reason: reason, canceled_by: user?.name }).eq('sale_code', code); 
-                                await supabase.from('ice_cream_sales').update({ status: 'canceled', cancel_reason: reason, canceled_by: user?.name }).eq('sale_code', code);
-                                // Remove do financeiro de cartões se existir
-                                await supabase.from('financial_card_sales').delete().eq('sale_code', code);
-                                // Remove do financeiro de PIX se existir
-                                await supabase.from('financial_pix_sales').delete().eq('sale_code', code);
-                                // Remove registros de pagamentos detalhados
-                                await supabase.from('ice_cream_daily_sales_payments').delete().eq('sale_code', code);
+                            onCancelSale={async (idOrCode, reason) => { 
+                                // Tenta identificar se recebemos um ID (UUID) ou um Código (String)
+                                const isUUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(idOrCode);
+                                
+                                let saleCode = idOrCode;
+                                let saleId = isUUID ? idOrCode : null;
+
+                                if (isUUID) {
+                                    // Se for UUID, buscamos o sale_code para limpar as outras tabelas
+                                    const { data: sale } = await supabase.from('ice_cream_sales').select('sale_code').eq('id', idOrCode).maybeSingle();
+                                    if (sale) saleCode = sale.sale_code;
+                                } else {
+                                    // Se for Código, buscamos o ID para garantir a limpeza por ID onde possível
+                                    const { data: sale } = await supabase.from('ice_cream_sales').select('id').eq('sale_code', idOrCode).maybeSingle();
+                                    if (sale) saleId = sale.id;
+                                }
+
+                                // Atualiza as tabelas principais
+                                if (saleId) {
+                                    await supabase.from('ice_cream_sales').update({ status: 'canceled', cancel_reason: reason, canceled_by_name: user?.name }).eq('id', saleId); 
+                                    await supabase.from('ice_cream_daily_sales').update({ status: 'canceled', cancel_reason: reason, canceled_by: user?.name }).eq('sale_id', saleId);
+                                } else {
+                                    await supabase.from('ice_cream_sales').update({ status: 'canceled', cancel_reason: reason, canceled_by_name: user?.name }).eq('sale_code', saleCode); 
+                                    await supabase.from('ice_cream_daily_sales').update({ status: 'canceled', cancel_reason: reason, canceled_by: user?.name }).eq('sale_code', saleCode);
+                                }
+                                
+                                // Limpeza financeira (essencial para integridade do DRE)
+                                await Promise.all([
+                                    supabase.from('financial_card_sales').delete().eq('sale_code', saleCode),
+                                    supabase.from('financial_pix_sales').delete().eq('sale_code', saleCode),
+                                    supabase.from('ice_cream_daily_sales_payments').delete().eq('sale_code', saleCode)
+                                ]);
+                                
                                 await fetchData(); 
                             }} 
                             onUpdatePrice={async (id, p) => { await supabase.from('ice_cream_items').update({ price: p }).eq('id', id); await fetchData(); }} 

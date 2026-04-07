@@ -10,7 +10,7 @@ export const GELATERIA_PERMISSIONS_MAP: Record<string, string> = {
 };
 
 /**
- * Resolve as abas visíveis filtrando o array de abas da Gelateria.
+ * Resolve as abas visíveis filtrando o array de abas da Sorveteria.
  * @param pagePermissions Array de objetos de permissão vindos do banco.
  * @param userRole Role do usuário logado.
  * @returns Array de strings (visibleTabs) contendo apenas as abas permitidas.

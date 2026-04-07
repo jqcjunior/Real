@@ -1,10 +1,10 @@
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useRef, useMemo } from 'react';
 import { supabase } from '../services/supabaseClient';
 import { Demand, DemandMessage, DemandPriority, DemandStatus, User, Store, DemandCategory } from '../types';
 import DemandCategoriesManager from './DemandCategoriesManager';
 import { 
     AlertCircle, Clock, Store as StoreIcon, Filter, Search, 
-    Send, CheckCircle, XCircle, MessageSquare, ChevronRight,
+    Send, CheckCircle, XCircle, MessageSquare, ChevronRight, ArrowRight,
     ArrowLeft, Loader2, Calendar, Plus, Edit2, Trash2, Check, X, ClipboardList
 } from 'lucide-react';
 import { formatDistanceToNow } from 'date-fns';
@@ -442,13 +442,29 @@ const OSDemandsModule: React.FC<OSDemandsModuleProps> = ({ user, stores }) => {
     const mostActiveStore = Object.entries(storeActivity).sort((a: any, b: any) => b[1] - a[1])[0]?.[0] || 'N/A';
 
     const filteredDemands = demands.filter(d => {
-        // Mantém a demanda selecionada visível mesmo que mude de status
-        const matchesStatus = statusFilter === 'todos' || d.status === statusFilter || d.id === selectedDemand?.id;
+        const isSelected = d.id === selectedDemand?.id;
+        const matchesStatus = statusFilter === 'todos' || d.status === statusFilter;
         const matchesCategory = categoryFilter === 'todos' || d.category === categoryFilter;
         const matchesSearch = d.title.toLowerCase().includes(searchTerm.toLowerCase()) || 
                             (d.store_name && d.store_name.toLowerCase().includes(searchTerm.toLowerCase()));
-        return matchesStatus && matchesCategory && matchesSearch;
+        
+        return isSelected || (matchesStatus && matchesCategory && matchesSearch);
     });
+
+    const demandsByStore = useMemo(() => {
+        const grouped: { [key: string]: { name: string, demands: Demand[] } } = {};
+        filteredDemands.forEach(d => {
+            const storeKey = d.store_id;
+            if (!grouped[storeKey]) {
+                grouped[storeKey] = {
+                    name: d.store_name || `Loja ${d.store_id}`,
+                    demands: []
+                };
+            }
+            grouped[storeKey].demands.push(d);
+        });
+        return Object.entries(grouped).sort((a, b) => a[1].name.localeCompare(b[1].name));
+    }, [filteredDemands]);
 
     const getPriorityColor = (priority: DemandPriority) => {
         switch (priority) {
@@ -497,10 +513,16 @@ const OSDemandsModule: React.FC<OSDemandsModuleProps> = ({ user, stores }) => {
                     background: var(--bg);
                     color: var(--text);
                     height: 100%;
+                    min-height: 600px;
+                    max-height: calc(100vh - 160px);
                     display: flex;
                     flex-direction: column;
                     font-family: 'Inter', sans-serif;
                     transition: all 0.3s ease;
+                    overflow: hidden;
+                    border-radius: 20px;
+                    box-shadow: 0 10px 25px -5px rgba(0, 0, 0, 0.1);
+                    margin: 0;
                 }
 
                 .dark .os-module-container {
@@ -569,8 +591,30 @@ const OSDemandsModule: React.FC<OSDemandsModuleProps> = ({ user, stores }) => {
                 .os-main-content {
                     flex: 1;
                     display: grid;
-                    grid-template-columns: 240px 1fr 400px;
+                    grid-template-columns: 260px 1fr 480px;
                     overflow: hidden;
+                    position: relative;
+                    min-height: 0;
+                }
+
+                @media (max-width: 1399px) {
+                    .os-main-content {
+                        grid-template-columns: 260px 1fr;
+                    }
+                    .os-details-panel {
+                        position: fixed;
+                        top: 0;
+                        left: 0;
+                        right: 0;
+                        bottom: 0;
+                        z-index: 2000;
+                        transform: translateX(100%);
+                        transition: transform 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+                        width: 100% !important;
+                    }
+                    .os-details-panel.mobile-open {
+                        transform: translateX(0);
+                    }
                 }
 
                 @media (max-width: 1023px) {
@@ -580,28 +624,18 @@ const OSDemandsModule: React.FC<OSDemandsModuleProps> = ({ user, stores }) => {
                     .os-sidebar {
                         display: none;
                     }
-                    .os-details-panel {
-                        position: fixed;
-                        top: 0;
-                        left: 0;
-                        right: 0;
-                        bottom: 0;
-                        z-index: 100;
-                        transform: translateX(100%);
-                        transition: transform 0.3s ease;
-                    }
-                    .os-details-panel.mobile-open {
-                        transform: translateX(0);
-                    }
                 }
 
                 .os-sidebar {
+                    width: 260px;
+                    flex-shrink: 0;
                     border-right: 1px solid var(--border);
-                    padding: 20px;
+                    padding: 24px;
                     display: flex;
                     flex-direction: column;
                     gap: 24px;
                     background: var(--surface);
+                    overflow-y: auto;
                 }
 
                 .new-demand-btn {
@@ -664,9 +698,13 @@ const OSDemandsModule: React.FC<OSDemandsModuleProps> = ({ user, stores }) => {
                 }
 
                 .os-list-container {
+                    flex: 1;
                     display: flex;
                     flex-direction: column;
                     background: var(--bg);
+                    min-width: 0;
+                    min-height: 0;
+                    overflow: hidden;
                 }
 
                 .os-list-header {
@@ -712,10 +750,54 @@ const OSDemandsModule: React.FC<OSDemandsModuleProps> = ({ user, stores }) => {
                 .os-list {
                     flex: 1;
                     overflow-y: auto;
-                    padding: 20px;
+                    padding: 24px;
                     display: flex;
                     flex-direction: column;
-                    gap: 12px;
+                    gap: 16px;
+                    min-height: 0;
+                }
+
+                .store-section {
+                    margin-bottom: 32px;
+                }
+
+                .store-section-header {
+                    display: flex;
+                    align-items: center;
+                    gap: 8px;
+                    padding: 0 4px 12px 4px;
+                    border-bottom: 2px solid var(--border);
+                    margin-bottom: 16px;
+                    color: var(--text);
+                    font-weight: 900;
+                    text-transform: uppercase;
+                    font-size: 11px;
+                    letter-spacing: 0.05em;
+                }
+
+                .store-section-header span {
+                    flex: 1;
+                }
+
+                .count-badge {
+                    background: var(--border);
+                    color: var(--text-muted);
+                    padding: 2px 8px;
+                    border-radius: 20px;
+                    font-size: 10px;
+                }
+
+                .category-tag {
+                    background: rgba(0, 0, 0, 0.05);
+                    padding: 2px 6px;
+                    border-radius: 4px;
+                    font-size: 10px;
+                    font-weight: 700;
+                    text-transform: uppercase;
+                }
+
+                .dark .category-tag {
+                    background: rgba(255, 255, 255, 0.05);
                 }
 
                 .demand-card {
@@ -795,16 +877,22 @@ const OSDemandsModule: React.FC<OSDemandsModuleProps> = ({ user, stores }) => {
                 .status-cancelada { background: rgba(239, 68, 68, 0.1); color: #dc2626; }
 
                 .os-details-panel {
+                    width: 480px;
+                    flex-shrink: 0;
                     background: var(--surface);
                     border-left: 1px solid var(--border);
                     display: flex;
                     flex-direction: column;
                     overflow: hidden;
+                    height: 100%;
+                    box-shadow: -10px 0 30px rgba(0, 0, 0, 0.05);
                 }
 
                 .details-header {
                     padding: 24px;
                     border-bottom: 1px solid var(--border);
+                    background: var(--surface);
+                    flex-shrink: 0;
                 }
 
                 .details-header h2 {
@@ -815,18 +903,21 @@ const OSDemandsModule: React.FC<OSDemandsModuleProps> = ({ user, stores }) => {
                     line-height: 1.2;
                 }
 
-                .chat-container {
+                .details-content-scroll {
                     flex: 1;
+                    overflow-y: auto;
                     display: flex;
                     flex-direction: column;
-                    overflow: hidden;
-                    background: var(--chat-bg);
+                    min-height: 0;
+                }
+
+                .demand-info-section {
+                    padding: 24px;
+                    background: var(--surface);
                 }
 
                 .messages-list {
-                    flex: 1;
-                    overflow-y: auto;
-                    padding: 20px;
+                    padding: 24px;
                     display: flex;
                     flex-direction: column;
                     gap: 16px;
@@ -840,6 +931,7 @@ const OSDemandsModule: React.FC<OSDemandsModuleProps> = ({ user, stores }) => {
                     line-height: 1.5;
                     position: relative;
                     box-shadow: 0 1px 2px rgba(0, 0, 0, 0.05);
+                    word-break: break-word;
                 }
 
                 .message-admin {
@@ -923,10 +1015,37 @@ const OSDemandsModule: React.FC<OSDemandsModuleProps> = ({ user, stores }) => {
                     box-shadow: 0 4px 8px rgba(232, 184, 109, 0.3);
                 }
 
+                .dashboard-stats-grid {
+                    display: grid;
+                    grid-template-columns: repeat(2, 1fr);
+                    gap: 12px;
+                    margin-bottom: 20px;
+                }
+
+                .stat-mini-card {
+                    background: var(--bg);
+                    padding: 12px;
+                    border-radius: 12px;
+                    border: 1px solid var(--border);
+                }
+
+                .stat-mini-card span:first-child {
+                    display: block;
+                    font-size: 9px;
+                    font-weight: 800;
+                    text-transform: uppercase;
+                    color: var(--text-muted);
+                    margin-bottom: 4px;
+                }
+
+                .stat-mini-card span:last-child {
+                    display: block;
+                    font-size: 13px;
+                    font-weight: 700;
+                    color: var(--text);
+                }
+
                 .finalize-btn {
-                    width: 100%;
-                    background: #10b981;
-                    color: white;
                     border: none;
                     padding: 12px;
                     border-radius: 12px;
@@ -940,6 +1059,8 @@ const OSDemandsModule: React.FC<OSDemandsModuleProps> = ({ user, stores }) => {
                     gap: 8px;
                     transition: all 0.2s;
                     box-shadow: 0 4px 12px rgba(16, 185, 129, 0.2);
+                    background: #10b981;
+                    color: white;
                 }
 
                 .finalize-btn:hover {
@@ -1389,34 +1510,56 @@ const OSDemandsModule: React.FC<OSDemandsModuleProps> = ({ user, stores }) => {
                                 <p>Nenhuma demanda encontrada.</p>
                             </div>
                         ) : (
-                            filteredDemands.map(demand => (
-                                <div 
-                                    key={demand.id} 
-                                    className={`demand-card ${selectedDemand?.id === demand.id ? 'active' : ''}`}
-                                    onClick={() => {
-                                        setSelectedDemand(demand);
-                                        setShowMobileDetails(true);
-                                    }}
-                                >
-                                    <div 
-                                        className="priority-indicator" 
-                                        style={{ background: getPriorityColor(demand.priority) }}
-                                    />
-                                    <div className="demand-card-header">
-                                        <h3>{demand.title}</h3>
-                                        <span className={`status-badge status-${demand.status}`}>
-                                            {getStatusLabel(demand.status)}
-                                        </span>
+                            <div className="space-y-8">
+                                {demandsByStore.map(([storeId, group]) => (
+                                    <div key={storeId} className="store-section">
+                                        <div className="store-section-header">
+                                            <StoreIcon size={14} />
+                                            <span>{group.name}</span>
+                                            <span className="count-badge">{group.demands.length}</span>
+                                        </div>
+                                        <div className="space-y-3">
+                                            {group.demands.map(demand => (
+                                                <div 
+                                                    key={demand.id} 
+                                                    className={`demand-card ${selectedDemand?.id === demand.id ? 'active' : ''}`}
+                                                    onClick={() => {
+                                                        setSelectedDemand(demand);
+                                                        setShowMobileDetails(true);
+                                                    }}
+                                                >
+                                                    <div 
+                                                        className="priority-indicator" 
+                                                        style={{ background: getPriorityColor(demand.priority) }}
+                                                    />
+                                                    <div className="demand-card-header">
+                                                        <h3>{demand.title}</h3>
+                                                        <span className={`status-badge status-${demand.status}`}>
+                                                            {getStatusLabel(demand.status)}
+                                                        </span>
+                                                    </div>
+                                                    <div className="demand-meta">
+                                                        <span><Clock size={12} /> {formatDistanceToNow(new Date(demand.created_at), { addSuffix: true, locale: ptBR })}</span>
+                                                        <span className="category-tag">{demand.category}</span>
+                                                    </div>
+                                                    <div className="mt-3 flex items-center justify-between border-t border-slate-100 dark:border-slate-800 pt-3">
+                                                        <div className="flex gap-2">
+                                                            {demand.sla_hours > 0 && (
+                                                                <span className="text-[10px] font-bold text-amber-600 flex items-center gap-1">
+                                                                    <AlertCircle size={10} /> SLA: {demand.sla_hours}h
+                                                                </span>
+                                                            )}
+                                                        </div>
+                                                        <span className="text-[10px] font-black uppercase text-blue-600 flex items-center gap-1 hover:translate-x-1 transition-transform">
+                                                            Visualizar e Responder <ArrowRight size={10} />
+                                                        </span>
+                                                    </div>
+                                                </div>
+                                            ))}
+                                        </div>
                                     </div>
-                                    <div className="demand-meta">
-                                        <span><StoreIcon size={12} /> {demand.store_name || 'Loja ' + demand.store_id}</span>
-                                        <span><Clock size={12} /> {formatDistanceToNow(new Date(demand.created_at), { addSuffix: true, locale: ptBR })}</span>
-                                        {demand.sla_hours > 0 && (
-                                            <span style={{ color: 'var(--accent)' }}><AlertCircle size={12} /> SLA: {demand.sla_hours}h</span>
-                                        )}
-                                    </div>
-                                </div>
-                            ))
+                                ))}
+                            </div>
                         )}
                     </div>
                 </div>
@@ -1426,133 +1569,174 @@ const OSDemandsModule: React.FC<OSDemandsModuleProps> = ({ user, stores }) => {
                     {selectedDemand ? (
                         <>
                             <div className="details-header">
-                                <div className="flex items-center justify-between mb-4 lg:hidden">
+                                <div className="flex items-center justify-between min-[1400px]:hidden">
                                     <button 
                                         className="p-2 -ml-2 text-slate-400 hover:text-slate-900 dark:hover:text-white flex items-center gap-2 font-bold text-xs uppercase"
                                         onClick={() => setShowMobileDetails(false)}
                                     >
-                                        <ArrowLeft size={18} /> Voltar
+                                        <ArrowLeft size={18} /> Voltar para a Lista
                                     </button>
                                     <span className={`status-badge status-${selectedDemand.status}`}>
                                         {getStatusLabel(selectedDemand.status)}
                                     </span>
                                 </div>
-
-                                <div className="demand-meta" style={{ marginBottom: '8px' }}>
-                                    <span style={{ 
-                                        background: getPriorityColor(selectedDemand.priority), 
-                                        color: 'white',
-                                        padding: '2px 8px',
-                                        borderRadius: '6px',
-                                        fontWeight: 800, 
-                                        textTransform: 'uppercase' 
-                                    }}>
-                                        {getPriorityLabel(selectedDemand.priority)}
+                                <div className="hidden min-[1400px]:flex items-center justify-between">
+                                    <h3 className="text-[10px] font-black uppercase text-slate-400 tracking-widest">Dashboard de Resposta</h3>
+                                    <span className={`status-badge status-${selectedDemand.status}`}>
+                                        {getStatusLabel(selectedDemand.status)}
                                     </span>
-                                    <span>•</span>
-                                    <span className="font-bold">{selectedDemand.category}</span>
                                 </div>
-                                <h2>{selectedDemand.title}</h2>
-                                <p style={{ fontSize: '13px', color: 'var(--text-muted)', margin: '8px 0' }}>
-                                    {selectedDemand.description}
-                                </p>
-                                       {selectedDemand.status !== 'resolvida' && selectedDemand.status !== 'cancelada' && (
-                                    <div className="action-btn-group">
-                                        {user.role === 'ADMIN' && selectedDemand.status === 'aberta' && (
+                            </div>
+
+                            <div className="details-content-scroll no-scrollbar">
+                                <div className="demand-info-section">
+                                    <div className="demand-meta" style={{ marginBottom: '12px' }}>
+                                        <span style={{ 
+                                            background: getPriorityColor(selectedDemand.priority), 
+                                            color: 'white',
+                                            padding: '2px 8px',
+                                            borderRadius: '6px',
+                                            fontWeight: 800, 
+                                            textTransform: 'uppercase' 
+                                        }}>
+                                            {getPriorityLabel(selectedDemand.priority)}
+                                        </span>
+                                        <span>•</span>
+                                        <span className="font-bold text-xs">{selectedDemand.category}</span>
+                                    </div>
+                                    <h2 className="text-xl font-black mb-6 leading-tight">{selectedDemand.title}</h2>
+                                    
+                                    <div className="dashboard-stats-grid">
+                                        <div className="stat-mini-card">
+                                            <span>Loja</span>
+                                            <span>{selectedDemand.store_name || 'Loja ' + selectedDemand.store_id}</span>
+                                        </div>
+                                        <div className="stat-mini-card">
+                                            <span>Abertura</span>
+                                            <span>{new Date(selectedDemand.created_at).toLocaleDateString()}</span>
+                                        </div>
+                                        <div className="stat-mini-card">
+                                            <span>SLA Restante</span>
+                                            <span className="text-amber-600">{selectedDemand.sla_hours > 0 ? `${selectedDemand.sla_hours}h` : 'N/A'}</span>
+                                        </div>
+                                        <div className="stat-mini-card">
+                                            <span>Mensagens</span>
+                                            <span>{messages.length}</span>
+                                        </div>
+                                    </div>
+
+                                    <div className="bg-slate-50 dark:bg-slate-900/50 rounded-xl p-5 mb-6 border border-slate-100 dark:border-slate-800">
+                                        <h4 className="text-[10px] font-black uppercase text-slate-400 mb-3 tracking-widest">Descrição Original</h4>
+                                        <p className="text-sm text-slate-600 dark:text-slate-300 leading-relaxed">
+                                            {selectedDemand.description}
+                                        </p>
+                                    </div>
+
+                                    {selectedDemand.status !== 'resolvida' && selectedDemand.status !== 'cancelada' && (
+                                        <div className="action-btn-group">
+                                            {user.role === 'ADMIN' && selectedDemand.status === 'aberta' && (
+                                                <button 
+                                                    className="finalize-btn" 
+                                                    style={{ gridColumn: 'span 2', background: 'var(--accent)', color: '#000', marginBottom: '8px' }} 
+                                                    onClick={handleAttendDemand}
+                                                    disabled={isUpdatingStatus}
+                                                >
+                                                    {isUpdatingStatus ? <Loader2 className="animate-spin" size={18} /> : <Clock size={18} />} Atender Chamado
+                                                </button>
+                                            )}
+
                                             <button 
                                                 className="finalize-btn" 
-                                                style={{ gridColumn: 'span 2', background: 'var(--accent)', color: '#000', marginBottom: '8px' }} 
-                                                onClick={handleAttendDemand}
-                                                disabled={isUpdatingStatus}
+                                                style={{ gridColumn: 'span 2' }} 
+                                                onClick={handleFinalizeDemand}
                                             >
-                                                {isUpdatingStatus ? <Loader2 className="animate-spin" size={18} /> : <Clock size={18} />} Atender Demanda
+                                                <CheckCircle size={18} /> Resolver Agora
                                             </button>
-                                        )}
+                                            
+                                            <div className="grid grid-cols-2 gap-2 w-full" style={{ gridColumn: 'span 2' }}>
+                                                {(user.role === 'ADMIN' || user.id === selectedDemand.created_by) && (
+                                                    <button 
+                                                        className="action-btn-secondary" 
+                                                        onClick={() => openEditModal(selectedDemand)}
+                                                    >
+                                                        <Edit2 size={16} /> Editar
+                                                    </button>
+                                                )}
+                                                
+                                                {(user.role === 'ADMIN' || user.id === selectedDemand.created_by) && (
+                                                    <button 
+                                                        className="action-btn-danger" 
+                                                        onClick={handleCancelDemand}
+                                                    >
+                                                        <XCircle size={16} /> Cancelar
+                                                    </button>
+                                                )}
+                                            </div>
+                                        </div>
+                                    )}
 
-                                        <button 
-                                            className="finalize-btn" 
-                                            style={{ gridColumn: 'span 2' }} 
-                                            onClick={handleFinalizeDemand}
-                                        >
-                                            <CheckCircle size={18} /> Resolver Demanda
-                                        </button>
-                                        
-                                        {(user.role === 'ADMIN' || user.id === selectedDemand.created_by) && (
+                                    {(selectedDemand.status === 'resolvida' || selectedDemand.status === 'cancelada') && user.role === 'ADMIN' && (
+                                        <div className="action-btn-group">
                                             <button 
                                                 className="action-btn-secondary" 
-                                                onClick={() => openEditModal(selectedDemand)}
+                                                style={{ gridColumn: 'span 2' }}
+                                                onClick={() => handleUpdateStatus(selectedDemand.id, 'aberta')}
                                             >
-                                                <Edit2 size={16} /> Editar Demanda
+                                                <Plus size={14} /> Reabrir Chamado
                                             </button>
-                                        )}
-                                        
-                                        {(user.role === 'ADMIN' || user.id === selectedDemand.created_by) && (
                                             <button 
                                                 className="action-btn-danger" 
-                                                onClick={handleCancelDemand}
-                                            >
-                                                <XCircle size={16} /> Cancelar Demanda
-                                            </button>
-                                        )}
-
-                                        {user.role === 'ADMIN' && (
-                                            <button 
-                                                className="action-btn-danger" 
-                                                style={{ gridColumn: 'span 2', marginTop: '4px' }} 
+                                                style={{ gridColumn: 'span 2' }}
                                                 onClick={() => handleDeleteDemand(selectedDemand.id)}
                                             >
                                                 <Trash2 size={16} /> Excluir Permanentemente
                                             </button>
-                                        )}
-                                    </div>
-                                )}
+                                        </div>
+                                    )}
+                                </div>
 
-                                {(selectedDemand.status === 'resolvida' || selectedDemand.status === 'cancelada') && user.role === 'ADMIN' && (
-                                    <div className="mt-4">
-                                        <button className="action-btn-secondary w-full" onClick={() => handleUpdateStatus(selectedDemand.id, 'aberta')}>
-                                            <Plus size={14} /> Reabrir Chamado
-                                        </button>
+                                <div className="flex-1 flex flex-col bg-slate-100 dark:bg-slate-900/30 border-t border-slate-200 dark:border-slate-800">
+                                    <div className="px-6 py-4 border-b border-slate-200 dark:border-slate-800 flex items-center gap-2">
+                                        <MessageSquare size={14} className="text-blue-600" />
+                                        <h4 className="text-[10px] font-black uppercase text-slate-500 tracking-widest">Histórico e Chat</h4>
                                     </div>
-                                )}
+                                    <div className="messages-list no-scrollbar">
+                                        {messages.map(msg => (
+                                            <div 
+                                                key={msg.id} 
+                                                className={`message-bubble ${msg.is_admin ? 'message-admin' : 'message-store'}`}
+                                            >
+                                                <span className="message-info">
+                                                    {msg.sender_name} {msg.is_admin && '(Admin)'}
+                                                </span>
+                                                {msg.message}
+                                                <span className="message-time">
+                                                    {new Date(msg.created_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+                                                </span>
+                                            </div>
+                                        ))}
+                                        <div ref={chatEndRef} />
+                                    </div>
+                                </div>
                             </div>
 
-                            <div className="chat-container">
-                                <div className="messages-list no-scrollbar">
-                                    {messages.map(msg => (
-                                        <div 
-                                            key={msg.id} 
-                                            className={`message-bubble ${msg.is_admin ? 'message-admin' : 'message-store'}`}
-                                        >
-                                            <span className="message-info">
-                                                {msg.sender_name} {msg.is_admin && '(Admin)'}
-                                            </span>
-                                            {msg.message}
-                                            <span className="message-time">
-                                                {new Date(msg.created_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
-                                            </span>
-                                        </div>
-                                    ))}
-                                    <div ref={chatEndRef} />
-                                </div>
-
-                                <div className="chat-input-area">
-                                    <form className="chat-form" onSubmit={handleSendMessage}>
-                                        <input 
-                                            type="text" 
-                                            placeholder="Digite sua mensagem..." 
-                                            value={newMessage}
-                                            onChange={(e) => setNewMessage(e.target.value)}
-                                            disabled={selectedDemand.status === 'resolvida' || selectedDemand.status === 'cancelada'}
-                                        />
-                                        <button 
-                                            type="submit" 
-                                            className="send-btn"
-                                            disabled={!newMessage.trim() || isSending || selectedDemand.status === 'resolvida'}
-                                        >
-                                            {isSending ? <Loader2 className="animate-spin" size={18} /> : <Send size={18} />}
-                                        </button>
-                                    </form>
-                                </div>
+                            <div className="chat-input-area">
+                                <form className="chat-form" onSubmit={handleSendMessage}>
+                                    <input 
+                                        type="text" 
+                                        placeholder="Digite sua resposta aqui..." 
+                                        value={newMessage}
+                                        onChange={(e) => setNewMessage(e.target.value)}
+                                        disabled={selectedDemand.status === 'resolvida' || selectedDemand.status === 'cancelada'}
+                                    />
+                                    <button 
+                                        type="submit" 
+                                        className="send-btn"
+                                        disabled={!newMessage.trim() || isSending || selectedDemand.status === 'resolvida'}
+                                    >
+                                        {isSending ? <Loader2 className="animate-spin" size={18} /> : <Send size={18} />}
+                                    </button>
+                                </form>
                             </div>
                         </>
                     ) : (
