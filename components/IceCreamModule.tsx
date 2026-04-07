@@ -366,15 +366,19 @@ const dreStats = useMemo(() => {
 
     // ===== SANGRIAS E AVARIAS =====
     const monthSangrias = (sangrias ?? []).filter(s => {
-        if (!s.created_at) return false;
-        const d = new Date(s.created_at);
+        if (!s.transaction_date && !s.created_at) return false;
+        // Prioriza transaction_date, fallback para created_at (sangrias antigas)
+        const dateToUse = s.transaction_date || s.created_at;
+        const d = new Date(dateToUse + 'T00:00:00');
         return d >= monthStart && d < monthEnd && s.store_id === effectiveStoreId;
     });
     const monthSangriaTotal = monthSangrias.reduce((acc, s) => acc + Number(s.amount || 0), 0);
 
     const daySangrias = (sangrias ?? []).filter(s => {
-        if (!s.created_at) return false;
-        const d = new Date(s.created_at);
+        if (!s.transaction_date && !s.created_at) return false;
+        // Prioriza transaction_date, fallback para created_at (sangrias antigas)
+        const dateToUse = s.transaction_date || s.created_at;
+        const d = new Date(dateToUse + 'T00:00:00');
         return d >= dayStart && d < dayEnd && s.store_id === effectiveStoreId;
     });
     const daySangriaTotal = daySangrias.reduce((acc, s) => acc + Number(s.amount || 0), 0);
@@ -2402,7 +2406,14 @@ const dreStats = useMemo(() => {
                                     const userObj = adminUsers.find(u => u.id === s.user_id);
                                     return (
                                         <tr key={s.id} className="hover:bg-red-50/20">
-                                            <td className="px-4 py-3 text-gray-400">{new Date(s.transaction_date || s.created_at!).toLocaleString()}</td>
+                                            <td className="px-4 py-3 text-gray-400">
+                                                <div className="text-[10px] font-black text-gray-900">
+                                                    {new Date((s.transaction_date || s.created_at!) + 'T00:00:00').toLocaleDateString('pt-BR')}
+                                                </div>
+                                                <div className="text-[8px] text-gray-400 uppercase">
+                                                    {new Date(s.created_at!).toLocaleTimeString('pt-BR')}
+                                                </div>
+                                            </td>
                                             <td className="px-4 py-3 uppercase text-blue-950">{cat?.name || '---'}</td>
                                             <td className="px-4 py-3 text-gray-500 italic">{s.description || '---'}</td>
                                             <td className="px-4 py-3 uppercase text-gray-400">{userObj?.name || '---'}</td>
