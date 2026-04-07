@@ -125,6 +125,13 @@ const IceCreamModule: React.FC<IceCreamModuleProps> = ({
   const [productForm, setProductForm] = useState<Partial<IceCreamItem>>({ name: '', category: 'Copinho', price: 0, active: true, recipe: [] });
   const [newRecipeItem, setNewRecipeItem] = useState({ stock_base_name: '', quantity: '1' });
   const [manualStoreId, setManualStoreId] = useState('');
+  
+  // NOVOS ESTADOS PARA SANGRIA COM DATA E EDIÇÃO
+  const [sangriaDate, setSangriaDate] = useState(new Date().toISOString().split('T')[0]);
+  const [showEditSangriaModal, setShowEditSangriaModal] = useState(false);
+  const [editingSangria, setEditingSangria] = useState<any>(null);
+  const [editSangriaForm, setEditSangriaForm] = useState<any>({});
+
   const isAdmin = user.role === UserRole.ADMIN;
   const effectiveStoreId = isAdmin 
     ? (manualStoreId || user.storeId || (stores.length > 0 ? stores[0].id : ''))
@@ -921,18 +928,75 @@ const dreStats = useMemo(() => {
       }
       setIsSubmitting(true);
       try {
-          await onAddSangria({
-              store_id: effectiveStoreId,
-              user_id: user.id,
-              category_id: sangriaForm.categoryId,
-              amount: parseFloat(sangriaForm.amount.replace(',', '.')),
-              description: sangriaForm.description
+          const { error } = await supabase.rpc('create_ice_cream_sangria', {
+              p_store_id: effectiveStoreId,
+              p_user_id: user.id,
+              p_category_id: sangriaForm.categoryId,
+              p_amount: parseFloat(sangriaForm.amount.replace(',', '.')),
+              p_description: sangriaForm.description || null,
+              p_transaction_date: sangriaDate,
+              p_notes: null
           });
+          
+          if (error) throw error;
+          
           setSangriaForm({ amount: '', categoryId: '', description: '' });
+          setSangriaDate(new Date().toISOString().split('T')[0]);
           setShowSangriaModal(false);
           alert("Sangria realizada com sucesso!");
-      } catch (e) {
-          alert("Erro ao realizar sangria.");
+      } catch (e: any) {
+          alert("Erro ao realizar sangria: " + e.message);
+      } finally {
+          setIsSubmitting(false);
+      }
+  };
+
+  const handleEditSangria = (sangria: any) => {
+      setEditingSangria(sangria);
+      setEditSangriaForm({
+          amount: sangria.amount.toString(),
+          categoryId: sangria.category_id,
+          description: sangria.description || '',
+          transactionDate: sangria.transaction_date || new Date(sangria.created_at).toISOString().split('T')[0],
+          notes: sangria.notes || ''
+      });
+      setShowEditSangriaModal(true);
+  };
+
+  const handleSaveEditSangria = async () => {
+      if (!editingSangria) return;
+      setIsSubmitting(true);
+      try {
+          const { error } = await supabase.rpc('update_ice_cream_sangria_admin', {
+              p_sangria_id: editingSangria.id,
+              p_amount: parseFloat(editSangriaForm.amount.replace(',', '.')),
+              p_description: editSangriaForm.description,
+              p_category_id: editSangriaForm.categoryId,
+              p_transaction_date: editSangriaForm.transactionDate,
+              p_notes: editSangriaForm.notes
+          });
+          if (error) throw error;
+          alert('Sangria atualizada com sucesso!');
+          setShowEditSangriaModal(false);
+          setEditingSangria(null);
+      } catch (e: any) {
+          alert('Erro: ' + e.message);
+      } finally {
+          setIsSubmitting(false);
+      }
+  };
+
+  const handleDeleteSangria = async (sangriaId: string) => {
+      if (!confirm('Tem certeza que deseja deletar esta sangria?')) return;
+      setIsSubmitting(true);
+      try {
+          const { error } = await supabase.rpc('delete_ice_cream_sangria_admin', {
+              p_sangria_id: sangriaId
+          });
+          if (error) throw error;
+          alert('Sangria deletada com sucesso!');
+      } catch (e: any) {
+          alert('Erro: ' + e.message);
       } finally {
           setIsSubmitting(false);
       }
@@ -2063,6 +2127,10 @@ const dreStats = useMemo(() => {
                             </select>
                         </div>
                         <div className="space-y-2">
+                            <label className="text-[10px] font-black text-gray-400 uppercase ml-2">Data da Sangria</label>
+                            <input type="date" value={sangriaDate} onChange={e => setSangriaDate(e.target.value)} className="w-full p-4 bg-gray-50 rounded-2xl font-black text-gray-900 outline-none shadow-inner border border-gray-100" />
+                        </div>
+                        <div className="space-y-2">
                             <label className="text-[10px] font-black text-gray-400 uppercase ml-2">Descrição (Opcional)</label>
                             <textarea value={sangriaForm.description} onChange={e => setSangriaForm({...sangriaForm, description: e.target.value})} className="w-full p-4 bg-gray-50 rounded-2xl font-black uppercase text-[10px] outline-none h-24 resize-none" placeholder="MOTIVO DA SANGRIA..." />
                         </div>
@@ -2119,6 +2187,7 @@ const dreStats = useMemo(() => {
                                     <th className="px-4 py-4">Descrição</th>
                                     <th className="px-4 py-4">Usuário</th>
                                     <th className="px-4 py-4 text-right">Valor</th>
+                                    {isAdmin && <th className="px-4 py-4 text-center">Ações</th>}
                                 </tr>
                             </thead>
                             <tbody className="divide-y divide-gray-50 font-bold text-[10px]">
@@ -2127,11 +2196,19 @@ const dreStats = useMemo(() => {
                                     const userObj = adminUsers.find(u => u.id === s.user_id);
                                     return (
                                         <tr key={s.id} className="hover:bg-red-50/20">
-                                            <td className="px-4 py-3 text-gray-400">{new Date(s.created_at!).toLocaleString()}</td>
+                                            <td className="px-4 py-3 text-gray-400">{new Date(s.transaction_date || s.created_at!).toLocaleString()}</td>
                                             <td className="px-4 py-3 uppercase text-blue-950">{cat?.name || '---'}</td>
                                             <td className="px-4 py-3 text-gray-500 italic">{s.description || '---'}</td>
                                             <td className="px-4 py-3 uppercase text-gray-400">{userObj?.name || '---'}</td>
                                             <td className="px-4 py-3 text-right text-red-600 font-black">{formatCurrency(s.amount)}</td>
+                                            {isAdmin && (
+                                                <td className="px-4 py-3 text-center">
+                                                    <div className="flex justify-center gap-2">
+                                                        <button onClick={() => handleEditSangria(s)} className="p-2 text-blue-600 hover:bg-blue-50 rounded-lg transition-all"><PencilLine size={16}/></button>
+                                                        <button onClick={() => handleDeleteSangria(s.id)} className="p-2 text-red-600 hover:bg-red-50 rounded-lg transition-all"><Trash2 size={16}/></button>
+                                                    </div>
+                                                </td>
+                                            )}
                                         </tr>
                                     );
                                 })}
@@ -2206,6 +2283,80 @@ const dreStats = useMemo(() => {
                     </div>
                     <div className="p-6 bg-gray-50 border-t">
                         <p className="text-[8px] text-gray-400 uppercase font-bold text-center">A soma dos percentuais ativos deve ser exatamente 100% para o fechamento correto.</p>
+                    </div>
+                </div>
+            </div>
+        )}
+
+        {showEditSangriaModal && editingSangria && (
+            <div className="fixed inset-0 bg-black/80 backdrop-blur-md flex items-center justify-center z-[150] p-4">
+                <div className="bg-white rounded-[40px] w-full max-w-md shadow-2xl border-t-8 border-orange-600 animate-in zoom-in duration-300">
+                    <div className="p-8 border-b flex justify-between items-center">
+                        <h3 className="text-xl font-black uppercase italic text-blue-950">
+                            Editar <span className="text-orange-600">Sangria</span>
+                        </h3>
+                        <button onClick={() => setShowEditSangriaModal(false)}>
+                            <X size={24}/>
+                        </button>
+                    </div>
+                    
+                    <div className="p-10 space-y-6">
+                        <div>
+                            <label className="text-[10px] font-black text-gray-400 uppercase ml-2">
+                                Valor
+                            </label>
+                            <input
+                                value={editSangriaForm.amount}
+                                onChange={e => setEditSangriaForm({...editSangriaForm, amount: e.target.value})}
+                                className="w-full p-4 bg-red-50 rounded-2xl font-black text-red-700 text-2xl text-center outline-none"
+                            />
+                        </div>
+                        
+                        <div>
+                            <label className="text-[10px] font-black text-gray-400 uppercase ml-2">
+                                Data da Sangria
+                            </label>
+                            <input
+                                type="date"
+                                value={editSangriaForm.transactionDate}
+                                onChange={e => setEditSangriaForm({...editSangriaForm, transactionDate: e.target.value})}
+                                className="w-full p-4 bg-gray-50 rounded-2xl font-black outline-none"
+                            />
+                        </div>
+                        
+                        <div>
+                            <label className="text-[10px] font-black text-gray-400 uppercase ml-2">
+                                Categoria
+                            </label>
+                            <select
+                                value={editSangriaForm.categoryId}
+                                onChange={e => setEditSangriaForm({...editSangriaForm, categoryId: e.target.value})}
+                                className="w-full p-4 bg-gray-50 rounded-2xl font-black uppercase outline-none"
+                            >
+                                {sangriaCategories.filter(c => c.store_id === effectiveStoreId && c.is_active).map(c => (
+                                    <option key={c.id} value={c.id}>{c.name}</option>
+                                ))}
+                            </select>
+                        </div>
+                        
+                        <div>
+                            <label className="text-[10px] font-black text-gray-400 uppercase ml-2">
+                                Descrição
+                            </label>
+                            <textarea
+                                value={editSangriaForm.description}
+                                onChange={e => setEditSangriaForm({...editSangriaForm, description: e.target.value})}
+                                className="w-full p-4 bg-gray-50 rounded-2xl font-black uppercase text-[10px] outline-none h-24"
+                            />
+                        </div>
+                        
+                        <button
+                            onClick={handleSaveEditSangria}
+                            disabled={isSubmitting}
+                            className="w-full py-5 bg-orange-600 text-white rounded-[28px] font-black uppercase text-xs shadow-xl flex items-center justify-center gap-2"
+                        >
+                            {isSubmitting ? <Loader2 className="animate-spin" /> : <Save size={18} />} SALVAR ALTERAÇÕES
+                        </button>
                     </div>
                 </div>
             </div>

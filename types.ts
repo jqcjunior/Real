@@ -131,6 +131,9 @@ export interface IceCreamSangria {
   category_id: string;
   amount: number;
   description: string;
+  transaction_date?: string;
+  notes?: string;
+  metadata?: any;
   created_at: string;
 }
 
