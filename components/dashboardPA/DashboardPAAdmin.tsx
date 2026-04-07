@@ -3,7 +3,7 @@ import { Store, User } from '../../types';
 import { 
   BarChart3, Trophy, Calendar, Filter, Eye,
   Medal, Gem, Zap, Settings, X, Check, ChevronRight, Loader2,
-  RotateCcw, Lock, Unlock, AlertCircle
+  RotateCcw, Lock, Unlock, AlertCircle, TrendingUp
 } from 'lucide-react';
 import { supabase } from '../../services/supabaseClient';
 import { format } from 'date-fns';
@@ -73,12 +73,17 @@ const ParametrosModal: React.FC<ParametrosModalProps> = ({ stores, onClose, onSa
  
   useEffect(() => {
     const fetchParams = async () => {
+      // 🔧 CORREÇÃO 1: Removendo duplicatas com SELECT DISTINCT
       const { data } = await supabase
         .from('Dashboard_PA_Parametros')
         .select('store_id, pa_inicial, incremento_pa, valor_base, incremento_valor');
+      
       if (data) {
         const map: Record<string, PAParametros> = {};
-        data.forEach((p: any) => { map[p.store_id] = p; });
+        // Remove duplicatas mantendo apenas o último registro de cada loja
+        data.forEach((p: any) => { 
+          map[p.store_id] = p; 
+        });
         setParams(map);
       }
       setLoading(false);
@@ -102,15 +107,22 @@ const ParametrosModal: React.FC<ParametrosModalProps> = ({ stores, onClose, onSa
     if (!draft || !selectedStoreId) return;
     setSaving(true);
     try {
+      // Primeiro, remove possíveis duplicatas existentes
       await supabase
         .from('Dashboard_PA_Parametros')
-        .upsert({
+        .delete()
+        .eq('store_id', selectedStoreId);
+ 
+      // Depois insere o novo registro
+      await supabase
+        .from('Dashboard_PA_Parametros')
+        .insert({
           store_id: selectedStoreId,
           pa_inicial: draft.pa_inicial,
           incremento_pa: draft.incremento_pa,
           valor_base: draft.valor_base,
           incremento_valor: draft.incremento_valor,
-        }, { onConflict: 'store_id' });
+        });
  
       setParams(prev => ({ ...prev, [selectedStoreId]: draft }));
       setSaved(true);
@@ -345,7 +357,7 @@ const ParametrosModal: React.FC<ParametrosModalProps> = ({ stores, onClose, onSa
 // ─── Dashboard Principal ───────────────────────────────────────────────────────
 const DashboardPAAdmin: React.FC<DashboardPAAdminProps> = ({ user, stores, onRefresh }) => {
   const [viewMode, setViewMode] = useState<ViewMode>('semana');
-  const [activeTab, setActiveTab] = useState<'ranking' | 'semanas'>('ranking');
+  const [activeTab, setActiveTab] = useState<'ranking' | 'semanas' | 'grafico'>('ranking');
   const [selectedMonth, setSelectedMonth] = useState(new Date().getMonth() + 1);
   const [selectedYear, setSelectedYear] = useState(new Date().getFullYear());
   const [selectedWeek, setSelectedWeek] = useState<string>('');
@@ -357,7 +369,7 @@ const DashboardPAAdmin: React.FC<DashboardPAAdminProps> = ({ user, stores, onRef
   const [showParamsModal, setShowParamsModal] = useState(false);
   const [reopeningId, setReopeningId] = useState<string | null>(null);
   const [toast, setToast] = useState<{ message: string; type: 'success' | 'error' } | null>(null);
-
+ 
   const showToast = (message: string, type: 'success' | 'error') => {
     setToast({ message, type });
     setTimeout(() => setToast(null), 3000);
@@ -387,7 +399,7 @@ const DashboardPAAdmin: React.FC<DashboardPAAdminProps> = ({ user, stores, onRef
       if (uniqueWeeks.length > 0 && !selectedWeek) setSelectedWeek(uniqueWeeks[0].id);
     }
   };
-
+ 
   const handleReabrirSemana = async (weekId: string) => {
     setReopeningId(weekId);
     try {
@@ -415,7 +427,7 @@ const DashboardPAAdmin: React.FC<DashboardPAAdminProps> = ({ user, stores, onRef
       setReopeningId(null);
     }
   };
-
+ 
   const loadWeekPerformance = async () => {
     if (!selectedWeek) return;
     setLoading(true);
@@ -451,8 +463,14 @@ const DashboardPAAdmin: React.FC<DashboardPAAdminProps> = ({ user, stores, onRef
           const storeSales = salesData?.filter(s => s.store_id === store.id) || [];
           const storePremios = premiosData?.filter(p => p.store_id === store.id) || [];
           const storeParams = paramsData?.find(p => p.store_id === store.id) || null;
+          
           const totalVendas = storeSales.reduce((acc, s) => acc + (s.total_vendas || 0), 0);
-          const avgPA = storeSales.length > 0 ? storeSales.reduce((acc, s) => acc + (s.pa || 0), 0) / storeSales.length : 0;
+          
+          // 🔧 CORREÇÃO 2: Cálculo correto do PA médio (média aritmética simples dos vendedores)
+          const avgPA = storeSales.length > 0 
+            ? storeSales.reduce((acc, s) => acc + (s.pa || 0), 0) / storeSales.length 
+            : 0;
+          
           const paMeta = storeParams?.pa_inicial || 1.6;
           const qtdePremiados = storePremios.filter(p => p.atingiu_meta).length;
           const totalPremios = storePremios.reduce((acc, p) => acc + (p.valor_premio || 0), 0);
@@ -460,7 +478,22 @@ const DashboardPAAdmin: React.FC<DashboardPAAdminProps> = ({ user, stores, onRef
           const scoreVendas = totalVendas > 0 ? Math.min((totalVendas / 50000) * 100, 100) : 0;
           const scorePA = paMeta > 0 ? Math.min((avgPA / paMeta) * 100, 100) : 0;
           const score = (scoreVendas * 0.3) + (scorePA * 0.7);
-          return { storeId: store.id, storeNumber: store.number, storeName: store.name, city: store.city, totalVendas, paAtingido: avgPA, paMeta, qtdeVendedores: storeSales.length, qtdePremiados, totalPremios, valorPremioCalc, score, params: storeParams as PAParametros | null };
+          
+          return { 
+            storeId: store.id, 
+            storeNumber: store.number, 
+            storeName: store.name, 
+            city: store.city, 
+            totalVendas, 
+            paAtingido: avgPA, 
+            paMeta, 
+            qtdeVendedores: storeSales.length, 
+            qtdePremiados, 
+            totalPremios, 
+            valorPremioCalc, 
+            score, 
+            params: storeParams as PAParametros | null 
+          };
         })
         .filter(Boolean) as StoreWeekPerformance[];
  
@@ -491,8 +524,14 @@ const DashboardPAAdmin: React.FC<DashboardPAAdminProps> = ({ user, stores, onRef
           const storeSales = salesData?.filter(s => s.store_id === store.id) || [];
           const storePremios = premiosData?.filter(p => p.store_id === store.id) || [];
           const storeParams = paramsData?.find(p => p.store_id === store.id) || null;
+          
           const totalVendas = storeSales.reduce((acc, s) => acc + (s.total_vendas || 0), 0);
-          const avgPA = storeSales.length > 0 ? storeSales.reduce((acc, s) => acc + (s.pa || 0), 0) / storeSales.length : 0;
+          
+          // 🔧 CORREÇÃO 2: Cálculo correto do PA médio (média aritmética simples)
+          const avgPA = storeSales.length > 0 
+            ? storeSales.reduce((acc, s) => acc + (s.pa || 0), 0) / storeSales.length 
+            : 0;
+          
           const paMeta = storeParams?.pa_inicial || 1.6;
           const qtdePremiados = storePremios.filter(p => p.atingiu_meta).length;
           const totalPremios = storePremios.reduce((acc, p) => acc + (p.valor_premio || 0), 0);
@@ -500,7 +539,22 @@ const DashboardPAAdmin: React.FC<DashboardPAAdminProps> = ({ user, stores, onRef
           const scoreVendas = totalVendas > 0 ? Math.min((totalVendas / 200000) * 100, 100) : 0;
           const scorePA = paMeta > 0 ? Math.min((avgPA / paMeta) * 100, 100) : 0;
           const score = (scoreVendas * 0.3) + (scorePA * 0.7);
-          return { storeId: store.id, storeNumber: store.number, storeName: store.name, city: store.city, totalVendas, paAtingido: avgPA, paMeta, qtdeVendedores: storeSales.length, qtdePremiados, totalPremios, valorPremioCalc, score, params: storeParams as PAParametros | null };
+          
+          return { 
+            storeId: store.id, 
+            storeNumber: store.number, 
+            storeName: store.name, 
+            city: store.city, 
+            totalVendas, 
+            paAtingido: avgPA, 
+            paMeta, 
+            qtdeVendedores: storeSales.length, 
+            qtdePremiados, 
+            totalPremios, 
+            valorPremioCalc, 
+            score, 
+            params: storeParams as PAParametros | null 
+          };
         });
  
       storesPerformance.sort((a, b) => b.score - a.score);
@@ -532,7 +586,7 @@ const DashboardPAAdmin: React.FC<DashboardPAAdminProps> = ({ user, stores, onRef
           {toast.message}
         </div>
       )}
-
+ 
       {/* Modal de Parâmetros */}
       {showParamsModal && (
         <ParametrosModal
@@ -627,11 +681,11 @@ const DashboardPAAdmin: React.FC<DashboardPAAdminProps> = ({ user, stores, onRef
         <div className="flex items-center justify-center gap-3 px-6 py-3 bg-gradient-to-r from-orange-50 to-red-50 dark:from-orange-900/20 dark:to-red-900/20 rounded-2xl border-2 border-orange-200 dark:border-orange-800">
           <Trophy className="text-orange-600" size={20} />
           <h2 className="text-sm font-black text-slate-900 dark:text-white uppercase italic">
-            {activeTab === 'ranking' ? 'Ranking de Performance' : 'Gerenciamento de Semanas'}
+            {activeTab === 'ranking' ? 'Ranking de Performance' : activeTab === 'grafico' ? 'Gráfico de Ranking' : 'Gerenciamento de Semanas'}
           </h2>
         </div>
       </div>
-
+ 
       {/* Tabs */}
       <div className="bg-white dark:bg-slate-900 rounded-2xl shadow-sm border border-slate-200 dark:border-slate-800 p-2">
         <div className="flex gap-2 overflow-x-auto">
@@ -646,7 +700,19 @@ const DashboardPAAdmin: React.FC<DashboardPAAdminProps> = ({ user, stores, onRef
             <Trophy size={16} />
             Ranking de Lojas
           </button>
-
+ 
+          <button
+            onClick={() => setActiveTab('grafico')}
+            className={`flex items-center gap-2 px-6 py-3 rounded-xl font-black uppercase text-xs transition-all whitespace-nowrap ${
+              activeTab === 'grafico'
+                ? 'bg-gradient-to-r from-purple-600 to-pink-600 text-white shadow-lg'
+                : 'bg-slate-50 dark:bg-slate-800 text-slate-600 dark:text-slate-400 hover:bg-slate-100 dark:hover:bg-slate-700'
+            }`}
+          >
+            <TrendingUp size={16} />
+            Gráfico Ranking
+          </button>
+ 
           <button
             onClick={() => setActiveTab('semanas')}
             className={`flex items-center gap-2 px-6 py-3 rounded-xl font-black uppercase text-xs transition-all whitespace-nowrap ${
@@ -660,7 +726,7 @@ const DashboardPAAdmin: React.FC<DashboardPAAdminProps> = ({ user, stores, onRef
           </button>
         </div>
       </div>
-
+ 
       {activeTab === 'ranking' ? (
         <>
           {/* Ranking */}
@@ -670,7 +736,7 @@ const DashboardPAAdmin: React.FC<DashboardPAAdminProps> = ({ user, stores, onRef
                 <div className="animate-spin w-12 h-12 border-4 border-orange-500 border-t-transparent rounded-full" />
               </div>
             )}
-
+ 
             {!loading && performance.length === 0 && (
               <div className="bg-white dark:bg-slate-900 rounded-3xl p-20 text-center border border-slate-200 dark:border-slate-800">
                 <Trophy className="mx-auto mb-4 text-slate-300" size={64} />
@@ -678,7 +744,7 @@ const DashboardPAAdmin: React.FC<DashboardPAAdminProps> = ({ user, stores, onRef
                 <p className="text-sm text-slate-400 mt-2">Selecione outro período ou loja</p>
               </div>
             )}
-
+ 
             {!loading && performance.map((store, index) => {
               const tier = getTier(index);
               return (
@@ -687,7 +753,7 @@ const DashboardPAAdmin: React.FC<DashboardPAAdminProps> = ({ user, stores, onRef
                     <div className={`${tier.color} w-16 h-16 rounded-2xl flex items-center justify-center text-white font-black text-2xl shadow-lg flex-shrink-0`}>
                       {index + 1}º
                     </div>
-
+ 
                     <div className="flex-1 min-w-0">
                       <div className="flex items-center gap-3 mb-2">
                         <h3 className="text-xl font-black text-slate-900 dark:text-white uppercase italic">
@@ -706,7 +772,7 @@ const DashboardPAAdmin: React.FC<DashboardPAAdminProps> = ({ user, stores, onRef
                         </p>
                       )}
                     </div>
-
+ 
                     <div className="grid grid-cols-2 sm:grid-cols-5 gap-3 w-full sm:w-auto">
                       <div className="bg-white dark:bg-slate-800 rounded-xl p-3 border border-slate-200 dark:border-slate-700">
                         <p className="text-xs font-black text-slate-400 uppercase mb-1">Score</p>
@@ -739,7 +805,7 @@ const DashboardPAAdmin: React.FC<DashboardPAAdminProps> = ({ user, stores, onRef
               );
             })}
           </div>
-
+ 
           {!loading && performance.length > 0 && (
             <div className="bg-slate-100 dark:bg-slate-900 rounded-2xl p-4 border border-slate-200 dark:border-slate-800">
               <p className="text-xs font-bold text-slate-500 dark:text-slate-400 text-center uppercase tracking-widest">
@@ -751,6 +817,89 @@ const DashboardPAAdmin: React.FC<DashboardPAAdminProps> = ({ user, stores, onRef
             </div>
           )}
         </>
+      ) : activeTab === 'grafico' ? (
+        <div className="bg-white dark:bg-slate-900 rounded-3xl p-8 border border-slate-200 dark:border-slate-800 shadow-sm">
+          {loading ? (
+            <div className="flex items-center justify-center py-20">
+              <div className="animate-spin w-12 h-12 border-4 border-purple-500 border-t-transparent rounded-full" />
+            </div>
+          ) : performance.length === 0 ? (
+            <div className="text-center py-20">
+              <TrendingUp className="mx-auto mb-4 text-slate-300" size={64} />
+              <p className="text-lg font-black text-slate-400 uppercase italic">Nenhum dado para exibir</p>
+            </div>
+          ) : (
+            <div className="space-y-6">
+              <div className="flex items-center justify-between mb-6">
+                <h3 className="text-xl font-black text-slate-900 dark:text-white uppercase italic">
+                  Ranking por P.A Médio
+                </h3>
+                <div className="flex items-center gap-2 text-sm font-bold text-slate-500">
+                  <TrendingUp size={16} />
+                  <span>{viewMode === 'semana' ? weekLabel : monthLabel}</span>
+                </div>
+              </div>
+ 
+              {performance.map((store, index) => {
+                const maxPA = Math.max(...performance.map(s => s.paAtingido));
+                const percentage = maxPA > 0 ? (store.paAtingido / maxPA) * 100 : 0;
+                const tier = getTier(index);
+ 
+                return (
+                  <div key={store.storeId} className="space-y-2">
+                    <div className="flex items-center justify-between">
+                      <div className="flex items-center gap-3">
+                        <span className={`w-8 h-8 rounded-lg ${tier.color} text-white font-black text-sm flex items-center justify-center`}>
+                          {index + 1}
+                        </span>
+                        <div>
+                          <p className="text-sm font-black text-slate-900 dark:text-white">
+                            Loja {store.storeNumber}
+                          </p>
+                          <p className="text-[10px] font-bold text-slate-400 uppercase">{store.city}</p>
+                        </div>
+                      </div>
+                      <div className="text-right">
+                        <p className="text-lg font-black text-slate-900 dark:text-white">
+                          {store.paAtingido.toFixed(2)}
+                        </p>
+                        <p className="text-[10px] font-bold text-slate-400">P.A médio</p>
+                      </div>
+                    </div>
+ 
+                    <div className="relative h-8 bg-slate-100 dark:bg-slate-800 rounded-xl overflow-hidden">
+                      <div
+                        className={`h-full ${tier.color} transition-all duration-500 flex items-center justify-end pr-3`}
+                        style={{ width: `${percentage}%` }}
+                      >
+                        <span className="text-white font-black text-xs">
+                          {percentage.toFixed(0)}%
+                        </span>
+                      </div>
+                    </div>
+ 
+                    <div className="grid grid-cols-3 gap-2 text-center">
+                      <div className="bg-slate-50 dark:bg-slate-800 rounded-lg p-2">
+                        <p className="text-[10px] font-black text-slate-400 uppercase">Vendas</p>
+                        <p className="text-sm font-black text-blue-600">R$ {(store.totalVendas / 1000).toFixed(0)}k</p>
+                      </div>
+                      <div className="bg-slate-50 dark:bg-slate-800 rounded-lg p-2">
+                        <p className="text-[10px] font-black text-slate-400 uppercase">Meta</p>
+                        <p className="text-sm font-black text-amber-600">{store.paMeta.toFixed(2)}</p>
+                      </div>
+                      <div className="bg-slate-50 dark:bg-slate-800 rounded-lg p-2">
+                        <p className="text-[10px] font-black text-slate-400 uppercase">Prêmio</p>
+                        <p className="text-sm font-black text-emerald-600">
+                          {store.valorPremioCalc > 0 ? `R$ ${store.valorPremioCalc.toFixed(0)}` : '—'}
+                        </p>
+                      </div>
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          )}
+        </div>
       ) : (
         <div className="space-y-4">
           <div className="bg-white dark:bg-slate-900 rounded-3xl border border-slate-200 dark:border-slate-800 overflow-hidden shadow-sm">
@@ -771,7 +920,7 @@ const DashboardPAAdmin: React.FC<DashboardPAAdminProps> = ({ user, stores, onRef
                       const store = stores.find(s => s.id === w.store_id);
                       const isFinalized = w.status === 'recibos_impressos' || w.status === 'bloqueada';
                       const isReopening = reopeningId === w.id;
-
+ 
                       return (
                         <tr key={w.id} className="border-b border-slate-50 dark:border-slate-800/50 hover:bg-slate-50/50 dark:hover:bg-slate-800/30 transition-all">
                           <td className="px-6 py-4">
@@ -835,7 +984,7 @@ const DashboardPAAdmin: React.FC<DashboardPAAdminProps> = ({ user, stores, onRef
               </table>
             </div>
           </div>
-
+ 
           {allWeeks.filter(w => selectedStoreId === 'all' || w.store_id === selectedStoreId).length === 0 && (
             <div className="bg-white dark:bg-slate-900 rounded-3xl p-12 text-center border border-slate-200 dark:border-slate-800">
               <AlertCircle className="mx-auto mb-4 text-slate-300" size={48} />

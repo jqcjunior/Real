@@ -1,20 +1,8 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { 
-  Trophy, 
-  TrendingUp, 
-  Users, 
-  Upload, 
-  ChevronRight,
-  ArrowUpRight,
-  DollarSign,
-  FileSpreadsheet,
-  CheckCircle2,
-  AlertCircle,
-  Printer,
-  Calendar,
-  X,
-  FileText,
-  BarChart3
+  Trophy, TrendingUp, Upload, DollarSign,
+  FileSpreadsheet, CheckCircle2, AlertCircle, Printer,
+  Calendar, X, FileText, BarChart3
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 import { dashboardPAService } from '../../services/dashboardPAService';
@@ -27,6 +15,18 @@ import RelatorioPAImprimivel from './RelatorioPAImprimivel';
 interface DashboardPAGerenteProps {
   user: any;
   store: any;
+}
+ 
+// Interface para ranking de lojas
+interface StoreRanking {
+  storeId: string;
+  storeNumber: string;
+  storeName: string;
+  city: string;
+  paAtingido: number;
+  paMeta: number;
+  score: number;
+  totalVendas: number;
 }
  
 const parseLocalDate = (dateStr: string): Date => {
@@ -89,9 +89,7 @@ const metaSemanaPorDias = (week: PAWeek, goal: { revenue_target: number; busines
 };
  
 const DashboardPAGerente: React.FC<DashboardPAGerenteProps> = ({ user, store }) => {
-  // 🆕 NOVO: Estado para controle de abas
-  const [activeTab, setActiveTab] = useState<'dashboard' | 'relatorio'>('dashboard');
-  
+  const [activeTab, setActiveTab] = useState<'dashboard' | 'ranking' | 'relatorio'>('dashboard');
   const [selectedMonth, setSelectedMonth] = useState(new Date().getMonth() + 1);
   const [selectedYear, setSelectedYear] = useState(new Date().getFullYear());
   const [weeks, setWeeks] = useState<PAWeek[]>([]);
@@ -105,6 +103,10 @@ const DashboardPAGerente: React.FC<DashboardPAGerenteProps> = ({ user, store }) 
   const [showImportModal, setShowImportModal] = useState(false);
   const [toast, setToast] = useState<{ message: string; type: 'success' | 'error' } | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
+  
+  // 🆕 Estados para ranking de lojas
+  const [storesRanking, setStoresRanking] = useState<StoreRanking[]>([]);
+  const [loadingRanking, setLoadingRanking] = useState(false);
  
   useEffect(() => {
     loadInitialData();
@@ -115,6 +117,13 @@ const DashboardPAGerente: React.FC<DashboardPAGerenteProps> = ({ user, store }) 
       loadSales(selectedWeek);
     }
   }, [selectedWeek]);
+ 
+  // 🆕 Carregar ranking quando mudar para aba ranking
+  useEffect(() => {
+    if (activeTab === 'ranking') {
+      loadStoresRanking();
+    }
+  }, [activeTab, selectedMonth, selectedYear]);
  
   const showToast = (message: string, type: 'success' | 'error') => {
     setToast({ message, type });
@@ -164,6 +173,86 @@ const DashboardPAGerente: React.FC<DashboardPAGerenteProps> = ({ user, store }) 
       console.error('Error loading initial data:', error);
     } finally {
       setLoading(false);
+    }
+  };
+ 
+  // 🆕 Carregar ranking de lojas
+  const loadStoresRanking = async () => {
+    setLoadingRanking(true);
+    try {
+      // Buscar todas as lojas
+      const { data: allStores } = await supabase
+        .from('stores')
+        .select('id, number, name, city')
+        .order('number');
+ 
+      if (!allStores) return;
+ 
+      // Buscar todas as semanas do mês de TODAS as lojas
+      const { data: allWeeks } = await supabase
+        .from('Dashboard_PA_Semanas')
+        .select('id, store_id')
+        .gte('data_inicio', `${selectedYear}-${String(selectedMonth).padStart(2, '0')}-01`)
+        .lt('data_inicio', `${selectedYear}-${String(selectedMonth + 1).padStart(2, '0')}-01`);
+ 
+      if (!allWeeks || allWeeks.length === 0) {
+        setStoresRanking([]);
+        return;
+      }
+ 
+      const weekIds = allWeeks.map(w => w.id);
+ 
+      // Buscar vendas e parâmetros de TODAS as lojas
+      const [salesData, paramsData] = await Promise.all([
+        supabase.from('Dashboard_PA_Vendas').select('store_id, pa, total_vendas').in('semana_id', weekIds),
+        supabase.from('Dashboard_PA_Parametros').select('store_id, pa_inicial')
+      ]);
+ 
+      // Calcular ranking
+      const ranking: StoreRanking[] = allStores
+        .map(s => {
+          const storeSales = salesData.data?.filter(sale => sale.store_id === s.id) || [];
+          const storeParams = paramsData.data?.find(p => p.store_id === s.id);
+ 
+          const totalVendas = storeSales.reduce((acc, sale) => acc + (sale.total_vendas || 0), 0);
+          const avgPA = storeSales.length > 0 
+            ? storeSales.reduce((acc, sale) => acc + (sale.pa || 0), 0) / storeSales.length 
+            : 0;
+          const paMeta = storeParams?.pa_inicial || 1.6;
+          
+          // Score = 30% vendas + 70% P.A
+          const scoreVendas = totalVendas > 0 ? Math.min((totalVendas / 200000) * 100, 100) : 0;
+          const scorePA = paMeta > 0 ? Math.min((avgPA / paMeta) * 100, 100) : 0;
+          const score = (scoreVendas * 0.3) + (scorePA * 0.7);
+ 
+          return {
+            storeId: s.id,
+            storeNumber: s.number,
+            storeName: s.name,
+            city: s.city,
+            paAtingido: avgPA,
+            paMeta,
+            score,
+            totalVendas
+          };
+        })
+        .filter(s => s.paAtingido > 0) // Só mostrar lojas com dados
+        .sort((a, b) => b.score - a.score);
+ 
+      // 🎯 REGRA: Só mostrar ranking se TODAS as lojas tiverem dados
+      const totalLojas = allStores.length;
+      const lojasComDados = ranking.length;
+      
+      if (lojasComDados === totalLojas) {
+        setStoresRanking(ranking);
+      } else {
+        setStoresRanking([]); // Não mostrar ranking se faltar alguma loja
+      }
+ 
+    } catch (error) {
+      console.error('Error loading stores ranking:', error);
+    } finally {
+      setLoadingRanking(false);
     }
   };
  
@@ -548,7 +637,7 @@ const DashboardPAGerente: React.FC<DashboardPAGerenteProps> = ({ user, store }) 
         </div>
       </header>
  
-      {/* 🆕 NAVEGAÇÃO COM ABAS */}
+      {/* Navegação com abas */}
       <div className="bg-white dark:bg-slate-900 rounded-2xl shadow-sm border border-slate-200 dark:border-slate-800 p-2">
         <div className="flex gap-2 overflow-x-auto">
           <button
@@ -561,6 +650,18 @@ const DashboardPAGerente: React.FC<DashboardPAGerenteProps> = ({ user, store }) 
           >
             <BarChart3 size={16} />
             Dashboard
+          </button>
+ 
+          <button
+            onClick={() => setActiveTab('ranking')}
+            className={`flex items-center gap-2 px-6 py-3 rounded-xl font-black uppercase text-xs transition-all whitespace-nowrap ${
+              activeTab === 'ranking'
+                ? 'bg-gradient-to-r from-purple-600 to-pink-600 text-white shadow-lg'
+                : 'bg-slate-50 dark:bg-slate-800 text-slate-600 dark:text-slate-400 hover:bg-slate-100 dark:hover:bg-slate-700'
+            }`}
+          >
+            <Trophy size={16} />
+            Ranking Lojas
           </button>
  
           <button
@@ -577,7 +678,7 @@ const DashboardPAGerente: React.FC<DashboardPAGerenteProps> = ({ user, store }) 
         </div>
       </div>
  
-      {/* 🔄 CONTEÚDO DAS ABAS */}
+      {/* Conteúdo das abas */}
       {activeTab === 'dashboard' && (
         <div className="space-y-8">
           {/* Active Week Info */}
@@ -906,7 +1007,121 @@ const DashboardPAGerente: React.FC<DashboardPAGerenteProps> = ({ user, store }) 
         </div>
       )}
  
-      {/* 🆕 ABA RELATÓRIO */}
+      {/* 🆕 ABA RANKING DE LOJAS */}
+      {activeTab === 'ranking' && (
+        <div className="space-y-8">
+          <div className="bg-white dark:bg-slate-900 rounded-[48px] p-8 border border-slate-100 dark:border-slate-800 shadow-sm">
+            {loadingRanking ? (
+              <div className="flex items-center justify-center py-20">
+                <div className="animate-spin w-12 h-12 border-4 border-purple-500 border-t-transparent rounded-full" />
+              </div>
+            ) : storesRanking.length === 0 ? (
+              <div className="text-center py-20">
+                <Trophy className="mx-auto mb-4 text-slate-300" size={64} />
+                <p className="text-lg font-black text-slate-400 uppercase italic">Aguardando todas as lojas</p>
+                <p className="text-sm text-slate-400 mt-2">O ranking aparecerá quando todas as lojas importarem dados</p>
+              </div>
+            ) : (
+              <div className="space-y-6">
+                <div className="flex items-center justify-between mb-8">
+                  <h3 className="text-2xl font-black text-slate-900 dark:text-white uppercase italic">
+                    Ranking de <span className="text-purple-500">Lojas</span>
+                  </h3>
+                  <div className="flex items-center gap-2 text-sm font-bold text-slate-500">
+                    <Trophy size={16} />
+                    <span>{format(new Date(selectedYear, selectedMonth - 1), 'MMMM yyyy', { locale: ptBR })}</span>
+                  </div>
+                </div>
+ 
+                {/* Ranking com Barras */}
+                {storesRanking.map((loja, index) => {
+                  const maxScore = Math.max(...storesRanking.map(s => s.score));
+                  const percentage = maxScore > 0 ? (loja.score / maxScore) * 100 : 0;
+                  
+                  const getTier = (idx: number) => {
+                    if (idx === 0) return { color: 'from-yellow-400 to-amber-500', bgColor: 'bg-yellow-50 dark:bg-yellow-900/20' };
+                    if (idx === 1) return { color: 'from-slate-300 to-slate-400', bgColor: 'bg-slate-50 dark:bg-slate-900/20' };
+                    if (idx === 2) return { color: 'from-amber-600 to-orange-700', bgColor: 'bg-orange-50 dark:bg-orange-900/20' };
+                    return { color: 'from-slate-200 to-slate-300', bgColor: 'bg-slate-50 dark:bg-slate-800' };
+                  };
+ 
+                  const tier = getTier(index);
+                  const isMyStore = loja.storeNumber === store.number;
+ 
+                  return (
+                    <motion.div 
+                      key={loja.storeId}
+                      initial={{ opacity: 0, x: -20 }}
+                      animate={{ opacity: 1, x: 0 }}
+                      transition={{ delay: index * 0.05 }}
+                      className={`space-y-2 ${isMyStore ? 'ring-2 ring-purple-500 rounded-2xl p-4' : ''}`}
+                    >
+                      <div className="flex items-center justify-between">
+                        <div className="flex items-center gap-3">
+                          <span className={`w-10 h-10 rounded-xl bg-gradient-to-br ${tier.color} text-white font-black text-sm flex items-center justify-center shadow-lg`}>
+                            {index + 1}
+                          </span>
+                          <div>
+                            <div className="flex items-center gap-2">
+                              <p className="text-sm font-black text-slate-900 dark:text-white uppercase italic">
+                                Loja {loja.storeNumber}
+                              </p>
+                              {isMyStore && (
+                                <span className="px-2 py-0.5 rounded-full bg-purple-100 dark:bg-purple-900/30 text-purple-600 dark:text-purple-400 text-[10px] font-black uppercase">
+                                  Você
+                                </span>
+                              )}
+                            </div>
+                            <p className="text-[10px] font-bold text-slate-400 uppercase">{loja.city}</p>
+                          </div>
+                        </div>
+                        <div className="text-right">
+                          <p className="text-xs font-black text-slate-400 uppercase">Score</p>
+                          <p className="text-xl font-black text-slate-900 dark:text-white italic">
+                            {loja.score.toFixed(1)}%
+                          </p>
+                        </div>
+                      </div>
+ 
+                      {/* Barra de Progresso */}
+                      <div className="relative h-10 bg-slate-100 dark:bg-slate-800 rounded-xl overflow-hidden">
+                        <motion.div
+                          initial={{ width: 0 }}
+                          animate={{ width: `${percentage}%` }}
+                          transition={{ duration: 0.5, delay: index * 0.05 }}
+                          className={`h-full bg-gradient-to-r ${tier.color} flex items-center justify-end pr-4`}
+                        >
+                          <span className="text-white font-black text-xs italic">
+                            {percentage.toFixed(0)}%
+                          </span>
+                        </motion.div>
+                      </div>
+ 
+                      {/* Detalhes */}
+                      <div className="grid grid-cols-2 gap-2 text-center">
+                        <div className={`${tier.bgColor} rounded-lg p-2`}>
+                          <p className="text-[10px] font-black text-slate-400 uppercase">P.A Médio</p>
+                          <p className="text-sm font-black text-purple-600">
+                            {loja.paAtingido.toFixed(2)}
+                          </p>
+                        </div>
+                        <div className={`${tier.bgColor} rounded-lg p-2`}>
+                          <p className="text-[10px] font-black text-slate-400 uppercase">Meta</p>
+                          <p className="text-sm font-black text-amber-600">
+                            {loja.paMeta.toFixed(2)}
+                          </p>
+                        </div>
+                      </div>
+                    </motion.div>
+                  );
+                })}
+              </div>
+            )}
+          </div>
+        </div>
+      )}
+ 
+      {/* ABA RELATÓRIO */}
       {activeTab === 'relatorio' && (
         <RelatorioPAImprimivel 
           storeId={store.id}
