@@ -87,6 +87,7 @@ const IceCreamModule: React.FC<IceCreamModuleProps> = ({
   const [auditMonth, setAuditMonth] = useState<string>((new Date().getMonth() + 1).toString());
   const [auditYear, setAuditYear] = useState<string>(new Date().getFullYear().toString());
   const [auditSearch, setAuditSearch] = useState('');
+  const [displayDate, setDisplayDate] = useState(new Date().toISOString().split('T')[0]);
 
   const [showProductModal, setShowProductModal] = useState(false);
   const [showWastageModal, setShowWastageModal] = useState(false);
@@ -181,10 +182,10 @@ const IceCreamModule: React.FC<IceCreamModuleProps> = ({
   const periodKey = `${selectedYear}-${String(selectedMonth).padStart(2, '0')}`;
 
 const dreStats = useMemo(() => {
-    const now = new Date();
-    const currentYear = now.getFullYear();
-    const currentMonth = now.getMonth();
-    const currentDate = now.getDate();
+    const dDate = new Date(displayDate + 'T00:00:00');
+    const currentYear = dDate.getFullYear();
+    const currentMonth = dDate.getMonth();
+    const currentDate = dDate.getDate();
 
     // ===== INTERVALOS SEGUROS EM TEMPO LOCAL =====
     const monthStart = new Date(Number(selectedYear), Number(selectedMonth) - 1, 1, 0, 0, 0);
@@ -205,7 +206,12 @@ const dreStats = useMemo(() => {
     const dayCanceledDetails: any[] = [];
 
     let dayIn = 0;
-    const dayMethods = { pix: 0, money: 0, card: 0, fiado: 0 };
+    const dayMethods = { 
+        pix: { count: 0, total: 0 }, 
+        money: { count: 0, total: 0 }, 
+        card: { count: 0, total: 0 }, 
+        fiado: { count: 0, total: 0 } 
+    };
 
     const monthSalesHeaders = (salesHeaders ?? []).filter(s => {
         if (!s.created_at) return false;
@@ -255,16 +261,28 @@ const dreStats = useMemo(() => {
                 const method = p.payment_method?.toLowerCase();
                 if (method === 'pix') {
                     monthMethods.pix += val;
-                    if (isDaySale) dayMethods.pix += val;
+                    if (isDaySale) {
+                        dayMethods.pix.total += val;
+                        dayMethods.pix.count++;
+                    }
                 } else if (method === 'dinheiro') {
                     monthMethods.money += val;
-                    if (isDaySale) dayMethods.money += val;
+                    if (isDaySale) {
+                        dayMethods.money.total += val;
+                        dayMethods.money.count++;
+                    }
                 } else if (method === 'cartão') {
                     monthMethods.card += val;
-                    if (isDaySale) dayMethods.card += val;
+                    if (isDaySale) {
+                        dayMethods.card.total += val;
+                        dayMethods.card.count++;
+                    }
                 } else if (method === 'fiado') {
                     monthMethods.fiado += val;
-                    if (isDaySale) dayMethods.fiado += val;
+                    if (isDaySale) {
+                        dayMethods.fiado.total += val;
+                        dayMethods.fiado.count++;
+                    }
                     monthFiadoDetails.push({
                         buyer_name: sale.buyer_name || 'NÃO INFORMADO',
                         totalValue: p.amount,
@@ -285,16 +303,28 @@ const dreStats = useMemo(() => {
                 const method = i.paymentMethod?.toLowerCase();
                 if (method === 'pix') {
                     monthMethods.pix += val;
-                    if (isDaySale) dayMethods.pix += val;
+                    if (isDaySale) {
+                        dayMethods.pix.total += val;
+                        dayMethods.pix.count++;
+                    }
                 } else if (method === 'dinheiro') {
                     monthMethods.money += val;
-                    if (isDaySale) dayMethods.money += val;
+                    if (isDaySale) {
+                        dayMethods.money.total += val;
+                        dayMethods.money.count++;
+                    }
                 } else if (method === 'cartão') {
                     monthMethods.card += val;
-                    if (isDaySale) dayMethods.card += val;
+                    if (isDaySale) {
+                        dayMethods.card.total += val;
+                        dayMethods.card.count++;
+                    }
                 } else if (method === 'fiado') {
                     monthMethods.fiado += val;
-                    if (isDaySale) dayMethods.fiado += val;
+                    if (isDaySale) {
+                        dayMethods.fiado.total += val;
+                        dayMethods.fiado.count++;
+                    }
                     monthFiadoDetails.push({
                         buyer_name: i.buyer_name || 'NÃO INFORMADO',
                         totalValue: i.totalValue,
@@ -394,7 +424,7 @@ const dreStats = useMemo(() => {
         dayWastageTotal,
         dayProfit,
         dayMethods,
-        dayExits: [],
+        dayExits: daySangrias,
         daySales: daySales.sort((a, b) =>
             String(b.createdAt || '').localeCompare(String(a.createdAt || ''))
         ),
@@ -402,7 +432,7 @@ const dreStats = useMemo(() => {
             (a, b) => b[1].qtd - a[1].qtd
         )
     };
-}, [sales, salePayments, selectedYear, selectedMonth, effectiveStoreId, sangrias, stockMovements]);
+}, [sales, salePayments, selectedYear, selectedMonth, effectiveStoreId, sangrias, stockMovements, displayDate]);
 
   const monthFiadoGrouped = useMemo(() => {
     const groups: Record<string, { name: string, total: number, items: any[] }> = {};
@@ -986,6 +1016,158 @@ const dreStats = useMemo(() => {
       }
   };
 
+  const handlePrintDRE = () => {
+    const dDate = new Date(displayDate + 'T00:00:00');
+    const storeName = stores.find(s => s.id === effectiveStoreId)?.name || 'Gelateria';
+    const dateStr = dDate.toLocaleDateString('pt-BR', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' });
+    
+    const paymentSummary = {
+        'À Vista': { count: dreStats.dayMethods.money.count, total: dreStats.dayMethods.money.total },
+        'Fiado': { count: dreStats.dayMethods.fiado.count, total: dreStats.dayMethods.fiado.total },
+        'Pix': { count: dreStats.dayMethods.pix.count, total: dreStats.dayMethods.pix.total },
+        'Cartão': { count: dreStats.dayMethods.card.count, total: dreStats.dayMethods.card.total }
+    };
+
+    const totalFinanceiro = dreStats.dayIn;
+
+    const printWindow = window.open('', '_blank');
+    if (!printWindow) return;
+
+    const html = `
+      <html>
+        <head>
+          <title>DRE DIÁRIO - ${storeName}</title>
+          <style>
+            @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;700;900&display=swap');
+            body { font-family: 'Inter', Arial, sans-serif; margin: 0; padding: 15mm; color: #1a1a1a; line-height: 1.4; }
+            @media print {
+              body { padding: 0; }
+              @page { size: A4; margin: 15mm; }
+              .no-print { display: none; }
+              * { -webkit-print-color-adjust: exact !important; print-color-adjust: exact !important; }
+            }
+            .header { text-align: center; margin-bottom: 30px; border-bottom: 2px solid #eee; padding-bottom: 20px; }
+            .header h1 { margin: 0; font-size: 24px; font-weight: 900; text-transform: uppercase; letter-spacing: -1px; }
+            .header h2 { margin: 5px 0; font-size: 18px; color: #666; font-weight: 700; }
+            .header p { margin: 5px 0; font-size: 14px; color: #999; text-transform: capitalize; }
+            
+            .section { margin-bottom: 30px; page-break-inside: avoid; }
+            .section-title { font-size: 12px; font-weight: 900; text-transform: uppercase; color: #666; margin-bottom: 15px; display: flex; align-items: center; gap: 8px; border-left: 4px solid #3b82f6; padding-left: 10px; }
+            
+            .product-table { width: 100%; border-collapse: collapse; margin-bottom: 20px; }
+            .product-table tr:nth-child(even) { background-color: #f9f9f9; }
+            .product-table td { padding: 10px; font-size: 11px; border-bottom: 1px solid #eee; }
+            .product-name { font-weight: 700; text-transform: uppercase; }
+            .product-qty { text-align: right; color: #3b82f6; font-weight: 900; }
+            .product-total { text-align: right; font-weight: 900; }
+            
+            .canceled-box { background-color: #fef2f2; border: 1px solid #fee2e2; padding: 15px; border-radius: 12px; margin-bottom: 30px; }
+            .canceled-box p { margin: 0; font-size: 12px; font-weight: 900; color: #991b1b; }
+            
+            .payment-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 15px; }
+            .payment-box { border: 1px solid #eee; padding: 15px; border-radius: 12px; }
+            .payment-box h5 { margin: 0 0 10px 0; font-size: 10px; font-weight: 900; text-transform: uppercase; color: #666; }
+            .payment-box .row { display: flex; justify-content: space-between; font-size: 11px; margin-bottom: 4px; }
+            .payment-box .total { font-size: 14px; font-weight: 900; color: #1a1a1a; margin-top: 8px; border-top: 1px dashed #eee; padding-top: 8px; }
+            
+            .grand-total { text-align: center; padding: 25px; background: #f8fafc; border-radius: 20px; margin: 40px 0; border: 2px solid #e2e8f0; }
+            .grand-total p { margin: 0; font-size: 10px; font-weight: 900; color: #64748b; text-transform: uppercase; letter-spacing: 2px; }
+            .grand-total h3 { margin: 10px 0 0 0; font-size: 32px; font-weight: 900; color: #1e293b; font-style: italic; }
+            
+            .signatures { display: flex; justify-content: space-between; margin-top: 80px; gap: 40px; }
+            .sig-block { flex: 1; text-align: center; }
+            .sig-line { border-top: 1px solid #000; margin-bottom: 10px; }
+            .sig-label { font-size: 10px; font-weight: 700; text-transform: uppercase; color: #666; }
+            
+            .footer { margin-top: 50px; text-align: center; font-size: 9px; color: #999; border-top: 1px solid #eee; padding-top: 20px; }
+          </style>
+        </head>
+        <body>
+          <div class="header">
+            <h1>🍦 DRE DIÁRIO - GELATERIA</h1>
+            <h2>${storeName}</h2>
+            <p>${dateStr}</p>
+          </div>
+          
+          <div class="section">
+            <div class="section-title">📊 RESUMO DO DIA</div>
+            <table class="product-table">
+              ${dreStats.resumoItensRodape.map(([name, data]: [string, any]) => `
+                <tr>
+                  <td class="product-name">${name}</td>
+                  <td class="product-qty">${data.qtd} UNIDADES</td>
+                  <td class="product-total">R$ ${data.total.toFixed(2).replace('.', ',')}</td>
+                </tr>
+              `).join('')}
+              ${dreStats.resumoItensRodape.length === 0 ? '<tr><td colspan="3" style="text-align: center; padding: 20px; color: #999;">Nenhuma venda registrada</td></tr>' : ''}
+            </table>
+          </div>
+          
+          ${dreStats.dayCanceledCount > 0 ? `
+            <div class="canceled-box">
+              <p>❌ VENDAS CANCELADAS: ${dreStats.dayCanceledCount} vendas | TOTAL: R$ ${dreStats.dayCanceledTotal.toFixed(2).replace('.', ',')}</p>
+            </div>
+          ` : `
+            <div class="section" style="margin-bottom: 15px; opacity: 0.5;">
+              <div class="section-title" style="border-left-color: #cbd5e1;">❌ VENDAS CANCELADAS</div>
+              <p style="font-size: 10px; font-weight: 700; color: #64748b; margin-left: 10px;">NENHUM CANCELAMENTO REGISTRADO</p>
+            </div>
+          `}
+          
+          <div class="section">
+            <div class="section-title">💳 RESUMO FINANCEIRO POR MÉTODO</div>
+            <div class="payment-grid">
+              ${Object.entries(paymentSummary).map(([method, data]) => `
+                <div class="payment-box">
+                  <h5>${method}</h5>
+                  <div class="row">
+                    <span>Recebimentos:</span>
+                    <span>${data.count}</span>
+                  </div>
+                  <div class="total">
+                    <span>Total:</span>
+                    <span>R$ ${data.total.toFixed(2).replace('.', ',')}</span>
+                  </div>
+                </div>
+              `).join('')}
+            </div>
+          </div>
+          
+          <div class="grand-total">
+            <p>Total Financeiro Geral</p>
+            <h3>R$ ${totalFinanceiro.toFixed(2).replace('.', ',')}</h3>
+          </div>
+          
+          <div class="signatures">
+            <div class="sig-block">
+              <div class="sig-line" style="margin-top: 60px;"></div>
+              <div class="sig-label">Balconista</div>
+            </div>
+            <div class="sig-block">
+              <div class="sig-line" style="margin-top: 60px;"></div>
+              <div class="sig-label">${user.name} (Gerente)</div>
+            </div>
+          </div>
+          
+          <div class="footer">
+            Gerado em: ${new Date().toLocaleString('pt-BR')} | Sistema de Gestão Gelateria
+          </div>
+          
+          <script>
+            window.onload = () => {
+              setTimeout(() => {
+                window.print();
+              }, 500);
+            };
+          </script>
+        </body>
+      </html>
+    `;
+
+    printWindow.document.write(html);
+    printWindow.document.close();
+  };
+
   const handleDeleteSangria = async (sangriaId: string) => {
       if (!confirm('Tem certeza que deseja deletar esta sangria?')) return;
       setIsSubmitting(true);
@@ -1240,13 +1422,37 @@ const dreStats = useMemo(() => {
             {activeTab === 'dre_diario' && (
                 <div className="p-4 md:p-8 space-y-6 animate-in fade-in duration-300 max-w-5xl mx-auto pb-20">
                     <div className="bg-white p-8 rounded-[40px] shadow-sm border border-gray-100 flex flex-col md:flex-row justify-between items-center gap-6">
-                        <div className="flex items-center gap-4"><div className="p-4 bg-blue-50 text-blue-700 rounded-3xl"><Clock size={32}/></div><div><h3 className="text-2xl font-black uppercase italic text-blue-950 tracking-tighter">Fluxo de Caixa <span className="text-blue-700">Diário</span></h3><div className="flex bg-gray-100 p-1 rounded-lg mt-2"><button onClick={() => setDreSubTab('resumo')} className={`px-4 py-1.5 rounded-md text-[9px] font-black uppercase transition-all ${dreSubTab === 'resumo' ? 'bg-white text-blue-700 shadow-sm' : 'text-gray-400'}`}>Resumo</button><button onClick={() => setDreSubTab('detalhado')} className={`px-4 py-1.5 rounded-md text-[9px] font-black uppercase transition-all ${dreSubTab === 'detalhado' ? 'bg-white text-blue-700 shadow-sm' : 'text-gray-400'}`}>Detalhado</button></div></div></div>
-                        <div className="flex flex-col items-end gap-2">
-                             <div className="flex gap-2">
+                        <div className="flex items-center gap-4">
+                            <div className="p-4 bg-blue-50 text-blue-700 rounded-3xl"><Clock size={32}/></div>
+                            <div>
+                                <h3 className="text-2xl font-black uppercase italic text-blue-950 tracking-tighter">Fluxo de Caixa <span className="text-blue-700">Diário</span></h3>
+                                <div className="flex items-center gap-2 mt-2">
+                                    <input 
+                                        type="date" 
+                                        value={displayDate} 
+                                        onChange={e => setDisplayDate(e.target.value)} 
+                                        className="bg-transparent border-none text-[10px] font-black uppercase text-gray-400 outline-none cursor-pointer hover:text-blue-600 transition-all"
+                                    />
+                                    <span className="text-[10px] font-bold text-gray-300 uppercase tracking-widest">• {new Date(displayDate + 'T00:00:00').toLocaleDateString('pt-BR', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' })}</span>
+                                </div>
+                                <div className="flex bg-gray-100 p-1 rounded-lg mt-2">
+                                    <button onClick={() => setDreSubTab('resumo')} className={`px-4 py-1.5 rounded-md text-[9px] font-black uppercase transition-all ${dreSubTab === 'resumo' ? 'bg-white text-blue-700 shadow-sm' : 'text-gray-400'}`}>Resumo</button>
+                                    <button onClick={() => setDreSubTab('detalhado')} className={`px-4 py-1.5 rounded-md text-[9px] font-black uppercase transition-all ${dreSubTab === 'detalhado' ? 'bg-white text-blue-700 shadow-sm' : 'text-gray-400'}`}>Detalhado</button>
+                                </div>
+                            </div>
+                        </div>
+                        <div className="flex flex-col items-end gap-3">
+                            <div className="flex gap-2">
                                 <button onClick={() => setShowSangriaModal(true)} className="px-6 py-2.5 bg-red-500 text-white rounded-xl font-black uppercase text-[10px] shadow-lg flex items-center gap-2 border-b-4 border-red-700 active:scale-95"><DollarSign size={14}/> Sangria</button>
                                 <button onClick={() => setShowWastageModal(true)} className="px-6 py-2.5 bg-orange-500 text-white rounded-xl font-black uppercase text-[10px] shadow-lg flex items-center gap-2 border-b-4 border-orange-700 active:scale-95"><AlertTriangle size={14}/> Baixa Avaria</button>
-                             </div>
-                             <div className="text-right"><p className="text-[9px] font-black text-gray-400 uppercase">Apuração</p><p className="text-lg font-black text-blue-950">{todayKey.split('-').reverse().join('/')}</p></div>
+                            </div>
+                            <button
+                                onClick={handlePrintDRE}
+                                className="flex items-center gap-2 px-6 py-3 bg-blue-600 text-white rounded-2xl font-black uppercase text-xs hover:bg-blue-700 transition-all shadow-lg active:scale-95 w-full justify-center"
+                            >
+                                <Printer size={20} />
+                                Imprimir DRE
+                            </button>
                         </div>
                     </div>
                   {dreSubTab === 'resumo' && (
@@ -1255,10 +1461,10 @@ const dreStats = useMemo(() => {
                                 <div className="bg-white p-6 rounded-[32px] border-2 border-green-100 shadow-sm space-y-4">
                                     <span className="text-[9px] font-black text-green-600 uppercase tracking-widest">Resumo Entradas (+)</span>
                                     <div className="space-y-2">
-                                        <div className="flex justify-between items-center text-[10px] font-black border-b border-gray-50 pb-1"><span className="text-gray-400 uppercase">Pix</span><span className="text-gray-900">{formatCurrency(dreStats.dayMethods.pix)}</span></div>
-                                        <div className="flex justify-between items-center text-[10px] font-black border-b border-gray-50 pb-1"><span className="text-gray-400 uppercase">Dinheiro</span><span className="text-gray-900">{formatCurrency(dreStats.dayMethods.money)}</span></div>
-                                        <div className="flex justify-between items-center text-[10px] font-black border-b border-gray-50 pb-1"><span className="text-gray-400 uppercase">Cartão</span><span className="text-gray-900">{formatCurrency(dreStats.dayMethods.card)}</span></div>
-                                        <div className="flex justify-between items-center text-[10px] font-black border-b border-gray-50 pb-1"><span className="text-gray-400 uppercase">Fiado</span><span className="text-gray-900">{formatCurrency(dreStats.dayMethods.fiado)}</span></div>
+                                        <div className="flex justify-between items-center text-[10px] font-black border-b border-gray-50 pb-1"><span className="text-gray-400 uppercase">Pix</span><span className="text-gray-900">{formatCurrency(dreStats.dayMethods.pix.total)}</span></div>
+                                        <div className="flex justify-between items-center text-[10px] font-black border-b border-gray-50 pb-1"><span className="text-gray-400 uppercase">Dinheiro</span><span className="text-gray-900">{formatCurrency(dreStats.dayMethods.money.total)}</span></div>
+                                        <div className="flex justify-between items-center text-[10px] font-black border-b border-gray-50 pb-1"><span className="text-gray-400 uppercase">Cartão</span><span className="text-gray-900">{formatCurrency(dreStats.dayMethods.card.total)}</span></div>
+                                        <div className="flex justify-between items-center text-[10px] font-black border-b border-gray-50 pb-1"><span className="text-gray-400 uppercase">Fiado</span><span className="text-gray-900">{formatCurrency(dreStats.dayMethods.fiado.total)}</span></div>
                                     </div>
                                     <div className="pt-2 border-t-2 border-green-50"><p className="text-2xl font-black text-green-700 italic">{formatCurrency(dreStats.dayIn)}</p></div>
                                 </div>
