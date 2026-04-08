@@ -8,19 +8,19 @@ import {
 import { supabase } from '../services/supabaseClient';
 import apiService from '../services/apiService';
 import CashErrorsModule from './CashErrorsModule';
-
+ 
 interface CardEntry {
     id: string;
     brand: string;
     value: number;
     ticket: string;
 }
-
+ 
 interface CardBrand {
     id: string;
     name: string;
 }
-
+ 
 interface CashRegisterModuleProps {
     user: User;
     stores: Store[];
@@ -36,22 +36,129 @@ interface CashRegisterModuleProps {
     onDeleteError: (id: string) => Promise<void>;
     onAddLog?: (action: string, details: string) => Promise<void>;
 }
+ 
+// ============================================
+// SOLUÇÃO: Logos de Bandeiras de Cartão
+// Com múltiplas fontes e fallback automático
+// ============================================
 
-// Mapeador de Ícones de Bandeiras - Atualizado com URLs de Alta Estabilidade (jsDelivr CDN)
-export const getCardFlagIcon = (brandName: string) => {
+export const getCardFlagIcon = (brandName: string): string => {
     const name = (brandName || '').toLowerCase();
-    const baseUrl = 'https://cdn.jsdelivr.net/gh/felipehespanhol/bandeiras-cartao@master/png';
     
-    if (name.includes('elo')) return `${baseUrl}/elo.png`;
-    if (name.includes('hiper')) return `${baseUrl}/hipercard.png`;
-    if (name.includes('visa')) return `${baseUrl}/visa.png`;
-    if (name.includes('master')) return `${baseUrl}/mastercard.png`;
-    if (name.includes('amex') || name.includes('american')) return `${baseUrl}/amex.png`;
-    if (name.includes('diners')) return `${baseUrl}/diners.png`;
+    if (name.includes('visa')) {
+        return 'https://raw.githubusercontent.com/aaronfagan/svg-credit-card-payment-icons/main/flat/visa.svg';
+    }
     
-    return 'https://img.icons8.com/color/48/credit-card.png';
+    if (name.includes('master')) {
+        return 'https://raw.githubusercontent.com/aaronfagan/svg-credit-card-payment-icons/main/flat/mastercard.svg';
+    }
+    
+    if (name.includes('elo')) {
+        return 'https://raw.githubusercontent.com/aaronfagan/svg-credit-card-payment-icons/main/flat/elo.svg';
+    }
+    
+    if (name.includes('hiper')) {
+        return 'https://raw.githubusercontent.com/aaronfagan/svg-credit-card-payment-icons/main/flat/hipercard.svg';
+    }
+    
+    if (name.includes('amex') || name.includes('american')) {
+        return 'https://raw.githubusercontent.com/aaronfagan/svg-credit-card-payment-icons/main/flat/amex.svg';
+    }
+    
+    if (name.includes('diners')) {
+        return 'https://raw.githubusercontent.com/aaronfagan/svg-credit-card-payment-icons/main/flat/diners.svg';
+    }
+    
+    if (name.includes('discover')) {
+        return 'https://raw.githubusercontent.com/aaronfagan/svg-credit-card-payment-icons/main/flat/discover.svg';
+    }
+    
+    if (name.includes('jcb')) {
+        return 'https://raw.githubusercontent.com/aaronfagan/svg-credit-card-payment-icons/main/flat/jcb.svg';
+    }
+    
+    if (name.includes('aura')) {
+        return 'https://raw.githubusercontent.com/aaronfagan/svg-credit-card-payment-icons/main/flat/aura.svg';
+    }
+    
+    // 🔄 FALLBACK: Ícone genérico de cartão
+    return 'https://raw.githubusercontent.com/aaronfagan/svg-credit-card-payment-icons/main/flat/generic.svg';
 };
 
+export const getCardFlagIconSimpleIcons = (brandName: string): string => {
+    const name = (brandName || '').toLowerCase();
+    const baseUrl = 'https://cdn.simpleicons.org';
+    
+    if (name.includes('visa')) {
+        return `${baseUrl}/visa/1A1F71`;
+    }
+    
+    if (name.includes('master')) {
+        return `${baseUrl}/mastercard/EB001B`;
+    }
+    
+    if (name.includes('amex') || name.includes('american')) {
+        return `${baseUrl}/americanexpress/006FCF`;
+    }
+    
+    if (name.includes('discover')) {
+        return `${baseUrl}/discover/FF6000`;
+    }
+    
+    if (name.includes('diners')) {
+        return `${baseUrl}/dinersclub/0079BE`;
+    }
+    
+    // Fallback genérico
+    return 'data:image/svg+xml,%3Csvg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="%23666" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"%3E%3Crect x="1" y="4" width="22" height="16" rx="2" ry="2"%3E%3C/rect%3E%3Cline x1="1" y1="10" x2="23" y2="10"%3E%3C/line%3E%3C/svg%3E';
+};
+
+export const getCardFlagIconBase64 = (brandName: string): string => {
+    const name = (brandName || '').toLowerCase();
+    
+    const logos: Record<string, string> = {
+        visa: 'data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHdpZHRoPSI0OCIgaGVpZ2h0PSI0OCI+PHJlY3Qgd2lkdGg9IjQ4IiBoZWlnaHQ9IjQ4IiBmaWxsPSIjMUExRjcxIiByeD0iNiIvPjx0ZXh0IHg9IjUwJSIgeT0iNTAlIiBmb250LWZhbWlseT0iQXJpYWwiIGZvbnQtc2l6ZT0iMTQiIGZvbnQtd2VpZ2h0PSJib2xkIiBmaWxsPSIjZmZmIiB0ZXh0LWFuY2hvcj0ibWlkZGxlIiBkeT0iLjNlbSI+VklTQTwvdGV4dD48L3N2Zz4=',
+        mastercard: 'data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHdpZHRoPSI0OCIgaGVpZ2h0PSI0OCI+PGRlZnM+PGxpbmVhckdyYWRpZW50IGlkPSJhIj48c3RvcCBvZmZzZXQ9IjAlIiBzdG9wLWNvbG9yPSIjRUIwMDFCIi8+PHN0b3Agb2Zmc2V0PSIxMDAlIiBzdG9wLWNvbG9yPSIjRjc5RTFCIi8+PC9saW5lYXJHcmFkaWVudD48L2RlZnM+PHJlY3Qgd2lkdGg9IjQ4IiBoZWlnaHQ9IjQ4IiBmaWxsPSJ1cmwoI2EpIiByeD0iNiIvPjx0ZXh0IHg9IjUwJSIgeT0iNTAlIiBmb250LWZhbWlseT0iQXJpYWwiIGZvbnQtc2l6ZT0iMTAiIGZvbnQtd2VpZ2h0PSJib2xkIiBmaWxsPSIjZmZmIiB0ZXh0LWFuY2hvcj0ibWlkZGxlIiBkeT0iLjNlbSI+TUFTVEVSPC90ZXh0Pjwvc3ZnPg==',
+        elo: 'data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHdpZHRoPSI0OCIgaGVpZ2h0PSI0OCI+PHJlY3Qgd2lkdGg9IjQ4IiBoZWlnaHQ9IjQ4IiBmaWxsPSIjRkZEQTAwIiByeD0iNiIvPjx0ZXh0IHg9IjUwJSIgeT0iNTAlIiBmb250LWZhbWlseT0iQXJpYWwiIGZvbnQtc2l6ZT0iMTYiIGZvbnQtd2VpZ2h0PSJib2xkIiBmaWxsPSIjMDAwIiB0ZXh0LWFuY2hvcj0ibWlkZGxlIiBkeT0iLjNlbSI+RUxPPC90ZXh0Pjwvc3ZnPg==',
+        hipercard: 'data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHdpZHRoPSI0OCIgaGVpZ2h0PSI0OCI+PHJlY3Qgd2lkdGg9IjQ4IiBoZWlnaHQ9IjQ4IiBmaWxsPSIjRUQzMjM3IiByeD0iNiIvPjx0ZXh0IHg9IjUwJSIgeT0iNTAlIiBmb250LWZhbWlseT0iQXJpYWwiIGZvbnQtc2l6ZT0iMTAiIGZvbnQtd2VpZ2h0PSJib2xkIiBmaWxsPSIjZmZmIiB0ZXh0LWFuY2hvcj0ibWlkZGxlIiBkeT0iLjNlbSI+SElQRVI8L3RleHQ+PC9zdmc+',
+        amex: 'data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHdpZHRoPSI0OCIgaGVpZ2h0PSI0OCI+PHJlY3Qgd2lkdGg9IjQ4IiBoZWlnaHQ9IjQ4IiBmaWxsPSIjMDA2RkNGIiByeD0iNiIvPjx0ZXh0IHg9IjUwJSIgeT0iNTAlIiBmb250LWZhbWlseT0iQXJpYWwiIGZvbnQtc2l6ZT0iMTIiIGZvbnQtd2VpZ2h0PSJib2xkIiBmaWxsPSIjZmZmIiB0ZXh0LWFuY2hvcj0ibWlkZGxlIiBkeT0iLjNlbSI+QU1FWDwvdGV4dD48L3N2Zz4=',
+        diners: 'data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHdpZHRoPSI0OCIgaGVpZ2h0PSI0OCI+PHJlY3Qgd2lkdGg9IjQ4IiBoZWlnaHQ9IjQ4IiBmaWxsPSIjMDA3OUJFIiByeD0iNiIvPjx0ZXh0IHg9IjUwJSIgeT0iNTAlIiBmb250LWZhbWlseT0iQXJpYWwiIGZvbnQtc2l6ZT0iOSIgZm9udC13ZWlnaHQ9ImJvbGQiIGZpbGw9IiNmZmYiIHRleHQtYW5jaG9yPSJtaWRkbGUiIGR5PSIuM2VtIj5ESU5FUlM8L3RleHQ+PC9zdmc+',
+        generic: 'data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHdpZHRoPSI0OCIgaGVpZ2h0PSI0OCI+PHJlY3Qgd2lkdGg9IjQ4IiBoZWlnaHQ9IjQ4IiBmaWxsPSIjNjY2IiByeD0iNiIvPjxyZWN0IHg9IjgiIHk9IjE4IiB3aWR0aD0iMzIiIGhlaWdodD0iNCIgZmlsbD0iI2ZmZiIvPjxyZWN0IHg9IjgiIHk9IjI2IiB3aWR0aD0iMTYiIGhlaWdodD0iNCIgZmlsbD0iI2ZmZiIvPjwvc3ZnPg=='
+    };
+    
+    if (name.includes('visa')) return logos.visa;
+    if (name.includes('master')) return logos.mastercard;
+    if (name.includes('elo')) return logos.elo;
+    if (name.includes('hiper')) return logos.hipercard;
+    if (name.includes('amex') || name.includes('american')) return logos.amex;
+    if (name.includes('diners')) return logos.diners;
+    
+    return logos.generic;
+};
+
+interface CardLogoProps {
+    brandName: string;
+    className?: string;
+}
+
+export const CardLogo: React.FC<CardLogoProps> = ({ brandName, className = "w-6 h-6" }) => {
+    const [imgError, setImgError] = useState(false);
+    
+    // Se imagem externa falhar, usa base64
+    const primarySrc = getCardFlagIcon(brandName);
+    const fallbackSrc = getCardFlagIconBase64(brandName);
+    
+    return (
+        <img 
+            src={imgError ? fallbackSrc : primarySrc}
+            onError={() => setImgError(true)}
+            referrerPolicy="no-referrer" 
+            className={`${className} object-contain`}
+            alt={brandName}
+        />
+    );
+};
+ 
 const numberToWords = (value: number): string => {
     if (value === 0) return "ZERO REAIS";
     const unidades = ["", "UM", "DOIS", "TRÊS", "QUATRO", "CINCO", "SEIS", "SETE", "OITO", "NOVE"];
@@ -82,11 +189,11 @@ const numberToWords = (value: number): string => {
     if (decimalPart > 0) { if (integerPart > 0) text += " E "; text += convertGroup(decimalPart) + (decimalPart === 1 ? " CENTAVO" : " CENTAVOS"); }
     return text.trim();
 };
-
+ 
 export const printReceiptDoc = (r: any) => {
     const printWindow = window.open('', '_blank', 'width=900,height=1200');
     if (!printWindow) return;
-
+ 
     // Mapeamento robusto de campos (banco vs objeto local)
     const receiptNumber = r.receipt_number || r.id;
     const finalNumber = r.formatted_number || (r.receipt_number ? `#${String(r.receipt_number).padStart(4, '0')}` : `#${String(r.id).padStart(4, '0')}`);
@@ -99,7 +206,7 @@ export const printReceiptDoc = (r: any) => {
         const [y, m, d] = dateStr.split('-').map(Number);
         formattedDate = new Date(y, m - 1, d).toLocaleDateString('pt-BR', { day: 'numeric', month: 'long', year: 'numeric' });
     }
-
+ 
     const html = `
         <html>
         <head>
@@ -180,7 +287,7 @@ export const printReceiptDoc = (r: any) => {
     printWindow.document.write(html);
     printWindow.document.close();
 };
-
+ 
 export const printCardSummaryDoc = (date: string, storeName: string, cards: any[], operator: string) => {
     const printWindow = window.open('', '_blank', 'width=400,height=600');
     if (!printWindow) return;
@@ -190,7 +297,7 @@ export const printCardSummaryDoc = (date: string, storeName: string, cards: any[
     // Agrupar por bandeira para o resumo
     const totalsByBrand: Record<string, number> = {};
     cards.forEach(c => { totalsByBrand[c.brand] = (totalsByBrand[c.brand] || 0) + c.value; });
-
+ 
     const html = `
         <html>
         <head>
@@ -243,7 +350,7 @@ export const printCardSummaryDoc = (date: string, storeName: string, cards: any[
                     `).join('')}
                 </div>
             </div>
-
+ 
             <div class="dashed-line"></div>
             <div class="mt-2">
                 <p class="text-[9px] font-black uppercase mb-1">Totais por Bandeira:</p>
@@ -273,13 +380,13 @@ export const printCardSummaryDoc = (date: string, storeName: string, cards: any[
     printWindow.document.write(html);
     printWindow.document.close();
 };
-
+ 
 export const printPixSummaryDoc = (date: string, storeName: string, pixEntries: any[], operator: string) => {
     const printWindow = window.open('', '_blank', 'width=400,height=600');
     if (!printWindow) return;
     
     const totalValue = pixEntries.reduce((a, b) => a + b.value, 0);
-
+ 
     const html = `
         <html>
         <head>
@@ -332,7 +439,7 @@ export const printPixSummaryDoc = (date: string, storeName: string, pixEntries: 
                     `).join('')}
                 </div>
             </div>
-
+ 
             <div class="dashed-line"></div>
             <div class="flex justify-between items-center mt-1">
                 <span class="text-[11px] font-black">TOTAL GERAL:</span>
@@ -349,18 +456,18 @@ export const printPixSummaryDoc = (date: string, storeName: string, pixEntries: 
     printWindow.document.write(html);
     printWindow.document.close();
 };
-
+ 
 export const printErrorsDoc = (title: string, dateInfo: string, storeName: string, errors: CashError[], operator: string) => {
     const printWindow = window.open('', '_blank', 'width=600,height=800');
     if (!printWindow) return;
-
+ 
     // Apenas valores negativos contam como erro real
     const realErrors = errors.filter(e => e.value < 0 || e.type === 'shortage');
     const samplingSurplus = errors.filter(e => e.value > 0 || e.type === 'surplus');
     
     const totalRealError = realErrors.reduce((acc, e) => acc + Math.abs(e.value), 0);
     const totalSurplus = samplingSurplus.reduce((acc, e) => acc + e.value, 0);
-
+ 
     const html = `
         <html>
         <head>
@@ -385,7 +492,7 @@ export const printErrorsDoc = (title: string, dateInfo: string, storeName: strin
                 <p><strong>OPERADOR:</strong> ${operator}</p>
             </div>
             <div class="dashed-line"></div>
-
+ 
             <div class="mb-6">
                 <h2 class="text-sm font-black bg-gray-100 p-1 mb-2">ERROS REAIS (FALTAS)</h2>
                 <table class="w-full text-[10px]">
@@ -412,7 +519,7 @@ export const printErrorsDoc = (title: string, dateInfo: string, storeName: strin
                     <span>${new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(totalRealError)}</span>
                 </div>
             </div>
-
+ 
             <div class="mb-6">
                 <h2 class="text-sm font-black bg-gray-100 p-1 mb-2">AMOSTRAGEM (SOBRAS)</h2>
                 <table class="w-full text-[10px]">
@@ -439,11 +546,11 @@ export const printErrorsDoc = (title: string, dateInfo: string, storeName: strin
                     <span>${new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(totalSurplus)}</span>
                 </div>
             </div>
-
+ 
             <div class="mt-12 text-center">
                 <div class="border-t border-black pt-2 text-[10px] font-bold uppercase">Assinatura do Responsável</div>
             </div>
-
+ 
             <script>window.onload = () => { setTimeout(() => { window.print(); window.close(); }, 800); }</script>
         </body>
         </html>
@@ -451,7 +558,7 @@ export const printErrorsDoc = (title: string, dateInfo: string, storeName: strin
     printWindow.document.write(html);
     printWindow.document.close();
 };
-
+ 
 const CashRegisterModule: React.FC<CashRegisterModuleProps> = ({ 
     user, stores, receipts, errors, finances, onAddReceipt, onAddError, onDeleteError, onAddClosure, onAddLog 
 }) => {
@@ -471,13 +578,13 @@ const CashRegisterModule: React.FC<CashRegisterModuleProps> = ({
     const [cardBrandInput, setCardBrandInput] = useState('');
     const [showBrandManager, setShowBrandManager] = useState(false);
     const [newBrandName, setNewBrandName] = useState('');
-
+ 
     const [pixValueInput, setPixValueInput] = useState('');
     const [pixTicketInput, setPixTicketInput] = useState('');
     const [pixClientInput, setPixClientInput] = useState('');
     const [clientSuggestions, setClientSuggestions] = useState<string[]>([]);
     const [showSuggestions, setShowSuggestions] = useState(false);
-
+ 
     const [receiptForm, setReceiptForm] = useState({ recipient: '', value: '', reference: '' });
     const [confirmModal, setConfirmModal] = useState<{
         isOpen: boolean;
@@ -499,21 +606,34 @@ const CashRegisterModule: React.FC<CashRegisterModuleProps> = ({
         message: '',
         type: 'success'
     });
-
+ 
     const showToast = (message: string, type: 'success' | 'error' = 'success') => {
         setToast({ show: true, message, type });
         setTimeout(() => setToast(prev => ({ ...prev, show: false })), 3000);
     };
-
+ 
     const selectedStore = useMemo(() => stores.find(s => s.id === selectedStoreId), [stores, selectedStoreId]);
     const payerName = useMemo(() => {
         if (!selectedStore) return "REAL CALÇADOS";
         return `REAL CALÇADOS LOJA ${selectedStore.number} ${selectedStore.city.split(' - ')[0]}`.toUpperCase();
     }, [selectedStore]);
-
+ 
+    // 🔒 CORREÇÃO 1: Filtrar bandeiras por loja/usuário (se necessário ter bandeiras separadas por loja)
     const fetchBrands = async () => {
         try {
-            const { data, error } = await supabase.from('financial_card_brands').select('*').order('name', { ascending: true });
+            // ✅ OPÇÃO A: Se bandeiras são GLOBAIS (todas lojas veem as mesmas)
+            const { data, error } = await supabase
+                .from('financial_card_brands')
+                .select('*')
+                .order('name', { ascending: true });
+ 
+            // ✅ OPÇÃO B: Se bandeiras são POR LOJA (descomente se for o caso)
+            // const { data, error } = await supabase
+            //     .from('financial_card_brands')
+            //     .select('*')
+            //     .eq('store_id', selectedStoreId) // Filtra por loja
+            //     .order('name', { ascending: true });
+            
             if (error) throw error;
             
             const requiredDefaults = ['VISA DÉBITO', 'VISA CRÉDITO', 'MASTER DÉBITO', 'MASTER CRÉDITO', 'ELO DÉBITO', 'ELO CRÉDITO', 'AMEX', 'HIPERCARD'];
@@ -540,47 +660,48 @@ const CashRegisterModule: React.FC<CashRegisterModuleProps> = ({
             if (!cardBrandInput) setCardBrandInput(defaults[0]);
         }
     };
-
+ 
+    // 🔒 CORREÇÃO 2: CRÍTICA - Filtrar cartões e PIX por loja E data (sem filtro de usuário, pois admin pode ver todos da loja)
     const fetchDailyTotals = async () => {
         if (!selectedStoreId) return;
         setIsLoadingTotals(true);
         try {
-            // Busca pagamentos de sorvete
+            // Busca pagamentos de sorvete (já tem filtro correto)
             const { data: iceCreamPayments, error: iceCreamError } = await supabase
                 .from('ice_cream_daily_sales_payments')
                 .select('amount, payment_method, ice_cream_sales!inner(store_id, status, created_at)')
                 .eq('ice_cream_sales.store_id', selectedStoreId)
                 .eq('ice_cream_sales.status', 'completed');
-
+ 
             if (iceCreamError) throw iceCreamError;
-
-            // Busca lançamentos manuais de cartões
+ 
+            // ✅ CORREÇÃO: Busca lançamentos de cartões filtrados por loja E data
             const { data: manualCards, error: cardError } = await supabase
                 .from('financial_card_sales')
                 .select('*')
-                .eq('store_id', selectedStoreId)
-                .eq('date', selectedDate);
-
+                .eq('store_id', selectedStoreId)  // ✅ Filtra por loja
+                .eq('date', selectedDate);         // ✅ Filtra por data
+ 
             if (cardError) throw cardError;
-
-            // Busca lançamentos manuais de PIX
+ 
+            // ✅ CORREÇÃO: Busca lançamentos de PIX filtrados por loja E data
             const { data: manualPixData, error: pixError } = await supabase
                 .from('financial_pix_sales')
                 .select('*')
-                .eq('store_id', selectedStoreId)
-                .eq('date', selectedDate);
-
+                .eq('store_id', selectedStoreId)  // ✅ Filtra por loja
+                .eq('date', selectedDate);         // ✅ Filtra por data
+ 
             if (pixError) throw pixError;
-
-            // Busca vendas canceladas
+ 
+            // Busca vendas canceladas (já tem filtro correto)
             const { data: canceledData, error: canceledError } = await supabase
                 .from('ice_cream_sales')
                 .select('*')
                 .eq('store_id', selectedStoreId)
                 .eq('status', 'canceled');
-
+ 
             if (canceledError) throw canceledError;
-
+ 
             setManualCards(manualCards || []);
             setManualPix(manualPixData || []);
             
@@ -589,13 +710,13 @@ const CashRegisterModule: React.FC<CashRegisterModuleProps> = ({
                 return saleDate === selectedDate;
             }) || [];
             setCanceledSales(filteredCanceled);
-
+ 
             // Filtrar pagamentos de sorvete por data
             const filteredIceCream = iceCreamPayments?.filter(p => {
                 const saleDate = String((p as any).ice_cream_sales.created_at || '').split('T')[0];
                 return saleDate === selectedDate;
             });
-
+ 
             const totals: Record<string, number> = {
                 'Pix': 0,
                 'Dinheiro': 0,
@@ -603,7 +724,7 @@ const CashRegisterModule: React.FC<CashRegisterModuleProps> = ({
                 'Fiado': 0,
                 'Voucher': 0
             };
-
+ 
             // Soma sorvete
             filteredIceCream?.forEach(p => {
                 const method = p.payment_method;
@@ -611,48 +732,58 @@ const CashRegisterModule: React.FC<CashRegisterModuleProps> = ({
                     totals[method] += Number(p.amount);
                 }
             });
-
+ 
             // Soma cartões manuais
             manualCards?.forEach(c => {
                 totals['Cartão'] += Number(c.value);
             });
-
+ 
             // Soma PIX manuais
             manualPix?.forEach(p => {
                 totals['Pix'] += Number(p.value);
             });
-
+ 
             setDailyTotals(totals);
         } catch (e) {
             console.error("Erro ao buscar totais diários:", e);
+            showToast("Erro ao carregar dados!", "error");
         } finally {
             setIsLoadingTotals(false);
         }
     };
-
+ 
     useEffect(() => {
         fetchBrands();
     }, []);
-
+ 
     useEffect(() => {
         if (activeTab === 'cartoes' || activeTab === 'pix') {
             fetchDailyTotals();
         }
     }, [activeTab, selectedDate, selectedStoreId]);
-
+ 
     const handleAddBrand = async () => {
         if (!newBrandName.trim()) return;
         const name = newBrandName.toUpperCase().trim();
         setIsSubmitting(true);
         try {
+            // ✅ Se bandeiras são POR LOJA, adicione store_id:
+            // const { error } = await supabase.from('financial_card_brands').insert([{ name, store_id: selectedStoreId }]);
+            
+            // ✅ Se bandeiras são GLOBAIS:
             const { error } = await supabase.from('financial_card_brands').insert([{ name }]);
+            
             if (error) throw error;
             setNewBrandName('');
             await fetchBrands();
-        } catch (e: any) { showToast("Erro: " + e.message, "error"); } 
-        finally { setIsSubmitting(false); }
+            showToast("Bandeira adicionada!");
+        } catch (e: any) { 
+            showToast("Erro: " + e.message, "error"); 
+        } finally { 
+            setIsSubmitting(false); 
+        }
     };
-
+ 
     const handleDeleteBrand = async (id: string) => {
         setConfirmModal({
             isOpen: true,
@@ -663,14 +794,16 @@ const CashRegisterModule: React.FC<CashRegisterModuleProps> = ({
                     await supabase.from('financial_card_brands').delete().eq('id', id);
                     await fetchBrands();
                     showToast("Bandeira removida!");
-                } catch (e) { showToast("Erro ao remover bandeira.", "error"); }
+                } catch (e) { 
+                    showToast("Erro ao remover bandeira.", "error"); 
+                }
                 setConfirmModal(prev => ({ ...prev, isOpen: false }));
             }
         });
     };
-
+ 
     const [nextNumber, setNextNumber] = useState(1);
-
+ 
     const fetchNextNumber = async () => {
         try {
             const result = await apiService.getNextReceiptNumber();
@@ -680,11 +813,11 @@ const CashRegisterModule: React.FC<CashRegisterModuleProps> = ({
             setNextNumber(1);
         }
     };
-
+ 
     useEffect(() => {
         fetchNextNumber();
     }, []);
-
+ 
     const handleAddCard = async (e: React.FormEvent) => {
         e.preventDefault();
         const val = parseFloat(cardValueInput.replace(',', '.'));
@@ -706,21 +839,26 @@ const CashRegisterModule: React.FC<CashRegisterModuleProps> = ({
             await fetchDailyTotals();
             showToast('Lançamento salvo!');
             if (onAddLog) await onAddLog('LANÇAMENTO CARTÃO', `Cartão ${cardBrandInput} ${formatCurrency(val)} na loja ${selectedStoreId}`);
-        } catch (e: any) { showToast('Erro: ' + e.message, 'error'); }
-        finally { setIsSubmitting(false); }
+        } catch (e: any) { 
+            showToast('Erro: ' + e.message, 'error'); 
+        } finally { 
+            setIsSubmitting(false); 
+        }
     };
-
-    // Autocomplete de Clientes PIX
+ 
+    // 🔒 CORREÇÃO 3: Autocomplete de Clientes PIX filtrado por loja
     useEffect(() => {
         const timer = setTimeout(async () => {
-            if (pixClientInput.length < 2) {
+            if (pixClientInput.length < 2 || !selectedStoreId) {
                 setClientSuggestions([]);
                 return;
             }
             try {
+                // ✅ CORREÇÃO: Filtrar clientes PIX por loja
                 const { data, error } = await supabase
                     .from('financial_pix_sales')
                     .select('payer_name')
+                    .eq('store_id', selectedStoreId)  // ✅ Filtra por loja
                     .ilike('payer_name', `%${pixClientInput}%`)
                     .limit(10);
                 
@@ -733,21 +871,24 @@ const CashRegisterModule: React.FC<CashRegisterModuleProps> = ({
                 console.error("Erro ao buscar clientes:", e);
             }
         }, 300);
-
+ 
         return () => clearTimeout(timer);
-    }, [pixClientInput]);
-
+    }, [pixClientInput, selectedStoreId]);
+ 
     // Fechar sugestões ao clicar fora
     useEffect(() => {
         const handleClickOutside = () => setShowSuggestions(false);
         window.addEventListener('click', handleClickOutside);
         return () => window.removeEventListener('click', handleClickOutside);
     }, []);
-
+ 
     const handleAddPix = async (e: React.FormEvent) => {
         e.preventDefault();
         const clientName = pixClientInput.trim().toUpperCase();
-        if (!clientName) { showToast('Nome do cliente obrigatório.', 'error'); return; }
+        if (!clientName) { 
+            showToast('Nome do cliente obrigatório.', 'error'); 
+            return; 
+        }
         const val = parseFloat(pixValueInput.replace(',', '.'));
         if (isNaN(val) || val <= 0 || !selectedStoreId) return;
         setIsSubmitting(true);
@@ -769,12 +910,16 @@ const CashRegisterModule: React.FC<CashRegisterModuleProps> = ({
             await fetchDailyTotals();
             showToast('Pix lançado!');
             if (onAddLog) await onAddLog('LANÇAMENTO PIX', `Pix ${formatCurrency(val)} de ${clientName} na loja ${selectedStoreId}`);
-        } catch (e: any) { showToast('Erro: ' + e.message, 'error'); }
-        finally { setIsSubmitting(false); }
+        } catch (e: any) { 
+            showToast('Erro: ' + e.message, 'error'); 
+        } finally { 
+            setIsSubmitting(false); 
+        }
     };
+ 
     const [editingCard, setEditingCard] = useState<any | null>(null);
     const [editingPix, setEditingPix] = useState<any | null>(null);
-
+ 
     const handleUpdateCard = async (e: React.FormEvent) => {
         e.preventDefault();
         if (!editingCard) return;
@@ -793,10 +938,13 @@ const CashRegisterModule: React.FC<CashRegisterModuleProps> = ({
             showToast("Lançamento atualizado!");
             setEditingCard(null);
             fetchDailyTotals();
-        } catch (e: any) { showToast("Erro: " + e.message, "error"); }
-        finally { setIsSubmitting(false); }
+        } catch (e: any) { 
+            showToast("Erro: " + e.message, "error"); 
+        } finally { 
+            setIsSubmitting(false); 
+        }
     };
-
+ 
     const handleUpdatePix = async (e: React.FormEvent) => {
         e.preventDefault();
         if (!editingPix) return;
@@ -815,12 +963,15 @@ const CashRegisterModule: React.FC<CashRegisterModuleProps> = ({
             showToast("Lançamento atualizado!");
             setEditingPix(null);
             fetchDailyTotals();
-        } catch (e: any) { showToast("Erro: " + e.message, "error"); }
-        finally { setIsSubmitting(false); }
+        } catch (e: any) { 
+            showToast("Erro: " + e.message, "error"); 
+        } finally { 
+            setIsSubmitting(false); 
+        }
     };
-
+ 
     const [errorForm, setErrorForm] = useState({ value: '', reason: '', type: 'shortage' as 'shortage' | 'surplus' });
-
+ 
     const handleSaveReceipt = async (e: React.FormEvent) => {
         e.preventDefault();
         const numericVal = parseFloat(receiptForm.value.replace(',', '.')) || 0;
@@ -839,12 +990,15 @@ const CashRegisterModule: React.FC<CashRegisterModuleProps> = ({
             const saved = await onAddReceipt(rData);
             printReceiptDoc(saved || rData);
             setReceiptForm({ recipient: '', value: '', reference: '' });
-            fetchNextNumber(); // Atualiza o próximo número após salvar
+            fetchNextNumber();
             showToast("Recibo emitido!");
-        } catch (error) { showToast("Erro.", "error"); }
-        finally { setIsSubmitting(false); }
+        } catch (error) { 
+            showToast("Erro ao emitir recibo.", "error"); 
+        } finally { 
+            setIsSubmitting(false); 
+        }
     };
-
+ 
     return (
         <div className="flex flex-col h-full bg-gray-50 font-sans overflow-hidden">
             <div className="bg-white px-6 py-4 border-b border-gray-200 flex flex-col md:flex-row justify-between items-center gap-4 shrink-0 shadow-sm">
@@ -853,7 +1007,7 @@ const CashRegisterModule: React.FC<CashRegisterModuleProps> = ({
                         <div className="p-2.5 bg-blue-900 text-white rounded-xl shadow-lg"><DollarSign size={24} /></div>
                         <div><h1 className="text-xl font-black text-blue-950 uppercase italic tracking-tighter">Gestão de Caixa</h1><p className="text-[10px] text-gray-400 font-bold uppercase tracking-widest">Finanças e Auditoria Rede Real</p></div>
                     </div>
-
+ 
                     {user.role === UserRole.ADMIN && (
                         <div className="flex items-center gap-2 bg-gray-50 dark:bg-slate-800 px-4 py-2 rounded-2xl border border-gray-200 dark:border-slate-700 shadow-inner">
                             <Settings2 size={16} className="text-blue-600" />
@@ -896,7 +1050,7 @@ const CashRegisterModule: React.FC<CashRegisterModuleProps> = ({
                     <Calendar size={16} className="text-blue-600" /><input type="date" value={selectedDate} onChange={(e) => setSelectedDate(e.target.value)} className="bg-transparent border-none text-xs font-black text-gray-700 outline-none p-1" />
                 </div>
             </div>
-
+ 
             <div className="flex-1 overflow-y-auto p-4 md:p-8 no-scrollbar bg-[#F8FAFC]">
                 {activeTab === 'recibos' && (
                     <div className="max-w-2xl mx-auto space-y-6 animate-in fade-in duration-300">
@@ -913,7 +1067,7 @@ const CashRegisterModule: React.FC<CashRegisterModuleProps> = ({
                         </div>
                     </div>
                 )}
-
+ 
                 {activeTab === 'cartoes' && (
                     <div className="max-w-7xl mx-auto space-y-6 animate-in slide-in-from-right-4 duration-300">
                         <div className="grid grid-cols-1 lg:grid-cols-12 gap-6">
@@ -928,12 +1082,7 @@ const CashRegisterModule: React.FC<CashRegisterModuleProps> = ({
                                         <div className="grid grid-cols-2 gap-1.5">
                                             {availableBrands.map(b => (
                                                 <button key={b.id} type="button" onClick={() => setCardBrandInput(b.name)} className={`p-2.5 rounded-xl text-[8px] font-black uppercase transition-all border-2 text-left flex items-center gap-2 ${cardBrandInput === b.name ? 'bg-green-600 border-green-600 text-white shadow-md' : 'bg-gray-50 border-gray-100 text-gray-400 hover:border-gray-200'}`}>
-                                                    <img 
-                                                        src={getCardFlagIcon(b.name)} 
-                                                        referrerPolicy="no-referrer" 
-                                                        className="w-6 h-6 object-contain shrink-0" 
-                                                        alt="" 
-                                                    />
+                                                    <CardLogo brandName={b.name} className="w-6 h-6 shrink-0" />
                                                     <span className="truncate">{b.name}</span>
                                                     {cardBrandInput === b.name && <Check size={10} className="ml-auto shrink-0"/>}
                                                 </button>
@@ -990,12 +1139,7 @@ const CashRegisterModule: React.FC<CashRegisterModuleProps> = ({
                                                     <td className="px-6 py-3 text-blue-600 font-black">#{c.sale_code || '---'}</td>
                                                     <td className="px-6 py-3">
                                                         <div className="flex items-center gap-2">
-                                                            <img 
-                                                                src={getCardFlagIcon(c.brand)} 
-                                                                referrerPolicy="no-referrer" 
-                                                                className="w-6 h-6 object-contain" 
-                                                                alt="" 
-                                                            />
+                                                            <CardLogo brandName={c.brand} className="w-6 h-6" />
                                                             <span className="uppercase text-blue-950">{c.brand}</span>
                                                         </div>
                                                     </td>
@@ -1023,7 +1167,7 @@ const CashRegisterModule: React.FC<CashRegisterModuleProps> = ({
                         </div>
                     </div>
                 )}
-
+ 
                 {activeTab === 'pix' && (
                     <div className="max-w-7xl mx-auto space-y-6 animate-in slide-in-from-right-4 duration-300">
                         <div className="grid grid-cols-1 lg:grid-cols-12 gap-6">
@@ -1134,7 +1278,7 @@ const CashRegisterModule: React.FC<CashRegisterModuleProps> = ({
                         </div>
                     </div>
                 )}
-
+ 
                 {activeTab === 'quebras' && (
                     <CashErrorsModule 
                         user={user}
@@ -1147,7 +1291,7 @@ const CashRegisterModule: React.FC<CashRegisterModuleProps> = ({
                     />
                 )}
             </div>
-
+ 
             {showBrandManager && (
                 <div className="fixed inset-0 bg-black/80 backdrop-blur-md flex items-center justify-center z-[200] p-4">
                     <div className="bg-white rounded-[40px] w-full max-w-sm shadow-2xl animate-in zoom-in duration-300 border-t-8 border-blue-600 overflow-hidden">
@@ -1158,12 +1302,7 @@ const CashRegisterModule: React.FC<CashRegisterModuleProps> = ({
                                 {availableBrands.map(b => (
                                     <div key={b.id} className="flex justify-between items-center p-3 bg-gray-50 rounded-xl border border-gray-100 group">
                                         <div className="flex items-center gap-3">
-                                            <img 
-                                                src={getCardFlagIcon(b.name)} 
-                                                referrerPolicy="no-referrer" 
-                                                className="w-5 h-5 object-contain" 
-                                                alt="" 
-                                            />
+                                            <CardLogo brandName={b.name} className="w-5 h-5" />
                                             <span className="text-[10px] font-black text-gray-700 uppercase">{b.name}</span>
                                         </div>
                                         <button onClick={() => handleDeleteBrand(b.id)} className="text-red-300 hover:text-red-600 opacity-0 group-hover:opacity-100 transition-all"><Trash2 size={14}/></button>
@@ -1174,8 +1313,6 @@ const CashRegisterModule: React.FC<CashRegisterModuleProps> = ({
                     </div>
                 </div>
             )}
-            {/* Modal de Confirmação Customizado */}
-            {/* Modais de Edição */}
             {editingCard && (
                 <div className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm animate-in fade-in duration-200">
                     <div className="bg-white w-full max-w-md rounded-[32px] shadow-2xl overflow-hidden animate-in zoom-in-95 duration-200">
@@ -1217,7 +1354,7 @@ const CashRegisterModule: React.FC<CashRegisterModuleProps> = ({
                     </div>
                 </div>
             )}
-
+ 
             {editingPix && (
                 <div className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm animate-in fade-in duration-200">
                     <div className="bg-white w-full max-w-md rounded-[32px] shadow-2xl overflow-hidden animate-in zoom-in-95 duration-200">
@@ -1257,7 +1394,7 @@ const CashRegisterModule: React.FC<CashRegisterModuleProps> = ({
                     </div>
                 </div>
             )}
-
+ 
             {confirmModal.isOpen && (
                 <div className="fixed inset-0 bg-black/60 backdrop-blur-sm flex items-center justify-center z-[300] p-4">
                     <div className="bg-white rounded-[32px] w-full max-w-sm shadow-2xl animate-in zoom-in duration-200 overflow-hidden">
@@ -1285,8 +1422,7 @@ const CashRegisterModule: React.FC<CashRegisterModuleProps> = ({
                     </div>
                 </div>
             )}
-
-            {/* Toast de Notificação */}
+ 
             {toast.show && (
                 <div className={`fixed bottom-24 left-1/2 -translate-x-1/2 z-[400] px-6 py-3 rounded-2xl shadow-2xl animate-in slide-in-from-bottom-4 duration-300 flex items-center gap-3 border ${
                     toast.type === 'success' ? 'bg-emerald-600 border-emerald-500 text-white' : 'bg-red-600 border-red-500 text-white'
@@ -1298,5 +1434,5 @@ const CashRegisterModule: React.FC<CashRegisterModuleProps> = ({
         </div>
     );
 };
-
+ 
 export default CashRegisterModule;

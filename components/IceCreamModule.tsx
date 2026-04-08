@@ -224,16 +224,17 @@ const dreStats = useMemo(() => {
         const isDaySale = d >= dayStart && d < dayEnd;
 
         if (sale.status === 'canceled') {
-            const val = Number(sale.total_amount || 0);
+            const val = Number(sale.total_value || 0);  // ✅ CORRETO
             monthCanceledTotal += val;
             monthCanceledDetails.push({
                 id: sale.id,
                 saleCode: sale.sale_code,
                 createdAt: sale.created_at,
-                totalValue: val,
+                totalValue: val,  // ✅ Agora pega o valor certo
                 canceledBy: sale.canceled_by_name || 'N/A',
                 cancelReason: sale.cancel_reason || 'N/A'
             });
+            
             if (isDaySale) {
                 dayCanceledTotal += val;
                 dayCanceledDetails.push({
@@ -245,7 +246,7 @@ const dreStats = useMemo(() => {
                     cancelReason: sale.cancel_reason || 'N/A'
                 });
             }
-            return;
+            return;  // ✅ Não conta no faturamento
         }
 
         if (sale.status !== 'completed') return;
@@ -1133,24 +1134,46 @@ const dreStats = useMemo(() => {
           <title>DRE DIÁRIO - ${storeName}</title>
           <style>
             @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;700;900&display=swap');
-            body { font-family: 'Inter', Arial, sans-serif; margin: 0; padding: 15mm; color: #1a1a1a; line-height: 1.4; }
+            @page { 
+              size: A4; 
+              margin: 10mm;  /* ← Reduzir margem de 15mm para 10mm */
+            }
+            body { 
+              font-family: 'Inter', Arial, sans-serif; 
+              margin: 0; 
+              padding: 0;  /* ← Remover padding */
+              color: #1a1a1a; 
+              line-height: 1.3;  /* ← Reduzir de 1.4 para 1.3 */
+              font-size: 11px;  /* ← Adicionar tamanho base menor */
+            }
             @media print {
-              body { padding: 0; }
-              @page { size: A4; margin: 15mm; }
               .no-print { display: none; }
               * { -webkit-print-color-adjust: exact !important; print-color-adjust: exact !important; }
             }
             .header { text-align: center; margin-bottom: 30px; border-bottom: 2px solid #eee; padding-bottom: 20px; }
-            .header h1 { margin: 0; font-size: 24px; font-weight: 900; text-transform: uppercase; letter-spacing: -1px; }
+            .header h1 { 
+              margin: 0; 
+              font-size: 20px;  /* ← Reduzir de 24px para 20px */
+              font-weight: 900; 
+              text-transform: uppercase; 
+              letter-spacing: -1px; 
+            }
             .header h2 { margin: 5px 0; font-size: 18px; color: #666; font-weight: 700; }
             .header p { margin: 5px 0; font-size: 14px; color: #999; text-transform: capitalize; }
             
-            .section { margin-bottom: 30px; page-break-inside: avoid; }
+            .section { 
+              margin-bottom: 15px;  /* ← Reduzir de 30px para 15px */
+              page-break-inside: avoid; 
+            }
             .section-title { font-size: 12px; font-weight: 900; text-transform: uppercase; color: #666; margin-bottom: 15px; display: flex; align-items: center; gap: 8px; border-left: 4px solid #3b82f6; padding-left: 10px; }
             
             .product-table { width: 100%; border-collapse: collapse; margin-bottom: 20px; }
             .product-table tr:nth-child(even) { background-color: #f9f9f9; }
-            .product-table td { padding: 10px; font-size: 11px; border-bottom: 1px solid #eee; }
+            .product-table td { 
+              padding: 6px;  /* ← Reduzir de 10px para 6px */
+              font-size: 10px;  /* ← Reduzir de 11px para 10px */
+              border-bottom: 1px solid #eee; 
+            }
             .product-name { font-weight: 700; text-transform: uppercase; }
             .product-qty { text-align: right; color: #3b82f6; font-weight: 900; }
             .product-total { text-align: right; font-weight: 900; }
@@ -1199,7 +1222,13 @@ const dreStats = useMemo(() => {
           
           ${dreStats.dayCanceledCount > 0 ? `
             <div class="canceled-box">
-              <p>❌ VENDAS CANCELADAS: ${dreStats.dayCanceledCount} vendas | TOTAL: R$ ${dreStats.dayCanceledTotal.toFixed(2).replace('.', ',')}</p>
+              <p style="margin-bottom: 10px;">❌ VENDAS CANCELADAS: ${dreStats.dayCanceledCount} vendas | TOTAL: R$ ${dreStats.dayCanceledTotal.toFixed(2).replace('.', ',')}</p>
+              ${dreStats.dayCanceledDetails.map(c => `
+                <div style="font-size: 10px; margin: 4px 0; padding: 4px; background: white; border-radius: 4px;">
+                  <strong>#${c.saleCode}</strong> - R$ ${c.totalValue.toFixed(2).replace('.', ',')} 
+                  <span style="color: #991b1b; font-size: 9px;">• ${c.cancelReason}</span>
+                </div>
+              `).join('')}
             </div>
           ` : `
             <div class="section" style="margin-bottom: 15px; opacity: 0.5;">
