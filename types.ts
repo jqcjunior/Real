@@ -164,7 +164,6 @@ export interface Sale {
   total_value: number;
   total_amount?: number;
   status: 'active' | 'canceled' | 'completed';
-  created_by?: string;
   canceled_by_name?: string;
   cancel_reason?: string;
   created_at: string;
@@ -210,6 +209,44 @@ export interface IceCreamPromissoryNote {
   date: string;
   status: 'pending' | 'paid';
   createdAt: Date;
+}
+
+export interface IceCreamFutureDebt {
+  id: string;
+  store_id: string;
+  supplier_name: string;
+  total_amount: number;
+  installment_number: number;
+  total_installments: number;
+  installment_amount: number;
+  due_date: string;
+  payment_date?: string;
+  status: 'pending' | 'paid' | 'overdue';
+  category_id?: string;
+  description?: string;
+  created_by?: string;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface DREMethodSummary {
+  pix: number;
+  money: number;
+  card: number;
+  fiado: number;
+}
+
+export interface DREMethodCount {
+  pix: number;
+  money: number;
+  card: number;
+  fiado: number;
+}
+
+export interface SaleDetailItem {
+  productName: string;
+  quantity: number;
+  totalValue: number;
 }
 
 export interface StoreProfitPartner {

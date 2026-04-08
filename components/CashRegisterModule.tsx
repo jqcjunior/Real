@@ -666,34 +666,48 @@ const CashRegisterModule: React.FC<CashRegisterModuleProps> = ({
         if (!selectedStoreId) return;
         setIsLoadingTotals(true);
         try {
-            // Busca pagamentos de sorvete (já tem filtro correto)
-            const { data: iceCreamPayments, error: iceCreamError } = await supabase
+            // Busca pagamentos de sorvete
+            let iceCreamQuery = supabase
                 .from('ice_cream_daily_sales_payments')
                 .select('amount, payment_method, ice_cream_sales!inner(store_id, status, created_at)')
                 .eq('ice_cream_sales.store_id', selectedStoreId)
                 .eq('ice_cream_sales.status', 'completed');
+
+            const { data: iceCreamPayments, error: iceCreamError } = await iceCreamQuery;
  
             if (iceCreamError) throw iceCreamError;
  
-            // ✅ CORREÇÃO: Busca lançamentos de cartões filtrados por loja E data
-            const { data: manualCards, error: cardError } = await supabase
+            // ✅ CORREÇÃO: Busca lançamentos de cartões filtrados por loja E data E usuário (se não for admin)
+            let cardQuery = supabase
                 .from('financial_card_sales')
                 .select('*')
                 .eq('store_id', selectedStoreId)  // ✅ Filtra por loja
                 .eq('date', selectedDate);         // ✅ Filtra por data
+
+            if (user.role !== UserRole.ADMIN) {
+                cardQuery = cardQuery.eq('user_id', user.id);
+            }
+
+            const { data: manualCards, error: cardError } = await cardQuery;
  
             if (cardError) throw cardError;
  
-            // ✅ CORREÇÃO: Busca lançamentos de PIX filtrados por loja E data
-            const { data: manualPixData, error: pixError } = await supabase
+            // ✅ CORREÇÃO: Busca lançamentos de PIX filtrados por loja E data E usuário (se não for admin)
+            let pixQuery = supabase
                 .from('financial_pix_sales')
                 .select('*')
                 .eq('store_id', selectedStoreId)  // ✅ Filtra por loja
                 .eq('date', selectedDate);         // ✅ Filtra por data
+
+            if (user.role !== UserRole.ADMIN) {
+                pixQuery = pixQuery.eq('user_id', user.id);
+            }
+
+            const { data: manualPixData, error: pixError } = await pixQuery;
  
             if (pixError) throw pixError;
  
-            // Busca vendas canceladas (já tem filtro correto)
+            // Busca vendas canceladas
             const { data: canceledData, error: canceledError } = await supabase
                 .from('ice_cream_sales')
                 .select('*')

@@ -3,7 +3,7 @@ import {
     User, Store, MonthlyPerformance, UserRole, Cota, CotaSettings, CotaDebts, QuotaCategory, QuotaMixParameter,
     IceCreamItem, IceCreamDailySale, CashRegisterClosure, ProductPerformance, Receipt, IceCreamStock, IceCreamPromissoryNote, AgendaItem, DownloadItem, CashError, SystemLog, MonthlyGoal, CreditCardSale, PixSale,
     Sale, SalePayment, IceCreamSangria, IceCreamSangriaCategory,
-    IceCreamStockMovement, StoreProfitPartner, AdminUser, PurchasingManagement
+    IceCreamStockMovement, StoreProfitPartner, AdminUser, PurchasingManagement, IceCreamFutureDebt
 } from './types';
 import { supabase } from './services/supabaseClient';
 import apiService from './services/apiService';
@@ -134,6 +134,25 @@ const App: React.FC = () => {
                 }]);
             }
 
+            const { data: existingDespesas } = await supabase
+                .from('page_permissions')
+                .select('id')
+                .eq('page_key', 'MODULE_ICECREAM_DESPESAS')
+                .single();
+
+            if (!existingDespesas) {
+                await supabase.from('page_permissions').insert([{
+                    page_key: 'MODULE_ICECREAM_DESPESAS',
+                    label: 'Sorveteria: Aba Despesas',
+                    module_group: 'Sorveteria',
+                    allow_admin: true,
+                    allow_manager: true,
+                    allow_cashier: false,
+                    allow_sorvete: false,
+                    sort_order: 60
+                }]);
+            }
+
         } catch (err) {
             console.error("Erro ao registrar permissão Demanda OS:", err);
         }
@@ -172,6 +191,7 @@ const App: React.FC = () => {
     const [partners, setPartners] = useState<StoreProfitPartner[]>([]);
     const [adminUsers, setAdminUsers] = useState<AdminUser[]>([]);
     const [purchasingManagement, setPurchasingManagement] = useState<PurchasingManagement[]>([]);
+    const [futureDebts, setFutureDebts] = useState<IceCreamFutureDebt[]>([]);
 
     const can = (permissionKey: string) => {
         if (user?.role === UserRole.ADMIN) return true;
@@ -273,7 +293,7 @@ const App: React.FC = () => {
                 {data: ici}, {data: ics}, {data: icst}, {data: icp}, {data: r}, {data: ce}, {data: ag}, {data: dl}, {data: cl}, {data: lg},
                 {data: cds}, {data: pxs}, {data: sls}, {data: slsp},
                 {data: sangCat}, {data: sang}, {data: movements}, {data: part}, {data: ausers},
-                {data: pm}
+                {data: pm}, {data: fd}
             ] = await Promise.all([
                 supabase.from('product_performance').select('*'),
                 supabase.from('cotas_with_category').select('*'),
@@ -300,8 +320,11 @@ const App: React.FC = () => {
                 fetchAllRows('ice_cream_stock_movements', 'created_at'),
                 supabase.from('store_profit_distribution').select('*'),
                 supabase.from('admin_users').select('*'),
-                supabase.from('gestao_compras').select('*')
+                supabase.from('gestao_compras').select('*'),
+                supabase.from('ice_cream_future_debts').select('*').order('due_date', { ascending: true })
             ]);
+
+            if(fd) setFutureDebts(fd);
 
             if(sls) setSales(sls);
             if(slsp) setSalePayments(slsp.map(x => ({ ...x, amount: Number(x.amount || 0) })));
@@ -322,7 +345,15 @@ const App: React.FC = () => {
             if(ag) setAgenda(ag.map(x => ({...x, userId: x.user_id, title: x.title, description: x.description, dueDate: x.due_date ? x.due_date.split('T')[0] : '', dueTime: x.due_time, priority: x.priority, isCompleted: x.is_completed})));
             if(dl) setDownloads(dl.map(x => ({...x, fileName: x.file_name, createdBy: x.created_by})));
             if(cl) setClosures(cl.map(x => ({...x, storeId: x.store_id, closedBy: x.closed_by})));
-            if(lg) setLogs(lg);
+            if(lg) setLogs(lg.map((x: any) => ({
+                id: x.id,
+                userId: x.user_id,
+                userName: x.user_name,
+                userRole: x.user_role as UserRole,
+                action: x.action,
+                details: x.details,
+                created_at: x.created_at
+            })));
             if(sangCat) setIcSangriaCategories(sangCat);
             if(sang) setIcSangrias(sang);
             if(movements) setIcStockMovements(movements);
@@ -638,10 +669,32 @@ const App: React.FC = () => {
                             stockMovements={icStockMovements}
                             partners={partners}
                             adminUsers={adminUsers}
-                            onAddSangria={async (s) => { await supabase.from('ice_cream_sangria').insert([s]); fetchData(); }}
-                            onAddSangriaCategory={async (c) => { await supabase.from('ice_cream_sangria_categoria').insert([c]); fetchData(); }}
-                            onDeleteSangriaCategory={async (id) => { await supabase.from('ice_cream_sangria_categoria').delete().eq('id', id); fetchData(); }}
-                            onAddStockMovement={async (m) => { await supabase.from('ice_cream_stock_movements').insert([m]); fetchData(); }}
+                            futureDebts={futureDebts}
+                            onAddSangria={async (s) => { const { error } = await supabase.from('ice_cream_sangria').insert([s]); if (error) throw error; await fetchData(); }}
+                            onAddSangriaCategory={async (c) => { const { error } = await supabase.from('ice_cream_sangria_categoria').insert([c]); if (error) throw error; await fetchData(); }}
+                            onDeleteSangriaCategory={async (id) => { const { error } = await supabase.from('ice_cream_sangria_categoria').delete().eq('id', id); if (error) throw error; await fetchData(); }}
+                            onAddStockMovement={async (m) => { const { error } = await supabase.from('ice_cream_stock_movements').insert([m]); if (error) throw error; await fetchData(); }}
+                            onAddFutureDebt={async (debtData) => {
+                                await supabase.rpc('create_installment_debt', {
+                                    p_store_id: debtData.store_id,
+                                    p_supplier_name: debtData.supplier_name,
+                                    p_total_amount: debtData.total_amount,
+                                    p_total_installments: debtData.total_installments,
+                                    p_first_due_date: debtData.due_date,
+                                    p_category_id: debtData.category_id,
+                                    p_description: debtData.description,
+                                    p_created_by: user?.id
+                                });
+                                await fetchData();
+                            }}
+                            onPayFutureDebt={async (debtId, paymentDate) => {
+                                await supabase.rpc('pay_installment_debt', {
+                                    p_debt_id: debtId,
+                                    p_payment_date: paymentDate
+                                });
+                                await fetchData();
+                            }}
+                            fetchData={fetchData}
                             onAddSales={async (s) => { 
                                 await supabase.from('ice_cream_daily_sales').insert(s.map(x => ({ 
                                     store_id: x.storeId, 

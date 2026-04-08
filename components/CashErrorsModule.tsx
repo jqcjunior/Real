@@ -62,6 +62,7 @@ const CashErrorsModule: React.FC<CashErrorsModuleProps> = ({ user, store, stores
   const filteredErrors = useMemo(() => {
       return errors.filter(e => {
           if (!isAdmin && e.storeId !== user.storeId) return false;
+          if (!isAdmin && e.userId !== user.id) return false; // ✅ Filter by user
           if (isAdmin && filterStoreId !== 'all' && e.storeId !== filterStoreId) return false;
           const dateParts = (e.date || '').split('-');
           if (dateParts.length < 2) return false;
