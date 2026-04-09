@@ -15,6 +15,7 @@ interface DashboardPurchasesProps {
   onImport: (newData: ProductPerformance[]) => Promise<void>;
   onImportManagement: (newData: PurchasingManagement[], shouldFetch?: boolean) => Promise<void>;
   onOpenSpreadsheetModule: () => void;
+  can: (perm: string) => boolean;
 }
 
 const COLORS = ['#1e3a8a', '#dc2626', '#fbbf24', '#10b981', '#6366f1', '#ec4899', '#8b5cf6', '#f43f5e', '#06b6d4', '#f97316'];
@@ -26,7 +27,7 @@ const MONTHS = [
   { value: 10, label: 'Outubro' }, { value: 11, label: 'Novembro' }, { value: 12, label: 'Dezembro' }
 ];
 
-const DashboardPurchases: React.FC<DashboardPurchasesProps> = ({ stores, data, managementData, onImport, onImportManagement, user, onOpenSpreadsheetModule, adminUsers }) => {
+const DashboardPurchases: React.FC<DashboardPurchasesProps> = ({ stores, data, managementData, onImport, onImportManagement, user, onOpenSpreadsheetModule, adminUsers, can }) => {
   const [activeTab, setActiveTab] = useState<'management' | 'questionnaire'>('management');
   const [selectedMonth, setSelectedMonth] = useState<string>(() => {
      const now = new Date();
@@ -45,9 +46,9 @@ const DashboardPurchases: React.FC<DashboardPurchasesProps> = ({ stores, data, m
   const filteredManagementData = useMemo(() => {
       const [year, month] = selectedMonth.split('-').map(Number);
       let base = managementData.filter(d => d.year === year && d.month === month);
-      if (user.role === 'ADMIN') return base;
+      if (can('ALWAYS')) return base; // Admin or Always access
       return base.filter(d => d.storeId === user.storeId);
-  }, [managementData, user, selectedMonth]);
+  }, [managementData, user, selectedMonth, can]);
 
   const currentData = useMemo(() => data.filter(d => d.month === selectedMonth), [data, selectedMonth]);
 
@@ -592,7 +593,7 @@ const DashboardPurchases: React.FC<DashboardPurchasesProps> = ({ stores, data, m
       )}
 
       {activeTab === 'questionnaire' && (
-          <PurchaseQuestionnaire user={user} stores={stores} adminUsers={adminUsers} />
+          <PurchaseQuestionnaire user={user} stores={stores} adminUsers={adminUsers} can={can} />
       )}
 
       {/* Modais de Importação */}

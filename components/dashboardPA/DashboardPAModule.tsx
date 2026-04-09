@@ -7,14 +7,16 @@ interface DashboardPAModuleProps {
   user: User;
   stores: Store[];
   onRefresh: () => Promise<void>;
+  can: (perm: string) => boolean;
 }
  
 const DashboardPAModule: React.FC<DashboardPAModuleProps> = ({ 
   user, 
   stores,
-  onRefresh
+  onRefresh,
+  can
 }) => {
-  const isAdmin = user.role === UserRole.ADMIN;
+  const isAdmin = can('ALWAYS');
   const userStore = stores.find(s => s.id === user.storeId);
  
   if (isAdmin) {

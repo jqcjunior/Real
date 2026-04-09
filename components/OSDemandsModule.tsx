@@ -13,9 +13,11 @@ import { ptBR } from 'date-fns/locale';
 interface OSDemandsModuleProps {
     user: User;
     stores: Store[];
+    can: (perm: string) => boolean;
 }
 
-const OSDemandsModule: React.FC<OSDemandsModuleProps> = ({ user, stores }) => {
+const OSDemandsModule: React.FC<OSDemandsModuleProps> = ({ user, stores, can }) => {
+    const isAdmin = can('ALWAYS');
     const [demands, setDemands] = useState<Demand[]>([]);
     const [selectedDemand, setSelectedDemand] = useState<Demand | null>(null);
     const selectedDemandRef = useRef<Demand | null>(null);
@@ -172,7 +174,7 @@ const OSDemandsModule: React.FC<OSDemandsModuleProps> = ({ user, stores }) => {
                 .order('created_at', { ascending: false });
 
             // Se não for ADMIN, filtra apenas as demandas da própria loja
-            if (user.role !== 'ADMIN' && user.storeId) {
+            if (!isAdmin && user.storeId) {
                 query = query.eq('store_id', user.storeId);
             }
 
@@ -224,8 +226,6 @@ const OSDemandsModule: React.FC<OSDemandsModuleProps> = ({ user, stores }) => {
 
         setIsSending(true);
         try {
-            const isAdmin = user.role === 'ADMIN';
-            
             // 1. Insert message
             const { error: msgError } = await supabase
                 .from('demand_messages')
@@ -1348,7 +1348,7 @@ const OSDemandsModule: React.FC<OSDemandsModuleProps> = ({ user, stores }) => {
                         <div>
                             <div className="flex items-center gap-2">
                                 <h1 className="text-xl font-black uppercase tracking-tight">Demanda OS</h1>
-                                {user.role === 'ADMIN' && (
+                                {isAdmin && (
                                     <DemandCategoriesManager onCategoriesChange={fetchDynamicCategories} />
                                 )}
                             </div>
@@ -1634,7 +1634,7 @@ const OSDemandsModule: React.FC<OSDemandsModuleProps> = ({ user, stores }) => {
 
                                     {selectedDemand.status !== 'resolvida' && selectedDemand.status !== 'cancelada' && (
                                         <div className="action-btn-group">
-                                            {user.role === 'ADMIN' && selectedDemand.status === 'aberta' && (
+                                            {isAdmin && selectedDemand.status === 'aberta' && (
                                                 <button 
                                                     className="finalize-btn" 
                                                     style={{ gridColumn: 'span 2', background: 'var(--accent)', color: '#000', marginBottom: '8px' }} 
@@ -1654,7 +1654,7 @@ const OSDemandsModule: React.FC<OSDemandsModuleProps> = ({ user, stores }) => {
                                             </button>
                                             
                                             <div className="grid grid-cols-2 gap-2 w-full" style={{ gridColumn: 'span 2' }}>
-                                                {(user.role === 'ADMIN' || user.id === selectedDemand.created_by) && (
+                                                {(isAdmin || user.id === selectedDemand.created_by) && (
                                                     <button 
                                                         className="action-btn-secondary" 
                                                         onClick={() => openEditModal(selectedDemand)}
@@ -1663,7 +1663,7 @@ const OSDemandsModule: React.FC<OSDemandsModuleProps> = ({ user, stores }) => {
                                                     </button>
                                                 )}
                                                 
-                                                {(user.role === 'ADMIN' || user.id === selectedDemand.created_by) && (
+                                                {(isAdmin || user.id === selectedDemand.created_by) && (
                                                     <button 
                                                         className="action-btn-danger" 
                                                         onClick={handleCancelDemand}
@@ -1675,7 +1675,7 @@ const OSDemandsModule: React.FC<OSDemandsModuleProps> = ({ user, stores }) => {
                                         </div>
                                     )}
 
-                                    {(selectedDemand.status === 'resolvida' || selectedDemand.status === 'cancelada') && user.role === 'ADMIN' && (
+                                    {(selectedDemand.status === 'resolvida' || selectedDemand.status === 'cancelada') && isAdmin && (
                                         <div className="action-btn-group">
                                             <button 
                                                 className="action-btn-secondary" 
@@ -1818,7 +1818,7 @@ const OSDemandsModule: React.FC<OSDemandsModuleProps> = ({ user, stores }) => {
                                     </select>
                                 </div>
                             </div>
-                            {user.role === 'ADMIN' && (
+                            {isAdmin && (
                                 <div className="form-group">
                                     <label>Loja</label>
                                     <select 
@@ -1843,7 +1843,7 @@ const OSDemandsModule: React.FC<OSDemandsModuleProps> = ({ user, stores }) => {
                                     </select>
                                 </div>
                             )}
-                            {user.role !== 'ADMIN' && (
+                            {!isAdmin && (
                                 <div className="form-group">
                                     <label>Loja</label>
                                     <div className="p-3 bg-slate-100 dark:bg-slate-800 rounded-lg text-sm font-bold">

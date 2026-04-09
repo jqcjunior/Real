@@ -194,11 +194,11 @@ const PDVTab: React.FC<PDVTabProps> = ({
                         {(paymentMethod === 'Fiado' || (paymentMethod === 'Misto' && mistoValues['Fiado'])) && <input value={buyerName} onChange={e => setBuyerName(e.target.value.toUpperCase())} className="w-full p-4 bg-red-50 border-2 border-red-100 rounded-2xl font-black uppercase text-sm outline-none" placeholder="NOME DO FUNCIONÁRIO..." />}
                         <button 
                             onClick={finalizeSale} 
-                            disabled={isSubmitting || cart.length === 0 || !paymentMethod || user?.role === UserRole.ICE_CREAM} 
+                            disabled={isSubmitting || cart.length === 0 || !paymentMethod} 
                             className="w-full py-5 bg-red-600 hover:bg-red-700 text-white rounded-[24px] font-black uppercase text-xs shadow-2xl flex items-center justify-center gap-3 transition-all border-b-4 border-red-900"
                         >
                             {isSubmitting ? <Loader2 className="animate-spin" /> : <CheckCircle2 size={18}/>} 
-                            {user?.role === UserRole.ICE_CREAM ? 'Acesso Restrito' : 'Finalizar Venda'}
+                            Finalizar Venda
                         </button>
                     </div>
                 </div>

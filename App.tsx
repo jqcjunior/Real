@@ -7,6 +7,7 @@ import {
 } from './types';
 import { supabase } from './services/supabaseClient';
 import apiService from './services/apiService';
+import { ensureSession } from './services/authService';
 import { BRAND_LOGO } from './constants';
 
 // Módulos
@@ -43,6 +44,7 @@ const App: React.FC = () => {
     const [user, setUser] = useState<User | null>(null);
     const [currentView, setCurrentView] = useState<string>(''); 
     const [isLoading, setIsLoading] = useState(true);
+    const [permissionsLoaded, setPermissionsLoaded] = useState(false);
     const [isSidebarOpen, setIsSidebarOpen] = useState(false);
     const [isChangePasswordOpen, setIsChangePasswordOpen] = useState(false);
     const [theme, setTheme] = useState<'light' | 'dark'>(() => {
@@ -56,27 +58,55 @@ const App: React.FC = () => {
         }
         
         const init = async () => {
-            await bootstrapPermissions();
-            
-            // Recuperar sessão do apiService (Desativado para sempre solicitar senha)
-            const savedUser = null; // apiService.getUser();
-            if (false && savedUser && apiService.isAuthenticated()) {
-                const rawRole = (savedUser.role_level || savedUser.role || '').toUpperCase();
-                const mappedRole = rawRole === 'SORVETE' ? 'ICE_CREAM' : rawRole;
+            setIsLoading(true); // Trava o sistema com o Loader
+            try {
+                // PASSO 1: Avisar ao Postgres quem é o usuário (Ativa o RLS)
+                await ensureSession();
                 
-                const loggedUser: User = {
-                    id: savedUser.id,
-                    name: savedUser.name,
-                    role: mappedRole as UserRole,
-                    email: savedUser.email,
-                    storeId: savedUser.store_id || savedUser.storeId
-                };
+                // PASSO 2: Rodar o bootstrap de permissões novas
+                await bootstrapPermissions();
                 
-                setUser(loggedUser);
-                await fetchPermissions(loggedUser.role);
-                setCurrentView(loggedUser.role === UserRole.ADMIN ? 'dashboard_rede' : loggedUser.role === UserRole.ICE_CREAM ? 'pdv_sorveteria' : 'dashboard_loja');
-            } else {
-                // Se não houver usuário, precisamos garantir que isLoading seja false para mostrar o login
+                // PASSO 3: Recuperar usuário e normalizar a Role
+                const savedUser = apiService.getUser();
+                if (savedUser && apiService.isAuthenticated()) {
+                    const rawRole = (savedUser.role_level || savedUser.role || '').toUpperCase().trim();
+                    
+                    // Mapeamento exato para bater com o ENUM e a tabela page_permissions
+                    let mappedRole: UserRole = UserRole.CASHIER;
+                    if (rawRole === 'ADMIN') mappedRole = UserRole.ADMIN;
+                    else if (rawRole === 'MANAGER' || rawRole === 'GERENTE') mappedRole = UserRole.MANAGER;
+                    else if (rawRole === 'SORVETE' || rawRole === 'SORVETERIA' || rawRole === 'ICE_CREAM') mappedRole = UserRole.ICE_CREAM;
+
+                    const loggedUser: User = {
+                        id: savedUser.id,
+                        name: savedUser.name,
+                        role: mappedRole,
+                        email: savedUser.email,
+                        storeId: savedUser.store_id || savedUser.storeId
+                    };
+                    
+                    // PASSO 4: Buscar permissões no banco ANTES de carregar os dados
+                    await fetchPermissions(mappedRole);
+                    
+                    // PASSO 5: Setar usuário
+                    setUser(loggedUser);
+
+                    // PASSO 6: Agora que temos ID e Permissões, carregamos os dados
+                    await fetchData();
+                    
+                    // Define visão inicial
+                    if (!currentView) {
+                        setCurrentView(mappedRole === UserRole.ADMIN ? 'dashboard_rede' : 
+                                      mappedRole === UserRole.ICE_CREAM ? 'pdv_sorveteria' : 'dashboard_loja');
+                    }
+                } else {
+                    // Se não houver usuário, vai para o Login
+                    setIsLoading(false);
+                }
+            } catch (error) {
+                console.error("Erro crítico na carga do sistema:", error);
+            } finally {
+                // O isLoading(false) dentro do fetchData ou aqui garante que a tela só abra pronta
                 setIsLoading(false);
             }
         };
@@ -96,70 +126,62 @@ const App: React.FC = () => {
 
     const bootstrapPermissions = async () => {
         try {
-            const { data: existing } = await supabase
-                .from('page_permissions')
-                .select('id')
-                .eq('page_key', 'MODULE_DEMANDS')
-                .single();
+            const perms = [
+                { key: 'MODULE_DASHBOARD_ADMIN', label: 'Dashboard Rede', group: 'Inteligência' },
+                { key: 'MODULE_DASHBOARD_MANAGER', label: 'Dashboard Loja', group: 'Inteligência' },
+                { key: 'MODULE_DASHBOARD_PA', label: 'Dashboard P.A.', group: 'Inteligência' },
+                { key: 'MODULE_METAS', label: 'Metas', group: 'Inteligência' },
+                { key: 'MODULE_COTAS', label: 'Cotas OTB', group: 'Inteligência' },
+                { key: 'MODULE_PURCHASES', label: 'Compras', group: 'Inteligência' },
+                { key: 'MODULE_DEMANDS', label: 'Demanda OS', group: 'Inteligência' },
+                { key: 'MODULE_ICECREAM', label: 'PDV Sorveteria', group: 'Operacional' },
+                { key: 'MODULE_CASH_REGISTER', label: 'Caixa', group: 'Operacional' },
+                { key: 'MODULE_AGENDA', label: 'Agenda Semanal', group: 'Operacional' },
+                { key: 'MODULE_AUTORIZ_COMPRA', label: 'Autoriz. Compra', group: 'Documentos' },
+                { key: 'MODULE_TERMO_CONDICIONAL', label: 'Termo Condicional', group: 'Documentos' },
+                { key: 'MODULE_DOWNLOADS', label: 'Downloads', group: 'Documentos' },
+                { key: 'MODULE_ADMIN_USERS', label: 'Usuários', group: 'Administração' },
+                { key: 'MODULE_ACCESS_CONTROL', label: 'Acessos', group: 'Administração' },
+                { key: 'MODULE_AUDIT', label: 'Auditoria', group: 'Administração' },
+                { key: 'MODULE_SETTINGS', label: 'Configurações', group: 'Administração' },
+                { key: 'MODULE_CASH_ERRORS_EDIT', label: 'Editar Quebras de Caixa', group: 'Financeiro' },
+                { key: 'MODULE_ICECREAM_MANAGE', label: 'Sorveteria: Gestão', group: 'Sorveteria' },
+                { key: 'MODULE_ICECREAM_DESPESAS', label: 'Sorveteria: Despesas', group: 'Sorveteria' },
+                { key: 'MODULE_AUDIT_MANAGE', label: 'Auditoria: Gestão', group: 'Auditoria' },
+                { key: 'admin_settings', label: 'Configurações Avançadas', group: 'Administração' }
+            ];
 
-            if (!existing) {
-                await supabase.from('page_permissions').insert([{
-                    page_key: 'MODULE_DEMANDS',
-                    label: 'Demanda OS',
-                    module_group: 'Inteligência',
-                    allow_admin: true,
-                    allow_manager: false,
-                    allow_cashier: false,
-                    allow_sorvete: false,
-                    sort_order: 55
-                }]);
+            for (const p of perms) {
+                const { data: existing } = await supabase
+                    .from('page_permissions')
+                    .select('id, allow_admin')
+                    .eq('page_key', p.key)
+                    .maybeSingle();
+
+                if (!existing) {
+                    await supabase.from('page_permissions').insert([{
+                        page_key: p.key,
+                        label: p.label,
+                        module_group: p.group,
+                        allow_admin: true,
+                        allow_manager: false,
+                        allow_cashier: false,
+                        allow_sorvete: false,
+                        sort_order: 100
+                    }]);
+                } else if (!existing.allow_admin) {
+                    // Garante que Admin sempre tenha acesso no banco também
+                    await supabase.from('page_permissions')
+                        .update({ allow_admin: true })
+                        .eq('page_key', p.key);
+                }
             }
-
-            const { data: existingPA } = await supabase
-                .from('page_permissions')
-                .select('id')
-                .eq('page_key', 'MODULE_DASHBOARD_PA')
-                .single();
-
-            if (!existingPA) {
-                await supabase.from('page_permissions').insert([{
-                    page_key: 'MODULE_DASHBOARD_PA',
-                    label: 'Dashboard P.A.',
-                    module_group: 'Inteligência',
-                    allow_admin: true,
-                    allow_manager: true,
-                    allow_cashier: false,
-                    allow_sorvete: false,
-                    sort_order: 56
-                }]);
-            }
-
-            const { data: existingDespesas } = await supabase
-                .from('page_permissions')
-                .select('id')
-                .eq('page_key', 'MODULE_ICECREAM_DESPESAS')
-                .single();
-
-            if (!existingDespesas) {
-                await supabase.from('page_permissions').insert([{
-                    page_key: 'MODULE_ICECREAM_DESPESAS',
-                    label: 'Sorveteria: Aba Despesas',
-                    module_group: 'Sorveteria',
-                    allow_admin: true,
-                    allow_manager: true,
-                    allow_cashier: false,
-                    allow_sorvete: false,
-                    sort_order: 60
-                }]);
-            }
-
         } catch (err) {
-            console.error("Erro ao registrar permissão Demanda OS:", err);
+            console.error("Erro no bootstrap de permissões:", err);
         }
     };
 
     const [userPermissions, setUserPermissions] = useState<string[]>([]);
-    const [userCount, setUserCount] = useState<number | null>(null);
     const [connectionError, setConnectionError] = useState<string | null>(null);
 
     const [stores, setStores] = useState<Store[]>([]);
@@ -194,21 +216,62 @@ const App: React.FC = () => {
     const [futureDebts, setFutureDebts] = useState<IceCreamFutureDebt[]>([]);
 
     const can = (permissionKey: string) => {
-        if (user?.role === UserRole.ADMIN) return true;
-        if (!userPermissions || userPermissions.length === 0) return false;
+        if (!user) return false;
+        const role = String(user.role || '').toUpperCase().trim();
+        
+        // 1. Regra de Ouro: ALWAYS sempre passa
+        if (permissionKey === 'ALWAYS') return true;
+        
+        // 2. Segurança: Se as permissões ainda não carregaram, não libera nada
+        if (!permissionsLoaded) return false;
+        
+        // 3. Admin tem acesso total por padrão (Superuser), mas checamos a tabela também
+        if (role === 'ADMIN') return true;
+        
+        // 4. Checa a tabela page_permissions
         return userPermissions.includes(permissionKey);
     };
 
     const fetchPermissions = async (role: string) => {
-        const roleUpper = String(role || '').toUpperCase().trim();
-        if (roleUpper === 'ADMIN') { setUserPermissions([]); return; }
-        let columnToCheck = '';
-        if (roleUpper === 'GERENTE' || roleUpper === 'MANAGER') columnToCheck = 'allow_manager';
-        else if (roleUpper === 'CAIXA' || roleUpper === 'CASHIER') columnToCheck = 'allow_cashier';
-        else if (roleUpper === 'SORVETE' || roleUpper === 'SORVETERIA' || roleUpper === 'ICE_CREAM') columnToCheck = 'allow_sorvete'; 
-        if (!columnToCheck) return;
-        const { data } = await supabase.from('page_permissions').select('page_key').eq(columnToCheck, true);
-        if (data) setUserPermissions(data.map(p => p.page_key));
+        try {
+            setPermissionsLoaded(false);
+            const roleUpper = String(role || '').toUpperCase().trim();
+
+            let columnToCheck = '';
+            if (roleUpper === 'ADMIN') columnToCheck = 'allow_admin';
+            else if (roleUpper === 'MANAGER') columnToCheck = 'allow_manager';
+            else if (roleUpper === 'CASHIER') columnToCheck = 'allow_cashier';
+            else if (roleUpper === 'ICE_CREAM') columnToCheck = 'allow_sorvete';
+
+            if (!columnToCheck) {
+                console.warn(`Role ${roleUpper} não mapeada para colunas de permissão.`);
+                setUserPermissions([]);
+                setPermissionsLoaded(true);
+                return;
+            }
+
+            const { data, error } = await supabase
+                .from('page_permissions')
+                .select('page_key')
+                .eq(columnToCheck, true);
+
+            if (error) throw error;
+
+            const perms = data?.map(p => p.page_key) || [];
+            setUserPermissions(perms);
+            setPermissionsLoaded(true);
+
+            console.log('--- DEBUG PERMISSÕES ---');
+            console.log('USUÁRIO:', user?.name);
+            console.log('ROLE:', roleUpper);
+            console.log('PERMISSÕES CARREGADAS:', perms);
+            console.log('------------------------');
+
+        } catch (err) {
+            console.error("Erro ao buscar permissões:", err);
+            setUserPermissions([]);
+            setPermissionsLoaded(true);
+        }
     };
 
     const fetchAllRows = async (table: string, orderBy: string) => {
@@ -248,6 +311,7 @@ const App: React.FC = () => {
 
     const fetchData = async () => {
         try {
+            await ensureSession();
             // Fase 1 — Dados críticos do dashboard
             const [
                 {data: s}, {data: p}, {data: g}
@@ -398,20 +462,38 @@ const App: React.FC = () => {
         try {
             const result = await apiService.login(email, pass);
             
-            const rawRole = result.user.role_level.toUpperCase();
-            const mappedRole = rawRole === 'SORVETE' ? 'ICE_CREAM' : rawRole;
+            if (!result || !result.user) {
+                throw new Error('Resposta de login inválida');
+            }
+
+            const rawRole = (result.user.role || '').toUpperCase().trim();
+            
+            // Normalização de Roles para o Enum UserRole
+            let mappedRole: UserRole = UserRole.CASHIER;
+            if (rawRole === 'ADMIN') mappedRole = UserRole.ADMIN;
+            else if (rawRole === 'MANAGER' || rawRole === 'GERENTE') mappedRole = UserRole.MANAGER;
+            else if (rawRole === 'CAIXA' || rawRole === 'CASHIER') mappedRole = UserRole.CASHIER;
+            else if (rawRole === 'SORVETE' || rawRole === 'SORVETERIA' || rawRole === 'ICE_CREAM') mappedRole = UserRole.ICE_CREAM;
+
+            // PASSO 1: Buscar permissões no banco
             await fetchPermissions(mappedRole);
 
+            // PASSO 2: Criar objeto de usuário
             const loggedUser: User = { 
                 id: result.user.id, 
                 name: result.user.name, 
-                role: mappedRole as UserRole, 
+                role: mappedRole, 
                 email: result.user.email, 
-                storeId: result.user.store_id 
+                storeId: result.user.storeId 
             };
             
+            // PASSO 3: Setar usuário
             setUser(loggedUser);
-            setCurrentView(loggedUser.role === UserRole.ADMIN ? 'dashboard_rede' : loggedUser.role === UserRole.ICE_CREAM ? 'pdv_sorveteria' : 'dashboard_loja');
+            
+            // Define visão inicial
+            setCurrentView(mappedRole === UserRole.ADMIN ? 'dashboard_rede' : 
+                          mappedRole === UserRole.ICE_CREAM ? 'pdv_sorveteria' : 'dashboard_loja');
+            
             return { success: true, user: loggedUser };
         } catch (err: any) { 
             return { success: false, error: err.message || 'Falha na conexão.' }; 
@@ -423,38 +505,6 @@ const App: React.FC = () => {
         setUser(null);
         setCurrentView('');
         window.location.reload();
-    };
-
-    useEffect(() => { 
-        fetchData(); 
-        const checkUsers = async () => {
-            const { count } = await supabase.from('admin_users').select('*', { count: 'exact', head: true });
-            setUserCount(count);
-        };
-        checkUsers();
-    }, []);
-
-    const handleCreateFirstAdmin = async () => {
-        const email = prompt("Digite o e-mail do primeiro administrador:");
-        const password = prompt("Digite a senha:");
-        const name = prompt("Digite o nome:");
-        
-        if (!email || !password || !name) return;
-
-        try {
-            const { error } = await supabase.from('admin_users').insert([{
-                name: name.toUpperCase(),
-                email: email.toLowerCase().trim(),
-                password: password.trim(),
-                role_level: 'admin',
-                status: 'active'
-            }]);
-            if (error) throw error;
-            alert("Administrador criado com sucesso! Agora você pode fazer login.");
-            setUserCount(1);
-        } catch (err: any) {
-            alert("Erro ao criar administrador: " + err.message);
-        }
     };
 
     const handleSaveIceCreamProduct = async (product: Partial<IceCreamItem>) => {
@@ -489,16 +539,6 @@ const App: React.FC = () => {
     if (!user) return (
         <div className="relative">
             <LoginScreen onLoginAttempt={handleLogin} onRegisterRequest={handleRegisterRequest} />
-            {userCount === 0 && (
-                <div className="fixed bottom-4 right-4 z-[300] flex flex-col gap-2 items-end">
-                    <button 
-                        onClick={handleCreateFirstAdmin}
-                        className="bg-red-600 text-white px-6 py-3 rounded-full font-black uppercase text-[10px] shadow-2xl hover:bg-black transition-all border-b-4 border-red-900"
-                    >
-                        Forçar Criação de Admin
-                    </button>
-                </div>
-            )}
         </div>
     );
     
@@ -524,12 +564,20 @@ const App: React.FC = () => {
                 </div>
                 <nav className="flex-1 space-y-6 overflow-y-auto no-scrollbar">
                     {[
-                        { title: 'Inteligência', items: [ { id: 'dashboard_rede', label: 'Dashboard Rede', icon: LayoutDashboard, perm: 'MODULE_DASHBOARD_ADMIN' }, { id: 'dashboard_loja', label: 'Dashboard Loja', icon: LayoutDashboard, perm: 'MODULE_DASHBOARD_MANAGER' }, { id: 'dashboard_pa', label: 'Dashboard P.A.', icon: Trophy, perm: 'MODULE_DASHBOARD_PA' }, { id: 'metas', label: 'Metas', icon: Target, perm: 'MODULE_METAS' }, { id: 'cotas', label: 'Cotas OTB', icon: Calculator, perm: 'MODULE_COTAS' }, { id: 'compras', label: 'Compras', icon: ShoppingBag, perm: 'MODULE_PURCHASES' }, { id: 'os_demandas', label: 'Demanda OS', icon: ClipboardList, perm: 'MODULE_DEMANDS' } ] },
-                        { title: 'Operacional', items: [ { id: 'pdv_sorveteria', label: 'PDV Sorveteria Real', icon: IceCreamIcon, perm: 'MODULE_ICECREAM', requiredFeature: stores.find(s => s.id === user.storeId)?.has_gelateria || user.role === UserRole.ICE_CREAM }, { id: 'caixa', label: 'Caixa', icon: ClipboardList, perm: 'MODULE_CASH_REGISTER' }, { id: 'agenda', label: 'Agenda Semanal', icon: Calendar, perm: 'MODULE_AGENDA' } ] },
+                        { title: 'Inteligência', items: [ 
+                            { id: 'dashboard_rede', label: 'Dashboard Rede', icon: LayoutDashboard, perm: 'MODULE_DASHBOARD_ADMIN' }, 
+                            { id: 'dashboard_loja', label: 'Dashboard Loja', icon: LayoutDashboard, perm: 'MODULE_DASHBOARD_MANAGER' }, 
+                            { id: 'dashboard_pa', label: 'Dashboard P.A.', icon: Trophy, perm: 'MODULE_DASHBOARD_PA' }, 
+                            { id: 'metas', label: 'Metas', icon: Target, perm: 'MODULE_METAS' }, 
+                            { id: 'cotas', label: 'Cotas OTB', icon: Calculator, perm: 'MODULE_COTAS' }, 
+                            { id: 'compras', label: 'Compras', icon: ShoppingBag, perm: 'MODULE_PURCHASES' }, 
+                            { id: 'os_demandas', label: 'Demanda OS', icon: ClipboardList, perm: 'MODULE_DEMANDS' } 
+                        ] },
+                        { title: 'Operacional', items: [ { id: 'pdv_sorveteria', label: 'PDV Sorveteria Real', icon: IceCreamIcon, perm: 'MODULE_ICECREAM' }, { id: 'caixa', label: 'Caixa', icon: ClipboardList, perm: 'MODULE_CASH_REGISTER' }, { id: 'agenda', label: 'Agenda Semanal', icon: Calendar, perm: 'MODULE_AGENDA' } ] },
                         { title: 'Documentos', items: [ { id: 'autoriz_compra', label: 'Autoriz. Compra', icon: FileSignature, perm: 'MODULE_AUTORIZ_COMPRA' }, { id: 'termo_condicional', label: 'Termo Condicional', icon: FileText, perm: 'MODULE_TERMO_CONDICIONAL' }, { id: 'downloads', label: 'Downloads', icon: Download, perm: 'MODULE_DOWNLOADS' } ] },
                         { title: 'Administração', items: [ { id: 'users', label: 'Usuários', icon: Users, perm: 'MODULE_ADMIN_USERS' }, { id: 'access', label: 'Acessos', icon: ShieldAlert, perm: 'MODULE_ACCESS_CONTROL' }, { id: 'audit', label: 'Auditoria', icon: Shield, perm: 'MODULE_AUDIT' }, { id: 'settings', label: 'Configurações', icon: Settings, perm: 'MODULE_SETTINGS' } ] }
                     ].map(section => {
-                        const visibleItems = section.items.filter(i => can(i.perm) && (i.requiredFeature === undefined || i.requiredFeature === true));
+                        const visibleItems = section.items.filter(i => can(i.perm));
                         if (visibleItems.length === 0) return null;
                         return (
                             <div key={section.title} className="space-y-1">
@@ -592,7 +640,7 @@ const App: React.FC = () => {
                             {theme === 'light' ? <Moon size={18} /> : <Sun size={18} />}
                             <span className="hidden sm:inline text-[10px] font-black uppercase">{theme === 'light' ? 'Escuro' : 'Claro'}</span>
                         </button>
-                        <NotificationHeader user={user!} stores={stores} agenda={agenda} onNavigate={setCurrentView} />
+                        <NotificationHeader user={user!} stores={stores} agenda={agenda} onNavigate={setCurrentView} can={can} />
                     </div>
                 </header>
                 <main className="flex-1 overflow-y-auto no-scrollbar p-3 md:p-6 lg:p-8">
@@ -632,7 +680,7 @@ const App: React.FC = () => {
                         }} onRefresh={fetchData} />;
                         if (currentView === 'dashboard_loja' && can('MODULE_DASHBOARD_MANAGER')) return <DashboardManager user={user!} stores={stores} performanceData={performanceData} goalsData={goalsData} purchasingData={purchasingData} sangrias={icSangrias} stockMovements={icStockMovements} stock={iceCreamStock} />;
                         if (currentView === 'metas' && can('MODULE_METAS')) return <GoalRegistration stores={stores} goalsData={goalsData} onSaveGoals={async (data) => { for(const row of data) { await supabase.from('monthly_goals').upsert({ store_id: row.storeId, year: row.year, month: row.month, revenue_target: row.revenueTarget, pa_target: row.paTarget, pu_target: row.puTarget, ticket_target: row.ticketTarget, items_target: row.itemsTarget, business_days: row.businessDays, delinquency_target: row.delinquencyTarget, trend: row.trend }, { onConflict: 'store_id, year, month' }); } fetchData(); }} />;
-                        if (currentView === 'cotas' && can('MODULE_COTAS')) return <CotasManagement user={user!} stores={stores} cotas={cotas} cotaSettings={cotaSettings} cotaDebts={cotaDebts} performanceData={performanceData} productCategories={quotaCategories} mixParameters={quotaMixParams} onAddCota={async (c) => { await supabase.from('cotas').insert([{ store_id: c.storeId, brand: c.brand, category_id: c.category_id, total_value: c.totalValue, shipment_date: `${c.shipmentDate}-01`, payment_terms: c.paymentTerms, pairs: c.pairs, installments: c.installments, status: 'ABERTA' }]); fetchData(); }} onUpdateCota={async (id, u) => { await supabase.from('cotas').update(u).eq('id', id); fetchData(); }} onDeleteCota={async (id) => { await supabase.from('cotas').delete().eq('id', id); fetchData(); }} onSaveSettings={async (s) => { await supabase.from('cota_settings').upsert({ store_id: s.storeId, budget_value: s.budgetValue, manager_percent: s.managerPercent }, { onConflict: 'store_id' }); fetchData(); }} onSaveDebts={async (d) => { await supabase.from('cota_debts').upsert({ store_id: d.storeId, month: d.month, value: d.value }, { onConflict: 'store_id, month' }); fetchData(); }} onDeleteDebt={async (id) => { await supabase.from('cota_debts').delete().eq('id', id); fetchData(); }} onUpdateMixParameter={async (id, sId, cat, pct, sem) => { if (id) { await supabase.from('quota_mix_parameters').update({ mix_percentage: pct }).eq('id', id); } else { await supabase.from('quota_mix_parameters').insert([{ store_id: sId, parent_category: cat, mix_percentage: pct, semester: sem }]); } fetchData(); }} />;
+                        if (currentView === 'cotas' && can('MODULE_COTAS')) return <CotasManagement user={user!} stores={stores} cotas={cotas} cotaSettings={cotaSettings} cotaDebts={cotaDebts} performanceData={performanceData} productCategories={quotaCategories} mixParameters={quotaMixParams} onAddCota={async (c) => { await supabase.from('cotas').insert([{ store_id: c.storeId, brand: c.brand, category_id: c.category_id, total_value: c.totalValue, shipment_date: `${c.shipmentDate}-01`, payment_terms: c.paymentTerms, pairs: c.pairs, installments: c.installments, status: 'ABERTA' }]); fetchData(); }} onUpdateCota={async (id, u) => { await supabase.from('cotas').update(u).eq('id', id); fetchData(); }} onDeleteCota={async (id) => { await supabase.from('cotas').delete().eq('id', id); fetchData(); }} onSaveSettings={async (s) => { await supabase.from('cota_settings').upsert({ store_id: s.storeId, budget_value: s.budgetValue, manager_percent: s.managerPercent }, { onConflict: 'store_id' }); fetchData(); }} onSaveDebts={async (d) => { await supabase.from('cota_debts').upsert({ store_id: d.storeId, month: d.month, value: d.value }, { onConflict: 'store_id, month' }); fetchData(); }} onDeleteDebt={async (id) => { await supabase.from('cota_debts').delete().eq('id', id); fetchData(); }} onUpdateMixParameter={async (id, sId, cat, pct, sem) => { if (id) { await supabase.from('quota_mix_parameters').update({ mix_percentage: pct }).eq('id', id); } else { await supabase.from('quota_mix_parameters').insert([{ store_id: sId, parent_category: cat, mix_percentage: pct, semester: sem }]); } fetchData(); }} can={can} />;
                         if (currentView === 'compras' && can('MODULE_PURCHASES')) return <DashboardPurchases 
                             user={user!} 
                             stores={stores} 
@@ -660,6 +708,7 @@ const App: React.FC = () => {
                                 if (shouldFetch) fetchData();
                             }}
                             onOpenSpreadsheetModule={() => setCurrentView('spreadsheet_order')} 
+                            can={can}
                         />;
                         if (currentView === 'pdv_sorveteria' && can('MODULE_ICECREAM')) return <IceCreamModule 
                             user={user!} stores={stores} items={iceCreamItems} sales={iceCreamSales} salesHeaders={sales} salePayments={salePayments}
@@ -832,7 +881,7 @@ const App: React.FC = () => {
                                 await fetchData(); 
                             }} 
                             liquidatePromissory={async (id) => { await supabase.from('ice_cream_promissory_notes').update({ status: 'paid' }).eq('id', id); await fetchData(); }} 
-                            onDeleteStockItem={async (id) => { if (user?.role === UserRole.ADMIN) { await supabase.from('ice_cream_stock').update({ is_active: false }).eq('id', id); await fetchData(); } }} 
+                            onDeleteStockItem={async (id) => { if (can('MODULE_ADMIN_STOCK_DELETE')) { await supabase.from('ice_cream_stock').update({ is_active: false }).eq('id', id); await fetchData(); } }} 
                         />;
                         if (currentView === 'caixa' && can('MODULE_CASH_REGISTER')) return (
                             <CashRegisterModule 
@@ -843,6 +892,7 @@ const App: React.FC = () => {
                                 closures={closures} 
                                 receipts={receipts} 
                                 errors={cashErrors} 
+                                can={can}
                                 onAddClosure={async (c) => { 
                                     await supabase.from('cash_register_closures').insert([{ 
                                         store_id: c.storeId || user?.storeId, 
@@ -887,17 +937,18 @@ const App: React.FC = () => {
                         if (currentView === 'agenda' && can('MODULE_AGENDA')) return <AgendaSystem user={user!} tasks={agenda} onAddTask={async (t) => { await supabase.from('agenda_tasks').insert([{ user_id: user?.id, title: t.title, description: t.description, due_date: t.dueDate, due_time: t.dueTime, priority: t.priority, is_completed: false }]); fetchData(); }} onUpdateTask={async (t) => { await supabase.from('agenda_tasks').update({ is_completed: t.isCompleted }).eq('id', t.id); fetchData(); }} onDeleteTask={async (id) => { await supabase.from('agenda_tasks').delete().eq('id', id); fetchData(); }} />;
                         if (currentView === 'autoriz_compra' && can('MODULE_AUTORIZ_COMPRA')) return <PurchaseAuthorization />;
                         if (currentView === 'termo_condicional' && can('MODULE_TERMO_CONDICIONAL')) return <TermoAutorizacao user={user!} store={stores.find(s => s.id === user?.storeId)} />;
-                        if (currentView === 'downloads' && can('MODULE_DOWNLOADS')) return <DownloadsModule user={user!} items={downloads} onUpload={async (i) => { await supabase.from('downloads').insert([i]); fetchData(); }} onDelete={async (id) => { await supabase.from('downloads').delete().eq('id', id); fetchData(); }} />;
+                        if (currentView === 'downloads' && can('MODULE_DOWNLOADS')) return <DownloadsModule user={user!} items={downloads} onUpload={async (i) => { await supabase.from('downloads').insert([i]); fetchData(); }} onDelete={async (id) => { await supabase.from('downloads').delete().eq('id', id); fetchData(); }} can={can} />;
                         if (currentView === 'users' && can('MODULE_ADMIN_USERS')) return <AdminUsersManagement currentUser={user} stores={stores} />;
                         if (currentView === 'access' && can('MODULE_ACCESS_CONTROL')) return <AccessControlManagement />;
-                        if (currentView === 'audit' && can('MODULE_AUDIT')) return <SystemAudit currentUser={user!} logs={logs} receipts={receipts} cashErrors={cashErrors} iceCreamSales={iceCreamSales} icPromissories={icPromissories} cardSales={cardSales} pixSales={pixSales} closures={closures} stores={stores} />;
+                        if (currentView === 'audit' && can('MODULE_AUDIT')) return <SystemAudit currentUser={user!} logs={logs} receipts={receipts} cashErrors={cashErrors} iceCreamSales={iceCreamSales} icPromissories={icPromissories} cardSales={cardSales} pixSales={pixSales} closures={closures} stores={stores} can={can} />;
                         if (currentView === 'settings' && can('MODULE_SETTINGS')) return <AdminSettings stores={stores} onAddStore={async (s) => { await supabase.from('stores').insert([s]); fetchData(); }} onUpdateStore={async (s) => { await supabase.from('stores').update(s).eq('id', s.id); fetchData(); }} onDeleteStore={async (id) => { await supabase.from('stores').delete().eq('id', id); fetchData(); }} />;
                         if (currentView === 'spreadsheet_order' && can('MODULE_PURCHASES')) return <SpreadsheetOrderModule user={user!} onClose={() => setCurrentView('compras')} />;
-                        if (currentView === 'os_demandas' && can('MODULE_DEMANDS')) return <OSDemandsModule user={user!} stores={stores} />;
+                        if (currentView === 'os_demandas' && can('MODULE_DEMANDS')) return <OSDemandsModule user={user!} stores={stores} can={can} />;
                         if (currentView === 'dashboard_pa' && can('MODULE_DASHBOARD_PA')) return <DashboardPAModule 
                             user={user!} 
                             stores={stores} 
                             onRefresh={fetchData}
+                            can={can}
                         />;
                         return <div className="flex items-center justify-center h-full text-gray-400 uppercase tracking-widest font-black text-sm">Selecione um módulo no menu</div>;
                     })()}

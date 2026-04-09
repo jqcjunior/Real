@@ -76,10 +76,9 @@ const IceCreamModule: React.FC<IceCreamModuleProps> = ({
 }) => {
     const [activeTab, setActiveTab] = useState<'pdv' | 'dre' | 'dre_mensal' | 'stock' | 'audit' | 'produtos' | 'despesas'>('pdv');
     const [effectiveStoreId, setEffectiveStoreId] = useState(user?.storeId || (stores.length > 0 ? stores[0].id : ''));
+    const isAdmin = can('ALWAYS');
+    const canManage = can('MODULE_ICECREAM_MANAGE');
     const isSorvete = user?.role === UserRole.ICE_CREAM;
-    const isAdmin = user?.role === UserRole.ADMIN;
-    const isManager = user?.role === UserRole.MANAGER;
-    const canManage = isAdmin || isManager;
 
     // Dates
     const [displayDate, setDisplayDate] = useState(new Date().toISOString().split('T')[0]);
@@ -858,8 +857,8 @@ const IceCreamModule: React.FC<IceCreamModuleProps> = ({
                         user={user}
                         items={items}
                         effectiveStoreId={effectiveStoreId}
-                        onAddSales={isSorvete ? async () => {} : onAddSales}
-                        onAddSaleAtomic={isSorvete ? async () => {} : onAddSaleAtomic}
+                        onAddSales={onAddSales}
+                        onAddSaleAtomic={onAddSaleAtomic}
                         onUpdateStock={handleUpdateStock}
                         handleOpenPrintPreview={handleOpenPrintPreview}
                         existingBuyerNames={Array.from(new Set(sales.map(s => s.buyer_name).filter(Boolean) as string[]))}
@@ -932,7 +931,7 @@ const IceCreamModule: React.FC<IceCreamModuleProps> = ({
                     <EstoqueTab 
                         filteredStock={stock.filter(s => s.store_id === effectiveStoreId)}
                         isAdmin={canManage && !isSorvete}
-                        onUpdateStock={isSorvete ? async () => {} : handleUpdateStock}
+                        onUpdateStock={handleUpdateStock}
                         onAddStockBase={isSorvete ? async () => {} : (base, unit, storeId) => onAddItem(base, 'INSUMO', 0, '', 0, unit, 0, storeId, [])}
                         onDeleteStockBase={isSorvete ? async () => {} : onDeleteStockItem}
                         onToggleFreezeStock={async (id, active) => {

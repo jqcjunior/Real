@@ -438,6 +438,7 @@ interface CotasManagementProps {
     percent: number,
     semester: number
   ) => Promise<void>;
+  can: (permissionKey: string) => boolean;
 }
 
 // ─────────────────────────────────────────────
@@ -450,8 +451,9 @@ export const CotasManagement: React.FC<CotasManagementProps> = ({
   onAddCota, onUpdateCota, onDeleteCota,
   onSaveSettings, onSaveDebts, onDeleteDebt,
   onUpdateMixParameter,
+  can,
 }) => {
-  const isAdmin = user.role === UserRole.ADMIN;
+  const isAdmin = can('ALWAYS');
   const { toast, showToast } = useToast();
 
   // ── Loja visualizada ──────────────────────

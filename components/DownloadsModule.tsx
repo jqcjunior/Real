@@ -12,14 +12,15 @@ interface DownloadsModuleProps {
   items: DownloadItem[] | null | undefined;
   onUpload: (item: DownloadItem) => Promise<void>;
   onDelete: (id: string) => Promise<void>;
+  can: (permissionKey: string) => boolean;
 }
 
-const DownloadsModule: React.FC<DownloadsModuleProps> = ({ user, items, onUpload, onDelete }) => {
+const DownloadsModule: React.FC<DownloadsModuleProps> = ({ user, items, onUpload, onDelete, can }) => {
   const [filterCategory, setFilterCategory] = useState<'all' | 'spreadsheet' | 'media'>('all');
   const [searchTerm, setSearchTerm] = useState('');
   const [isModalOpen, setIsModalOpen] = useState(false);
   
-  const isAdmin = user?.role === UserRole.ADMIN;
+  const isAdmin = can('ALWAYS');
 
   return (
     <div className="p-4 md:p-8 max-w-7xl mx-auto space-y-6 md:space-y-8 animate-in fade-in duration-500">

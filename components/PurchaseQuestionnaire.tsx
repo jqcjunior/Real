@@ -14,9 +14,10 @@ interface PurchaseQuestionnaireProps {
     user: User;
     stores: Store[];
     adminUsers: AdminUser[];
+    can: (perm: string) => boolean;
 }
 
-const PurchaseQuestionnaire: React.FC<PurchaseQuestionnaireProps> = ({ user, stores, adminUsers }) => {
+const PurchaseQuestionnaire: React.FC<PurchaseQuestionnaireProps> = ({ user, stores, adminUsers, can }) => {
     const [questionnaires, setQuestionnaires] = useState<Questionnaire[]>([]);
     const [products, setProducts] = useState<QuestionnaireProduct[]>([]);
     const [answers, setAnswers] = useState<QuestionnaireAnswer[]>([]);
@@ -31,7 +32,7 @@ const PurchaseQuestionnaire: React.FC<PurchaseQuestionnaireProps> = ({ user, sto
     const [qDesc, setQDesc] = useState('');
     const [qProducts, setQProducts] = useState<Partial<QuestionnaireProduct>[]>([]);
 
-    const isAdmin = user.role === 'ADMIN';
+    const isAdmin = can('ALWAYS');
 
     const fetchAllData = async () => {
         setIsLoading(true);

@@ -40,7 +40,7 @@ const LoginScreen: React.FC<LoginScreenProps> = ({ onLoginAttempt, onRegisterReq
     try {
         const result = await onLoginAttempt(email.trim(), password.trim(), rememberMe);
         if (!result.success) {
-            setError(result.error || 'Senha ou e-mail incorretos.');
+            setError(result.error || 'Credenciais inválidas. Use o e-mail jqcjunior1981@gmail.com e a senha padrão "admin".');
             setPassword(''); // Zerar a senha para nova inserção
             setIsLoading(false);
         }

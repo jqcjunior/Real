@@ -30,6 +30,7 @@ interface CashRegisterModuleProps {
     receipts: Receipt[];
     errors: CashError[];
     finances?: any[];
+    can: (perm: string) => boolean;
     onAddClosure: (closure: any) => Promise<void>;
     onAddReceipt: (receipt: any) => Promise<any>;
     onAddError: (error: any) => Promise<void>;
@@ -560,8 +561,9 @@ export const printErrorsDoc = (title: string, dateInfo: string, storeName: strin
 };
  
 const CashRegisterModule: React.FC<CashRegisterModuleProps> = ({ 
-    user, stores, receipts, errors, finances, onAddReceipt, onAddError, onDeleteError, onAddClosure, onAddLog 
+    user, stores, receipts, errors, finances, can, onAddReceipt, onAddError, onDeleteError, onAddClosure, onAddLog 
 }) => {
+    const isAdmin = can('ALWAYS');
     const [activeTab, setActiveTab] = useState<'recibos' | 'cartoes' | 'pix' | 'quebras'>('recibos');
     const [isSubmitting, setIsSubmitting] = useState(false);
     const [selectedDate, setSelectedDate] = useState(new Date().toISOString().split('T')[0]);
@@ -684,7 +686,7 @@ const CashRegisterModule: React.FC<CashRegisterModuleProps> = ({
                 .eq('store_id', selectedStoreId)  // ✅ Filtra por loja
                 .eq('date', selectedDate);         // ✅ Filtra por data
 
-            if (user.role !== UserRole.ADMIN) {
+            if (!isAdmin) {
                 cardQuery = cardQuery.eq('user_id', user.id);
             }
 
@@ -699,7 +701,7 @@ const CashRegisterModule: React.FC<CashRegisterModuleProps> = ({
                 .eq('store_id', selectedStoreId)  // ✅ Filtra por loja
                 .eq('date', selectedDate);         // ✅ Filtra por data
 
-            if (user.role !== UserRole.ADMIN) {
+            if (!isAdmin) {
                 pixQuery = pixQuery.eq('user_id', user.id);
             }
 
@@ -1022,7 +1024,7 @@ const CashRegisterModule: React.FC<CashRegisterModuleProps> = ({
                         <div><h1 className="text-xl font-black text-blue-950 uppercase italic tracking-tighter">Gestão de Caixa</h1><p className="text-[10px] text-gray-400 font-bold uppercase tracking-widest">Finanças e Auditoria Rede Real</p></div>
                     </div>
  
-                    {user.role === UserRole.ADMIN && (
+                    {can('ALWAYS') && (
                         <div className="flex items-center gap-2 bg-gray-50 dark:bg-slate-800 px-4 py-2 rounded-2xl border border-gray-200 dark:border-slate-700 shadow-inner">
                             <Settings2 size={16} className="text-blue-600" />
                             <select 
@@ -1302,6 +1304,7 @@ const CashRegisterModule: React.FC<CashRegisterModuleProps> = ({
                         onAddError={onAddError}
                         onUpdateError={async (e) => { await supabase.from('cash_errors').update(e).eq('id', e.id); }}
                         onDeleteError={onDeleteError}
+                        can={can}
                     />
                 )}
             </div>

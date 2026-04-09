@@ -1,30 +1,46 @@
 import { supabase } from './supabaseClient';
 
-/**
- * Serviço de API usando Database Functions do Supabase
- * Backend completo sem precisar de servidor Node.js!
- */
-
 class ApiService {
   /**
-   * Login do usuário
+   * Login do usuário - Integrado com RLS
    */
   async login(email: string, password: string) {
     try {
-      const { data, error } = await supabase.rpc('fn_login', {
+      const { data, error } = await supabase.rpc('authenticate_user', {
         p_email: email,
         p_password: password
       });
 
       if (error) throw error;
 
-      if (data.success) {
-        // Salvar token no sessionStorage (não persiste após fechar a aba)
-        sessionStorage.setItem('auth_token', data.token);
-        sessionStorage.setItem('user', JSON.stringify(data.user));
-        return data;
+      if (data && data[0]?.is_valid) {
+        const user = data[0];
+        
+        // 1. SETAR SESSÃO NO POSTGRES (Fundamental para o RLS funcionar)
+        await supabase.rpc('set_user_session', {
+          user_id: user.user_id
+        });
+
+        // 2. Mapear para o formato que o seu App.tsx já usa
+        const mappedUser = {
+          id: user.user_id,
+          name: user.name,
+          email: user.email,
+          role: (user.role_level || user.role || 'CASHIER').toUpperCase(),
+          storeId: user.store_id
+        };
+
+        // 3. Persistência Limpa
+        // Usamos sessionStorage para a sessão ativa e localStorage para o backup do RLS
+        sessionStorage.setItem('user', JSON.stringify(mappedUser));
+        localStorage.setItem('user', JSON.stringify(user)); 
+        
+        // Token para manter compatibilidade com funções antigas, mas o ID é o que manda
+        sessionStorage.setItem('auth_token', 'session_' + user.user_id);
+
+        return { success: true, user: mappedUser };
       } else {
-        throw new Error(data.error);
+        throw new Error('E-mail ou senha incorretos.');
       }
     } catch (error: any) {
       console.error('Erro no login:', error);
@@ -32,88 +48,56 @@ class ApiService {
     }
   }
 
-  /**
-   * Logout
-   */
   async logout() {
-    try {
-      const token = this.getToken();
-      if (token) {
-        await supabase.rpc('fn_logout', { p_token: token });
-      }
-      sessionStorage.removeItem('auth_token');
-      sessionStorage.removeItem('user');
-    } catch (error) {
-      console.error('Erro no logout:', error);
-      sessionStorage.removeItem('auth_token');
-      sessionStorage.removeItem('user');
-    }
+    sessionStorage.clear();
+    // Não limpamos o localStorage para evitar deslogar de outras abas se não quiser, 
+    // mas se quiser logout total, use localStorage.clear()
+    window.location.reload(); 
   }
 
-  /**
-   * Pegar token do localStorage
-   */
-  getToken(): string | null {
-    return sessionStorage.getItem('auth_token');
-  }
-
-  /**
-   * Pegar usuário do localStorage
-   */
   getUser() {
     try {
       const userStr = sessionStorage.getItem('user');
       return userStr ? JSON.parse(userStr) : null;
     } catch (error) {
-      console.error('Erro ao ler usuário do sessionStorage:', error);
-      sessionStorage.removeItem('user');
       return null;
     }
   }
 
-  /**
-   * Verificar se está autenticado
-   */
+  getToken() {
+    return sessionStorage.getItem('auth_token');
+  }
+
   isAuthenticated(): boolean {
-    return !!this.getToken();
+    return !!sessionStorage.getItem('user');
   }
 
   /**
-   * Criar recibo
+   * Função para garantir que o RLS está ativo antes de qualquer chamada
    */
-  async createReceipt(receiptData: {
-    payer: string;
-    recipient: string;
-    value: number;
-    value_in_words: string;
-    reference: string;
-    receipt_date: string;
-  }) {
-    try {
-      const token = this.getToken();
-      if (!token) throw new Error('Não autenticado');
-
-      const { data, error } = await supabase.rpc('fn_create_receipt', {
-        p_token: token,
-        p_payer: receiptData.payer,
-        p_recipient: receiptData.recipient,
-        p_value: receiptData.value,
-        p_value_in_words: receiptData.value_in_words,
-        p_reference: receiptData.reference,
-        p_receipt_date: receiptData.receipt_date
-      });
-
-      if (error) throw error;
-
-      if (data.success) {
-        return data.receipt;
-      } else {
-        throw new Error(data.error);
-      }
-    } catch (error: any) {
-      console.error('Erro ao criar recibo:', error);
-      throw error;
+  async ensureRLS() {
+    const user = this.getUser();
+    if (user?.id) {
+      await supabase.rpc('set_user_session', { user_id: user.id });
     }
+  }
+
+  // --- Módulos de Recibo (Ajustados para não depender de token fake se o RLS já resolve) ---
+  
+  async createReceipt(receiptData: any) {
+    await this.ensureRLS();
+    const { data, error } = await supabase.from('financial_receipts').insert([{
+      store_id: this.getUser()?.storeId,
+      payer: receiptData.payer,
+      recipient: receiptData.recipient,
+      value: receiptData.value,
+      value_in_words: receiptData.value_in_words,
+      reference: receiptData.reference,
+      receipt_date: receiptData.receipt_date
+    }]).select().single();
+
+    if (error) throw error;
+    return data;
   }
 
   /**
@@ -121,11 +105,9 @@ class ApiService {
    */
   async getNextReceiptNumber() {
     try {
-      const token = this.getToken();
-      if (!token) throw new Error('Não autenticado');
-
+      await this.ensureRLS();
       const { data, error } = await supabase.rpc('fn_get_next_receipt_number', {
-        p_token: token
+        p_token: this.getToken()
       });
 
       if (error) throw error;
@@ -149,11 +131,9 @@ class ApiService {
    */
   async listReceipts(limit: number = 50) {
     try {
-      const token = this.getToken();
-      if (!token) throw new Error('Não autenticado');
-
+      await this.ensureRLS();
       const { data, error } = await supabase.rpc('fn_list_receipts', {
-        p_token: token,
+        p_token: this.getToken(),
         p_limit: limit
       });
 

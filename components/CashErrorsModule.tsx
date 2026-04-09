@@ -9,6 +9,7 @@ interface CashErrorsModuleProps {
   store?: Store;
   stores: Store[];
   errors: CashError[];
+  can: (perm: string) => boolean;
   onAddError: (error: any) => Promise<void>;
   onUpdateError: (error: CashError) => Promise<void>;
   onDeleteError: (id: string) => Promise<void>;
@@ -21,7 +22,7 @@ const MONTHS = [
   { value: 10, label: 'Outubro' }, { value: 11, label: 'Novembro' }, { value: 12, label: 'Dezembro' }
 ];
 
-const CashErrorsModule: React.FC<CashErrorsModuleProps> = ({ user, store, stores, errors, onAddError, onUpdateError, onDeleteError }) => {
+const CashErrorsModule: React.FC<CashErrorsModuleProps> = ({ user, store, stores, errors, can, onAddError, onUpdateError, onDeleteError }) => {
   const [activeTab, setActiveTab] = useState<'list' | 'new'>('new');
   const [isSubmitting, setIsSubmitting] = useState(false);
   
@@ -40,8 +41,8 @@ const CashErrorsModule: React.FC<CashErrorsModuleProps> = ({ user, store, stores
       witnessRole: ''
   });
 
-  const isAdmin = user.role === UserRole.ADMIN;
-  const canEdit = user.role !== UserRole.ICE_CREAM; // Everyone except maybe ice cream role can record errors
+  const isAdmin = can('ALWAYS');
+  const canEdit = can('MODULE_CASH_ERRORS_EDIT');
 
   // Cálculos automáticos
   const expected = parseFloat(formData.expectedValue.replace(/\./g, '').replace(',', '.')) || 0;

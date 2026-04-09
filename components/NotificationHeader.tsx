@@ -8,15 +8,16 @@ interface NotificationHeaderProps {
     stores: Store[];
     agenda: AgendaItem[];
     onNavigate: (view: string) => void;
+    can: (perm: string) => boolean;
 }
 
-const NotificationHeader: React.FC<NotificationHeaderProps> = ({ user, stores, agenda, onNavigate }) => {
+const NotificationHeader: React.FC<NotificationHeaderProps> = ({ user, stores, agenda, onNavigate, can }) => {
     const [isOpen, setIsOpen] = useState(false);
 
     const pendingAccessRequests = useMemo(() => {
-        if (user.role !== UserRole.ADMIN) return [];
+        if (!can('ALWAYS')) return [];
         return stores.filter(s => s.status === 'pending');
-    }, [stores, user.role]);
+    }, [stores, can]);
 
     const pendingTasks = useMemo(() => {
         // Only show tasks for the current user or all if admin? 
