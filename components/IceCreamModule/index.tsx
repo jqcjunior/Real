@@ -80,6 +80,14 @@ const IceCreamModule: React.FC<IceCreamModuleProps> = ({
     const canManage = can('MODULE_ICECREAM_MANAGE');
     const isSorvete = user?.role === UserRole.ICE_CREAM;
 
+    // ✅ FIX: Auto-selecionar loja para usuários SORVETE
+    useEffect(() => {
+        if (user?.role === UserRole.ICE_CREAM && user?.storeId && effectiveStoreId !== user.storeId) {
+            console.log('🔧 Auto-selecionando loja do usuário SORVETE:', user.storeId);
+            setEffectiveStoreId(user.storeId);
+        }
+    }, [user]);
+
     // Dates
     const [displayDate, setDisplayDate] = useState(new Date().toISOString().split('T')[0]);
     const [selectedMonth, setSelectedMonth] = useState(new Date().getMonth() + 1);
@@ -609,7 +617,7 @@ const IceCreamModule: React.FC<IceCreamModuleProps> = ({
                 </div>
     
                 <div class="footer">
-                    Documento gerado em ${new Date().toLocaleString('pt-BR')} por Real Admin v6.5
+                    Documento gerado em ${new Date().toLocaleString('pt-BR')} por Sorveteria Real
                 </div>
     
                 <script>
@@ -779,10 +787,10 @@ const IceCreamModule: React.FC<IceCreamModuleProps> = ({
                                 <h1 className="text-lg font-black uppercase italic tracking-tighter text-slate-900 leading-none">
                                     Real <span className="text-blue-600">Admin</span>
                                 </h1>
-                                <p className="text-[9px] font-bold text-slate-400 uppercase tracking-widest mt-1">Sorveteria v6.5</p>
+                                <p className="text-[9px] font-bold text-slate-400 uppercase tracking-widest mt-1">Sorveteria Real</p>
                             </div>
                         </div>
-
+ 
                         {/* Store Selector Mobile */}
                         <div className="md:hidden">
                             {isAdmin ? (
@@ -795,7 +803,7 @@ const IceCreamModule: React.FC<IceCreamModuleProps> = ({
                                 </select>
                             ) : (
                                 <div className="bg-slate-100 rounded-xl px-3 py-2 text-[9px] font-black uppercase text-slate-600 border border-slate-200">
-                                    {stores.find(s => s.id === effectiveStoreId)?.name || 'LOJA'}
+                                    {stores.find(s => s.id === effectiveStoreId)?.name || user?.name || 'LOJA'}
                                 </div>
                             )}
                         </div>
@@ -843,7 +851,7 @@ const IceCreamModule: React.FC<IceCreamModuleProps> = ({
                             </select>
                         ) : (
                             <div className="bg-slate-100 rounded-xl px-4 py-2.5 text-[10px] font-black uppercase text-slate-600 border border-slate-200">
-                                {stores.find(s => s.id === effectiveStoreId)?.name || 'LOJA'}
+                                {stores.find(s => s.id === effectiveStoreId)?.name || user?.name || 'LOJA'}
                             </div>
                         )}
                     </div>

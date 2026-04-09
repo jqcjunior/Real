@@ -29,6 +29,7 @@ import SystemAudit from './components/SystemAudit';
 import SpreadsheetOrderModule from './components/SpreadsheetOrderModule';
 import OSDemandsModule from './components/OSDemandsModule';
 import DashboardPAModule from './components/dashboardPA/DashboardPAModule';
+import DashboardPAGerente from './components/dashboardPA/DashboardPAGerente';
 import LoginScreen from './components/LoginScreen';
 import NotificationHeader from './components/NotificationHeader';
 import ChangePasswordModal from './components/ChangePasswordModal';
@@ -68,6 +69,15 @@ const App: React.FC = () => {
                 
                 // PASSO 3: Recuperar usuário e normalizar a Role
                 const savedUser = apiService.getUser();
+
+                // DEBUG TEMPORÁRIO - ADICIONAR ESTAS LINHAS
+                console.log('=== DEBUG SAVED USER ===');
+                console.log('savedUser completo:', savedUser);
+                console.log('savedUser.id:', savedUser?.id);
+                console.log('savedUser.name:', savedUser?.name);
+                console.log('savedUser.email:', savedUser?.email);
+                console.log('========================');
+
                 if (savedUser && apiService.isAuthenticated()) {
                     const rawRole = (savedUser.role_level || savedUser.role || '').toUpperCase().trim();
                     
@@ -85,11 +95,11 @@ const App: React.FC = () => {
                         storeId: savedUser.store_id || savedUser.storeId
                     };
                     
-                    // PASSO 4: Buscar permissões no banco ANTES de carregar os dados
-                    await fetchPermissions(mappedRole);
-                    
-                    // PASSO 5: Setar usuário
+                    // PASSO 4: Setar usuário
                     setUser(loggedUser);
+
+                    // PASSO 5: Buscar permissões no banco ANTES de carregar os dados
+                    await fetchPermissions(mappedRole, loggedUser.name);
 
                     // PASSO 6: Agora que temos ID e Permissões, carregamos os dados
                     await fetchData();
@@ -130,6 +140,7 @@ const App: React.FC = () => {
                 { key: 'MODULE_DASHBOARD_ADMIN', label: 'Dashboard Rede', group: 'Inteligência' },
                 { key: 'MODULE_DASHBOARD_MANAGER', label: 'Dashboard Loja', group: 'Inteligência' },
                 { key: 'MODULE_DASHBOARD_PA', label: 'Dashboard P.A.', group: 'Inteligência' },
+                { key: 'MODULE_DASHBOARD_PA_MANAGER', label: 'Dashboard P.A. (Gerente)', group: 'Inteligência' },
                 { key: 'MODULE_METAS', label: 'Metas', group: 'Inteligência' },
                 { key: 'MODULE_COTAS', label: 'Cotas OTB', group: 'Inteligência' },
                 { key: 'MODULE_PURCHASES', label: 'Compras', group: 'Inteligência' },
@@ -232,7 +243,7 @@ const App: React.FC = () => {
         return userPermissions.includes(permissionKey);
     };
 
-    const fetchPermissions = async (role: string) => {
+    const fetchPermissions = async (role: string, userName?: string) => {
         try {
             setPermissionsLoaded(false);
             const roleUpper = String(role || '').toUpperCase().trim();
@@ -262,7 +273,7 @@ const App: React.FC = () => {
             setPermissionsLoaded(true);
 
             console.log('--- DEBUG PERMISSÕES ---');
-            console.log('USUÁRIO:', user?.name);
+            console.log('USUÁRIO:', userName || user?.name);
             console.log('ROLE:', roleUpper);
             console.log('PERMISSÕES CARREGADAS:', perms);
             console.log('------------------------');
@@ -475,10 +486,6 @@ const App: React.FC = () => {
             else if (rawRole === 'CAIXA' || rawRole === 'CASHIER') mappedRole = UserRole.CASHIER;
             else if (rawRole === 'SORVETE' || rawRole === 'SORVETERIA' || rawRole === 'ICE_CREAM') mappedRole = UserRole.ICE_CREAM;
 
-            // PASSO 1: Buscar permissões no banco
-            await fetchPermissions(mappedRole);
-
-            // PASSO 2: Criar objeto de usuário
             const loggedUser: User = { 
                 id: result.user.id, 
                 name: result.user.name, 
@@ -487,8 +494,11 @@ const App: React.FC = () => {
                 storeId: result.user.storeId 
             };
             
-            // PASSO 3: Setar usuário
+            // PASSO 1: Setar usuário
             setUser(loggedUser);
+
+            // PASSO 2: Buscar permissões no banco (com user já setado)
+            await fetchPermissions(mappedRole, loggedUser.name);
             
             // Define visão inicial
             setCurrentView(mappedRole === UserRole.ADMIN ? 'dashboard_rede' : 
@@ -568,6 +578,7 @@ const App: React.FC = () => {
                             { id: 'dashboard_rede', label: 'Dashboard Rede', icon: LayoutDashboard, perm: 'MODULE_DASHBOARD_ADMIN' }, 
                             { id: 'dashboard_loja', label: 'Dashboard Loja', icon: LayoutDashboard, perm: 'MODULE_DASHBOARD_MANAGER' }, 
                             { id: 'dashboard_pa', label: 'Dashboard P.A.', icon: Trophy, perm: 'MODULE_DASHBOARD_PA' }, 
+                            { id: 'dashboard_pa_manager', label: 'Dashboard P.A.', icon: Trophy, perm: 'MODULE_DASHBOARD_PA_MANAGER' }, 
                             { id: 'metas', label: 'Metas', icon: Target, perm: 'MODULE_METAS' }, 
                             { id: 'cotas', label: 'Cotas OTB', icon: Calculator, perm: 'MODULE_COTAS' }, 
                             { id: 'compras', label: 'Compras', icon: ShoppingBag, perm: 'MODULE_PURCHASES' }, 
@@ -949,6 +960,10 @@ const App: React.FC = () => {
                             stores={stores} 
                             onRefresh={fetchData}
                             can={can}
+                        />;
+                        if (currentView === 'dashboard_pa_manager' && can('MODULE_DASHBOARD_PA_MANAGER')) return <DashboardPAGerente 
+                            user={user!} 
+                            store={stores.find(s => s.id === user?.storeId)} 
                         />;
                         return <div className="flex items-center justify-center h-full text-gray-400 uppercase tracking-widest font-black text-sm">Selecione um módulo no menu</div>;
                     })()}

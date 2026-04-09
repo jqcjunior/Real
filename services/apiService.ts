@@ -16,6 +16,16 @@ class ApiService {
       if (data && data[0]?.is_valid) {
         const user = data[0];
         
+        // DEBUG TEMPORÁRIO - ADICIONAR ESTAS LINHAS
+        console.log('=== DEBUG AUTHENTICATE_USER ===');
+        console.log('Dados retornados do banco:', user);
+        console.log('user.user_id:', user.user_id);
+        console.log('user.name:', user.name);
+        console.log('user.email:', user.email);
+        console.log('user.role_level:', user.role_level);
+        console.log('user.store_id:', user.store_id);
+        console.log('===============================');
+        
         // 1. SETAR SESSÃO NO POSTGRES (Fundamental para o RLS funcionar)
         await supabase.rpc('set_user_session', {
           user_id: user.user_id
