@@ -699,14 +699,13 @@ const IceCreamModule: React.FC<IceCreamModuleProps> = ({
 
     const handleUpdateSangria = async (id: string, data: any) => {
         try {
-            const { error } = await supabase.rpc('update_ice_cream_sangria_admin', {
-                p_id: id,
-                p_amount: data.amount,
-                p_description: data.description,
-                p_category_id: data.category_id,
-                p_transaction_date: data.transaction_date,
-                p_notes: data.notes
-            });
+            const { error } = await supabase.from('ice_cream_sangria').update({
+                amount: data.amount,
+                description: data.description,
+                category_id: data.category_id,
+                transaction_date: data.transaction_date,
+                notes: data.notes
+            }).eq('id', id);
             if (error) throw error;
             if (fetchData) await fetchData();
         } catch (e: any) {
@@ -717,7 +716,7 @@ const IceCreamModule: React.FC<IceCreamModuleProps> = ({
     const handleDeleteSangria = async (id: string) => {
         if (!confirm("Excluir sangria?")) return;
         try {
-            const { error } = await supabase.rpc('delete_ice_cream_sangria_admin', { p_id: id });
+            const { error } = await supabase.from('ice_cream_sangria').delete().eq('id', id);
             if (error) throw error;
             if (fetchData) await fetchData();
         } catch (e: any) {

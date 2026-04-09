@@ -1,5 +1,5 @@
 import React, { useMemo } from 'react';
-import { X, Plus, Loader2, Calendar, DollarSign, Tag, FileText } from 'lucide-react';
+import { X, Plus, Loader2, Calendar, DollarSign, Tag, FileText, Clock } from 'lucide-react';
 import { formatCurrency } from '../../../constants';
 import { IceCreamSangriaCategory } from '../../../types';
 
@@ -10,6 +10,7 @@ interface FutureDebtModalProps {
         supplier_name: string;
         total_amount: string;
         total_installments: string;
+        intervals: string;
         first_due_date: string;
         categoryId: string;
         description: string;
@@ -42,7 +43,7 @@ const FutureDebtModal: React.FC<FutureDebtModalProps> = ({
             <div className="bg-white rounded-[40px] w-full max-w-lg shadow-2xl overflow-hidden border-t-8 border-purple-600 animate-in zoom-in duration-300">
                 <div className="p-6 border-b flex justify-between items-center bg-gray-50/50">
                     <h3 className="text-lg font-black uppercase italic text-purple-950 flex items-center gap-3">
-                        <DollarSign size={20} className="text-purple-600" /> Lançar <span className="text-purple-600">Dívida Parcelada</span>
+                        <DollarSign size={20} className="text-purple-600" /> Lançar <span className="text-purple-600">Despesa</span>
                     </h3>
                     <button onClick={onClose} className="text-gray-400 hover:text-red-600 transition-colors">
                         <X size={24} />
@@ -90,11 +91,25 @@ const FutureDebtModal: React.FC<FutureDebtModalProps> = ({
                                     onChange={e => setForm({ ...form, total_installments: e.target.value })}
                                     className="w-full p-4 bg-gray-50 border-none rounded-[20px] font-black text-lg outline-none focus:ring-4 focus:ring-purple-500/20"
                                 >
-                                    {[...Array(12)].map((_, i) => (
+                                    {[...Array(24)].map((_, i) => (
                                         <option key={i + 1} value={i + 1}>{i + 1}x</option>
                                     ))}
                                 </select>
                             </div>
+                        </div>
+
+                        {/* Intervalos */}
+                        <div className="space-y-2">
+                            <label className="text-[10px] font-black text-gray-400 uppercase ml-2 flex items-center gap-2">
+                                <Clock size={12} /> Prazos / Intervalos (Dias)
+                            </label>
+                            <input
+                                value={form.intervals}
+                                onChange={e => setForm({ ...form, intervals: e.target.value })}
+                                placeholder="EX: 30/45/60/75"
+                                className="w-full p-4 bg-gray-50 border-none rounded-[20px] font-black text-xs outline-none focus:ring-4 focus:ring-purple-500/20 uppercase"
+                            />
+                            <p className="text-[8px] text-gray-400 font-bold uppercase ml-2">Separe por barra (/) para cada parcela. Se vazio, usará 30 em 30 dias.</p>
                         </div>
 
                         {/* Preview Parcelas */}

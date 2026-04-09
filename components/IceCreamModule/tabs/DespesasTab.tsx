@@ -69,6 +69,7 @@ const DespesasTab: React.FC<DespesasTabProps> = ({
         supplier_name: '',
         total_amount: '',
         total_installments: '1',
+        intervals: '',
         first_due_date: new Date().toISOString().split('T')[0],
         categoryId: '',
         description: ''
@@ -139,24 +140,55 @@ const DespesasTab: React.FC<DespesasTabProps> = ({
     const handleAddFutureDebt = async () => {
         setIsSubmitting(true);
         try {
-            await onAddFutureDebt({
-                ...futureDebtForm,
-                total_amount: parseFloat(futureDebtForm.total_amount.replace(',', '.')),
-                total_installments: parseInt(futureDebtForm.total_installments),
-                store_id: effectiveStoreId
-            });
+            const total = parseFloat(futureDebtForm.total_amount.replace(',', '.')) || 0;
+            const installmentsCount = parseInt(futureDebtForm.total_installments) || 1;
+            const installmentAmount = total / installmentsCount;
+            
+            // Parse intervals
+            const intervalDays = futureDebtForm.intervals.split('/').map(i => parseInt(i.trim())).filter(i => !isNaN(i));
+            
+            const launchDate = new Date(futureDebtForm.first_due_date + 'T12:00:00');
+
+            for (let i = 0; i < installmentsCount; i++) {
+                const dueDate = new Date(launchDate);
+                
+                if (intervalDays.length > 0) {
+                    // Use custom intervals if provided
+                    const daysToAdd = intervalDays[i] || (intervalDays[intervalDays.length - 1] + (30 * (i - intervalDays.length + 1)));
+                    dueDate.setDate(dueDate.getDate() + daysToAdd);
+                } else {
+                    // Default 30-day interval
+                    dueDate.setMonth(dueDate.getMonth() + i);
+                }
+
+                await onAddFutureDebt({
+                    store_id: effectiveStoreId,
+                    supplier_name: futureDebtForm.supplier_name,
+                    total_amount: total,
+                    installment_number: i + 1,
+                    total_installments: installmentsCount,
+                    installment_amount: installmentAmount,
+                    due_date: dueDate.toISOString().split('T')[0],
+                    status: 'pending',
+                    category_id: futureDebtForm.categoryId,
+                    description: futureDebtForm.description
+                });
+            }
+
             setShowFutureDebtModal(false);
             setFutureDebtForm({
                 supplier_name: '',
                 total_amount: '',
                 total_installments: '1',
+                intervals: '',
                 first_due_date: new Date().toISOString().split('T')[0],
                 categoryId: '',
                 description: ''
             });
             if (fetchData) await fetchData();
+            alert("Despesa lançada com sucesso!");
         } catch (e: any) {
-            alert("Erro ao adicionar dívida: " + e.message);
+            alert("Erro ao adicionar despesa: " + e.message);
         } finally {
             setIsSubmitting(false);
         }
@@ -264,6 +296,12 @@ const DespesasTab: React.FC<DespesasTabProps> = ({
 
                 <div className="grid grid-cols-2 md:flex gap-3 w-full md:w-auto">
                     <button 
+                        onClick={handlePrint}
+                        className="px-4 md:px-6 py-3 md:py-4 bg-gray-900 text-white rounded-xl md:rounded-2xl font-black uppercase text-[10px] md:text-xs shadow-lg shadow-gray-100 hover:bg-gray-800 transition-all flex items-center justify-center gap-2 border-b-4 border-gray-700 active:scale-95"
+                    >
+                        <Printer size={16} /> <span className="truncate">Relatório</span>
+                    </button>
+                    <button 
                         onClick={() => setShowSangriaModal(true)}
                         className="px-4 md:px-6 py-3 md:py-4 bg-red-600 text-white rounded-xl md:rounded-2xl font-black uppercase text-[10px] md:text-xs shadow-lg shadow-red-100 hover:bg-red-700 transition-all flex items-center justify-center gap-2 border-b-4 border-red-900 active:scale-95"
                     >
@@ -273,7 +311,7 @@ const DespesasTab: React.FC<DespesasTabProps> = ({
                         onClick={() => setShowFutureDebtModal(true)}
                         className="px-4 md:px-6 py-3 md:py-4 bg-purple-600 text-white rounded-xl md:rounded-2xl font-black uppercase text-[10px] md:text-xs shadow-lg shadow-purple-100 hover:bg-purple-700 transition-all flex items-center justify-center gap-2 border-b-4 border-purple-900 active:scale-95"
                     >
-                        <Clock size={16} /> <span className="truncate">Agendar Dívida</span>
+                        <Clock size={16} /> <span className="truncate">Lançar Despesa</span>
                     </button>
                 </div>
             </div>

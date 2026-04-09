@@ -61,6 +61,7 @@ const DREMensalTab: React.FC<DREMensalTabProps> = ({
         supplier_name: '',
         total_amount: '',
         total_installments: '1',
+        intervals: '',
         first_due_date: new Date().toISOString().split('T')[0],
         categoryId: '',
         description: ''
@@ -74,19 +75,32 @@ const DREMensalTab: React.FC<DREMensalTabProps> = ({
         setIsSubmitting(true);
         try {
             const total = parseFloat(futureDebtForm.total_amount.replace(',', '.')) || 0;
-            const installments = parseInt(futureDebtForm.total_installments) || 1;
-            const installmentAmount = total / installments;
+            const installmentsCount = parseInt(futureDebtForm.total_installments) || 1;
+            const installmentAmount = total / installmentsCount;
+            
+            // Parse intervals
+            const intervalDays = futureDebtForm.intervals.split('/').map(i => parseInt(i.trim())).filter(i => !isNaN(i));
+            
+            const launchDate = new Date(futureDebtForm.first_due_date + 'T12:00:00');
 
-            for (let i = 0; i < installments; i++) {
-                const dueDate = new Date(futureDebtForm.first_due_date + 'T12:00:00');
-                dueDate.setMonth(dueDate.getMonth() + i);
+            for (let i = 0; i < installmentsCount; i++) {
+                const dueDate = new Date(launchDate);
+                
+                if (intervalDays.length > 0) {
+                    // Use custom intervals if provided
+                    const daysToAdd = intervalDays[i] || (intervalDays[intervalDays.length - 1] + (30 * (i - intervalDays.length + 1)));
+                    dueDate.setDate(dueDate.getDate() + daysToAdd);
+                } else {
+                    // Default 30-day interval
+                    dueDate.setMonth(dueDate.getMonth() + i);
+                }
 
                 await onAddFutureDebt({
                     store_id: effectiveStoreId,
                     supplier_name: futureDebtForm.supplier_name,
                     total_amount: total,
                     installment_number: i + 1,
-                    total_installments: installments,
+                    total_installments: installmentsCount,
                     installment_amount: installmentAmount,
                     due_date: dueDate.toISOString().split('T')[0],
                     status: 'pending',
@@ -101,13 +115,14 @@ const DREMensalTab: React.FC<DREMensalTabProps> = ({
                 supplier_name: '',
                 total_amount: '',
                 total_installments: '1',
+                intervals: '',
                 first_due_date: new Date().toISOString().split('T')[0],
                 categoryId: '',
                 description: ''
             });
-            alert("Dívida parcelada lançada com sucesso!");
+            alert("Despesa lançada com sucesso!");
         } catch (e: any) {
-            alert("Erro ao lançar dívida: " + e.message);
+            alert("Erro ao lançar despesa: " + e.message);
         } finally {
             setIsSubmitting(false);
         }
@@ -131,19 +146,13 @@ const DREMensalTab: React.FC<DREMensalTabProps> = ({
                     </div>
                     <div className="flex gap-2">
                         <button onClick={handlePrintDreMensal} className="px-4 py-2.5 bg-gray-900 text-white rounded-xl font-black uppercase text-[9px] shadow-lg flex items-center gap-2 border-b-4 border-gray-700 active:scale-95">
-                            <Printer size={14}/> Mês
+                            <Printer size={14}/> Relatório
                         </button>
                         <button 
                             onClick={() => printSangriasReport({ sangrias, sangriaCategories, adminUsers, stores, effectiveStoreId, selectedMonth, selectedYear })}
                             className="px-4 py-2.5 bg-red-600 text-white rounded-xl font-black uppercase text-[9px] shadow-lg flex items-center gap-2 border-b-4 border-red-800 active:scale-95"
                         >
-                            <Printer size={14}/> Sangrias
-                        </button>
-                        <button 
-                            onClick={() => setShowFutureDebtModal(true)}
-                            className="px-4 py-2.5 bg-purple-600 text-white rounded-xl font-black uppercase text-[9px] shadow-lg flex items-center gap-2 border-b-4 border-purple-800 active:scale-95"
-                        >
-                            <Plus size={14}/> Lançar Dívida
+                            <Printer size={14}/> Relatório Despesas
                         </button>
                     </div>
                 </div>

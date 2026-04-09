@@ -675,23 +675,30 @@ const App: React.FC = () => {
                             onDeleteSangriaCategory={async (id) => { const { error } = await supabase.from('ice_cream_sangria_categoria').delete().eq('id', id); if (error) throw error; await fetchData(); }}
                             onAddStockMovement={async (m) => { const { error } = await supabase.from('ice_cream_stock_movements').insert([m]); if (error) throw error; await fetchData(); }}
                             onAddFutureDebt={async (debtData) => {
-                                await supabase.rpc('create_installment_debt', {
-                                    p_store_id: debtData.store_id,
-                                    p_supplier_name: debtData.supplier_name,
-                                    p_total_amount: debtData.total_amount,
-                                    p_total_installments: debtData.total_installments,
-                                    p_first_due_date: debtData.due_date,
-                                    p_category_id: debtData.category_id,
-                                    p_description: debtData.description,
-                                    p_created_by: user?.id
-                                });
+                                const { error } = await supabase.from('ice_cream_future_debts').insert([
+                                    {
+                                        store_id: debtData.store_id,
+                                        supplier_name: debtData.supplier_name,
+                                        total_amount: debtData.total_amount,
+                                        installment_number: debtData.installment_number,
+                                        total_installments: debtData.total_installments,
+                                        installment_amount: debtData.installment_amount,
+                                        due_date: debtData.due_date,
+                                        status: debtData.status || 'pending',
+                                        category_id: debtData.category_id,
+                                        description: debtData.description,
+                                        created_by: user?.id
+                                    }
+                                ]);
+                                if (error) throw error;
                                 await fetchData();
                             }}
                             onPayFutureDebt={async (debtId, paymentDate) => {
-                                await supabase.rpc('pay_installment_debt', {
-                                    p_debt_id: debtId,
-                                    p_payment_date: paymentDate
-                                });
+                                const { error } = await supabase.from('ice_cream_future_debts').update({
+                                    status: 'paid',
+                                    payment_date: paymentDate
+                                }).eq('id', debtId);
+                                if (error) throw error;
                                 await fetchData();
                             }}
                             fetchData={fetchData}
