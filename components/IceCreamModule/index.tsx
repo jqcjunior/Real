@@ -76,9 +76,20 @@ const IceCreamModule: React.FC<IceCreamModuleProps> = ({
 }) => {
     const [activeTab, setActiveTab] = useState<'pdv' | 'dre' | 'dre_mensal' | 'stock' | 'audit' | 'produtos' | 'despesas'>('pdv');
     const [effectiveStoreId, setEffectiveStoreId] = useState(user?.storeId || (stores.length > 0 ? stores[0].id : ''));
-    const isAdmin = can('ALWAYS');
+    const isAdmin = user?.role === UserRole.ADMIN;
     const canManage = can('MODULE_ICECREAM_MANAGE');
     const isSorvete = user?.role === UserRole.ICE_CREAM;
+
+    // 🔍 DEBUG: Verificar permissões
+    console.log('=== DEBUG PERMISSÕES DROPDOWN ===');
+    console.log('user.role:', user?.role);
+    console.log('user.name:', user?.name);
+    console.log('isAdmin:', isAdmin);
+    console.log('canManage:', canManage);
+    console.log('isSorvete:', isSorvete);
+    console.log('UserRole.ICE_CREAM:', UserRole.ICE_CREAM);
+    console.log('can(ALWAYS):', can('ALWAYS'));
+    console.log('================================');
 
     // ✅ FIX: Auto-selecionar loja para usuários SORVETE
     useEffect(() => {
@@ -87,6 +98,17 @@ const IceCreamModule: React.FC<IceCreamModuleProps> = ({
             setEffectiveStoreId(user.storeId);
         }
     }, [user]);
+
+    // 🔍 DEBUG: Verificar dados recebidos
+    useEffect(() => {
+        console.log('=== DEBUG DADOS ===');
+        console.log('items total:', items.length);
+        console.log('items da loja:', items.filter(i => i.storeId === effectiveStoreId).length);
+        console.log('stock total:', stock.length);
+        console.log('stock da loja:', stock.filter(s => s.store_id === effectiveStoreId).length);
+        console.log('effectiveStoreId:', effectiveStoreId);
+        console.log('==================');
+    }, [items, stock, effectiveStoreId]);
 
     // Dates
     const [displayDate, setDisplayDate] = useState(new Date().toISOString().split('T')[0]);

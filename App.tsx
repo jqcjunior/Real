@@ -500,6 +500,9 @@ const App: React.FC = () => {
             // PASSO 2: Buscar permissões no banco (com user já setado)
             await fetchPermissions(mappedRole, loggedUser.name);
             
+            // PASSO 3: Carregar todos os dados do banco
+            await fetchData();
+            
             // Define visão inicial
             setCurrentView(mappedRole === UserRole.ADMIN ? 'dashboard_rede' : 
                           mappedRole === UserRole.ICE_CREAM ? 'pdv_sorveteria' : 'dashboard_loja');
