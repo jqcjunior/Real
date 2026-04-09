@@ -76,7 +76,10 @@ const IceCreamModule: React.FC<IceCreamModuleProps> = ({
 }) => {
     const [activeTab, setActiveTab] = useState<'pdv' | 'dre' | 'dre_mensal' | 'stock' | 'audit' | 'produtos' | 'despesas'>('pdv');
     const [effectiveStoreId, setEffectiveStoreId] = useState(user?.storeId || (stores.length > 0 ? stores[0].id : ''));
-    const isAdmin = user?.role === UserRole.ADMIN || user?.role === UserRole.MANAGER;
+    const isSorvete = user?.role === UserRole.ICE_CREAM;
+    const isAdmin = user?.role === UserRole.ADMIN;
+    const isManager = user?.role === UserRole.MANAGER;
+    const canManage = isAdmin || isManager;
 
     // Dates
     const [displayDate, setDisplayDate] = useState(new Date().toISOString().split('T')[0]);
@@ -783,13 +786,19 @@ const IceCreamModule: React.FC<IceCreamModuleProps> = ({
 
                         {/* Store Selector Mobile */}
                         <div className="md:hidden">
-                            <select 
-                                value={effectiveStoreId} 
-                                onChange={e => setEffectiveStoreId(e.target.value)}
-                                className="bg-slate-100 border-none rounded-xl px-3 py-2 text-[9px] font-black uppercase text-slate-600 outline-none cursor-pointer"
-                            >
-                                {stores.map(s => <option key={s.id} value={s.id}>{s.name}</option>)}
-                            </select>
+                            {isAdmin ? (
+                                <select 
+                                    value={effectiveStoreId} 
+                                    onChange={e => setEffectiveStoreId(e.target.value)}
+                                    className="bg-slate-100 border-none rounded-xl px-3 py-2 text-[9px] font-black uppercase text-slate-600 outline-none cursor-pointer"
+                                >
+                                    {stores.map(s => <option key={s.id} value={s.id}>{s.name}</option>)}
+                                </select>
+                            ) : (
+                                <div className="bg-slate-100 rounded-xl px-3 py-2 text-[9px] font-black uppercase text-slate-600 border border-slate-200">
+                                    {stores.find(s => s.id === effectiveStoreId)?.name || 'LOJA'}
+                                </div>
+                            )}
                         </div>
                     </div>
 
@@ -800,10 +809,12 @@ const IceCreamModule: React.FC<IceCreamModuleProps> = ({
                         <button onClick={() => setActiveTab('dre')} className={`px-3 py-2.5 rounded-xl text-[10px] font-black uppercase transition-all flex items-center gap-2 whitespace-nowrap shrink-0 ${activeTab === 'dre' ? 'bg-white text-blue-600 shadow-md ring-1 ring-slate-200/50' : 'text-slate-500 hover:text-slate-700 hover:bg-white/50'}`}>
                             <TrendingUp size={15} /> DRE Diário
                         </button>
-                        <button onClick={() => setActiveTab('dre_mensal')} className={`px-3 py-2.5 rounded-xl text-[10px] font-black uppercase transition-all flex items-center gap-2 whitespace-nowrap shrink-0 ${activeTab === 'dre_mensal' ? 'bg-white text-blue-600 shadow-md ring-1 ring-slate-200/50' : 'text-slate-500 hover:text-slate-700 hover:bg-white/50'}`}>
-                            <Calendar size={15} /> DRE Mensal
-                        </button>
-                        {can('MODULE_ICECREAM_DESPESAS') && (
+                        {canManage && (
+                            <button onClick={() => setActiveTab('dre_mensal')} className={`px-3 py-2.5 rounded-xl text-[10px] font-black uppercase transition-all flex items-center gap-2 whitespace-nowrap shrink-0 ${activeTab === 'dre_mensal' ? 'bg-white text-blue-600 shadow-md ring-1 ring-slate-200/50' : 'text-slate-500 hover:text-slate-700 hover:bg-white/50'}`}>
+                                <Calendar size={15} /> DRE Mensal
+                            </button>
+                        )}
+                        {canManage && can('MODULE_ICECREAM_DESPESAS') && (
                             <button onClick={() => setActiveTab('despesas')} className={`px-3 py-2.5 rounded-xl text-[10px] font-black uppercase transition-all flex items-center gap-2 whitespace-nowrap shrink-0 ${activeTab === 'despesas' ? 'bg-white text-red-600 shadow-md ring-1 ring-slate-200/50' : 'text-slate-500 hover:text-slate-700 hover:bg-white/50'}`}>
                                 <DollarSign size={15} /> Despesas
                             </button>
@@ -811,23 +822,31 @@ const IceCreamModule: React.FC<IceCreamModuleProps> = ({
                         <button onClick={() => setActiveTab('stock')} className={`px-3 py-2.5 rounded-xl text-[10px] font-black uppercase transition-all flex items-center gap-2 whitespace-nowrap shrink-0 ${activeTab === 'stock' ? 'bg-white text-blue-600 shadow-md ring-1 ring-slate-200/50' : 'text-slate-500 hover:text-slate-700 hover:bg-white/50'}`}>
                             <Package size={15} /> Estoque
                         </button>
-                        <button onClick={() => setActiveTab('audit')} className={`px-3 py-2.5 rounded-xl text-[10px] font-black uppercase transition-all flex items-center gap-2 whitespace-nowrap shrink-0 ${activeTab === 'audit' ? 'bg-white text-blue-600 shadow-md ring-1 ring-slate-200/50' : 'text-slate-500 hover:text-slate-700 hover:bg-white/50'}`}>
-                            <History size={15} /> Auditoria
-                        </button>
-                        {isAdmin && (
+                        {canManage && (
+                            <button onClick={() => setActiveTab('audit')} className={`px-3 py-2.5 rounded-xl text-[10px] font-black uppercase transition-all flex items-center gap-2 whitespace-nowrap shrink-0 ${activeTab === 'audit' ? 'bg-white text-blue-600 shadow-md ring-1 ring-slate-200/50' : 'text-slate-500 hover:text-slate-700 hover:bg-white/50'}`}>
+                                <History size={15} /> Auditoria
+                            </button>
+                        )}
+                        {canManage && (
                             <button onClick={() => setActiveTab('produtos')} className={`px-3 py-2.5 rounded-xl text-[10px] font-black uppercase transition-all flex items-center gap-2 whitespace-nowrap shrink-0 ${activeTab === 'produtos' ? 'bg-white text-blue-600 shadow-md ring-1 ring-slate-200/50' : 'text-slate-500 hover:text-slate-700 hover:bg-white/50'}`}>
                                 <Settings size={15} /> Produtos
                             </button>
                         )}
                     </div>
                     <div className="hidden md:flex items-center gap-3">
-                        <select 
-                            value={effectiveStoreId} 
-                            onChange={e => setEffectiveStoreId(e.target.value)}
-                            className="bg-slate-100 border-none rounded-xl px-4 py-2.5 text-[10px] font-black uppercase text-slate-600 outline-none cursor-pointer hover:bg-slate-200 transition-all"
-                        >
-                            {stores.map(s => <option key={s.id} value={s.id}>{s.name}</option>)}
-                        </select>
+                        {isAdmin ? (
+                            <select 
+                                value={effectiveStoreId} 
+                                onChange={e => setEffectiveStoreId(e.target.value)}
+                                className="bg-slate-100 border-none rounded-xl px-4 py-2.5 text-[10px] font-black uppercase text-slate-600 outline-none cursor-pointer hover:bg-slate-200 transition-all"
+                            >
+                                {stores.map(s => <option key={s.id} value={s.id}>{s.name}</option>)}
+                            </select>
+                        ) : (
+                            <div className="bg-slate-100 rounded-xl px-4 py-2.5 text-[10px] font-black uppercase text-slate-600 border border-slate-200">
+                                {stores.find(s => s.id === effectiveStoreId)?.name || 'LOJA'}
+                            </div>
+                        )}
                     </div>
                 </div>
             </nav>
@@ -839,8 +858,8 @@ const IceCreamModule: React.FC<IceCreamModuleProps> = ({
                         user={user}
                         items={items}
                         effectiveStoreId={effectiveStoreId}
-                        onAddSales={onAddSales}
-                        onAddSaleAtomic={onAddSaleAtomic}
+                        onAddSales={isSorvete ? async () => {} : onAddSales}
+                        onAddSaleAtomic={isSorvete ? async () => {} : onAddSaleAtomic}
                         onUpdateStock={handleUpdateStock}
                         handleOpenPrintPreview={handleOpenPrintPreview}
                         existingBuyerNames={Array.from(new Set(sales.map(s => s.buyer_name).filter(Boolean) as string[]))}
@@ -855,11 +874,11 @@ const IceCreamModule: React.FC<IceCreamModuleProps> = ({
                         effectiveStoreId={effectiveStoreId}
                         handlePrintDRE={handlePrintDRE}
                         sangriaCategories={sangriaCategories}
-                        onAddSangria={onAddSangria}
+                        onAddSangria={isSorvete ? async () => {} : onAddSangria}
                         onUpdateStock={handleUpdateStock}
                         filteredStock={stock.filter(s => s.store_id === effectiveStoreId)}
                         fetchData={fetchData}
-                        onAddSangriaCategory={handleAddSangriaCategory}
+                        onAddSangriaCategory={isSorvete ? async () => {} : handleAddSangriaCategory}
                         onShowSangriaDetail={() => setShowSangriaDetailModal('day')}
                     />
                 )}
@@ -912,11 +931,12 @@ const IceCreamModule: React.FC<IceCreamModuleProps> = ({
                 {activeTab === 'stock' && (
                     <EstoqueTab 
                         filteredStock={stock.filter(s => s.store_id === effectiveStoreId)}
-                        isAdmin={isAdmin}
-                        onUpdateStock={handleUpdateStock}
-                        onAddStockBase={(base, unit, storeId) => onAddItem(base, 'INSUMO', 0, '', 0, unit, 0, storeId, [])}
-                        onDeleteStockBase={onDeleteStockItem}
+                        isAdmin={canManage && !isSorvete}
+                        onUpdateStock={isSorvete ? async () => {} : handleUpdateStock}
+                        onAddStockBase={isSorvete ? async () => {} : (base, unit, storeId) => onAddItem(base, 'INSUMO', 0, '', 0, unit, 0, storeId, [])}
+                        onDeleteStockBase={isSorvete ? async () => {} : onDeleteStockItem}
                         onToggleFreezeStock={async (id, active) => {
+                            if (isSorvete) return;
                             const { error } = await supabase.from('ice_cream_stock').update({ is_active: active }).eq('stock_id', id);
                             if (error) throw error;
                         }}

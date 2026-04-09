@@ -1,6 +1,6 @@
 import React, { useState, useMemo } from 'react';
 import { ShoppingCart, Trash2, CheckCircle2, Loader2 } from 'lucide-react';
-import { IceCreamDailySale, IceCreamPaymentMethod, IceCreamItem, IceCreamCategory } from '../../../types';
+import { IceCreamDailySale, IceCreamPaymentMethod, IceCreamItem, IceCreamCategory, UserRole } from '../../../types';
 import { formatCurrency } from '../../../constants';
 import PDVMobileView from '../../PDVMobileView';
 import { ProductGrid } from '../../ProductGrid';
@@ -192,7 +192,14 @@ const PDVTab: React.FC<PDVTabProps> = ({
                             </div>
                         )}
                         {(paymentMethod === 'Fiado' || (paymentMethod === 'Misto' && mistoValues['Fiado'])) && <input value={buyerName} onChange={e => setBuyerName(e.target.value.toUpperCase())} className="w-full p-4 bg-red-50 border-2 border-red-100 rounded-2xl font-black uppercase text-sm outline-none" placeholder="NOME DO FUNCIONÁRIO..." />}
-                        <button onClick={finalizeSale} disabled={isSubmitting || cart.length === 0 || !paymentMethod} className="w-full py-5 bg-red-600 hover:bg-red-700 text-white rounded-[24px] font-black uppercase text-xs shadow-2xl flex items-center justify-center gap-3 transition-all border-b-4 border-red-900">{isSubmitting ? <Loader2 className="animate-spin" /> : <CheckCircle2 size={18}/>} Finalizar Venda</button>
+                        <button 
+                            onClick={finalizeSale} 
+                            disabled={isSubmitting || cart.length === 0 || !paymentMethod || user?.role === UserRole.ICE_CREAM} 
+                            className="w-full py-5 bg-red-600 hover:bg-red-700 text-white rounded-[24px] font-black uppercase text-xs shadow-2xl flex items-center justify-center gap-3 transition-all border-b-4 border-red-900"
+                        >
+                            {isSubmitting ? <Loader2 className="animate-spin" /> : <CheckCircle2 size={18}/>} 
+                            {user?.role === UserRole.ICE_CREAM ? 'Acesso Restrito' : 'Finalizar Venda'}
+                        </button>
                     </div>
                 </div>
             </div>
