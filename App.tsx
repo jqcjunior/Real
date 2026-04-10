@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, lazy, Suspense } from 'react';
 import { 
     User, Store, MonthlyPerformance, UserRole, Cota, CotaSettings, CotaDebts, QuotaCategory, QuotaMixParameter,
     IceCreamItem, IceCreamDailySale, CashRegisterClosure, ProductPerformance, Receipt, IceCreamStock, IceCreamPromissoryNote, AgendaItem, DownloadItem, CashError, SystemLog, MonthlyGoal, CreditCardSale, PixSale,
@@ -11,29 +11,30 @@ import apiService from './services/apiService';
 import { ensureSession } from './services/authService';
 import { BRAND_LOGO } from './constants';
 
-// Módulos
-import { CotasManagement } from './components/CotasManagement';
-import DashboardAdmin from './components/DashboardAdmin';
-import DashboardManager from './components/DashboardManager';
-import GoalRegistration from './components/GoalRegistration';
-import DashboardPurchases from './components/DashboardPurchases';
-import IceCreamModule from './components/IceCreamModule';
-import CashRegisterModule from './components/CashRegisterModule';
-import AgendaSystem from './components/AgendaSystem';
-import DownloadsModule from './components/DownloadsModule';
-import AdminSettings from './components/AdminSettings';
-import AdminUsersManagement from './components/AdminUsersManagement';
-import AccessControlManagement from './components/AccessControlManagement';
-import PurchaseAuthorization from './components/PurchaseAuthorization';
-import TermoAutorizacao from './components/TermoAutorizacao';
-import SystemAudit from './components/SystemAudit';
-import SpreadsheetOrderModule from './components/SpreadsheetOrderModule';
-import OSDemandsModule from './components/OSDemandsModule';
-import DashboardPAModule from './components/dashboardPA/DashboardPAModule';
-import DashboardPAGerente from './components/dashboardPA/DashboardPAGerente';
-import AdminSurveyManagement from './components/AdminSurveyManagement_v3';
-import MySurveysComponent from './components/MySurveysComponent';
-import SurveyResultsViewer from './components/SurveyResultsViewer';
+// Módulos com Lazy Loading
+const CotasManagement = lazy(() => import('./components/CotasManagement').then(m => ({ default: m.CotasManagement })));
+const DashboardAdmin = lazy(() => import('./components/DashboardAdmin'));
+const DashboardManager = lazy(() => import('./components/DashboardManager'));
+const GoalRegistration = lazy(() => import('./components/GoalRegistration'));
+const DashboardPurchases = lazy(() => import('./components/DashboardPurchases'));
+const IceCreamModule = lazy(() => import('./components/IceCreamModule'));
+const CashRegisterModule = lazy(() => import('./components/CashRegisterModule'));
+const AgendaSystem = lazy(() => import('./components/AgendaSystem'));
+const DownloadsModule = lazy(() => import('./components/DownloadsModule'));
+const AdminSettings = lazy(() => import('./components/AdminSettings'));
+const AdminUsersManagement = lazy(() => import('./components/AdminUsersManagement'));
+const AccessControlManagement = lazy(() => import('./components/AccessControlManagement'));
+const PurchaseAuthorization = lazy(() => import('./components/PurchaseAuthorization'));
+const TermoAutorizacao = lazy(() => import('./components/TermoAutorizacao'));
+const SystemAudit = lazy(() => import('./components/SystemAudit'));
+const SpreadsheetOrderModule = lazy(() => import('./components/SpreadsheetOrderModule'));
+const OSDemandsModule = lazy(() => import('./components/OSDemandsModule'));
+const DashboardPAModule = lazy(() => import('./components/dashboardPA/DashboardPAModule'));
+const DashboardPAGerente = lazy(() => import('./components/dashboardPA/DashboardPAGerente'));
+const AdminSurveyManagement = lazy(() => import('./components/AdminSurveyManagement_v3'));
+const MySurveysComponent = lazy(() => import('./components/MySurveysComponent'));
+const SurveyResultsViewer = lazy(() => import('./components/SurveyResultsViewer'));
+
 import LoginScreen from './components/LoginScreen';
 import NotificationHeader from './components/NotificationHeader';
 import ChangePasswordModal from './components/ChangePasswordModal';
@@ -42,8 +43,18 @@ import ChangePasswordModal from './components/ChangePasswordModal';
 import { 
     LayoutDashboard, Target, ShoppingBag, Calculator, IceCream as IceCreamIcon, 
     DollarSign, AlertCircle, Calendar, LogOut, Loader2, Menu, X, ClipboardList, Shield, UserCog, Users, ShieldAlert, Settings, FileSignature, FileText, Download, Lock,
-    Sun, Moon, Trophy, BarChart3
+    Sun, Moon, Trophy, BarChart3, ArrowRight
 } from 'lucide-react';
+import { motion, AnimatePresence } from 'motion/react';
+
+const PageLoader = () => (
+    <div className="flex items-center justify-center h-full min-h-[400px]">
+        <div className="flex flex-col items-center gap-4">
+            <div className="w-12 h-12 border-4 border-blue-600 border-t-transparent rounded-full animate-spin"></div>
+            <p className="text-slate-500 dark:text-slate-400 text-xs font-black uppercase tracking-widest">Carregando módulo...</p>
+        </div>
+    </div>
+);
 
 const App: React.FC = () => {
     const [user, setUser] = useState<User | null>(null);
@@ -242,6 +253,10 @@ const App: React.FC = () => {
     const [purchasingManagement, setPurchasingManagement] = useState<PurchasingManagement[]>([]);
     const [futureDebts, setFutureDebts] = useState<IceCreamFutureDebt[]>([]);
     const [selectedSurveyForResults, setSelectedSurveyForResults] = useState<Survey | null>(null);
+    const [pendingSurveys, setPendingSurveys] = useState<Survey[]>([]);
+    const [isSurveyModalOpen, setIsSurveyModalOpen] = useState(false);
+    const [showSurveyAlert, setShowSurveyAlert] = useState(false);
+    const [selectedSurvey, setSelectedSurvey] = useState<Survey | null>(null);
 
     const can = (permissionKey: string) => {
         if (!user) return false;
@@ -454,6 +469,26 @@ const App: React.FC = () => {
             if(movements) setIcStockMovements(movements);
             if(part) setPartners(part);
             if(ausers) setAdminUsers(ausers);
+            
+            // Fase 3 - Pesquisas Pendentes
+            if (user) {
+                const { data: activeSurveys } = await supabase
+                    .from('surveys')
+                    .select('*')
+                    .eq('is_active', true);
+                
+                const { data: myResponses } = await supabase
+                    .from('survey_responses')
+                    .select('survey_id')
+                    .eq('user_id', user.id);
+                
+                if (activeSurveys) {
+                    const respondedIds = myResponses?.map(r => r.survey_id) || [];
+                    const pending = activeSurveys.filter(s => !respondedIds.includes(s.id));
+                    setPendingSurveys(pending);
+                }
+            }
+
             if(pm) setPurchasingManagement(pm.map(x => ({
                 id: x.id,
                 storeId: x.store_id,
@@ -697,8 +732,20 @@ const App: React.FC = () => {
                         <NotificationHeader user={user!} stores={stores} agenda={agenda} onNavigate={setCurrentView} can={can} />
                     </div>
                 </header>
+
+                {pendingSurveys.length > 0 && (
+                    <div className="bg-blue-600 text-white px-6 py-2 flex items-center justify-between animate-pulse cursor-pointer hover:bg-blue-700 transition-colors" onClick={() => setShowSurveyAlert(true)}>
+                        <div className="flex items-center gap-3">
+                            <ClipboardList size={18} />
+                            <span className="text-[10px] font-black uppercase tracking-widest">Você tem {pendingSurveys.length} {pendingSurveys.length === 1 ? 'pesquisa pendente' : 'pesquisas pendentes'} para responder</span>
+                        </div>
+                        <span className="text-[10px] font-black uppercase tracking-widest flex items-center gap-2">Clique para visualizar <ArrowRight size={14} /></span>
+                    </div>
+                )}
+
                 <main className="flex-1 overflow-y-auto no-scrollbar p-3 md:p-6 lg:p-8">
-                    {(() => {
+                    <Suspense fallback={<PageLoader />}>
+                        {(() => {
                         if (currentView === 'dashboard_rede' && can('MODULE_DASHBOARD_ADMIN')) return <DashboardAdmin stores={stores} performanceData={performanceData} goalsData={goalsData} sangrias={icSangrias} initialWeightRevenue={paParameters?.weight_revenue ?? 50} initialWeightPA={paParameters?.weight_pa ?? 50} onSaveWeights={async (wRev, wPA) => {
                             const { error } = await supabase.from('pa_parameters').upsert({ 
                                 id: paParameters?.id,
@@ -1029,11 +1076,81 @@ const App: React.FC = () => {
                         />;
                         return <div className="flex items-center justify-center h-full text-gray-400 uppercase tracking-widest font-black text-sm">Selecione um módulo no menu</div>;
                     })()}
+                    </Suspense>
                 </main>
             </div>
             {isChangePasswordOpen && (
                 <ChangePasswordModal user={user!} onClose={() => setIsChangePasswordOpen(false)} />
             )}
+
+            {/* Alerta de Pesquisa */}
+            <AnimatePresence>
+                {showSurveyAlert && (
+                    <div className="fixed inset-0 z-[200] flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-sm">
+                        <motion.div 
+                            initial={{ scale: 0.9, opacity: 0 }}
+                            animate={{ scale: 1, opacity: 1 }}
+                            exit={{ scale: 0.9, opacity: 0 }}
+                            className="bg-white dark:bg-slate-900 rounded-[40px] p-8 max-w-md w-full shadow-2xl border border-slate-100 dark:border-slate-800 text-center"
+                        >
+                            <div className="w-20 h-20 bg-blue-50 dark:bg-blue-900/20 rounded-full flex items-center justify-center mx-auto mb-6 text-blue-600">
+                                <ClipboardList size={40} />
+                            </div>
+                            <h3 className="text-2xl font-black italic uppercase tracking-tighter text-slate-900 dark:text-white mb-2">Pesquisa Pendente</h3>
+                            <p className="text-slate-500 dark:text-slate-400 text-sm font-medium mb-8">
+                                Identificamos que você possui pesquisas pendentes. Sua colaboração é muito importante para nós. Deseja responder agora?
+                            </p>
+                            <div className="flex flex-col gap-3">
+                                <button 
+                                    onClick={() => {
+                                        setShowSurveyAlert(false);
+                                        setSelectedSurvey(pendingSurveys[0]);
+                                        setIsSurveyModalOpen(true);
+                                    }}
+                                    className="w-full py-4 bg-blue-600 text-white rounded-2xl font-black uppercase text-xs tracking-widest hover:bg-blue-700 shadow-lg shadow-blue-200 dark:shadow-none transition-all"
+                                >
+                                    Sim, responder agora
+                                </button>
+                                <button 
+                                    onClick={() => setShowSurveyAlert(false)}
+                                    className="w-full py-4 bg-slate-100 dark:bg-slate-800 text-slate-500 dark:text-slate-400 rounded-2xl font-black uppercase text-xs tracking-widest hover:bg-slate-200 dark:hover:bg-slate-700 transition-all"
+                                >
+                                    Depois
+                                </button>
+                            </div>
+                        </motion.div>
+                    </div>
+                )}
+            </AnimatePresence>
+
+            {/* Modal de Resposta da Pesquisa */}
+            <AnimatePresence>
+                {isSurveyModalOpen && selectedSurvey && (
+                    <div className="fixed inset-0 z-[210] overflow-y-auto bg-white dark:bg-slate-950">
+                        <Suspense fallback={<PageLoader />}>
+                            {/* Importando dinamicamente o formulário para manter o bundle leve */}
+                            {(() => {
+                                const SurveyResponseForm = lazy(() => import('./components/SurveyResponseForm'));
+                                return (
+                                    <SurveyResponseForm 
+                                        survey={selectedSurvey} 
+                                        user={user!} 
+                                        onClose={() => {
+                                            setIsSurveyModalOpen(false);
+                                            setSelectedSurvey(null);
+                                        }} 
+                                        onComplete={() => {
+                                            setIsSurveyModalOpen(false);
+                                            setSelectedSurvey(null);
+                                            fetchData();
+                                        }}
+                                    />
+                                );
+                            })()}
+                        </Suspense>
+                    </div>
+                )}
+            </AnimatePresence>
         </div>
     );
 };
