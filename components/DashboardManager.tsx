@@ -13,6 +13,8 @@ interface DashboardManagerProps {
   sangrias: IceCreamSangria[];
   stockMovements: IceCreamStockMovement[];
   stock: IceCreamStock[];
+  weightRevenue?: number;
+  weightPA?: number;
 }
 
 const KPICard = ({ label, value, target, icon: Icon, type = 'currency', mode = 'higher' }: { label: string, value: number, target?: number, icon: any, type?: 'currency' | 'decimal' | 'integer', mode?: 'higher' | 'lower' }) => {
@@ -78,7 +80,7 @@ const KPICard = ({ label, value, target, icon: Icon, type = 'currency', mode = '
   );
 };
 
-const DashboardManager: React.FC<DashboardManagerProps> = ({ user, stores, performanceData, goalsData, sangrias, stockMovements, stock }) => {
+const DashboardManager: React.FC<DashboardManagerProps> = ({ user, stores, performanceData, goalsData, sangrias, stockMovements, stock, weightRevenue = 50, weightPA = 50 }) => {
   const currentMonthStr = useMemo(() => {
     const now = new Date();
     return `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`;
@@ -218,7 +220,9 @@ const DashboardManager: React.FC<DashboardManagerProps> = ({ user, stores, perfo
           const paTarget = Number(p?.paTarget || goal?.paTarget || 0);
           const pPA = calcPercent(paActual, paTarget, 'higher');
           
-          const scoreFinal = (pF * 0.50) + (pPA * 0.50);
+          const wRev = weightRevenue / 100;
+          const wPA = weightPA / 100;
+          const scoreFinal = (pF * wRev) + (pPA * wPA);
 
           return {
               storeId,
@@ -239,7 +243,7 @@ const DashboardManager: React.FC<DashboardManagerProps> = ({ user, stores, perfo
       });
 
       return ranked.sort((a, b) => b.score - a.score);
-  }, [performanceData, goalsData, selectedMonth, stores]);
+  }, [performanceData, goalsData, selectedMonth, stores, weightRevenue, weightPA]);
 
   const handleGenerateInsight = async () => {
     if (!myStore) return;

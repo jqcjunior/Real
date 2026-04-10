@@ -32,21 +32,19 @@ const ChangePasswordModal: React.FC<ChangePasswordModalProps> = ({ user, onClose
         }
 
         setIsLoading(true);
-
         try {
-            // Verify current password first
-            const { data: userCheck, error: checkError } = await supabase
-                .from('admin_users')
-                .select('password')
-                .eq('id', user.id)
-                .single();
+            // ✅ Garantir que o RLS está ativo
+            const { ensureSession } = await import('../services/authService');
+            await ensureSession();
 
-            if (checkError || !userCheck) {
-                throw new Error('Erro ao verificar usuário.');
-            }
+            // Verify current password using RPC (bypasses RLS recursion on select)
+            const { data: authData, error: authError } = await supabase.rpc('authenticate_user', {
+                p_email: user.email,
+                p_password: currentPassword
+            });
 
-            if (userCheck.password !== currentPassword) {
-                setError('Senha atual incorreta.');
+            if (authError || !authData || !authData[0]?.is_valid) {
+                setError('Senha atual incorreta ou erro na verificação.');
                 setIsLoading(false);
                 return;
             }
@@ -54,10 +52,13 @@ const ChangePasswordModal: React.FC<ChangePasswordModalProps> = ({ user, onClose
             // Update password
             const { error: updateError } = await supabase
                 .from('admin_users')
-                .update({ password: newPassword })
+                .update({ password: newPassword.trim() })
                 .eq('id', user.id);
 
-            if (updateError) throw updateError;
+            if (updateError) {
+                console.error('Erro ao atualizar senha:', updateError);
+                throw updateError;
+            }
 
             setSuccess(true);
             setTimeout(() => {

@@ -35,8 +35,10 @@ const isValidatedOrder = (o: Cota): boolean =>
 const isOpenOrder = (o: Cota): boolean =>
   (ORDER_STATUS.OPEN as readonly string[]).includes(o.status);
 
-const isManagerRole = (role: string | undefined): boolean =>
-  String(role ?? '').trim().toUpperCase() === 'GERENTE';
+const isManagerRole = (role: string | undefined): boolean => {
+  const r = String(role ?? '').trim().toUpperCase();
+  return r === 'GERENTE' || r === 'MANAGER';
+};
 
 /** Gera 12 meses a partir do mês atual — calculado UMA vez no módulo */
 const generateTimeline = (): { label: string; key: string; monthIndex: number }[] => {
@@ -454,6 +456,7 @@ export const CotasManagement: React.FC<CotasManagementProps> = ({
   can,
 }) => {
   const isAdmin = user.role === UserRole.ADMIN;
+  const isManager = user.role === UserRole.MANAGER;
   const { toast, showToast } = useToast();
 
   // ── Loja visualizada ──────────────────────
@@ -467,7 +470,7 @@ export const CotasManagement: React.FC<CotasManagementProps> = ({
   const [manualStoreId, setManualStoreId] = useState<string>('');
   const viewStoreId = isAdmin
     ? (manualStoreId || activeStores[0]?.id || '')
-    : user.storeId!;
+    : (user.storeId || '');
 
   // ── Estados de UI ─────────────────────────
   const [activeForm, setActiveForm] = useState<

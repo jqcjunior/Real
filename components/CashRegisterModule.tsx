@@ -568,6 +568,13 @@ const CashRegisterModule: React.FC<CashRegisterModuleProps> = ({
     const [isSubmitting, setIsSubmitting] = useState(false);
     const [selectedDate, setSelectedDate] = useState(new Date().toISOString().split('T')[0]);
     const [selectedStoreId, setSelectedStoreId] = useState(user.storeId || '');
+
+    // 🔒 Sincronizar loja para não-admins
+    useEffect(() => {
+        if (!isAdmin && user.storeId) {
+            setSelectedStoreId(user.storeId);
+        }
+    }, [isAdmin, user.storeId]);
     const [dailyTotals, setDailyTotals] = useState<Record<string, number>>({});
     const [manualCards, setManualCards] = useState<any[]>([]);
     const [manualPix, setManualPix] = useState<any[]>([]);
@@ -669,13 +676,11 @@ const CashRegisterModule: React.FC<CashRegisterModuleProps> = ({
         setIsLoadingTotals(true);
         try {
             // Busca pagamentos de sorvete
-            let iceCreamQuery = supabase
+            const { data: iceCreamPayments, error: iceCreamError } = await supabase
                 .from('ice_cream_daily_sales_payments')
                 .select('amount, payment_method, ice_cream_sales!inner(store_id, status, created_at)')
                 .eq('ice_cream_sales.store_id', selectedStoreId)
                 .eq('ice_cream_sales.status', 'completed');
-
-            const { data: iceCreamPayments, error: iceCreamError } = await iceCreamQuery;
  
             if (iceCreamError) throw iceCreamError;
  

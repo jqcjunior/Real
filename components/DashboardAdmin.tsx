@@ -19,7 +19,8 @@ import {
     Trophy, 
     Minus, 
     Settings, 
-    Info
+    Info,
+    Check
 } from 'lucide-react';
  
 interface DashboardAdminProps {
@@ -29,9 +30,12 @@ interface DashboardAdminProps {
     sangrias: IceCreamSangria[];
     onImportPerformance: (data: any[]) => Promise<void>;
     onRefresh: () => Promise<void>;
+    initialWeightRevenue?: number;
+    initialWeightPA?: number;
+    onSaveWeights?: (wRev: number, wPA: number) => Promise<void>;
 }
  
-const DashboardAdmin: React.FC<DashboardAdminProps> = ({ stores, performanceData, goalsData, onImportPerformance, onRefresh, sangrias }) => {
+const DashboardAdmin: React.FC<DashboardAdminProps> = ({ stores, performanceData, goalsData, onImportPerformance, onRefresh, sangrias, initialWeightRevenue = 50, initialWeightPA = 50, onSaveWeights }) => {
     const currentMonthStr = useMemo(() => {
         const now = new Date();
         return `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`;
@@ -44,8 +48,9 @@ const DashboardAdmin: React.FC<DashboardAdminProps> = ({ stores, performanceData
     
     // 🆕 NOVO: Estado para controlar pesos do ranking
     const [showWeightConfig, setShowWeightConfig] = useState(false);
-    const [weightRevenue, setWeightRevenue] = useState(50); // Peso da Meta de Faturamento
-    const [weightPA, setWeightPA] = useState(50); // Peso do P.A
+    const [weightRevenue, setWeightRevenue] = useState(initialWeightRevenue); // Peso da Meta de Faturamento
+    const [weightPA, setWeightPA] = useState(initialWeightPA); // Peso do P.A
+    const [isSavingWeights, setIsSavingWeights] = useState(false);
  
     const handleRefresh = async () => {
         setIsRefreshing(true);
@@ -661,6 +666,32 @@ const DashboardAdmin: React.FC<DashboardAdminProps> = ({ stores, performanceData
                             <p className="text-[8px] sm:text-[9px] font-medium text-blue-900 dark:text-blue-100 leading-relaxed">
                                 A soma dos pesos sempre será 100%. Ajuste conforme a estratégia da rede: mais peso em Meta prioriza faturamento, mais peso em P.A prioriza volume de produtos vendidos por atendimento.
                             </p>
+                        </div>
+
+                        {/* Botão Salvar */}
+                        <div className="pt-4 border-t border-slate-100 dark:border-slate-800">
+                            <button
+                                onClick={async () => {
+                                    if (onSaveWeights) {
+                                        setIsSavingWeights(true);
+                                        try {
+                                            await onSaveWeights(weightRevenue, weightPA);
+                                            setShowWeightConfig(false);
+                                        } finally {
+                                            setIsSavingWeights(false);
+                                        }
+                                    }
+                                }}
+                                disabled={isSavingWeights}
+                                className="w-full py-3 sm:py-4 bg-emerald-600 hover:bg-emerald-700 text-white rounded-2xl font-black uppercase text-[10px] sm:text-xs shadow-lg shadow-emerald-900/20 transition-all active:scale-95 flex items-center justify-center gap-2 disabled:opacity-50"
+                            >
+                                {isSavingWeights ? (
+                                    <Loader2 className="animate-spin" size={16} />
+                                ) : (
+                                    <Check size={16} />
+                                )}
+                                Salvar Alterações no Ranking
+                            </button>
                         </div>
                     </div>
                 )}

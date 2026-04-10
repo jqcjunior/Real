@@ -164,11 +164,20 @@ const AdminUsersManagement: React.FC<AdminUsersManagementProps> = ({ currentUser
         if (!resetUser || !newResetPassword) return;
         setIsSubmitting(true);
         try {
+            // ✅ Garantir que o RLS está ativo
+            const { ensureSession } = await import('../services/authService');
+            await ensureSession();
+
             const { error } = await supabase
                 .from('admin_users')
                 .update({ password: newResetPassword.trim() })
                 .eq('id', resetUser.id);
-            if (error) throw error;
+            
+            if (error) {
+                console.error('Erro ao resetar senha:', error);
+                throw error;
+            }
+            
             alert(`Senha de ${resetUser.name} atualizada com sucesso!`);
             setIsResetModalOpen(false);
             setResetUser(null);

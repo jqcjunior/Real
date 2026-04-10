@@ -47,6 +47,7 @@ import {
 
 const App: React.FC = () => {
     const [user, setUser] = useState<User | null>(null);
+    const isAdmin = user?.role === UserRole.ADMIN;
     const [currentView, setCurrentView] = useState<string>(''); 
     const [isLoading, setIsLoading] = useState(true);
     const [permissionsLoaded, setPermissionsLoaded] = useState(false);
@@ -237,6 +238,7 @@ const App: React.FC = () => {
     const [icStockMovements, setIcStockMovements] = useState<IceCreamStockMovement[]>([]);
     const [partners, setPartners] = useState<StoreProfitPartner[]>([]);
     const [adminUsers, setAdminUsers] = useState<AdminUser[]>([]);
+    const [paParameters, setPaParameters] = useState<any>(null);
     const [purchasingManagement, setPurchasingManagement] = useState<PurchasingManagement[]>([]);
     const [futureDebts, setFutureDebts] = useState<IceCreamFutureDebt[]>([]);
     const [selectedSurveyForResults, setSelectedSurveyForResults] = useState<Survey | null>(null);
@@ -340,12 +342,15 @@ const App: React.FC = () => {
             await ensureSession();
             // Fase 1 — Dados críticos do dashboard
             const [
-                {data: s}, {data: p}, {data: g}
+                {data: s}, {data: p}, {data: g}, {data: pap}
             ] = await Promise.all([
                 supabase.from('stores').select('*'),
                 supabase.from('monthly_performance_actual').select('*'),
-                supabase.from('monthly_goals').select('*')
+                supabase.from('monthly_goals').select('*'),
+                supabase.from('pa_parameters').select('*').maybeSingle()
             ]);
+
+            if (pap) setPaParameters(pap);
 
             if(s) setStores(s.map(x => ({
                 ...x,
@@ -694,7 +699,19 @@ const App: React.FC = () => {
                 </header>
                 <main className="flex-1 overflow-y-auto no-scrollbar p-3 md:p-6 lg:p-8">
                     {(() => {
-                        if (currentView === 'dashboard_rede' && can('MODULE_DASHBOARD_ADMIN')) return <DashboardAdmin stores={stores} performanceData={performanceData} goalsData={goalsData} sangrias={icSangrias} onImportPerformance={async (d) => { 
+                        if (currentView === 'dashboard_rede' && can('MODULE_DASHBOARD_ADMIN')) return <DashboardAdmin stores={stores} performanceData={performanceData} goalsData={goalsData} sangrias={icSangrias} initialWeightRevenue={paParameters?.weight_revenue ?? 50} initialWeightPA={paParameters?.weight_pa ?? 50} onSaveWeights={async (wRev, wPA) => {
+                            const { error } = await supabase.from('pa_parameters').upsert({ 
+                                id: paParameters?.id,
+                                weight_revenue: wRev, 
+                                weight_pa: wPA 
+                            }, { onConflict: 'id' });
+                            if (error) {
+                                console.error("Erro ao salvar pesos:", error);
+                                alert("Erro ao salvar pesos: " + error.message);
+                            } else {
+                                fetchData();
+                            }
+                        }} onImportPerformance={async (d) => { 
                             const upsertData = d.map(row => {
                                 const [y, m] = row.month.split('-');
                                 return { 
@@ -727,9 +744,9 @@ const App: React.FC = () => {
                                 fetchData(); 
                             }
                         }} onRefresh={fetchData} />;
-                        if (currentView === 'dashboard_loja' && can('MODULE_DASHBOARD_MANAGER')) return <DashboardManager user={user!} stores={stores} performanceData={performanceData} goalsData={goalsData} purchasingData={purchasingData} sangrias={icSangrias} stockMovements={icStockMovements} stock={iceCreamStock} />;
-                        if (currentView === 'metas' && can('MODULE_METAS')) return <GoalRegistration user={user!} stores={stores} goalsData={goalsData} onSaveGoals={async (data) => { for(const row of data) { await supabase.from('monthly_goals').upsert({ store_id: row.storeId, year: row.year, month: row.month, revenue_target: row.revenueTarget, pa_target: row.paTarget, pu_target: row.puTarget, ticket_target: row.ticketTarget, items_target: row.itemsTarget, business_days: row.businessDays, delinquency_target: row.delinquencyTarget, trend: row.trend }, { onConflict: 'store_id, year, month' }); } fetchData(); }} />;
-                        if (currentView === 'cotas' && can('MODULE_COTAS')) return <CotasManagement user={user!} stores={stores} cotas={cotas} cotaSettings={cotaSettings} cotaDebts={cotaDebts} performanceData={performanceData} productCategories={quotaCategories} mixParameters={quotaMixParams} onAddCota={async (c) => { await supabase.from('cotas').insert([{ store_id: c.storeId, brand: c.brand, category_id: c.category_id, total_value: c.totalValue, shipment_date: `${c.shipmentDate}-01`, payment_terms: c.paymentTerms, pairs: c.pairs, installments: c.installments, status: 'ABERTA' }]); fetchData(); }} onUpdateCota={async (id, u) => { await supabase.from('cotas').update(u).eq('id', id); fetchData(); }} onDeleteCota={async (id) => { await supabase.from('cotas').delete().eq('id', id); fetchData(); }} onSaveSettings={async (s) => { await supabase.from('cota_settings').upsert({ store_id: s.storeId, budget_value: s.budgetValue, manager_percent: s.managerPercent }, { onConflict: 'store_id' }); fetchData(); }} onSaveDebts={async (d) => { await supabase.from('cota_debts').upsert({ store_id: d.storeId, month: d.month, value: d.value }, { onConflict: 'store_id, month' }); fetchData(); }} onDeleteDebt={async (id) => { await supabase.from('cota_debts').delete().eq('id', id); fetchData(); }} onUpdateMixParameter={async (id, sId, cat, pct, sem) => { if (id) { await supabase.from('quota_mix_parameters').update({ mix_percentage: pct }).eq('id', id); } else { await supabase.from('quota_mix_parameters').insert([{ store_id: sId, parent_category: cat, mix_percentage: pct, semester: sem }]); } fetchData(); }} can={can} />;
+                        if (currentView === 'dashboard_loja' && can('MODULE_DASHBOARD_MANAGER')) return <DashboardManager user={user!} stores={stores} performanceData={performanceData} goalsData={goalsData} purchasingData={purchasingData} sangrias={icSangrias} stockMovements={icStockMovements} stock={iceCreamStock} weightRevenue={paParameters?.weight_revenue ?? 50} weightPA={paParameters?.weight_pa ?? 50} />;
+                        if (currentView === 'metas' && can('MODULE_METAS')) return <GoalRegistration user={user!} stores={isAdmin ? stores : stores.filter(s => s.id === user?.storeId)} goalsData={goalsData} onSaveGoals={async (data) => { for(const row of data) { await supabase.from('monthly_goals').upsert({ store_id: row.storeId, year: row.year, month: row.month, revenue_target: row.revenueTarget, pa_target: row.paTarget, pu_target: row.puTarget, ticket_target: row.ticketTarget, items_target: row.itemsTarget, business_days: row.businessDays, delinquency_target: row.delinquencyTarget, trend: row.trend }, { onConflict: 'store_id, year, month' }); } fetchData(); }} />;
+                        if (currentView === 'cotas' && can('MODULE_COTAS')) return <CotasManagement user={user!} stores={isAdmin ? stores : stores.filter(s => s.id === user?.storeId)} cotas={cotas} cotaSettings={cotaSettings} cotaDebts={cotaDebts} performanceData={performanceData} productCategories={quotaCategories} mixParameters={quotaMixParams} onAddCota={async (c) => { await supabase.from('cotas').insert([{ store_id: c.storeId, brand: c.brand, category_id: c.category_id, total_value: c.totalValue, shipment_date: `${c.shipmentDate}-01`, payment_terms: c.paymentTerms, pairs: c.pairs, installments: c.installments, status: 'ABERTA' }]); fetchData(); }} onUpdateCota={async (id, u) => { await supabase.from('cotas').update(u).eq('id', id); fetchData(); }} onDeleteCota={async (id) => { await supabase.from('cotas').delete().eq('id', id); fetchData(); }} onSaveSettings={async (s) => { await supabase.from('cota_settings').upsert({ store_id: s.storeId, budget_value: s.budgetValue, manager_percent: s.managerPercent }, { onConflict: 'store_id' }); fetchData(); }} onSaveDebts={async (d) => { await supabase.from('cota_debts').upsert({ store_id: d.storeId, month: d.month, value: d.value }, { onConflict: 'store_id, month' }); fetchData(); }} onDeleteDebt={async (id) => { await supabase.from('cota_debts').delete().eq('id', id); fetchData(); }} onUpdateMixParameter={async (id, sId, cat, pct, sem) => { if (id) { await supabase.from('quota_mix_parameters').update({ mix_percentage: pct }).eq('id', id); } else { await supabase.from('quota_mix_parameters').insert([{ store_id: sId, parent_category: cat, mix_percentage: pct, semester: sem }]); } fetchData(); }} can={can} />;
                         if (currentView === 'compras' && can('MODULE_PURCHASES')) return <DashboardPurchases 
                             user={user!} 
                             stores={stores} 
@@ -760,7 +777,7 @@ const App: React.FC = () => {
                             can={can}
                         />;
                         if (currentView === 'pdv_sorveteria' && can('MODULE_ICECREAM')) return <IceCreamModule 
-                            user={user!} stores={stores} items={iceCreamItems} sales={iceCreamSales} salesHeaders={sales} salePayments={salePayments}
+                            user={user!} stores={isAdmin ? stores : stores.filter(s => s.id === user?.storeId)} items={iceCreamItems} sales={iceCreamSales} salesHeaders={sales} salePayments={salePayments}
                             stock={iceCreamStock} promissories={icPromissories} can={can}
                             sangriaCategories={icSangriaCategories}
                             sangrias={icSangrias}
@@ -935,7 +952,7 @@ const App: React.FC = () => {
                         if (currentView === 'caixa' && can('MODULE_CASH_REGISTER')) return (
                             <CashRegisterModule 
                                 user={user!} 
-                                stores={stores} 
+                                stores={isAdmin ? stores : stores.filter(s => s.id === user?.storeId)} 
                                 sales={iceCreamSales} 
                                 pixSales={pixSales} 
                                 closures={closures} 
@@ -996,10 +1013,10 @@ const App: React.FC = () => {
                         }
                         if (currentView === 'my_surveys') return <MySurveysComponent user={user!} />;
                         if (currentView === 'access' && can('MODULE_ACCESS_CONTROL')) return <AccessControlManagement />;
-                        if (currentView === 'audit' && can('MODULE_AUDIT')) return <SystemAudit currentUser={user!} logs={logs} receipts={receipts} cashErrors={cashErrors} iceCreamSales={iceCreamSales} icPromissories={icPromissories} cardSales={cardSales} pixSales={pixSales} closures={closures} stores={stores} can={can} />;
+                        if (currentView === 'audit' && can('MODULE_AUDIT')) return <SystemAudit currentUser={user!} logs={logs} receipts={receipts} cashErrors={cashErrors} iceCreamSales={iceCreamSales} icPromissories={icPromissories} cardSales={cardSales} pixSales={pixSales} closures={closures} stores={isAdmin ? stores : stores.filter(s => s.id === user?.storeId)} can={can} />;
                         if (currentView === 'settings' && can('MODULE_SETTINGS')) return <AdminSettings stores={stores} onAddStore={async (s) => { await supabase.from('stores').insert([s]); fetchData(); }} onUpdateStore={async (s) => { await supabase.from('stores').update(s).eq('id', s.id); fetchData(); }} onDeleteStore={async (id) => { await supabase.from('stores').delete().eq('id', id); fetchData(); }} />;
                         if (currentView === 'spreadsheet_order' && can('MODULE_PURCHASES')) return <SpreadsheetOrderModule user={user!} onClose={() => setCurrentView('compras')} />;
-                        if (currentView === 'os_demandas' && can('MODULE_DEMANDS')) return <OSDemandsModule user={user!} stores={stores} can={can} />;
+                        if (currentView === 'os_demandas' && can('MODULE_DEMANDS')) return <OSDemandsModule user={user!} stores={isAdmin ? stores : stores.filter(s => s.id === user?.storeId)} can={can} />;
                         if (currentView === 'dashboard_pa' && can('MODULE_DASHBOARD_PA')) return <DashboardPAModule 
                             user={user!} 
                             stores={stores} 
