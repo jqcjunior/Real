@@ -463,6 +463,72 @@ export interface AdminUser {
   created_at: string;
 }
 
+/* =========================
+   🔹 SISTEMA DE PESQUISAS
+========================= */
+export type SurveyTargetType = 'internal' | 'external';
+export type SurveyTargetCategory = 'all_managers' | 'all_cashiers' | 'all_sellers' | 'all_ice_cream' | 'specific_stores' | 'specific_users';
+export type SurveyQuestionType = 'text' | 'rating' | 'multiple_choice' | 'boolean';
+export type SurveyResultVisibility = 'admin' | 'store_manager' | 'respondent';
+
+export interface Survey {
+  id: string;
+  title: string;
+  description: string | null;
+  target_type: SurveyTargetType;
+  target_category: SurveyTargetCategory | null;
+  target_store_ids: string[] | null;
+  target_user_ids: string[] | null;
+  results_visible_to: SurveyResultVisibility[];
+  is_active: boolean;
+  created_by: string;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface SurveyQuestion {
+  id: string;
+  survey_id: string;
+  question_text: string;
+  question_type: SurveyQuestionType;
+  options: string[];
+  is_required: boolean;
+  sort_order: number;
+  created_at: string;
+}
+
+export interface SurveyResponse {
+  id: string;
+  survey_id: string;
+  user_id: string | null;
+  invitation_id: string | null;
+  store_id: string | null;
+  created_at: string;
+}
+
+export interface SurveyAnswerDetail {
+  id: string;
+  response_id: string;
+  question_id: string;
+  answer_text: string | null;
+  created_at: string;
+}
+
+export interface SurveyInvitation {
+  id: string;
+  survey_id: string;
+  store_id: string;
+  customer_name: string;
+  customer_email: string | null;
+  customer_phone: string | null;
+  invitation_token: string;
+  status: 'pending' | 'sent' | 'responded' | 'expired';
+  sent_at: string | null;
+  responded_at: string | null;
+  expires_at: string | null;
+  created_at: string;
+}
+
 export interface PurchasingManagement {
   id?: string;
   storeId: string;

@@ -17,7 +17,7 @@ interface OSDemandsModuleProps {
 }
 
 const OSDemandsModule: React.FC<OSDemandsModuleProps> = ({ user, stores, can }) => {
-    const isAdmin = can('ALWAYS');
+    const isAdmin = user.role === 'ADMIN';
     const [demands, setDemands] = useState<Demand[]>([]);
     const [selectedDemand, setSelectedDemand] = useState<Demand | null>(null);
     const selectedDemandRef = useRef<Demand | null>(null);

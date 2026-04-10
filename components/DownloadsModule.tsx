@@ -20,7 +20,7 @@ const DownloadsModule: React.FC<DownloadsModuleProps> = ({ user, items, onUpload
   const [searchTerm, setSearchTerm] = useState('');
   const [isModalOpen, setIsModalOpen] = useState(false);
   
-  const isAdmin = can('ALWAYS');
+  const isAdmin = user.role === UserRole.ADMIN;
 
   return (
     <div className="p-4 md:p-8 max-w-7xl mx-auto space-y-6 md:space-y-8 animate-in fade-in duration-500">

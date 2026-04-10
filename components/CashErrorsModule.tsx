@@ -41,7 +41,7 @@ const CashErrorsModule: React.FC<CashErrorsModuleProps> = ({ user, store, stores
       witnessRole: ''
   });
 
-  const isAdmin = can('ALWAYS');
+  const isAdmin = user.role === UserRole.ADMIN;
   const canEdit = can('MODULE_CASH_ERRORS_EDIT');
 
   // Cálculos automáticos

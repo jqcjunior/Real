@@ -16,7 +16,7 @@ const DashboardPAModule: React.FC<DashboardPAModuleProps> = ({
   onRefresh,
   can
 }) => {
-  const isAdmin = can('ALWAYS');
+  const isAdmin = user.role === UserRole.ADMIN;
   const userStore = stores.find(s => s.id === user.storeId);
  
   if (isAdmin) {

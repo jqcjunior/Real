@@ -3,7 +3,8 @@ import {
     User, Store, MonthlyPerformance, UserRole, Cota, CotaSettings, CotaDebts, QuotaCategory, QuotaMixParameter,
     IceCreamItem, IceCreamDailySale, CashRegisterClosure, ProductPerformance, Receipt, IceCreamStock, IceCreamPromissoryNote, AgendaItem, DownloadItem, CashError, SystemLog, MonthlyGoal, CreditCardSale, PixSale,
     Sale, SalePayment, IceCreamSangria, IceCreamSangriaCategory,
-    IceCreamStockMovement, StoreProfitPartner, AdminUser, PurchasingManagement, IceCreamFutureDebt
+    IceCreamStockMovement, StoreProfitPartner, AdminUser, PurchasingManagement, IceCreamFutureDebt,
+    Survey
 } from './types';
 import { supabase } from './services/supabaseClient';
 import apiService from './services/apiService';
@@ -30,6 +31,9 @@ import SpreadsheetOrderModule from './components/SpreadsheetOrderModule';
 import OSDemandsModule from './components/OSDemandsModule';
 import DashboardPAModule from './components/dashboardPA/DashboardPAModule';
 import DashboardPAGerente from './components/dashboardPA/DashboardPAGerente';
+import AdminSurveyManagement from './components/AdminSurveyManagement_v3';
+import MySurveysComponent from './components/MySurveysComponent';
+import SurveyResultsViewer from './components/SurveyResultsViewer';
 import LoginScreen from './components/LoginScreen';
 import NotificationHeader from './components/NotificationHeader';
 import ChangePasswordModal from './components/ChangePasswordModal';
@@ -38,7 +42,7 @@ import ChangePasswordModal from './components/ChangePasswordModal';
 import { 
     LayoutDashboard, Target, ShoppingBag, Calculator, IceCream as IceCreamIcon, 
     DollarSign, AlertCircle, Calendar, LogOut, Loader2, Menu, X, ClipboardList, Shield, UserCog, Users, ShieldAlert, Settings, FileSignature, FileText, Download, Lock,
-    Sun, Moon, Trophy
+    Sun, Moon, Trophy, BarChart3
 } from 'lucide-react';
 
 const App: React.FC = () => {
@@ -161,6 +165,7 @@ const App: React.FC = () => {
                 { key: 'MODULE_TERMO_CONDICIONAL', label: 'Termo Condicional', group: 'Documentos' },
                 { key: 'MODULE_DOWNLOADS', label: 'Downloads', group: 'Documentos' },
                 { key: 'MODULE_ADMIN_USERS', label: 'Usuários', group: 'Administração' },
+                { key: 'MODULE_ADMIN_SURVEYS', label: 'Pesquisas', group: 'Administração' },
                 { key: 'MODULE_ACCESS_CONTROL', label: 'Acessos', group: 'Administração' },
                 { key: 'MODULE_AUDIT', label: 'Auditoria', group: 'Administração' },
                 { key: 'MODULE_SETTINGS', label: 'Configurações', group: 'Administração' },
@@ -234,6 +239,7 @@ const App: React.FC = () => {
     const [adminUsers, setAdminUsers] = useState<AdminUser[]>([]);
     const [purchasingManagement, setPurchasingManagement] = useState<PurchasingManagement[]>([]);
     const [futureDebts, setFutureDebts] = useState<IceCreamFutureDebt[]>([]);
+    const [selectedSurveyForResults, setSelectedSurveyForResults] = useState<Survey | null>(null);
 
     const can = (permissionKey: string) => {
         if (!user) return false;
@@ -605,9 +611,20 @@ const App: React.FC = () => {
                             { id: 'compras', label: 'Compras', icon: ShoppingBag, perm: 'MODULE_PURCHASES' }, 
                             { id: 'os_demandas', label: 'Demanda OS', icon: ClipboardList, perm: 'MODULE_DEMANDS' } 
                         ] },
-                        { title: 'Operacional', items: [ { id: 'pdv_sorveteria', label: 'PDV Sorveteria Real', icon: IceCreamIcon, perm: 'MODULE_ICECREAM' }, { id: 'caixa', label: 'Caixa', icon: ClipboardList, perm: 'MODULE_CASH_REGISTER' }, { id: 'agenda', label: 'Agenda Semanal', icon: Calendar, perm: 'MODULE_AGENDA' } ] },
+                        { title: 'Operacional', items: [ 
+                            { id: 'pdv_sorveteria', label: 'PDV Sorveteria Real', icon: IceCreamIcon, perm: 'MODULE_ICECREAM' }, 
+                            { id: 'caixa', label: 'Caixa', icon: ClipboardList, perm: 'MODULE_CASH_REGISTER' }, 
+                            { id: 'agenda', label: 'Agenda Semanal', icon: Calendar, perm: 'MODULE_AGENDA' },
+                            { id: 'my_surveys', label: 'Minhas Pesquisas', icon: ClipboardList, perm: 'ALWAYS' }
+                        ] },
                         { title: 'Documentos', items: [ { id: 'autoriz_compra', label: 'Autoriz. Compra', icon: FileSignature, perm: 'MODULE_AUTORIZ_COMPRA' }, { id: 'termo_condicional', label: 'Termo Condicional', icon: FileText, perm: 'MODULE_TERMO_CONDICIONAL' }, { id: 'downloads', label: 'Downloads', icon: Download, perm: 'MODULE_DOWNLOADS' } ] },
-                        { title: 'Administração', items: [ { id: 'users', label: 'Usuários', icon: Users, perm: 'MODULE_ADMIN_USERS' }, { id: 'access', label: 'Acessos', icon: ShieldAlert, perm: 'MODULE_ACCESS_CONTROL' }, { id: 'audit', label: 'Auditoria', icon: Shield, perm: 'MODULE_AUDIT' }, { id: 'settings', label: 'Configurações', icon: Settings, perm: 'MODULE_SETTINGS' } ] }
+                        { title: 'Administração', items: [ 
+                            { id: 'users', label: 'Usuários', icon: Users, perm: 'MODULE_ADMIN_USERS' }, 
+                            { id: 'surveys', label: 'Pesquisas', icon: BarChart3, perm: 'MODULE_ADMIN_SURVEYS' },
+                            { id: 'access', label: 'Acessos', icon: ShieldAlert, perm: 'MODULE_ACCESS_CONTROL' }, 
+                            { id: 'audit', label: 'Auditoria', icon: Shield, perm: 'MODULE_AUDIT' }, 
+                            { id: 'settings', label: 'Configurações', icon: Settings, perm: 'MODULE_SETTINGS' } 
+                        ] }
                     ].map(section => {
                         const visibleItems = section.items.filter(i => can(i.perm));
                         if (visibleItems.length === 0) return null;
@@ -711,7 +728,7 @@ const App: React.FC = () => {
                             }
                         }} onRefresh={fetchData} />;
                         if (currentView === 'dashboard_loja' && can('MODULE_DASHBOARD_MANAGER')) return <DashboardManager user={user!} stores={stores} performanceData={performanceData} goalsData={goalsData} purchasingData={purchasingData} sangrias={icSangrias} stockMovements={icStockMovements} stock={iceCreamStock} />;
-                        if (currentView === 'metas' && can('MODULE_METAS')) return <GoalRegistration stores={stores} goalsData={goalsData} onSaveGoals={async (data) => { for(const row of data) { await supabase.from('monthly_goals').upsert({ store_id: row.storeId, year: row.year, month: row.month, revenue_target: row.revenueTarget, pa_target: row.paTarget, pu_target: row.puTarget, ticket_target: row.ticketTarget, items_target: row.itemsTarget, business_days: row.businessDays, delinquency_target: row.delinquencyTarget, trend: row.trend }, { onConflict: 'store_id, year, month' }); } fetchData(); }} />;
+                        if (currentView === 'metas' && can('MODULE_METAS')) return <GoalRegistration user={user!} stores={stores} goalsData={goalsData} onSaveGoals={async (data) => { for(const row of data) { await supabase.from('monthly_goals').upsert({ store_id: row.storeId, year: row.year, month: row.month, revenue_target: row.revenueTarget, pa_target: row.paTarget, pu_target: row.puTarget, ticket_target: row.ticketTarget, items_target: row.itemsTarget, business_days: row.businessDays, delinquency_target: row.delinquencyTarget, trend: row.trend }, { onConflict: 'store_id, year, month' }); } fetchData(); }} />;
                         if (currentView === 'cotas' && can('MODULE_COTAS')) return <CotasManagement user={user!} stores={stores} cotas={cotas} cotaSettings={cotaSettings} cotaDebts={cotaDebts} performanceData={performanceData} productCategories={quotaCategories} mixParameters={quotaMixParams} onAddCota={async (c) => { await supabase.from('cotas').insert([{ store_id: c.storeId, brand: c.brand, category_id: c.category_id, total_value: c.totalValue, shipment_date: `${c.shipmentDate}-01`, payment_terms: c.paymentTerms, pairs: c.pairs, installments: c.installments, status: 'ABERTA' }]); fetchData(); }} onUpdateCota={async (id, u) => { await supabase.from('cotas').update(u).eq('id', id); fetchData(); }} onDeleteCota={async (id) => { await supabase.from('cotas').delete().eq('id', id); fetchData(); }} onSaveSettings={async (s) => { await supabase.from('cota_settings').upsert({ store_id: s.storeId, budget_value: s.budgetValue, manager_percent: s.managerPercent }, { onConflict: 'store_id' }); fetchData(); }} onSaveDebts={async (d) => { await supabase.from('cota_debts').upsert({ store_id: d.storeId, month: d.month, value: d.value }, { onConflict: 'store_id, month' }); fetchData(); }} onDeleteDebt={async (id) => { await supabase.from('cota_debts').delete().eq('id', id); fetchData(); }} onUpdateMixParameter={async (id, sId, cat, pct, sem) => { if (id) { await supabase.from('quota_mix_parameters').update({ mix_percentage: pct }).eq('id', id); } else { await supabase.from('quota_mix_parameters').insert([{ store_id: sId, parent_category: cat, mix_percentage: pct, semester: sem }]); } fetchData(); }} can={can} />;
                         if (currentView === 'compras' && can('MODULE_PURCHASES')) return <DashboardPurchases 
                             user={user!} 
@@ -971,6 +988,13 @@ const App: React.FC = () => {
                         if (currentView === 'termo_condicional' && can('MODULE_TERMO_CONDICIONAL')) return <TermoAutorizacao user={user!} store={stores.find(s => s.id === user?.storeId)} />;
                         if (currentView === 'downloads' && can('MODULE_DOWNLOADS')) return <DownloadsModule user={user!} items={downloads} onUpload={async (i) => { await supabase.from('downloads').insert([i]); fetchData(); }} onDelete={async (id) => { await supabase.from('downloads').delete().eq('id', id); fetchData(); }} can={can} />;
                         if (currentView === 'users' && can('MODULE_ADMIN_USERS')) return <AdminUsersManagement currentUser={user} stores={stores} />;
+                        if (currentView === 'surveys' && can('MODULE_ADMIN_SURVEYS')) {
+                            if (selectedSurveyForResults) {
+                                return <SurveyResultsViewer survey={selectedSurveyForResults} currentUser={user!} stores={stores} onBack={() => setSelectedSurveyForResults(null)} />;
+                            }
+                            return <AdminSurveyManagement currentUser={user!} stores={stores} />;
+                        }
+                        if (currentView === 'my_surveys') return <MySurveysComponent user={user!} />;
                         if (currentView === 'access' && can('MODULE_ACCESS_CONTROL')) return <AccessControlManagement />;
                         if (currentView === 'audit' && can('MODULE_AUDIT')) return <SystemAudit currentUser={user!} logs={logs} receipts={receipts} cashErrors={cashErrors} iceCreamSales={iceCreamSales} icPromissories={icPromissories} cardSales={cardSales} pixSales={pixSales} closures={closures} stores={stores} can={can} />;
                         if (currentView === 'settings' && can('MODULE_SETTINGS')) return <AdminSettings stores={stores} onAddStore={async (s) => { await supabase.from('stores').insert([s]); fetchData(); }} onUpdateStore={async (s) => { await supabase.from('stores').update(s).eq('id', s.id); fetchData(); }} onDeleteStore={async (id) => { await supabase.from('stores').delete().eq('id', id); fetchData(); }} />;

@@ -453,7 +453,7 @@ export const CotasManagement: React.FC<CotasManagementProps> = ({
   onUpdateMixParameter,
   can,
 }) => {
-  const isAdmin = can('ALWAYS');
+  const isAdmin = user.role === UserRole.ADMIN;
   const { toast, showToast } = useToast();
 
   // ── Loja visualizada ──────────────────────

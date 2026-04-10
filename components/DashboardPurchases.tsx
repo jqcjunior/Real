@@ -46,9 +46,9 @@ const DashboardPurchases: React.FC<DashboardPurchasesProps> = ({ stores, data, m
   const filteredManagementData = useMemo(() => {
       const [year, month] = selectedMonth.split('-').map(Number);
       let base = managementData.filter(d => d.year === year && d.month === month);
-      if (can('ALWAYS')) return base; // Admin or Always access
+      if (user.role === 'ADMIN') return base; // Admin access
       return base.filter(d => d.storeId === user.storeId);
-  }, [managementData, user, selectedMonth, can]);
+  }, [managementData, user, selectedMonth]);
 
   const currentData = useMemo(() => data.filter(d => d.month === selectedMonth), [data, selectedMonth]);
 

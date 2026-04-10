@@ -563,7 +563,7 @@ export const printErrorsDoc = (title: string, dateInfo: string, storeName: strin
 const CashRegisterModule: React.FC<CashRegisterModuleProps> = ({ 
     user, stores, receipts, errors, finances, can, onAddReceipt, onAddError, onDeleteError, onAddClosure, onAddLog 
 }) => {
-    const isAdmin = can('ALWAYS');
+    const isAdmin = user.role === UserRole.ADMIN;
     const [activeTab, setActiveTab] = useState<'recibos' | 'cartoes' | 'pix' | 'quebras'>('recibos');
     const [isSubmitting, setIsSubmitting] = useState(false);
     const [selectedDate, setSelectedDate] = useState(new Date().toISOString().split('T')[0]);
@@ -1024,7 +1024,7 @@ const CashRegisterModule: React.FC<CashRegisterModuleProps> = ({
                         <div><h1 className="text-xl font-black text-blue-950 uppercase italic tracking-tighter">Gestão de Caixa</h1><p className="text-[10px] text-gray-400 font-bold uppercase tracking-widest">Finanças e Auditoria Rede Real</p></div>
                     </div>
  
-                    {can('ALWAYS') && (
+                    {isAdmin && (
                         <div className="flex items-center gap-2 bg-gray-50 dark:bg-slate-800 px-4 py-2 rounded-2xl border border-gray-200 dark:border-slate-700 shadow-inner">
                             <Settings2 size={16} className="text-blue-600" />
                             <select 

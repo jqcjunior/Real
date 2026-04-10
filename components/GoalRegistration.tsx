@@ -1,15 +1,17 @@
 import React, { useState, useEffect, useMemo } from 'react';
-import { Store, MonthlyGoal } from '../types';
+import { User, UserRole, Store, MonthlyGoal } from '../types';
 import { formatCurrency } from '../constants';
 import { Target, Loader2, Save, Calendar, CalendarDays, CheckCircle2, ChevronDown, Activity, Info, Package, DollarSign } from 'lucide-react';
 
 interface GoalRegistrationProps {
+  user: User;
   stores: Store[];
   goalsData: MonthlyGoal[];
   onSaveGoals: (data: MonthlyGoal[]) => Promise<void>;
 }
 
 const GoalRegistration: React.FC<GoalRegistrationProps> = ({
+  user,
   stores,
   goalsData,
   onSaveGoals
@@ -26,9 +28,14 @@ const GoalRegistration: React.FC<GoalRegistrationProps> = ({
     { value: 10, label: 'Outubro' }, { value: 11, label: 'Novembro' }, { value: 12, label: 'Dezembro' }
   ];
 
+  const isAdmin = user.role === UserRole.ADMIN;
+
   const activeStores = useMemo(
-    () => (stores || []).filter(s => s.status !== 'inactive').sort((a, b) => Number(a.number) - Number(b.number)),
-    [stores]
+    () => (stores || [])
+      .filter(s => s.status !== 'inactive')
+      .filter(s => isAdmin || s.id === user.storeId)
+      .sort((a, b) => Number(a.number) - Number(b.number)),
+    [stores, isAdmin, user.storeId]
   );
 
   useEffect(() => {

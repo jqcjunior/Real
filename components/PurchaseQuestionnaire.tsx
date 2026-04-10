@@ -32,7 +32,7 @@ const PurchaseQuestionnaire: React.FC<PurchaseQuestionnaireProps> = ({ user, sto
     const [qDesc, setQDesc] = useState('');
     const [qProducts, setQProducts] = useState<Partial<QuestionnaireProduct>[]>([]);
 
-    const isAdmin = can('ALWAYS');
+    const isAdmin = user.role === 'ADMIN';
 
     const fetchAllData = async () => {
         setIsLoading(true);

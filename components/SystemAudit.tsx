@@ -59,7 +59,7 @@ const SystemAudit: React.FC<SystemAuditProps> = ({ logs, receipts, store, cashEr
     setTimeout(() => setToast({ ...toast, show: false }), 3000);
   };
 
-  const isManagement = can('ALWAYS') || can('MODULE_AUDIT_MANAGE');
+  const isManagement = currentUser?.role === UserRole.ADMIN || can('MODULE_AUDIT_MANAGE');
 
   // Lista de usuários únicos para filtro
   const auditUsers = useMemo(() => {
@@ -106,7 +106,7 @@ const SystemAudit: React.FC<SystemAuditProps> = ({ logs, receipts, store, cashEr
                                 (c.brand || '').toLowerCase().includes(searchTerm.toLowerCase()) || 
                                 (c.saleCode || '').toLowerCase().includes(searchTerm.toLowerCase());
           
-          const matchesStore = can('ALWAYS') 
+          const matchesStore = currentUser?.role === UserRole.ADMIN 
             ? (!selectedStoreId || c.storeId === selectedStoreId)
             : c.storeId === currentUser?.storeId;
           
@@ -123,7 +123,7 @@ const SystemAudit: React.FC<SystemAuditProps> = ({ logs, receipts, store, cashEr
                                 (p.clientName || '').toLowerCase().includes(searchTerm.toLowerCase()) || 
                                 (p.saleCode || '').toLowerCase().includes(searchTerm.toLowerCase());
           
-          const matchesStore = can('ALWAYS') 
+          const matchesStore = currentUser?.role === UserRole.ADMIN 
             ? (!selectedStoreId || p.storeId === selectedStoreId)
             : p.storeId === currentUser?.storeId;
           
@@ -136,7 +136,7 @@ const SystemAudit: React.FC<SystemAuditProps> = ({ logs, receipts, store, cashEr
     const totalPix = filteredPixSales.reduce((acc, curr) => acc + (curr.value || 0), 0);
     const totalReceipts = receipts.filter(r => {
         const matchesDate = checkDateInRange(String(r.date));
-        const matchesStore = can('ALWAYS') 
+        const matchesStore = currentUser?.role === UserRole.ADMIN 
           ? (!selectedStoreId || r.storeId === selectedStoreId)
           : r.storeId === currentUser?.storeId;
         return matchesDate && matchesStore;
@@ -190,7 +190,7 @@ const SystemAudit: React.FC<SystemAuditProps> = ({ logs, receipts, store, cashEr
                 <p className="text-xl font-black text-red-900 italic">
                     {formatCurrency(cashErrors.filter(e => {
                         const matchesDate = checkDateInRange(String(e.date));
-                        const matchesStore = can('ALWAYS') 
+                        const matchesStore = currentUser?.role === UserRole.ADMIN 
                           ? (!selectedStoreId || e.storeId === selectedStoreId)
                           : e.storeId === currentUser?.storeId;
                         return matchesDate && matchesStore;
@@ -200,7 +200,7 @@ const SystemAudit: React.FC<SystemAuditProps> = ({ logs, receipts, store, cashEr
         </div>
 
         {/* Filtro de Loja (Admin) */}
-        {can('ALWAYS') && (
+        {currentUser?.role === UserRole.ADMIN && (
             <div className="md:col-span-12 bg-blue-50/30 px-5 py-4 rounded-[20px] border border-blue-100 shadow-inner flex items-center gap-3 mb-2">
                 <StoreIcon size={18} className="text-blue-600" />
                 <select value={selectedStoreId} onChange={e => setSelectedStoreId(e.target.value)} className="w-full font-black uppercase text-[10px] outline-none bg-transparent border-none p-0 cursor-pointer">
@@ -354,7 +354,7 @@ const SystemAudit: React.FC<SystemAuditProps> = ({ logs, receipts, store, cashEr
                     <tbody className="divide-y divide-gray-50 font-bold">
                         {receipts.filter(r => {
                             const matchesDate = checkDateInRange(String(r.date));
-                            const matchesStore = can('ALWAYS') 
+                            const matchesStore = currentUser?.role === UserRole.ADMIN 
                               ? (!selectedStoreId || r.storeId === selectedStoreId)
                               : r.storeId === currentUser?.storeId;
                             return matchesDate && matchesStore;
@@ -386,7 +386,7 @@ const SystemAudit: React.FC<SystemAuditProps> = ({ logs, receipts, store, cashEr
                     <tbody className="divide-y divide-gray-50 font-bold">
                         {cashErrors.filter(e => {
                             const matchesDate = checkDateInRange(String(e.date));
-                            const matchesStore = can('ALWAYS') 
+                            const matchesStore = currentUser?.role === UserRole.ADMIN 
                               ? (!selectedStoreId || e.storeId === selectedStoreId)
                               : e.storeId === currentUser?.storeId;
                             return matchesDate && matchesStore;
