@@ -106,8 +106,17 @@ const App: React.FC = () => {
                     
                     // Define visão inicial
                     if (!currentView) {
-                        setCurrentView(mappedRole === UserRole.ADMIN ? 'dashboard_rede' : 
-                                      mappedRole === UserRole.ICE_CREAM ? 'pdv_sorveteria' : 'dashboard_loja');
+                        if (mappedRole === UserRole.ADMIN) {
+                            setCurrentView('dashboard_rede');      // ✅ ADMIN → Dashboard Rede
+                        } else if (mappedRole === UserRole.MANAGER) {
+                            setCurrentView('dashboard_loja');      // ✅ GERENTE → Dashboard Loja
+                        } else if (mappedRole === UserRole.ICE_CREAM) {
+                            setCurrentView('pdv_sorveteria');      // ✅ SORVETE → PDV Sorveteria
+                        } else if (mappedRole === UserRole.CASHIER) {
+                            setCurrentView('caixa');               // ✅ CAIXA → Módulo Caixa
+                        } else {
+                            setCurrentView('dashboard_loja');      // ✅ Outros → Dashboard Loja
+                        }
                     }
                 } else {
                     // Se não houver usuário, vai para o Login
@@ -504,8 +513,17 @@ const App: React.FC = () => {
             await fetchData();
             
             // Define visão inicial
-            setCurrentView(mappedRole === UserRole.ADMIN ? 'dashboard_rede' : 
-                          mappedRole === UserRole.ICE_CREAM ? 'pdv_sorveteria' : 'dashboard_loja');
+            if (mappedRole === UserRole.ADMIN) {
+                setCurrentView('dashboard_rede');      // ✅ ADMIN → Dashboard Rede
+            } else if (mappedRole === UserRole.MANAGER) {
+                setCurrentView('dashboard_loja');      // ✅ GERENTE → Dashboard Loja
+            } else if (mappedRole === UserRole.ICE_CREAM) {
+                setCurrentView('pdv_sorveteria');      // ✅ SORVETE → PDV Sorveteria
+            } else if (mappedRole === UserRole.CASHIER) {
+                setCurrentView('caixa');               // ✅ CAIXA → Módulo Caixa
+            } else {
+                setCurrentView('dashboard_loja');      // ✅ Outros → Dashboard Loja
+            }
             
             return { success: true, user: loggedUser };
         } catch (err: any) { 

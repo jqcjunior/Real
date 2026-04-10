@@ -456,10 +456,11 @@ export interface AdminUser {
   name: string;
   email: string;
   password?: string;
-  status: 'active' | 'inactive';
+  status: 'active' | 'inactive' | 'pending' | 'blocked' | 'rejected';
   role_level: AdminRoleLevel;
   store_id: string | null;
   last_activity?: string;
+  created_at: string;
 }
 
 export interface PurchasingManagement {

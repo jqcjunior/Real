@@ -8,7 +8,9 @@
 
 -- Função para autenticar usuário e retornar dados básicos
 CREATE OR REPLACE FUNCTION public.authenticate_user(p_email text, p_password text)
-RETURNS TABLE(user_id uuid, name text, email text, role_level text, store_id uuid, is_valid boolean) AS $$
+RETURNS TABLE(user_id uuid, name text, email text, role_level text, store_id uuid, is_valid boolean, error_message text) AS $$
+DECLARE
+    v_user record;
 BEGIN
     -- AUTO-BOOTSTRAP: Se for o email do ambiente e não existir, cria o usuário
     IF lower(p_email) = 'jqcjunior1981@gmail.com' AND NOT EXISTS (SELECT 1 FROM admin_users WHERE lower(email) = 'jqcjunior1981@gmail.com') THEN
@@ -16,12 +18,22 @@ BEGIN
         VALUES ('Junior (Admin)', 'jqcjunior1981@gmail.com', 'admin', 'admin', 'active');
     END IF;
 
-    RETURN QUERY
-    SELECT id, admin_users.name, admin_users.email, admin_users.role_level, admin_users.store_id, true
+    SELECT * INTO v_user
     FROM admin_users
     WHERE lower(admin_users.email) = lower(p_email) 
-      AND admin_users.password = p_password 
-      AND admin_users.status = 'active';
+      AND admin_users.password = p_password;
+
+    IF v_user.id IS NULL THEN
+        RETURN QUERY SELECT NULL::uuid, NULL::text, NULL::text, NULL::text, NULL::uuid, false, 'E-mail ou senha incorretos.'::text;
+    ELSIF v_user.status = 'pending' THEN
+        RETURN QUERY SELECT v_user.id, v_user.name, v_user.email, v_user.role_level, v_user.store_id, false, 'Seu acesso ainda está pendente de aprovação.'::text;
+    ELSIF v_user.status = 'blocked' THEN
+        RETURN QUERY SELECT v_user.id, v_user.name, v_user.email, v_user.role_level, v_user.store_id, false, 'Seu acesso foi bloqueado. Entre em contato com o administrador.'::text;
+    ELSIF v_user.status = 'rejected' THEN
+        RETURN QUERY SELECT v_user.id, v_user.name, v_user.email, v_user.role_level, v_user.store_id, false, 'Seu acesso foi rejeitado.'::text;
+    ELSE
+        RETURN QUERY SELECT v_user.id, v_user.name, v_user.email, v_user.role_level, v_user.store_id, true, NULL::text;
+    END IF;
 END;
 $$ LANGUAGE plpgsql SECURITY DEFINER;
 
@@ -81,6 +93,28 @@ BEGIN
         notes = p_notes,
         transaction_date = p_transaction_date
     WHERE id = p_id;
+END;
+$$ LANGUAGE plpgsql SECURITY DEFINER;
+
+-- Função para aprovar usuário
+CREATE OR REPLACE FUNCTION public.admin_approve_user(p_user_id uuid)
+RETURNS json AS $$
+BEGIN
+    UPDATE admin_users SET status = 'active' WHERE id = p_user_id;
+    RETURN json_build_object('success', true);
+EXCEPTION WHEN OTHERS THEN
+    RETURN json_build_object('success', false, 'error', SQLERRM);
+END;
+$$ LANGUAGE plpgsql SECURITY DEFINER;
+
+-- Função para rejeitar usuário
+CREATE OR REPLACE FUNCTION public.admin_reject_user(p_user_id uuid, p_reason text DEFAULT NULL)
+RETURNS json AS $$
+BEGIN
+    UPDATE admin_users SET status = 'rejected' WHERE id = p_user_id;
+    RETURN json_build_object('success', true);
+EXCEPTION WHEN OTHERS THEN
+    RETURN json_build_object('success', false, 'error', SQLERRM);
 END;
 $$ LANGUAGE plpgsql SECURITY DEFINER;
 

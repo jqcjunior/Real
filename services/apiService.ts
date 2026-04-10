@@ -11,12 +11,19 @@ class ApiService {
         p_password: password
       });
 
-      if (error) throw error;
+      if (error || !data || data.length === 0) {
+        throw new Error('Erro na autenticação');
+      }
 
-      if (data && data[0]?.is_valid) {
-        const user = data[0];
-        
-        // DEBUG TEMPORÁRIO - ADICIONAR ESTAS LINHAS
+      const user = data[0];
+
+      // ✅ VERIFICAR STATUS
+      if (!user.is_valid) {
+        // Mostrar mensagem específica do erro
+        throw new Error(user.error_message || 'Acesso negado');
+      }
+
+      // DEBUG TEMPORÁRIO - ADICIONAR ESTAS LINHAS
         console.log('=== DEBUG AUTHENTICATE_USER ===');
         console.log('Dados retornados do banco:', user);
         console.log('user.user_id:', user.user_id);
@@ -49,9 +56,6 @@ class ApiService {
         sessionStorage.setItem('auth_token', 'session_' + user.user_id);
 
         return { success: true, user: mappedUser };
-      } else {
-        throw new Error('E-mail ou senha incorretos.');
-      }
     } catch (error: any) {
       console.error('Erro no login:', error);
       throw error;

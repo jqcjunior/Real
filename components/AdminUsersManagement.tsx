@@ -25,6 +25,9 @@ const AdminUsersManagement: React.FC<AdminUsersManagementProps> = ({ currentUser
     const [resetUser, setResetUser] = useState<AdminUser | null>(null);
     const [newResetPassword, setNewResetPassword] = useState('');
 
+    const [activeTab, setActiveTab] = useState<'all' | 'pending' | 'blocked'>('all');
+    const [pendingUsers, setPendingUsers] = useState<AdminUser[]>([]);
+
     const filteredAdmins = admins
         .filter(admin => {
             const matchesSearch = (admin.name || '').toLowerCase().includes(searchTerm.toLowerCase()) || 
@@ -37,7 +40,11 @@ const AdminUsersManagement: React.FC<AdminUsersManagementProps> = ({ currentUser
     const fetchAdmins = async () => {
         setIsLoading(true);
         try {
-            const { data, error } = await supabase.from('admin_users').select('*').order('name', { ascending: true });
+            const { data, error } = await supabase
+                .from('admin_users')
+                .select('*')
+                .neq('status', 'pending')
+                .order('name', { ascending: true });
             if (error) throw error;
             if (data) setAdmins(data as AdminUser[]);
         } catch (err) {
@@ -47,9 +54,70 @@ const AdminUsersManagement: React.FC<AdminUsersManagementProps> = ({ currentUser
         }
     };
 
+    const fetchPendingUsers = async () => {
+        setIsLoading(true);
+        try {
+            const { data, error } = await supabase
+                .from('admin_users')
+                .select('*')
+                .eq('status', 'pending')
+                .order('created_at', { ascending: false });
+            if (error) throw error;
+            setPendingUsers(data || []);
+        } catch (err) {
+            console.error("Erro ao buscar usuários pendentes:", err);
+        } finally {
+            setIsLoading(false);
+        }
+    };
+
     useEffect(() => {
-        fetchAdmins();
-    }, []);
+        if (activeTab === 'all' || activeTab === 'blocked') {
+            fetchAdmins();
+        } else if (activeTab === 'pending') {
+            fetchPendingUsers();
+        }
+    }, [activeTab]);
+
+    const handleApprove = async (userId: string) => {
+        try {
+            const { data, error } = await supabase.rpc('admin_approve_user', {
+                p_user_id: userId
+            });
+            
+            if (error) throw error;
+            
+            if (data.success) {
+                alert('Usuário aprovado!');
+                fetchPendingUsers();
+            } else {
+                alert('Erro ao aprovar: ' + data.error);
+            }
+        } catch (err: any) {
+            alert('Erro ao aprovar: ' + err.message);
+        }
+    };
+
+    const handleReject = async (userId: string) => {
+        const reason = prompt('Motivo da rejeição (opcional):');
+        try {
+            const { data, error } = await supabase.rpc('admin_reject_user', {
+                p_user_id: userId,
+                p_reason: reason
+            });
+            
+            if (error) throw error;
+            
+            if (data.success) {
+                alert('Usuário rejeitado!');
+                fetchPendingUsers();
+            } else {
+                alert('Erro ao rejeitar: ' + data.error);
+            }
+        } catch (err: any) {
+            alert('Erro ao rejeitar: ' + err.message);
+        }
+    };
 
     const handleSave = async (e: React.FormEvent) => {
         e.preventDefault();
@@ -147,93 +215,156 @@ const AdminUsersManagement: React.FC<AdminUsersManagementProps> = ({ currentUser
             </div>
 
             <div className="bg-white dark:bg-slate-900 rounded-[32px] md:rounded-[40px] shadow-sm border border-gray-100 dark:border-slate-800 overflow-hidden">
-                <div className="p-6 border-b dark:border-slate-800 bg-gray-50/30 dark:bg-slate-800/30 space-y-4">
-                    <div className="flex flex-wrap gap-2">
+                <div className="p-6 border-b dark:border-slate-800 bg-gray-50/30 dark:bg-slate-800/30 space-y-6">
+                    <div className="flex border-b dark:border-slate-700">
                         <button 
-                            onClick={() => setSelectedRole('all')}
-                            className={`px-4 py-2 rounded-xl text-[10px] font-black uppercase transition-all border ${selectedRole === 'all' ? 'bg-gray-950 text-white border-gray-950 shadow-md' : 'bg-white text-gray-400 border-gray-200 hover:border-gray-400'}`}
+                            onClick={() => setActiveTab('all')}
+                            className={`px-6 py-3 text-xs font-black uppercase tracking-widest transition-all border-b-2 ${activeTab === 'all' ? 'border-red-600 text-red-600' : 'border-transparent text-gray-400 hover:text-gray-600'}`}
                         >
-                            Todos
+                            Ativos / Bloqueados
                         </button>
                         <button 
-                            onClick={() => setSelectedRole('admin')}
-                            className={`px-4 py-2 rounded-xl text-[10px] font-black uppercase transition-all border ${selectedRole === 'admin' ? 'bg-red-600 text-white border-red-600 shadow-md' : 'bg-white text-gray-400 border-gray-200 hover:border-red-200'}`}
+                            onClick={() => setActiveTab('pending')}
+                            className={`px-6 py-3 text-xs font-black uppercase tracking-widest transition-all border-b-2 ${activeTab === 'pending' ? 'border-red-600 text-red-600' : 'border-transparent text-gray-400 hover:text-gray-600'} flex items-center gap-2`}
                         >
-                            Admin
-                        </button>
-                        <button 
-                            onClick={() => setSelectedRole('manager')}
-                            className={`px-4 py-2 rounded-xl text-[10px] font-black uppercase transition-all border ${selectedRole === 'manager' ? 'bg-blue-600 text-white border-blue-600 shadow-md' : 'bg-white text-gray-400 border-gray-200 hover:border-blue-200'}`}
-                        >
-                            Gerente
-                        </button>
-                        <button 
-                            onClick={() => setSelectedRole('cashier')}
-                            className={`px-4 py-2 rounded-xl text-[10px] font-black uppercase transition-all border ${selectedRole === 'cashier' ? 'bg-green-600 text-white border-green-600 shadow-md' : 'bg-white text-gray-400 border-gray-200 hover:border-green-200'}`}
-                        >
-                            Caixa
-                        </button>
-                        <button 
-                            onClick={() => setSelectedRole('sorvete')}
-                            className={`px-4 py-2 rounded-xl text-[10px] font-black uppercase transition-all border ${selectedRole === 'sorvete' ? 'bg-purple-600 text-white border-purple-600 shadow-md' : 'bg-white text-gray-400 border-gray-200 hover:border-purple-200'}`}
-                        >
-                            Sorvete
+                            Pendentes {pendingUsers.length > 0 && <span className="bg-red-600 text-white text-[10px] px-2 py-0.5 rounded-full">{pendingUsers.length}</span>}
                         </button>
                     </div>
-                    <div className="relative max-w-md">
-                        <Search className="absolute left-4 top-1/2 -translate-y-1/2 text-gray-400" size={18} />
-                        <input type="text" placeholder="Pesquisar profissionais..." value={searchTerm} onChange={(e) => setSearchTerm(e.target.value)} className="w-full pl-12 pr-6 py-3 bg-white border border-gray-200 rounded-xl text-sm font-bold text-gray-700 focus:ring-4 focus:ring-blue-50 outline-none shadow-inner" />
-                    </div>
+
+                    {activeTab === 'all' && (
+                        <>
+                            <div className="flex flex-wrap gap-2">
+                                <button 
+                                    onClick={() => setSelectedRole('all')}
+                                    className={`px-4 py-2 rounded-xl text-[10px] font-black uppercase transition-all border ${selectedRole === 'all' ? 'bg-gray-950 text-white border-gray-950 shadow-md' : 'bg-white text-gray-400 border-gray-200 hover:border-gray-400'}`}
+                                >
+                                    Todos
+                                </button>
+                                <button 
+                                    onClick={() => setSelectedRole('admin')}
+                                    className={`px-4 py-2 rounded-xl text-[10px] font-black uppercase transition-all border ${selectedRole === 'admin' ? 'bg-red-600 text-white border-red-600 shadow-md' : 'bg-white text-gray-400 border-gray-200 hover:border-red-200'}`}
+                                >
+                                    Admin
+                                </button>
+                                <button 
+                                    onClick={() => setSelectedRole('manager')}
+                                    className={`px-4 py-2 rounded-xl text-[10px] font-black uppercase transition-all border ${selectedRole === 'manager' ? 'bg-blue-600 text-white border-blue-600 shadow-md' : 'bg-white text-gray-400 border-gray-200 hover:border-blue-200'}`}
+                                >
+                                    Gerente
+                                </button>
+                                <button 
+                                    onClick={() => setSelectedRole('cashier')}
+                                    className={`px-4 py-2 rounded-xl text-[10px] font-black uppercase transition-all border ${selectedRole === 'cashier' ? 'bg-green-600 text-white border-green-600 shadow-md' : 'bg-white text-gray-400 border-gray-200 hover:border-green-200'}`}
+                                >
+                                    Caixa
+                                </button>
+                                <button 
+                                    onClick={() => setSelectedRole('sorvete')}
+                                    className={`px-4 py-2 rounded-xl text-[10px] font-black uppercase transition-all border ${selectedRole === 'sorvete' ? 'bg-purple-600 text-white border-purple-600 shadow-md' : 'bg-white text-gray-400 border-gray-200 hover:border-purple-200'}`}
+                                >
+                                    Sorvete
+                                </button>
+                            </div>
+                            <div className="relative max-w-md">
+                                <Search className="absolute left-4 top-1/2 -translate-y-1/2 text-gray-400" size={18} />
+                                <input type="text" placeholder="Pesquisar profissionais..." value={searchTerm} onChange={(e) => setSearchTerm(e.target.value)} className="w-full pl-12 pr-6 py-3 bg-white border border-gray-200 rounded-xl text-sm font-bold text-gray-700 focus:ring-4 focus:ring-blue-50 outline-none shadow-inner" />
+                            </div>
+                        </>
+                    )}
                 </div>
 
                 <div className="overflow-x-auto no-scrollbar">
-                    <table className="w-full text-left min-w-[900px]">
-                        <thead>
-                            <tr className="bg-white border-b border-gray-100 text-[10px] font-black text-gray-400 uppercase tracking-widest">
-                                <th className="px-8 py-5">Perfil</th>
-                                <th className="px-8 py-5">Nome do Profissional</th>
-                                <th className="px-8 py-5">Unidade</th>
-                                <th className="px-8 py-5 text-right">Ações</th>
-                            </tr>
-                        </thead>
-                        <tbody className="divide-y divide-gray-50">
+                    {activeTab === 'all' ? (
+                        <table className="w-full text-left min-w-[900px]">
+                            <thead>
+                                <tr className="bg-white border-b border-gray-100 text-[10px] font-black text-gray-400 uppercase tracking-widest">
+                                    <th className="px-8 py-5">Perfil</th>
+                                    <th className="px-8 py-5">Nome do Profissional</th>
+                                    <th className="px-8 py-5">Unidade</th>
+                                    <th className="px-8 py-5 text-right">Ações</th>
+                                </tr>
+                            </thead>
+                            <tbody className="divide-y divide-gray-50">
+                                {isLoading ? (
+                                    <tr><td colSpan={4} className="py-20 text-center"><Loader2 className="animate-spin mx-auto text-red-600" /></td></tr>
+                                ) : filteredAdmins.map(admin => {
+                                    const role = getRoleBadge(admin.role_level);
+                                    const assignedStore = stores.find(s => s.id === admin.store_id);
+                                    return (
+                                        <tr key={admin.id} className="hover:bg-gray-50 transition-colors group">
+                                            <td className="px-8 py-5">
+                                                <div className={`w-fit flex items-center gap-1.5 px-2 py-1 rounded-lg border font-black uppercase text-[8px] ${role.class}`}>
+                                                    <role.icon size={12} /> {role.label}
+                                                </div>
+                                            </td>
+                                            <td className="px-8 py-5">
+                                                <div className="font-black text-gray-900 uppercase italic text-sm tracking-tighter leading-none">{admin.name}</div>
+                                                <div className="text-[9px] font-bold text-gray-400 uppercase mt-1">{admin.email}</div>
+                                            </td>
+                                            <td className="px-8 py-5 text-[10px] font-black uppercase italic text-blue-900">
+                                                {admin.role_level === 'admin' ? 'Rede Real' : (assignedStore ? `UNID. ${assignedStore.number}` : '-')}
+                                            </td>
+                                            <td className="px-8 py-5 text-right">
+                                                <div className="flex justify-end gap-2 opacity-0 group-hover:opacity-100 transition-all">
+                                                    <button 
+                                                        onClick={() => { setResetUser(admin); setIsResetModalOpen(true); }} 
+                                                        className="p-2 text-amber-600 hover:bg-amber-50 rounded-xl transition-all"
+                                                        title="Resetar Senha"
+                                                    >
+                                                        <Lock size={18} />
+                                                    </button>
+                                                    <button onClick={() => { setEditingId(admin.id); setFormData(admin); setIsModalOpen(true); }} className="p-2 text-blue-600 hover:bg-blue-50 rounded-xl transition-all"><Edit3 size={18} /></button>
+                                                    <button onClick={() => handleDelete(admin.id, admin.name)} className="p-2 text-red-300 hover:text-red-500 rounded-xl transition-all"><Trash2 size={18} /></button>
+                                                </div>
+                                            </td>
+                                        </tr>
+                                    );
+                                })}
+                            </tbody>
+                        </table>
+                    ) : (
+                        <div className="p-8 grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
                             {isLoading ? (
-                                <tr><td colSpan={4} className="py-20 text-center"><Loader2 className="animate-spin mx-auto text-red-600" /></td></tr>
-                            ) : filteredAdmins.map(admin => {
-                                const role = getRoleBadge(admin.role_level);
-                                const assignedStore = stores.find(s => s.id === admin.store_id);
-                                return (
-                                    <tr key={admin.id} className="hover:bg-gray-50 transition-colors group">
-                                        <td className="px-8 py-5">
-                                            <div className={`w-fit flex items-center gap-1.5 px-2 py-1 rounded-lg border font-black uppercase text-[8px] ${role.class}`}>
-                                                <role.icon size={12} /> {role.label}
-                                            </div>
-                                        </td>
-                                        <td className="px-8 py-5">
-                                            <div className="font-black text-gray-900 uppercase italic text-sm tracking-tighter leading-none">{admin.name}</div>
-                                            <div className="text-[9px] font-bold text-gray-400 uppercase mt-1">{admin.email}</div>
-                                        </td>
-                                        <td className="px-8 py-5 text-[10px] font-black uppercase italic text-blue-900">
-                                            {admin.role_level === 'admin' ? 'Rede Real' : (assignedStore ? `UNID. ${assignedStore.number}` : '-')}
-                                        </td>
-                                        <td className="px-8 py-5 text-right">
-                                            <div className="flex justify-end gap-2 opacity-0 group-hover:opacity-100 transition-all">
-                                                <button 
-                                                    onClick={() => { setResetUser(admin); setIsResetModalOpen(true); }} 
-                                                    className="p-2 text-amber-600 hover:bg-amber-50 rounded-xl transition-all"
-                                                    title="Resetar Senha"
-                                                >
-                                                    <Lock size={18} />
-                                                </button>
-                                                <button onClick={() => { setEditingId(admin.id); setFormData(admin); setIsModalOpen(true); }} className="p-2 text-blue-600 hover:bg-blue-50 rounded-xl transition-all"><Edit3 size={18} /></button>
-                                                <button onClick={() => handleDelete(admin.id, admin.name)} className="p-2 text-red-300 hover:text-red-500 rounded-xl transition-all"><Trash2 size={18} /></button>
-                                            </div>
-                                        </td>
-                                    </tr>
-                                );
-                            })}
-                        </tbody>
-                    </table>
+                                <div className="col-span-full py-20 text-center"><Loader2 className="animate-spin mx-auto text-red-600" /></div>
+                            ) : pendingUsers.length === 0 ? (
+                                <div className="col-span-full py-20 text-center text-gray-400 font-bold uppercase tracking-widest text-xs">Nenhum usuário pendente</div>
+                            ) : pendingUsers.map(user => (
+                                <div key={user.id} className="bg-white dark:bg-slate-800 border border-gray-100 dark:border-slate-700 p-6 rounded-[32px] shadow-sm hover:shadow-md transition-all">
+                                    <div className="flex justify-between items-start mb-4">
+                                        <div>
+                                            <h3 className="font-black text-gray-900 dark:text-white uppercase italic tracking-tighter text-lg leading-none">{user.name}</h3>
+                                            <p className="text-[10px] font-bold text-gray-400 uppercase mt-1">{user.email}</p>
+                                        </div>
+                                        <div className={`px-2 py-1 rounded-lg border font-black uppercase text-[8px] ${getRoleBadge(user.role_level).class}`}>
+                                            {getRoleBadge(user.role_level).label}
+                                        </div>
+                                    </div>
+                                    <div className="space-y-2 mb-6">
+                                        <p className="text-[9px] font-black text-gray-400 uppercase tracking-widest">
+                                            Cadastrado em: {new Date(user.created_at).toLocaleDateString()}
+                                        </p>
+                                        <p className="text-[9px] font-black text-blue-600 uppercase tracking-widest">
+                                            Unidade: {stores.find(s => s.id === user.store_id)?.name || 'NÃO DEFINIDA'}
+                                        </p>
+                                    </div>
+                                    <div className="flex gap-3">
+                                        <button 
+                                            onClick={() => handleApprove(user.id)}
+                                            className="flex-1 bg-green-600 text-white py-3 rounded-2xl font-black uppercase text-[10px] shadow-lg shadow-green-100 hover:bg-green-700 transition-all active:scale-95 flex items-center justify-center gap-2"
+                                        >
+                                            <BadgeCheck size={16} /> Aprovar
+                                        </button>
+                                        <button 
+                                            onClick={() => handleReject(user.id)}
+                                            className="flex-1 bg-red-50 text-red-600 py-3 rounded-2xl font-black uppercase text-[10px] hover:bg-red-100 transition-all active:scale-95 flex items-center justify-center gap-2 border border-red-100"
+                                        >
+                                            <X size={16} /> Rejeitar
+                                        </button>
+                                    </div>
+                                </div>
+                            ))}
+                        </div>
+                    )}
                 </div>
             </div>
 
