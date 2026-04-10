@@ -8,7 +8,7 @@ export default defineConfig(({ mode }) => {
       server: {
         port: 3000,
         host: '0.0.0.0',
-        hmr: false, // Desativa o WebSocket do Vite que está gerando erros no console
+        hmr: false,
       },
       plugins: [react()],
       define: {
@@ -21,53 +21,14 @@ export default defineConfig(({ mode }) => {
         }
       },
       build: {
-        // Configurações de otimização
         rollupOptions: {
           output: {
-            // Code splitting manual - separa bibliotecas grandes em chunks próprios
             manualChunks: {
-              // Chunk 1: React e dependências core (carrega 1x, cache permanente)
-              'vendor-react': [
-                'react',
-                'react-dom',
-                'react-router-dom'
-              ],
-              
-              // Chunk 2: Supabase (biblioteca grande, raramente muda)
-              'vendor-supabase': [
-                '@supabase/supabase-js'
-              ],
-              
-              // Chunk 3: Excel/Planilhas (muito grande, só carrega quando necessário)
-              'vendor-excel': [
-                'xlsx',
-                'jszip'
-              ],
-              
-              // Chunk 4: Gráficos e Charts (se estiver usando)
-              // Descomente se você usa bibliotecas de gráficos
-              // 'vendor-charts': [
-              //   'recharts',
-              //   'chart.js'
-              // ],
-              
-              // Chunk 5: Utilitários (lodash, date-fns, etc)
-              // Descomente se você usa essas bibliotecas
-              // 'vendor-utils': [
-              //   'lodash',
-              //   'date-fns'
-              // ]
+              'vendor-react': ['react', 'react-dom'],
+              'vendor-supabase': ['@supabase/supabase-js'],
+              'vendor-excel': ['xlsx', 'jszip']
             },
-            
-            // Nomear chunks de forma legível para debug
-            chunkFileNames: (chunkInfo) => {
-              const facadeModuleId = chunkInfo.facadeModuleId 
-                ? chunkInfo.facadeModuleId.split('/').pop() 
-                : 'chunk';
-              return `assets/[name]-[hash].js`;
-            },
-            
-            // Separar CSS por chunk também
+            chunkFileNames: 'assets/[name]-[hash].js',
             assetFileNames: (assetInfo) => {
               const info = assetInfo.name?.split('.');
               const ext = info?.[info.length - 1];
@@ -81,38 +42,19 @@ export default defineConfig(({ mode }) => {
             },
           },
         },
-        
-        // Tamanho mínimo para criar um chunk separado (em KB)
-        // Arquivos menores que isso ficam no bundle principal
-        minify: 'terser', // Usar terser para melhor compressão
+        minify: 'terser',
         terserOptions: {
           compress: {
-            drop_console: true, // Remove console.log em produção
-            drop_debugger: true, // Remove debugger em produção
+            drop_console: true,
+            drop_debugger: true,
           },
         },
-        
-        // Aumentar o limite do aviso (só para não aparecer o warning)
-        // IMPORTANTE: Isso só esconde o aviso, o lazy loading é que realmente resolve
         chunkSizeWarningLimit: 1000,
-        
-        // Ativar source maps apenas em desenvolvimento
         sourcemap: mode === 'development',
       },
-      
-      // Otimizações de dependências
       optimizeDeps: {
-        include: [
-          'react',
-          'react-dom',
-          'react-router-dom',
-          '@supabase/supabase-js'
-        ],
-        // Excluir bibliotecas grandes que devem ser code-split
-        exclude: [
-          'xlsx',
-          'jszip'
-        ]
+        include: ['react', 'react-dom', '@supabase/supabase-js'],
+        exclude: ['xlsx', 'jszip']
       }
     };
 });
