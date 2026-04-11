@@ -207,7 +207,7 @@ const App: React.FC = () => {
                         allow_admin: true,
                         allow_manager: false,
                         allow_cashier: false,
-                        allow_sorvete: false,
+                        allow_sorvete: p.key === 'MODULE_ICECREAM' || p.key === 'MODULE_AGENDA' || p.key === 'MODULE_DASHBOARD_MANAGER',
                         sort_order: 100
                     }]);
                 } else if (!existing.allow_admin) {
@@ -309,9 +309,9 @@ const App: React.FC = () => {
 
             let columnToCheck = '';
             if (roleUpper === 'ADMIN') columnToCheck = 'allow_admin';
-            else if (roleUpper === 'MANAGER') columnToCheck = 'allow_manager';
-            else if (roleUpper === 'CASHIER') columnToCheck = 'allow_cashier';
-            else if (roleUpper === 'ICE_CREAM') columnToCheck = 'allow_sorvete';
+            else if (roleUpper === 'MANAGER' || roleUpper === 'GERENTE') columnToCheck = 'allow_manager';
+            else if (roleUpper === 'CASHIER' || roleUpper === 'CAIXA') columnToCheck = 'allow_cashier';
+            else if (roleUpper === 'ICE_CREAM' || roleUpper === 'SORVETE' || roleUpper === 'SORVETERIA') columnToCheck = 'allow_sorvete';
 
             if (!columnToCheck) {
                 console.warn(`Role ${roleUpper} não mapeada para colunas de permissão.`);

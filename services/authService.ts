@@ -30,9 +30,10 @@ export async function ensureSession() {
 
   try {
     const user = JSON.parse(userStr);
-    if (user?.user_id) {
+    const userId = user?.id || user?.user_id;
+    if (userId) {
       await supabase.rpc('set_user_session', {
-        user_id: user.user_id
+        user_id: userId
       });
     }
   } catch (e) {

@@ -48,9 +48,9 @@ class ApiService {
         };
 
         // 3. Persistência Limpa
-        // Usamos sessionStorage para a sessão ativa para que expire ao fechar a aba
-        sessionStorage.setItem('user', JSON.stringify(mappedUser));
-        sessionStorage.setItem('auth_token', 'session_' + user.user_id);
+        // Usamos localStorage para suportar auto-login e consistência com ensureSession
+        localStorage.setItem('user', JSON.stringify(mappedUser));
+        localStorage.setItem('auth_token', 'session_' + user.user_id);
 
         return { success: true, user: mappedUser };
     } catch (error: any) {
@@ -60,14 +60,14 @@ class ApiService {
   }
 
   async logout() {
-    sessionStorage.clear();
     localStorage.clear();
+    sessionStorage.clear();
     window.location.reload(); 
   }
 
   getUser() {
     try {
-      const userStr = sessionStorage.getItem('user');
+      const userStr = localStorage.getItem('user');
       return userStr ? JSON.parse(userStr) : null;
     } catch (error) {
       return null;
@@ -75,11 +75,11 @@ class ApiService {
   }
 
   getToken() {
-    return sessionStorage.getItem('auth_token');
+    return localStorage.getItem('auth_token');
   }
 
   isAuthenticated(): boolean {
-    return !!sessionStorage.getItem('user');
+    return !!localStorage.getItem('user');
   }
 
   /**
