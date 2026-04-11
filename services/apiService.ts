@@ -48,11 +48,8 @@ class ApiService {
         };
 
         // 3. Persistência Limpa
-        // Usamos sessionStorage para a sessão ativa e localStorage para o backup do RLS
+        // Usamos sessionStorage para a sessão ativa para que expire ao fechar a aba
         sessionStorage.setItem('user', JSON.stringify(mappedUser));
-        localStorage.setItem('user', JSON.stringify(user)); 
-        
-        // Token para manter compatibilidade com funções antigas, mas o ID é o que manda
         sessionStorage.setItem('auth_token', 'session_' + user.user_id);
 
         return { success: true, user: mappedUser };
@@ -64,8 +61,7 @@ class ApiService {
 
   async logout() {
     sessionStorage.clear();
-    // Não limpamos o localStorage para evitar deslogar de outras abas se não quiser, 
-    // mas se quiser logout total, use localStorage.clear()
+    localStorage.clear();
     window.location.reload(); 
   }
 

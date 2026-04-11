@@ -1,4 +1,4 @@
-import React, { useState, useMemo, useRef } from 'react';
+import React, { useState, useMemo, useRef, useEffect } from 'react';
 import { Store, MonthlyPerformance, MonthlyGoal, IceCreamSangria } from '../types';
 import { formatCurrency } from '../constants';
 import { 
@@ -51,7 +51,12 @@ const DashboardAdmin: React.FC<DashboardAdminProps> = ({ stores, performanceData
     const [weightRevenue, setWeightRevenue] = useState(initialWeightRevenue); // Peso da Meta de Faturamento
     const [weightPA, setWeightPA] = useState(initialWeightPA); // Peso do P.A
     const [isSavingWeights, setIsSavingWeights] = useState(false);
- 
+
+    useEffect(() => {
+        setWeightRevenue(initialWeightRevenue);
+        setWeightPA(initialWeightPA);
+    }, [initialWeightRevenue, initialWeightPA]);
+
     const handleRefresh = async () => {
         setIsRefreshing(true);
         await onRefresh();
@@ -155,7 +160,13 @@ const DashboardAdmin: React.FC<DashboardAdminProps> = ({ stores, performanceData
             ? (actual / target) * 100
             : (target / actual) * 100;
     };
- 
+
+    const getScore = (s: any, wRev: number, wPA: number) => {
+        const pF = Math.min(calcAttainment(s.revenueActual, s.revenueTarget, 'higher'), 120);
+        const pPA = Math.min(calcAttainment(s.paActual, s.paTarget, 'higher'), 120);
+        return (pF * (wRev / 100)) + (pPA * (wPA / 100));
+    };
+
     const stats = useMemo(() => {
         const monthPerf = performanceData.filter(p => p.month === selectedMonth);
         const monthGoals = goalsData.filter(g => {
@@ -311,17 +322,7 @@ const DashboardAdmin: React.FC<DashboardAdminProps> = ({ stores, performanceData
             revenueForecast,
             storeCount: stores.length,
             currentData: storeStats.sort((a, b) => {
-                const getScore = (s: any) => {
-                    const pF = Math.min(calcAttainment(s.revenueActual, s.revenueTarget, 'higher'), 120);
-                    const pPA = Math.min(calcAttainment(s.paActual, s.paTarget, 'higher'), 120);
-                    
-                    // 🆕 NOVO: Usar pesos configuráveis
-                    const wRev = weightRevenue / 100;
-                    const wPA = weightPA / 100;
-                    
-                    return (pF * wRev) + (pPA * wPA);
-                };
-                return getScore(b) - getScore(a);
+                return getScore(b, weightRevenue, weightPA) - getScore(a, weightRevenue, weightPA);
             })
         };
     }, [performanceData, goalsData, selectedMonth, stores, sangrias, weightRevenue, weightPA]);
@@ -440,19 +441,8 @@ const DashboardAdmin: React.FC<DashboardAdminProps> = ({ stores, performanceData
             }
  
             if (next) {
-                const getScore = (s: any) => {
-                    const pF = Math.min(calcAttainment(s.revenueActual, s.revenueTarget, 'higher'), 120);
-                    const pPA = Math.min(calcAttainment(s.paActual, s.paTarget, 'higher'), 120);
-                    
-                    // 🆕 NOVO: Usar pesos configuráveis
-                    const wRev = weightRevenue / 100;
-                    const wPA = weightPA / 100;
-                    
-                    return (pF * wRev) + (pPA * wPA);
-                };
-                
                 const currPAAttainment = Math.min((curr.paActual / curr.paTarget), 1.2);
-                const nextScoreDecimal = getScore(next) / 100;
+                const nextScoreDecimal = getScore(next, weightRevenue, weightPA) / 100;
                 const wRev = weightRevenue / 100;
                 const wPA = weightPA / 100;
                 const neededRevAttainment = (nextScoreDecimal - (currPAAttainment * wPA)) / wRev;
@@ -734,18 +724,7 @@ const DashboardAdmin: React.FC<DashboardAdminProps> = ({ stores, performanceData
                 
                 <div className="grid grid-cols-1 gap-3 sm:gap-4">
                     {stats.currentData.map((d, index) => {
-                        const getScore = (s: any) => {
-                            const pF = Math.min(calcAttainment(s.revenueActual, s.revenueTarget, 'higher'), 120);
-                            const pPA = Math.min(calcAttainment(s.paActual, s.paTarget, 'higher'), 120);
-                            
-                            // 🆕 NOVO: Usar pesos configuráveis
-                            const wRev = weightRevenue / 100;
-                            const wPA = weightPA / 100;
-                            
-                            return (pF * wRev) + (pPA * wPA);
-                        };
-                        
-                        const score = getScore(d);
+                        const score = getScore(d, weightRevenue, weightPA);
                         const nextStore = stats.currentData[index - 1];
                         
                         const getTier = (idx: number) => {

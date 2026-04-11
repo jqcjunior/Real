@@ -93,6 +93,8 @@ create table public.pa_parameters (
     min_pa numeric(10,2) not null default 1.80, -- P.A. Mínimo para premiação
     max_pa numeric(10,2) not null default 2.50, -- Teto do P.A.
     award_value numeric(10,2) not null default 50.00, -- Valor fixo da premiação
+    weight_revenue integer not null default 50, -- Peso da Meta de Faturamento no Ranking
+    weight_pa integer not null default 50, -- Peso do P.A no Ranking
     updated_at timestamptz default now()
 );
 

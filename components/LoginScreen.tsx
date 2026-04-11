@@ -103,15 +103,6 @@ const LoginScreen: React.FC<LoginScreenProps> = ({ onLoginAttempt, onRegisterReq
                 <label className="block text-[10px] font-black text-gray-700 uppercase tracking-widest ml-1">Senha de Acesso</label>
                 <input type="password" required value={password} onChange={(e) => setPassword(e.target.value)} autoComplete="off" className="w-full px-5 py-4 bg-gray-50 border border-gray-200 rounded-[24px] focus:bg-white focus:border-blue-500 outline-none transition-all text-gray-900 font-bold text-sm shadow-inner placeholder-gray-400" placeholder="••••••••" />
             </div>
-            <div className="flex items-center justify-between px-1">
-                <label className="flex items-center gap-2 cursor-pointer group">
-                    <input type="checkbox" className="sr-only" checked={rememberMe} onChange={(e) => setRememberMe(e.target.checked)} />
-                    <div className={`w-5 h-5 rounded-lg border-2 transition-all flex items-center justify-center ${rememberMe ? 'bg-blue-600 border-blue-600 shadow-lg' : 'bg-white border-gray-200 group-hover:border-blue-400'}`}>
-                        {rememberMe && <CheckCircle2 size={12} className="text-white" strokeWidth={4} />}
-                    </div>
-                    <span className="text-[11px] font-black text-gray-700 uppercase tracking-wider">Manter Conectado</span>
-                </label>
-            </div>
             <button type="submit" disabled={isLoading} className="w-full bg-blue-950 hover:bg-black text-white font-black uppercase text-xs tracking-[0.2em] py-5 rounded-[24px] shadow-2xl transition-all border-b-4 border-red-700 disabled:opacity-50">
                 {isLoading ? <Loader2 className="animate-spin" size={18}/> : 'Validar Credenciais'}
             </button>

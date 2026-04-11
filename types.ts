@@ -585,6 +585,92 @@ export interface DemandCategory {
 }
 
 /* =========================
+   🔹 DEMANDAS V2 (OS)
+========================= */
+export type DemandV2Priority = 'urgente' | 'alta' | 'media' | 'baixa';
+export type DemandV2Status = 'aberta' | 'em_andamento' | 'pausada' | 'resolvida' | 'cancelada';
+export type DemandV2MessageType = 'comment' | 'status_change' | 'assignment';
+
+export interface DemandV2 {
+  id: string;
+  ticket_number: string;
+  store_id: string;
+  title: string;
+  description: string;
+  category: string;
+  priority: DemandV2Priority;
+  status: DemandV2Status;
+  sla_hours: number;
+  sla_deadline: string;
+  created_by: string;
+  assigned_to: string | null;
+  resolved_by: string | null;
+  unread_count: number;
+  total_messages: number;
+  total_attachments: number;
+  response_time_minutes: number | null;
+  resolution_time_minutes: number | null;
+  is_archived: boolean;
+  archive_semester: string;
+  created_at: string;
+  updated_at: string;
+  paused_at: string | null;
+  resolved_at: string | null;
+  // Join fields
+  store_name?: string;
+  store_number?: string;
+  creator_name?: string;
+  assigned_name?: string;
+}
+
+export interface DemandMessageV2 {
+  id: string;
+  demand_id: string;
+  sender_id: string;
+  sender_name: string;
+  sender_role: string;
+  message: string;
+  message_type: DemandV2MessageType;
+  is_read: boolean;
+  read_at: string | null;
+  read_by: string | null;
+  created_at: string;
+  attachments?: DemandAttachmentV2[];
+}
+
+export interface DemandAttachmentV2 {
+  id: string;
+  demand_id: string;
+  message_id: string;
+  file_name: string;
+  file_url: string;
+  file_size: number;
+  file_type: string;
+  is_compressed: boolean;
+  original_size: number;
+  compression_ratio: number;
+  image_width: number | null;
+  image_height: number | null;
+  uploaded_from_mobile: boolean;
+  should_be_deleted_at: string | null;
+  is_deleted: boolean;
+  deleted_at: string | null;
+  created_at: string;
+}
+
+export interface DemandNotificationV2 {
+  id: string;
+  demand_id: string;
+  user_id: string;
+  notification_type: 'new_message' | 'assigned' | 'sla_warning' | 'new_attachment';
+  title: string;
+  message: string;
+  is_read: boolean;
+  read_at: string | null;
+  created_at: string;
+}
+
+/* =========================
    🔹 QUESTIONÁRIOS DE COMPRAS
 ========================= */
 export interface Questionnaire {

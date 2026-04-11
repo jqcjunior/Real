@@ -29,6 +29,7 @@ const TermoAutorizacao = lazy(() => import('./components/TermoAutorizacao'));
 const SystemAudit = lazy(() => import('./components/SystemAudit'));
 const SpreadsheetOrderModule = lazy(() => import('./components/SpreadsheetOrderModule'));
 const OSDemandsModule = lazy(() => import('./components/OSDemandsModule'));
+const DemandsSystemV2 = lazy(() => import('./components/DemandsSystemV2'));
 const DashboardPAModule = lazy(() => import('./components/dashboardPA/DashboardPAModule'));
 const DashboardPAGerente = lazy(() => import('./components/dashboardPA/DashboardPAGerente'));
 const AdminSurveyManagement = lazy(() => import('./components/AdminSurveyManagement_v3'));
@@ -56,10 +57,56 @@ const PageLoader = () => (
     </div>
 );
 
+// Estilos CSS para animações
+const styles = `
+  @keyframes fade-in {
+    from {
+      opacity: 0;
+      transform: translateY(20px);
+    }
+    to {
+      opacity: 1;
+      transform: translateY(0);
+    }
+  }
+
+  @keyframes fade-in-up {
+    from {
+      opacity: 0;
+      transform: translateY(30px);
+    }
+    to {
+      opacity: 1;
+      transform: translateY(0);
+    }
+  }
+
+  @keyframes spin-slow {
+    from {
+      transform: rotate(0deg);
+    }
+    to {
+      transform: rotate(360deg);
+    }
+  }
+
+  .animate-fade-in {
+    animation: fade-in 0.6s ease-out;
+  }
+
+  .animate-fade-in-up {
+    animation: fade-in-up 0.8s ease-out;
+  }
+
+  .animate-spin-slow {
+    animation: spin-slow 3s linear infinite;
+  }
+`;
+
 const App: React.FC = () => {
     const [user, setUser] = useState<User | null>(null);
     const isAdmin = user?.role === UserRole.ADMIN;
-    const [currentView, setCurrentView] = useState<string>(''); 
+    const [currentView, setCurrentView] = useState<string>('welcome');
     const [isLoading, setIsLoading] = useState(true);
     const [permissionsLoaded, setPermissionsLoaded] = useState(false);
     const [isSidebarOpen, setIsSidebarOpen] = useState(false);
@@ -75,79 +122,31 @@ const App: React.FC = () => {
         }
         
         const init = async () => {
-            setIsLoading(true); // Trava o sistema com o Loader
+            setIsLoading(true);
             try {
-                // PASSO 1: Avisar ao Postgres quem é o usuário (Ativa o RLS)
                 await ensureSession();
-                
-                // PASSO 2: Rodar o bootstrap de permissões novas
                 await bootstrapPermissions();
+                await bootstrapParameters();
                 
-                // PASSO 3: Recuperar usuário e normalizar a Role
-                const savedUser = apiService.getUser();
-
-                // DEBUG TEMPORÁRIO - ADICIONAR ESTAS LINHAS
-                console.log('=== DEBUG SAVED USER ===');
-                console.log('savedUser completo:', savedUser);
-                console.log('savedUser.id:', savedUser?.id);
-                console.log('savedUser.name:', savedUser?.name);
-                console.log('savedUser.email:', savedUser?.email);
-                console.log('========================');
-
-                if (savedUser && apiService.isAuthenticated()) {
-                    const rawRole = (savedUser.role_level || savedUser.role || '').toUpperCase().trim();
-                    
-                    // Mapeamento exato para bater com o ENUM e a tabela page_permissions
-                    let mappedRole: UserRole = UserRole.CASHIER;
-                    if (rawRole === 'ADMIN') mappedRole = UserRole.ADMIN;
-                    else if (rawRole === 'MANAGER' || rawRole === 'GERENTE') mappedRole = UserRole.MANAGER;
-                    else if (rawRole === 'SORVETE' || rawRole === 'SORVETERIA' || rawRole === 'ICE_CREAM') mappedRole = UserRole.ICE_CREAM;
-
-                    const loggedUser: User = {
-                        id: savedUser.id,
-                        name: savedUser.name,
-                        role: mappedRole,
-                        email: savedUser.email,
-                        storeId: savedUser.store_id || savedUser.storeId
-                    };
-                    
-                    // PASSO 4: Setar usuário
-                    setUser(loggedUser);
-
-                    // PASSO 5: Buscar permissões no banco ANTES de carregar os dados
-                    await fetchPermissions(mappedRole, loggedUser.name);
-
-                    // PASSO 6: Agora que temos ID e Permissões, carregamos os dados
-                    await fetchData();
-                    
-                    // Define visão inicial
-                    if (!currentView) {
-                        if (mappedRole === UserRole.ADMIN) {
-                            setCurrentView('dashboard_rede');      // ✅ ADMIN → Dashboard Rede
-                        } else if (mappedRole === UserRole.MANAGER) {
-                            setCurrentView('dashboard_loja');      // ✅ GERENTE → Dashboard Loja
-                        } else if (mappedRole === UserRole.ICE_CREAM) {
-                            setCurrentView('pdv_sorveteria');      // ✅ SORVETE → PDV Sorveteria
-                        } else if (mappedRole === UserRole.CASHIER) {
-                            setCurrentView('caixa');               // ✅ CAIXA → Módulo Caixa
-                        } else {
-                            setCurrentView('dashboard_loja');      // ✅ Outros → Dashboard Loja
-                        }
-                    }
-                } else {
-                    // Se não houver usuário, vai para o Login
-                    setIsLoading(false);
-                }
+                // Removido auto-login automático para sempre solicitar usuário e senha
+                // const savedUser = apiService.getUser();
+                // if (savedUser && apiService.isAuthenticated()) { ... }
+                
             } catch (error) {
                 console.error("Erro crítico na carga do sistema:", error);
             } finally {
-                // O isLoading(false) dentro do fetchData ou aqui garante que a tela só abra pronta
                 setIsLoading(false);
             }
         };
         
         init();
     }, []);
+
+    useEffect(() => {
+        if (user && currentView && currentView !== 'welcome') {
+            localStorage.setItem(`realcalcados_lastView_${user.id}`, currentView);
+        }
+    }, [currentView, user]);
 
     useEffect(() => {
         const root = window.document.documentElement;
@@ -215,6 +214,29 @@ const App: React.FC = () => {
             }
         } catch (err) {
             console.error("Erro no bootstrap de permissões:", err);
+        }
+    };
+
+    const bootstrapParameters = async () => {
+        try {
+            const { data, error } = await supabase.from('pa_parameters').select('*').limit(1);
+            if (error && error.code === 'PGRST116') {
+                // Table doesn't exist or is empty, but PGRST116 is usually "no rows"
+                // The error for "table not found" is usually 42P01 in Postgres
+            }
+            
+            // Se não houver nenhum parâmetro, cria o padrão
+            if (!data || data.length === 0) {
+                await supabase.from('pa_parameters').insert([{
+                    min_pa: 1.80,
+                    max_pa: 2.50,
+                    award_value: 50.00,
+                    weight_revenue: 50,
+                    weight_pa: 50
+                }]);
+            }
+        } catch (err) {
+            console.error("Erro no bootstrap de parâmetros:", err);
         }
     };
 
@@ -524,6 +546,126 @@ const App: React.FC = () => {
         return () => { supabase.removeChannel(channel); };
     }, []);
 
+    const WelcomeScreen = () => {
+        const userName = user?.name?.split(' ')[0] || 'Usuário';
+        const userRole = user?.role || UserRole.CASHIER;
+
+        // Definir botões baseado no role do usuário
+        const getQuickAccessButtons = () => {
+            const buttons = [];
+
+            if (userRole === UserRole.ADMIN) {
+                buttons.push(
+                    { key: 'dashboard_rede', label: 'Dashboard Rede', icon: '📊', color: 'from-blue-500 to-blue-600' },
+                    { key: 'users', label: 'Usuários', icon: '👥', color: 'from-purple-500 to-purple-600' },
+                    { key: 'compras', label: 'Compras', icon: '🛒', color: 'from-green-500 to-green-600' },
+                    { key: 'surveys', label: 'Pesquisas', icon: '📋', color: 'from-orange-500 to-orange-600' }
+                );
+            } else if (userRole === UserRole.MANAGER) {
+                buttons.push(
+                    { key: 'dashboard_loja', label: 'Dashboard', icon: '📊', color: 'from-blue-500 to-blue-600' },
+                    { key: 'dashboard_pa_manager', label: 'Dashboard PA', icon: '📈', color: 'from-purple-500 to-purple-600' },
+                    { key: 'caixa', label: 'Caixa', icon: '💰', color: 'from-green-500 to-green-600' },
+                    { key: 'my_surveys', label: 'Pesquisas', icon: '📝', color: 'from-orange-500 to-orange-600' }
+                );
+            } else if (userRole === UserRole.CASHIER) {
+                buttons.push(
+                    { key: 'caixa', label: 'Caixa', icon: '💰', color: 'from-green-500 to-green-600' },
+                    { key: 'agenda', label: 'Agenda', icon: '📅', color: 'from-purple-500 to-purple-600' },
+                    { key: 'dashboard_loja', label: 'Dashboard', icon: '📊', color: 'from-blue-500 to-blue-600' },
+                    { key: 'my_surveys', label: 'Pesquisas', icon: '📝', color: 'from-orange-500 to-orange-600' }
+                );
+            } else if (userRole === UserRole.ICE_CREAM) {
+                buttons.push(
+                    { key: 'pdv_sorveteria', label: 'Sorveteria', icon: '🍦', color: 'from-pink-500 to-pink-600' },
+                    { key: 'agenda', label: 'Agenda', icon: '📅', color: 'from-purple-500 to-purple-600' },
+                    { key: 'dashboard_loja', label: 'Dashboard', icon: '📊', color: 'from-blue-500 to-blue-600' },
+                    { key: 'my_surveys', label: 'Pesquisas', icon: '📝', color: 'from-orange-500 to-orange-600' }
+                );
+            }
+
+            return buttons;
+        };
+
+        const quickAccess = getQuickAccessButtons();
+
+        return (
+            <div className="flex flex-col items-center justify-center min-h-screen bg-gradient-to-br from-gray-50 via-white to-blue-50 dark:from-slate-950 dark:via-slate-900 dark:to-slate-950">
+                {/* Logo Real - Estática */}
+                <div className="mb-12">
+                    <div className="w-48 h-48 bg-white rounded-full shadow-2xl flex items-center justify-center overflow-hidden border-4 border-white">
+                        <img 
+                            src="/logo-real.jpeg" 
+                            alt="Real Calçados" 
+                            className="w-full h-full object-contain p-4"
+                            referrerPolicy="no-referrer"
+                        />
+                    </div>
+                </div>
+
+                {/* Saudação - CENTRALIZADA */}
+                <div className="text-center mb-8 animate-fade-in">
+                    <h1 className="text-4xl font-bold bg-gradient-to-r from-blue-600 to-blue-800 bg-clip-text text-transparent mb-2">
+                        Olá, {userName}! 👋
+                    </h1>
+                    <p className="text-lg text-gray-600 dark:text-slate-400">
+                        Bem-Vindo ao Sistema Real Calçados Gerencial
+                    </p>
+                </div>
+
+                {/* Acesso Rápido - RESPONSIVO */}
+                {quickAccess.length > 0 && (
+                    <div className="mb-12 animate-fade-in-up flex flex-col items-center px-4">
+                        <p className="text-sm text-gray-500 mb-6 text-center font-medium uppercase tracking-widest">ACESSO RÁPIDO</p>
+                        <div className="grid grid-cols-2 md:flex md:gap-6 gap-4 justify-center items-center max-w-4xl">
+                            {quickAccess.map((item, index) => (
+                                <button
+                                    key={item.key}
+                                    onClick={() => setCurrentView(item.key)}
+                                    className={`
+                                        group relative flex flex-col items-center justify-center gap-3 
+                                        p-6 md:p-8 
+                                        bg-gradient-to-br ${item.color} 
+                                        rounded-2xl shadow-lg hover:shadow-2xl 
+                                        transition-all duration-300 hover:scale-105 
+                                        border-2 border-white/20
+                                        min-w-[120px] md:min-w-[140px] max-w-[180px]
+                                    `}
+                                    style={{ animationDelay: `${index * 100}ms` }}
+                                >
+                                    {/* Ícone - Menor no mobile */}
+                                    <span className="text-4xl md:text-5xl filter drop-shadow-lg group-hover:scale-110 transition-transform duration-300">
+                                        {item.icon}
+                                    </span>
+                                    
+                                    {/* Label - Menor no mobile */}
+                                    <span className="text-xs md:text-sm font-bold text-white text-center leading-tight">
+                                        {item.label}
+                                    </span>
+
+                                    {/* Efeito hover */}
+                                    <div className="absolute inset-0 bg-white/0 group-hover:bg-white/10 rounded-2xl transition-colors duration-300"></div>
+                                </button>
+                            ))}
+                        </div>
+                    </div>
+                )}
+
+                {/* Instrução - CENTRALIZADA */}
+                <div className="flex items-center justify-center gap-3 text-gray-500 bg-white dark:bg-slate-800 px-8 py-4 rounded-full shadow-md border border-gray-100 dark:border-slate-700 animate-fade-in-up">
+                    <AlertCircle size={20} className="text-blue-500" />
+                    <span className="text-sm font-medium">Use o menu lateral para navegar entre os módulos</span>
+                </div>
+
+                {/* Rodapé - CENTRALIZADO */}
+                <div className="mt-12 text-center text-xs text-gray-400 w-full">
+                    <p className="font-medium">Sistema Real Calçados Sub Grupo ARRJ © 2026</p>
+                    <p className="mt-2 text-gray-400">Versão 2.0</p>
+                </div>
+            </div>
+        );
+    };
+
     const handleLogin = async (email: string, pass: string, remember: boolean) => {
         try {
             const result = await apiService.login(email, pass);
@@ -578,9 +720,12 @@ const App: React.FC = () => {
     };
 
     const handleLogout = async () => {
+        if (user) {
+            localStorage.removeItem(`realcalcados_lastView_${user.id}`);
+        }
         await apiService.logout();
         setUser(null);
-        setCurrentView('');
+        setCurrentView('welcome');
         window.location.reload();
     };
 
@@ -620,7 +765,9 @@ const App: React.FC = () => {
     );
     
     return (
-        <div className="flex h-screen bg-slate-50 dark:bg-slate-950 text-slate-900 dark:text-slate-100 overflow-hidden font-sans relative transition-colors duration-300">
+        <>
+            <style>{styles}</style>
+            <div className="flex h-screen bg-slate-50 dark:bg-slate-950 text-slate-900 dark:text-slate-100 overflow-hidden font-sans relative transition-colors duration-300">
             {/* Overlay for mobile/tablet */}
             {isSidebarOpen && ( 
                 <div className="fixed inset-0 bg-slate-900/40 backdrop-blur-sm z-[90]" onClick={() => setIsSidebarOpen(false)} /> 
@@ -640,6 +787,19 @@ const App: React.FC = () => {
                     </button>
                 </div>
                 <nav className="flex-1 space-y-6 overflow-y-auto no-scrollbar">
+                    <div className="space-y-1">
+                        <h3 className="px-4 text-[10px] font-black uppercase text-slate-400 dark:text-slate-400 tracking-widest mb-2">Início</h3>
+                        <button 
+                            onClick={() => { setCurrentView('welcome'); setIsSidebarOpen(false); }} 
+                            className={`w-full text-left py-2.5 px-4 rounded-xl font-black uppercase text-[10px] flex items-center gap-4 transition-all ${
+                                currentView === 'welcome' 
+                                    ? 'bg-blue-600 text-white shadow-lg shadow-blue-200 dark:shadow-blue-900/20' 
+                                    : 'text-slate-500 dark:text-slate-300 hover:text-slate-900 dark:hover:text-white hover:bg-slate-50 dark:hover:bg-slate-800'
+                            }`}
+                        >
+                            <LayoutDashboard size={20} /> Início
+                        </button>
+                    </div>
                     {[
                         { title: 'Inteligência', items: [ 
                             { id: 'dashboard_rede', label: 'Dashboard Rede', icon: LayoutDashboard, perm: 'MODULE_DASHBOARD_ADMIN' }, 
@@ -746,19 +906,28 @@ const App: React.FC = () => {
                 <main className="flex-1 overflow-y-auto no-scrollbar p-3 md:p-6 lg:p-8">
                     <Suspense fallback={<PageLoader />}>
                         {(() => {
+                        if (currentView === 'welcome') return <WelcomeScreen />;
                         if (currentView === 'dashboard_rede' && can('MODULE_DASHBOARD_ADMIN')) return <DashboardAdmin stores={stores} performanceData={performanceData} goalsData={goalsData} sangrias={icSangrias} initialWeightRevenue={paParameters?.weight_revenue ?? 50} initialWeightPA={paParameters?.weight_pa ?? 50} onSaveWeights={async (wRev, wPA) => {
-                            const { error } = await supabase.from('pa_parameters').upsert({ 
-                                id: paParameters?.id,
+                            const payload = {
                                 weight_revenue: wRev, 
-                                weight_pa: wPA 
-                            }, { onConflict: 'id' });
-                            if (error) {
-                                console.error("Erro ao salvar pesos:", error);
-                                alert("Erro ao salvar pesos: " + error.message);
+                                weight_pa: wPA,
+                                updated_at: new Date().toISOString()
+                            };
+
+                            let result;
+                            if (paParameters?.id) {
+                                result = await supabase.from('pa_parameters').update(payload).eq('id', paParameters.id);
+                            } else {
+                                result = await supabase.from('pa_parameters').insert([payload]);
+                            }
+
+                            if (result.error) {
+                                console.error("Erro ao salvar pesos:", result.error);
+                                alert("Erro ao salvar pesos: " + result.error.message);
                             } else {
                                 fetchData();
                             }
-                        }} onImportPerformance={async (d) => { 
+                        }} onRefresh={fetchData} onImportPerformance={async (d) => { 
                             const upsertData = d.map(row => {
                                 const [y, m] = row.month.split('-');
                                 return { 
@@ -790,7 +959,7 @@ const App: React.FC = () => {
                             } else {
                                 fetchData(); 
                             }
-                        }} onRefresh={fetchData} />;
+                        }} />;
                         if (currentView === 'dashboard_loja' && can('MODULE_DASHBOARD_MANAGER')) return <DashboardManager user={user!} stores={stores} performanceData={performanceData} goalsData={goalsData} purchasingData={purchasingData} sangrias={icSangrias} stockMovements={icStockMovements} stock={iceCreamStock} weightRevenue={paParameters?.weight_revenue ?? 50} weightPA={paParameters?.weight_pa ?? 50} />;
                         if (currentView === 'metas' && can('MODULE_METAS')) return <GoalRegistration user={user!} stores={isAdmin ? stores : stores.filter(s => s.id === user?.storeId)} goalsData={goalsData} onSaveGoals={async (data) => { for(const row of data) { await supabase.from('monthly_goals').upsert({ store_id: row.storeId, year: row.year, month: row.month, revenue_target: row.revenueTarget, pa_target: row.paTarget, pu_target: row.puTarget, ticket_target: row.ticketTarget, items_target: row.itemsTarget, business_days: row.businessDays, delinquency_target: row.delinquencyTarget, trend: row.trend }, { onConflict: 'store_id, year, month' }); } fetchData(); }} />;
                         if (currentView === 'cotas' && can('MODULE_COTAS')) return <CotasManagement user={user!} stores={isAdmin ? stores : stores.filter(s => s.id === user?.storeId)} cotas={cotas} cotaSettings={cotaSettings} cotaDebts={cotaDebts} performanceData={performanceData} productCategories={quotaCategories} mixParameters={quotaMixParams} onAddCota={async (c) => { await supabase.from('cotas').insert([{ store_id: c.storeId, brand: c.brand, category_id: c.category_id, total_value: c.totalValue, shipment_date: `${c.shipmentDate}-01`, payment_terms: c.paymentTerms, pairs: c.pairs, installments: c.installments, status: 'ABERTA' }]); fetchData(); }} onUpdateCota={async (id, u) => { await supabase.from('cotas').update(u).eq('id', id); fetchData(); }} onDeleteCota={async (id) => { await supabase.from('cotas').delete().eq('id', id); fetchData(); }} onSaveSettings={async (s) => { await supabase.from('cota_settings').upsert({ store_id: s.storeId, budget_value: s.budgetValue, manager_percent: s.managerPercent }, { onConflict: 'store_id' }); fetchData(); }} onSaveDebts={async (d) => { await supabase.from('cota_debts').upsert({ store_id: d.storeId, month: d.month, value: d.value }, { onConflict: 'store_id, month' }); fetchData(); }} onDeleteDebt={async (id) => { await supabase.from('cota_debts').delete().eq('id', id); fetchData(); }} onUpdateMixParameter={async (id, sId, cat, pct, sem) => { if (id) { await supabase.from('quota_mix_parameters').update({ mix_percentage: pct }).eq('id', id); } else { await supabase.from('quota_mix_parameters').insert([{ store_id: sId, parent_category: cat, mix_percentage: pct, semester: sem }]); } fetchData(); }} can={can} />;
@@ -1063,7 +1232,7 @@ const App: React.FC = () => {
                         if (currentView === 'audit' && can('MODULE_AUDIT')) return <SystemAudit currentUser={user!} logs={logs} receipts={receipts} cashErrors={cashErrors} iceCreamSales={iceCreamSales} icPromissories={icPromissories} cardSales={cardSales} pixSales={pixSales} closures={closures} stores={isAdmin ? stores : stores.filter(s => s.id === user?.storeId)} can={can} />;
                         if (currentView === 'settings' && can('MODULE_SETTINGS')) return <AdminSettings stores={stores} onAddStore={async (s) => { await supabase.from('stores').insert([s]); fetchData(); }} onUpdateStore={async (s) => { await supabase.from('stores').update(s).eq('id', s.id); fetchData(); }} onDeleteStore={async (id) => { await supabase.from('stores').delete().eq('id', id); fetchData(); }} />;
                         if (currentView === 'spreadsheet_order' && can('MODULE_PURCHASES')) return <SpreadsheetOrderModule user={user!} onClose={() => setCurrentView('compras')} />;
-                        if (currentView === 'os_demandas' && can('MODULE_DEMANDS')) return <OSDemandsModule user={user!} stores={isAdmin ? stores : stores.filter(s => s.id === user?.storeId)} can={can} />;
+                        if (currentView === 'os_demandas' && can('MODULE_DEMANDS')) return <DemandsSystemV2 user={user!} stores={stores} />;
                         if (currentView === 'dashboard_pa' && can('MODULE_DASHBOARD_PA')) return <DashboardPAModule 
                             user={user!} 
                             stores={stores} 
@@ -1152,6 +1321,7 @@ const App: React.FC = () => {
                 )}
             </AnimatePresence>
         </div>
+        </>
     );
 };
 

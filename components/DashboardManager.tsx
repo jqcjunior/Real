@@ -487,7 +487,7 @@ const DashboardManager: React.FC<DashboardManagerProps> = ({ user, stores, perfo
                                 </div>
                                 <div>
                                     <h3 className="text-xs sm:text-sm font-black text-slate-900 dark:text-white uppercase italic tracking-tighter">Ranking <span className="text-blue-600 dark:text-blue-400">Ponderado</span></h3>
-                                    <p className="text-[8px] sm:text-[9px] font-bold text-slate-400 dark:text-slate-500 uppercase tracking-widest mt-0.5">Equilíbrio de Metas (50/50)</p>
+                                    <p className="text-[8px] sm:text-[9px] font-bold text-slate-400 dark:text-slate-500 uppercase tracking-widest mt-0.5">Critério: {weightRevenue}% Meta / {weightPA}% P.A</p>
                                 </div>
                             </div>
                         </div>
