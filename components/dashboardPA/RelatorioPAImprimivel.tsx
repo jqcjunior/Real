@@ -27,6 +27,11 @@ const RelatorioPAImprimivel: React.FC<RelatorioProps> = ({ storeId, storeName, s
   const [parametros, setParametros] = useState<any>(null);
   const [loading, setLoading] = useState(false);
   const [showPreview, setShowPreview] = useState(false);
+
+  const parseLocalDate = (dateStr: string): Date => {
+    const [year, month, day] = dateStr.split('-').map(Number);
+    return new Date(year, month - 1, day);
+  };
  
   useEffect(() => {
     const fetchSemanas = async () => {
@@ -159,9 +164,13 @@ const RelatorioPAImprimivel: React.FC<RelatorioProps> = ({ storeId, storeName, s
   };
  
   const semanaAtual = semanas.find(s => s.id === semanaSelecionada);
-  const dataInicio = semanaAtual ? new Date(semanaAtual.data_inicio + 'T00:00:00').toLocaleDateString('pt-BR') : '';
-  const dataFim = semanaAtual ? new Date(semanaAtual.data_fim + 'T00:00:00').toLocaleDateString('pt-BR') : '';
-  const dataPagamento = semanaAtual ? new Date(new Date(semanaAtual.data_fim + 'T00:00:00').getTime() + 86400000).toLocaleDateString('pt-BR') : '';
+  const dataInicio = semanaAtual ? parseLocalDate(semanaAtual.data_inicio).toLocaleDateString('pt-BR') : '';
+  const dataFim = semanaAtual ? parseLocalDate(semanaAtual.data_fim).toLocaleDateString('pt-BR') : '';
+  const dataPagamento = semanaAtual 
+    ? (semanaAtual.data_pagamento 
+        ? parseLocalDate(semanaAtual.data_pagamento).toLocaleDateString('pt-BR') 
+        : new Date(parseLocalDate(semanaAtual.data_fim).getTime() + 86400000).toLocaleDateString('pt-BR')) 
+    : '';
  
   return (
     <div className="p-4 sm:p-6 space-y-6">
@@ -183,7 +192,7 @@ const RelatorioPAImprimivel: React.FC<RelatorioProps> = ({ storeId, storeName, s
             >
               {semanas.map(s => (
                 <option key={s.id} value={s.id}>
-                  {new Date(s.data_inicio + 'T00:00:00').toLocaleDateString('pt-BR')} a {new Date(s.data_fim + 'T00:00:00').toLocaleDateString('pt-BR')}
+                  {parseLocalDate(s.data_inicio).toLocaleDateString('pt-BR')} a {parseLocalDate(s.data_fim).toLocaleDateString('pt-BR')}
                 </option>
               ))}
             </select>

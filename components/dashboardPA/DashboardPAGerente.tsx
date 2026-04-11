@@ -394,7 +394,7 @@ const DashboardPAGerente: React.FC<DashboardPAGerenteProps> = ({ user, store }) 
       paginas.push(vendedores.slice(i, i + 3));
     }
  
-    const dataPagamento = new Date(parseLocalDate(week.data_fim).getTime() + 86400000);
+    const dataPagamento = week.data_pagamento ? parseLocalDate(week.data_pagamento) : new Date(parseLocalDate(week.data_fim).getTime() + 86400000);
     
     return `
       <html>
@@ -591,7 +591,7 @@ const DashboardPAGerente: React.FC<DashboardPAGerenteProps> = ({ user, store }) 
           >
             {weeks.length === 0 && <option value="">Nenhuma semana encontrada</option>}
             {weeks.map(w => {
-              const dataPagamento = new Date(parseLocalDate(w.data_fim).getTime() + 86400000);
+              const dataPagamento = w.data_pagamento ? parseLocalDate(w.data_pagamento) : new Date(parseLocalDate(w.data_fim).getTime() + 86400000);
               return (
                 <option key={w.id} value={w.id}>
                   {format(parseLocalDate(w.data_inicio), 'dd/MM', { locale: ptBR })} a {format(parseLocalDate(w.data_fim), 'dd/MM', { locale: ptBR })} — Pagamento: {format(dataPagamento, 'dd/MM', { locale: ptBR })} ({w.status})
@@ -691,7 +691,11 @@ const DashboardPAGerente: React.FC<DashboardPAGerenteProps> = ({ user, store }) 
                       {format(parseLocalDate(weeks.find(w => w.id === selectedWeek)!.data_inicio), 'dd/MM/yyyy')} a {format(parseLocalDate(weeks.find(w => w.id === selectedWeek)!.data_fim), 'dd/MM/yyyy')}
                     </h2>
                     <p className="text-orange-100 font-black italic uppercase tracking-tighter text-[10px] mt-1">
-                      Pagamento (Sábado): {format(new Date(parseLocalDate(weeks.find(w => w.id === selectedWeek)!.data_fim).getTime() + 86400000), 'dd/MM/yyyy')}
+                      Pagamento (Sábado): {(() => {
+                        const w = weeks.find(w => w.id === selectedWeek)!;
+                        const dp = w.data_pagamento ? parseLocalDate(w.data_pagamento) : new Date(parseLocalDate(w.data_fim).getTime() + 86400000);
+                        return format(dp, 'dd/MM/yyyy');
+                      })()}
                     </p>
                   </div>
                 </div>

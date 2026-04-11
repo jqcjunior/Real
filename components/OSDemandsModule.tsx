@@ -360,7 +360,7 @@ const OSDemandsModule: React.FC<OSDemandsModuleProps> = ({ user, stores, can }) 
     const handleDeleteDemand = async (id: string) => {
         setConfirmModal({
             isOpen: true,
-            title: 'Excluir Demanda',
+            title: 'Excluir Chamado',
             message: 'Tem certeza que deseja excluir esta demanda permanentemente?',
             type: 'danger',
             onConfirm: async () => {
@@ -404,7 +404,7 @@ const OSDemandsModule: React.FC<OSDemandsModuleProps> = ({ user, stores, can }) 
         if (!selectedDemand) return;
         setConfirmModal({
             isOpen: true,
-            title: 'Finalizar Demanda',
+            title: 'Finalizar Chamado',
             message: 'Deseja marcar esta demanda como resolvida?',
             type: 'info',
             onConfirm: () => {
@@ -418,7 +418,7 @@ const OSDemandsModule: React.FC<OSDemandsModuleProps> = ({ user, stores, can }) 
         if (!selectedDemand) return;
         setConfirmModal({
             isOpen: true,
-            title: 'Cancelar Demanda',
+            title: 'Cancelar Chamado',
             message: 'Deseja realmente cancelar esta demanda?',
             type: 'danger',
             onConfirm: () => {
@@ -1347,7 +1347,7 @@ const OSDemandsModule: React.FC<OSDemandsModuleProps> = ({ user, stores, can }) 
                         </div>
                         <div>
                             <div className="flex items-center gap-2">
-                                <h1 className="text-xl font-black uppercase tracking-tight">Demanda OS</h1>
+                                <h1 className="text-xl font-black uppercase tracking-tight">Chamado</h1>
                                 {isAdmin && (
                                     <DemandCategoriesManager onCategoriesChange={fetchDynamicCategories} />
                                 )}
@@ -1369,7 +1369,7 @@ const OSDemandsModule: React.FC<OSDemandsModuleProps> = ({ user, stores, can }) 
                             setIsModalOpen(true);
                         }}
                     >
-                        <Plus size={18} /> Nova Demanda
+                        <Plus size={18} /> Novo Chamado
                     </button>
                 </div>
                 <div className="kpi-grid">
@@ -1420,7 +1420,7 @@ const OSDemandsModule: React.FC<OSDemandsModuleProps> = ({ user, stores, can }) 
                             setIsModalOpen(true);
                         }}
                     >
-                        <Plus size={18} /> Nova Demanda
+                        <Plus size={18} /> Novo Chamado
                     </button>
 
                     <div className="filter-group">
@@ -1496,7 +1496,7 @@ const OSDemandsModule: React.FC<OSDemandsModuleProps> = ({ user, stores, can }) 
                                 setIsModalOpen(true);
                             }}
                         >
-                            <Plus size={18} /> Nova Demanda
+                            <Plus size={18} /> Novo Chamado
                         </button>
 
                         {isLoading ? (
@@ -1752,7 +1752,7 @@ const OSDemandsModule: React.FC<OSDemandsModuleProps> = ({ user, stores, can }) 
             {isModalOpen && (
                 <div className="modal-overlay" onClick={() => setIsModalOpen(false)}>
                     <div className="modal-content" onClick={e => e.stopPropagation()}>
-                        <h2>{editingDemand ? 'Editar Demanda' : 'Nova Demanda'}</h2>
+                        <h2>{editingDemand ? 'Editar Chamado' : 'Novo Chamado'}</h2>
                         <form onSubmit={handleSaveDemand}>
                             <div className="form-group relative">
                                 <label>Título</label>
@@ -1866,7 +1866,7 @@ const OSDemandsModule: React.FC<OSDemandsModuleProps> = ({ user, stores, can }) 
                                     style={{ flex: 2, marginBottom: 0 }}
                                     disabled={isSubmitting}
                                 >
-                                    {isSubmitting ? <Loader2 className="animate-spin" /> : editingDemand ? 'Salvar Alterações' : 'Criar Demanda'}
+                                    {isSubmitting ? <Loader2 className="animate-spin" /> : editingDemand ? 'Salvar Alterações' : 'Criar Chamado'}
                                 </button>
                             </div>
                         </form>

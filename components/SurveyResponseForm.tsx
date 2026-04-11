@@ -96,7 +96,8 @@ const SurveyResponseForm: React.FC<SurveyResponseFormProps> = ({ survey, user, i
         onComplete();
       }, 3000);
     } catch (err: any) {
-      alert('Erro ao enviar resposta: ' + err.message);
+      console.error('Erro ao enviar resposta:', err);
+      alert('Erro ao enviar resposta: ' + (err.message || 'Erro desconhecido'));
     } finally {
       setIsSubmitting(false);
     }

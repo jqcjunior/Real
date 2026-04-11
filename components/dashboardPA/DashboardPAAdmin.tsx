@@ -20,9 +20,15 @@ interface WeekData {
   id: string;
   data_inicio: string;
   data_fim: string;
+  data_pagamento?: string;
   store_id: string;
   status: string;
 }
+
+const parseLocalDate = (dateStr: string): Date => {
+  const [year, month, day] = dateStr.split('-').map(Number);
+  return new Date(year, month - 1, day);
+};
  
 interface PAParametros {
   store_id: string;
@@ -400,9 +406,9 @@ const DashboardPAAdmin: React.FC<DashboardPAAdminProps> = ({ user, stores, onRef
   const loadWeeks = async () => {
     const { data, error } = await supabase
       .from('Dashboard_PA_Semanas')
-      .select('id, data_inicio, data_fim, store_id, status')
-      .gte('data_inicio', `${selectedYear}-${String(selectedMonth).padStart(2, '0')}-01`)
-      .lt('data_inicio', `${selectedYear}-${String(selectedMonth + 1).padStart(2, '0')}-01`)
+      .select('*')
+      .eq('mes_ref', selectedMonth)
+      .eq('ano_ref', selectedYear)
       .order('data_inicio', { ascending: true });
  
     if (data && !error) {
@@ -587,7 +593,7 @@ const DashboardPAAdmin: React.FC<DashboardPAAdminProps> = ({ user, stores, onRef
  
   const currentWeek = weeks.find(w => w.id === selectedWeek);
   const weekLabel = currentWeek
-    ? `${format(new Date(currentWeek.data_inicio + 'T00:00:00'), 'dd/MM')} a ${format(new Date(currentWeek.data_fim + 'T00:00:00'), 'dd/MM')}`
+    ? `${format(parseLocalDate(currentWeek.data_inicio), 'dd/MM')} a ${format(parseLocalDate(currentWeek.data_fim), 'dd/MM')}`
     : 'Selecione uma semana';
   const monthLabel = format(new Date(selectedYear, selectedMonth - 1), 'MMMM', { locale: ptBR });
  
@@ -674,7 +680,7 @@ const DashboardPAAdmin: React.FC<DashboardPAAdminProps> = ({ user, stores, onRef
               <select value={selectedWeek} onChange={(e) => setSelectedWeek(e.target.value)} className="w-full bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl px-4 py-3 text-sm font-bold text-slate-900 dark:text-white">
                 {weeks.map(w => (
                   <option key={w.id} value={w.id}>
-                    {format(new Date(w.data_inicio + 'T00:00:00'), 'dd/MM')} a {format(new Date(w.data_fim + 'T00:00:00'), 'dd/MM')}
+                    {format(parseLocalDate(w.data_inicio), 'dd/MM')} a {format(parseLocalDate(w.data_fim), 'dd/MM')}
                   </option>
                 ))}
               </select>
@@ -953,7 +959,7 @@ const DashboardPAAdmin: React.FC<DashboardPAAdminProps> = ({ user, stores, onRef
                             <div className="flex items-center gap-2 text-slate-600 dark:text-slate-400">
                               <Calendar size={14} />
                               <span className="text-xs font-bold uppercase tracking-tighter">
-                                {format(new Date(w.data_inicio + 'T00:00:00'), 'dd/MM')} a {format(new Date(w.data_fim + 'T00:00:00'), 'dd/MM')}
+                                {format(parseLocalDate(w.data_inicio), 'dd/MM')} a {format(parseLocalDate(w.data_fim), 'dd/MM')}
                               </span>
                             </div>
                           </td>

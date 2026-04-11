@@ -74,25 +74,25 @@ ALTER TABLE public.survey_answer_details ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.survey_invitations ENABLE ROW LEVEL SECURITY;
 
 -- Políticas Básicas (Admin tem acesso total)
-CREATE POLICY "Admin Full Access Surveys" ON public.surveys FOR ALL USING (
-    EXISTS (SELECT 1 FROM public.admin_users WHERE id = auth.uid() AND role_level = 'admin')
-);
+CREATE POLICY "Admin Full Access Surveys" ON public.surveys FOR ALL TO public 
+USING (EXISTS (SELECT 1 FROM public.admin_users WHERE id = public.get_current_user_id() AND role_level = 'admin'))
+WITH CHECK (EXISTS (SELECT 1 FROM public.admin_users WHERE id = public.get_current_user_id() AND role_level = 'admin'));
 
-CREATE POLICY "Admin Full Access Questions" ON public.survey_questions FOR ALL USING (
-    EXISTS (SELECT 1 FROM public.admin_users WHERE id = auth.uid() AND role_level = 'admin')
-);
+CREATE POLICY "Admin Full Access Questions" ON public.survey_questions FOR ALL TO public 
+USING (EXISTS (SELECT 1 FROM public.admin_users WHERE id = public.get_current_user_id() AND role_level = 'admin'))
+WITH CHECK (EXISTS (SELECT 1 FROM public.admin_users WHERE id = public.get_current_user_id() AND role_level = 'admin'));
 
-CREATE POLICY "Admin Full Access Responses" ON public.survey_responses FOR ALL USING (
-    EXISTS (SELECT 1 FROM public.admin_users WHERE id = auth.uid() AND role_level = 'admin')
-);
+CREATE POLICY "Admin Full Access Responses" ON public.survey_responses FOR ALL TO public 
+USING (EXISTS (SELECT 1 FROM public.admin_users WHERE id = public.get_current_user_id() AND role_level = 'admin'))
+WITH CHECK (EXISTS (SELECT 1 FROM public.admin_users WHERE id = public.get_current_user_id() AND role_level = 'admin'));
 
-CREATE POLICY "Admin Full Access Details" ON public.survey_answer_details FOR ALL USING (
-    EXISTS (SELECT 1 FROM public.admin_users WHERE id = auth.uid() AND role_level = 'admin')
-);
+CREATE POLICY "Admin Full Access Details" ON public.survey_answer_details FOR ALL TO public 
+USING (EXISTS (SELECT 1 FROM public.admin_users WHERE id = public.get_current_user_id() AND role_level = 'admin'))
+WITH CHECK (EXISTS (SELECT 1 FROM public.admin_users WHERE id = public.get_current_user_id() AND role_level = 'admin'));
 
-CREATE POLICY "Admin Full Access Invitations" ON public.survey_invitations FOR ALL USING (
-    EXISTS (SELECT 1 FROM public.admin_users WHERE id = auth.uid() AND role_level = 'admin')
-);
+CREATE POLICY "Admin Full Access Invitations" ON public.survey_invitations FOR ALL TO public 
+USING (EXISTS (SELECT 1 FROM public.admin_users WHERE id = public.get_current_user_id() AND role_level = 'admin'))
+WITH CHECK (EXISTS (SELECT 1 FROM public.admin_users WHERE id = public.get_current_user_id() AND role_level = 'admin'));
 
 -- Funções de Segurança e Validação
 
@@ -185,20 +185,44 @@ END;
 $$ LANGUAGE plpgsql SECURITY DEFINER;
 
 -- Políticas de Visualização para Usuários
-CREATE POLICY "Users Read Targeted Surveys" ON public.surveys FOR SELECT USING (
-    public.can_user_see_survey(id, auth.uid(), 
-        (SELECT role_level FROM public.admin_users WHERE id = auth.uid()),
-        (SELECT store_id FROM public.admin_users WHERE id = auth.uid())
+CREATE POLICY "Users Read Targeted Surveys" ON public.surveys FOR SELECT TO public USING (
+    public.can_user_see_survey(id, public.get_current_user_id(), 
+        (SELECT role_level FROM public.admin_users WHERE id = public.get_current_user_id()),
+        (SELECT store_id FROM public.admin_users WHERE id = public.get_current_user_id())
     )
 );
 
-CREATE POLICY "Users Read Targeted Questions" ON public.survey_questions FOR SELECT USING (
+CREATE POLICY "Users Read Targeted Questions" ON public.survey_questions FOR SELECT TO public USING (
     EXISTS (
         SELECT 1 FROM public.surveys 
         WHERE id = survey_questions.survey_id 
-        AND public.can_user_see_survey(id, auth.uid(), 
-            (SELECT role_level FROM public.admin_users WHERE id = auth.uid()),
-            (SELECT store_id FROM public.admin_users WHERE id = auth.uid())
+        AND public.can_user_see_survey(id, public.get_current_user_id(), 
+            (SELECT role_level FROM public.admin_users WHERE id = public.get_current_user_id()),
+            (SELECT store_id FROM public.admin_users WHERE id = public.get_current_user_id())
         )
     )
+);
+
+-- Garantir permissões para anon/authenticated
+GRANT ALL ON TABLE public.surveys TO anon, authenticated;
+GRANT ALL ON TABLE public.survey_questions TO anon, authenticated;
+GRANT ALL ON TABLE public.survey_responses TO anon, authenticated;
+GRANT ALL ON TABLE public.survey_answer_details TO anon, authenticated;
+GRANT ALL ON TABLE public.survey_invitations TO anon, authenticated;
+
+-- Políticas para Respostas (Permitir que usuários respondam)
+CREATE POLICY "Users Insert Responses" ON public.survey_responses FOR INSERT TO public WITH CHECK (
+    (user_id = public.get_current_user_id()) OR (invitation_id IS NOT NULL)
+);
+
+CREATE POLICY "Users Insert Details" ON public.survey_answer_details FOR INSERT TO public WITH CHECK (
+    EXISTS (
+        SELECT 1 FROM public.survey_responses r
+        WHERE r.id = response_id
+        AND (r.user_id = public.get_current_user_id() OR r.invitation_id IS NOT NULL)
+    )
+);
+
+CREATE POLICY "Users Read Own Responses" ON public.survey_responses FOR SELECT TO public USING (
+    user_id = public.get_current_user_id()
 );

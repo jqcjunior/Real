@@ -149,7 +149,7 @@ const DemandCategoriesManager: React.FC<DemandCategoriesManagerProps> = ({ onCat
                         onClick={e => e.stopPropagation()}
                     >
                         <h2 className="text-xl font-black text-slate-900 dark:text-white uppercase mb-6">
-                            Gerenciar Categorias de Demandas
+                            Gerenciar Categorias de Chamados
                         </h2>
 
                         {/* Formulário de Adição/Edição */}

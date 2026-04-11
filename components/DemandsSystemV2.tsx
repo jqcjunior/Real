@@ -352,7 +352,7 @@ const DemandsSystemV2: React.FC<DemandsSystemV2Props> = ({ user, stores }) => {
                         <MessageSquare className="text-white" size={24} />
                     </div>
                     <div>
-                        <h2 className="text-xl font-black text-slate-900 dark:text-white uppercase italic tracking-tighter">Central de Demandas <span className="text-blue-600">V2.0</span></h2>
+                        <h2 className="text-xl font-black text-slate-900 dark:text-white uppercase italic tracking-tighter">Central de Chamados <span className="text-blue-600">V2.0</span></h2>
                         <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">Gestão de Ordens de Serviço e Suporte</p>
                     </div>
                 </div>
@@ -414,7 +414,7 @@ const DemandsSystemV2: React.FC<DemandsSystemV2Props> = ({ user, stores }) => {
                     </div>
                 </div>
 
-                {/* Coluna 2: Lista de Demandas (30%) */}
+                {/* Coluna 2: Lista de Chamados (30%) */}
                 <div className="w-full sm:w-1/4 border-r border-slate-200 dark:border-slate-800 bg-slate-50/50 dark:bg-slate-950/50 overflow-y-auto no-scrollbar">
                     {/* Tabs */}
                     <div className="sticky top-0 z-10 bg-white/80 dark:bg-slate-900/80 backdrop-blur-md p-2 border-b border-slate-200 dark:border-slate-800 flex gap-1">
@@ -641,7 +641,7 @@ const DemandsSystemV2: React.FC<DemandsSystemV2Props> = ({ user, stores }) => {
                                 <div className="absolute inset-0 bg-blue-500/10 rounded-full animate-ping"></div>
                                 <MessageSquare size={48} className="text-blue-200 dark:text-slate-700" />
                             </div>
-                            <h3 className="text-xl font-black text-slate-900 dark:text-white uppercase italic mb-2">Selecione uma Demanda</h3>
+                            <h3 className="text-xl font-black text-slate-900 dark:text-white uppercase italic mb-2">Selecione um Chamado</h3>
                             <p className="text-xs font-medium text-slate-400 max-w-xs">Escolha uma ordem de serviço na lista ao lado para visualizar o histórico e interagir.</p>
                         </div>
                     )}
@@ -700,7 +700,7 @@ const DemandsSystemV2: React.FC<DemandsSystemV2Props> = ({ user, stores }) => {
                         <div className="p-4 bg-blue-600 rounded-3xl text-white shadow-xl shadow-blue-900/20">
                             <Archive className="mb-3" size={24} />
                             <h5 className="text-xs font-black uppercase italic mb-2">Arquivamento Automático</h5>
-                            <p className="text-[9px] font-medium leading-relaxed opacity-80">Demandas resolvidas há mais de 1 ano são arquivadas por semestre para manter o sistema leve.</p>
+                            <p className="text-[9px] font-medium leading-relaxed opacity-80">Chamados resolvidos há mais de 1 ano são arquivados por semestre para manter o sistema leve.</p>
                         </div>
                     </div>
                 </div>
@@ -712,7 +712,7 @@ const DemandsSystemV2: React.FC<DemandsSystemV2Props> = ({ user, stores }) => {
                     <div className="bg-white dark:bg-slate-900 w-full max-w-lg rounded-[40px] shadow-2xl overflow-hidden animate-in zoom-in-95 duration-300">
                         <div className="p-8 border-b border-slate-100 dark:border-slate-800 flex justify-between items-center">
                             <div>
-                                <h3 className="text-xl font-black text-slate-900 dark:text-white uppercase italic">Nova Demanda</h3>
+                                <h3 className="text-xl font-black text-slate-900 dark:text-white uppercase italic">Novo Chamado</h3>
                                 <p className="text-[10px] font-bold text-blue-600 uppercase tracking-widest">Abertura de Ordem de Serviço</p>
                             </div>
                             <button onClick={() => setShowNewDemandModal(false)} className="p-2 bg-slate-100 dark:bg-slate-800 rounded-full text-slate-400 hover:text-rose-500 transition-all">
@@ -763,7 +763,7 @@ const DemandsSystemV2: React.FC<DemandsSystemV2Props> = ({ user, stores }) => {
                                 </div>
                             )}
                             <div className="space-y-2">
-                                <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest px-1">Título da Demanda</label>
+                                <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest px-1">Título do Chamado</label>
                                 <input name="title" type="text" required placeholder="Ex: Problema no Ar Condicionado" className="w-full px-4 py-3 bg-slate-100 dark:bg-slate-800 border-none rounded-2xl text-xs font-bold outline-none focus:ring-2 focus:ring-blue-500 transition-all" />
                             </div>
                             <div className="grid grid-cols-2 gap-4">
@@ -779,10 +779,14 @@ const DemandsSystemV2: React.FC<DemandsSystemV2Props> = ({ user, stores }) => {
                                 <div className="space-y-2">
                                     <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest px-1">Categoria</label>
                                     <select name="category" className="w-full px-4 py-3 bg-slate-100 dark:bg-slate-800 border-none rounded-2xl text-xs font-bold outline-none focus:ring-2 focus:ring-blue-500 transition-all appearance-none">
-                                        <option value="infraestrutura">Infraestrutura</option>
-                                        <option value="ti">T.I / Sistemas</option>
-                                        <option value="financeiro">Financeiro</option>
-                                        <option value="rh">R.H / Pessoal</option>
+                                        <option value="compra">Compra</option>
+                                        <option value="defeito">Defeito</option>
+                                        <option value="produto">Produto</option>
+                                        <option value="reclamacao">Reclamação</option>
+                                        <option value="relatorio">Relatório</option>
+                                        <option value="reposicao">Reposição</option>
+                                        <option value="sistema">Sistema</option>
+                                        <option value="solicitacao">Solicitação</option>
                                         <option value="outro">Outro</option>
                                     </select>
                                 </div>
@@ -796,7 +800,7 @@ const DemandsSystemV2: React.FC<DemandsSystemV2Props> = ({ user, stores }) => {
                                 disabled={isLoading}
                                 className="w-full py-4 bg-blue-600 text-white rounded-2xl font-black uppercase text-xs shadow-xl shadow-blue-900/20 hover:bg-blue-700 transition-all active:scale-95 disabled:opacity-50"
                             >
-                                {isLoading ? <Loader2 className="animate-spin mx-auto" size={20} /> : 'Abrir Demanda Agora'}
+                                {isLoading ? <Loader2 className="animate-spin mx-auto" size={20} /> : 'Abrir Chamado Agora'}
                             </button>
                         </form>
                     </div>

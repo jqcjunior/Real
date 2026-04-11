@@ -73,9 +73,12 @@ const AdminSurveyManagement: React.FC<AdminSurveyManagementProps> = ({ currentUs
         .from('surveys')
         .select('*')
         .order('created_at', { ascending: false });
-      if (error) throw error;
+      if (error) {
+        console.error('Erro ao buscar pesquisas (Supabase):', error);
+        throw error;
+      }
       setSurveys(data || []);
-    } catch (err) {
+    } catch (err: any) {
       console.error('Erro ao buscar pesquisas:', err);
     } finally {
       setIsLoading(false);
@@ -182,21 +185,28 @@ const AdminSurveyManagement: React.FC<AdminSurveyManagementProps> = ({ currentUs
           .from('surveys')
           .update(surveyData)
           .eq('id', editingSurvey.id);
-        if (error) throw error;
+        if (error) {
+          console.error('Erro ao atualizar pesquisa:', error);
+          throw error;
+        }
       } else {
         const { data, error } = await supabase
           .from('surveys')
           .insert([surveyData])
           .select()
           .single();
-        if (error) throw error;
+        if (error) {
+          console.error('Erro ao inserir pesquisa:', error);
+          throw error;
+        }
         surveyId = data.id;
       }
 
       // Save Questions
       // For simplicity, we delete and re-insert questions on edit
       if (editingSurvey) {
-        await supabase.from('survey_questions').delete().eq('survey_id', surveyId);
+        const { error: delError } = await supabase.from('survey_questions').delete().eq('survey_id', surveyId);
+        if (delError) console.warn('Erro ao deletar perguntas antigas:', delError);
       }
 
       const questionsToInsert = questions.map((q, idx) => ({
@@ -209,13 +219,17 @@ const AdminSurveyManagement: React.FC<AdminSurveyManagementProps> = ({ currentUs
       }));
 
       const { error: qError } = await supabase.from('survey_questions').insert(questionsToInsert);
-      if (qError) throw qError;
+      if (qError) {
+        console.error('Erro ao inserir perguntas:', qError);
+        throw qError;
+      }
 
       alert('Pesquisa salva com sucesso!');
       setIsModalOpen(false);
       fetchSurveys();
     } catch (err: any) {
-      alert('Erro ao salvar pesquisa: ' + err.message);
+      console.error('Erro completo no handleSave:', err);
+      alert('Erro ao salvar pesquisa: ' + (err.message || 'Erro desconhecido'));
     }
   };
 

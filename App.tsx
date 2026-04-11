@@ -173,7 +173,7 @@ const App: React.FC = () => {
                 { key: 'MODULE_METAS', label: 'Metas', group: 'Inteligência' },
                 { key: 'MODULE_COTAS', label: 'Cotas OTB', group: 'Inteligência' },
                 { key: 'MODULE_PURCHASES', label: 'Compras', group: 'Inteligência' },
-                { key: 'MODULE_DEMANDS', label: 'Demanda OS', group: 'Inteligência' },
+                { key: 'MODULE_DEMANDS', label: 'Chamado', group: 'Inteligência' },
                 { key: 'MODULE_ICECREAM', label: 'PDV Gelateria', group: 'Operacional' },
                 { key: 'MODULE_CASH_REGISTER', label: 'Caixa', group: 'Operacional' },
                 { key: 'MODULE_AGENDA', label: 'Agenda Semanal', group: 'Operacional' },
@@ -804,7 +804,7 @@ const App: React.FC = () => {
                             { id: 'metas', label: 'Metas', icon: Target, perm: 'MODULE_METAS' }, 
                             { id: 'cotas', label: 'Cotas OTB', icon: Calculator, perm: 'MODULE_COTAS' }, 
                             { id: 'compras', label: 'Compras', icon: ShoppingBag, perm: 'MODULE_PURCHASES' }, 
-                            { id: 'os_demandas', label: 'Demanda OS', icon: ClipboardList, perm: 'MODULE_DEMANDS' } 
+                            { id: 'os_demandas', label: 'Chamado', icon: ClipboardList, perm: 'MODULE_DEMANDS' } 
                         ] },
                         { title: 'Operacional', items: [ 
                             { id: 'pdv_sorveteria', label: 'PDV Gelateria Real', icon: IceCreamIcon, perm: 'MODULE_ICECREAM' }, 

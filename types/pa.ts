@@ -16,6 +16,7 @@ export interface PAWeek {
   store_id: string;
   data_inicio: string; // Segunda-feira
   data_fim: string;    // Sexta-feira (pode ser do mês seguinte)
+  data_pagamento?: string; // Data de pagamento (Sábado)
   mes_ref: number;     // Mês de referência (mês da segunda-feira)
   ano_ref: number;
   status: 'aberta' | 'importada' | 'bloqueada' | 'reaberta' | 'recibos_impressos';
