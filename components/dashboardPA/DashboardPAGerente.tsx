@@ -427,7 +427,7 @@ const DashboardPAGerente: React.FC<DashboardPAGerenteProps> = ({ user, store }) 
               color: #555;
               font-style: italic;
               text-align: center;
-              margin-bottom: 20mm;
+              margin-bottom: 8mm;
             }
             .assinaturas {
               display: flex;

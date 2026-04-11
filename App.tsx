@@ -128,9 +128,14 @@ const App: React.FC = () => {
                 await bootstrapPermissions();
                 await bootstrapParameters();
                 
-                // Removido auto-login automático para sempre solicitar usuário e senha
-                // const savedUser = apiService.getUser();
-                // if (savedUser && apiService.isAuthenticated()) { ... }
+                // Restaurar sessão se existir
+                const savedUser = apiService.getUser();
+                if (savedUser && apiService.isAuthenticated()) {
+                    setUser(savedUser);
+                    await fetchPermissions(savedUser.role, savedUser.name);
+                    await fetchData();
+                    setCurrentView('welcome');
+                }
                 
             } catch (error) {
                 console.error("Erro crítico na carga do sistema:", error);
@@ -595,9 +600,9 @@ const App: React.FC = () => {
                 <div className="mb-12">
                     <div className="w-48 h-48 bg-white rounded-full shadow-2xl flex items-center justify-center overflow-hidden border-4 border-white">
                         <img 
-                            src="/logo-real.jpeg" 
+                            src={BRAND_LOGO} 
                             alt="Real Calçados" 
-                            className="w-full h-full object-contain p-4"
+                            className="w-[70%] h-[70%] object-contain"
                             referrerPolicy="no-referrer"
                         />
                     </div>
@@ -701,17 +706,7 @@ const App: React.FC = () => {
             await fetchData();
             
             // Define visão inicial
-            if (mappedRole === UserRole.ADMIN) {
-                setCurrentView('dashboard_rede');      // ✅ ADMIN → Dashboard Rede
-            } else if (mappedRole === UserRole.MANAGER) {
-                setCurrentView('dashboard_loja');      // ✅ GERENTE → Dashboard Loja
-            } else if (mappedRole === UserRole.ICE_CREAM) {
-                setCurrentView('pdv_sorveteria');      // ✅ SORVETE → PDV Gelateria
-            } else if (mappedRole === UserRole.CASHIER) {
-                setCurrentView('caixa');               // ✅ CAIXA → Módulo Caixa
-            } else {
-                setCurrentView('dashboard_loja');      // ✅ Outros → Dashboard Loja
-            }
+            setCurrentView('welcome');
             
             return { success: true, user: loggedUser };
         } catch (err: any) { 
