@@ -90,13 +90,13 @@ const AdminSettings: React.FC<AdminSettingsProps> = ({ stores, onAddStore, onUpd
         }
     };
 
-    const toggleSorveteria = async (store: Store) => {
+    const toggleGelateria = async (store: Store) => {
         setLoadingStoreId(store.id);
         const newValue = !store.has_gelateria;
         try {
             await onUpdateStore({ ...store, has_gelateria: newValue });
         } catch (err) {
-            alert("Erro ao atualizar status da Sorveteria");
+            alert("Erro ao atualizar status da Gelateria");
         } finally {
             setLoadingStoreId(null);
         }
@@ -253,11 +253,11 @@ const AdminSettings: React.FC<AdminSettingsProps> = ({ stores, onAddStore, onUpd
                             
                             <div className="pt-6 border-t border-gray-100 flex justify-between items-center">
                                 <button 
-                                    onClick={() => toggleSorveteria(store)}
+                                    onClick={() => toggleGelateria(store)}
                                     className={`flex items-center gap-2 px-4 py-2.5 rounded-2xl text-[9px] font-black uppercase transition-all border-b-4 ${store.has_gelateria ? 'bg-purple-600 text-white border-purple-900 shadow-lg' : 'bg-gray-100 text-gray-400 border-gray-300 active:scale-95'}`}
                                 >
                                     <IceCream size={14} /> 
-                                    {store.has_gelateria ? 'Sorveteria Ativa' : 'Ativar Sorveteria'}
+                                    {store.has_gelateria ? 'Gelateria Ativa' : 'Ativar Gelateria'}
                                 </button>
 
                                 <button 

@@ -342,7 +342,7 @@ const AdminSurveyManagement: React.FC<AdminSurveyManagementProps> = ({ currentUs
                       {survey.target_category === 'all_managers' && 'Todos os Gerentes'}
                       {survey.target_category === 'all_cashiers' && 'Todos os Caixas'}
                       {survey.target_category === 'all_sellers' && 'Todos os Vendedores'}
-                      {survey.target_category === 'all_ice_cream' && 'Toda a Sorveteria'}
+                      {survey.target_category === 'all_ice_cream' && 'Toda a Gelateria'}
                       {survey.target_category === 'specific_stores' && 'Lojas Específicas'}
                       {survey.target_category === 'specific_users' && 'Usuários Específicos'}
                       {survey.target_type === 'external' && 'Clientes das Lojas'}
@@ -485,7 +485,7 @@ const AdminSurveyManagement: React.FC<AdminSurveyManagementProps> = ({ currentUs
                               <option value="all_managers">Todos os Gerentes</option>
                               <option value="all_cashiers">Todos os Caixas</option>
                               <option value="all_sellers">Todos os Vendedores</option>
-                              <option value="all_ice_cream">Toda a Sorveteria</option>
+                              <option value="all_ice_cream">Toda a Gelateria</option>
                               <option value="specific_stores">Funcionários de Lojas Específicas</option>
                               <option value="specific_users">Usuários Específicos</option>
                             </select>

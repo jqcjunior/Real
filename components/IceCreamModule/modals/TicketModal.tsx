@@ -33,7 +33,7 @@ const TicketModal: React.FC<TicketModalProps> = ({
                 
                 <div className="flex-1 overflow-y-auto p-4 flex justify-center bg-gray-100 no-scrollbar">
                     <div className="bg-white w-[58mm] min-h-[100mm] h-fit shadow-lg p-3 text-black font-mono text-[9px] relative border-l border-r border-gray-200 mx-auto">
-                        <div className="text-center font-black text-[11px] mb-2">SORVETERIA REAL</div>
+                        <div className="text-center font-black text-[11px] mb-2">GELATERIA REAL</div>
                         <div className="border-t border-dashed border-black my-2"></div>
                         
                         <div className="flex justify-between">

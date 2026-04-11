@@ -8,6 +8,7 @@ import {
 import { supabase } from '../../services/supabaseClient';
 import { format } from 'date-fns';
 import { ptBR } from 'date-fns/locale';
+import { autoGenerateWeeksIfNeeded } from './WeeklyPASystem';
  
 interface DashboardPAAdminProps {
   user: User;
@@ -375,6 +376,20 @@ const DashboardPAAdmin: React.FC<DashboardPAAdminProps> = ({ user, stores, onRef
     setTimeout(() => setToast(null), 3000);
   };
  
+  useEffect(() => {
+    const checkWeeks = async () => {
+      if (stores.length > 0) {
+        const storeIds = stores.map(s => s.id);
+        const result = await autoGenerateWeeksIfNeeded(storeIds);
+        if (result.totalCreated > 0) {
+          showToast(`${result.totalCreated} semanas criadas automaticamente!`, 'success');
+          loadWeeks();
+        }
+      }
+    };
+    checkWeeks();
+  }, [stores]);
+
   useEffect(() => { loadWeeks(); }, [selectedMonth, selectedYear]);
  
   useEffect(() => {

@@ -602,28 +602,20 @@ const DashboardPAGerente: React.FC<DashboardPAGerenteProps> = ({ user, store }) 
           
           {(() => {
             const week = weeks.find(w => w.id === selectedWeek);
-            const podeImprimir = week && (week.status === 'aberta' || week.status === 'importada');
-            const jaImprimiu = week?.status === 'recibos_impressos';
             const premiados = sales.filter(s => s.atingiu_meta);
- 
-            if (jaImprimiu) return (
-              <div className="flex items-center gap-2 px-4 py-2 bg-slate-100 dark:bg-slate-800 rounded-[20px] font-black italic uppercase tracking-tighter text-[10px] text-slate-400">
-                <CheckCircle2 className="w-4 h-4" />
-                <span>Recibos impressos — contate o admin para reimprimir</span>
-              </div>
-            );
- 
-            if (!podeImprimir || premiados.length === 0) return null;
- 
-            return (
-              <button
-                onClick={imprimirRecibos}
-                className="flex items-center gap-2 px-6 py-3 bg-emerald-500 text-white rounded-[20px] font-black italic uppercase tracking-tighter text-xs shadow-lg shadow-emerald-500/20 hover:bg-emerald-600 transition-all"
-              >
-                <Printer className="w-4 h-4" />
-                <span>Imprimir Recibos ({premiados.length})</span>
-              </button>
-            );
+
+            if (week && premiados.length > 0) {
+              return (
+                <button
+                  onClick={imprimirRecibos}
+                  className="flex items-center gap-2 px-6 py-3 bg-emerald-500 text-white rounded-[20px] font-black italic uppercase tracking-tighter text-xs shadow-lg shadow-emerald-500/20 hover:bg-emerald-600 transition-all"
+                >
+                  <Printer className="w-4 h-4" />
+                  <span>Imprimir Recibos ({premiados.length})</span>
+                </button>
+              );
+            }
+            return null;
           })()}
           
           <button 

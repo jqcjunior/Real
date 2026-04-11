@@ -161,6 +161,7 @@ const RelatorioPAImprimivel: React.FC<RelatorioProps> = ({ storeId, storeName, s
   const semanaAtual = semanas.find(s => s.id === semanaSelecionada);
   const dataInicio = semanaAtual ? new Date(semanaAtual.data_inicio + 'T00:00:00').toLocaleDateString('pt-BR') : '';
   const dataFim = semanaAtual ? new Date(semanaAtual.data_fim + 'T00:00:00').toLocaleDateString('pt-BR') : '';
+  const dataPagamento = semanaAtual ? new Date(new Date(semanaAtual.data_fim + 'T00:00:00').getTime() + 86400000).toLocaleDateString('pt-BR') : '';
  
   return (
     <div className="p-4 sm:p-6 space-y-6">
@@ -236,6 +237,9 @@ const RelatorioPAImprimivel: React.FC<RelatorioProps> = ({ storeId, storeName, s
                 </h1>
                 <p className="text-sm font-bold text-slate-500 uppercase tracking-widest mt-2">
                   Premiação P.A — Semana {dataInicio} a {dataFim}
+                </p>
+                <p className="text-[10px] font-black text-blue-600 uppercase tracking-[0.2em] mt-1">
+                  📅 Data de Pagamento: {dataPagamento}
                 </p>
               </div>
             </div>

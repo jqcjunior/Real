@@ -252,7 +252,7 @@ const PDVMobileView: React.FC<PDVMobileViewProps> = (props) => {
                     </button>
                 ) : <div className="w-8" />}
                 <h1 className="text-xs sm:text-sm font-black uppercase tracking-widest text-blue-950 dark:text-white italic">
-                    Sorveteria <span className="text-red-600">Real</span>
+                    Gelateria <span className="text-red-600">Real</span>
                 </h1>
                 <div className="w-8" />
             </header>

@@ -332,7 +332,7 @@ const IceCreamModule: React.FC<IceCreamModuleProps> = ({
             </head>
             <body>
                 <div class="header">
-                    <h2>SORVETERIA REAL</h2>
+                    <h2>GELATERIA REAL</h2>
                     <p>${store?.name || '---'}</p>
                     <p>${store?.city || ''}</p>
                 </div>
@@ -417,7 +417,7 @@ const IceCreamModule: React.FC<IceCreamModuleProps> = ({
             </head>
             <body>
               <div class="header">
-                <h1>🍦 DRE DIÁRIO - SORVETERIA REAL</h1>
+                <h1>🍦 DRE DIÁRIO - GELATERIA REAL</h1>
                 <h2>${store?.name || '---'}</h2>
                 <p>${dateStr}</p>
               </div>
@@ -482,7 +482,7 @@ const IceCreamModule: React.FC<IceCreamModuleProps> = ({
               </div>
               
               <div class="footer">
-                Gerado em: ${new Date().toLocaleString('pt-BR')} | Sistema de Gestão Sorveteria Real
+                Gerado em: ${new Date().toLocaleString('pt-BR')} | Sistema de Gestão Gelateria Real
               </div>
               
               <script>
@@ -509,7 +509,7 @@ const IceCreamModule: React.FC<IceCreamModuleProps> = ({
             <!DOCTYPE html>
             <html>
             <head>
-                <title>DRE Mensal - Sorveteria Real</title>
+                <title>DRE Mensal - Gelateria Real</title>
                 <style>
                     @page { size: A4; margin: 15mm; }
                     body { font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; padding: 0; color: #1e293b; line-height: 1.4; }
@@ -530,7 +530,7 @@ const IceCreamModule: React.FC<IceCreamModuleProps> = ({
             <body>
                 <div class="header">
                     <div>
-                        <h2>SORVETERIA REAL</h2>
+                        <h2>GELATERIA REAL</h2>
                         <p>Relatório Gerencial de Resultados</p>
                     </div>
                     <div class="text-right">
@@ -639,7 +639,7 @@ const IceCreamModule: React.FC<IceCreamModuleProps> = ({
                 </div>
     
                 <div class="footer">
-                    Documento gerado em ${new Date().toLocaleString('pt-BR')} por Sorveteria Real
+                    Documento gerado em ${new Date().toLocaleString('pt-BR')} por Gelateria Real
                 </div>
     
                 <script>
@@ -809,7 +809,7 @@ const IceCreamModule: React.FC<IceCreamModuleProps> = ({
                                 <h1 className="text-lg font-black uppercase italic tracking-tighter text-slate-900 leading-none">
                                     Real <span className="text-blue-600">Admin</span>
                                 </h1>
-                                <p className="text-[9px] font-bold text-slate-400 uppercase tracking-widest mt-1">Sorveteria Real</p>
+                                <p className="text-[9px] font-bold text-slate-400 uppercase tracking-widest mt-1">Gelateria Real</p>
                             </div>
                         </div>
  

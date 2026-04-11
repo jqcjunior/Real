@@ -169,7 +169,7 @@ const App: React.FC = () => {
                 { key: 'MODULE_COTAS', label: 'Cotas OTB', group: 'Inteligência' },
                 { key: 'MODULE_PURCHASES', label: 'Compras', group: 'Inteligência' },
                 { key: 'MODULE_DEMANDS', label: 'Demanda OS', group: 'Inteligência' },
-                { key: 'MODULE_ICECREAM', label: 'PDV Sorveteria', group: 'Operacional' },
+                { key: 'MODULE_ICECREAM', label: 'PDV Gelateria', group: 'Operacional' },
                 { key: 'MODULE_CASH_REGISTER', label: 'Caixa', group: 'Operacional' },
                 { key: 'MODULE_AGENDA', label: 'Agenda Semanal', group: 'Operacional' },
                 { key: 'MODULE_AUTORIZ_COMPRA', label: 'Autoriz. Compra', group: 'Documentos' },
@@ -181,8 +181,8 @@ const App: React.FC = () => {
                 { key: 'MODULE_AUDIT', label: 'Auditoria', group: 'Administração' },
                 { key: 'MODULE_SETTINGS', label: 'Configurações', group: 'Administração' },
                 { key: 'MODULE_CASH_ERRORS_EDIT', label: 'Editar Quebras de Caixa', group: 'Financeiro' },
-                { key: 'MODULE_ICECREAM_MANAGE', label: 'Sorveteria: Gestão', group: 'Sorveteria' },
-                { key: 'MODULE_ICECREAM_DESPESAS', label: 'Sorveteria: Despesas', group: 'Sorveteria' },
+                { key: 'MODULE_ICECREAM_MANAGE', label: 'Gelateria: Gestão', group: 'Gelateria' },
+                { key: 'MODULE_ICECREAM_DESPESAS', label: 'Gelateria: Despesas', group: 'Gelateria' },
                 { key: 'MODULE_AUDIT_MANAGE', label: 'Auditoria: Gestão', group: 'Auditoria' },
                 { key: 'admin_settings', label: 'Configurações Avançadas', group: 'Administração' }
             ];
@@ -577,7 +577,7 @@ const App: React.FC = () => {
                 );
             } else if (userRole === UserRole.ICE_CREAM) {
                 buttons.push(
-                    { key: 'pdv_sorveteria', label: 'Sorveteria', icon: '🍦', color: 'from-pink-500 to-pink-600' },
+                    { key: 'pdv_sorveteria', label: 'Gelateria', icon: '🍦', color: 'from-pink-500 to-pink-600' },
                     { key: 'agenda', label: 'Agenda', icon: '📅', color: 'from-purple-500 to-purple-600' },
                     { key: 'dashboard_loja', label: 'Dashboard', icon: '📊', color: 'from-blue-500 to-blue-600' },
                     { key: 'my_surveys', label: 'Pesquisas', icon: '📝', color: 'from-orange-500 to-orange-600' }
@@ -706,7 +706,7 @@ const App: React.FC = () => {
             } else if (mappedRole === UserRole.MANAGER) {
                 setCurrentView('dashboard_loja');      // ✅ GERENTE → Dashboard Loja
             } else if (mappedRole === UserRole.ICE_CREAM) {
-                setCurrentView('pdv_sorveteria');      // ✅ SORVETE → PDV Sorveteria
+                setCurrentView('pdv_sorveteria');      // ✅ SORVETE → PDV Gelateria
             } else if (mappedRole === UserRole.CASHIER) {
                 setCurrentView('caixa');               // ✅ CAIXA → Módulo Caixa
             } else {
@@ -812,7 +812,7 @@ const App: React.FC = () => {
                             { id: 'os_demandas', label: 'Demanda OS', icon: ClipboardList, perm: 'MODULE_DEMANDS' } 
                         ] },
                         { title: 'Operacional', items: [ 
-                            { id: 'pdv_sorveteria', label: 'PDV Sorveteria Real', icon: IceCreamIcon, perm: 'MODULE_ICECREAM' }, 
+                            { id: 'pdv_sorveteria', label: 'PDV Gelateria Real', icon: IceCreamIcon, perm: 'MODULE_ICECREAM' }, 
                             { id: 'caixa', label: 'Caixa', icon: ClipboardList, perm: 'MODULE_CASH_REGISTER' }, 
                             { id: 'agenda', label: 'Agenda Semanal', icon: Calendar, perm: 'MODULE_AGENDA' },
                             { id: 'my_surveys', label: 'Minhas Pesquisas', icon: ClipboardList, perm: 'ALWAYS' }
