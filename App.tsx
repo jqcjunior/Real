@@ -10,7 +10,7 @@ import { supabase } from './services/supabaseClient';
 import apiService from './services/apiService';
 import { ensureSession } from './services/authService';
 import { BRAND_LOGO } from './constants';
- 
+
 // Módulos com Lazy Loading
 const CotasManagement = lazy(() => import('./components/CotasManagement').then(m => ({ default: m.CotasManagement })));
 const DashboardAdmin = lazy(() => import('./components/DashboardAdmin'));
@@ -35,11 +35,11 @@ const DashboardPAGerente = lazy(() => import('./components/dashboardPA/Dashboard
 const AdminSurveyManagement = lazy(() => import('./components/AdminSurveyManagement_v3'));
 const MySurveysComponent = lazy(() => import('./components/MySurveysComponent'));
 const SurveyResultsViewer = lazy(() => import('./components/SurveyResultsViewer'));
- 
+
 import LoginScreen from './components/LoginScreen';
 import NotificationHeader from './components/NotificationHeader';
 import ChangePasswordModal from './components/ChangePasswordModal';
- 
+
 // Ícones
 import {
     LayoutDashboard, Target, ShoppingBag, Calculator, IceCream as IceCreamIcon,
@@ -47,7 +47,7 @@ import {
     Sun, Moon, Trophy, BarChart3, ArrowRight
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
- 
+
 const PageLoader = () => (
     <div className="flex items-center justify-center h-full min-h-[400px]">
         <div className="flex flex-col items-center gap-4">
@@ -56,7 +56,7 @@ const PageLoader = () => (
         </div>
     </div>
 );
- 
+
 // Estilos CSS para animações
 const styles = `
   @keyframes fade-in {
@@ -69,7 +69,7 @@ const styles = `
       transform: translateY(0);
     }
   }
- 
+
   @keyframes fade-in-up {
     from {
       opacity: 0;
@@ -80,7 +80,7 @@ const styles = `
       transform: translateY(0);
     }
   }
- 
+
   @keyframes spin-slow {
     from {
       transform: rotate(0deg);
@@ -89,20 +89,20 @@ const styles = `
       transform: rotate(360deg);
     }
   }
- 
+
   .animate-fade-in {
     animation: fade-in 0.6s ease-out;
   }
- 
+
   .animate-fade-in-up {
     animation: fade-in-up 0.8s ease-out;
   }
- 
+
   .animate-spin-slow {
     animation: spin-slow 3s linear infinite;
   }
 `;
- 
+
 const App: React.FC = () => {
     const [user, setUser] = useState<User | null>(null);
     const isAdmin = user?.role === UserRole.ADMIN;
@@ -116,50 +116,53 @@ const App: React.FC = () => {
         const saved = localStorage.getItem('theme');
         return (saved as 'light' | 'dark') || 'light';
     });
- 
+
     // ─── SEGURANÇA: Sempre exige login — nunca restaura sessão salva ──────────
     useEffect(() => {
         if (window.innerWidth >= 1024) {
             setIsSidebarOpen(true);
         }
- 
+
         const init = async () => {
             setIsLoading(true);
             try {
                 await ensureSession();
                 await bootstrapPermissions();
                 await bootstrapParameters();
- 
-                // ✅ SEGURANÇA: Limpa qualquer credencial salva anteriormente.
-                // O sistema SEMPRE deve solicitar usuário e senha ao abrir.
-                // Não restauramos sessão salva — o bloco que fazia isso foi removido.
-                await apiService.logout();
- 
+
+                // ✅ SEGURANÇA: O bloco de restauração automática de sessão foi
+                // removido intencionalmente. O sistema NÃO restaura mais o usuário
+                // salvo — isso garante que o login seja sempre exigido ao abrir o app.
+                // Não chamamos apiService.logout() aqui pois isso causaria uma
+                // condição de corrida: o init é assíncrono e demorado
+                // (bootstrapPermissions faz ~24 chamadas ao banco), e o logout
+                // poderia ser executado DEPOIS que o usuário já fez login, desfazendo-o.
+
             } catch (error) {
                 console.error("Erro crítico na carga do sistema:", error);
             } finally {
                 setIsLoading(false);
             }
         };
- 
+
         init();
     }, []);
- 
+
     // ─── SEGURANÇA: Auto-logout após 1 hora + aviso 5 min antes ──────────────
     useEffect(() => {
         if (!user) {
             setSessionWarning(false);
             return;
         }
- 
+
         const HORA_EM_MS = 60 * 60 * 1000;        // 60 minutos
         const AVISO_EM_MS = 55 * 60 * 1000;        // 55 minutos (5 min antes)
- 
+
         // Aviso aos 55 minutos
         const timerAviso = setTimeout(() => {
             setSessionWarning(true);
         }, AVISO_EM_MS);
- 
+
         // Logout automático ao completar 1 hora
         const timerLogout = setTimeout(async () => {
             setSessionWarning(false);
@@ -169,20 +172,20 @@ const App: React.FC = () => {
             setCurrentView('welcome');
             window.location.reload();
         }, HORA_EM_MS);
- 
+
         return () => {
             clearTimeout(timerAviso);
             clearTimeout(timerLogout);
         };
     }, [user]); // reinicia o contador sempre que o usuário muda (login/logout)
     // ─────────────────────────────────────────────────────────────────────────
- 
+
     useEffect(() => {
         if (user && currentView && currentView !== 'welcome') {
             localStorage.setItem(`realcalcados_lastView_${user.id}`, currentView);
         }
     }, [currentView, user]);
- 
+
     useEffect(() => {
         const root = window.document.documentElement;
         if (theme === 'dark') {
@@ -192,7 +195,7 @@ const App: React.FC = () => {
         }
         localStorage.setItem('theme', theme);
     }, [theme]);
- 
+
     const bootstrapPermissions = async () => {
         try {
             const perms = [
@@ -221,14 +224,14 @@ const App: React.FC = () => {
                 { key: 'MODULE_AUDIT_MANAGE', label: 'Auditoria: Gestão', group: 'Auditoria' },
                 { key: 'admin_settings', label: 'Configurações Avançadas', group: 'Administração' }
             ];
- 
+
             for (const p of perms) {
                 const { data: existing } = await supabase
                     .from('page_permissions')
                     .select('id, allow_admin')
                     .eq('page_key', p.key)
                     .maybeSingle();
- 
+
                 if (!existing) {
                     await supabase.from('page_permissions').insert([{
                         page_key: p.key,
@@ -250,7 +253,7 @@ const App: React.FC = () => {
             console.error("Erro no bootstrap de permissões:", err);
         }
     };
- 
+
     const bootstrapParameters = async () => {
         try {
             const { data, error } = await supabase.from('pa_parameters').select('*').limit(1);
@@ -267,10 +270,10 @@ const App: React.FC = () => {
             console.error("Erro no bootstrap de parâmetros:", err);
         }
     };
- 
+
     const [userPermissions, setUserPermissions] = useState<string[]>([]);
     const [connectionError, setConnectionError] = useState<string | null>(null);
- 
+
     const [stores, setStores] = useState<Store[]>([]);
     const [performanceData, setPerformanceData] = useState<MonthlyPerformance[]>([]);
     const [goalsData, setGoalsData] = useState<MonthlyGoal[]>([]);
@@ -307,7 +310,7 @@ const App: React.FC = () => {
     const [isSurveyModalOpen, setIsSurveyModalOpen] = useState(false);
     const [showSurveyAlert, setShowSurveyAlert] = useState(false);
     const [selectedSurvey, setSelectedSurvey] = useState<Survey | null>(null);
- 
+
     const can = (permissionKey: string) => {
         if (!user) return false;
         const role = String(user.role || '').toUpperCase().trim();
@@ -316,49 +319,49 @@ const App: React.FC = () => {
         if (role === 'ADMIN') return true;
         return userPermissions.includes(permissionKey);
     };
- 
+
     const fetchPermissions = async (role: string, userName?: string) => {
         try {
             setPermissionsLoaded(false);
             const roleUpper = String(role || '').toUpperCase().trim();
- 
+
             let columnToCheck = '';
             if (roleUpper === 'ADMIN') columnToCheck = 'allow_admin';
             else if (roleUpper === 'MANAGER' || roleUpper === 'GERENTE') columnToCheck = 'allow_manager';
             else if (roleUpper === 'CASHIER' || roleUpper === 'CAIXA') columnToCheck = 'allow_cashier';
             else if (roleUpper === 'ICE_CREAM' || roleUpper === 'SORVETE' || roleUpper === 'SORVETERIA') columnToCheck = 'allow_sorvete';
- 
+
             if (!columnToCheck) {
                 console.warn(`Role ${roleUpper} não mapeada para colunas de permissão.`);
                 setUserPermissions([]);
                 setPermissionsLoaded(true);
                 return;
             }
- 
+
             const { data, error } = await supabase
                 .from('page_permissions')
                 .select('page_key')
                 .eq(columnToCheck, true);
- 
+
             if (error) throw error;
- 
+
             const perms = data?.map(p => p.page_key) || [];
             setUserPermissions(perms);
             setPermissionsLoaded(true);
- 
+
             console.log('--- DEBUG PERMISSÕES ---');
             console.log('USUÁRIO:', userName || user?.name);
             console.log('ROLE:', roleUpper);
             console.log('PERMISSÕES CARREGADAS:', perms);
             console.log('------------------------');
- 
+
         } catch (err) {
             console.error("Erro ao buscar permissões:", err);
             setUserPermissions([]);
             setPermissionsLoaded(true);
         }
     };
- 
+
     const fetchAllRows = async (table: string, orderBy: string) => {
         let allData: any[] = [];
         let from = 0;
@@ -377,7 +380,7 @@ const App: React.FC = () => {
         }
         return { data: allData };
     };
- 
+
     const addLog = async (action: string, details: string) => {
         if (!user) return;
         try {
@@ -393,7 +396,7 @@ const App: React.FC = () => {
             console.error("Erro ao criar log:", err);
         }
     };
- 
+
     const fetchData = async () => {
         try {
             await ensureSession();
@@ -405,16 +408,16 @@ const App: React.FC = () => {
                 supabase.from('monthly_goals').select('*'),
                 supabase.from('pa_parameters').select('*').maybeSingle()
             ]);
- 
+
             if (pap) setPaParameters(pap);
- 
+
             if(s) setStores(s.map(x => ({
                 ...x,
                 managerName: x.manager_name,
                 managerEmail: x.manager_email,
                 managerPhone: x.manager_phone
             })).sort((a, b) => Number(a.number) - Number(b.number)));
- 
+
             if(p) setPerformanceData(p.map(x => ({
                 ...x,
                 storeId: x.store_id,
@@ -432,11 +435,11 @@ const App: React.FC = () => {
                 ticketTarget: Number(x.ticket_target || 0),
                 businessDays: Number(x.business_days || 26)
             })));
- 
+
             if(g) setGoalsData(g.map(x => ({ id: x.id, storeId: x.store_id, year: Number(x.year), month: Number(x.month), revenueTarget: Number(x.revenue_target || 0), itemsTarget: Number(x.items_target || 0), paTarget: Number(x.pa_target || 0), puTarget: Number(x.pu_target || 0), ticketTarget: Number(x.ticket_target || 0), delinquencyTarget: Number(x.delinquency_target || 2.0), businessDays: Number(x.business_days || 26), trend: x.trend || 'stable' })));
- 
+
             setIsLoading(false);
- 
+
             const [
                 {data: pur}, {data: c}, {data: cs}, {data: cd}, {data: cat}, {data: mix},
                 {data: ici}, {data: ics}, {data: icst}, {data: icp}, {data: r}, {data: ce}, {data: ag}, {data: dl}, {data: cl}, {data: lg},
@@ -472,7 +475,7 @@ const App: React.FC = () => {
                 supabase.from('gestao_compras').select('*'),
                 supabase.from('ice_cream_future_debts').select('*').order('due_date', { ascending: true })
             ]);
- 
+
             if(fd) setFutureDebts(fd);
             if(sls) setSales(sls);
             if(slsp) setSalePayments(slsp.map(x => ({ ...x, amount: Number(x.amount || 0) })));
@@ -507,25 +510,25 @@ const App: React.FC = () => {
             if(movements) setIcStockMovements(movements);
             if(part) setPartners(part);
             if(ausers) setAdminUsers(ausers);
- 
+
             if (user) {
                 const { data: activeSurveys } = await supabase
                     .from('surveys')
                     .select('*')
                     .eq('is_active', true);
- 
+
                 const { data: myResponses } = await supabase
                     .from('survey_responses')
                     .select('survey_id')
                     .eq('user_id', user.id);
- 
+
                 if (activeSurveys) {
                     const respondedIds = myResponses?.map(r => r.survey_id) || [];
                     const pending = activeSurveys.filter(s => !respondedIds.includes(s.id));
                     setPendingSurveys(pending);
                 }
             }
- 
+
             if(pm) setPurchasingManagement(pm.map(x => ({
                 id: x.id,
                 storeId: x.store_id,
@@ -543,7 +546,7 @@ const App: React.FC = () => {
         } catch (err) { console.error("Erro Sincronismo:", err); }
         finally { setIsLoading(false); }
     };
- 
+
     useEffect(() => {
         const channel = supabase.channel('online-sync-global')
             .on('postgres_changes', { event: '*', schema: 'public', table: 'financial_receipts' }, () => fetchData())
@@ -560,14 +563,14 @@ const App: React.FC = () => {
             .subscribe();
         return () => { supabase.removeChannel(channel); };
     }, []);
- 
+
     const WelcomeScreen = () => {
         const userName = user?.name?.split(' ')[0] || 'Usuário';
         const userRole = user?.role || UserRole.CASHIER;
- 
+
         const getQuickAccessButtons = () => {
             const buttons = [];
- 
+
             if (userRole === UserRole.ADMIN) {
                 buttons.push(
                     { key: 'dashboard_rede', label: 'Dashboard Rede', icon: '📊', color: 'from-blue-500 to-blue-600' },
@@ -597,12 +600,12 @@ const App: React.FC = () => {
                     { key: 'my_surveys', label: 'Pesquisas', icon: '📝', color: 'from-orange-500 to-orange-600' }
                 );
             }
- 
+
             return buttons;
         };
- 
+
         const quickAccess = getQuickAccessButtons();
- 
+
         return (
             <div className="flex flex-col items-center justify-center min-h-screen bg-gradient-to-br from-gray-50 via-white to-blue-50 dark:from-slate-950 dark:via-slate-900 dark:to-slate-950">
                 <div className="mb-12">
@@ -615,7 +618,7 @@ const App: React.FC = () => {
                         />
                     </div>
                 </div>
- 
+
                 <div className="text-center mb-8 animate-fade-in">
                     <h1 className="text-4xl font-bold bg-gradient-to-r from-blue-600 to-blue-800 bg-clip-text text-transparent mb-2">
                         Olá, {userName}! 👋
@@ -624,7 +627,7 @@ const App: React.FC = () => {
                         Bem-Vindo ao Sistema Real Calçados Gerencial
                     </p>
                 </div>
- 
+
                 {quickAccess.length > 0 && (
                     <div className="mb-12 animate-fade-in-up flex flex-col items-center px-4">
                         <p className="text-sm text-gray-500 mb-6 text-center font-medium uppercase tracking-widest">ACESSO RÁPIDO</p>
@@ -656,12 +659,12 @@ const App: React.FC = () => {
                         </div>
                     </div>
                 )}
- 
+
                 <div className="flex items-center justify-center gap-3 text-gray-500 bg-white dark:bg-slate-800 px-8 py-4 rounded-full shadow-md border border-gray-100 dark:border-slate-700 animate-fade-in-up">
                     <AlertCircle size={20} className="text-blue-500" />
                     <span className="text-sm font-medium">Use o menu lateral para navegar entre os módulos</span>
                 </div>
- 
+
                 <div className="mt-12 text-center text-xs text-gray-400 w-full">
                     <p className="font-medium">Sistema Real Calçados Sub Grupo ARRJ © 2026</p>
                     <p className="mt-2 text-gray-400">Versão 2.0</p>
@@ -669,23 +672,23 @@ const App: React.FC = () => {
             </div>
         );
     };
- 
+
     const handleLogin = async (email: string, pass: string, remember: boolean) => {
         try {
             const result = await apiService.login(email, pass);
- 
+
             if (!result || !result.user) {
                 throw new Error('Resposta de login inválida');
             }
- 
+
             const rawRole = (result.user.role || '').toUpperCase().trim();
- 
+
             let mappedRole: UserRole = UserRole.CASHIER;
             if (rawRole === 'ADMIN') mappedRole = UserRole.ADMIN;
             else if (rawRole === 'MANAGER' || rawRole === 'GERENTE') mappedRole = UserRole.MANAGER;
             else if (rawRole === 'CAIXA' || rawRole === 'CASHIER') mappedRole = UserRole.CASHIER;
             else if (rawRole === 'SORVETE' || rawRole === 'SORVETERIA' || rawRole === 'ICE_CREAM') mappedRole = UserRole.ICE_CREAM;
- 
+
             const loggedUser: User = {
                 id: result.user.id,
                 name: result.user.name,
@@ -693,22 +696,22 @@ const App: React.FC = () => {
                 email: result.user.email,
                 storeId: result.user.storeId
             };
- 
+
             setUser(loggedUser);
             await fetchPermissions(mappedRole, loggedUser.name);
- 
+
             // ✅ CORREÇÃO: fetchData() roda em background sem bloquear a navegação.
             // NÃO use "await fetchData()" aqui seguido de setCurrentView('welcome'),
             // pois isso resetaria a tela mesmo que o usuário já tivesse navegado
             // para outro módulo durante o carregamento dos dados.
             fetchData(); // sem await — deixa rodar em background
- 
+
             return { success: true, user: loggedUser };
         } catch (err: any) {
             return { success: false, error: err.message || 'Falha na conexão.' };
         }
     };
- 
+
     const handleLogout = async () => {
         if (user) {
             localStorage.removeItem(`realcalcados_lastView_${user.id}`);
@@ -718,7 +721,7 @@ const App: React.FC = () => {
         setCurrentView('welcome');
         window.location.reload();
     };
- 
+
     const handleSaveIceCreamProduct = async (product: Partial<IceCreamItem>) => {
         const payload = {
             store_id: product.storeId, name: product.name, category: product.category, price: product.price,
@@ -729,7 +732,7 @@ const App: React.FC = () => {
         else await supabase.from('ice_cream_items').insert([payload]);
         await fetchData();
     };
- 
+
     const handleRegisterRequest = async (store: Partial<Store>) => {
         try {
             const { error } = await supabase.from('stores').insert([{
@@ -747,13 +750,13 @@ const App: React.FC = () => {
             throw err;
         }
     };
- 
+
     if (!user) return (
         <div className="relative">
             <LoginScreen onLoginAttempt={handleLogin} onRegisterRequest={handleRegisterRequest} />
         </div>
     );
- 
+
     return (
         <>
             <style>{styles}</style>
@@ -761,7 +764,7 @@ const App: React.FC = () => {
             {isSidebarOpen && (
                 <div className="fixed inset-0 bg-slate-900/40 backdrop-blur-sm z-[90]" onClick={() => setIsSidebarOpen(false)} />
             )}
- 
+
             <aside className={`
                 fixed inset-y-0 left-0 z-[100] w-72 bg-white dark:bg-slate-900 border-r border-slate-200 dark:border-slate-800 flex flex-col p-6 transition-all duration-300 transform
                 ${isSidebarOpen ? 'translate-x-0' : '-translate-x-full'}
@@ -881,7 +884,7 @@ const App: React.FC = () => {
                         <NotificationHeader user={user!} stores={stores} agenda={agenda} onNavigate={setCurrentView} can={can} />
                     </div>
                 </header>
- 
+
                 {/* ── Aviso de sessão prestes a expirar ── */}
                 {sessionWarning && (
                     <div className="bg-amber-500 text-white px-6 py-2 flex items-center justify-between">
@@ -899,7 +902,7 @@ const App: React.FC = () => {
                         </button>
                     </div>
                 )}
- 
+
                 {pendingSurveys.length > 0 && (
                     <div className="bg-blue-600 text-white px-6 py-2 flex items-center justify-between animate-pulse cursor-pointer hover:bg-blue-700 transition-colors" onClick={() => setShowSurveyAlert(true)}>
                         <div className="flex items-center gap-3">
@@ -909,7 +912,7 @@ const App: React.FC = () => {
                         <span className="text-[10px] font-black uppercase tracking-widest flex items-center gap-2">Clique para visualizar <ArrowRight size={14} /></span>
                     </div>
                 )}
- 
+
                 <main className="flex-1 overflow-y-auto no-scrollbar p-3 md:p-6 lg:p-8">
                     <Suspense fallback={<PageLoader />}>
                         {(() => {
@@ -920,14 +923,14 @@ const App: React.FC = () => {
                                 weight_pa: wPA,
                                 updated_at: new Date().toISOString()
                             };
- 
+
                             let result;
                             if (paParameters?.id) {
                                 result = await supabase.from('pa_parameters').update(payload).eq('id', paParameters.id);
                             } else {
                                 result = await supabase.from('pa_parameters').insert([payload]);
                             }
- 
+
                             if (result.error) {
                                 console.error("Erro ao salvar pesos:", result.error);
                                 alert("Erro ao salvar pesos: " + result.error.message);
@@ -1062,9 +1065,9 @@ const App: React.FC = () => {
                                 if (Math.abs(totalPayments - saleData.total) > 0.01) {
                                     throw new Error("A soma dos pagamentos não confere com o total da venda.");
                                 }
- 
+
                                 const buyerName = saleData.buyer_name?.trim() || null;
- 
+
                                 const { data: header, error: headerError } = await supabase
                                     .from('ice_cream_sales')
                                     .insert([{
@@ -1076,10 +1079,10 @@ const App: React.FC = () => {
                                         created_at: new Date().toISOString()
                                     }])
                                     .select().single();
- 
+
                                 if (headerError) throw headerError;
                                 const saleId = header.id;
- 
+
                                 try {
                                     const { error: itemsError } = await supabase.from('ice_cream_daily_sales').insert(items.map(x => ({
                                         sale_id: saleId,
@@ -1096,12 +1099,12 @@ const App: React.FC = () => {
                                         buyer_name: buyerName,
                                         status: 'completed'
                                     })));
- 
+
                                     if (itemsError) {
                                         await supabase.from('ice_cream_sales').delete().eq('id', saleId);
                                         throw itemsError;
                                     }
- 
+
                                     const { error: paymentsError } = await supabase.from('ice_cream_daily_sales_payments').insert(payments.map(p => ({
                                         sale_id: saleId,
                                         store_id: header.store_id,
@@ -1111,7 +1114,7 @@ const App: React.FC = () => {
                                         buyer_name: buyerName,
                                         created_at: new Date().toISOString()
                                     })));
- 
+
                                     if (paymentsError) {
                                         await supabase.from('ice_cream_daily_sales').delete().eq('sale_id', saleId);
                                         await supabase.from('ice_cream_sales').delete().eq('id', saleId);
@@ -1125,10 +1128,10 @@ const App: React.FC = () => {
                             }}
                             onCancelSale={async (idOrCode, reason) => {
                                 const isUUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(idOrCode);
- 
+
                                 let saleCode = idOrCode;
                                 let saleId = isUUID ? idOrCode : null;
- 
+
                                 if (isUUID) {
                                     const { data: sale } = await supabase.from('ice_cream_sales').select('sale_code').eq('id', idOrCode).maybeSingle();
                                     if (sale) saleCode = sale.sale_code;
@@ -1136,7 +1139,7 @@ const App: React.FC = () => {
                                     const { data: sale } = await supabase.from('ice_cream_sales').select('id').eq('sale_code', idOrCode).maybeSingle();
                                     if (sale) saleId = sale.id;
                                 }
- 
+
                                 if (saleId) {
                                     await supabase.from('ice_cream_sales').update({ status: 'canceled', cancel_reason: reason, canceled_by_name: user?.name }).eq('id', saleId);
                                     await supabase.from('ice_cream_daily_sales').update({ status: 'canceled', cancel_reason: reason, canceled_by: user?.name }).eq('sale_id', saleId);
@@ -1144,13 +1147,13 @@ const App: React.FC = () => {
                                     await supabase.from('ice_cream_sales').update({ status: 'canceled', cancel_reason: reason, canceled_by_name: user?.name }).eq('sale_code', saleCode);
                                     await supabase.from('ice_cream_daily_sales').update({ status: 'canceled', cancel_reason: reason, canceled_by: user?.name }).eq('sale_code', saleCode);
                                 }
- 
+
                                 await Promise.all([
                                     supabase.from('financial_card_sales').delete().eq('sale_code', saleCode),
                                     supabase.from('financial_pix_sales').delete().eq('sale_code', saleCode),
                                     supabase.from('ice_cream_daily_sales_payments').delete().eq('sale_code', saleCode)
                                 ]);
- 
+
                                 await fetchData();
                             }}
                             onUpdatePrice={async (id, p) => { await supabase.from('ice_cream_items').update({ price: p }).eq('id', id); await fetchData(); }}
@@ -1203,7 +1206,7 @@ const App: React.FC = () => {
                                         nextNum = data && data.length > 0 ? (data[0].receipt_number + 1) : 1;
                                         formatted = String(nextNum).padStart(4, '0');
                                     }
- 
+
                                     const saved = await apiService.createReceipt({
                                         payer: r.payer,
                                         recipient: r.recipient,
@@ -1268,7 +1271,7 @@ const App: React.FC = () => {
             {isChangePasswordOpen && (
                 <ChangePasswordModal user={user!} onClose={() => setIsChangePasswordOpen(false)} />
             )}
- 
+
             <AnimatePresence>
                 {showSurveyAlert && (
                     <div className="fixed inset-0 z-[200] flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-sm">
@@ -1307,7 +1310,7 @@ const App: React.FC = () => {
                     </div>
                 )}
             </AnimatePresence>
- 
+
             <AnimatePresence>
                 {isSurveyModalOpen && selectedSurvey && (
                     <div className="fixed inset-0 z-[210] overflow-y-auto bg-white dark:bg-slate-950">
@@ -1338,5 +1341,5 @@ const App: React.FC = () => {
         </>
     );
 };
- 
+
 export default App;
