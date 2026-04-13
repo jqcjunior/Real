@@ -103,7 +103,9 @@ class ApiService {
       value: receiptData.value,
       value_in_words: receiptData.value_in_words,
       reference: receiptData.reference,
-      receipt_date: receiptData.receipt_date
+      receipt_date: receiptData.receipt_date,
+      receipt_number: receiptData.receipt_number,
+      formatted_number: receiptData.formatted_number
     }]).select().single();
 
     if (error) throw error;

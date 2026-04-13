@@ -27,7 +27,7 @@ const RelatorioPAImprimivel: React.FC<RelatorioProps> = ({ storeId, storeName, s
   const [parametros, setParametros] = useState<any>(null);
   const [loading, setLoading] = useState(false);
   const [showPreview, setShowPreview] = useState(false);
-
+ 
   const parseLocalDate = (dateStr: string): Date => {
     const [year, month, day] = dateStr.split('-').map(Number);
     return new Date(year, month - 1, day);
@@ -99,82 +99,95 @@ const RelatorioPAImprimivel: React.FC<RelatorioProps> = ({ storeId, storeName, s
     fetchVendedores();
   }, [semanaSelecionada]);
  
+  // ─── IMPRESSÃO CORRIGIDA ───────────────────────────────────────────────────
+  // Problema anterior: a nova janela não carregava o Tailwind CSS,
+  // por isso saía tudo em branco.
+  // Solução: injetar o Tailwind via CDN + aguardar carregamento antes de imprimir.
   const handlePrint = () => {
     const printContent = document.getElementById('relatorio-print');
-    if (!printContent) return;
-    
-    // Em ambientes de iframe (como o preview), window.print() costuma ser bloqueado.
-    // A melhor prática é abrir em uma nova janela para imprimir.
-    handlePrintFallback();
-  };
- 
-  const handlePrintFallback = () => {
-    const printContent = document.getElementById('relatorio-print');
-    if (!printContent) return;
-    
-    const printWindow = window.open('', '_blank');
-    if (!printWindow) {
-      console.error('Pop-ups bloqueados. Por favor, permita pop-ups para imprimir.');
+    if (!printContent) {
+      alert('Visualize o relatório antes de imprimir.');
       return;
     }
-
-    // Copiar estilos para a nova janela para garantir que o Tailwind funcione
-    const styles = Array.from(document.querySelectorAll('style, link[rel="stylesheet"]'))
-      .map(style => style.outerHTML)
-      .join('\n');
-
+ 
+    const printWindow = window.open('', '_blank');
+    if (!printWindow) {
+      alert('Pop-ups bloqueados!\nPor favor, permita pop-ups para este site e tente novamente.');
+      return;
+    }
+ 
     printWindow.document.write(`
       <!DOCTYPE html>
-      <html>
+      <html lang="pt-BR">
         <head>
-          <meta charset="UTF-8">
+          <meta charset="UTF-8" />
+          <meta name="viewport" content="width=device-width, initial-scale=1.0" />
           <title>Relatório P.A - ${storeName}</title>
-          ${styles}
+ 
+          <!-- Tailwind CSS via CDN: garante que todas as classes funcionem na nova janela -->
+          <script src="https://cdn.tailwindcss.com"><\/script>
+ 
           <style>
-            @media print {
-              @page { size: A4; margin: 1cm; }
-              body { padding: 0 !important; background: white !important; }
-              .no-print { display: none !important; }
+            /* Forçar impressão colorida (fundo + cores) */
+            * {
+              -webkit-print-color-adjust: exact !important;
+              print-color-adjust: exact !important;
+              color-adjust: exact !important;
             }
-            body { background: white !important; }
+            @page {
+              size: A4 portrait;
+              margin: 0.7cm;
+            }
+            body {
+              background: white;
+              margin: 0;
+              padding: 0;
+            }
           </style>
         </head>
-        <body class="bg-white p-8">${printContent.innerHTML}</body>
+        <body class="bg-white">
+          ${printContent.outerHTML}
+        </body>
       </html>
     `);
     printWindow.document.close();
-    printWindow.focus();
-    
-    // Pequeno delay para garantir que os estilos e imagens carreguem
-    setTimeout(() => { 
-      try {
-        printWindow.print(); 
-        printWindow.close(); 
-      } catch (e) {
-        console.error('Erro ao imprimir:', e);
-      }
-    }, 500);
+ 
+    // Aguarda o Tailwind carregar completamente antes de disparar a impressão
+    printWindow.addEventListener('load', () => {
+      setTimeout(() => {
+        try {
+          printWindow.focus();
+          printWindow.print();
+          // Fecha após o diálogo de impressão fechar
+          printWindow.addEventListener('afterprint', () => printWindow.close());
+        } catch (e) {
+          console.error('Erro ao imprimir:', e);
+        }
+      }, 800);
+    });
   };
+  // ──────────────────────────────────────────────────────────────────────────
  
   const getMedalha = (posicao: number) => {
-    if (posicao === 0) return { icon: <Trophy className="text-yellow-400" size={48} />, label: '🥇 1º LUGAR' };
-    if (posicao === 1) return { icon: <Medal className="text-slate-400" size={48} />, label: '🥈 2º LUGAR' };
-    if (posicao === 2) return { icon: <Medal className="text-orange-600" size={48} />, label: '🥉 3º LUGAR' };
-    return { icon: <Star className="text-blue-500" size={40} />, label: '⭐ DESTAQUE' };
+    if (posicao === 0) return { emoji: '🥇', label: '1º LUGAR', isPodium: true };
+    if (posicao === 1) return { emoji: '🥈', label: '2º LUGAR', isPodium: true };
+    if (posicao === 2) return { emoji: '🥉', label: '3º LUGAR', isPodium: true };
+    return { emoji: '⭐', label: `${posicao + 1}º LUGAR`, isPodium: false };
   };
  
   const semanaAtual = semanas.find(s => s.id === semanaSelecionada);
   const dataInicio = semanaAtual ? parseLocalDate(semanaAtual.data_inicio).toLocaleDateString('pt-BR') : '';
   const dataFim = semanaAtual ? parseLocalDate(semanaAtual.data_fim).toLocaleDateString('pt-BR') : '';
-  const dataPagamento = semanaAtual 
-    ? (semanaAtual.data_pagamento 
-        ? parseLocalDate(semanaAtual.data_pagamento).toLocaleDateString('pt-BR') 
-        : new Date(parseLocalDate(semanaAtual.data_fim).getTime() + 86400000).toLocaleDateString('pt-BR')) 
+  const dataPagamento = semanaAtual
+    ? (semanaAtual.data_pagamento
+        ? parseLocalDate(semanaAtual.data_pagamento).toLocaleDateString('pt-BR')
+        : new Date(parseLocalDate(semanaAtual.data_fim).getTime() + 86400000).toLocaleDateString('pt-BR'))
     : '';
  
   return (
-    <div className="p-4 sm:p-6 space-y-6">
-      {/* Controles — não aparecem na impressão */}
+    <div className="p-4 sm:p-6 space-y-4">
+ 
+      {/* ── Controles (não aparecem na impressão) ── */}
       <div className="no-print bg-white dark:bg-slate-900 p-4 sm:p-6 rounded-2xl shadow-sm border border-slate-200 dark:border-slate-800 space-y-4">
         <h2 className="text-lg sm:text-xl font-black text-slate-900 dark:text-white uppercase italic">
           📄 Relatório de <span className="text-blue-600">Premiação P.A</span>
@@ -232,122 +245,117 @@ const RelatorioPAImprimivel: React.FC<RelatorioProps> = ({ storeId, storeName, s
         )}
       </div>
  
-      {/* Relatório para Impressão */}
+      {/* ── Relatório Compacto para Impressão A4 ── */}
       {showPreview && vendedores.length > 0 && (
-        <div className="print-area bg-white p-8 sm:p-12 rounded-2xl shadow-2xl" id="relatorio-print">
-          
-          {/* Cabeçalho */}
-          <div className="text-center mb-12 pb-8 border-b-4 border-blue-600">
-            <div className="flex items-center justify-center gap-4 mb-4">
-              <Award size={48} className="text-blue-600" />
-              <div>
-                <h1 className="text-3xl sm:text-4xl font-black text-slate-900 uppercase italic leading-none">
-                  Parabéns aos <span className="text-blue-600">Campeões!</span>
-                </h1>
-                <p className="text-sm font-bold text-slate-500 uppercase tracking-widest mt-2">
-                  Premiação P.A — Semana {dataInicio} a {dataFim}
-                </p>
-                <p className="text-[10px] font-black text-blue-600 uppercase tracking-[0.2em] mt-1">
-                  📅 Data de Pagamento: {dataPagamento}
-                </p>
-              </div>
+        <div
+          id="relatorio-print"
+          className="bg-white rounded-2xl shadow-2xl overflow-hidden"
+          style={{ maxWidth: '210mm', margin: '0 auto' }}
+        >
+          {/* Cabeçalho compacto */}
+          <div className="bg-gradient-to-r from-blue-600 to-indigo-700 text-white px-6 py-4 text-center">
+            <div className="flex items-center justify-center gap-3 mb-1">
+              <Award size={28} className="text-yellow-300 flex-shrink-0" />
+              <h1 className="text-2xl font-black uppercase italic leading-none">
+                Parabéns aos <span className="text-yellow-300">Campeões!</span>
+              </h1>
             </div>
-            <div className="mt-6 bg-gradient-to-r from-blue-600 to-indigo-600 text-white py-3 px-6 rounded-2xl inline-block">
-              <p className="text-lg font-black uppercase">
+            <p className="text-xs font-bold uppercase tracking-widest opacity-90 mt-1">
+              Premiação P.A — Semana {dataInicio} a {dataFim}
+            </p>
+            <p className="text-xs font-black text-yellow-200 mt-0.5">
+              📅 Pagamento: {dataPagamento}
+            </p>
+            <div className="mt-2 bg-white/20 rounded-xl py-1.5 px-4 inline-block">
+              <p className="text-sm font-black uppercase">
                 {storeName} — Loja {storeNumber}
               </p>
             </div>
           </div>
  
-          {/* Lista de Vendedores */}
-          <div className="space-y-6">
+          {/* Lista de vendedores — cards compactos horizontais */}
+          <div className="p-3 space-y-2">
             {vendedores.map((v, idx) => {
-              const medalha = getMedalha(idx);
-              const isPodium = idx < 3;
+              const { emoji, label, isPodium } = getMedalha(idx);
  
               return (
                 <div
                   key={idx}
-                  className={`relative overflow-hidden rounded-3xl border-4 ${
+                  className={`rounded-xl border-2 p-3 flex items-center gap-3 ${
                     isPodium
-                      ? 'bg-gradient-to-r from-yellow-50 to-amber-50 border-yellow-400 shadow-2xl'
-                      : 'bg-gradient-to-r from-blue-50 to-indigo-50 border-blue-300 shadow-lg'
-                  } p-6 sm:p-8`}
+                      ? 'bg-gradient-to-r from-yellow-50 to-amber-50 border-yellow-400'
+                      : 'bg-gradient-to-r from-blue-50 to-indigo-50 border-blue-300'
+                  }`}
                 >
-                  {/* Posição e Nome */}
-                  <div className="flex items-start gap-6 mb-6">
-                    <div className="flex-shrink-0">{medalha.icon}</div>
-                    <div className="flex-1">
-                      <div className={`inline-block px-4 py-1 rounded-full text-xs font-black uppercase mb-2 ${
-                        isPodium ? 'bg-yellow-400 text-yellow-900' : 'bg-blue-500 text-white'
-                      }`}>
-                        {medalha.label}
-                      </div>
-                      <h2 className="text-2xl sm:text-3xl font-black text-slate-900 uppercase italic leading-none">
-                        {v.nome_vendedor}
-                      </h2>
-                      <p className="text-sm font-bold text-slate-500 uppercase tracking-widest mt-1">
-                        Código: {v.cod_vendedor}
-                      </p>
+                  {/* Medalha + posição */}
+                  <div className="flex-shrink-0 text-center w-14">
+                    <div className="text-3xl leading-none">{emoji}</div>
+                    <div className={`text-[9px] font-black uppercase mt-1 px-1 py-0.5 rounded-full ${
+                      isPodium ? 'bg-yellow-400 text-yellow-900' : 'bg-blue-500 text-white'
+                    }`}>
+                      {label}
                     </div>
                   </div>
  
-                  {/* Métricas — SEM o card de Prêmio */}
-                  <div className="grid grid-cols-3 gap-4 mb-6">
-                    <div className="bg-white rounded-2xl p-4 border-2 border-slate-200">
-                      <p className="text-xs font-black text-slate-400 uppercase tracking-widest mb-1">P.A Atingido</p>
-                      <p className="text-2xl font-black text-green-600">{v.pa_atingido.toFixed(2)}</p>
-                      <p className="text-[10px] font-bold text-slate-500">Meta: {v.pa_meta.toFixed(2)}</p>
+                  {/* Nome e código */}
+                  <div className="flex-1 min-w-0">
+                    <h2 className="text-base font-black text-slate-900 uppercase italic leading-tight">
+                      {v.nome_vendedor}
+                    </h2>
+                    <p className="text-[10px] font-bold text-slate-400 uppercase">
+                      Código: {v.cod_vendedor}
+                    </p>
+                    {v.faixas_acima > 0 && (
+                      <span className="inline-flex items-center gap-1 mt-1 bg-gradient-to-r from-amber-400 to-orange-500 text-white text-[9px] font-black px-2 py-0.5 rounded-full">
+                        <TrendingUp size={10} />
+                        +{v.faixas_acima} {v.faixas_acima === 1 ? 'faixa' : 'faixas'} acima 🔥
+                      </span>
+                    )}
+                  </div>
+ 
+                  {/* Métricas */}
+                  <div className="flex gap-2 flex-shrink-0">
+                    {/* P.A */}
+                    <div className="bg-white rounded-lg p-2 border-2 border-slate-200 text-center w-20">
+                      <p className="text-[9px] font-black text-slate-400 uppercase leading-none mb-1">P.A Ating.</p>
+                      <p className="text-base font-black text-green-600 leading-none">{v.pa_atingido.toFixed(2)}</p>
+                      <p className="text-[9px] font-bold text-slate-400 mt-0.5">meta {v.pa_meta.toFixed(2)}</p>
                     </div>
  
-                    <div className="bg-white rounded-2xl p-4 border-2 border-slate-200">
-                      <p className="text-xs font-black text-slate-400 uppercase tracking-widest mb-1">Vendas</p>
-                      <p className="text-2xl font-black text-indigo-600">
+                    {/* Vendas */}
+                    <div className="bg-white rounded-lg p-2 border-2 border-slate-200 text-center w-24">
+                      <p className="text-[9px] font-black text-slate-400 uppercase leading-none mb-1">Vendas</p>
+                      <p className="text-sm font-black text-indigo-600 leading-none">
                         R$ {v.total_vendas.toLocaleString('pt-BR', { minimumFractionDigits: 0 })}
                       </p>
-                      <p className="text-[10px] font-bold text-slate-500">{v.qtde_vendas} atendimentos</p>
+                      <p className="text-[9px] font-bold text-slate-400 mt-0.5">{v.qtde_vendas} atend.</p>
                     </div>
  
-                    <div className="bg-white rounded-2xl p-4 border-2 border-slate-200">
-                      <p className="text-xs font-black text-slate-400 uppercase tracking-widest mb-1">Itens</p>
-                      <p className="text-2xl font-black text-purple-600">{v.qtde_itens}</p>
-                      <p className="text-[10px] font-bold text-slate-500">peças vendidas</p>
+                    {/* Itens */}
+                    <div className="bg-white rounded-lg p-2 border-2 border-slate-200 text-center w-16">
+                      <p className="text-[9px] font-black text-slate-400 uppercase leading-none mb-1">Itens</p>
+                      <p className="text-xl font-black text-purple-600 leading-none">{v.qtde_itens}</p>
+                      <p className="text-[9px] font-bold text-slate-400 mt-0.5">peças</p>
                     </div>
                   </div>
- 
-                  {/* Banner de destaque para quem superou a meta */}
-                  {v.faixas_acima > 0 && (
-                    <div className="bg-gradient-to-r from-amber-400 to-orange-500 text-white px-6 py-3 rounded-xl flex items-center gap-3">
-                      <TrendingUp size={24} />
-                      <p className="font-black uppercase text-sm">
-                        Superou a meta em {v.faixas_acima} {v.faixas_acima === 1 ? 'faixa' : 'faixas'}! 🔥
-                      </p>
-                    </div>
-                  )}
                 </div>
               );
             })}
           </div>
  
-          {/* Rodapé */}
-          <div className="mt-12 pt-8 border-t-2 border-slate-200">
-            <div className="bg-gradient-to-r from-blue-600 to-indigo-600 text-white p-6 rounded-2xl text-center">
-              <p className="text-2xl font-black uppercase mb-2">🎉 Continue Assim, Time! 🎉</p>
-              <p className="text-sm font-bold opacity-90">Juntos somos mais fortes. Próxima semana tem mais! 💪</p>
-            </div>
-            <div className="text-center mt-6">
-              <p className="text-xs font-bold text-slate-400 uppercase tracking-widest">
-                Gerado em {new Date().toLocaleDateString('pt-BR')} às {new Date().toLocaleTimeString('pt-BR')}
-              </p>
-              <p className="text-[10px] font-bold text-slate-300 mt-1">
-                Sistema Dashboard P.A — Rede Real Calçados
-              </p>
-            </div>
+          {/* Rodapé compacto */}
+          <div className="mx-3 mb-3 bg-gradient-to-r from-blue-600 to-indigo-700 text-white p-3 rounded-xl text-center">
+            <p className="text-base font-black uppercase">🎉 Continue Assim, Time! 🎉</p>
+            <p className="text-xs font-bold opacity-90 mt-0.5">
+              Juntos somos mais fortes. Próxima semana tem mais! 💪
+            </p>
+            <p className="text-[9px] font-bold opacity-60 mt-1">
+              Gerado em {new Date().toLocaleDateString('pt-BR')} às {new Date().toLocaleTimeString('pt-BR')} &nbsp;|&nbsp; Sistema Dashboard P.A — Rede Real Calçados
+            </p>
           </div>
         </div>
       )}
  
-      {/* Estilos de Impressão */}
       <style>{`
         @media print {
           body * { visibility: hidden; }
@@ -357,13 +365,10 @@ const RelatorioPAImprimivel: React.FC<RelatorioProps> = ({ storeId, storeName, s
             left: 0; top: 0;
             width: 100%;
             background: white !important;
-            padding: 2rem;
           }
           .no-print { display: none !important; }
-          @page { size: A4; margin: 1cm; }
+          @page { size: A4 portrait; margin: 0.7cm; }
         }
-        body.printing-mode .no-print { display: none !important; }
-        .print-area { max-width: 210mm; margin: 0 auto; }
       `}</style>
     </div>
   );

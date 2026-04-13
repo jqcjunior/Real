@@ -1184,15 +1184,32 @@ const App: React.FC = () => {
                                     fetchData(); 
                                 }} 
                                 onAddReceipt={async (r) => { 
+                                    // Buscar o próximo número sequencial antes de salvar
+                                    let nextNum = 1;
+                                    let formatted = '0001';
+                                    try {
+                                        const nextData = await apiService.getNextReceiptNumber();
+                                        nextNum = nextData.next_number;
+                                        formatted = nextData.formatted || String(nextNum).padStart(4, '0');
+                                    } catch (err) {
+                                        console.error("Erro ao obter próximo número, usando fallback:", err);
+                                        // Fallback manual se o RPC falhar
+                                        const { data } = await supabase.from('financial_receipts').select('receipt_number').order('receipt_number', { ascending: false }).limit(1);
+                                        nextNum = data && data.length > 0 ? (data[0].receipt_number + 1) : 1;
+                                        formatted = String(nextNum).padStart(4, '0');
+                                    }
+
                                     const saved = await apiService.createReceipt({
                                         payer: r.payer,
                                         recipient: r.recipient,
                                         value: r.value,
                                         value_in_words: r.valueInWords,
                                         reference: r.reference,
-                                        receipt_date: r.date
+                                        receipt_date: r.date,
+                                        receipt_number: nextNum,
+                                        formatted_number: formatted
                                     });
-                                    addLog('EMISSÃO RECIBO', `Recibo #${saved.receipt_number} para ${saved.recipient} no valor de ${saved.value}`); 
+                                    addLog('EMISSÃO RECIBO', `Recibo #${saved.formatted_number} para ${saved.recipient} no valor de ${saved.value}`); 
                                     fetchData(); 
                                     return saved;
                                 }} 
