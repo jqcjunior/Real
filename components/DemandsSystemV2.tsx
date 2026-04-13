@@ -37,17 +37,19 @@ import {
     Archive,
     Trash2,
     Loader2,
-    Camera
+    Camera,
+    Lock,
+    Users
 } from 'lucide-react';
 import imageCompression from 'browser-image-compression';
 import { format, formatDistanceToNow } from 'date-fns';
 import { ptBR } from 'date-fns/locale';
-
+ 
 interface DemandsSystemV2Props {
     user: UserType;
     stores: Store[];
 }
-
+ 
 const DemandsSystemV2: React.FC<DemandsSystemV2Props> = ({ user, stores }) => {
     // States
     const [selectedStoreId, setSelectedStoreId] = useState<string | null>(user.role === 'ADMIN' ? null : user.storeId || null);
@@ -68,11 +70,13 @@ const DemandsSystemV2: React.FC<DemandsSystemV2Props> = ({ user, stores }) => {
     });
     const [slaAlerts, setSlaAlerts] = useState<DemandV2[]>([]);
     const [storeUsers, setStoreUsers] = useState<AdminUser[]>([]);
-
+    const [selectedTargetUser, setSelectedTargetUser] = useState<string | null>(null);
+    const [showTargetUserModal, setShowTargetUserModal] = useState(false);
+ 
     // Refs
     const messageEndRef = useRef<HTMLDivElement>(null);
     const fileInputRef = useRef<HTMLInputElement>(null);
-
+ 
     // Filtered Stores
     const filteredStores = useMemo(() => {
         if (user.role !== 'ADMIN') {
@@ -83,33 +87,29 @@ const DemandsSystemV2: React.FC<DemandsSystemV2Props> = ({ user, stores }) => {
             s.number.includes(searchTerm)
         ).sort((a, b) => Number(a.number) - Number(b.number));
     }, [stores, searchTerm, user]);
-
-    // Load Store Counts
+ 
+    // Load Store Counts com nova RPC
     const loadStoreCounts = async () => {
         try {
             await ensureSession();
-            const { data, error } = await supabase
-                .from('demands_v2')
-                .select('store_id, priority, unread_count, status')
-                .eq('is_archived', false);
-
+            const { data, error } = await supabase.rpc('fn_get_store_demand_counts');
+ 
             if (error) throw error;
-
+ 
             const counts: Record<string, { total: number, urgent: number, unread: number }> = {};
-            data?.forEach(d => {
-                if (!counts[d.store_id]) counts[d.store_id] = { total: 0, urgent: 0, unread: 0 };
-                if (['aberta', 'em_andamento', 'pausada'].includes(d.status)) {
-                    counts[d.store_id].total++;
-                    if (d.priority === 'urgente') counts[d.store_id].urgent++;
-                }
-                counts[d.store_id].unread += (d.unread_count || 0);
+            data?.forEach((d: any) => {
+                counts[d.store_id] = {
+                    total: d.total_open || 0,
+                    urgent: d.urgent_count || 0,
+                    unread: d.unread_messages || 0
+                };
             });
             setStoreCounts(counts);
         } catch (err) {
             console.error("Erro ao carregar contadores:", err);
         }
     };
-
+ 
     const calculateStats = async () => {
         try {
             await ensureSession();
@@ -117,34 +117,31 @@ const DemandsSystemV2: React.FC<DemandsSystemV2Props> = ({ user, stores }) => {
                 .from('demands_v2')
                 .select('*')
                 .eq('is_archived', false);
-
+ 
             if (error) throw error;
-
-            // 1. Calcular Totais
+ 
             const resolved = data.filter(d => d.status === 'resolvida').length;
             const paused = data.filter(d => d.status === 'pausada').length;
-
-            // 2. Calcular Tempo Médio (em horas)
+ 
             const resolvedDemands = data.filter(d => d.status === 'resolvida' && d.resolution_time_minutes);
             const totalMinutes = resolvedDemands.reduce((acc, curr) => acc + curr.resolution_time_minutes, 0);
             const avg = resolvedDemands.length > 0 ? (totalMinutes / resolvedDemands.length / 60).toFixed(1) : 0;
-
+ 
             setStats({ resolved, paused, avgTime: `${avg}h` });
-
-            // 3. Filtrar Alertas de SLA (Expirados ou próximos do fim)
+ 
             const alerts = data.filter(d => 
                 d.status !== 'resolvida' && 
                 d.status !== 'cancelada' && 
                 d.sla_deadline &&
-                new Date(d.sla_deadline) < new Date(new Date().getTime() + 2 * 60 * 60 * 1000) // Próximas 2 horas ou já expirados
-            ).slice(0, 3); // Top 3 alertas
-
+                new Date(d.sla_deadline) < new Date(new Date().getTime() + 2 * 60 * 60 * 1000)
+            ).slice(0, 3);
+ 
             setSlaAlerts(alerts);
         } catch (err) {
             console.error("Erro ao calcular estatísticas:", err);
         }
     };
-
+ 
     const loadStoreUsers = async (storeId: string) => {
         try {
             await ensureSession();
@@ -161,53 +158,43 @@ const DemandsSystemV2: React.FC<DemandsSystemV2Props> = ({ user, stores }) => {
             console.error("Erro ao carregar usuários da loja:", err);
         }
     };
-
+ 
     // Load Demands
     const loadDemands = async (storeId: string | null) => {
         setIsLoading(true);
         try {
             await ensureSession();
             
-            // 1. Identificação precisa do usuário logado
             // @ts-ignore
             const currentUserId = user.user_id || user.id;
             // @ts-ignore
             const userRole = (user.role_level || user.role)?.toUpperCase();
-            // @ts-ignore
-            const userName = user.name || user.nome;
-
+ 
             let query = supabase
                 .from('demands_v2')
                 .select('*')
                 .eq('is_archived', false);
-
-            // 2. Filtro por Loja (Se houver seleção manual no topo)
+ 
             if (storeId) {
                 query = query.eq('store_id', storeId);
             }
-
-            // 3. Filtro de Privacidade por Cargo
+ 
             if (userRole === 'ADMIN' || userRole === 'TÉCNICO') {
-                // Admin/Técnico: Visão total
-                console.log(`Visão TOTAL: ${userName}`);
+                console.log(`Visão TOTAL: Admin/Técnico`);
             } 
             else if (userRole === 'GERENTE' || userRole === 'MANAGER') {
-                // Gerente: Vê tudo da sua loja específica
                 // @ts-ignore
                 const userStoreId = user.store_id || user.storeId;
                 if (userStoreId) {
                     query = query.eq('store_id', userStoreId);
                 }
-                console.log(`Visão GERENTE: ${userName}`);
+                console.log(`Visão GERENTE`);
             } 
             else {
-                // Colaboradores (Caixa, Sorvete, etc): 
-                // Vê apenas o que o seu próprio usuário criou ou recebeu
                 query = query.or(`created_by.eq.${currentUserId},assigned_to.eq.${currentUserId}`);
-                console.log(`Visão COLABORADOR: ${userName} (Filtrando por ID: ${currentUserId})`);
+                console.log(`Visão COLABORADOR`);
             }
-
-            // 4. Filtro por Status (Tabs)
+ 
             if (activeTab === 'abertas') {
                 query = query.in('status', ['aberta', 'em_andamento']);
             } else if (activeTab === 'pausadas') {
@@ -215,19 +202,19 @@ const DemandsSystemV2: React.FC<DemandsSystemV2Props> = ({ user, stores }) => {
             } else {
                 query = query.in('status', ['resolvida', 'cancelada']);
             }
-
+ 
             const { data, error } = await query.order('created_at', { ascending: false });
             
             if (error) throw error;
             setDemands(data || []);
         } catch (err) {
-            console.error("Erro ao carregar demandas personalizadas:", err);
+            console.error("Erro ao carregar demandas:", err);
         } finally {
             setIsLoading(false);
         }
     };
-
-    // Load Messages
+ 
+    // Load Messages (agora com filtro de privacidade automático pelo RLS)
     const loadMessages = async (demandId: string) => {
         try {
             await ensureSession();
@@ -236,24 +223,23 @@ const DemandsSystemV2: React.FC<DemandsSystemV2Props> = ({ user, stores }) => {
                 .select('*')
                 .eq('demand_id', demandId)
                 .order('created_at', { ascending: true });
-
+ 
             if (msgsError) throw msgsError;
-
+ 
             const { data: atts, error: attsError } = await supabase
                 .from('demands_attachments_v2')
                 .select('*')
                 .eq('demand_id', demandId);
-
+ 
             if (attsError) throw attsError;
-
+ 
             const messagesWithAttachments = msgs.map(m => ({
                 ...m,
                 attachments: atts?.filter(a => a.message_id === m.id) || []
             }));
-
+ 
             setMessages(messagesWithAttachments);
             
-            // Mark as read
             if (user.role === 'ADMIN') {
                 await supabase.from('demands_v2').update({ unread_count: 0 }).eq('id', demandId);
                 loadStoreCounts();
@@ -262,53 +248,52 @@ const DemandsSystemV2: React.FC<DemandsSystemV2Props> = ({ user, stores }) => {
             console.error("Erro ao carregar mensagens:", err);
         }
     };
-
+ 
     // Effects
     useEffect(() => {
         loadStoreCounts();
         calculateStats();
-
-        // Inscrição Real-time para atualizar os contadores das lojas na hora
+ 
         const channel = supabase
             .channel('realtime-store-updates')
             .on('postgres_changes', 
                 { event: '*', schema: 'public', table: 'demands_v2' }, 
                 () => {
-                    loadStoreCounts(); // Recarrega os números e cores sempre que algo mudar
+                    loadStoreCounts();
                     calculateStats();
                 }
             )
             .subscribe();
-
+ 
         return () => {
             supabase.removeChannel(channel);
         };
     }, []);
-
+ 
     useEffect(() => {
         loadDemands(selectedStoreId);
     }, [selectedStoreId, activeTab]);
-
+ 
     useEffect(() => {
         if (selectedDemand) {
             loadMessages(selectedDemand.id);
         }
     }, [selectedDemand]);
-
+ 
     useEffect(() => {
         messageEndRef.current?.scrollIntoView({ behavior: 'smooth' });
     }, [messages]);
-
+ 
     useEffect(() => {
         if (selectedStoreId) {
             loadStoreUsers(selectedStoreId);
         }
     }, [selectedStoreId]);
-
+ 
     // Handlers
     const handleAssign = async (assignedToId: string) => {
         if (!selectedDemand) return;
-
+ 
         try {
             await ensureSession();
             
@@ -318,7 +303,7 @@ const DemandsSystemV2: React.FC<DemandsSystemV2Props> = ({ user, stores }) => {
             const currentUserName = user.name || user.nome;
             // @ts-ignore
             const currentUserRole = user.role_level || user.role || 'COLABORADOR';
-
+ 
             const { data, error } = await supabase.rpc('fn_assign_demand_v2', {
                 p_demand_id: selectedDemand.id,
                 p_assigned_to: assignedToId,
@@ -326,9 +311,9 @@ const DemandsSystemV2: React.FC<DemandsSystemV2Props> = ({ user, stores }) => {
                 p_user_name: currentUserName,
                 p_user_role: currentUserRole
             });
-
+ 
             if (error || !data.success) throw error || new Error(data.error);
-
+ 
             setSelectedDemand({ ...selectedDemand, assigned_to: assignedToId });
             loadMessages(selectedDemand.id);
         } catch (err) {
@@ -336,11 +321,11 @@ const DemandsSystemV2: React.FC<DemandsSystemV2Props> = ({ user, stores }) => {
             alert("Erro ao direcionar o chamado.");
         }
     };
-
+ 
     const handleSendMessage = async (e?: React.FormEvent) => {
         if (e) e.preventDefault();
         if (!newMessage.trim() || !selectedDemand || isSending) return;
-
+ 
         setIsSending(true);
         try {
             await ensureSession();
@@ -351,39 +336,43 @@ const DemandsSystemV2: React.FC<DemandsSystemV2Props> = ({ user, stores }) => {
             const currentUserName = user.name || user.nome;
             // @ts-ignore
             const currentUserRole = user.role_level || user.role || 'COLABORADOR';
-
-            const { data: msg, error } = await supabase.from('demands_messages_v2').insert([{
-                demand_id: selectedDemand.id,
-                sender_id: currentUserId,
-                sender_name: currentUserName,
-                sender_role: currentUserRole,
-                message: newMessage.trim(),
-                message_type: 'comment'
-            }]).select().single();
-
-            if (error) throw error;
-
-            setMessages([...messages, { ...msg, attachments: [] }]);
+ 
+            // Usar nova RPC com controle de privacidade
+            const { data, error } = await supabase.rpc('fn_send_demand_message_v2', {
+                p_demand_id: selectedDemand.id,
+                p_sender_id: currentUserId,
+                p_sender_name: currentUserName,
+                p_sender_role: currentUserRole,
+                p_message: newMessage.trim(),
+                p_message_type: 'comment',
+                p_target_user_id: selectedTargetUser // Para mensagens direcionadas de admin
+            });
+ 
+            if (error || !data.success) throw error || new Error(data.error);
+ 
             setNewMessage('');
+            setSelectedTargetUser(null);
+            loadMessages(selectedDemand.id);
+            loadStoreCounts();
         } catch (err) {
             console.error("Erro ao enviar mensagem:", err);
+            alert("Erro ao enviar mensagem.");
         } finally {
             setIsSending(false);
         }
     };
-
+ 
     const handleFileUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
         const file = e.target.files?.[0];
         if (!file || !selectedDemand || isSending) return;
-
+ 
         setIsSending(true);
         try {
             await ensureSession();
             let finalFile = file;
             let isCompressed = false;
             let originalSize = file.size;
-
-            // Compress if image
+ 
             if (file.type.startsWith('image/')) {
                 const options = {
                     maxSizeMB: 0.5,
@@ -394,45 +383,55 @@ const DemandsSystemV2: React.FC<DemandsSystemV2Props> = ({ user, stores }) => {
                 finalFile = await imageCompression(file, options);
                 isCompressed = true;
             }
-
+ 
             const fileExt = file.name.split('.').pop();
             const fileName = `${Math.random()}.${fileExt}`;
             const filePath = `demands/${selectedDemand.id}/${fileName}`;
-
+ 
             const { error: uploadError } = await supabase.storage
                 .from('attachments')
                 .upload(filePath, finalFile);
-
+ 
             if (uploadError) throw uploadError;
-
+ 
             const { data: { publicUrl } } = supabase.storage
                 .from('attachments')
                 .getPublicUrl(filePath);
-
-            // 1. Identificação robusta do usuário
+ 
             // @ts-ignore
             const currentUserId = user.user_id || user.id;
             // @ts-ignore
             const currentUserName = user.name || user.nome;
             // @ts-ignore
             const currentUserRole = user.role_level || user.role || 'COLABORADOR';
-
-            // Create message for attachment
-            const { data: msg, error: msgError } = await supabase.from('demands_messages_v2').insert([{
-                demand_id: selectedDemand.id,
-                sender_id: currentUserId,
-                sender_name: currentUserName,
-                sender_role: currentUserRole,
-                message: `Anexou um arquivo: ${file.name}`,
-                message_type: 'comment'
-            }]).select().single();
-
-            if (msgError) throw msgError;
-
-            // Save attachment metadata
+ 
+            // Usar nova RPC para enviar mensagem de anexo
+            const { data: msgData, error: msgError } = await supabase.rpc('fn_send_demand_message_v2', {
+                p_demand_id: selectedDemand.id,
+                p_sender_id: currentUserId,
+                p_sender_name: currentUserName,
+                p_sender_role: currentUserRole,
+                p_message: `Anexou um arquivo: ${file.name}`,
+                p_message_type: 'comment',
+                p_target_user_id: selectedTargetUser
+            });
+ 
+            if (msgError || !msgData.success) throw msgError || new Error(msgData.error);
+ 
+            // Buscar o ID da mensagem criada
+            const { data: lastMsg } = await supabase
+                .from('demands_messages_v2')
+                .select('id')
+                .eq('demand_id', selectedDemand.id)
+                .order('created_at', { ascending: false })
+                .limit(1)
+                .single();
+ 
+            if (!lastMsg) throw new Error('Mensagem não encontrada');
+ 
             const { error: attError } = await supabase.from('demands_attachments_v2').insert([{
                 demand_id: selectedDemand.id,
-                message_id: msg.id,
+                message_id: lastMsg.id,
                 file_name: file.name,
                 file_url: publicUrl,
                 file_size: finalFile.size,
@@ -442,9 +441,10 @@ const DemandsSystemV2: React.FC<DemandsSystemV2Props> = ({ user, stores }) => {
                 compression_ratio: Number((finalFile.size / originalSize).toFixed(2)),
                 uploaded_from_mobile: /iPhone|iPad|iPod|Android/i.test(navigator.userAgent)
             }]);
-
+ 
             if (attError) throw attError;
-
+ 
+            setSelectedTargetUser(null);
             loadMessages(selectedDemand.id);
         } catch (err) {
             console.error("Erro no upload:", err);
@@ -454,17 +454,17 @@ const DemandsSystemV2: React.FC<DemandsSystemV2Props> = ({ user, stores }) => {
             if (fileInputRef.current) fileInputRef.current.value = '';
         }
     };
-
+ 
     const handleStatusChange = async (newStatus: DemandV2Status) => {
         if (!selectedDemand) return;
-
+ 
         // @ts-ignore
         const currentUserId = user.user_id || user.id;
         // @ts-ignore
         const currentUserName = user.name || user.nome;
         // @ts-ignore
         const currentUserRole = user.role_level || user.role || 'COLABORADOR';
-
+ 
         if (newStatus === 'resolvida') {
             try {
                 await ensureSession();
@@ -475,21 +475,17 @@ const DemandsSystemV2: React.FC<DemandsSystemV2Props> = ({ user, stores }) => {
                     p_user_name: currentUserName,
                     p_user_role: currentUserRole
                 });
-
+ 
                 if (error || !data.success) throw error || new Error(data.error);
-
+ 
                 if (data.success) {
-                    // 1. Fecha o chamado selecionado ou atualiza o estado local
                     setSelectedDemand(null); 
                     
-                    // 2. Força a atualização de todas as listas
                     await Promise.all([
                         loadDemands(selectedStoreId),
                         loadStoreCounts(),
                         calculateStats()
                     ]);
-
-                    console.log("Sistema atualizado com sucesso");
                 }
             } catch (err) {
                 console.error("Erro ao resolver demanda:", err);
@@ -497,7 +493,7 @@ const DemandsSystemV2: React.FC<DemandsSystemV2Props> = ({ user, stores }) => {
             }
             return;
         }
-
+ 
         try {
             await ensureSession();
             const { error } = await supabase
@@ -510,10 +506,9 @@ const DemandsSystemV2: React.FC<DemandsSystemV2Props> = ({ user, stores }) => {
                     paused_at: newStatus === 'pausada' ? new Date().toISOString() : null
                 })
                 .eq('id', selectedDemand.id);
-
+ 
             if (error) throw error;
-
-            // Log status change
+ 
             await supabase.from('demands_messages_v2').insert([{
                 demand_id: selectedDemand.id,
                 sender_id: currentUserId,
@@ -522,7 +517,7 @@ const DemandsSystemV2: React.FC<DemandsSystemV2Props> = ({ user, stores }) => {
                 message: `Alterou o status para: ${newStatus.toUpperCase()}`,
                 message_type: 'status_change'
             }]);
-
+ 
             setSelectedDemand({ ...selectedDemand, status: newStatus });
             loadDemands(selectedStoreId);
             loadMessages(selectedDemand.id);
@@ -531,7 +526,7 @@ const DemandsSystemV2: React.FC<DemandsSystemV2Props> = ({ user, stores }) => {
             console.error("Erro ao mudar status:", err);
         }
     };
-
+ 
     // Render Helpers
     const getPriorityBadge = (priority: DemandV2Priority) => {
         switch (priority) {
@@ -541,7 +536,7 @@ const DemandsSystemV2: React.FC<DemandsSystemV2Props> = ({ user, stores }) => {
             case 'baixa': return <span className="px-2 py-0.5 bg-slate-100 text-slate-600 rounded-full text-[10px] font-black uppercase border border-slate-200">Baixa</span>;
         }
     };
-
+ 
     const getStatusIcon = (status: DemandV2Status) => {
         switch (status) {
             case 'aberta': return <AlertCircle size={16} className="text-blue-500" />;
@@ -551,7 +546,7 @@ const DemandsSystemV2: React.FC<DemandsSystemV2Props> = ({ user, stores }) => {
             case 'cancelada': return <XCircle size={16} className="text-rose-500" />;
         }
     };
-
+ 
     return (
         <div className="flex flex-col h-[calc(100vh-120px)] bg-slate-50 dark:bg-slate-950 rounded-3xl overflow-hidden border border-slate-200 dark:border-slate-800 shadow-2xl">
             {/* Header */}
@@ -562,10 +557,10 @@ const DemandsSystemV2: React.FC<DemandsSystemV2Props> = ({ user, stores }) => {
                     </div>
                     <div>
                         <h2 className="text-xl font-black text-slate-900 dark:text-white uppercase italic tracking-tighter">Central de Chamados <span className="text-blue-600">V2.0</span></h2>
-                        <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">Gestão de Ordens de Serviço e Suporte</p>
+                        <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">Sistema com Privacidade por Hierarquia</p>
                     </div>
                 </div>
-
+ 
                 <div className="flex items-center gap-3 w-full sm:w-auto">
                     <div className="relative flex-1 sm:w-64">
                         <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" size={16} />
@@ -585,7 +580,7 @@ const DemandsSystemV2: React.FC<DemandsSystemV2Props> = ({ user, stores }) => {
                     </button>
                 </div>
             </div>
-
+ 
             {/* Main Layout */}
             <div className="flex-1 flex overflow-hidden">
                 {/* Coluna 1: Lojas (20%) */}
@@ -596,18 +591,25 @@ const DemandsSystemV2: React.FC<DemandsSystemV2Props> = ({ user, stores }) => {
                             const count = storeCounts[store.id] || { total: 0, urgent: 0, unread: 0 };
                             const isSelected = selectedStoreId === store.id;
                             
-                            // Lógica do Semáforo por Grau de Demanda
-                            let statusColor = "bg-slate-100 dark:bg-slate-800 text-slate-400"; // Padrão (Sem demandas)
-                            if (count.urgent > 0) statusColor = "bg-red-500 text-white animate-pulse"; // Crítico
-                            else if (count.total > 5) statusColor = "bg-orange-500 text-white"; // Alerta
-                            else if (count.total > 0) statusColor = "bg-emerald-500 text-white"; // Normal/Ativo
-
+                            // Semáforo por Grau de Demanda
+                            let statusColor = "bg-slate-100 dark:bg-slate-800 text-slate-400";
+                            if (count.urgent > 0) statusColor = "bg-red-500 text-white animate-pulse";
+                            else if (count.total > 5) statusColor = "bg-orange-500 text-white";
+                            else if (count.total > 0) statusColor = "bg-emerald-500 text-white";
+ 
                             return (
                                 <button
                                     key={store.id}
                                     onClick={() => setSelectedStoreId(store.id)}
-                                    className={`w-full p-3 rounded-2xl flex items-center gap-3 transition-all group ${isSelected ? 'bg-blue-50 dark:bg-blue-900/20 border-blue-100 dark:border-blue-800' : 'hover:bg-slate-50 dark:hover:bg-slate-800'}`}
+                                    className={`w-full p-3 rounded-2xl flex items-center gap-3 transition-all group relative ${isSelected ? 'bg-blue-50 dark:bg-blue-900/20 border-blue-100 dark:border-blue-800' : 'hover:bg-slate-50 dark:hover:bg-slate-800'}`}
                                 >
+                                    {/* Badge de mensagens não lidas */}
+                                    {count.unread > 0 && (
+                                        <div className="absolute -top-1 -right-1 w-5 h-5 bg-red-600 rounded-full flex items-center justify-center animate-bounce">
+                                            <span className="text-[9px] font-black text-white">{count.unread > 9 ? '9+' : count.unread}</span>
+                                        </div>
+                                    )}
+                                    
                                     {/* Ícone com cor dinâmica */}
                                     <div className={`p-2 rounded-xl transition-colors ${statusColor}`}>
                                         <StoreIcon size={18} />
@@ -619,13 +621,16 @@ const DemandsSystemV2: React.FC<DemandsSystemV2Props> = ({ user, stores }) => {
                                         </p>
                                         <p className="text-[9px] font-bold text-slate-400 truncate">{store.city}</p>
                                     </div>
-
+ 
                                     {/* Quantidade de Demandas */}
                                     {count.total > 0 && (
                                         <div className="flex flex-col items-end gap-1">
                                             <span className={`px-1.5 py-0.5 text-[8px] font-black rounded-md ${count.urgent > 0 ? 'bg-red-100 text-red-600' : 'bg-blue-100 text-blue-600'}`}>
                                                 {count.total}
                                             </span>
+                                            {count.urgent > 0 && (
+                                                <span className="text-[7px] font-black text-red-500 uppercase">Urgente</span>
+                                            )}
                                         </div>
                                     )}
                                 </button>
@@ -633,7 +638,7 @@ const DemandsSystemV2: React.FC<DemandsSystemV2Props> = ({ user, stores }) => {
                         })}
                     </div>
                 </div>
-
+ 
                 {/* Coluna 2: Lista de Chamados (30%) */}
                 <div className="w-full sm:w-1/4 border-r border-slate-200 dark:border-slate-800 bg-slate-50/50 dark:bg-slate-950/50 overflow-y-auto no-scrollbar">
                     {/* Tabs */}
@@ -648,7 +653,7 @@ const DemandsSystemV2: React.FC<DemandsSystemV2Props> = ({ user, stores }) => {
                             </button>
                         ))}
                     </div>
-
+ 
                     <div className="p-3 space-y-3">
                         {isLoading ? (
                             <div className="flex flex-col items-center justify-center py-20 gap-4">
@@ -671,7 +676,7 @@ const DemandsSystemV2: React.FC<DemandsSystemV2Props> = ({ user, stores }) => {
                                 >
                                     {demand.unread_count > 0 && (
                                         <div className="absolute top-0 right-0 w-8 h-8 bg-blue-600 flex items-center justify-center rounded-bl-2xl shadow-lg">
-                                            <Bell size={12} className="text-white animate-bounce" />
+                                            <span className="text-[10px] font-black text-white">{demand.unread_count}</span>
                                         </div>
                                     )}
                                     
@@ -695,7 +700,7 @@ const DemandsSystemV2: React.FC<DemandsSystemV2Props> = ({ user, stores }) => {
                         )}
                     </div>
                 </div>
-
+ 
                 {/* Coluna 3: Detalhes e Chat (50%) */}
                 <div className="flex-1 flex flex-col bg-white dark:bg-slate-900 relative">
                     {selectedDemand ? (
@@ -751,7 +756,7 @@ const DemandsSystemV2: React.FC<DemandsSystemV2Props> = ({ user, stores }) => {
                                 <div className="bg-white dark:bg-slate-900 p-4 rounded-2xl border border-slate-100 dark:border-slate-800 shadow-sm">
                                     <p className="text-xs font-medium text-slate-600 dark:text-slate-400 leading-relaxed">{selectedDemand.description}</p>
                                 </div>
-
+ 
                                 {user.role === 'ADMIN' && storeUsers.length > 0 && (
                                     <div className="mt-6">
                                         <h4 className="text-[10px] font-black text-slate-400 uppercase mb-3">Direcionar para Colaborador:</h4>
@@ -779,11 +784,12 @@ const DemandsSystemV2: React.FC<DemandsSystemV2Props> = ({ user, stores }) => {
                                     </div>
                                 )}
                             </div>
-
+ 
                             {/* Messages Area */}
                             <div className="flex-1 overflow-y-auto p-4 sm:p-6 space-y-6 no-scrollbar">
                                 {messages.map((msg, idx) => {
-                                    const isMe = msg.sender_id === user.id;
+                                    // @ts-ignore
+                                    const isMe = msg.sender_id === (user.user_id || user.id);
                                     const isSystem = msg.message_type === 'status_change' || msg.message_type === 'assignment';
                                     
                                     if (isSystem) {
@@ -795,13 +801,15 @@ const DemandsSystemV2: React.FC<DemandsSystemV2Props> = ({ user, stores }) => {
                                             </div>
                                         );
                                     }
-
+ 
                                     return (
                                         <div key={msg.id} className={`flex ${isMe ? 'justify-end' : 'justify-start'}`}>
                                             <div className={`max-w-[85%] sm:max-w-[70%] flex flex-col ${isMe ? 'items-end' : 'items-start'}`}>
                                                 <div className="flex items-center gap-2 mb-1 px-1">
                                                     <span className="text-[9px] font-black text-slate-400 uppercase tracking-widest">{msg.sender_name}</span>
                                                     <span className="text-[8px] font-bold text-slate-300">{format(new Date(msg.created_at), 'HH:mm')}</span>
+                                                    {/* @ts-ignore */}
+                                                    {msg.is_private && <Lock size={10} className="text-slate-400" />}
                                                 </div>
                                                 <div className={`p-4 rounded-2xl shadow-sm ${isMe ? 'bg-blue-600 text-white rounded-tr-none' : 'bg-slate-100 dark:bg-slate-800 text-slate-900 dark:text-white rounded-tl-none border border-slate-200 dark:border-slate-700'}`}>
                                                     <p className="text-xs font-medium leading-relaxed">{msg.message}</p>
@@ -835,9 +843,22 @@ const DemandsSystemV2: React.FC<DemandsSystemV2Props> = ({ user, stores }) => {
                                 })}
                                 <div ref={messageEndRef} />
                             </div>
-
+ 
                             {/* Input Area */}
                             <div className="p-4 sm:p-6 border-t border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900">
+                                {/* Seletor de destinatário para Admin */}
+                                {user.role === 'ADMIN' && selectedTargetUser && (
+                                    <div className="mb-3 p-2 bg-blue-50 dark:bg-blue-900/20 rounded-xl border border-blue-100 dark:border-blue-800 flex items-center justify-between">
+                                        <div className="flex items-center gap-2">
+                                            <Lock size={14} className="text-blue-600" />
+                                            <span className="text-[10px] font-black text-blue-600 uppercase">Mensagem Privada para: {storeUsers.find(u => u.id === selectedTargetUser)?.name}</span>
+                                        </div>
+                                        <button onClick={() => setSelectedTargetUser(null)} className="text-blue-400 hover:text-blue-600">
+                                            <XCircle size={16} />
+                                        </button>
+                                    </div>
+                                )}
+                                
                                 <form onSubmit={handleSendMessage} className="flex items-center gap-3">
                                     <input 
                                         type="file" 
@@ -865,11 +886,22 @@ const DemandsSystemV2: React.FC<DemandsSystemV2Props> = ({ user, stores }) => {
                                     >
                                         <Camera size={20} />
                                     </button>
+                                    {/* Botão para Admin selecionar destinatário */}
+                                    {user.role === 'ADMIN' && (
+                                        <button 
+                                            type="button"
+                                            onClick={() => setShowTargetUserModal(true)}
+                                            className={`p-3 rounded-xl transition-all active:scale-95 ${selectedTargetUser ? 'bg-blue-600 text-white' : 'bg-slate-100 dark:bg-slate-800 text-slate-500 hover:bg-blue-50 hover:text-blue-600'}`}
+                                            title="Enviar mensagem privada"
+                                        >
+                                            {selectedTargetUser ? <Lock size={20} /> : <Users size={20} />}
+                                        </button>
+                                    )}
                                     <input 
                                         type="text" 
                                         value={newMessage}
                                         onChange={(e) => setNewMessage(e.target.value)}
-                                        placeholder="Digite sua mensagem..."
+                                        placeholder={selectedTargetUser ? "Mensagem privada..." : "Digite sua mensagem..."}
                                         className="flex-1 px-4 py-3 bg-slate-100 dark:bg-slate-800 border-none rounded-2xl text-xs font-bold outline-none focus:ring-2 focus:ring-blue-500 transition-all"
                                     />
                                     <button 
@@ -893,8 +925,8 @@ const DemandsSystemV2: React.FC<DemandsSystemV2Props> = ({ user, stores }) => {
                         </div>
                     )}
                 </div>
-
-                {/* Coluna 4: Stats e Info (30%) - Opcional/Desktop */}
+ 
+                {/* Coluna 4: Stats e Info (30%) */}
                 <div className="w-1/4 bg-slate-50 dark:bg-slate-950 p-6 overflow-y-auto no-scrollbar hidden lg:block border-l border-slate-200 dark:border-slate-800">
                     <div className="space-y-8">
                         {/* Stats Summary */}
@@ -918,7 +950,7 @@ const DemandsSystemV2: React.FC<DemandsSystemV2Props> = ({ user, stores }) => {
                                 </div>
                             </div>
                         </div>
-
+ 
                         {/* SLA Alerts */}
                         <div>
                             <div className="flex items-center gap-2 mb-6">
@@ -948,17 +980,68 @@ const DemandsSystemV2: React.FC<DemandsSystemV2Props> = ({ user, stores }) => {
                                 )}
                             </div>
                         </div>
-
-                        {/* Archive Info */}
+ 
+                        {/* Privacy Info */}
                         <div className="p-4 bg-blue-600 rounded-3xl text-white shadow-xl shadow-blue-900/20">
-                            <Archive className="mb-3" size={24} />
-                            <h5 className="text-xs font-black uppercase italic mb-2">Arquivamento Automático</h5>
-                            <p className="text-[9px] font-medium leading-relaxed opacity-80">Chamados resolvidos há mais de 1 ano são arquivados por semestre para manter o sistema leve.</p>
+                            <Lock className="mb-3" size={24} />
+                            <h5 className="text-xs font-black uppercase italic mb-2">Sistema de Privacidade</h5>
+                            <p className="text-[9px] font-medium leading-relaxed opacity-80">
+                                • Colaboradores veem apenas suas mensagens + Gerente + Admin<br/>
+                                • Gerentes veem apenas suas mensagens + Admin<br/>
+                                • Admins podem enviar mensagens privadas direcionadas
+                            </p>
                         </div>
                     </div>
                 </div>
             </div>
-
+ 
+            {/* Modal de Seleção de Destinatário (Admin) */}
+            {showTargetUserModal && user.role === 'ADMIN' && (
+                <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-950/80 backdrop-blur-sm">
+                    <div className="bg-white dark:bg-slate-900 w-full max-w-md rounded-[40px] shadow-2xl overflow-hidden">
+                        <div className="p-6 border-b border-slate-100 dark:border-slate-800 flex justify-between items-center">
+                            <div>
+                                <h3 className="text-lg font-black text-slate-900 dark:text-white uppercase italic">Mensagem Privada</h3>
+                                <p className="text-[10px] font-bold text-blue-600 uppercase tracking-widest">Selecione o Destinatário</p>
+                            </div>
+                            <button onClick={() => setShowTargetUserModal(false)} className="p-2 bg-slate-100 dark:bg-slate-800 rounded-full text-slate-400 hover:text-rose-500 transition-all">
+                                <XCircle size={20} />
+                            </button>
+                        </div>
+                        <div className="p-6 space-y-2 max-h-96 overflow-y-auto">
+                            <button
+                                onClick={() => {
+                                    setSelectedTargetUser(null);
+                                    setShowTargetUserModal(false);
+                                }}
+                                className={`w-full p-3 rounded-xl border transition-all ${!selectedTargetUser ? 'border-blue-500 bg-blue-50' : 'border-slate-100 hover:border-blue-200'}`}
+                            >
+                                <p className="text-sm font-black text-slate-700">Mensagem Pública (Todos veem)</p>
+                            </button>
+                            {storeUsers.map(u => (
+                                <button
+                                    key={u.id}
+                                    onClick={() => {
+                                        setSelectedTargetUser(u.id);
+                                        setShowTargetUserModal(false);
+                                    }}
+                                    className={`w-full flex items-center gap-3 p-3 rounded-xl border transition-all ${selectedTargetUser === u.id ? 'border-blue-500 bg-blue-50' : 'border-slate-100 hover:border-blue-200'}`}
+                                >
+                                    <div className="w-10 h-10 rounded-full bg-blue-100 flex items-center justify-center text-blue-600 font-bold">
+                                        {u.name.substring(0, 2).toUpperCase()}
+                                    </div>
+                                    <div className="flex-1 text-left">
+                                        <p className="text-sm font-black text-slate-700">{u.name}</p>
+                                        <p className="text-xs font-bold text-slate-400 uppercase">{u.role_level}</p>
+                                    </div>
+                                    <Lock size={16} className="text-slate-400" />
+                                </button>
+                            ))}
+                        </div>
+                    </div>
+                </div>
+            )}
+ 
             {/* New Demand Modal */}
             {showNewDemandModal && (
                 <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-950/80 backdrop-blur-sm">
@@ -980,21 +1063,20 @@ const DemandsSystemV2: React.FC<DemandsSystemV2Props> = ({ user, stores }) => {
                             const priority = formData.get('priority') as DemandV2Priority;
                             const category = formData.get('category') as string;
                             const storeId = user.role === 'ADMIN' ? formData.get('store_id') as string : user.storeId;
-
+ 
                             if (!title || !description || !storeId) return;
-
+ 
                             setIsLoading(true);
                             try {
                                 await ensureSession();
                                 
-                                // 1. Identificação robusta do usuário
                                 // @ts-ignore
                                 const currentUserId = user.user_id || user.id;
                                 // @ts-ignore
                                 const currentUserName = user.name || user.nome;
                                 // @ts-ignore
                                 const currentUserRole = user.role_level || user.role || 'COLABORADOR';
-
+ 
                                 const { data, error } = await supabase.rpc('fn_create_demand_v2', {
                                     p_store_id: storeId,
                                     p_title: title,
@@ -1004,32 +1086,30 @@ const DemandsSystemV2: React.FC<DemandsSystemV2Props> = ({ user, stores }) => {
                                     p_created_by: currentUserId,
                                     p_status: 'aberta'
                                 });
-
+ 
                                 if (error) throw error;
                                 if (!data.success) throw new Error(data.error);
-
+ 
                                 const newDemandId = data.id;
-
-                                // 2. Inserção da Mensagem Inicial
-                                const { error: msgError } = await supabase
-                                    .from('demands_messages_v2')
-                                    .insert([{
-                                        demand_id: newDemandId,
-                                        sender_id: currentUserId,
-                                        sender_name: currentUserName,
-                                        sender_role: currentUserRole,
-                                        message: description,
-                                        message_type: 'comment'
-                                    }]);
-
+ 
+                                // Usar nova RPC para criar mensagem inicial
+                                const { error: msgError } = await supabase.rpc('fn_send_demand_message_v2', {
+                                    p_demand_id: newDemandId,
+                                    p_sender_id: currentUserId,
+                                    p_sender_name: currentUserName,
+                                    p_sender_role: currentUserRole,
+                                    p_message: description,
+                                    p_message_type: 'comment'
+                                });
+ 
                                 if (msgError) throw msgError;
-
+ 
                                 setShowNewDemandModal(false);
                                 loadDemands(selectedStoreId);
                                 loadStoreCounts();
                                 calculateStats();
                             } catch (err) {
-                                console.error("Erro ao criar demanda ou salvar mensagem inicial:", err);
+                                console.error("Erro ao criar demanda:", err);
                                 alert("Erro ao criar demanda.");
                             } finally {
                                 setIsLoading(false);
@@ -1090,5 +1170,5 @@ const DemandsSystemV2: React.FC<DemandsSystemV2Props> = ({ user, stores }) => {
         </div>
     );
 };
-
+ 
 export default DemandsSystemV2;
