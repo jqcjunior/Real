@@ -167,30 +167,47 @@ const DemandsSystemV2: React.FC<DemandsSystemV2Props> = ({ user, stores }) => {
         setIsLoading(true);
         try {
             await ensureSession();
+            
+            // 1. Identificação precisa do usuário logado
+            // @ts-ignore
+            const currentUserId = user.user_id || user.id;
+            // @ts-ignore
+            const userRole = (user.role_level || user.role)?.toUpperCase();
+            // @ts-ignore
+            const userName = user.name || user.nome;
+
             let query = supabase
                 .from('demands_v2')
                 .select('*')
                 .eq('is_archived', false);
 
-            // 1. Filtro por Loja (Se houver)
+            // 2. Filtro por Loja (Se houver seleção manual no topo)
             if (storeId) {
                 query = query.eq('store_id', storeId);
             }
 
-            // 2. Filtro de Privacidade por Cargo (role_level)
-            // Pega o cargo e transforma em MAIÚSCULO para comparar
-            // @ts-ignore - user might have role_level from admin_users table
-            const role = (user.role_level || user.role)?.toUpperCase();
-
-            if (role !== 'ADMIN' && role !== 'TÉCNICO' && role !== 'GERENTE') {
-                // Se for SORVETE, CAIXA, etc, ele só vê o que CRIOU ou o que foi ATRIBUÍDO a ele
-                query = query.or(`created_by.eq.${user.id},assigned_to.eq.${user.id}`);
-                
-                // LOG DE DEPURAÇÃO: Ative isso para ver o que está acontecendo no console
-                console.log("Filtro restrito aplicado para:", user.name, "ID:", user.id);
+            // 3. Filtro de Privacidade por Cargo
+            if (userRole === 'ADMIN' || userRole === 'TÉCNICO') {
+                // Admin/Técnico: Visão total
+                console.log(`Visão TOTAL: ${userName}`);
+            } 
+            else if (userRole === 'GERENTE' || userRole === 'MANAGER') {
+                // Gerente: Vê tudo da sua loja específica
+                // @ts-ignore
+                const userStoreId = user.store_id || user.storeId;
+                if (userStoreId) {
+                    query = query.eq('store_id', userStoreId);
+                }
+                console.log(`Visão GERENTE: ${userName}`);
+            } 
+            else {
+                // Colaboradores (Caixa, Sorvete, etc): 
+                // Vê apenas o que o seu próprio usuário criou ou recebeu
+                query = query.or(`created_by.eq.${currentUserId},assigned_to.eq.${currentUserId}`);
+                console.log(`Visão COLABORADOR: ${userName} (Filtrando por ID: ${currentUserId})`);
             }
 
-            // 3. Filtro por Status (Tabs)
+            // 4. Filtro por Status (Tabs)
             if (activeTab === 'abertas') {
                 query = query.in('status', ['aberta', 'em_andamento']);
             } else if (activeTab === 'pausadas') {
@@ -204,7 +221,7 @@ const DemandsSystemV2: React.FC<DemandsSystemV2Props> = ({ user, stores }) => {
             if (error) throw error;
             setDemands(data || []);
         } catch (err) {
-            console.error("Erro ao filtrar demandas:", err);
+            console.error("Erro ao carregar demandas personalizadas:", err);
         } finally {
             setIsLoading(false);
         }
@@ -294,12 +311,20 @@ const DemandsSystemV2: React.FC<DemandsSystemV2Props> = ({ user, stores }) => {
 
         try {
             await ensureSession();
+            
+            // @ts-ignore
+            const currentUserId = user.user_id || user.id;
+            // @ts-ignore
+            const currentUserName = user.name || user.nome;
+            // @ts-ignore
+            const currentUserRole = user.role_level || user.role || 'COLABORADOR';
+
             const { data, error } = await supabase.rpc('fn_assign_demand_v2', {
                 p_demand_id: selectedDemand.id,
                 p_assigned_to: assignedToId,
-                p_user_id: user.id,
-                p_user_name: user.name,
-                p_user_role: user.role
+                p_user_id: currentUserId,
+                p_user_name: currentUserName,
+                p_user_role: currentUserRole
             });
 
             if (error || !data.success) throw error || new Error(data.error);
@@ -319,11 +344,19 @@ const DemandsSystemV2: React.FC<DemandsSystemV2Props> = ({ user, stores }) => {
         setIsSending(true);
         try {
             await ensureSession();
+            
+            // @ts-ignore
+            const currentUserId = user.user_id || user.id;
+            // @ts-ignore
+            const currentUserName = user.name || user.nome;
+            // @ts-ignore
+            const currentUserRole = user.role_level || user.role || 'COLABORADOR';
+
             const { data: msg, error } = await supabase.from('demands_messages_v2').insert([{
                 demand_id: selectedDemand.id,
-                sender_id: user.id,
-                sender_name: user.name,
-                sender_role: user.role,
+                sender_id: currentUserId,
+                sender_name: currentUserName,
+                sender_role: currentUserRole,
                 message: newMessage.trim(),
                 message_type: 'comment'
             }]).select().single();
@@ -376,12 +409,20 @@ const DemandsSystemV2: React.FC<DemandsSystemV2Props> = ({ user, stores }) => {
                 .from('attachments')
                 .getPublicUrl(filePath);
 
+            // 1. Identificação robusta do usuário
+            // @ts-ignore
+            const currentUserId = user.user_id || user.id;
+            // @ts-ignore
+            const currentUserName = user.name || user.nome;
+            // @ts-ignore
+            const currentUserRole = user.role_level || user.role || 'COLABORADOR';
+
             // Create message for attachment
             const { data: msg, error: msgError } = await supabase.from('demands_messages_v2').insert([{
                 demand_id: selectedDemand.id,
-                sender_id: user.id,
-                sender_name: user.name,
-                sender_role: user.role,
+                sender_id: currentUserId,
+                sender_name: currentUserName,
+                sender_role: currentUserRole,
                 message: `Anexou um arquivo: ${file.name}`,
                 message_type: 'comment'
             }]).select().single();
@@ -417,15 +458,22 @@ const DemandsSystemV2: React.FC<DemandsSystemV2Props> = ({ user, stores }) => {
     const handleStatusChange = async (newStatus: DemandV2Status) => {
         if (!selectedDemand) return;
 
+        // @ts-ignore
+        const currentUserId = user.user_id || user.id;
+        // @ts-ignore
+        const currentUserName = user.name || user.nome;
+        // @ts-ignore
+        const currentUserRole = user.role_level || user.role || 'COLABORADOR';
+
         if (newStatus === 'resolvida') {
             try {
                 await ensureSession();
                 
                 const { data, error } = await supabase.rpc('fn_resolve_demand_v2', {
                     p_demand_id: selectedDemand.id,
-                    p_user_id: user.id,
-                    p_user_name: user.name,
-                    p_user_role: user.role
+                    p_user_id: currentUserId,
+                    p_user_name: currentUserName,
+                    p_user_role: currentUserRole
                 });
 
                 if (error || !data.success) throw error || new Error(data.error);
@@ -468,9 +516,9 @@ const DemandsSystemV2: React.FC<DemandsSystemV2Props> = ({ user, stores }) => {
             // Log status change
             await supabase.from('demands_messages_v2').insert([{
                 demand_id: selectedDemand.id,
-                sender_id: user.id,
-                sender_name: user.name,
-                sender_role: user.role,
+                sender_id: currentUserId,
+                sender_name: currentUserName,
+                sender_role: currentUserRole,
                 message: `Alterou o status para: ${newStatus.toUpperCase()}`,
                 message_type: 'status_change'
             }]);
@@ -938,24 +986,50 @@ const DemandsSystemV2: React.FC<DemandsSystemV2Props> = ({ user, stores }) => {
                             setIsLoading(true);
                             try {
                                 await ensureSession();
+                                
+                                // 1. Identificação robusta do usuário
+                                // @ts-ignore
+                                const currentUserId = user.user_id || user.id;
+                                // @ts-ignore
+                                const currentUserName = user.name || user.nome;
+                                // @ts-ignore
+                                const currentUserRole = user.role_level || user.role || 'COLABORADOR';
+
                                 const { data, error } = await supabase.rpc('fn_create_demand_v2', {
                                     p_store_id: storeId,
                                     p_title: title,
                                     p_description: description,
                                     p_priority: priority,
                                     p_category: category,
-                                    p_created_by: user.id,
+                                    p_created_by: currentUserId,
                                     p_status: 'aberta'
                                 });
 
                                 if (error) throw error;
                                 if (!data.success) throw new Error(data.error);
 
+                                const newDemandId = data.id;
+
+                                // 2. Inserção da Mensagem Inicial
+                                const { error: msgError } = await supabase
+                                    .from('demands_messages_v2')
+                                    .insert([{
+                                        demand_id: newDemandId,
+                                        sender_id: currentUserId,
+                                        sender_name: currentUserName,
+                                        sender_role: currentUserRole,
+                                        message: description,
+                                        message_type: 'comment'
+                                    }]);
+
+                                if (msgError) throw msgError;
+
                                 setShowNewDemandModal(false);
                                 loadDemands(selectedStoreId);
                                 loadStoreCounts();
+                                calculateStats();
                             } catch (err) {
-                                console.error("Erro ao criar demanda:", err);
+                                console.error("Erro ao criar demanda ou salvar mensagem inicial:", err);
                                 alert("Erro ao criar demanda.");
                             } finally {
                                 setIsLoading(false);
