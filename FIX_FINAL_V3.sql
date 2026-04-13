@@ -102,3 +102,60 @@ GRANT ALL ON ALL FUNCTIONS IN SCHEMA public TO anon, authenticated, service_role
 GRANT ALL ON SEQUENCE public.financial_receipts_number_seq TO anon, authenticated, service_role;
 GRANT EXECUTE ON FUNCTION public.fn_get_next_receipt_number(text) TO anon, authenticated, service_role;
 GRANT EXECUTE ON FUNCTION public.fn_create_demand_v2(uuid, text, text, text, text, uuid, text) TO anon, authenticated, service_role;
+
+-- 6. RPC PARA RESOLVER DEMANDA
+CREATE OR REPLACE FUNCTION public.fn_resolve_demand_v2(
+    p_demand_id uuid,
+    p_user_id uuid,
+    p_user_name text,
+    p_user_role text
+)
+RETURNS json AS $$
+DECLARE
+    v_created_at timestamptz;
+    v_resolution_time integer;
+BEGIN
+    -- Get creation time
+    SELECT created_at INTO v_created_at FROM public.demands_v2 WHERE id = p_demand_id;
+    
+    -- Calculate resolution time in minutes
+    v_resolution_time := EXTRACT(EPOCH FROM (now() - v_created_at)) / 60;
+
+    -- Update demand
+    UPDATE public.demands_v2 SET
+        status = 'resolvida',
+        resolved_at = now(),
+        resolved_by = p_user_id,
+        updated_at = now(),
+        resolution_time_minutes = v_resolution_time
+    WHERE id = p_demand_id;
+
+    -- Insert resolution message
+    INSERT INTO public.demands_messages_v2 (
+        demand_id,
+        sender_id,
+        sender_name,
+        sender_role,
+        message,
+        message_type
+    ) VALUES (
+        p_demand_id,
+        p_user_id,
+        p_user_name,
+        p_user_role,
+        'RESOLVEU O CHAMADO',
+        'status_change'
+    );
+
+    RETURN json_build_object(
+        'success', true
+    );
+EXCEPTION WHEN OTHERS THEN
+    RETURN json_build_object(
+        'success', false,
+        'error', SQLERRM
+    );
+END;
+$$ LANGUAGE plpgsql SECURITY DEFINER;
+
+GRANT EXECUTE ON FUNCTION public.fn_resolve_demand_v2(uuid, uuid, text, text) TO anon, authenticated, service_role;

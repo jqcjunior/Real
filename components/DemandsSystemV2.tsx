@@ -353,6 +353,30 @@ const DemandsSystemV2: React.FC<DemandsSystemV2Props> = ({ user, stores }) => {
     const handleStatusChange = async (newStatus: DemandV2Status) => {
         if (!selectedDemand) return;
 
+        if (newStatus === 'resolvida') {
+            try {
+                await ensureSession();
+                
+                const { data, error } = await supabase.rpc('fn_resolve_demand_v2', {
+                    p_demand_id: selectedDemand.id,
+                    p_user_id: user.id,
+                    p_user_name: user.name,
+                    p_user_role: user.role
+                });
+
+                if (error || !data.success) throw error || new Error(data.error);
+
+                setSelectedDemand({ ...selectedDemand, status: 'resolvida' });
+                loadDemands(selectedStoreId);
+                loadMessages(selectedDemand.id);
+                calculateStats();
+            } catch (err) {
+                console.error("Erro ao resolver demanda:", err);
+                alert("Erro ao finalizar o chamado.");
+            }
+            return;
+        }
+
         try {
             await ensureSession();
             const { error } = await supabase
@@ -360,8 +384,8 @@ const DemandsSystemV2: React.FC<DemandsSystemV2Props> = ({ user, stores }) => {
                 .update({ 
                     status: newStatus,
                     updated_at: new Date().toISOString(),
-                    resolved_at: newStatus === 'resolvida' ? new Date().toISOString() : null,
-                    resolved_by: newStatus === 'resolvida' ? user.id : null,
+                    resolved_at: null,
+                    resolved_by: null,
                     paused_at: newStatus === 'pausada' ? new Date().toISOString() : null
                 })
                 .eq('id', selectedDemand.id);
@@ -381,6 +405,7 @@ const DemandsSystemV2: React.FC<DemandsSystemV2Props> = ({ user, stores }) => {
             setSelectedDemand({ ...selectedDemand, status: newStatus });
             loadDemands(selectedStoreId);
             loadMessages(selectedDemand.id);
+            calculateStats();
         } catch (err) {
             console.error("Erro ao mudar status:", err);
         }
