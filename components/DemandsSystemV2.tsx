@@ -583,8 +583,8 @@ const DemandsSystemV2: React.FC<DemandsSystemV2Props> = ({ user, stores }) => {
  
             {/* Main Layout */}
             <div className="flex-1 flex overflow-hidden">
-                {/* Coluna 1: Lojas (20%) */}
-                <div className="w-full sm:w-1/5 border-r border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 overflow-y-auto no-scrollbar hidden sm:block">
+                {/* Coluna 1: Lojas (12%) */}
+                <div className="w-[12%] border-r border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 overflow-y-auto no-scrollbar hidden lg:block">
                     <div className="p-4 space-y-2">
                         <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-4">Unidades</p>
                         {filteredStores.map(store => {
@@ -639,8 +639,8 @@ const DemandsSystemV2: React.FC<DemandsSystemV2Props> = ({ user, stores }) => {
                     </div>
                 </div>
  
-                {/* Coluna 2: Lista de Chamados (30%) */}
-                <div className="w-full sm:w-1/4 border-r border-slate-200 dark:border-slate-800 bg-slate-50/50 dark:bg-slate-950/50 overflow-y-auto no-scrollbar">
+                {/* Coluna 2: Lista de Chamados (18%) */}
+                <div className="w-full lg:w-[18%] border-r border-slate-200 dark:border-slate-800 bg-slate-50/50 dark:bg-slate-950/50 overflow-y-auto no-scrollbar">
                     {/* Tabs */}
                     <div className="sticky top-0 z-10 bg-white/80 dark:bg-slate-900/80 backdrop-blur-md p-2 border-b border-slate-200 dark:border-slate-800 flex gap-1">
                         {(['abertas', 'pausadas', 'resolvidas'] as const).map(tab => (
@@ -701,8 +701,8 @@ const DemandsSystemV2: React.FC<DemandsSystemV2Props> = ({ user, stores }) => {
                     </div>
                 </div>
  
-                {/* Coluna 3: Detalhes e Chat (50%) */}
-                <div className="flex-1 flex flex-col bg-white dark:bg-slate-900 relative">
+                {/* Coluna 3: Detalhes e Chat (40%) */}
+                <div className="flex-1 lg:w-[40%] flex flex-col bg-white dark:bg-slate-900 relative">
                     {selectedDemand ? (
                         <>
                             {/* Demand Header */}
@@ -756,33 +756,6 @@ const DemandsSystemV2: React.FC<DemandsSystemV2Props> = ({ user, stores }) => {
                                 <div className="bg-white dark:bg-slate-900 p-4 rounded-2xl border border-slate-100 dark:border-slate-800 shadow-sm">
                                     <p className="text-xs font-medium text-slate-600 dark:text-slate-400 leading-relaxed">{selectedDemand.description}</p>
                                 </div>
- 
-                                {user.role === 'ADMIN' && storeUsers.length > 0 && (
-                                    <div className="mt-6">
-                                        <h4 className="text-[10px] font-black text-slate-400 uppercase mb-3">Direcionar para Colaborador:</h4>
-                                        <div className="grid grid-cols-2 gap-2">
-                                            {storeUsers.map(u => (
-                                                <button
-                                                    key={u.id}
-                                                    onClick={() => handleAssign(u.id)}
-                                                    className={`flex items-center gap-2 p-2 rounded-xl border transition-all ${
-                                                        selectedDemand?.assigned_to === u.id 
-                                                        ? 'border-blue-500 bg-blue-50' 
-                                                        : 'border-slate-100 dark:border-slate-800 hover:border-blue-200'
-                                                    }`}
-                                                >
-                                                    <div className="w-8 h-8 rounded-full bg-blue-100 dark:bg-blue-900/30 flex items-center justify-center text-blue-600 dark:text-blue-400 font-bold text-xs">
-                                                        {u.name.substring(0, 2).toUpperCase()}
-                                                    </div>
-                                                    <div className="flex-1 text-left">
-                                                        <p className="text-[10px] font-black text-slate-700 dark:text-slate-300 truncate">{u.name}</p>
-                                                        <p className="text-[8px] font-bold text-slate-400 uppercase">{u.role_level}</p>
-                                                    </div>
-                                                </button>
-                                            ))}
-                                        </div>
-                                    </div>
-                                )}
                             </div>
  
                             {/* Messages Area */}
@@ -926,8 +899,55 @@ const DemandsSystemV2: React.FC<DemandsSystemV2Props> = ({ user, stores }) => {
                     )}
                 </div>
  
-                {/* Coluna 4: Stats e Info (30%) */}
-                <div className="w-1/4 bg-slate-50 dark:bg-slate-950 p-6 overflow-y-auto no-scrollbar hidden lg:block border-l border-slate-200 dark:border-slate-800">
+                {/* Coluna 4: Direcionamento (10%) - Apenas para Admin */}
+                {user.role === 'ADMIN' && selectedDemand && (
+                    <div className="w-[10%] border-r border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 overflow-y-auto no-scrollbar hidden lg:block">
+                        <div className="p-3">
+                            <div className="mb-4 sticky top-0 bg-white dark:bg-slate-900 pb-2">
+                                <h4 className="text-[9px] font-black text-slate-400 uppercase tracking-widest">Direcionar</h4>
+                            </div>
+                            
+                            {storeUsers.length > 0 ? (
+                                <div className="space-y-2">
+                                    {storeUsers.map(u => (
+                                        <button
+                                            key={u.id}
+                                            onClick={() => handleAssign(u.id)}
+                                            className={`w-full flex flex-col items-center gap-1 p-2 rounded-xl border transition-all text-center ${
+                                                selectedDemand?.assigned_to === u.id 
+                                                ? 'border-blue-500 bg-blue-50 dark:bg-blue-900/20' 
+                                                : 'border-slate-100 dark:border-slate-800 hover:border-blue-200 hover:bg-slate-50 dark:hover:bg-slate-800'
+                                            }`}
+                                        >
+                                            <div className={`w-10 h-10 rounded-full flex items-center justify-center font-bold text-xs ${
+                                                selectedDemand?.assigned_to === u.id
+                                                ? 'bg-blue-600 text-white'
+                                                : 'bg-blue-100 dark:bg-blue-900/30 text-blue-600 dark:text-blue-400'
+                                            }`}>
+                                                {u.name.substring(0, 2).toUpperCase()}
+                                            </div>
+                                            <div className="w-full">
+                                                <p className="text-[9px] font-black text-slate-700 dark:text-slate-300 truncate leading-tight">{u.name}</p>
+                                                <p className="text-[7px] font-bold text-slate-400 uppercase">{u.role_level}</p>
+                                            </div>
+                                            {selectedDemand?.assigned_to === u.id && (
+                                                <div className="w-2 h-2 bg-blue-600 rounded-full animate-pulse"></div>
+                                            )}
+                                        </button>
+                                    ))}
+                                </div>
+                            ) : (
+                                <div className="text-center py-8">
+                                    <User className="mx-auto text-slate-300 mb-2" size={24} />
+                                    <p className="text-[8px] font-bold text-slate-400 uppercase">Nenhum usuário</p>
+                                </div>
+                            )}
+                        </div>
+                    </div>
+                )}
+ 
+                {/* Coluna 5: Stats e Info (20%) */}
+                <div className="w-[20%] bg-slate-50 dark:bg-slate-950 p-6 overflow-y-auto no-scrollbar hidden lg:block border-l border-slate-200 dark:border-slate-800">
                     <div className="space-y-8">
                         {/* Stats Summary */}
                         <div>
