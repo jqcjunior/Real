@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { supabase } from '../../services/supabaseClient';
 import { Printer, Trophy, Medal, Star, Award, TrendingUp } from 'lucide-react';
- 
+
 interface VendedorPremio {
   cod_vendedor: string;
   nome_vendedor: string;
@@ -13,13 +13,13 @@ interface VendedorPremio {
   qtde_vendas: number;
   qtde_itens: number;
 }
- 
+
 interface RelatorioProps {
   storeId: string;
   storeName: string;
   storeNumber: string;
 }
- 
+
 const RelatorioPAImprimivel: React.FC<RelatorioProps> = ({ storeId, storeName, storeNumber }) => {
   const [semanas, setSemanas] = useState<any[]>([]);
   const [semanaSelecionada, setSemanaSelecionada] = useState<string>('');
@@ -27,12 +27,31 @@ const RelatorioPAImprimivel: React.FC<RelatorioProps> = ({ storeId, storeName, s
   const [parametros, setParametros] = useState<any>(null);
   const [loading, setLoading] = useState(false);
   const [showPreview, setShowPreview] = useState(false);
- 
+  const [fraseMotivacional, setFraseMotivacional] = useState<string>('Juntos somos mais fortes. Próxima semana tem mais! 💪');
+
+  // Busca uma frase motivacional aleatória do banco sempre que o relatório é exibido
+  useEffect(() => {
+    if (!showPreview) return;
+    const fetchFrase = async () => {
+      const { data, error } = await supabase
+        .from('Motivacional_frases')
+        .select('phrase')
+        .eq('active', true);
+
+      if (data && !error && data.length > 0) {
+        // Seleciona aleatoriamente entre as frases ativas
+        const random = data[Math.floor(Math.random() * data.length)];
+        setFraseMotivacional(random.phrase);
+      }
+    };
+    fetchFrase();
+  }, [showPreview, semanaSelecionada]); // Sorteia nova frase ao trocar de semana também
+
   const parseLocalDate = (dateStr: string): Date => {
     const [year, month, day] = dateStr.split('-').map(Number);
     return new Date(year, month - 1, day);
   };
- 
+
   useEffect(() => {
     const fetchSemanas = async () => {
       const { data, error } = await supabase
@@ -41,7 +60,7 @@ const RelatorioPAImprimivel: React.FC<RelatorioProps> = ({ storeId, storeName, s
         .eq('store_id', storeId)
         .order('data_inicio', { ascending: false })
         .limit(10);
- 
+
       if (data && !error) {
         setSemanas(data);
         if (data.length > 0) setSemanaSelecionada(data[0].id);
@@ -49,7 +68,7 @@ const RelatorioPAImprimivel: React.FC<RelatorioProps> = ({ storeId, storeName, s
     };
     fetchSemanas();
   }, [storeId]);
- 
+
   useEffect(() => {
     const fetchParametros = async () => {
       const { data } = await supabase
@@ -61,7 +80,7 @@ const RelatorioPAImprimivel: React.FC<RelatorioProps> = ({ storeId, storeName, s
     };
     fetchParametros();
   }, [storeId]);
- 
+
   useEffect(() => {
     if (!semanaSelecionada) return;
     const fetchVendedores = async () => {
@@ -79,7 +98,7 @@ const RelatorioPAImprimivel: React.FC<RelatorioProps> = ({ storeId, storeName, s
         .eq('semana_id', semanaSelecionada)
         .eq('atingiu_meta', true)
         .order('pa_atingido', { ascending: false });
- 
+
       if (premios) {
         const vendedoresPremio: VendedorPremio[] = premios.map((p: any) => ({
           cod_vendedor: p.cod_vendedor,
@@ -98,7 +117,7 @@ const RelatorioPAImprimivel: React.FC<RelatorioProps> = ({ storeId, storeName, s
     };
     fetchVendedores();
   }, [semanaSelecionada]);
- 
+
   // ─── IMPRESSÃO CORRIGIDA ───────────────────────────────────────────────────
   // Problema anterior: a nova janela não carregava o Tailwind CSS,
   // por isso saía tudo em branco.
@@ -109,13 +128,13 @@ const RelatorioPAImprimivel: React.FC<RelatorioProps> = ({ storeId, storeName, s
       alert('Visualize o relatório antes de imprimir.');
       return;
     }
- 
+
     const printWindow = window.open('', '_blank');
     if (!printWindow) {
       alert('Pop-ups bloqueados!\nPor favor, permita pop-ups para este site e tente novamente.');
       return;
     }
- 
+
     printWindow.document.write(`
       <!DOCTYPE html>
       <html lang="pt-BR">
@@ -123,10 +142,10 @@ const RelatorioPAImprimivel: React.FC<RelatorioProps> = ({ storeId, storeName, s
           <meta charset="UTF-8" />
           <meta name="viewport" content="width=device-width, initial-scale=1.0" />
           <title>Relatório P.A - ${storeName}</title>
- 
+
           <!-- Tailwind CSS via CDN: garante que todas as classes funcionem na nova janela -->
           <script src="https://cdn.tailwindcss.com"><\/script>
- 
+
           <style>
             /* Forçar impressão colorida (fundo + cores) */
             * {
@@ -151,7 +170,7 @@ const RelatorioPAImprimivel: React.FC<RelatorioProps> = ({ storeId, storeName, s
       </html>
     `);
     printWindow.document.close();
- 
+
     // Aguarda o Tailwind carregar completamente antes de disparar a impressão
     printWindow.addEventListener('load', () => {
       setTimeout(() => {
@@ -167,14 +186,14 @@ const RelatorioPAImprimivel: React.FC<RelatorioProps> = ({ storeId, storeName, s
     });
   };
   // ──────────────────────────────────────────────────────────────────────────
- 
+
   const getMedalha = (posicao: number) => {
     if (posicao === 0) return { emoji: '🥇', label: '1º LUGAR', isPodium: true };
     if (posicao === 1) return { emoji: '🥈', label: '2º LUGAR', isPodium: true };
     if (posicao === 2) return { emoji: '🥉', label: '3º LUGAR', isPodium: true };
     return { emoji: '⭐', label: `${posicao + 1}º LUGAR`, isPodium: false };
   };
- 
+
   const semanaAtual = semanas.find(s => s.id === semanaSelecionada);
   const dataInicio = semanaAtual ? parseLocalDate(semanaAtual.data_inicio).toLocaleDateString('pt-BR') : '';
   const dataFim = semanaAtual ? parseLocalDate(semanaAtual.data_fim).toLocaleDateString('pt-BR') : '';
@@ -183,16 +202,16 @@ const RelatorioPAImprimivel: React.FC<RelatorioProps> = ({ storeId, storeName, s
         ? parseLocalDate(semanaAtual.data_pagamento).toLocaleDateString('pt-BR')
         : new Date(parseLocalDate(semanaAtual.data_fim).getTime() + 86400000).toLocaleDateString('pt-BR'))
     : '';
- 
+
   return (
     <div className="p-4 sm:p-6 space-y-4">
- 
+
       {/* ── Controles (não aparecem na impressão) ── */}
       <div className="no-print bg-white dark:bg-slate-900 p-4 sm:p-6 rounded-2xl shadow-sm border border-slate-200 dark:border-slate-800 space-y-4">
         <h2 className="text-lg sm:text-xl font-black text-slate-900 dark:text-white uppercase italic">
           📄 Relatório de <span className="text-blue-600">Premiação P.A</span>
         </h2>
- 
+
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
           <div>
             <label className="text-xs font-black text-slate-500 dark:text-slate-400 uppercase tracking-widest mb-2 block">
@@ -210,7 +229,7 @@ const RelatorioPAImprimivel: React.FC<RelatorioProps> = ({ storeId, storeName, s
               ))}
             </select>
           </div>
- 
+
           <div className="flex items-end gap-2">
             <button
               onClick={() => setShowPreview(!showPreview)}
@@ -228,13 +247,13 @@ const RelatorioPAImprimivel: React.FC<RelatorioProps> = ({ storeId, storeName, s
             </button>
           </div>
         </div>
- 
+
         {loading && (
           <div className="text-center py-8">
             <p className="text-sm font-bold text-slate-500">Carregando dados...</p>
           </div>
         )}
- 
+
         {!loading && vendedores.length === 0 && showPreview && (
           <div className="text-center py-12 bg-slate-50 dark:bg-slate-800 rounded-xl">
             <Trophy className="mx-auto mb-4 text-slate-300" size={48} />
@@ -244,7 +263,7 @@ const RelatorioPAImprimivel: React.FC<RelatorioProps> = ({ storeId, storeName, s
           </div>
         )}
       </div>
- 
+
       {/* ── Relatório Compacto para Impressão A4 ── */}
       {showPreview && vendedores.length > 0 && (
         <div
@@ -272,12 +291,12 @@ const RelatorioPAImprimivel: React.FC<RelatorioProps> = ({ storeId, storeName, s
               </p>
             </div>
           </div>
- 
+
           {/* Lista de vendedores — cards compactos horizontais */}
           <div className="p-3 space-y-2">
             {vendedores.map((v, idx) => {
               const { emoji, label, isPodium } = getMedalha(idx);
- 
+
               return (
                 <div
                   key={idx}
@@ -296,7 +315,7 @@ const RelatorioPAImprimivel: React.FC<RelatorioProps> = ({ storeId, storeName, s
                       {label}
                     </div>
                   </div>
- 
+
                   {/* Nome e código */}
                   <div className="flex-1 min-w-0">
                     <h2 className="text-base font-black text-slate-900 uppercase italic leading-tight">
@@ -312,7 +331,7 @@ const RelatorioPAImprimivel: React.FC<RelatorioProps> = ({ storeId, storeName, s
                       </span>
                     )}
                   </div>
- 
+
                   {/* Métricas */}
                   <div className="flex gap-2 flex-shrink-0">
                     {/* P.A */}
@@ -321,7 +340,7 @@ const RelatorioPAImprimivel: React.FC<RelatorioProps> = ({ storeId, storeName, s
                       <p className="text-base font-black text-green-600 leading-none">{v.pa_atingido.toFixed(2)}</p>
                       <p className="text-[9px] font-bold text-slate-400 mt-0.5">meta {v.pa_meta.toFixed(2)}</p>
                     </div>
- 
+
                     {/* Vendas */}
                     <div className="bg-white rounded-lg p-2 border-2 border-slate-200 text-center w-24">
                       <p className="text-[9px] font-black text-slate-400 uppercase leading-none mb-1">Vendas</p>
@@ -330,7 +349,7 @@ const RelatorioPAImprimivel: React.FC<RelatorioProps> = ({ storeId, storeName, s
                       </p>
                       <p className="text-[9px] font-bold text-slate-400 mt-0.5">{v.qtde_vendas} atend.</p>
                     </div>
- 
+
                     {/* Itens */}
                     <div className="bg-white rounded-lg p-2 border-2 border-slate-200 text-center w-16">
                       <p className="text-[9px] font-black text-slate-400 uppercase leading-none mb-1">Itens</p>
@@ -342,20 +361,20 @@ const RelatorioPAImprimivel: React.FC<RelatorioProps> = ({ storeId, storeName, s
               );
             })}
           </div>
- 
-          {/* Rodapé compacto */}
+
+          {/* Rodapé compacto com frase motivacional aleatória do banco */}
           <div className="mx-3 mb-3 bg-gradient-to-r from-blue-600 to-indigo-700 text-white p-3 rounded-xl text-center">
             <p className="text-base font-black uppercase">🎉 Continue Assim, Time! 🎉</p>
-            <p className="text-xs font-bold opacity-90 mt-0.5">
-              Juntos somos mais fortes. Próxima semana tem mais! 💪
+            <p className="text-sm font-bold opacity-95 mt-1 italic">
+              "{fraseMotivacional}"
             </p>
-            <p className="text-[9px] font-bold opacity-60 mt-1">
+            <p className="text-[9px] font-bold opacity-60 mt-2">
               Gerado em {new Date().toLocaleDateString('pt-BR')} às {new Date().toLocaleTimeString('pt-BR')} &nbsp;|&nbsp; Sistema Dashboard P.A — Rede Real Calçados
             </p>
           </div>
         </div>
       )}
- 
+
       <style>{`
         @media print {
           body * { visibility: hidden; }
@@ -373,5 +392,5 @@ const RelatorioPAImprimivel: React.FC<RelatorioProps> = ({ storeId, storeName, s
     </div>
   );
 };
- 
+
 export default RelatorioPAImprimivel;
