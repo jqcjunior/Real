@@ -366,10 +366,19 @@ const DemandsSystemV2: React.FC<DemandsSystemV2Props> = ({ user, stores }) => {
 
                 if (error || !data.success) throw error || new Error(data.error);
 
-                setSelectedDemand({ ...selectedDemand, status: 'resolvida' });
-                loadDemands(selectedStoreId);
-                loadMessages(selectedDemand.id);
-                calculateStats();
+                if (data.success) {
+                    // 1. Fecha o chamado selecionado ou atualiza o estado local
+                    setSelectedDemand(null); 
+                    
+                    // 2. Força a atualização de todas as listas
+                    await Promise.all([
+                        loadDemands(selectedStoreId),
+                        loadStoreCounts(),
+                        calculateStats()
+                    ]);
+
+                    console.log("Sistema atualizado com sucesso");
+                }
             } catch (err) {
                 console.error("Erro ao resolver demanda:", err);
                 alert("Erro ao finalizar o chamado.");
