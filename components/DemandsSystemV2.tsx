@@ -2,6 +2,7 @@ import React, { useState, useEffect, useRef, useMemo } from 'react';
 import { 
     Store, 
     User as UserType, 
+    AdminUser,
     DemandV2, 
     DemandMessageV2, 
     DemandAttachmentV2, 
@@ -66,6 +67,7 @@ const DemandsSystemV2: React.FC<DemandsSystemV2Props> = ({ user, stores }) => {
         avgTime: '0h'
     });
     const [slaAlerts, setSlaAlerts] = useState<DemandV2[]>([]);
+    const [storeUsers, setStoreUsers] = useState<AdminUser[]>([]);
 
     // Refs
     const messageEndRef = useRef<HTMLDivElement>(null);
@@ -140,6 +142,23 @@ const DemandsSystemV2: React.FC<DemandsSystemV2Props> = ({ user, stores }) => {
             setSlaAlerts(alerts);
         } catch (err) {
             console.error("Erro ao calcular estatísticas:", err);
+        }
+    };
+
+    const loadStoreUsers = async (storeId: string) => {
+        try {
+            await ensureSession();
+            const { data, error } = await supabase
+                .from('admin_users')
+                .select('*')
+                .eq('store_id', storeId)
+                .eq('status', 'active')
+                .order('name');
+            
+            if (error) throw error;
+            if (data) setStoreUsers(data);
+        } catch (err) {
+            console.error("Erro ao carregar usuários da loja:", err);
         }
     };
 
@@ -247,7 +266,36 @@ const DemandsSystemV2: React.FC<DemandsSystemV2Props> = ({ user, stores }) => {
         messageEndRef.current?.scrollIntoView({ behavior: 'smooth' });
     }, [messages]);
 
+    useEffect(() => {
+        if (selectedStoreId) {
+            loadStoreUsers(selectedStoreId);
+        }
+    }, [selectedStoreId]);
+
     // Handlers
+    const handleAssign = async (assignedToId: string) => {
+        if (!selectedDemand) return;
+
+        try {
+            await ensureSession();
+            const { data, error } = await supabase.rpc('fn_assign_demand_v2', {
+                p_demand_id: selectedDemand.id,
+                p_assigned_to: assignedToId,
+                p_user_id: user.id,
+                p_user_name: user.name,
+                p_user_role: user.role
+            });
+
+            if (error || !data.success) throw error || new Error(data.error);
+
+            setSelectedDemand({ ...selectedDemand, assigned_to: assignedToId });
+            loadMessages(selectedDemand.id);
+        } catch (err) {
+            console.error("Erro ao atribuir demanda:", err);
+            alert("Erro ao direcionar o chamado.");
+        }
+    };
+
     const handleSendMessage = async (e?: React.FormEvent) => {
         if (e) e.preventDefault();
         if (!newMessage.trim() || !selectedDemand || isSending) return;
@@ -639,6 +687,33 @@ const DemandsSystemV2: React.FC<DemandsSystemV2Props> = ({ user, stores }) => {
                                 <div className="bg-white dark:bg-slate-900 p-4 rounded-2xl border border-slate-100 dark:border-slate-800 shadow-sm">
                                     <p className="text-xs font-medium text-slate-600 dark:text-slate-400 leading-relaxed">{selectedDemand.description}</p>
                                 </div>
+
+                                {user.role === 'ADMIN' && storeUsers.length > 0 && (
+                                    <div className="mt-6">
+                                        <h4 className="text-[10px] font-black text-slate-400 uppercase mb-3">Direcionar para Colaborador:</h4>
+                                        <div className="grid grid-cols-2 gap-2">
+                                            {storeUsers.map(u => (
+                                                <button
+                                                    key={u.id}
+                                                    onClick={() => handleAssign(u.id)}
+                                                    className={`flex items-center gap-2 p-2 rounded-xl border transition-all ${
+                                                        selectedDemand?.assigned_to === u.id 
+                                                        ? 'border-blue-500 bg-blue-50' 
+                                                        : 'border-slate-100 dark:border-slate-800 hover:border-blue-200'
+                                                    }`}
+                                                >
+                                                    <div className="w-8 h-8 rounded-full bg-blue-100 dark:bg-blue-900/30 flex items-center justify-center text-blue-600 dark:text-blue-400 font-bold text-xs">
+                                                        {u.name.substring(0, 2).toUpperCase()}
+                                                    </div>
+                                                    <div className="flex-1 text-left">
+                                                        <p className="text-[10px] font-black text-slate-700 dark:text-slate-300 truncate">{u.name}</p>
+                                                        <p className="text-[8px] font-bold text-slate-400 uppercase">{u.role_level}</p>
+                                                    </div>
+                                                </button>
+                                            ))}
+                                        </div>
+                                    </div>
+                                )}
                             </div>
 
                             {/* Messages Area */}

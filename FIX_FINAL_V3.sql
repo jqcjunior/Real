@@ -159,3 +159,69 @@ END;
 $$ LANGUAGE plpgsql SECURITY DEFINER;
 
 GRANT EXECUTE ON FUNCTION public.fn_resolve_demand_v2(uuid, uuid, text, text) TO anon, authenticated, service_role;
+
+-- 7. RPC PARA ATRIBUIR DEMANDA
+CREATE OR REPLACE FUNCTION public.fn_assign_demand_v2(
+    p_demand_id uuid,
+    p_assigned_to uuid,
+    p_user_id uuid,
+    p_user_name text,
+    p_user_role text
+)
+RETURNS json AS $$
+DECLARE
+    v_assigned_name text;
+BEGIN
+    -- Get assigned user name
+    SELECT name INTO v_assigned_name FROM public.admin_users WHERE id = p_assigned_to;
+
+    -- Update demand
+    UPDATE public.demands_v2 SET
+        assigned_to = p_assigned_to,
+        updated_at = now()
+    WHERE id = p_demand_id;
+
+    -- Insert assignment message
+    INSERT INTO public.demands_messages_v2 (
+        demand_id,
+        sender_id,
+        sender_name,
+        sender_role,
+        message,
+        message_type
+    ) VALUES (
+        p_demand_id,
+        p_user_id,
+        p_user_name,
+        p_user_role,
+        'DIRECIONOU O CHAMADO PARA: ' || v_assigned_name,
+        'assignment'
+    );
+
+    -- Create notification
+    INSERT INTO public.demands_notifications (
+        demand_id,
+        user_id,
+        notification_type,
+        title,
+        message
+    ) VALUES (
+        p_demand_id,
+        p_assigned_to,
+        'assigned',
+        'Novo Chamado Atribuído',
+        'Você foi designado para o chamado: ' || (SELECT title FROM public.demands_v2 WHERE id = p_demand_id)
+    );
+
+    RETURN json_build_object(
+        'success', true
+    );
+EXCEPTION WHEN OTHERS THEN
+    RETURN json_build_object(
+        'success', false,
+        'error', SQLERRM
+    );
+END;
+$$ LANGUAGE plpgsql SECURITY DEFINER;
+
+GRANT EXECUTE ON FUNCTION public.fn_assign_demand_v2(uuid, uuid, uuid, text, text) TO anon, authenticated, service_role;
