@@ -1,5 +1,6 @@
 import React, { useState, useEffect, useRef, useMemo } from 'react';
 import { supabase } from '../services/supabaseClient';
+import { ensureSession } from '../services/authService';
 import { Demand, DemandMessage, DemandPriority, DemandStatus, User, Store, DemandCategory } from '../types';
 import DemandCategoriesManager from './DemandCategoriesManager';
 import { 
@@ -91,6 +92,7 @@ const OSDemandsModule: React.FC<OSDemandsModuleProps> = ({ user, stores, can }) 
 
     const fetchDynamicCategories = async () => {
         try {
+            await ensureSession();
             const { data, error } = await supabase
                 .from('demands_categories')
                 .select('*')
@@ -165,6 +167,7 @@ const OSDemandsModule: React.FC<OSDemandsModuleProps> = ({ user, stores, can }) 
     const fetchDemands = async (silent = false) => {
         if (!silent) setIsLoading(true);
         try {
+            await ensureSession();
             let query = supabase
                 .from('demands')
                 .select(`
@@ -207,6 +210,7 @@ const OSDemandsModule: React.FC<OSDemandsModuleProps> = ({ user, stores, can }) 
 
     const fetchMessages = async (demandId: string) => {
         try {
+            await ensureSession();
             const { data, error } = await supabase
                 .from('demand_messages')
                 .select('*')
@@ -226,6 +230,7 @@ const OSDemandsModule: React.FC<OSDemandsModuleProps> = ({ user, stores, can }) 
 
         setIsSending(true);
         try {
+            await ensureSession();
             // 1. Insert message
             const { error: msgError } = await supabase
                 .from('demand_messages')
@@ -256,6 +261,7 @@ const OSDemandsModule: React.FC<OSDemandsModuleProps> = ({ user, stores, can }) 
         if (isUpdatingStatus) return;
         setIsUpdatingStatus(true);
         try {
+            await ensureSession();
             const { error } = await supabase
                 .from('demands')
                 .update({ status })
@@ -289,6 +295,7 @@ const OSDemandsModule: React.FC<OSDemandsModuleProps> = ({ user, stores, can }) 
 
         setIsSubmitting(true);
         try {
+            await ensureSession();
             // Garantir que a categoria não seja vazia
             const categoryToSave = formData.category || (dynamicCategories.length > 0 ? dynamicCategories[0].label : 'Geral');
 
@@ -365,6 +372,7 @@ const OSDemandsModule: React.FC<OSDemandsModuleProps> = ({ user, stores, can }) 
             type: 'danger',
             onConfirm: async () => {
                 try {
+                    await ensureSession();
                     const { error } = await supabase
                         .from('demands')
                         .delete()

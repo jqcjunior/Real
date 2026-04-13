@@ -405,3 +405,136 @@ DROP POLICY IF EXISTS "Public read access for permissions" ON page_permissions;
 CREATE POLICY "Public read access for permissions" ON page_permissions FOR SELECT TO public USING (true);
 CREATE POLICY "Admin manage permissions" ON page_permissions FOR ALL TO public 
 USING (EXISTS (SELECT 1 FROM admin_users WHERE id = get_current_user_id() AND role_level = 'admin'));
+
+-- 14. MÓDULO DE CHAMADOS V2 (demands_v2)
+GRANT ALL ON TABLE public.demands_v2 TO anon, authenticated, service_role;
+GRANT ALL ON TABLE public.demands_messages_v2 TO anon, authenticated, service_role;
+GRANT ALL ON TABLE public.demands_attachments_v2 TO anon, authenticated, service_role;
+GRANT ALL ON TABLE public.demands_notifications TO anon, authenticated, service_role;
+GRANT USAGE, SELECT ON ALL SEQUENCES IN SCHEMA public TO anon, authenticated;
+
+ALTER TABLE public.demands_v2 ENABLE ROW LEVEL SECURITY;
+DROP POLICY IF EXISTS "Admin vê todas as demandas" ON public.demands_v2;
+DROP POLICY IF EXISTS "Gerente vê demandas da sua loja" ON public.demands_v2;
+DROP POLICY IF EXISTS "Gerente cria demandas para sua loja" ON public.demands_v2;
+DROP POLICY IF EXISTS "Gerente atualiza demandas da sua loja" ON public.demands_v2;
+
+CREATE POLICY "demands_v2_select_policy" ON public.demands_v2
+FOR SELECT TO public 
+USING (
+    EXISTS (
+        SELECT 1 FROM public.admin_users 
+        WHERE id = public.get_current_user_id() 
+        AND (lower(role_level) = 'admin' OR store_id = demands_v2.store_id)
+    )
+    OR public.get_current_user_id() IS NULL
+);
+
+CREATE POLICY "demands_v2_insert_policy" ON public.demands_v2
+FOR INSERT TO public 
+WITH CHECK (true);
+
+CREATE POLICY "demands_v2_update_policy" ON public.demands_v2
+FOR UPDATE TO public 
+USING (
+    EXISTS (
+        SELECT 1 FROM public.admin_users 
+        WHERE id = public.get_current_user_id() 
+        AND (lower(role_level) = 'admin' OR store_id = demands_v2.store_id)
+    )
+);
+
+-- 15. MENSAGENS DE CHAMADOS (demands_messages_v2)
+ALTER TABLE public.demands_messages_v2 ENABLE ROW LEVEL SECURITY;
+DROP POLICY IF EXISTS "Acesso mensagens por demanda" ON public.demands_messages_v2;
+CREATE POLICY "demands_messages_v2_all_policy" ON public.demands_messages_v2
+FOR ALL TO public 
+USING (true)
+WITH CHECK (true);
+
+-- 16. ANEXOS DE CHAMADOS (demands_attachments_v2)
+ALTER TABLE public.demands_attachments_v2 ENABLE ROW LEVEL SECURITY;
+DROP POLICY IF EXISTS "Acesso anexos por demanda" ON public.demands_attachments_v2;
+CREATE POLICY "demands_attachments_v2_all_policy" ON public.demands_attachments_v2
+FOR ALL TO public 
+USING (true)
+WITH CHECK (true);
+
+-- 17. NOTIFICAÇÕES DE CHAMADOS (demands_notifications)
+ALTER TABLE public.demands_notifications ENABLE ROW LEVEL SECURITY;
+DROP POLICY IF EXISTS "Usuário vê suas notificações" ON public.demands_notifications;
+CREATE POLICY "demands_notifications_all_policy" ON public.demands_notifications
+FOR ALL TO public 
+USING (user_id = get_current_user_id() OR get_current_user_id() IS NULL)
+WITH CHECK (user_id = get_current_user_id() OR get_current_user_id() IS NULL);
+
+-- 18. SEQUÊNCIA DE RECIBOS FINANCEIROS
+CREATE SEQUENCE IF NOT EXISTS public.financial_receipts_number_seq START 1;
+
+-- Função para obter o próximo número de recibo
+CREATE OR REPLACE FUNCTION public.fn_get_next_receipt_number(p_token text DEFAULT NULL)
+RETURNS json AS $$
+DECLARE
+    v_next_val integer;
+BEGIN
+    v_next_val := nextval('public.financial_receipts_number_seq');
+    RETURN json_build_object(
+        'success', true,
+        'next_number', v_next_val,
+        'formatted', lpad(v_next_val::text, 4, '0')
+    );
+EXCEPTION WHEN OTHERS THEN
+    RETURN json_build_object(
+        'success', false,
+        'error', SQLERRM
+    );
+END;
+$$ LANGUAGE plpgsql SECURITY DEFINER;
+
+-- 19. RPC PARA CRIAR DEMANDA (Bypass RLS issues)
+CREATE OR REPLACE FUNCTION public.fn_create_demand_v2(
+    p_store_id uuid,
+    p_title text,
+    p_description text,
+    p_priority text,
+    p_category text,
+    p_created_by uuid,
+    p_status text DEFAULT 'aberta'
+)
+RETURNS json AS $$
+DECLARE
+    v_new_id uuid;
+BEGIN
+    INSERT INTO public.demands_v2 (
+        store_id,
+        title,
+        description,
+        priority,
+        category,
+        created_by,
+        status
+    ) VALUES (
+        p_store_id,
+        p_title,
+        p_description,
+        p_priority,
+        p_category,
+        p_created_by,
+        p_status
+    ) RETURNING id INTO v_new_id;
+
+    RETURN json_build_object(
+        'success', true,
+        'id', v_new_id
+    );
+EXCEPTION WHEN OTHERS THEN
+    RETURN json_build_object(
+        'success', false,
+        'error', SQLERRM
+    );
+END;
+$$ LANGUAGE plpgsql SECURITY DEFINER;
+
+GRANT ALL ON SEQUENCE public.financial_receipts_number_seq TO anon, authenticated, service_role;
+GRANT EXECUTE ON FUNCTION public.fn_get_next_receipt_number(text) TO anon, authenticated, service_role;
+GRANT EXECUTE ON FUNCTION public.fn_create_demand_v2(uuid, text, text, text, text, uuid, text) TO anon, authenticated, service_role;

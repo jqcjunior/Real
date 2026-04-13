@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { supabase } from '../services/supabaseClient';
+import { ensureSession } from '../services/authService';
 import { DemandCategory } from '../types';
 import { Plus, Edit2, Trash2, Check, X, Settings, Eye } from 'lucide-react';
 
@@ -20,6 +21,7 @@ const DemandCategoriesManager: React.FC<DemandCategoriesManagerProps> = ({ onCat
 
     const fetchCategories = async () => {
         try {
+            await ensureSession();
             const { data, error } = await supabase
                 .from('demands_categories')
                 .select('*')
@@ -38,6 +40,7 @@ const DemandCategoriesManager: React.FC<DemandCategoriesManagerProps> = ({ onCat
 
         setIsSubmitting(true);
         try {
+            await ensureSession();
             if (editingCategory) {
                 // Atualizar categoria existente
                 const { error } = await supabase
@@ -81,6 +84,7 @@ const DemandCategoriesManager: React.FC<DemandCategoriesManagerProps> = ({ onCat
 
     const handleToggleActive = async (category: DemandCategory) => {
         try {
+            await ensureSession();
             const { error } = await supabase
                 .from('demands_categories')
                 .update({ is_active: !category.is_active })
@@ -101,6 +105,7 @@ const DemandCategoriesManager: React.FC<DemandCategoriesManagerProps> = ({ onCat
         if (!confirm('Tem certeza que deseja excluir esta categoria?')) return;
 
         try {
+            await ensureSession();
             const { error } = await supabase
                 .from('demands_categories')
                 .delete()

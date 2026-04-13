@@ -88,7 +88,7 @@ BEGIN
     NEW.ticket_number := 'DEM-' || year_prefix || '-' || lpad(next_val::text, 4, '0');
     RETURN NEW;
 END;
-$$ LANGUAGE plpgsql;
+$$ LANGUAGE plpgsql SECURITY DEFINER;
 
 CREATE TRIGGER tr_generate_ticket_number
 BEFORE INSERT ON public.demands_v2

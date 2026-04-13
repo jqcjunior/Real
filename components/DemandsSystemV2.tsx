@@ -9,6 +9,7 @@ import {
     DemandV2Status 
 } from '../types';
 import { supabase } from '../services/supabaseClient';
+import { ensureSession } from '../services/authService';
 import { 
     Search, 
     Plus, 
@@ -59,6 +60,12 @@ const DemandsSystemV2: React.FC<DemandsSystemV2Props> = ({ user, stores }) => {
     const [showNewDemandModal, setShowNewDemandModal] = useState(false);
     const [searchTerm, setSearchTerm] = useState('');
     const [storeCounts, setStoreCounts] = useState<Record<string, { total: number, urgent: number, unread: number }>>({});
+    const [stats, setStats] = useState({
+        resolved: 0,
+        paused: 0,
+        avgTime: '0h'
+    });
+    const [slaAlerts, setSlaAlerts] = useState<DemandV2[]>([]);
 
     // Refs
     const messageEndRef = useRef<HTMLDivElement>(null);
@@ -78,6 +85,7 @@ const DemandsSystemV2: React.FC<DemandsSystemV2Props> = ({ user, stores }) => {
     // Load Store Counts
     const loadStoreCounts = async () => {
         try {
+            await ensureSession();
             const { data, error } = await supabase
                 .from('demands_v2')
                 .select('store_id, priority, unread_count, status')
@@ -100,10 +108,46 @@ const DemandsSystemV2: React.FC<DemandsSystemV2Props> = ({ user, stores }) => {
         }
     };
 
+    const calculateStats = async () => {
+        try {
+            await ensureSession();
+            const { data, error } = await supabase
+                .from('demands_v2')
+                .select('*')
+                .eq('is_archived', false);
+
+            if (error) throw error;
+
+            // 1. Calcular Totais
+            const resolved = data.filter(d => d.status === 'resolvida').length;
+            const paused = data.filter(d => d.status === 'pausada').length;
+
+            // 2. Calcular Tempo Médio (em horas)
+            const resolvedDemands = data.filter(d => d.status === 'resolvida' && d.resolution_time_minutes);
+            const totalMinutes = resolvedDemands.reduce((acc, curr) => acc + curr.resolution_time_minutes, 0);
+            const avg = resolvedDemands.length > 0 ? (totalMinutes / resolvedDemands.length / 60).toFixed(1) : 0;
+
+            setStats({ resolved, paused, avgTime: `${avg}h` });
+
+            // 3. Filtrar Alertas de SLA (Expirados ou próximos do fim)
+            const alerts = data.filter(d => 
+                d.status !== 'resolvida' && 
+                d.status !== 'cancelada' && 
+                d.sla_deadline &&
+                new Date(d.sla_deadline) < new Date(new Date().getTime() + 2 * 60 * 60 * 1000) // Próximas 2 horas ou já expirados
+            ).slice(0, 3); // Top 3 alertas
+
+            setSlaAlerts(alerts);
+        } catch (err) {
+            console.error("Erro ao calcular estatísticas:", err);
+        }
+    };
+
     // Load Demands
     const loadDemands = async (storeId: string | null) => {
         setIsLoading(true);
         try {
+            await ensureSession();
             let query = supabase
                 .from('demands_v2_with_stats')
                 .select('*')
@@ -134,6 +178,7 @@ const DemandsSystemV2: React.FC<DemandsSystemV2Props> = ({ user, stores }) => {
     // Load Messages
     const loadMessages = async (demandId: string) => {
         try {
+            await ensureSession();
             const { data: msgs, error: msgsError } = await supabase
                 .from('demands_messages_v2')
                 .select('*')
@@ -169,8 +214,23 @@ const DemandsSystemV2: React.FC<DemandsSystemV2Props> = ({ user, stores }) => {
     // Effects
     useEffect(() => {
         loadStoreCounts();
-        const interval = setInterval(loadStoreCounts, 30000);
-        return () => clearInterval(interval);
+        calculateStats();
+
+        // Inscrição Real-time para atualizar os contadores das lojas na hora
+        const channel = supabase
+            .channel('realtime-store-updates')
+            .on('postgres_changes', 
+                { event: '*', schema: 'public', table: 'demands_v2' }, 
+                () => {
+                    loadStoreCounts(); // Recarrega os números e cores sempre que algo mudar
+                    calculateStats();
+                }
+            )
+            .subscribe();
+
+        return () => {
+            supabase.removeChannel(channel);
+        };
     }, []);
 
     useEffect(() => {
@@ -194,6 +254,7 @@ const DemandsSystemV2: React.FC<DemandsSystemV2Props> = ({ user, stores }) => {
 
         setIsSending(true);
         try {
+            await ensureSession();
             const { data: msg, error } = await supabase.from('demands_messages_v2').insert([{
                 demand_id: selectedDemand.id,
                 sender_id: user.id,
@@ -220,6 +281,7 @@ const DemandsSystemV2: React.FC<DemandsSystemV2Props> = ({ user, stores }) => {
 
         setIsSending(true);
         try {
+            await ensureSession();
             let finalFile = file;
             let isCompressed = false;
             let originalSize = file.size;
@@ -292,6 +354,7 @@ const DemandsSystemV2: React.FC<DemandsSystemV2Props> = ({ user, stores }) => {
         if (!selectedDemand) return;
 
         try {
+            await ensureSession();
             const { error } = await supabase
                 .from('demands_v2')
                 .update({ 
@@ -387,27 +450,38 @@ const DemandsSystemV2: React.FC<DemandsSystemV2Props> = ({ user, stores }) => {
                             const count = storeCounts[store.id] || { total: 0, urgent: 0, unread: 0 };
                             const isSelected = selectedStoreId === store.id;
                             
+                            // Lógica do Semáforo por Grau de Demanda
+                            let statusColor = "bg-slate-100 dark:bg-slate-800 text-slate-400"; // Padrão (Sem demandas)
+                            if (count.urgent > 0) statusColor = "bg-red-500 text-white animate-pulse"; // Crítico
+                            else if (count.total > 5) statusColor = "bg-orange-500 text-white"; // Alerta
+                            else if (count.total > 0) statusColor = "bg-emerald-500 text-white"; // Normal/Ativo
+
                             return (
                                 <button
                                     key={store.id}
                                     onClick={() => setSelectedStoreId(store.id)}
                                     className={`w-full p-3 rounded-2xl flex items-center gap-3 transition-all group ${isSelected ? 'bg-blue-50 dark:bg-blue-900/20 border-blue-100 dark:border-blue-800' : 'hover:bg-slate-50 dark:hover:bg-slate-800'}`}
                                 >
-                                    <div className={`p-2 rounded-xl ${isSelected ? 'bg-blue-600 text-white' : 'bg-slate-100 dark:bg-slate-800 text-slate-400 group-hover:text-blue-500'}`}>
+                                    {/* Ícone com cor dinâmica */}
+                                    <div className={`p-2 rounded-xl transition-colors ${statusColor}`}>
                                         <StoreIcon size={18} />
                                     </div>
+                                    
                                     <div className="flex-1 text-left">
-                                        <p className={`text-[11px] font-black uppercase ${isSelected ? 'text-blue-900 dark:text-blue-100' : 'text-slate-600 dark:text-slate-400'}`}>Loja {store.number}</p>
+                                        <p className={`text-[11px] font-black uppercase ${isSelected ? 'text-blue-900 dark:text-blue-100' : 'text-slate-600 dark:text-slate-400'}`}>
+                                            Loja {store.number}
+                                        </p>
                                         <p className="text-[9px] font-bold text-slate-400 truncate">{store.city}</p>
                                     </div>
-                                    <div className="flex flex-col items-end gap-1">
-                                        {count.total > 0 && (
-                                            <span className="px-1.5 py-0.5 bg-blue-100 dark:bg-blue-900 text-blue-600 dark:text-blue-400 text-[8px] font-black rounded-md">{count.total}</span>
-                                        )}
-                                        {count.urgent > 0 && (
-                                            <div className="w-2 h-2 bg-red-500 rounded-full animate-pulse shadow-lg shadow-red-500/50"></div>
-                                        )}
-                                    </div>
+
+                                    {/* Quantidade de Demandas */}
+                                    {count.total > 0 && (
+                                        <div className="flex flex-col items-end gap-1">
+                                            <span className={`px-1.5 py-0.5 text-[8px] font-black rounded-md ${count.urgent > 0 ? 'bg-red-100 text-red-600' : 'bg-blue-100 text-blue-600'}`}>
+                                                {count.total}
+                                            </span>
+                                        </div>
+                                    )}
                                 </button>
                             );
                         })}
@@ -659,15 +733,15 @@ const DemandsSystemV2: React.FC<DemandsSystemV2Props> = ({ user, stores }) => {
                             <div className="grid grid-cols-1 gap-4">
                                 <div className="bg-white dark:bg-slate-900 p-4 rounded-2xl border border-slate-100 dark:border-slate-800 shadow-sm">
                                     <p className="text-[8px] font-black text-slate-400 uppercase tracking-widest mb-1">Total Resolvidas</p>
-                                    <h5 className="text-2xl font-black text-emerald-600 italic">23</h5>
+                                    <h5 className="text-2xl font-black text-emerald-600 italic">{stats.resolved}</h5>
                                 </div>
                                 <div className="bg-white dark:bg-slate-900 p-4 rounded-2xl border border-slate-100 dark:border-slate-800 shadow-sm">
                                     <p className="text-[8px] font-black text-slate-400 uppercase tracking-widest mb-1">Pausadas</p>
-                                    <h5 className="text-2xl font-black text-amber-600 italic">5</h5>
+                                    <h5 className="text-2xl font-black text-amber-600 italic">{stats.paused}</h5>
                                 </div>
                                 <div className="bg-white dark:bg-slate-900 p-4 rounded-2xl border border-slate-100 dark:border-slate-800 shadow-sm">
                                     <p className="text-[8px] font-black text-slate-400 uppercase tracking-widest mb-1">Tempo Médio</p>
-                                    <h5 className="text-2xl font-black text-blue-600 italic">4.2h</h5>
+                                    <h5 className="text-2xl font-black text-blue-600 italic">{stats.avgTime}</h5>
                                 </div>
                             </div>
                         </div>
@@ -679,20 +753,26 @@ const DemandsSystemV2: React.FC<DemandsSystemV2Props> = ({ user, stores }) => {
                                 <h4 className="text-[10px] font-black text-slate-900 dark:text-white uppercase tracking-widest">Alertas de SLA</h4>
                             </div>
                             <div className="space-y-3">
-                                <div className="p-3 bg-red-50 dark:bg-red-900/10 border border-red-100 dark:border-red-900/30 rounded-xl">
-                                    <div className="flex justify-between items-center mb-1">
-                                        <span className="text-[9px] font-black text-red-600 uppercase">DEM-2026-0045</span>
-                                        <span className="text-[8px] font-bold text-red-400">EXPIRADO</span>
+                                {slaAlerts.length > 0 ? slaAlerts.map(alert => {
+                                    const isExpired = new Date(alert.sla_deadline!) < new Date();
+                                    const timeLeft = formatDistanceToNow(new Date(alert.sla_deadline!), { locale: ptBR });
+                                    
+                                    return (
+                                        <div key={alert.id} className={`p-3 rounded-xl border ${isExpired ? 'bg-red-50 dark:bg-red-900/10 border-red-100 dark:border-red-900/30' : 'bg-amber-50 dark:bg-amber-900/10 border-amber-100 dark:border-amber-900/30'}`}>
+                                            <div className="flex justify-between items-center mb-1">
+                                                <span className={`text-[9px] font-black uppercase ${isExpired ? 'text-red-600' : 'text-amber-600'}`}>{alert.ticket_number}</span>
+                                                <span className={`text-[8px] font-bold ${isExpired ? 'text-red-400' : 'text-amber-400'}`}>
+                                                    {isExpired ? 'EXPIRADO' : `${timeLeft} restante`}
+                                                </span>
+                                            </div>
+                                            <p className="text-[10px] font-bold text-slate-600 dark:text-slate-400 truncate">{alert.title}</p>
+                                        </div>
+                                    );
+                                }) : (
+                                    <div className="p-4 bg-slate-50 dark:bg-slate-800/50 rounded-2xl text-center border border-dashed border-slate-200 dark:border-slate-700">
+                                        <p className="text-[9px] font-black text-slate-400 uppercase">Nenhum alerta crítico</p>
                                     </div>
-                                    <p className="text-[10px] font-bold text-slate-600 dark:text-slate-400">Erro crítico no servidor PDV</p>
-                                </div>
-                                <div className="p-3 bg-amber-50 dark:bg-amber-900/10 border border-amber-100 dark:border-amber-900/30 rounded-xl">
-                                    <div className="flex justify-between items-center mb-1">
-                                        <span className="text-[9px] font-black text-amber-600 uppercase">DEM-2026-0048</span>
-                                        <span className="text-[8px] font-bold text-amber-400">1h restante</span>
-                                    </div>
-                                    <p className="text-[10px] font-bold text-slate-600 dark:text-slate-400">Troca de bobinas térmicas</p>
-                                </div>
+                                )}
                             </div>
                         </div>
 
@@ -732,17 +812,19 @@ const DemandsSystemV2: React.FC<DemandsSystemV2Props> = ({ user, stores }) => {
 
                             setIsLoading(true);
                             try {
-                                const { data, error } = await supabase.from('demands_v2').insert([{
-                                    store_id: storeId,
-                                    title,
-                                    description,
-                                    priority,
-                                    category,
-                                    created_by: user.id,
-                                    status: 'aberta'
-                                }]).select().single();
+                                await ensureSession();
+                                const { data, error } = await supabase.rpc('fn_create_demand_v2', {
+                                    p_store_id: storeId,
+                                    p_title: title,
+                                    p_description: description,
+                                    p_priority: priority,
+                                    p_category: category,
+                                    p_created_by: user.id,
+                                    p_status: 'aberta'
+                                });
 
                                 if (error) throw error;
+                                if (!data.success) throw new Error(data.error);
 
                                 setShowNewDemandModal(false);
                                 loadDemands(selectedStoreId);

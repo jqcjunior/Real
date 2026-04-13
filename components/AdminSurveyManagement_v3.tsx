@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { supabase } from '../services/supabaseClient';
+import { ensureSession } from '../services/authService';
 import { 
   Plus, 
   Search, 
@@ -69,6 +70,7 @@ const AdminSurveyManagement: React.FC<AdminSurveyManagementProps> = ({ currentUs
   const fetchSurveys = async () => {
     setIsLoading(true);
     try {
+      await ensureSession();
       const { data, error } = await supabase
         .from('surveys')
         .select('*')
@@ -87,6 +89,7 @@ const AdminSurveyManagement: React.FC<AdminSurveyManagementProps> = ({ currentUs
 
   const fetchAllUsers = async () => {
     try {
+      await ensureSession();
       const { data, error } = await supabase
         .from('admin_users')
         .select('id, name, role_level, email, status, store_id, created_at')
@@ -166,6 +169,7 @@ const AdminSurveyManagement: React.FC<AdminSurveyManagementProps> = ({ currentUs
     if (questions.length === 0) return alert('Adicione pelo menos uma pergunta');
 
     try {
+      await ensureSession();
       const surveyData = {
         title,
         description,
@@ -236,6 +240,7 @@ const AdminSurveyManagement: React.FC<AdminSurveyManagementProps> = ({ currentUs
   const handleDelete = async (id: string) => {
     if (!confirm('Tem certeza que deseja excluir esta pesquisa?')) return;
     try {
+      await ensureSession();
       const { error } = await supabase.from('surveys').delete().eq('id', id);
       if (error) throw error;
       fetchSurveys();
