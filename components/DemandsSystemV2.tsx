@@ -168,14 +168,23 @@ const DemandsSystemV2: React.FC<DemandsSystemV2Props> = ({ user, stores }) => {
         try {
             await ensureSession();
             let query = supabase
-                .from('demands_v2_with_stats')
+                .from('demands_v2')
                 .select('*')
                 .eq('is_archived', false);
 
+            // 1. Filtro por Loja (Se houver)
             if (storeId) {
                 query = query.eq('store_id', storeId);
             }
 
+            // 2. Filtro de Privacidade por Cargo
+            if (user.role !== 'ADMIN' && user.role !== 'MANAGER') {
+                // Colaboradores comuns só veem o que foi atribuído a eles 
+                // OU o que eles mesmos abriram
+                query = query.or(`assigned_to.eq.${user.id},created_by.eq.${user.id}`);
+            }
+
+            // 3. Filtro por Status (Tabs)
             if (activeTab === 'abertas') {
                 query = query.in('status', ['aberta', 'em_andamento']);
             } else if (activeTab === 'pausadas') {
@@ -185,10 +194,11 @@ const DemandsSystemV2: React.FC<DemandsSystemV2Props> = ({ user, stores }) => {
             }
 
             const { data, error } = await query.order('created_at', { ascending: false });
+            
             if (error) throw error;
             setDemands(data || []);
         } catch (err) {
-            console.error("Erro ao carregar demandas:", err);
+            console.error("Erro ao filtrar demandas:", err);
         } finally {
             setIsLoading(false);
         }
