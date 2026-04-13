@@ -177,11 +177,17 @@ const DemandsSystemV2: React.FC<DemandsSystemV2Props> = ({ user, stores }) => {
                 query = query.eq('store_id', storeId);
             }
 
-            // 2. Filtro de Privacidade por Cargo
-            if (user.role !== 'ADMIN' && user.role !== 'MANAGER') {
-                // Colaboradores comuns só veem o que foi atribuído a eles 
-                // OU o que eles mesmos abriram
-                query = query.or(`assigned_to.eq.${user.id},created_by.eq.${user.id}`);
+            // 2. Filtro de Privacidade por Cargo (role_level)
+            // Pega o cargo e transforma em MAIÚSCULO para comparar
+            // @ts-ignore - user might have role_level from admin_users table
+            const role = (user.role_level || user.role)?.toUpperCase();
+
+            if (role !== 'ADMIN' && role !== 'TÉCNICO' && role !== 'GERENTE') {
+                // Se for SORVETE, CAIXA, etc, ele só vê o que CRIOU ou o que foi ATRIBUÍDO a ele
+                query = query.or(`created_by.eq.${user.id},assigned_to.eq.${user.id}`);
+                
+                // LOG DE DEPURAÇÃO: Ative isso para ver o que está acontecendo no console
+                console.log("Filtro restrito aplicado para:", user.name, "ID:", user.id);
             }
 
             // 3. Filtro por Status (Tabs)
