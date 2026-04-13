@@ -65,3 +65,37 @@ select:focus {
     align-items: flex-start;
     gap: 0.5rem;
 }
+
+/* Safe area para iOS */
+.safe-bottom {
+    padding-bottom: env(safe-area-inset-bottom);
+}
+
+/* Scroll suave */
+.overflow-y-auto {
+    -webkit-overflow-scrolling: touch;
+}
+
+/* Prevenir zoom em inputs no iOS */
+input[type="text"],
+input[type="search"],
+textarea {
+    font-size: 16px !important;
+}
+
+/* Ajuste para teclado virtual */
+@supports (-webkit-touch-callout: none) {
+    .h-\[calc\(100vh-120px\)\] {
+        height: calc(100vh - 120px - env(safe-area-inset-bottom));
+    }
+}
+
+/* Remover highlight azul no tap (mobile) */
+button, a {
+    -webkit-tap-highlight-color: transparent;
+}
+
+/* Active scale animation */
+.active\:scale-98:active {
+    transform: scale(0.98);
+}
