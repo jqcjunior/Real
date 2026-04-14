@@ -3,7 +3,7 @@ import { User, Store, CashError, UserRole } from '../types';
 import { formatCurrency } from '../constants';
 import { AlertOctagon, TrendingUp, TrendingDown, Plus, Trash2, Calendar, Edit, X, Filter, Search, Printer, Loader2, FileText, CheckCircle2 } from 'lucide-react';
 import { supabase } from '../services/supabaseClient';
-
+ 
 interface CashErrorsModuleProps {
   user: User;
   store?: Store;
@@ -14,14 +14,14 @@ interface CashErrorsModuleProps {
   onUpdateError: (error: CashError) => Promise<void>;
   onDeleteError: (id: string) => Promise<void>;
 }
-
+ 
 const MONTHS = [
   { value: 1, label: 'Janeiro' }, { value: 2, label: 'Fevereiro' }, { value: 3, label: 'Março' },
   { value: 4, label: 'Abril' }, { value: 5, label: 'Maio' }, { value: 6, label: 'Junho' },
   { value: 7, label: 'Julho' }, { value: 8, label: 'Agosto' }, { value: 9, label: 'Setembro' },
   { value: 10, label: 'Outubro' }, { value: 11, label: 'Novembro' }, { value: 12, label: 'Dezembro' }
 ];
-
+ 
 const CashErrorsModule: React.FC<CashErrorsModuleProps> = ({ user, store, stores, errors, can, onAddError, onUpdateError, onDeleteError }) => {
   const [activeTab, setActiveTab] = useState<'list' | 'new'>('new');
   const [isSubmitting, setIsSubmitting] = useState(false);
@@ -30,7 +30,7 @@ const CashErrorsModule: React.FC<CashErrorsModuleProps> = ({ user, store, stores
   const [filterMonth, setFilterMonth] = useState(currentDate.getMonth() + 1);
   const [filterYear, setFilterYear] = useState(currentDate.getFullYear());
   const [filterStoreId, setFilterStoreId] = useState<string>(store?.id || 'all');
-
+ 
   const [formData, setFormData] = useState({
       date: new Date().toISOString().split('T')[0],
       expectedValue: '',
@@ -40,16 +40,16 @@ const CashErrorsModule: React.FC<CashErrorsModuleProps> = ({ user, store, stores
       witnessName: '',
       witnessRole: ''
   });
-
+ 
   const isAdmin = user.role === UserRole.ADMIN;
   const canEdit = can('MODULE_CASH_ERRORS_EDIT');
-
+ 
   // Cálculos automáticos
   const expected = parseFloat(formData.expectedValue.replace(/\./g, '').replace(',', '.')) || 0;
   const found = parseFloat(formData.foundValue.replace(/\./g, '').replace(',', '.')) || 0;
   const difference = found - expected;
   const type = difference < 0 ? 'falta' : difference > 0 ? 'sobra' : 'ok';
-
+ 
   const availableYears = useMemo(() => {
       const years = new Set<number>();
       years.add(new Date().getFullYear());
@@ -59,7 +59,7 @@ const CashErrorsModule: React.FC<CashErrorsModuleProps> = ({ user, store, stores
       });
       return Array.from(years).sort((a,b) => b - a);
   }, [errors]);
-
+ 
   const filteredErrors = useMemo(() => {
       return errors.filter(e => {
           if (!isAdmin && e.storeId !== user.storeId) return false;
@@ -72,44 +72,45 @@ const CashErrorsModule: React.FC<CashErrorsModuleProps> = ({ user, store, stores
           if (y !== filterYear || m !== filterMonth) return false;
           return true;
       }).sort((a, b) => new Date(a.date).getTime() - new Date(b.date).getTime());
-  }, [errors, isAdmin, user.storeId, filterStoreId, filterMonth, filterYear]);
-
+  }, [errors, isAdmin, user.storeId, user.id, filterStoreId, filterMonth, filterYear]);
+ 
   const handleRegistrarEImprimir = async (e: React.FormEvent) => {
       e.preventDefault();
       if (expected <= 0 || !formData.reason) {
           alert("Preencha todos os campos obrigatórios.");
           return;
       }
-
+ 
       setIsSubmitting(true);
       try {
           // Calculamos os valores aqui no frontend já que a RPC está com erro de constraint
           const diff = Math.abs(found - expected);
           const errorType = found < expected ? 'shortage' : 'surplus';
           
+          // ✅ CORREÇÃO: Nomes corretos das colunas
           const newRecord = {
               store_id: formData.storeId,
               user_id: user.id,
               user_name: user.name,
-              funcao: 'OPERADOR DE CAIXA',
+              funcao_funcionario: 'OPERADOR DE CAIXA', // ✅ CORRETO
               error_date: formData.date,
               type: errorType,
               value: diff,
               reason: formData.reason,
-              witness_name: formData.witnessName || null,
-              witness_role: formData.witnessRole || null,
+              testemunha_nome: formData.witnessName || null, // ✅ CORRETO
+              testemunha_funcao: formData.witnessRole || null, // ✅ CORRETO
               desconto_aplicado: errorType === 'shortage',
               desconto_valor: errorType === 'shortage' ? diff : 0
           };
-
+ 
           const { data: insertedData, error: insertError } = await supabase
               .from('cash_errors')
               .insert([newRecord])
               .select()
               .single();
-
+ 
           if (insertError) throw insertError;
-
+ 
           if (insertedData) {
               // Imprimir Recibo
               imprimirReciboIndividual({
@@ -122,7 +123,7 @@ const CashErrorsModule: React.FC<CashErrorsModuleProps> = ({ user, store, stores
                   userName: user.name,
                   storeName: stores.find(s => s.id === formData.storeId)?.name || 'LOJA'
               });
-
+ 
               // Reset e Atualizar
               setFormData({
                   date: new Date().toISOString().split('T')[0],
@@ -146,16 +147,16 @@ const CashErrorsModule: React.FC<CashErrorsModuleProps> = ({ user, store, stores
           setIsSubmitting(false);
       }
   };
-
+ 
   const imprimirReciboIndividual = (data: any) => {
       const printWindow = window.open('', '_blank', 'width=800,height=1000');
       if (!printWindow) return;
-
+ 
       const formattedDate = new Date(data.date + 'T12:00:00').toLocaleDateString('pt-BR');
       const isFalta = data.type === 'falta';
       const color = isFalta ? '#dc2626' : '#16a34a';
       const storeName = data.storeName;
-
+ 
       const content = `
         <div style="font-family: 'Courier New', Courier, monospace; padding: 20px; max-width: 400px; margin: auto; border: 1px dashed #ccc;">
           <div style="text-align: center; margin-bottom: 20px;">
@@ -173,15 +174,15 @@ const CashErrorsModule: React.FC<CashErrorsModuleProps> = ({ user, store, stores
             <p style="margin: 5px 0;">VALOR ENCONTRADO: ${formatCurrency(parseFloat(data.foundValue.replace(',','.')))}</p>
             <p style="margin: 5px 0; font-size: 1.2em;"><strong>DIFERENÇA: ${formatCurrency(Math.abs(data.difference))}</strong></p>
           </div>
-
+ 
           <p><strong>JUSTIFICATIVA:</strong><br/>${data.reason}</p>
           
           ${data.witnessName ? `<p><strong>TESTEMUNHA:</strong> ${data.witnessName} (${data.witnessRole})</p>` : ''}
-
+ 
           <div style="margin-top: 30px; border-top: 1px solid #000; padding-top: 10px; text-align: center;">
             <p style="font-size: 0.8em;">ASSINATURA DO FUNCIONÁRIO</p>
           </div>
-
+ 
           <div style="margin-top: 20px; font-size: 0.7em; text-align: center; color: #666;">
             ${isFalta ? 
               '* O valor da falta será descontado conforme política da empresa.' : 
@@ -191,7 +192,7 @@ const CashErrorsModule: React.FC<CashErrorsModuleProps> = ({ user, store, stores
           <p style="text-align: center; font-size: 0.6em; margin-top: 20px;">ID: ${data.id}</p>
         </div>
       `;
-
+ 
       const html = `
         <html>
           <head><title>Recibo de Erro de Caixa</title></head>
@@ -202,11 +203,11 @@ const CashErrorsModule: React.FC<CashErrorsModuleProps> = ({ user, store, stores
           </body>
         </html>
       `;
-
+ 
       printWindow.document.write(html);
       printWindow.document.close();
   };
-
+ 
   const gerarRelatorioMensal = async () => {
       try {
           const { data: list, error: errList } = await supabase.rpc('fn_listar_erros_mes', {
@@ -214,21 +215,21 @@ const CashErrorsModule: React.FC<CashErrorsModuleProps> = ({ user, store, stores
               p_mes: filterMonth,
               p_ano: filterYear
           });
-
+ 
           const { data: totals, error: errTotals } = await supabase.rpc('fn_calcular_total_mensal_descontos', {
               p_store_id: filterStoreId === 'all' ? null : filterStoreId,
               p_mes: filterMonth,
               p_ano: filterYear
           });
-
+ 
           if (errList || errTotals) throw errList || errTotals;
-
+ 
           const printWindow = window.open('', '_blank', 'width=900,height=1200');
           if (!printWindow) return;
-
+ 
           const mesNome = MONTHS.find(m => m.value === filterMonth)?.label;
           const storeName = filterStoreId === 'all' ? 'TODAS AS LOJAS' : stores.find(s => s.id === filterStoreId)?.name;
-
+ 
           const html = `
             <html>
               <head>
@@ -249,7 +250,7 @@ const CashErrorsModule: React.FC<CashErrorsModuleProps> = ({ user, store, stores
                   <h2>RELATÓRIO MENSAL DE ERROS DE CAIXA</h2>
                   <p>${storeName} - ${mesNome} / ${filterYear}</p>
                 </div>
-
+ 
                 <table>
                   <thead>
                     <tr>
@@ -272,7 +273,7 @@ const CashErrorsModule: React.FC<CashErrorsModuleProps> = ({ user, store, stores
                     `).join('')}
                   </tbody>
                 </table>
-
+ 
                 <div class="summary">
                   <h3>RESUMO FINANCEIRO</h3>
                   <p>Total de Faltas: <span class="falta">${formatCurrency(totals.total_faltas)}</span></p>
@@ -284,7 +285,7 @@ const CashErrorsModule: React.FC<CashErrorsModuleProps> = ({ user, store, stores
               </body>
             </html>
           `;
-
+ 
           printWindow.document.write(html);
           printWindow.document.close();
       } catch (err) {
@@ -292,7 +293,7 @@ const CashErrorsModule: React.FC<CashErrorsModuleProps> = ({ user, store, stores
           alert("Erro ao gerar relatório.");
       }
   };
-
+ 
   return (
     <div className="p-6 md:p-8 max-w-[1600px] mx-auto space-y-8">
         <div className="flex flex-col md:flex-row justify-between items-center gap-4">
@@ -317,7 +318,7 @@ const CashErrorsModule: React.FC<CashErrorsModuleProps> = ({ user, store, stores
                 </button>
             </div>
         </div>
-
+ 
         {activeTab === 'new' && canEdit && (
             <div className="grid grid-cols-1 lg:grid-cols-3 gap-8 animate-in fade-in slide-in-from-bottom-4 duration-300">
                 <div className="lg:col-span-2 bg-white p-8 rounded-2xl shadow-xl border border-gray-100">
@@ -346,7 +347,7 @@ const CashErrorsModule: React.FC<CashErrorsModuleProps> = ({ user, store, stores
                                     className="w-full p-4 bg-gray-50 border border-gray-200 rounded-xl font-bold text-gray-700 outline-none focus:ring-2 focus:ring-red-500 transition-all" 
                                 />
                             </div>
-
+ 
                             <div className="grid grid-cols-2 gap-4">
                                 <div>
                                     <label className="block text-xs font-black text-gray-400 uppercase mb-2 ml-1">Valor Esperado</label>
@@ -372,7 +373,7 @@ const CashErrorsModule: React.FC<CashErrorsModuleProps> = ({ user, store, stores
                                 </div>
                             </div>
                         </div>
-
+ 
                         <div>
                             <label className="block text-xs font-black text-gray-400 uppercase mb-2 ml-1">Justificativa / Motivo</label>
                             <textarea 
@@ -383,7 +384,7 @@ const CashErrorsModule: React.FC<CashErrorsModuleProps> = ({ user, store, stores
                                 className="w-full p-4 bg-gray-50 border border-gray-200 rounded-xl font-bold text-gray-700 h-32 outline-none focus:ring-2 focus:ring-red-500 transition-all resize-none" 
                             />
                         </div>
-
+ 
                         <div className="bg-gray-50 p-6 rounded-xl border border-dashed border-gray-300 space-y-4">
                             <h4 className="text-xs font-black text-gray-400 uppercase">Testemunha (Opcional)</h4>
                             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
@@ -403,7 +404,7 @@ const CashErrorsModule: React.FC<CashErrorsModuleProps> = ({ user, store, stores
                                 />
                             </div>
                         </div>
-
+ 
                         <button 
                             type="submit" 
                             disabled={isSubmitting} 
@@ -413,7 +414,7 @@ const CashErrorsModule: React.FC<CashErrorsModuleProps> = ({ user, store, stores
                         </button>
                     </form>
                 </div>
-
+ 
                 <div className="space-y-6">
                     <div className="bg-white p-6 rounded-2xl shadow-lg border border-gray-100">
                         <h3 className="text-sm font-black text-gray-400 uppercase mb-4">Resumo do Lançamento</h3>
@@ -451,7 +452,7 @@ const CashErrorsModule: React.FC<CashErrorsModuleProps> = ({ user, store, stores
                 </div>
             </div>
         )}
-
+ 
         {activeTab === 'list' && (
             <div className="space-y-6 animate-in fade-in duration-300">
                 <div className="bg-white p-6 rounded-2xl border shadow-sm flex flex-col md:flex-row justify-between items-center gap-4">
@@ -492,7 +493,7 @@ const CashErrorsModule: React.FC<CashErrorsModuleProps> = ({ user, store, stores
                         <Printer size={18} /> GERAR RELATÓRIO MENSAL CONSOLIDADO
                     </button>
                 </div>
-
+ 
                 <div className="bg-white rounded-2xl shadow-xl border border-gray-100 overflow-hidden">
                     <div className="overflow-x-auto">
                         <table className="w-full text-left">
@@ -578,5 +579,5 @@ const CashErrorsModule: React.FC<CashErrorsModuleProps> = ({ user, store, stores
     </div>
   );
 };
-
+ 
 export default CashErrorsModule;

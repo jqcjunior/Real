@@ -103,39 +103,12 @@ class ApiService {
       value: receiptData.value,
       value_in_words: receiptData.value_in_words,
       reference: receiptData.reference,
-      receipt_date: receiptData.receipt_date,
-      receipt_number: receiptData.receipt_number,
-      formatted_number: receiptData.formatted_number
+      receipt_date: receiptData.receipt_date
+      // receipt_number e formatted_number são automáticos no banco
     }]).select().single();
 
     if (error) throw error;
     return data;
-  }
-
-  /**
-   * Buscar próximo número de recibo
-   */
-  async getNextReceiptNumber() {
-    try {
-      await this.ensureRLS();
-      const { data, error } = await supabase.rpc('fn_get_next_receipt_number', {
-        p_token: this.getToken()
-      });
-
-      if (error) throw error;
-
-      if (data.success) {
-        return {
-          next_number: data.next_number,
-          formatted: data.formatted
-        };
-      } else {
-        throw new Error(data.error);
-      }
-    } catch (error: any) {
-      console.error('Erro ao buscar próximo número:', error);
-      throw error;
-    }
   }
 
   /**
@@ -144,18 +117,14 @@ class ApiService {
   async listReceipts(limit: number = 50) {
     try {
       await this.ensureRLS();
-      const { data, error } = await supabase.rpc('fn_list_receipts', {
-        p_token: this.getToken(),
-        p_limit: limit
-      });
+      const { data, error } = await supabase
+        .from('financial_receipts')
+        .select('*')
+        .order('created_at', { ascending: false })
+        .limit(limit);
 
       if (error) throw error;
-
-      if (data.success) {
-        return data.receipts;
-      } else {
-        throw new Error(data.error);
-      }
+      return data;
     } catch (error: any) {
       console.error('Erro ao listar recibos:', error);
       throw error;

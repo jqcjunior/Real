@@ -826,16 +826,11 @@ const CashRegisterModule: React.FC<CashRegisterModuleProps> = ({
         });
     };
  
-    const [nextNumber, setNextNumber] = useState(1);
+    const [nextNumber, setNextNumber] = useState(0);
  
     const fetchNextNumber = async () => {
-        try {
-            const result = await apiService.getNextReceiptNumber();
-            setNextNumber(result.next_number);
-        } catch (err) {
-            console.error('Erro ao buscar próximo número:', err);
-            setNextNumber(1);
-        }
+        // O banco agora gera o número automaticamente durante a inserção
+        setNextNumber(0);
     };
  
     useEffect(() => {

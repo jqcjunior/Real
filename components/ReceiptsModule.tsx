@@ -84,17 +84,8 @@ const ReceiptsModule: React.FC<ReceiptsModuleProps> = ({ user, stores, receipts,
 
   // ✅ Buscar próximo número usando a função do backend
   useEffect(() => {
-      async function fetchNextNumber() {
-          try {
-              const result = await apiService.getNextReceiptNumber();
-              setNextNumber(result.next_number);
-          } catch (err) {
-              console.error('Erro ao buscar próximo número:', err);
-              setNextNumber(1);
-          }
-      }
-      
-      fetchNextNumber();
+      // O banco agora gera o número automaticamente durante a inserção
+      setNextNumber(0);
   }, []);
 
   const receiptValueNum = parseFloat(receiptData.value.replace(/\./g, '').replace(',', '.')) || 0;
@@ -201,8 +192,10 @@ const ReceiptsModule: React.FC<ReceiptsModuleProps> = ({ user, stores, receipts,
           // Imprimir
           printReceipt(savedReceipt, savedReceipt.formatted_number);
 
-          // Atualizar próximo número
-          setNextNumber(savedReceipt.receipt_number + 1);
+          // Atualizar próximo número (opcional, pois o banco gera)
+          if (savedReceipt.receipt_number) {
+              setNextNumber(savedReceipt.receipt_number + 1);
+          }
           
           // Limpar formulário
           setReceiptData(prev => ({ 
