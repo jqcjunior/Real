@@ -629,19 +629,15 @@ const CashRegisterModule: React.FC<CashRegisterModuleProps> = ({
  
     // 🔒 CORREÇÃO 1: Filtrar bandeiras por loja/usuário (se necessário ter bandeiras separadas por loja)
     const fetchBrands = async () => {
+        if (!selectedStoreId) return;
+        
         try {
-            // ✅ OPÇÃO A: Se bandeiras são GLOBAIS (todas lojas veem as mesmas)
+            // ✅ Bandeiras por loja (recomendado para segurança)
             const { data, error } = await supabase
                 .from('financial_card_brands')
                 .select('*')
+                .eq('store_id', selectedStoreId) // ✅ Filtra por loja
                 .order('name', { ascending: true });
- 
-            // ✅ OPÇÃO B: Se bandeiras são POR LOJA (descomente se for o caso)
-            // const { data, error } = await supabase
-            //     .from('financial_card_brands')
-            //     .select('*')
-            //     .eq('store_id', selectedStoreId) // Filtra por loja
-            //     .order('name', { ascending: true });
             
             if (error) throw error;
             
@@ -774,8 +770,10 @@ const CashRegisterModule: React.FC<CashRegisterModuleProps> = ({
     };
  
     useEffect(() => {
-        fetchBrands();
-    }, []);
+        if (selectedStoreId) {
+            fetchBrands();
+        }
+    }, [selectedStoreId]);
  
     useEffect(() => {
         if (activeTab === 'cartoes' || activeTab === 'pix') {
@@ -784,15 +782,20 @@ const CashRegisterModule: React.FC<CashRegisterModuleProps> = ({
     }, [activeTab, selectedDate, selectedStoreId]);
  
     const handleAddBrand = async () => {
-        if (!newBrandName.trim()) return;
+        if (!newBrandName.trim() || !selectedStoreId) {
+            showToast("Selecione uma loja primeiro!", "error");
+            return;
+        }
         const name = newBrandName.toUpperCase().trim();
         setIsSubmitting(true);
         try {
-            // ✅ Se bandeiras são POR LOJA, adicione store_id:
-            // const { error } = await supabase.from('financial_card_brands').insert([{ name, store_id: selectedStoreId }]);
-            
-            // ✅ Se bandeiras são GLOBAIS:
-            const { error } = await supabase.from('financial_card_brands').insert([{ name }]);
+            // ✅ SEMPRE incluir store_id
+            const { error } = await supabase
+                .from('financial_card_brands')
+                .insert([{ 
+                    name, 
+                    store_id: selectedStoreId 
+                }]);
             
             if (error) throw error;
             setNewBrandName('');
@@ -875,13 +878,20 @@ const CashRegisterModule: React.FC<CashRegisterModuleProps> = ({
                 return;
             }
             try {
-                // ✅ CORREÇÃO: Filtrar clientes PIX por loja
-                const { data, error } = await supabase
+                // ✅ CORREÇÃO: Filtrar por loja E usuário (se não for admin)
+                let query = supabase
                     .from('financial_pix_sales')
                     .select('payer_name')
-                    .eq('store_id', selectedStoreId)  // ✅ Filtra por loja
+                    .eq('store_id', selectedStoreId)
                     .ilike('payer_name', `%${pixClientInput}%`)
                     .limit(10);
+                
+                // ✅ Não-admins só veem seus próprios clientes
+                if (!isAdmin) {
+                    query = query.eq('user_id', user.id);
+                }
+                
+                const { data, error } = await query;
                 
                 if (error) throw error;
                 if (data) {
@@ -894,7 +904,7 @@ const CashRegisterModule: React.FC<CashRegisterModuleProps> = ({
         }, 300);
  
         return () => clearTimeout(timer);
-    }, [pixClientInput, selectedStoreId]);
+    }, [pixClientInput, selectedStoreId, isAdmin, user.id]);
  
     // Fechar sugestões ao clicar fora
     useEffect(() => {
