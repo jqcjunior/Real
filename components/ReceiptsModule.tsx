@@ -3,6 +3,7 @@ import { User, Store, Receipt } from '../types';
 import { formatCurrency, BRAND_LOGO } from '../constants';
 import { Printer, FileText, PenTool } from 'lucide-react';
 import apiService from '../services/apiService';
+import { supabase } from '../services/supabaseClient'; // ✅ ADICIONAR ESTA LINHA
  
 interface ReceiptsModuleProps {
   user: User;
@@ -83,21 +84,40 @@ const ReceiptsModule: React.FC<ReceiptsModuleProps> = ({ user, stores, receipts,
       }
   }, [userStore]);
  
-  // ✅ Buscar próximo número APENAS para exibição
+  // ✅ Buscar próximo número DIRETO DO SUPABASE
   useEffect(() => {
       const fetchNextNumberForDisplay = async () => {
-          if (!userStore?.id) return;
+          if (!userStore?.id) {
+              console.log('⚠️ Aguardando seleção de loja...');
+              return;
+          }
           
+          console.log('🔍 Buscando próximo número para loja:', userStore.name);
           setLoadingNextNumber(true);
+          
           try {
-              const storeReceipts = await apiService.listReceipts(userStore.id);
-              const maxNumber = storeReceipts.reduce((max: number, r: any) => 
-                  Math.max(max, r.receipt_number || 0), 0
-              );
-              setNextNumber(maxNumber + 1);
-          } catch (err) {
-              console.error('Erro ao buscar próximo número (só exibição):', err);
-              setNextNumber(0); // Fallback - mostrará que é automático
+              const { data, error } = await supabase
+                  .from('financial_receipts')
+                  .select('receipt_number')
+                  .eq('store_id', userStore.id)
+                  .order('receipt_number', { ascending: false })
+                  .limit(1)
+                  .maybeSingle();
+
+              if (error && error.code !== 'PGRST116') {
+                  console.error('❌ Erro na query:', error);
+                  throw error;
+              }
+
+              const currentMax = data?.receipt_number || 0;
+              const nextNum = currentMax + 1;
+              
+              setNextNumber(nextNum);
+              console.log('✅ Próximo número:', nextNum);
+              
+          } catch (err: any) {
+              console.error('❌ Erro ao buscar próximo número:', err);
+              setNextNumber(0);
           } finally {
               setLoadingNextNumber(false);
           }
@@ -244,7 +264,7 @@ const ReceiptsModule: React.FC<ReceiptsModuleProps> = ({ user, stores, receipts,
             <div className="bg-white px-4 py-2 rounded-lg border border-gray-200 shadow-sm text-center">
                 <p className="text-xs text-gray-500 uppercase font-bold">Próximo Recibo</p>
                 {loadingNextNumber ? (
-                    <p className="text-lg text-gray-400">Carregando...</p>
+                    <p className="text-lg text-gray-400 animate-pulse">Carregando...</p>
                 ) : nextNumber > 0 ? (
                     <p className="text-2xl font-black text-red-600">#{formattedNumber}</p>
                 ) : (
