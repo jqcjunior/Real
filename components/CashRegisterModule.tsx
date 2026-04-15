@@ -826,17 +826,6 @@ const CashRegisterModule: React.FC<CashRegisterModuleProps> = ({
         });
     };
  
-    const [nextNumber, setNextNumber] = useState(0);
- 
-    const fetchNextNumber = async () => {
-        // O banco agora gera o número automaticamente durante a inserção
-        setNextNumber(0);
-    };
- 
-    useEffect(() => {
-        fetchNextNumber();
-    }, []);
- 
     const handleAddCard = async (e: React.FormEvent) => {
         e.preventDefault();
         const val = parseFloat(cardValueInput.replace(',', '.'));
@@ -1016,7 +1005,6 @@ const CashRegisterModule: React.FC<CashRegisterModuleProps> = ({
             const saved = await onAddReceipt(rData);
             printReceiptDoc(saved || rData);
             setReceiptForm({ recipient: '', value: '', reference: '' });
-            fetchNextNumber();
             showToast("Recibo emitido!");
         } catch (error) { 
             showToast("Erro ao emitir recibo.", "error"); 
@@ -1081,7 +1069,6 @@ const CashRegisterModule: React.FC<CashRegisterModuleProps> = ({
                 {activeTab === 'recibos' && (
                     <div className="max-w-2xl mx-auto space-y-6 animate-in fade-in duration-300">
                         <div className="bg-white p-8 rounded-[40px] shadow-sm border border-gray-100 relative overflow-hidden h-fit flex flex-col">
-                            <div className="absolute top-0 right-0 p-8"><div className="text-center bg-blue-50 px-4 py-2 rounded-2xl border border-blue-100 shadow-sm"><p className="text-[8px] font-black text-blue-400 uppercase tracking-widest mb-1">Próximo</p><p className="text-2xl font-black text-blue-900 leading-none">#{String(nextNumber).padStart(4, '0')}</p></div></div>
                             <h3 className="text-sm font-black text-gray-900 uppercase italic tracking-tighter mb-8 flex items-center gap-3"><PenTool className="text-blue-600" size={18} /> Novo Recibo Profissional</h3>
                             <form onSubmit={handleSaveReceipt} className="space-y-5">
                                 <div className="space-y-1"><label className="text-[10px] font-black text-gray-400 uppercase ml-2 tracking-widest">Recebedor (Favorecido)</label><input required value={receiptForm.recipient} onChange={e => setReceiptForm({...receiptForm, recipient: e.target.value})} className="w-full p-4 bg-gray-50 border-none rounded-2xl font-black text-blue-950 uppercase italic outline-none focus:ring-4 shadow-inner" placeholder="NOME DE QUEM RECEBE" /></div>

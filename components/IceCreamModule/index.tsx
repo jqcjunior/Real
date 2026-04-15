@@ -128,7 +128,7 @@ const IceCreamModule: React.FC<IceCreamModuleProps> = ({
     const [showEditSangriaModal, setShowEditSangriaModal] = useState(false);
 
     // Audit State
-    const [auditSubTab, setAuditSubTab] = useState<'vendas' | 'avarias'>('vendas');
+    const [auditSubTab, setAuditSubTab] = useState<'vendas' | 'avarias' | 'cancelamentos'>('vendas');
     const [showDaySummary, setShowDaySummary] = useState(false);
     const [auditDay, setAuditDay] = useState(new Date().getDate().toString());
     const [auditMonth, setAuditMonth] = useState((new Date().getMonth() + 1).toString());
@@ -306,6 +306,29 @@ const IceCreamModule: React.FC<IceCreamModuleProps> = ({
             return dateStr === selectedAuditDate && m.store_id === effectiveStoreId && m.movement_type === 'AVARIA';
         });
     }, [stockMovements, selectedAuditDate, effectiveStoreId]);
+
+    const filteredCancelations = useMemo(() => {
+        const month = parseInt(auditMonth);
+        const year = parseInt(auditYear);
+        
+        return sales.filter(s => {
+            if (s.status !== 'canceled' || !s.createdAt) return false;
+            
+            const d = new Date(s.createdAt);
+            const saleMonth = d.getMonth() + 1;
+            const saleYear = d.getFullYear();
+            
+            const matchesMonth = !month || saleMonth === month;
+            const matchesYear = !year || saleYear === year;
+            const matchesStore = s.storeId === effectiveStoreId;
+            const matchesSearch = !auditSearch || 
+                s.saleCode?.toLowerCase().includes(auditSearch.toLowerCase()) ||
+                s.cancel_reason?.toLowerCase().includes(auditSearch.toLowerCase()) ||
+                s.canceled_by?.toLowerCase().includes(auditSearch.toLowerCase());
+            
+            return matchesMonth && matchesYear && matchesStore && matchesSearch;
+        }).sort((a, b) => new Date(b.createdAt!).getTime() - new Date(a.createdAt!).getTime());
+    }, [sales, auditMonth, auditYear, effectiveStoreId, auditSearch]);
 
     // Handlers
     const handleOpenPrintPreview = (items: any[], saleCode: string, method: string, buyer?: string) => {
@@ -658,7 +681,19 @@ const IceCreamModule: React.FC<IceCreamModuleProps> = ({
         if (!showCancelModal) return;
         setIsSubmitting(true);
         try {
-            await onCancelSale(showCancelModal.code, cancelReason.toUpperCase());
+            // Atualizar com informações de quem cancelou
+            const { error } = await supabase
+                .from('ice_cream_daily_sales')
+                .update({
+                    status: 'canceled',
+                    cancel_reason: cancelReason.toUpperCase(),
+                    canceled_by: user.name,
+                    canceled_at: new Date().toISOString()
+                })
+                .eq('sale_code', showCancelModal.code);
+            
+            if (error) throw error;
+            
             setShowCancelModal(null);
             setCancelReason('');
             if (fetchData) await fetchData();
@@ -851,7 +886,7 @@ const IceCreamModule: React.FC<IceCreamModuleProps> = ({
                         <button onClick={() => setActiveTab('stock')} className={`px-3 py-2.5 rounded-xl text-[10px] font-black uppercase transition-all flex items-center gap-2 whitespace-nowrap shrink-0 ${activeTab === 'stock' ? 'bg-white text-blue-600 shadow-md ring-1 ring-slate-200/50' : 'text-slate-500 hover:text-slate-700 hover:bg-white/50'}`}>
                             <Package size={15} /> Estoque
                         </button>
-                        {canManage && (
+                        {(canManage || isSorvete) && (
                             <button onClick={() => setActiveTab('audit')} className={`px-3 py-2.5 rounded-xl text-[10px] font-black uppercase transition-all flex items-center gap-2 whitespace-nowrap shrink-0 ${activeTab === 'audit' ? 'bg-white text-blue-600 shadow-md ring-1 ring-slate-200/50' : 'text-slate-500 hover:text-slate-700 hover:bg-white/50'}`}>
                                 <History size={15} /> Auditoria
                             </button>
@@ -991,9 +1026,11 @@ const IceCreamModule: React.FC<IceCreamModuleProps> = ({
                         auditSummary={auditSummary}
                         groupedAuditSales={groupedAuditSales}
                         filteredAuditWastage={filteredAuditWastage}
+                        filteredCancelations={filteredCancelations}
                         handleOpenPrintPreview={handleOpenPrintPreview}
                         items={items}
                         stock={stock}
+                        isSorvete={isSorvete}
                     />
                 )}
 
