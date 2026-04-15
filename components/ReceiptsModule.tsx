@@ -3,14 +3,14 @@ import { User, Store, Receipt } from '../types';
 import { formatCurrency, BRAND_LOGO } from '../constants';
 import { Printer, FileText, PenTool } from 'lucide-react';
 import apiService from '../services/apiService';
-
+ 
 interface ReceiptsModuleProps {
   user: User;
   stores: Store[];
   receipts: Receipt[];
   onAddReceipt: (receipt: any) => Promise<any>;
 }
-
+ 
 const numberToWords = (value: number): string => {
     if (value === 0) return "zero reais";
     const unidades = ["", "um", "dois", "três", "quatro", "cinco", "seis", "sete", "oito", "nove"];
@@ -58,12 +58,13 @@ const numberToWords = (value: number): string => {
     
     return text;
 };
-
+ 
 const ReceiptsModule: React.FC<ReceiptsModuleProps> = ({ user, stores, receipts, onAddReceipt }) => {
   const userStore = useMemo(() => stores.find(s => s.id === user.storeId), [stores, user.storeId]);
   
   const [nextNumber, setNextNumber] = useState(1);
   const [isLoading, setIsLoading] = useState(false);
+  const [loadingNextNumber, setLoadingNextNumber] = useState(false);
   
   const [receiptData, setReceiptData] = useState({
       value: '',
@@ -72,7 +73,7 @@ const ReceiptsModule: React.FC<ReceiptsModuleProps> = ({ user, stores, receipts,
       date: new Date().toISOString().split('T')[0],
       reference: 'pagamento de serviços'
   });
-
+ 
   useEffect(() => {
       if (userStore) {
           setReceiptData(prev => ({
@@ -81,22 +82,39 @@ const ReceiptsModule: React.FC<ReceiptsModuleProps> = ({ user, stores, receipts,
           }));
       }
   }, [userStore]);
-
-  // ✅ Buscar próximo número usando a função do backend
+ 
+  // ✅ Buscar próximo número APENAS para exibição
   useEffect(() => {
-      // O banco agora gera o número automaticamente durante a inserção
-      setNextNumber(0);
-  }, []);
-
+      const fetchNextNumberForDisplay = async () => {
+          if (!userStore?.id) return;
+          
+          setLoadingNextNumber(true);
+          try {
+              const storeReceipts = await apiService.listReceipts(userStore.id);
+              const maxNumber = storeReceipts.reduce((max: number, r: any) => 
+                  Math.max(max, r.receipt_number || 0), 0
+              );
+              setNextNumber(maxNumber + 1);
+          } catch (err) {
+              console.error('Erro ao buscar próximo número (só exibição):', err);
+              setNextNumber(0); // Fallback - mostrará que é automático
+          } finally {
+              setLoadingNextNumber(false);
+          }
+      };
+      
+      fetchNextNumberForDisplay();
+  }, [userStore]);
+ 
   const receiptValueNum = parseFloat(receiptData.value.replace(/\./g, '').replace(',', '.')) || 0;
   const valueInWords = numberToWords(receiptValueNum);
   const city = userStore?.city?.split(' - ')[0] || 'Cidade';
-  const formattedNumber = String(nextNumber).padStart(4, '0');
-
+  const formattedNumber = nextNumber > 0 ? String(nextNumber).padStart(4, '0') : '????';
+ 
   const printReceipt = (receipt: any, receiptNumber?: string) => {
       const printWindow = window.open('', '_blank', 'width=900,height=1200');
       if (!printWindow) return;
-
+ 
       // Mapeamento robusto de campos
       const finalNumber = receiptNumber || (receipt.receipt_number ? `#${String(receipt.receipt_number).padStart(4, '0')}` : `#${String(receipt.id).padStart(4, '0')}`);
       const valueInWords = receipt.value_in_words || receipt.valueInWords || 'UNDEFINED';
@@ -107,9 +125,9 @@ const ReceiptsModule: React.FC<ReceiptsModuleProps> = ({ user, stores, receipts,
           const [y, m, d] = dateStr.split('-').map(Number);
           formattedDate = new Date(y, m - 1, d).toLocaleDateString('pt-BR', { day: 'numeric', month: 'long', year: 'numeric' });
       }
-
+ 
       const formattedValue = formatCurrency(receipt.value);
-
+ 
       const htmlContent = `
         <!DOCTYPE html>
         <html>
@@ -168,18 +186,19 @@ const ReceiptsModule: React.FC<ReceiptsModuleProps> = ({ user, stores, receipts,
       printWindow.document.write(htmlContent); 
       printWindow.document.close();
   };
-
-  // ✅ NOVA FUNÇÃO: Usa o backend do Supabase
+ 
+  // ✅ Salvar e Imprimir
   const handlePrintAndSave = async () => {
       if (receiptValueNum <= 0 || !receiptData.payer || !receiptData.recipient) {
           alert("Preencha todos os campos obrigatórios."); 
           return;
       }
-
+ 
       setIsLoading(true);
-
+ 
       try {
           // Criar recibo usando a função centralizada no App.tsx
+          // O banco gera receipt_number automaticamente
           const savedReceipt = await onAddReceipt({
               payer: receiptData.payer,
               recipient: receiptData.recipient,
@@ -188,11 +207,11 @@ const ReceiptsModule: React.FC<ReceiptsModuleProps> = ({ user, stores, receipts,
               reference: receiptData.reference,
               date: receiptData.date
           });
-
+ 
           // Imprimir
           printReceipt(savedReceipt, savedReceipt.formatted_number);
-
-          // Atualizar próximo número (opcional, pois o banco gera)
+ 
+          // ✅ Atualizar próximo número para exibição
           if (savedReceipt.receipt_number) {
               setNextNumber(savedReceipt.receipt_number + 1);
           }
@@ -204,9 +223,9 @@ const ReceiptsModule: React.FC<ReceiptsModuleProps> = ({ user, stores, receipts,
               recipient: '', 
               reference: 'pagamento de serviços' 
           }));
-
-          alert(`✅ Recibo #${savedReceipt.formatted_number} salvo com sucesso!`);
-
+ 
+          alert(`✅ Recibo #${savedReceipt.formatted_number || savedReceipt.receipt_number} salvo com sucesso!`);
+ 
       } catch (error: any) {
           console.error('Erro ao salvar recibo:', error);
           alert(`❌ Erro ao salvar recibo: ${error.message || 'Erro desconhecido'}`);
@@ -214,7 +233,7 @@ const ReceiptsModule: React.FC<ReceiptsModuleProps> = ({ user, stores, receipts,
           setIsLoading(false);
       }
   };
-
+ 
   return (
     <div className="p-6 md:p-8 max-w-[1600px] mx-auto min-h-screen flex flex-col">
         <div className="flex flex-col md:flex-row justify-between items-center mb-8">
@@ -224,10 +243,16 @@ const ReceiptsModule: React.FC<ReceiptsModuleProps> = ({ user, stores, receipts,
             </div>
             <div className="bg-white px-4 py-2 rounded-lg border border-gray-200 shadow-sm text-center">
                 <p className="text-xs text-gray-500 uppercase font-bold">Próximo Recibo</p>
-                <p className="text-2xl font-black text-red-600">#{formattedNumber}</p>
+                {loadingNextNumber ? (
+                    <p className="text-lg text-gray-400">Carregando...</p>
+                ) : nextNumber > 0 ? (
+                    <p className="text-2xl font-black text-red-600">#{formattedNumber}</p>
+                ) : (
+                    <p className="text-sm text-gray-400 font-semibold">Automático</p>
+                )}
             </div>
         </div>
-
+ 
         <div className="flex flex-col lg:flex-row gap-8">
             <div className="w-full lg:w-1/3 bg-white p-6 rounded-xl shadow-sm border border-gray-200 h-fit">
                 <h3 className="font-bold text-gray-800 mb-4 flex items-center gap-2"><PenTool size={18} className="text-blue-600"/> Dados do Recibo</h3>
@@ -246,7 +271,7 @@ const ReceiptsModule: React.FC<ReceiptsModuleProps> = ({ user, stores, receipts,
                     </button>
                 </div>
             </div>
-
+ 
             <div className="flex-1 flex justify-center items-start overflow-hidden bg-gray-200 p-8 rounded-3xl">
                 <div className="w-full max-w-[700px] bg-white p-8 border-[8px] border-double border-black shadow-2xl scale-90 origin-top relative font-serif aspect-[1.414/1]">
                     <div className="relative z-10">
@@ -281,5 +306,5 @@ const ReceiptsModule: React.FC<ReceiptsModuleProps> = ({ user, stores, receipts,
     </div>
   );
 };
-
+ 
 export default ReceiptsModule;
