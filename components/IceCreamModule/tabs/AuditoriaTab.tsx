@@ -1,10 +1,10 @@
 import React from 'react';
 import { 
-    History, Search, X, Wallet, Zap, Printer, Ban
+    History, Search, X, Wallet, Zap, Printer, Ban, Trash2
 } from 'lucide-react';
 import { formatCurrency } from '../../../constants';
 import { MONTHS } from '../constants';
-
+ 
 interface AuditoriaTabProps {
     auditSubTab: 'vendas' | 'avarias' | 'cancelamentos';
     setAuditSubTab: (tab: 'vendas' | 'avarias' | 'cancelamentos') => void;
@@ -23,11 +23,12 @@ interface AuditoriaTabProps {
     filteredAuditWastage: any[];
     filteredCancelations: any[];
     handleOpenPrintPreview: (items: any[], saleCode: string, method: string, buyer?: string) => void;
+    onCancelSale: (saleId: string, saleCode: string) => void;
     items: any[];
     stock: any[];
     isSorvete: boolean;
 }
-
+ 
 const AuditoriaTab: React.FC<AuditoriaTabProps> = ({
     auditSubTab,
     setAuditSubTab,
@@ -46,6 +47,7 @@ const AuditoriaTab: React.FC<AuditoriaTabProps> = ({
     filteredAuditWastage,
     filteredCancelations,
     handleOpenPrintPreview,
+    onCancelSale,
     items,
     stock,
     isSorvete
@@ -118,7 +120,7 @@ const AuditoriaTab: React.FC<AuditoriaTabProps> = ({
                     </div>
                 )}
             </div>
-
+ 
             {showDaySummary && auditSubTab !== 'cancelamentos' && (
                 <div className="bg-white p-8 rounded-[40px] shadow-2xl border-2 border-blue-100 animate-in slide-in-from-top duration-500">
                     <div className="flex items-center justify-between mb-6">
@@ -178,7 +180,7 @@ const AuditoriaTab: React.FC<AuditoriaTabProps> = ({
                     </div>
                 </div>
             )}
-
+ 
             {auditSubTab !== 'cancelamentos' && (
                 <div className="flex flex-wrap gap-6 px-4 py-2 bg-blue-50/50 rounded-2xl border border-blue-100/50">
                     <div className="flex items-center gap-2">
@@ -195,7 +197,7 @@ const AuditoriaTab: React.FC<AuditoriaTabProps> = ({
                     </div>
                 </div>
             )}
-
+ 
             {auditSubTab === 'vendas' ? (
                 <div className="bg-white rounded-[40px] shadow-xl border border-gray-100 overflow-hidden">
                     <table className="w-full text-left">
@@ -243,13 +245,22 @@ const AuditoriaTab: React.FC<AuditoriaTabProps> = ({
                                         <td className="px-8 py-5 text-center">
                                             <div className="flex items-center justify-center gap-2">
                                                 {saleGroup.status !== 'canceled' && (
-                                                    <button 
-                                                        onClick={() => handleOpenPrintPreview(saleGroup.items, saleGroup.saleCode, saleGroup.paymentMethods.join(' + '), saleGroup.buyer_name)} 
-                                                        className="p-2 text-blue-400 hover:text-blue-600 transition-all"
-                                                        title="Reimprimir Ticket"
-                                                    >
-                                                        <Printer size={18}/>
-                                                    </button>
+                                                    <>
+                                                        <button 
+                                                            onClick={() => handleOpenPrintPreview(saleGroup.items, saleGroup.saleCode, saleGroup.paymentMethods.join(' + '), saleGroup.buyer_name)} 
+                                                            className="p-2 text-blue-400 hover:text-blue-600 transition-all"
+                                                            title="Reimprimir Ticket"
+                                                        >
+                                                            <Printer size={18}/>
+                                                        </button>
+                                                        <button 
+                                                            onClick={() => onCancelSale(saleGroup.id, saleGroup.saleCode)} 
+                                                            className="p-2 text-red-400 hover:text-red-600 transition-all"
+                                                            title="Cancelar Venda"
+                                                        >
+                                                            <Trash2 size={18}/>
+                                                        </button>
+                                                    </>
                                                 )}
                                             </div>
                                         </td>
@@ -345,5 +356,5 @@ const AuditoriaTab: React.FC<AuditoriaTabProps> = ({
         </div>
     );
 };
-
+ 
 export default AuditoriaTab;

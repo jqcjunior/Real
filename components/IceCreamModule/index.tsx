@@ -927,6 +927,7 @@ const IceCreamModule: React.FC<IceCreamModuleProps> = ({
                         onUpdateStock={handleUpdateStock}
                         handleOpenPrintPreview={handleOpenPrintPreview}
                         existingBuyerNames={Array.from(new Set(sales.map(s => s.buyer_name).filter(Boolean) as string[]))}
+                        iceCreamSales={sales}
                     />
                 )}
 
@@ -1028,6 +1029,7 @@ const IceCreamModule: React.FC<IceCreamModuleProps> = ({
                         filteredAuditWastage={filteredAuditWastage}
                         filteredCancelations={filteredCancelations}
                         handleOpenPrintPreview={handleOpenPrintPreview}
+                        onCancelSale={(id, code) => setShowCancelModal({id, code})}
                         items={items}
                         stock={stock}
                         isSorvete={isSorvete}

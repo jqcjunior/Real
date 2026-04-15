@@ -15,6 +15,7 @@ interface PDVTabProps {
     onUpdateStock: (storeId: string, base: string, value: number, unit: string, type: any, stockId?: string) => Promise<void>;
     handleOpenPrintPreview: (items: IceCreamDailySale[], saleCode: string, method: string | null, buyer?: string) => void;
     existingBuyerNames: string[];
+    iceCreamSales: IceCreamDailySale[];
 }
 
 const PDVTab: React.FC<PDVTabProps> = ({
@@ -25,7 +26,8 @@ const PDVTab: React.FC<PDVTabProps> = ({
     onAddSaleAtomic,
     onUpdateStock,
     handleOpenPrintPreview,
-    existingBuyerNames
+    existingBuyerNames,
+    iceCreamSales
 }) => {
     const [cart, setCart] = useState<IceCreamDailySale[]>([]);
     const [selectedCategory, setSelectedCategory] = useState<IceCreamCategory | null>(null);
@@ -35,7 +37,27 @@ const PDVTab: React.FC<PDVTabProps> = ({
     const [amountReceived, setAmountReceived] = useState('');
     const [isSubmitting, setIsSubmitting] = useState(false);
 
-    const filteredItems = useMemo(() => items.filter(i => i.storeId === effectiveStoreId), [items, effectiveStoreId]);
+    const filteredItems = useMemo(() => {
+        // Usar ranking se disponível
+        const rankedItems = items
+            .filter(i => i.storeId === effectiveStoreId && i.active)
+            .map(item => {
+                // Adicionar contador de vendas (se disponível no cache)
+                const salesCount = iceCreamSales
+                    .filter(s => s.itemId === item.id && s.status !== 'canceled')
+                    .length;
+                return { ...item, salesCount };
+            })
+            .sort((a, b) => {
+                // Ordenar por vendas (decrescente), depois alfabético
+                if (b.salesCount !== a.salesCount) {
+                    return b.salesCount - a.salesCount;
+                }
+                return a.name.localeCompare(b.name);
+            });
+        
+        return rankedItems;
+    }, [items, effectiveStoreId, iceCreamSales]);
     const cartTotal = useMemo(() => cart.reduce((acc, curr) => acc + curr.totalValue, 0), [cart]);
 
     const changeDue = useMemo(() => {

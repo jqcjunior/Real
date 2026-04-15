@@ -436,9 +436,120 @@ const App: React.FC = () => {
                 businessDays: Number(x.business_days || 26)
             })));
 
-            if(g) setGoalsData(g.map(x => ({ id: x.id, storeId: x.store_id, year: Number(x.year), month: Number(x.month), revenueTarget: Number(x.revenue_target || 0), itemsTarget: Number(x.items_target || 0), paTarget: Number(x.pa_target || 0), puTarget: Number(x.pu_target || 0), ticketTarget: Number(x.ticket_target || 0), delinquencyTarget: Number(x.delinquency_target || 2.0), businessDays: Number(x.business_days || 26), trend: x.trend || 'stable' })));
+            if(g) setGoalsData(g.map(x => ({ 
+                id: x.id, 
+                storeId: x.store_id, 
+                year: Number(x.year), 
+                month: Number(x.month), 
+                revenueTarget: Number(x.revenue_target || 0), 
+                itemsTarget: Number(x.items_target || 0), 
+                paTarget: Number(x.pa_target || 0), 
+                puTarget: Number(x.pu_target || 0), 
+                ticketTarget: Number(x.ticket_target || 0), 
+                delinquencyTarget: Number(x.delinquency_target || 2.0), 
+                businessDays: Number(x.business_days || 26), 
+                trend: x.trend || 'stable' 
+            })));
 
             setIsLoading(false);
+
+            // 🚀 FILTROS INTELIGENTES POR PAPEL + LOJA
+            const now = new Date();
+            const today = now.toISOString().split('T')[0];
+            const currentMonth = now.getMonth() + 1;
+            const currentYear = now.getFullYear();
+            const isEarlyMonth = now.getDate() <= 10;
+            
+            const userRole = user?.role?.toUpperCase() || '';
+            const userStoreId = user?.storeId || '';
+            
+            // 🔒 CONSTRUIR FILTROS COM ISOLAMENTO POR LOJA
+            let salesQuery = supabase.from('ice_cream_daily_sales').select('*');
+            let salesHeadersQuery = supabase.from('ice_cream_sales').select('*');
+            let cardSalesQuery = supabase.from('financial_card_sales').select('*');
+            let pixSalesQuery = supabase.from('financial_pix_sales').select('*');
+            let movementsQuery = supabase.from('ice_cream_stock_movements').select('*');
+            
+            if (userRole === 'ICE_CREAM' || userRole === 'SORVETE') {
+                // SORVETE: HOJE + MÊS ATUAL (cancelamentos/avarias)
+                const monthStart = `${currentYear}-${String(currentMonth).padStart(2, '0')}-01T00:00:00`;
+                
+                salesQuery = salesQuery
+                    .eq('store_id', userStoreId)
+                    .or(`and(created_at.gte.${today}T00:00:00,status.neq.canceled),and(created_at.gte.${monthStart},status.eq.canceled)`);
+                
+                salesHeadersQuery = salesHeadersQuery
+                    .eq('store_id', userStoreId)
+                    .gte('created_at', `${today}T00:00:00`);
+                
+                cardSalesQuery = cardSalesQuery
+                    .eq('store_id', userStoreId)
+                    .gte('created_at', `${today}T00:00:00`);
+                
+                pixSalesQuery = pixSalesQuery
+                    .eq('store_id', userStoreId)
+                    .gte('created_at', `${today}T00:00:00`);
+                
+                movementsQuery = movementsQuery
+                    .eq('store_id', userStoreId)
+                    .gte('created_at', monthStart);
+                    
+            } else if (userRole === 'MANAGER' || userRole === 'GERENTE') {
+                // GERENTE: MÊS ATUAL + ANTERIOR (se dia ≤ 10)
+                let startMonth = currentMonth;
+                let startYear = currentYear;
+                
+                if (isEarlyMonth) {
+                    if (currentMonth === 1) {
+                        startMonth = 12;
+                        startYear = currentYear - 1;
+                    } else {
+                        startMonth = currentMonth - 1;
+                    }
+                }
+                
+                const salesStart = `${startYear}-${String(startMonth).padStart(2, '0')}-01T00:00:00`;
+                
+                // Cancelamentos/avarias: 3 meses
+                const threeMonthsAgo = new Date(now);
+                threeMonthsAgo.setMonth(threeMonthsAgo.getMonth() - 3);
+                const cancelStart = threeMonthsAgo.toISOString();
+                
+                salesQuery = salesQuery
+                    .eq('store_id', userStoreId)
+                    .or(`and(created_at.gte.${salesStart},status.neq.canceled),and(created_at.gte.${cancelStart},status.eq.canceled)`);
+                
+                salesHeadersQuery = salesHeadersQuery
+                    .eq('store_id', userStoreId)
+                    .gte('created_at', salesStart);
+                
+                cardSalesQuery = cardSalesQuery
+                    .eq('store_id', userStoreId)
+                    .gte('created_at', salesStart);
+                
+                pixSalesQuery = pixSalesQuery
+                    .eq('store_id', userStoreId)
+                    .gte('created_at', salesStart);
+                
+                movementsQuery = movementsQuery
+                    .eq('store_id', userStoreId)
+                    .gte('created_at', cancelStart);
+                    
+            } else {
+                // ADMIN: 90 DIAS vendas, 6 MESES cancelamentos (TODAS as lojas)
+                const ninetyDaysAgo = new Date(now.getTime() - 90 * 24 * 60 * 60 * 1000).toISOString();
+                const sixMonthsAgo = new Date(now);
+                sixMonthsAgo.setMonth(sixMonthsAgo.getMonth() - 6);
+                const cancelStart = sixMonthsAgo.toISOString();
+                
+                salesQuery = salesQuery
+                    .or(`and(created_at.gte.${ninetyDaysAgo},status.neq.canceled),and(created_at.gte.${cancelStart},status.eq.canceled)`);
+                
+                salesHeadersQuery = salesHeadersQuery.gte('created_at', ninetyDaysAgo);
+                cardSalesQuery = cardSalesQuery.gte('created_at', ninetyDaysAgo);
+                pixSalesQuery = pixSalesQuery.gte('created_at', ninetyDaysAgo);
+                movementsQuery = movementsQuery.gte('created_at', cancelStart);
+            }
 
             const [
                 {data: pur}, {data: c}, {data: cs}, {data: cd}, {data: cat}, {data: mix},
@@ -454,7 +565,7 @@ const App: React.FC = () => {
                 supabase.from('quota_product_categories').select('*'),
                 supabase.from('quota_mix_parameters').select('*'),
                 supabase.from('ice_cream_items').select('*'),
-                fetchAllRows('ice_cream_daily_sales', 'created_at'),
+                salesQuery.order('created_at', { ascending: false }),
                 supabase.from('ice_cream_stock').select('*'),
                 supabase.from('ice_cream_promissory_notes').select('*'),
                 supabase.from('financial_receipts').select('*').order('created_at', { ascending: true }),
@@ -463,13 +574,13 @@ const App: React.FC = () => {
                 supabase.from('downloads').select('*'),
                 supabase.from('cash_register_closures').select('*'),
                 supabase.from('system_logs').select('*').order('created_at', { ascending: false }).limit(200),
-                fetchAllRows('financial_card_sales', 'created_at'),
-                fetchAllRows('financial_pix_sales', 'created_at'),
-                fetchAllRows('ice_cream_sales', 'created_at'),
-                fetchAllRows('ice_cream_daily_sales_payments', 'created_at'),
+                cardSalesQuery.order('created_at', { ascending: false }),
+                pixSalesQuery.order('created_at', { ascending: false }),
+                salesHeadersQuery.order('created_at', { ascending: false }),
+                supabase.from('ice_cream_daily_sales_payments').select('*').order('created_at', { ascending: false }).limit(2000),
                 supabase.from('ice_cream_sangria_categoria').select('*'),
-                fetchAllRows('ice_cream_sangria', 'created_at'),
-                fetchAllRows('ice_cream_stock_movements', 'created_at'),
+                supabase.from('ice_cream_sangria').select('*').order('created_at', { ascending: false }).limit(500),
+                movementsQuery.order('created_at', { ascending: false }),
                 supabase.from('store_profit_distribution').select('*'),
                 supabase.from('admin_users').select('*'),
                 supabase.from('gestao_compras').select('*'),
@@ -481,7 +592,7 @@ const App: React.FC = () => {
             if(slsp) setSalePayments(slsp.map(x => ({ ...x, amount: Number(x.amount || 0) })));
             if(pur) setPurchasingData(pur.map(x => ({...x, storeId: x.store_id, pairsSold: x.pairs_sold})));
             if(c) setCotas(c.map(x => ({ ...x, id: x.id, storeId: x.store_id, totalValue: Number(x.total_value || 0), shipmentDate: x.shipment_date, paymentTerms: x.payment_terms, createdByRole: x.created_by_role, category_id: x.category_id, category_name: x.category_name || x.classification, createdAt: new Date(x.created_at) })));
-            if(cs) setCotaSettings(cs.map(x => ({...x, storeId: x.store_id, budgetValue: x.budget_value, managerPercent: x.manager_percent})));
+            if(cs) setCotaSettings(cs.map(x => ({...x, storeId: x.store_id, budget_value: x.budget_value, manager_percent: x.manager_percent})));
             if(cd) setCotaDebts(cd.map(x => ({...x, storeId: x.store_id})));
             if(cat) setQuotaCategories(cat);
             if(mix) setQuotaMixParams(mix.map(x => ({ ...x, storeId: x.store_id, category_name: x.parent_category, percentage: Number(x.mix_percentage || 0) })));
@@ -543,8 +654,12 @@ const App: React.FC = () => {
                 month: Number(x.month || 0),
                 updatedAt: x.updated_at
             })));
-        } catch (err) { console.error("Erro Sincronismo:", err); }
-        finally { setIsLoading(false); }
+        } catch (err) { 
+            console.error("Erro Sincronismo:", err); 
+        }
+        finally { 
+            setIsLoading(false); 
+        }
     };
 
     useEffect(() => {
@@ -1140,12 +1255,20 @@ const App: React.FC = () => {
                                     if (sale) saleId = sale.id;
                                 }
 
+                                // ✅ NOVO: Registrar quem cancelou e quando
+                                const cancelData = {
+                                    status: 'canceled',
+                                    cancel_reason: reason,
+                                    canceled_by: user?.name,
+                                    canceled_at: new Date().toISOString()
+                                };
+
                                 if (saleId) {
-                                    await supabase.from('ice_cream_sales').update({ status: 'canceled', cancel_reason: reason, canceled_by_name: user?.name }).eq('id', saleId);
-                                    await supabase.from('ice_cream_daily_sales').update({ status: 'canceled', cancel_reason: reason, canceled_by: user?.name }).eq('sale_id', saleId);
+                                    await supabase.from('ice_cream_sales').update({ ...cancelData, canceled_by_name: user?.name }).eq('id', saleId);
+                                    await supabase.from('ice_cream_daily_sales').update(cancelData).eq('sale_id', saleId);
                                 } else {
-                                    await supabase.from('ice_cream_sales').update({ status: 'canceled', cancel_reason: reason, canceled_by_name: user?.name }).eq('sale_code', saleCode);
-                                    await supabase.from('ice_cream_daily_sales').update({ status: 'canceled', cancel_reason: reason, canceled_by: user?.name }).eq('sale_code', saleCode);
+                                    await supabase.from('ice_cream_sales').update({ ...cancelData, canceled_by_name: user?.name }).eq('sale_code', saleCode);
+                                    await supabase.from('ice_cream_daily_sales').update(cancelData).eq('sale_code', saleCode);
                                 }
 
                                 await Promise.all([
