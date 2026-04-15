@@ -61,7 +61,16 @@ const numberToWords = (value: number): string => {
 };
  
 const ReceiptsModule: React.FC<ReceiptsModuleProps> = ({ user, stores, receipts, onAddReceipt }) => {
-  const userStore = useMemo(() => stores.find(s => s.id === user.storeId), [stores, user.storeId]);
+  const userStore = useMemo(() => {
+    if (!stores || stores.length === 0) return undefined;
+    const found = stores.find(s => s.id === user.storeId);
+    if (found) {
+      console.log('LOJA CARREGADA:', found.id);
+    } else {
+      console.log('⚠️ Loja não encontrada no array stores. ID:', user.storeId);
+    }
+    return found;
+  }, [stores, user.storeId]);
   
   const [nextNumber, setNextNumber] = useState(1);
   const [isLoading, setIsLoading] = useState(false);
@@ -99,18 +108,17 @@ const ReceiptsModule: React.FC<ReceiptsModuleProps> = ({ user, stores, receipts,
 
   // ✅ Buscar próximo número DIRETO DO SUPABASE
   useEffect(() => {
-      console.log('>>> useEffect EXECUTOU!'); // ✅ ADICIONAR ESTA LINHA
-      const fetchNextNumberForDisplay = async () => {
-          if (!userStore?.id) {
-              console.log('⚠️ Aguardando seleção de loja...');
-              return;
-          }
-          
-          console.log('🔍 Buscando próximo número para loja:', userStore.name);
+      if (!userStore?.id) {
+          console.log('⏳ useEffect aguardando userStore...');
+          return;
+      }
+      
+      console.log('🚀 Executando busca de próximo número para:', userStore.id);
+      
+      (async () => {
           setLoadingNextNumber(true);
-          
           try {
-              await apiService.ensureRLS(); // ✅ ADICIONE ESTA LINHA
+              await apiService.ensureRLS();
               const { data, error } = await supabase
                   .from('financial_receipts')
                   .select('receipt_number')
@@ -118,33 +126,25 @@ const ReceiptsModule: React.FC<ReceiptsModuleProps> = ({ user, stores, receipts,
                   .order('receipt_number', { ascending: false })
                   .limit(1)
                   .maybeSingle();
-
-              if (error && error.code !== 'PGRST116') {
-                  console.error('❌ Erro na query:', error);
-                  throw error;
-              }
-
-              const currentMax = data?.receipt_number || 0;
-              const nextNum = currentMax + 1;
               
-              setNextNumber(nextNum);
-              console.log('✅ Próximo número:', nextNum);
+              if (error) throw error;
               
-          } catch (err: any) {
-              console.error('❌ Erro ao buscar próximo número:', err);
+              const next = (data?.receipt_number || 0) + 1;
+              setNextNumber(next);
+              console.log('✅ Próximo número carregado:', next);
+          } catch (e) {
+              console.error('❌ Erro ao buscar próximo número:', e);
               setNextNumber(0);
           } finally {
               setLoadingNextNumber(false);
           }
-      };
-      
-      fetchNextNumberForDisplay();
-  }, [userStore]);
+      })();
+  }, [userStore?.id]);
  
   const receiptValueNum = parseFloat(receiptData.value.replace(/\./g, '').replace(',', '.')) || 0;
   const valueInWords = numberToWords(receiptValueNum);
   const city = userStore?.city?.split(' - ')[0] || 'Cidade';
-  const formattedNumber = nextNumber > 0 ? String(nextNumber).padStart(4, '0') : '????';
+  const formattedNumber = String(nextNumber || 0).padStart(4, '0');
  
   const printReceipt = (receipt: any, receiptNumber?: string) => {
       const printWindow = window.open('', '_blank', 'width=900,height=1200');
@@ -279,11 +279,9 @@ const ReceiptsModule: React.FC<ReceiptsModuleProps> = ({ user, stores, receipts,
             <div className="bg-white px-4 py-2 rounded-lg border border-gray-200 shadow-sm text-center">
                 <p className="text-xs text-gray-500 uppercase font-bold">Próximo Recibo</p>
                 {loadingNextNumber ? (
-                    <p className="text-lg text-gray-400 animate-pulse">Carregando...</p>
-                ) : nextNumber > 0 ? (
-                    <p className="text-2xl font-black text-red-600">#{formattedNumber}</p>
+                    <p className="text-2xl font-black text-gray-400 animate-pulse">#0000</p>
                 ) : (
-                    <p className="text-sm text-gray-400 font-semibold">Automático</p>
+                    <p className="text-2xl font-black text-red-600">#{formattedNumber}</p>
                 )}
             </div>
         </div>
