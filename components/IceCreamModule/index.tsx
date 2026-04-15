@@ -196,7 +196,6 @@ const IceCreamModule: React.FC<IceCreamModuleProps> = ({
         });
 
         const resumoItens: Record<string, { qtd: number, total: number }> = {};
-        let totalGeral = 0;
         let totalItens = 0;
         
         let totalCanceledCount = 0;
@@ -213,7 +212,6 @@ const IceCreamModule: React.FC<IceCreamModuleProps> = ({
             resumoItens[s.productName].qtd += Number(s.unitsSold || 0);
             resumoItens[s.productName].total += Number(s.totalValue || 0);
             
-            totalGeral += Number(s.totalValue || 0);
             totalItens += Number(s.unitsSold || 0);
         });
 
@@ -239,9 +237,12 @@ const IceCreamModule: React.FC<IceCreamModuleProps> = ({
             });
         });
 
+        // ✅ CORREÇÃO: Calcular total a partir da SOMA DOS PAGAMENTOS, não dos headers
+        const totalGeral = Object.values(resumoPagamentos).reduce((acc, val) => acc + val, 0);
+
         return {
             resumoItens: Object.entries(resumoItens),
-            totalGeral,
+            totalGeral,  // ← AGORA USA A SOMA DOS PAGAMENTOS
             totalItens,
             resumoPagamentos,
             resumoPagamentosQtd,
@@ -351,6 +352,9 @@ const IceCreamModule: React.FC<IceCreamModuleProps> = ({
                     .items td { padding: 2px 0; }
                     .total { border-top: 1px dashed #000; padding-top: 5px; font-weight: bold; text-align: right; font-size: 14px; }
                     .footer { text-align: center; margin-top: 20px; font-size: 10px; }
+                    .no-print { display: flex; justify-content: center; margin-top: 20px; }
+                    .close-btn { background: #ef4444; color: white; border: none; padding: 10px 20px; border-radius: 8px; font-weight: bold; cursor: pointer; font-size: 12px; }
+                    @media print { .no-print { display: none; } }
                 </style>
             </head>
             <body>
@@ -386,6 +390,11 @@ const IceCreamModule: React.FC<IceCreamModuleProps> = ({
                     Obrigado pela preferência!<br>
                     Real Admin v6.5
                 </div>
+
+                <div class="no-print">
+                    <button class="close-btn" onclick="window.close()">FECHAR CUPOM</button>
+                </div>
+
                 <script>window.onload = () => { window.print(); setTimeout(() => window.close(), 500); };</script>
             </body>
             </html>
@@ -436,6 +445,9 @@ const IceCreamModule: React.FC<IceCreamModuleProps> = ({
                 .sig-line { border-top: 1px solid #000; margin-bottom: 5px; }
                 .sig-label { font-size: 9px; font-weight: 700; text-transform: uppercase; color: #666; }
                 .footer { margin-top: 20px; text-align: center; font-size: 8px; color: #999; border-top: 1px solid #eee; padding-top: 10px; }
+                .no-print { display: flex; justify-content: center; margin-top: 20px; }
+                .close-btn { background: #ef4444; color: white; border: none; padding: 10px 20px; border-radius: 8px; font-weight: bold; cursor: pointer; font-size: 12px; }
+                @media print { .no-print { display: none; } }
               </style>
             </head>
             <body>
@@ -507,11 +519,16 @@ const IceCreamModule: React.FC<IceCreamModuleProps> = ({
               <div class="footer">
                 Gerado em: ${new Date().toLocaleString('pt-BR')} | Sistema de Gestão Gelateria Real
               </div>
+
+              <div class="no-print">
+                <button class="close-btn" onclick="window.close()">FECHAR RELATÓRIO</button>
+              </div>
               
               <script>
                 window.onload = () => {
                   setTimeout(() => {
                     window.print();
+                    setTimeout(() => window.close(), 500);
                   }, 500);
                 };
               </script>
@@ -548,6 +565,9 @@ const IceCreamModule: React.FC<IceCreamModuleProps> = ({
                     td { padding: 8px; border-bottom: 1px solid #f1f5f9; font-size: 11px; font-weight: 600; }
                     .text-right { text-align: right; }
                     .footer { margin-top: 30px; text-align: center; font-size: 9px; color: #94a3b8; border-top: 1px solid #e2e8f0; padding-top: 10px; }
+                    .no-print { display: flex; justify-content: center; margin-top: 20px; }
+                    .close-btn { background: #ef4444; color: white; border: none; padding: 10px 20px; border-radius: 8px; font-weight: bold; cursor: pointer; font-size: 12px; }
+                    @media print { .no-print { display: none; } }
                 </style>
             </head>
             <body>
@@ -664,6 +684,10 @@ const IceCreamModule: React.FC<IceCreamModuleProps> = ({
                 <div class="footer">
                     Documento gerado em ${new Date().toLocaleString('pt-BR')} por Gelateria Real
                 </div>
+
+                <div class="no-print">
+                    <button class="close-btn" onclick="window.close()">FECHAR RELATÓRIO</button>
+                </div>
     
                 <script>
                     window.onload = () => {
@@ -681,8 +705,32 @@ const IceCreamModule: React.FC<IceCreamModuleProps> = ({
         if (!showCancelModal) return;
         setIsSubmitting(true);
         try {
-            // Atualizar com informações de quem cancelou
-            const { error } = await supabase
+            const saleCode = showCancelModal.code;
+            
+            // 1️⃣ Buscar o sale_id do header
+            const { data: headerData } = await supabase
+                .from('ice_cream_sales')
+                .select('id, total_value')
+                .eq('sale_code', saleCode)
+                .maybeSingle();
+            
+            const saleId = headerData?.id;
+            
+            // 2️⃣ Atualizar header (ice_cream_sales)
+            if (saleId) {
+                await supabase
+                    .from('ice_cream_sales')
+                    .update({
+                        status: 'canceled',
+                        cancel_reason: cancelReason.toUpperCase(),
+                        canceled_by_name: user.name,
+                        canceled_at: new Date().toISOString()
+                    })
+                    .eq('id', saleId);
+            }
+            
+            // 3️⃣ Atualizar itens (ice_cream_daily_sales)
+            await supabase
                 .from('ice_cream_daily_sales')
                 .update({
                     status: 'canceled',
@@ -690,9 +738,19 @@ const IceCreamModule: React.FC<IceCreamModuleProps> = ({
                     canceled_by: user.name,
                     canceled_at: new Date().toISOString()
                 })
-                .eq('sale_code', showCancelModal.code);
+                .eq('sale_code', saleCode);
             
-            if (error) throw error;
+            // 4️⃣ CRÍTICO: REMOVER PAGAMENTOS
+            await supabase
+                .from('ice_cream_daily_sales_payments')
+                .delete()
+                .eq('sale_code', saleCode);
+            
+            // 5️⃣ Remover registros de cartão/pix se existirem
+            await Promise.all([
+                supabase.from('financial_card_sales').delete().eq('sale_code', saleCode),
+                supabase.from('financial_pix_sales').delete().eq('sale_code', saleCode)
+            ]);
             
             setShowCancelModal(null);
             setCancelReason('');

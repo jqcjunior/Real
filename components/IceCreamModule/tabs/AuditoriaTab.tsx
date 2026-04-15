@@ -333,12 +333,12 @@ const AuditoriaTab: React.FC<AuditoriaTabProps> = ({
                                     </td>
                                     <td className="px-8 py-5">
                                         <span className="px-3 py-1 rounded-full text-[8px] font-black uppercase bg-gray-100 text-gray-700 border border-gray-200">
-                                            {c.canceledBy || 'NÃO REGISTRADO'}
+                                            {c.canceled_by || 'NÃO REGISTRADO'}
                                         </span>
                                     </td>
                                     <td className="px-8 py-5">
                                         <div className="text-[9px] text-gray-600 font-medium italic max-w-md">
-                                            {c.cancelReason || 'Sem justificativa'}
+                                            {c.cancel_reason || 'Sem justificativa'}
                                         </div>
                                     </td>
                                     <td className="px-8 py-5 text-right">
