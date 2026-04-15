@@ -84,6 +84,13 @@ const ReceiptsModule: React.FC<ReceiptsModuleProps> = ({ user, stores, receipts,
       }
   }, [userStore]);
  
+  // ✅ DEBUG - ADICIONAR ESTAS LINHAS
+  console.log('========== DEBUG RECEIPTS ==========');
+  console.log('userStore:', userStore);
+  console.log('userStore?.id:', userStore?.id);
+  console.log('nextNumber atual:', nextNumber);
+  console.log('====================================');
+
   // ✅ Buscar próximo número DIRETO DO SUPABASE
   useEffect(() => {
       const fetchNextNumberForDisplay = async () => {
