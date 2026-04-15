@@ -1,5 +1,5 @@
 import React, { useState, useMemo, useEffect } from 'react';
-import { User, IceCreamDailySale, Receipt, CashError, UserRole, Store } from '../types';
+import { User, IceCreamDailySale, Receipt, CashError, UserRole, Store, PixSale, CreditCardSale } from '../types';
 import { formatCurrency, BRAND_LOGO } from '../constants';
 import { 
     DollarSign, Save, Calendar, FileText, CreditCard, AlertTriangle, 
@@ -387,6 +387,24 @@ export const printPixSummaryDoc = (date: string, storeName: string, pixEntries: 
     if (!printWindow) return;
     
     const totalValue = pixEntries.reduce((a, b) => a + b.value, 0);
+    
+    // ✅ LÓGICA ADAPTÁVEL
+    const use4Columns = pixEntries.length > 20;
+    const numColumns = use4Columns ? 4 : 2;
+    const itemsPerColumn = Math.ceil(pixEntries.length / numColumns);
+    
+    // Dividir em colunas
+    const rows = [];
+    for (let i = 0; i < itemsPerColumn; i++) {
+        const row = [];
+        for (let col = 0; col < numColumns; col++) {
+            const index = col * itemsPerColumn + i;
+            if (index < pixEntries.length) {
+                row.push(pixEntries[index]);
+            }
+        }
+        rows.push(row);
+    }
  
     const html = `
         <html>
@@ -406,9 +424,10 @@ export const printPixSummaryDoc = (date: string, storeName: string, pixEntries: 
                     font-size: 10px;
                 }
                 .dashed-line { border-top: 1px dashed #000; margin: 4px 0; }
+                .text-center { text-align: center; }
                 .grid-container {
                     display: grid;
-                    grid-template-columns: repeat(2, 1fr);
+                    grid-template-columns: ${use4Columns ? 'repeat(4, 1fr)' : 'repeat(2, 1fr)'};
                     gap: 4px;
                 }
                 @media print {
@@ -432,12 +451,14 @@ export const printPixSummaryDoc = (date: string, storeName: string, pixEntries: 
             <div class="mt-2">
                 <p class="text-[9px] font-black uppercase mb-1">Detalhamento (Ficha | Valor):</p>
                 <div class="grid-container">
-                    ${pixEntries.map((p) => `
-                        <div class="flex justify-between border-b border-gray-100 pb-0.5">
-                            <span class="font-bold">#${p.ticket}</span>
-                            <span>${new Intl.NumberFormat('pt-BR', { minimumFractionDigits: 2 }).format(p.value)}</span>
-                        </div>
-                    `).join('')}
+                    ${rows.map(row => 
+                        row.map(p => `
+                            <div class="flex justify-between border-b border-gray-100 pb-0.5">
+                                <span class="font-bold">#${p.ticket || '---'}</span>
+                                <span>${new Intl.NumberFormat('pt-BR', { minimumFractionDigits: 2 }).format(p.value)}</span>
+                            </div>
+                        `).join('')
+                    ).join('')}
                 </div>
             </div>
  
@@ -619,6 +640,156 @@ const CashRegisterModule: React.FC<CashRegisterModuleProps> = ({
     const showToast = (message: string, type: 'success' | 'error' = 'success') => {
         setToast({ show: true, message, type });
         setTimeout(() => setToast(prev => ({ ...prev, show: false })), 3000);
+    };
+
+    const handlePrintCard = (card: any) => {
+        const printWindow = window.open('', '_blank');
+        if (!printWindow) { alert("Pop-up bloqueado!"); return; }
+        const storeId = card.store_id || card.storeId;
+        const store = stores.find(s => s.id === storeId);
+        const saleCode = card.sale_code || card.saleCode || '---';
+        const createdAt = card.created_at || card.createdAt || new Date().toISOString();
+        const brand = card.brand || '---';
+        const authCode = card.authorization_code || card.authorizationCode || 'NÃO INFORMADO';
+        const value = Number(card.value || 0);
+        
+        const html = `
+            <!DOCTYPE html>
+            <html>
+            <head>
+                <title>Comprovante Cartão - #${saleCode}</title>
+                <style>
+                    body { font-family: 'Courier New', monospace; width: 80mm; padding: 5mm; margin: 0; font-size: 12px; }
+                    .header { text-align: center; margin-bottom: 10px; border-bottom: 1px dashed #000; padding-bottom: 5px; }
+                    .header h2 { margin: 0; font-size: 16px; }
+                    .info { margin-bottom: 10px; }
+                    .info p { margin: 3px 0; }
+                    .valor { border-top: 1px dashed #000; border-bottom: 1px dashed #000; padding: 10px 0; font-weight: bold; text-align: center; font-size: 18px; margin: 15px 0; }
+                    .footer { text-align: center; margin-top: 20px; font-size: 10px; }
+                    .no-print { display: flex; justify-content: center; margin-top: 20px; }
+                    .close-btn { background: #ef4444; color: white; border: none; padding: 10px 20px; border-radius: 8px; font-weight: bold; cursor: pointer; }
+                    @media print { .no-print { display: none; } }
+                </style>
+            </head>
+            <body>
+                <div class="header">
+                    <h2>COMPROVANTE CARTÃO</h2>
+                    <p>SORVETERIA REAL</p>
+                    <p>${store?.name || '---'}</p>
+                    <p>${store?.city || ''}</p>
+                </div>
+                
+                <div class="info">
+                    <p>DATA/HORA: ${new Date(createdAt).toLocaleString('pt-BR')}</p>
+                    <p>CÓDIGO VENDA: #${saleCode}</p>
+                    <p>BANDEIRA: ${brand.toUpperCase()}</p>
+                    <p>AUTORIZAÇÃO: ${authCode}</p>
+                </div>
+                
+                <div class="valor">
+                    VALOR: R$ ${value.toFixed(2).replace('.', ',')}
+                </div>
+                
+                <div class="info" style="text-align: center;">
+                    <p><strong>✓ TRANSAÇÃO APROVADA</strong></p>
+                    <p style="font-size: 10px;">Pagamento processado com sucesso</p>
+                </div>
+                
+                <div class="footer">
+                    Comprovante gerado em ${new Date().toLocaleString('pt-BR')}<br>
+                    Sistema Real Admin - Sorveteria Real
+                </div>
+
+                <div class="no-print">
+                    <button class="close-btn" onclick="window.close()">FECHAR COMPROVANTE</button>
+                </div>
+
+                <script>
+                    window.onload = () => { 
+                        window.print(); 
+                        setTimeout(() => window.close(), 500); 
+                    };
+                </script>
+            </body>
+            </html>
+        `;
+        
+        printWindow.document.write(html);
+        printWindow.document.close();
+    };
+
+    const handlePrintPix = (pix: any) => {
+        const printWindow = window.open('', '_blank');
+        if (!printWindow) { alert("Pop-up bloqueado!"); return; }
+        const storeId = pix.store_id || pix.storeId;
+        const store = stores.find(s => s.id === storeId);
+        const saleCode = pix.sale_code || pix.saleCode || '---';
+        const createdAt = pix.created_at || pix.createdAt || new Date().toISOString();
+        const payerName = pix.payer_name || pix.clientName || 'NÃO INFORMADO';
+        const value = Number(pix.value || 0);
+        
+        const html = `
+            <!DOCTYPE html>
+            <html>
+            <head>
+                <title>Comprovante PIX - #${saleCode}</title>
+                <style>
+                    body { font-family: 'Courier New', monospace; width: 80mm; padding: 5mm; margin: 0; font-size: 12px; }
+                    .header { text-align: center; margin-bottom: 10px; border-bottom: 1px dashed #000; padding-bottom: 5px; }
+                    .header h2 { margin: 0; font-size: 16px; }
+                    .info { margin-bottom: 10px; }
+                    .info p { margin: 3px 0; }
+                    .valor { border-top: 1px dashed #000; border-bottom: 1px dashed #000; padding: 10px 0; font-weight: bold; text-align: center; font-size: 18px; margin: 15px 0; }
+                    .footer { text-align: center; margin-top: 20px; font-size: 10px; }
+                    .no-print { display: flex; justify-content: center; margin-top: 20px; }
+                    .close-btn { background: #ef4444; color: white; border: none; padding: 10px 20px; border-radius: 8px; font-weight: bold; cursor: pointer; }
+                    @media print { .no-print { display: none; } }
+                </style>
+            </head>
+            <body>
+                <div class="header">
+                    <h2>COMPROVANTE PIX</h2>
+                    <p>SORVETERIA REAL</p>
+                    <p>${store?.name || '---'}</p>
+                    <p>${store?.city || ''}</p>
+                </div>
+                
+                <div class="info">
+                    <p>DATA/HORA: ${new Date(createdAt).toLocaleString('pt-BR')}</p>
+                    <p>CÓDIGO VENDA: #${saleCode}</p>
+                    <p>PAGADOR: ${payerName}</p>
+                </div>
+                
+                <div class="valor">
+                    VALOR: R$ ${value.toFixed(2).replace('.', ',')}
+                </div>
+                
+                <div class="info" style="text-align: center;">
+                    <p><strong>✓ TRANSAÇÃO APROVADA</strong></p>
+                    <p style="font-size: 10px;">Pagamento via PIX processado com sucesso</p>
+                </div>
+                
+                <div class="footer">
+                    Comprovante gerado em ${new Date().toLocaleString('pt-BR')}<br>
+                    Sistema Real Admin - Sorveteria Real
+                </div>
+
+                <div class="no-print">
+                    <button class="close-btn" onclick="window.close()">FECHAR COMPROVANTE</button>
+                </div>
+
+                <script>
+                    window.onload = () => { 
+                        window.print(); 
+                        setTimeout(() => window.close(), 500); 
+                    };
+                </script>
+            </body>
+            </html>
+        `;
+        
+        printWindow.document.write(html);
+        printWindow.document.close();
     };
  
     const selectedStore = useMemo(() => stores.find(s => s.id === selectedStoreId), [stores, selectedStoreId]);
@@ -1239,16 +1410,34 @@ const CashRegisterModule: React.FC<CashRegisterModuleProps> = ({
                                 </form>
                             </div>
                             <div className="lg:col-span-8 bg-white rounded-[32px] shadow-xl border border-gray-100 flex flex-col overflow-hidden" style={{minHeight: '500px'}}>
-                                <div className="px-6 py-4 border-b flex justify-between items-center bg-gray-50/50">
+                                        <div className="px-6 py-4 border-b flex justify-between items-center bg-gray-50/50">
                                     <div>
                                         <h3 className="text-base font-black text-blue-950 uppercase italic tracking-tighter flex items-center gap-2">
                                             <DollarSign size={16} className="text-teal-600" /> Lançamentos <span className="text-teal-600">Pix Confirmados</span>
                                         </h3>
                                         <p className="text-[8px] font-black text-gray-400 uppercase tracking-widest leading-none mt-1">{new Date(selectedDate + 'T12:00:00').toLocaleDateString('pt-BR')} — Adicione quantos quiser</p>
                                     </div>
-                                    <div className="text-right">
-                                        <p className="text-[7px] font-black text-gray-400 uppercase leading-none">Total do Dia</p>
-                                        <p className="text-xl font-black text-teal-700 italic leading-none mt-1">{formatCurrency(manualPix.reduce((a, b) => a + Number(b.value), 0))}</p>
+                                    <div className="flex items-center gap-3">
+                                        {manualPix.length > 0 && (
+                                            <button 
+                                                onClick={() => printPixSummaryDoc(
+                                                    selectedDate, 
+                                                    payerName,
+                                                    manualPix.map(p => ({
+                                                        value: Number(p.value), 
+                                                        ticket: p.sale_code
+                                                    })), 
+                                                    user.name
+                                                )} 
+                                                className="p-2 bg-blue-50 text-blue-600 rounded-xl hover:bg-blue-600 hover:text-white transition-all flex items-center gap-2 text-[9px] font-black uppercase shadow-sm"
+                                            >
+                                                <Printer size={14} /> Imprimir
+                                            </button>
+                                        )}
+                                        <div className="text-right">
+                                            <p className="text-[7px] font-black text-gray-400 uppercase leading-none">Total do Dia</p>
+                                            <p className="text-xl font-black text-teal-700 italic leading-none mt-1">{formatCurrency(manualPix.reduce((a, b) => a + Number(b.value), 0))}</p>
+                                        </div>
                                     </div>
                                 </div>
                                 <div className="flex-1 overflow-y-auto no-scrollbar overflow-x-auto">
