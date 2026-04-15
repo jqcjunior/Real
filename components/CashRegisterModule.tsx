@@ -478,6 +478,294 @@ export const printPixSummaryDoc = (date: string, storeName: string, pixEntries: 
     printWindow.document.write(html);
     printWindow.document.close();
 };
+
+export const printDailyConsolidated = (
+    date: string, 
+    storeName: string, 
+    pixEntries: any[], 
+    cardEntries: any[], 
+    operator: string
+) => {
+    const printWindow = window.open('', '_blank', 'width=450,height=700');
+    if (!printWindow) return;
+    
+    const totalPix = pixEntries.reduce((a, b) => a + b.value, 0);
+    const totalCards = cardEntries.reduce((a, b) => a + b.value, 0);
+    const totalDay = totalPix + totalCards;
+    
+    // Agrupar cartões por bandeira
+    const cardsByBrand: Record<string, number> = {};
+    cardEntries.forEach(c => {
+        cardsByBrand[c.brand] = (cardsByBrand[c.brand] || 0) + c.value;
+    });
+    
+    // PIX: 3 COLUNAS FIXAS
+    const numColumns = 3;
+    const itemsPerColumn = Math.ceil(pixEntries.length / numColumns);
+    
+    const pixColumns = [];
+    for (let i = 0; i < numColumns; i++) {
+        const start = i * itemsPerColumn;
+        const end = start + itemsPerColumn;
+        pixColumns.push(pixEntries.slice(start, end));
+    }
+    
+    const html = `
+        <html>
+        <head>
+            <style>
+                @page { 
+                    size: 110mm 170mm; 
+                    margin: 0; 
+                }
+                * {
+                    margin: 0;
+                    padding: 0;
+                    box-sizing: border-box;
+                }
+                body { 
+                    font-family: 'Courier New', Courier, monospace; 
+                    -webkit-print-color-adjust: exact; 
+                    print-color-adjust: exact;
+                    width: 110mm;
+                    height: 170mm;
+                    background: white;
+                    font-size: 9px;
+                    position: absolute;
+                    top: 0;
+                    left: 0;
+                    overflow: hidden;
+                }
+                
+                .container {
+                    padding: 2mm;
+                    height: 170mm;
+                    display: flex;
+                    flex-direction: column;
+                }
+                
+                .header { 
+                    text-align: center; 
+                    border-bottom: 2px solid #000; 
+                    padding-bottom: 1mm;
+                    margin-bottom: 1mm;
+                }
+                .header h1 { 
+                    font-size: 11px; 
+                    font-weight: 900; 
+                    text-transform: uppercase; 
+                    line-height: 1.1;
+                }
+                .header p { 
+                    font-size: 7px; 
+                    font-weight: bold; 
+                    line-height: 1.1;
+                }
+                
+                .info { 
+                    font-size: 7px; 
+                    display: flex; 
+                    justify-content: space-between; 
+                    margin-bottom: 1mm;
+                    line-height: 1.2;
+                }
+                
+                .dashed-line { 
+                    border-top: 1px dashed #000; 
+                    margin: 1mm 0; 
+                }
+                
+                .solid-line { 
+                    border-top: 2px solid #000; 
+                    margin: 1mm 0; 
+                }
+                
+                /* SEÇÃO CARTÕES - 35mm */
+                .section-cards {
+                    border: 2px solid #000;
+                    padding: 1.5mm;
+                    margin-bottom: 2mm;
+                    height: 35mm;
+                    background: #f9f9f9;
+                    overflow: hidden;
+                    flex-shrink: 0;
+                }
+                
+                .section-title {
+                    font-weight: 900;
+                    font-size: 9px;
+                    text-align: center;
+                    margin-bottom: 1mm;
+                    padding-bottom: 0.5mm;
+                    border-bottom: 1px solid #000;
+                    line-height: 1.1;
+                }
+                
+                /* SEÇÃO PIX - 95mm */
+                .section-pix {
+                    border: 2px solid #000;
+                    padding: 1.5mm;
+                    height: 95mm;
+                    background: #f9f9f9;
+                    overflow: hidden;
+                    flex-shrink: 0;
+                }
+                
+                .item-line {
+                    display: flex;
+                    justify-content: space-between;
+                    border-bottom: 1px solid #ddd;
+                    padding: 0.5px 0;
+                    font-size: 7px;
+                    line-height: 1.2;
+                }
+                
+                .item-line .ticket { 
+                    font-weight: bold; 
+                }
+                
+                .item-line .value { 
+                    text-align: right; 
+                }
+                
+                .grid-pix {
+                    display: grid;
+                    grid-template-columns: repeat(3, 1fr);
+                    gap: 1.5mm;
+                    max-height: 75mm;
+                    overflow: hidden;
+                }
+                
+                .subtotal {
+                    margin-top: 1mm;
+                    padding-top: 1mm;
+                    border-top: 1px solid #000;
+                    font-weight: 900;
+                    font-size: 8px;
+                }
+                
+                .total-day {
+                    margin-top: 1mm;
+                    padding: 2mm;
+                    background: #000;
+                    color: #fff;
+                    text-align: center;
+                    font-weight: 900;
+                    font-size: 11px;
+                    flex-shrink: 0;
+                }
+                
+                @media print {
+                    body { 
+                        width: 110mm; 
+                        height: 170mm; 
+                        position: absolute;
+                        top: 0;
+                        left: 0;
+                    }
+                }
+            </style>
+        </head>
+        <body>
+            <div class="container">
+                <!-- CABEÇALHO COMPACTO -->
+                <div class="header">
+                    <h1>📊 RELATÓRIO DIÁRIO</h1>
+                    <p>PIX + CARTÕES</p>
+                </div>
+                
+                <div class="info">
+                    <span><strong>DATA:</strong> ${new Date(date + 'T12:00:00').toLocaleDateString('pt-BR')}</span>
+                    <span><strong>OP:</strong> ${operator}</span>
+                </div>
+                <div class="info" style="margin-bottom: 1.5mm;">
+                    <span><strong>LOJA:</strong> ${storeName}</span>
+                </div>
+                
+                <div class="solid-line"></div>
+                
+                <!-- SEÇÃO CARTÕES (35mm) -->
+                <div class="section-cards">
+                    <div class="section-title">💳 CARTÕES (${cardEntries.length})</div>
+                    
+                    <div style="max-height: 13mm; overflow: hidden;">
+                        ${cardEntries.map(c => `
+                            <div class="item-line">
+                                <span class="ticket">#${c.ticket || '---'}</span>
+                                <span style="font-size: 6px; color: #666;">${c.brand}</span>
+                                <span class="value">${new Intl.NumberFormat('pt-BR', { minimumFractionDigits: 2 }).format(c.value)}</span>
+                            </div>
+                        `).join('')}
+                    </div>
+                    
+                    <div class="dashed-line"></div>
+                    
+                    <div style="font-size: 7px;">
+                        <div style="font-weight: bold; margin-bottom: 0.5mm; font-size: 7px;">POR BANDEIRA:</div>
+                        ${Object.entries(cardsByBrand).map(([brand, val]) => `
+                            <div style="display: flex; justify-content: space-between; font-size: 7px; line-height: 1.2;">
+                                <span>${brand}</span>
+                                <span>${new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(val)}</span>
+                            </div>
+                        `).join('')}
+                    </div>
+                    
+                    <div class="subtotal">
+                        <div style="display: flex; justify-content: space-between;">
+                            <span>TOTAL:</span>
+                            <span>${new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(totalCards)}</span>
+                        </div>
+                    </div>
+                </div>
+                
+                <!-- SEÇÃO PIX (95mm) -->
+                <div class="section-pix">
+                    <div class="section-title">🔸 PIX (${pixEntries.length}) - 3 colunas</div>
+                    
+                    <div class="grid-pix">
+                        ${pixColumns.map(column => `
+                            <div>
+                                ${column.map(p => `
+                                    <div class="item-line">
+                                        <span class="ticket">#${p.ticket || '---'}</span>
+                                        <span class="value">${new Intl.NumberFormat('pt-BR', { minimumFractionDigits: 2 }).format(p.value)}</span>
+                                    </div>
+                                `).join('')}
+                            </div>
+                        `).join('')}
+                    </div>
+                    
+                    <div class="subtotal">
+                        <div style="display: flex; justify-content: space-between;">
+                            <span>TOTAL PIX:</span>
+                            <span>${new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(totalPix)}</span>
+                        </div>
+                    </div>
+                </div>
+                
+                <div class="solid-line"></div>
+                
+                <!-- TOTAL GERAL COMPACTO -->
+                <div class="total-day">
+                    TOTAL DIA: ${new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(totalDay)}
+                </div>
+            </div>
+            
+            <script>
+                window.onload = () => { 
+                    setTimeout(() => { 
+                        window.print(); 
+                        window.close(); 
+                    }, 500); 
+                };
+            </script>
+        </body>
+        </html>
+    `;
+    
+    printWindow.document.write(html);
+    printWindow.document.close();
+};
  
 export const printErrorsDoc = (title: string, dateInfo: string, storeName: string, errors: CashError[], operator: string) => {
     const printWindow = window.open('', '_blank', 'width=600,height=800');
@@ -1232,7 +1520,40 @@ const CashRegisterModule: React.FC<CashRegisterModuleProps> = ({
                     ))}
                 </div>
                 <div className="flex items-center gap-2 bg-gray-50 px-4 py-2 rounded-xl border border-gray-100 shadow-inner">
-                    <Calendar size={16} className="text-blue-600" /><input type="date" value={selectedDate} onChange={(e) => setSelectedDate(e.target.value)} className="bg-transparent border-none text-xs font-black text-gray-700 outline-none p-1" />
+                    <Calendar size={16} className="text-blue-600" />
+                    <input 
+                        type="date" 
+                        value={selectedDate} 
+                        onChange={(e) => setSelectedDate(e.target.value)} 
+                        className="bg-transparent border-none text-xs font-black text-gray-700 outline-none p-1" 
+                    />
+                    
+                    {/* ⬇️ BOTÃO IMPRIMIR DIA COM VALIDAÇÃO ⬇️ */}
+                    {selectedStoreId && manualPix.length > 0 && manualCards.length > 0 && (
+                        <button
+                            onClick={() => printDailyConsolidated(
+                                selectedDate,
+                                selectedStore?.name || 'LOJA',
+                                manualPix.map(p => ({ value: Number(p.value), ticket: p.sale_code })),
+                                manualCards.map(c => ({ value: Number(c.value), ticket: c.sale_code, brand: c.brand })),
+                                user.name
+                            )}
+                            className="ml-2 px-4 py-2 bg-gradient-to-r from-emerald-500 to-teal-600 text-white rounded-xl text-[10px] font-black uppercase shadow-xl hover:shadow-2xl transition-all flex items-center gap-2 border-2 border-emerald-400 animate-pulse hover:animate-none"
+                            title="Imprimir Relatório Consolidado PIX + CARTÕES"
+                        >
+                            <Printer size={14} className="animate-bounce" />
+                            Imprimir Dia
+                        </button>
+                    )}
+                    
+                    {/* ⬇️ MENSAGEM SE TIVER APENAS UM ⬇️ */}
+                    {selectedStoreId && (manualPix.length > 0 || manualCards.length > 0) && !(manualPix.length > 0 && manualCards.length > 0) && (
+                        <div className="ml-2 px-3 py-1.5 bg-amber-50 border-2 border-amber-400 text-amber-800 rounded-lg text-[8px] font-bold uppercase flex items-center gap-1.5">
+                            <AlertTriangle size={12} />
+                            {manualPix.length > 0 ? 'Só PIX - Use impressão individual' : 'Só CARTÕES - Use impressão individual'}
+                        </div>
+                    )}
+                    {/* ⬆️ FIM DA VALIDAÇÃO ⬆️ */}
                 </div>
             </div>
  
