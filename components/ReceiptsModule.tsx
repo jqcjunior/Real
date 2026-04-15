@@ -67,6 +67,12 @@ const ReceiptsModule: React.FC<ReceiptsModuleProps> = ({ user, stores, receipts,
   const [isLoading, setIsLoading] = useState(false);
   const [loadingNextNumber, setLoadingNextNumber] = useState(false);
   
+  console.log('========== RECEIPTS MODULE DEBUG ==========');
+  console.log('userStore:', userStore);
+  console.log('userStore?.id:', userStore?.id);
+  console.log('nextNumber:', nextNumber);
+  console.log('===========================================');
+  
   const [receiptData, setReceiptData] = useState({
       value: '',
       payer: '',
@@ -93,6 +99,7 @@ const ReceiptsModule: React.FC<ReceiptsModuleProps> = ({ user, stores, receipts,
 
   // ✅ Buscar próximo número DIRETO DO SUPABASE
   useEffect(() => {
+      console.log('>>> useEffect EXECUTOU!'); // ✅ ADICIONAR ESTA LINHA
       const fetchNextNumberForDisplay = async () => {
           if (!userStore?.id) {
               console.log('⚠️ Aguardando seleção de loja...');
@@ -103,6 +110,7 @@ const ReceiptsModule: React.FC<ReceiptsModuleProps> = ({ user, stores, receipts,
           setLoadingNextNumber(true);
           
           try {
+              await apiService.ensureRLS(); // ✅ ADICIONE ESTA LINHA
               const { data, error } = await supabase
                   .from('financial_receipts')
                   .select('receipt_number')
