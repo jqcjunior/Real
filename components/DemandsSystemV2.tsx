@@ -68,10 +68,24 @@ const DemandsSystemV2: React.FC<DemandsSystemV2Props> = ({ user, stores }) => {
         paused: 0,
         avgTime: '0h'
     });
-    const [slaAlerts, setSlaAlerts] = useState<DemandV2[]>([]);
     const [storeUsers, setStoreUsers] = useState<AdminUser[]>([]);
     const [selectedTargetUser, setSelectedTargetUser] = useState<string | null>(null);
     const [showTargetUserModal, setShowTargetUserModal] = useState(false);
+
+    // 🔧 FIX: CONFIGURAR SESSÃO CUSTOMIZADA
+    useEffect(() => {
+        const setupUserSession = async () => {
+            try {
+                await supabase.rpc('set_user_session', { 
+                    user_id: user.id 
+                });
+                console.log('✅ Sessão configurada:', user.id);
+            } catch (error) {
+                console.error('❌ Erro ao configurar sessão:', error);
+            }
+        };
+        setupUserSession();
+    }, [user.id]);
     
     // Mobile States
     const [mobileView, setMobileView] = useState<'list' | 'chat'>('list');
@@ -132,15 +146,6 @@ const DemandsSystemV2: React.FC<DemandsSystemV2Props> = ({ user, stores }) => {
             const avg = resolvedDemands.length > 0 ? (totalMinutes / resolvedDemands.length / 60).toFixed(1) : 0;
 
             setStats({ resolved, paused, avgTime: `${avg}h` });
-
-            const alerts = data.filter(d => 
-                d.status !== 'resolvida' && 
-                d.status !== 'cancelada' && 
-                d.sla_deadline &&
-                new Date(d.sla_deadline) < new Date(new Date().getTime() + 2 * 60 * 60 * 1000)
-            ).slice(0, 3);
-
-            setSlaAlerts(alerts);
         } catch (err) {
             console.error("Erro ao calcular estatísticas:", err);
         }
@@ -253,25 +258,81 @@ const DemandsSystemV2: React.FC<DemandsSystemV2Props> = ({ user, stores }) => {
         }
     };
 
+    // 🔧 FIX: REALTIME - ATUALIZAÇÃO AUTOMÁTICA
+    useEffect(() => {
+        console.log('📡 Configurando Realtime...');
+
+        // Canal para chamados
+        const demandsChannel = supabase
+            .channel('demands-realtime-v2')
+            .on('postgres_changes',
+                {
+                    event: 'INSERT',
+                    schema: 'public',
+                    table: 'demands_v2'
+                },
+                (payload) => {
+                    console.log('🆕 NOVO CHAMADO:', payload.new);
+                    // @ts-ignore
+                    setDemands(prev => [payload.new, ...prev]);
+                    loadStoreCounts(); // Atualiza contadores
+                }
+            )
+            .on('postgres_changes',
+                {
+                    event: 'UPDATE',
+                    schema: 'public',
+                    table: 'demands_v2'
+                },
+                (payload) => {
+                    console.log('🔄 CHAMADO ATUALIZADO:', payload.new);
+                    // @ts-ignore
+                    setDemands(prev => 
+                        prev.map(d => d.id === payload.new.id ? payload.new : d)
+                    );
+                    if (selectedDemand?.id === payload.new.id) {
+                        // @ts-ignore
+                        setSelectedDemand(payload.new);
+                    }
+                    loadStoreCounts();
+                }
+            )
+            .subscribe((status) => {
+                console.log('📡 Status Realtime (demands):', status);
+            });
+
+        // Canal para mensagens
+        const messagesChannel = supabase
+            .channel('messages-realtime-v2')
+            .on('postgres_changes',
+                {
+                    event: 'INSERT',
+                    schema: 'public',
+                    table: 'demands_messages_v2'
+                },
+                (payload) => {
+                    console.log('💬 NOVA MENSAGEM:', payload.new);
+                    if (selectedDemand?.id === payload.new.demand_id) {
+                        // @ts-ignore
+                        setMessages(prev => [...prev, payload.new]);
+                    }
+                    loadStoreCounts();
+                }
+            )
+            .subscribe((status) => {
+                console.log('📡 Status Realtime (messages):', status);
+            });
+
+        return () => {
+            supabase.removeChannel(demandsChannel);
+            supabase.removeChannel(messagesChannel);
+        };
+    }, [selectedDemand]);
+
     // Effects
     useEffect(() => {
         loadStoreCounts();
         calculateStats();
-
-        const channel = supabase
-            .channel('realtime-store-updates')
-            .on('postgres_changes', 
-                { event: '*', schema: 'public', table: 'demands_v2' }, 
-                () => {
-                    loadStoreCounts();
-                    calculateStats();
-                }
-            )
-            .subscribe();
-
-        return () => {
-            supabase.removeChannel(channel);
-        };
     }, []);
 
     useEffect(() => {
@@ -295,6 +356,52 @@ const DemandsSystemV2: React.FC<DemandsSystemV2Props> = ({ user, stores }) => {
             loadStoreUsers(selectedStoreId);
         }
     }, [selectedStoreId]);
+
+    // 🔧 FIX: ALERTAS SLA
+    const slaAlerts = useMemo(() => {
+        const now = new Date();
+        
+        return demands
+            .filter(d => d.status !== 'resolvida' && d.status !== 'cancelada')
+            .map(demand => {
+                const createdAt = new Date(demand.created_at);
+                const hoursElapsed = (now.getTime() - createdAt.getTime()) / (1000 * 60 * 60);
+                
+                let slaStatus: 'ok' | 'warning' | 'critical' = 'ok';
+                let slaMessage = '';
+                
+                // SLA por prioridade
+                if (demand.priority === 'urgente') {
+                    if (hoursElapsed > 4) {
+                        slaStatus = 'critical';
+                        slaMessage = `🔴 CRÍTICO: ${Math.floor(hoursElapsed)}h sem resposta`;
+                    } else if (hoursElapsed > 2) {
+                        slaStatus = 'warning';
+                        slaMessage = `🟡 Atenção: ${Math.floor(hoursElapsed)}h (SLA: 4h)`;
+                    }
+                } else if (demand.priority === 'alta') {
+                    if (hoursElapsed > 24) {
+                        slaStatus = 'critical';
+                        slaMessage = `🔴 CRÍTICO: ${Math.floor(hoursElapsed / 24)}d sem resposta`;
+                    } else if (hoursElapsed > 12) {
+                        slaStatus = 'warning';
+                        slaMessage = `🟡 Atenção: ${Math.floor(hoursElapsed)}h (SLA: 24h)`;
+                    }
+                } else {
+                    if (hoursElapsed > 72) {
+                        slaStatus = 'critical';
+                        slaMessage = `🔴 CRÍTICO: ${Math.floor(hoursElapsed / 24)}d sem resposta`;
+                    } else if (hoursElapsed > 48) {
+                        slaStatus = 'warning';
+                        slaMessage = `🟡 Atenção: ${Math.floor(hoursElapsed / 24)}d (SLA: 72h)`;
+                    }
+                }
+                
+                return { ...demand, slaStatus, slaMessage, hoursElapsed };
+            })
+            .filter(d => d.slaStatus !== 'ok')
+            .slice(0, 5); // Top 5 alertas
+    }, [demands]);
 
     // Handlers
     const handleAssign = async (assignedToId: string) => {
@@ -603,6 +710,58 @@ const DemandsSystemV2: React.FC<DemandsSystemV2Props> = ({ user, stores }) => {
                     </button>
                 </div>
             </div>
+
+            {/* 🚨 ALERTAS SLA */}
+            {slaAlerts.length > 0 && (
+                <div className="bg-gradient-to-r from-red-50 to-orange-50 dark:from-red-950/20 dark:to-orange-950/20 border-b border-red-200 dark:border-red-900/30 p-4 overflow-y-auto no-scrollbar max-h-48">
+                    <div className="flex items-center justify-between mb-3">
+                        <div className="flex items-center gap-2">
+                            <AlertCircle className="text-red-600 animate-pulse" size={20} />
+                            <h3 className="text-xs font-black uppercase text-red-900 dark:text-red-100 tracking-widest">
+                                Alertas SLA ({slaAlerts.length})
+                            </h3>
+                        </div>
+                    </div>
+                    <div className="space-y-2">
+                        {slaAlerts.map(alert => (
+                            <button
+                                key={alert.id}
+                                onClick={() => {
+                                    setSelectedDemand(alert);
+                                    if (window.innerWidth < 1024) setMobileView('chat');
+                                }}
+                                className={`
+                                    w-full p-3 rounded-xl border-2 transition-all text-left
+                                    ${alert.slaStatus === 'critical' 
+                                        ? 'bg-red-100 dark:bg-red-900/20 border-red-500 hover:bg-red-200' 
+                                        : 'bg-amber-100 dark:bg-amber-900/20 border-amber-500 hover:bg-amber-200'
+                                    }
+                                `}
+                            >
+                                <div className="flex items-center justify-between">
+                                    <div className="flex items-center gap-3 flex-1">
+                                        <Clock 
+                                            size={18} 
+                                            className={alert.slaStatus === 'critical' ? 'text-red-600' : 'text-amber-600'}
+                                        />
+                                        <div className="flex-1 min-w-0">
+                                            <p className="text-xs font-black text-slate-900 dark:text-white uppercase truncate">
+                                                {alert.ticket_number} - {alert.title}
+                                            </p>
+                                            <p className={`text-[10px] font-black uppercase ${
+                                                alert.slaStatus === 'critical' ? 'text-red-600' : 'text-amber-600'
+                                            }`}>
+                                                {alert.slaMessage}
+                                            </p>
+                                        </div>
+                                    </div>
+                                    {getPriorityBadge(alert.priority)}
+                                </div>
+                            </button>
+                        ))}
+                    </div>
+                </div>
+            )}
 
             {/* Mobile Layout */}
             <div className="flex-1 flex lg:hidden flex-col overflow-hidden">

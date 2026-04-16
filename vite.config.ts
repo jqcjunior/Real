@@ -23,11 +23,6 @@ export default defineConfig(({ mode }) => {
       build: {
         rollupOptions: {
           output: {
-            manualChunks: {
-              'vendor-react': ['react', 'react-dom'],
-              'vendor-supabase': ['@supabase/supabase-js'],
-              'vendor-excel': ['xlsx', 'jszip']
-            },
             chunkFileNames: 'assets/[name]-[hash].js',
             assetFileNames: (assetInfo) => {
               const info = assetInfo.name?.split('.');
@@ -53,8 +48,7 @@ export default defineConfig(({ mode }) => {
         sourcemap: mode === 'development',
       },
       optimizeDeps: {
-        include: ['react', 'react-dom', '@supabase/supabase-js'],
-        exclude: ['xlsx', 'jszip']
+        include: ['react', 'react-dom', '@supabase/supabase-js']
       }
     };
 });

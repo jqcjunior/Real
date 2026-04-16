@@ -13,7 +13,16 @@ import { BRAND_LOGO } from './constants';
 
 // Módulos com Lazy Loading
 const CotasManagement = lazy(() => import('./components/CotasManagement').then(m => ({ default: m.CotasManagement })));
-const DashboardAdmin = lazy(() => import('./components/DashboardAdmin'));
+const DashboardAdmin = lazy(() => {
+    return import('./components/DashboardAdmin').catch(err => {
+        console.error("Erro ao carregar DashboardAdmin:", err);
+        // Tenta recarregar a página se o erro for de carregamento de módulo
+        if (err.message.includes('fetch') || err.message.includes('dynamically imported module')) {
+            window.location.reload();
+        }
+        throw err;
+    });
+});
 const DashboardManager = lazy(() => import('./components/DashboardManager'));
 const GoalRegistration = lazy(() => import('./components/GoalRegistration'));
 const DashboardPurchases = lazy(() => import('./components/DashboardPurchases'));
@@ -39,6 +48,7 @@ const SurveyResultsViewer = lazy(() => import('./components/SurveyResultsViewer'
 import LoginScreen from './components/LoginScreen';
 import NotificationHeader from './components/NotificationHeader';
 import ChangePasswordModal from './components/ChangePasswordModal';
+import ErrorBoundary from './components/ErrorBoundary';
 
 // Ícones
 import {
@@ -303,6 +313,7 @@ const App: React.FC = () => {
     const [partners, setPartners] = useState<StoreProfitPartner[]>([]);
     const [adminUsers, setAdminUsers] = useState<AdminUser[]>([]);
     const [paParameters, setPaParameters] = useState<any>(null);
+    const [goalsRankingParams, setGoalsRankingParams] = useState<any>(null);
     const [purchasingManagement, setPurchasingManagement] = useState<PurchasingManagement[]>([]);
     const [futureDebts, setFutureDebts] = useState<IceCreamFutureDebt[]>([]);
     const [selectedSurveyForResults, setSelectedSurveyForResults] = useState<Survey | null>(null);
@@ -401,15 +412,17 @@ const App: React.FC = () => {
         try {
             await ensureSession();
             const [
-                {data: s}, {data: p}, {data: g}, {data: pap}
+                {data: s}, {data: p}, {data: g}, {data: pap}, {data: grp}
             ] = await Promise.all([
                 supabase.from('stores').select('*'),
                 supabase.from('monthly_performance_actual').select('*'),
                 supabase.from('monthly_goals').select('*'),
-                supabase.from('pa_parameters').select('*').maybeSingle()
+                supabase.from('pa_parameters').select('*').maybeSingle(),
+                supabase.from('goals_ranking_parameters').select('*').limit(1).maybeSingle()
             ]);
 
             if (pap) setPaParameters(pap);
+            if (grp) setGoalsRankingParams(grp);
 
             if(s) setStores(s.map(x => ({
                 ...x,
@@ -592,7 +605,11 @@ const App: React.FC = () => {
             if(slsp) setSalePayments(slsp.map(x => ({ ...x, amount: Number(x.amount || 0) })));
             if(pur) setPurchasingData(pur.map(x => ({...x, storeId: x.store_id, pairsSold: x.pairs_sold})));
             if(c) setCotas(c.map(x => ({ ...x, id: x.id, storeId: x.store_id, totalValue: Number(x.total_value || 0), shipmentDate: x.shipment_date, paymentTerms: x.payment_terms, createdByRole: x.created_by_role, category_id: x.category_id, category_name: x.category_name || x.classification, createdAt: new Date(x.created_at) })));
-            if(cs) setCotaSettings(cs.map(x => ({...x, storeId: x.store_id, budget_value: x.budget_value, manager_percent: x.manager_percent})));
+            if(cs) setCotaSettings(cs.map(x => ({
+                storeId: x.store_id,
+                budgetValue: Number(x.budget_value || 0),
+                managerPercent: Number(x.manager_percent || 0)
+            })));
             if(cd) setCotaDebts(cd.map(x => ({...x, storeId: x.store_id})));
             if(cat) setQuotaCategories(cat);
             if(mix) setQuotaMixParams(mix.map(x => ({ ...x, storeId: x.store_id, category_name: x.parent_category, percentage: Number(x.mix_percentage || 0) })));
@@ -1029,21 +1046,46 @@ const App: React.FC = () => {
                 )}
 
                 <main className="flex-1 overflow-y-auto no-scrollbar p-3 md:p-6 lg:p-8">
+                    <ErrorBoundary fallback={
+                        <div className="flex flex-col items-center justify-center h-full p-8 text-center">
+                            <AlertCircle size={48} className="text-red-500 mb-4" />
+                            <h2 className="text-xl font-bold mb-2">Erro ao carregar módulo</h2>
+                            <p className="text-gray-600 mb-4">Não foi possível carregar este componente. Tente recarregar a página.</p>
+                            <button 
+                                onClick={() => window.location.reload()}
+                                className="px-6 py-2 bg-blue-600 text-white rounded-xl font-bold"
+                            >
+                                Recarregar
+                            </button>
+                        </div>
+                    }>
                     <Suspense fallback={<PageLoader />}>
                         {(() => {
                         if (currentView === 'welcome') return <WelcomeScreen />;
-                        if (currentView === 'dashboard_rede' && can('MODULE_DASHBOARD_ADMIN')) return <DashboardAdmin stores={stores} performanceData={performanceData} goalsData={goalsData} sangrias={icSangrias} initialWeightRevenue={paParameters?.weight_revenue ?? 50} initialWeightPA={paParameters?.weight_pa ?? 50} onSaveWeights={async (wRev, wPA) => {
+                        if (currentView === 'dashboard_rede' && can('MODULE_DASHBOARD_ADMIN')) return <DashboardAdmin stores={stores} performanceData={performanceData} goalsData={goalsData} sangrias={icSangrias} initialWeightRevenue={goalsRankingParams?.weight_revenue ?? 70} initialWeightPA={goalsRankingParams?.weight_pa ?? 30} onSaveWeights={async (wRev, wPA) => {
                             const payload = {
                                 weight_revenue: wRev,
                                 weight_pa: wPA,
                                 updated_at: new Date().toISOString()
                             };
 
+                            // 🆕 CORRIGIDO: Salva na tabela correta (goals_ranking_parameters)
+                            const { data: existingParams } = await supabase
+                                .from('goals_ranking_parameters')
+                                .select('id')
+                                .limit(1)
+                                .maybeSingle();
+
                             let result;
-                            if (paParameters?.id) {
-                                result = await supabase.from('pa_parameters').update(payload).eq('id', paParameters.id);
+                            if (existingParams?.id) {
+                                result = await supabase
+                                    .from('goals_ranking_parameters')
+                                    .update(payload)
+                                    .eq('id', existingParams.id);
                             } else {
-                                result = await supabase.from('pa_parameters').insert([payload]);
+                                result = await supabase
+                                    .from('goals_ranking_parameters')
+                                    .insert([payload]);
                             }
 
                             if (result.error) {
@@ -1085,7 +1127,7 @@ const App: React.FC = () => {
                                 fetchData();
                             }
                         }} />;
-                        if (currentView === 'dashboard_loja' && can('MODULE_DASHBOARD_MANAGER')) return <DashboardManager user={user!} stores={stores} performanceData={performanceData} goalsData={goalsData} purchasingData={purchasingData} sangrias={icSangrias} stockMovements={icStockMovements} stock={iceCreamStock} weightRevenue={paParameters?.weight_revenue ?? 50} weightPA={paParameters?.weight_pa ?? 50} />;
+                        if (currentView === 'dashboard_loja' && can('MODULE_DASHBOARD_MANAGER')) return <DashboardManager user={user!} stores={stores} performanceData={performanceData} goalsData={goalsData} purchasingData={purchasingData} sangrias={icSangrias} stockMovements={icStockMovements} stock={iceCreamStock} weightRevenue={goalsRankingParams?.weight_revenue ?? 70} weightPA={goalsRankingParams?.weight_pa ?? 30} />;
                         if (currentView === 'metas' && can('MODULE_METAS')) return <GoalRegistration user={user!} stores={isAdmin ? stores : stores.filter(s => s.id === user?.storeId)} goalsData={goalsData} onSaveGoals={async (data) => { for(const row of data) { await supabase.from('monthly_goals').upsert({ store_id: row.storeId, year: row.year, month: row.month, revenue_target: row.revenueTarget, pa_target: row.paTarget, pu_target: row.puTarget, ticket_target: row.ticketTarget, items_target: row.itemsTarget, business_days: row.businessDays, delinquency_target: row.delinquencyTarget, trend: row.trend }, { onConflict: 'store_id, year, month' }); } fetchData(); }} />;
                         if (currentView === 'cotas' && can('MODULE_COTAS')) return <CotasManagement user={user!} stores={isAdmin ? stores : stores.filter(s => s.id === user?.storeId)} cotas={cotas} cotaSettings={cotaSettings} cotaDebts={cotaDebts} performanceData={performanceData} productCategories={quotaCategories} mixParameters={quotaMixParams} onAddCota={async (c) => { await supabase.from('cotas').insert([{ store_id: c.storeId, brand: c.brand, category_id: c.category_id, total_value: c.totalValue, shipment_date: `${c.shipmentDate}-01`, payment_terms: c.paymentTerms, pairs: c.pairs, installments: c.installments, status: 'ABERTA' }]); fetchData(); }} onUpdateCota={async (id, u) => { await supabase.from('cotas').update(u).eq('id', id); fetchData(); }} onDeleteCota={async (id) => { await supabase.from('cotas').delete().eq('id', id); fetchData(); }} onSaveSettings={async (s) => { await supabase.from('cota_settings').upsert({ store_id: s.storeId, budget_value: s.budgetValue, manager_percent: s.managerPercent }, { onConflict: 'store_id' }); fetchData(); }} onSaveDebts={async (d) => { await supabase.from('cota_debts').upsert({ store_id: d.storeId, month: d.month, value: d.value }, { onConflict: 'store_id, month' }); fetchData(); }} onDeleteDebt={async (id) => { await supabase.from('cota_debts').delete().eq('id', id); fetchData(); }} onUpdateMixParameter={async (id, sId, cat, pct, sem) => { if (id) { await supabase.from('quota_mix_parameters').update({ mix_percentage: pct }).eq('id', id); } else { await supabase.from('quota_mix_parameters').insert([{ store_id: sId, parent_category: cat, mix_percentage: pct, semester: sem }]); } fetchData(); }} can={can} />;
                         if (currentView === 'compras' && can('MODULE_PURCHASES')) return <DashboardPurchases
@@ -1374,6 +1416,7 @@ const App: React.FC = () => {
                         return <div className="flex items-center justify-center h-full text-gray-400 uppercase tracking-widest font-black text-sm">Selecione um módulo no menu</div>;
                     })()}
                     </Suspense>
+                    </ErrorBoundary>
                 </main>
             </div>
             {isChangePasswordOpen && (

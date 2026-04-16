@@ -320,6 +320,7 @@ const useMixData = (
       const normSeg = normalizeText(segName);
 
       const segParam = mixParameters.find(m => {
+        if (!m) return false;
         const storeMatch = m.store_id === viewStoreId || m.storeId === viewStoreId;
         const catMatch = normalizeText(m.category_name) === normSeg;
         const semMatch = semester === 'all' ? true : m.semester === Number(semester);
@@ -455,6 +456,15 @@ export const CotasManagement: React.FC<CotasManagementProps> = ({
   onUpdateMixParameter,
   can,
 }) => {
+  if (!stores || stores.length === 0) {
+    return (
+      <div className="flex items-center justify-center h-screen">
+        <Loader2 className="animate-spin text-blue-600" size={32} />
+        <p className="ml-3 text-sm font-bold text-gray-400">Carregando lojas...</p>
+      </div>
+    );
+  }
+
   const isAdmin = user.role === UserRole.ADMIN;
   const isManager = user.role === UserRole.MANAGER;
   const { toast, showToast } = useToast();
@@ -537,8 +547,8 @@ export const CotasManagement: React.FC<CotasManagementProps> = ({
   // Preenche configurações ao abrir modal
   useEffect(() => {
     if (storeSettings) {
-      setBudgetVal(storeSettings.budgetValue.toString());
-      setManagerPct(storeSettings.managerPercent.toString());
+      setBudgetVal(String(storeSettings.budgetValue ?? ''));
+      setManagerPct(String(storeSettings.managerPercent ?? ''));
     }
   }, [storeSettings]);
 
@@ -743,7 +753,7 @@ export const CotasManagement: React.FC<CotasManagementProps> = ({
                 PEDIDOS <span style="color:#dc2626;">VALIDADOS</span>
               </h1>
               <p style="margin:5px 0 0;font-size:11px;font-weight:bold;color:#666;">
-                UNIDADE ${store?.number} - ${store?.city}
+                UNIDADE ${store?.number ?? '?'} - ${store?.city ?? 'DESCONHECIDA'}
               </p>
             </div>
             <div style="text-align:right;font-size:10px;font-weight:bold;color:#999;">
@@ -821,7 +831,7 @@ export const CotasManagement: React.FC<CotasManagementProps> = ({
                 </select>
               ) : (
                 <h2 className="text-white font-black text-sm uppercase tracking-tight">
-                  Loja {currentStore?.number} — {currentStore?.city}
+                  Loja {currentStore?.number ?? '?'} — {currentStore?.city ?? 'Carregando...'}
                 </h2>
               )}
             </div>
@@ -1036,7 +1046,7 @@ export const CotasManagement: React.FC<CotasManagementProps> = ({
                 </select>
               ) : (
                 <span className="text-[10px] font-black text-blue-800 uppercase tracking-widest">
-                  Loja {currentStore?.number} - {currentStore?.city}
+                  Loja {currentStore?.number ?? '?'} - {currentStore?.city ?? 'Carregando...'}
                 </span>
               )}
             </div>
