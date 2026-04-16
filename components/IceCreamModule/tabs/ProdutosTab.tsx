@@ -31,7 +31,6 @@ const ProdutosTab: React.FC<ProdutosTabProps> = ({
         recipe: [] 
     });
  
-    // ✅ FUNÇÃO COM LOGS DE DEBUG
     const handleNewProduct = () => {
         console.log('🆕 [ProdutosTab] Abrindo modal de novo produto');
         console.log('📊 [ProdutosTab] onSaveProduct está definido?', typeof onSaveProduct);
@@ -56,7 +55,6 @@ const ProdutosTab: React.FC<ProdutosTabProps> = ({
         setShowProductModal(true);
     };
  
-    // ✅ NOVA FUNÇÃO: Wrapper com logs e tratamento de erro
     const handleSaveProduct = async (product: any) => {
         console.log('═══════════════════════════════════════════');
         console.log('🚀 [ProdutosTab] handleSaveProduct CHAMADO');
@@ -64,7 +62,6 @@ const ProdutosTab: React.FC<ProdutosTabProps> = ({
         console.log('🏪 Store ID:', effectiveStoreId);
         console.log('📝 É edição?', editingProduct ? 'SIM - ID: ' + editingProduct.id : 'NÃO - Novo produto');
         
-        // Validação básica
         if (!product.name || !product.category || !product.price) {
             console.error('❌ [ProdutosTab] Dados incompletos!');
             alert('Preencha todos os campos obrigatórios!');
@@ -80,16 +77,13 @@ const ProdutosTab: React.FC<ProdutosTabProps> = ({
         try {
             console.log('⏳ [ProdutosTab] Chamando onSaveProduct...');
             
-            // Chamar função original
             await onSaveProduct(product);
             
             console.log('✅ [ProdutosTab] onSaveProduct executado com sucesso!');
             
-            // Fechar modal
             setShowProductModal(false);
             console.log('✅ [ProdutosTab] Modal fechado');
             
-            // Recarregar dados
             if (fetchData) {
                 console.log('🔄 [ProdutosTab] Recarregando dados...');
                 await fetchData();
@@ -112,7 +106,6 @@ const ProdutosTab: React.FC<ProdutosTabProps> = ({
         }
     };
  
-    // ✅ LOG ao renderizar
     console.log('🎨 [ProdutosTab] Renderizando. Produtos:', filteredItems.length);
  
     return (
@@ -175,7 +168,7 @@ const ProdutosTab: React.FC<ProdutosTabProps> = ({
                 editingProduct={editingProduct}
                 form={productForm}
                 setForm={setProductForm}
-                onSave={handleSaveProduct}  {/* ← AGORA USA A FUNÇÃO COM LOGS */}
+                onSave={handleSaveProduct}
                 stock={stock}
                 effectiveStoreId={effectiveStoreId}
                 fetchData={fetchData}
