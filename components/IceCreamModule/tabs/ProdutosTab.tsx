@@ -3,7 +3,7 @@ import { PackagePlus, Plus, Edit3, Trash, Info } from 'lucide-react';
 import { formatCurrency } from '../../../constants';
 import { getCategoryIconEdit } from '../constants';
 import ProductModal from '../modals/ProductModal';
-
+ 
 interface ProdutosTabProps {
     filteredItems: any[];
     onDeleteItem: (id: string) => Promise<void>;
@@ -12,7 +12,7 @@ interface ProdutosTabProps {
     effectiveStoreId: string;
     fetchData?: () => Promise<void>;
 }
-
+ 
 const ProdutosTab: React.FC<ProdutosTabProps> = ({
     filteredItems,
     onDeleteItem,
@@ -30,8 +30,14 @@ const ProdutosTab: React.FC<ProdutosTabProps> = ({
         active: true, 
         recipe: [] 
     });
-
+ 
+    // ✅ FUNÇÃO COM LOGS DE DEBUG
     const handleNewProduct = () => {
+        console.log('🆕 [ProdutosTab] Abrindo modal de novo produto');
+        console.log('📊 [ProdutosTab] onSaveProduct está definido?', typeof onSaveProduct);
+        console.log('🏪 [ProdutosTab] effectiveStoreId:', effectiveStoreId);
+        console.log('📦 [ProdutosTab] Stock disponível:', stock.length);
+        
         setEditingProduct(null);
         setProductForm({ 
             name: '', 
@@ -42,13 +48,73 @@ const ProdutosTab: React.FC<ProdutosTabProps> = ({
         });
         setShowProductModal(true);
     };
-
+ 
     const handleEditProduct = (item: any) => {
+        console.log('✏️ [ProdutosTab] Editando produto:', item.name);
         setEditingProduct(item);
         setProductForm(item);
         setShowProductModal(true);
     };
-
+ 
+    // ✅ NOVA FUNÇÃO: Wrapper com logs e tratamento de erro
+    const handleSaveProduct = async (product: any) => {
+        console.log('═══════════════════════════════════════════');
+        console.log('🚀 [ProdutosTab] handleSaveProduct CHAMADO');
+        console.log('📦 Dados recebidos:', product);
+        console.log('🏪 Store ID:', effectiveStoreId);
+        console.log('📝 É edição?', editingProduct ? 'SIM - ID: ' + editingProduct.id : 'NÃO - Novo produto');
+        
+        // Validação básica
+        if (!product.name || !product.category || !product.price) {
+            console.error('❌ [ProdutosTab] Dados incompletos!');
+            alert('Preencha todos os campos obrigatórios!');
+            return;
+        }
+ 
+        if (!effectiveStoreId) {
+            console.error('❌ [ProdutosTab] Store ID não definido!');
+            alert('Erro: Loja não identificada!');
+            return;
+        }
+ 
+        try {
+            console.log('⏳ [ProdutosTab] Chamando onSaveProduct...');
+            
+            // Chamar função original
+            await onSaveProduct(product);
+            
+            console.log('✅ [ProdutosTab] onSaveProduct executado com sucesso!');
+            
+            // Fechar modal
+            setShowProductModal(false);
+            console.log('✅ [ProdutosTab] Modal fechado');
+            
+            // Recarregar dados
+            if (fetchData) {
+                console.log('🔄 [ProdutosTab] Recarregando dados...');
+                await fetchData();
+                console.log('✅ [ProdutosTab] Dados recarregados!');
+            } else {
+                console.warn('⚠️ [ProdutosTab] fetchData não está disponível');
+            }
+            
+            console.log('═══════════════════════════════════════════');
+            
+        } catch (error: any) {
+            console.error('═══════════════════════════════════════════');
+            console.error('❌ [ProdutosTab] ERRO ao salvar produto');
+            console.error('Erro:', error);
+            console.error('Mensagem:', error?.message);
+            console.error('Stack:', error?.stack);
+            console.error('═══════════════════════════════════════════');
+            
+            alert('Erro ao salvar produto: ' + (error?.message || 'Erro desconhecido'));
+        }
+    };
+ 
+    // ✅ LOG ao renderizar
+    console.log('🎨 [ProdutosTab] Renderizando. Produtos:', filteredItems.length);
+ 
     return (
         <div className="p-4 md:p-8 space-y-6 animate-in fade-in duration-300 max-w-6xl mx-auto pb-20">
             <div className="bg-white p-8 rounded-[40px] shadow-sm border border-gray-100 flex flex-col md:flex-row justify-between items-center gap-6">
@@ -59,10 +125,14 @@ const ProdutosTab: React.FC<ProdutosTabProps> = ({
                         <p className="text-[10px] font-bold text-gray-400 uppercase mt-1">Configuração de preços e composição</p>
                     </div>
                 </div>
-                <button onClick={handleNewProduct} className="px-6 py-3 bg-gray-900 text-white rounded-xl font-black uppercase text-[10px] shadow-lg flex items-center gap-2 border-b-4 border-red-600 active:scale-95">
+                <button 
+                    onClick={handleNewProduct} 
+                    className="px-6 py-3 bg-gray-900 text-white rounded-xl font-black uppercase text-[10px] shadow-lg flex items-center gap-2 border-b-4 border-red-600 active:scale-95"
+                >
                     <Plus size={16}/> Novo Produto
                 </button>
             </div>
+            
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4">
                 {filteredItems.map(item => (
                     <div key={item.id} className="bg-white p-6 rounded-[32px] shadow-sm border border-gray-100 group relative flex flex-col">
@@ -95,14 +165,17 @@ const ProdutosTab: React.FC<ProdutosTabProps> = ({
                     </div>
                 )}
             </div>
-
+ 
             <ProductModal 
                 isOpen={showProductModal}
-                onClose={() => setShowProductModal(false)}
+                onClose={() => {
+                    console.log('❌ [ProdutosTab] Fechando modal sem salvar');
+                    setShowProductModal(false);
+                }}
                 editingProduct={editingProduct}
                 form={productForm}
                 setForm={setProductForm}
-                onSave={onSaveProduct}
+                onSave={handleSaveProduct}  {/* ← AGORA USA A FUNÇÃO COM LOGS */}
                 stock={stock}
                 effectiveStoreId={effectiveStoreId}
                 fetchData={fetchData}
@@ -110,5 +183,5 @@ const ProdutosTab: React.FC<ProdutosTabProps> = ({
         </div>
     );
 };
-
+ 
 export default ProdutosTab;
