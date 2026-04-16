@@ -1,8 +1,8 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { X, PackagePlus, Save, Loader2, Trash2, Zap } from 'lucide-react';
 import { PRODUCT_CATEGORIES } from '../constants';
 import { IceCreamCategory, IceCreamRecipeItem } from '../../../types';
-
+ 
 interface ProductModalProps {
     isOpen: boolean;
     onClose: () => void;
@@ -14,7 +14,7 @@ interface ProductModalProps {
     effectiveStoreId: string;
     fetchData?: () => Promise<void>;
 }
-
+ 
 const ProductModal: React.FC<ProductModalProps> = ({
     isOpen,
     onClose,
@@ -28,38 +28,108 @@ const ProductModal: React.FC<ProductModalProps> = ({
 }) => {
     const [isSubmitting, setIsSubmitting] = useState(false);
     const [newRecipeItem, setNewRecipeItem] = useState({ stock_base_name: '', quantity: '1' });
-
+ 
+    // ✅ RESETAR form quando modal abre/fecha
+    useEffect(() => {
+        if (isOpen) {
+            console.log('📂 [ProductModal] Modal aberto');
+            console.log('📝 Editing?', editingProduct ? 'SIM' : 'NÃO');
+            console.log('📋 Form inicial:', form);
+        }
+    }, [isOpen, editingProduct, form]);
+ 
     if (!isOpen) return null;
-
+ 
     const handleSubmit = async (e: React.FormEvent) => {
         e.preventDefault();
+        
+        console.log('═══════════════════════════════════════════');
+        console.log('💾 [ProductModal] handleSubmit CHAMADO');
+        console.log('📦 Form atual:', form);
+        console.log('🏪 Store ID:', effectiveStoreId);
+        
+        // ✅ VALIDAÇÕES
+        if (!form.name || !form.category || form.price === undefined) {
+            console.error('❌ [ProductModal] Campos obrigatórios vazios!');
+            alert('Preencha todos os campos obrigatórios (Nome, Categoria, Preço)!');
+            return;
+        }
+ 
+        // ✅ PREPARAR DADOS
+        const productData = {
+            ...form,
+            storeId: effectiveStoreId,
+            price: parseFloat(form.price) || 0,
+            active: form.active !== false,
+            recipe: form.recipe || []
+        };
+ 
+        console.log('📤 [ProductModal] Dados preparados:', productData);
+ 
         setIsSubmitting(true);
+        
         try {
-            await onSave(form);
-            if (fetchData) await fetchData();
+            console.log('⏳ [ProductModal] Chamando onSave...');
+            
+            await onSave(productData);
+            
+            console.log('✅ [ProductModal] onSave executado com sucesso!');
+            console.log('🔄 [ProductModal] Recarregando dados...');
+            
+            if (fetchData) {
+                await fetchData();
+                console.log('✅ [ProductModal] Dados recarregados!');
+            }
+            
+            console.log('❌ [ProductModal] Fechando modal...');
             onClose();
-        } catch (e: any) {
-            alert("Erro ao salvar produto: " + e.message);
+            
+            console.log('═══════════════════════════════════════════');
+            
+        } catch (error: any) {
+            console.error('═══════════════════════════════════════════');
+            console.error('❌ [ProductModal] ERRO ao salvar');
+            console.error('Erro:', error);
+            console.error('Mensagem:', error?.message);
+            console.error('Stack:', error?.stack);
+            console.error('═══════════════════════════════════════════');
+            
+            alert("Erro ao salvar produto: " + (error?.message || 'Erro desconhecido'));
         } finally {
             setIsSubmitting(false);
         }
     };
-
+ 
     const addRecipeItem = () => {
-        if (!newRecipeItem.stock_base_name || !newRecipeItem.quantity) return;
+        console.log('➕ [ProductModal] Adicionando item à receita:', newRecipeItem);
+        
+        if (!newRecipeItem.stock_base_name || !newRecipeItem.quantity) {
+            console.warn('⚠️ [ProductModal] Item de receita incompleto');
+            return;
+        }
+        
         const updatedRecipe = [...(form.recipe || []), { 
             stock_base_name: newRecipeItem.stock_base_name, 
             quantity: parseFloat(newRecipeItem.quantity.replace(',', '.')) 
         }];
+        
         setForm({ ...form, recipe: updatedRecipe });
         setNewRecipeItem({ stock_base_name: '', quantity: '1' });
+        
+        console.log('✅ [ProductModal] Receita atualizada:', updatedRecipe);
     };
-
+ 
     const removeRecipeItem = (index: number) => {
+        console.log('🗑️ [ProductModal] Removendo item da receita:', index);
+        
         const updatedRecipe = (form.recipe || []).filter((_: any, idx: number) => idx !== index);
         setForm({ ...form, recipe: updatedRecipe });
+        
+        console.log('✅ [ProductModal] Receita atualizada:', updatedRecipe);
     };
-
+ 
+    console.log('🎨 [ProductModal] Renderizando...');
+ 
     return (
         <div className="fixed inset-0 bg-black/80 backdrop-blur-md flex items-center justify-center z-[130] p-4">
             <div className="bg-white rounded-[40px] w-full max-w-4xl max-h-[90vh] shadow-2xl animate-in zoom-in duration-300 border-t-8 border-blue-600 flex flex-col overflow-hidden">
@@ -67,7 +137,15 @@ const ProductModal: React.FC<ProductModalProps> = ({
                     <h3 className="text-xl font-black uppercase italic text-blue-950 flex items-center gap-3">
                         <PackagePlus className="text-blue-600" /> {editingProduct ? 'Editar' : 'Novo'} <span className="text-blue-600">Produto</span>
                     </h3>
-                    <button onClick={onClose} className="text-gray-400 hover:text-red-600 transition-all"><X size={24}/></button>
+                    <button 
+                        onClick={() => {
+                            console.log('❌ [ProductModal] Fechando sem salvar');
+                            onClose();
+                        }} 
+                        className="text-gray-400 hover:text-red-600 transition-all"
+                    >
+                        <X size={24}/>
+                    </button>
                 </div>
                 <div className="flex-1 overflow-y-auto no-scrollbar">
                     <form onSubmit={handleSubmit} className="p-10 space-y-10">
@@ -78,8 +156,11 @@ const ProductModal: React.FC<ProductModalProps> = ({
                                     <label className="text-[9px] font-black text-gray-500 uppercase ml-2">Nome do Produto</label>
                                     <input 
                                         required 
-                                        value={form.name} 
-                                        onChange={e => setForm({...form, name: e.target.value})} 
+                                        value={form.name || ''} 
+                                        onChange={e => {
+                                            console.log('✏️ [ProductModal] Nome alterado:', e.target.value);
+                                            setForm({...form, name: e.target.value});
+                                        }} 
                                         className="w-full p-4 bg-gray-50 border-none rounded-2xl font-black uppercase italic outline-none focus:ring-4 focus:ring-blue-50" 
                                     />
                                 </div>
@@ -87,8 +168,11 @@ const ProductModal: React.FC<ProductModalProps> = ({
                                     <div className="space-y-2">
                                         <label className="text-[9px] font-black text-gray-500 uppercase ml-2">Categoria</label>
                                         <select 
-                                            value={form.category} 
-                                            onChange={e => setForm({...form, category: e.target.value as IceCreamCategory})} 
+                                            value={form.category || 'Copinho'} 
+                                            onChange={e => {
+                                                console.log('📂 [ProductModal] Categoria alterada:', e.target.value);
+                                                setForm({...form, category: e.target.value as IceCreamCategory});
+                                            }} 
                                             className="w-full p-4 bg-gray-50 rounded-2xl font-black uppercase text-slate-900 outline-none"
                                         >
                                             {PRODUCT_CATEGORIES.map(c => <option key={c} value={c}>{c}</option>)}
@@ -98,8 +182,14 @@ const ProductModal: React.FC<ProductModalProps> = ({
                                         <label className="text-[9px] font-black text-gray-500 uppercase ml-2">Preço de Venda</label>
                                         <input 
                                             required 
-                                            value={form.price} 
-                                            onChange={e => setForm({...form, price: parseFloat(e.target.value) || 0})} 
+                                            type="number"
+                                            step="0.01"
+                                            min="0"
+                                            value={form.price || 0} 
+                                            onChange={e => {
+                                                console.log('💰 [ProductModal] Preço alterado:', e.target.value);
+                                                setForm({...form, price: parseFloat(e.target.value) || 0});
+                                            }} 
                                             className="w-full p-4 bg-blue-50 border-none rounded-2xl font-black text-blue-700 outline-none text-xl shadow-inner" 
                                         />
                                     </div>
@@ -108,7 +198,11 @@ const ProductModal: React.FC<ProductModalProps> = ({
                                     <label className="text-[10px] font-black text-gray-500 uppercase">Status:</label>
                                     <button 
                                         type="button" 
-                                        onClick={() => setForm({...form, active: !form.active})} 
+                                        onClick={() => {
+                                            const newActive = !form.active;
+                                            console.log('🔄 [ProductModal] Status alterado:', newActive ? 'ATIVO' : 'INATIVO');
+                                            setForm({...form, active: newActive});
+                                        }} 
                                         className={`px-4 py-2 rounded-xl text-[10px] font-black uppercase transition-all ${form.active ? 'bg-green-600 text-white shadow-lg' : 'bg-red-600 text-white'}`}
                                     >
                                         {form.active ? 'Visível no PDV' : 'Oculto no PDV'}
@@ -172,5 +266,5 @@ const ProductModal: React.FC<ProductModalProps> = ({
         </div>
     );
 };
-
+ 
 export default ProductModal;
