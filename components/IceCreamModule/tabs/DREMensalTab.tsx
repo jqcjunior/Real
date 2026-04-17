@@ -296,21 +296,37 @@ const DREMensalTab: React.FC<DREMensalTabProps> = ({
                     Resumo por Método de Pagamento
                 </h4>
                 <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
-                    <div className="p-4 bg-gray-50 rounded-2xl">
-                        <p className="text-[8px] font-black text-gray-400 uppercase">Pix ({dreStats.monthMethodsCount.pix})</p>
-                        <p className="font-black text-blue-900">{formatCurrency(dreStats.monthMethods.pix)}</p>
+                    <div className="p-6 bg-gray-50 rounded-2xl border-2 border-gray-200 hover:shadow-md transition-all">
+                        <p className="text-[10px] font-black text-gray-400 uppercase mb-2">
+                            Pix ({dreStats.monthMethodsCount.pix})
+                        </p>
+                        <p className="text-2xl font-black text-blue-900 italic">
+                            {formatCurrency(dreStats.monthMethods.pix)}
+                        </p>
                     </div>
-                    <div className="p-4 bg-gray-50 rounded-2xl">
-                        <p className="text-[8px] font-black text-gray-400 uppercase">Dinheiro ({dreStats.monthMethodsCount.money})</p>
-                        <p className="font-black text-green-700">{formatCurrency(dreStats.monthMethods.money)}</p>
+                    <div className="p-6 bg-gray-50 rounded-2xl border-2 border-gray-200 hover:shadow-md transition-all">
+                        <p className="text-[10px] font-black text-gray-400 uppercase mb-2">
+                            Dinheiro ({dreStats.monthMethodsCount.money})
+                        </p>
+                        <p className="text-2xl font-black text-green-700 italic">
+                            {formatCurrency(dreStats.monthMethods.money)}
+                        </p>
                     </div>
-                    <div className="p-4 bg-gray-50 rounded-2xl">
-                        <p className="text-[8px] font-black text-gray-400 uppercase">Cartão ({dreStats.monthMethodsCount.card})</p>
-                        <p className="font-black text-orange-600">{formatCurrency(dreStats.monthMethods.card)}</p>
+                    <div className="p-6 bg-gray-50 rounded-2xl border-2 border-gray-200 hover:shadow-md transition-all">
+                        <p className="text-[10px] font-black text-gray-400 uppercase mb-2">
+                            Cartão ({dreStats.monthMethodsCount.card})
+                        </p>
+                        <p className="text-2xl font-black text-orange-600 italic">
+                            {formatCurrency(dreStats.monthMethods.card)}
+                        </p>
                     </div>
-                    <div className="p-4 bg-gray-50 rounded-2xl">
-                        <p className="text-[8px] font-black text-gray-400 uppercase">Fiado ({dreStats.monthMethodsCount.fiado})</p>
-                        <p className="font-black text-red-600">{formatCurrency(dreStats.monthMethods.fiado)}</p>
+                    <div className="p-6 bg-gray-50 rounded-2xl border-2 border-gray-200 hover:shadow-md transition-all">
+                        <p className="text-[10px] font-black text-gray-400 uppercase mb-2">
+                            Fiado ({dreStats.monthMethodsCount.fiado})
+                        </p>
+                        <p className="text-2xl font-black text-red-600 italic">
+                            {formatCurrency(dreStats.monthMethods.fiado)}
+                        </p>
                     </div>
                 </div>
             </div>

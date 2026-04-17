@@ -28,6 +28,7 @@ export interface IceCreamModuleProps {
   sangriaCategories: IceCreamSangriaCategory[];
   sangrias: IceCreamSangria[];
   stockMovements: IceCreamStockMovement[];
+  wastage?: any[];
   partners: StoreProfitPartner[];
   adminUsers: AdminUser[];
   onAddSangria: (sangria: Partial<IceCreamSangria>) => Promise<void>;

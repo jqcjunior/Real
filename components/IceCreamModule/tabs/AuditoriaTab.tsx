@@ -290,7 +290,10 @@ const AuditoriaTab: React.FC<AuditoriaTabProps> = ({
                                     <td className="px-8 py-5">
                                         <div className="text-[10px] font-black text-orange-700 uppercase italic tracking-tighter">BAIXA DE AVARIA / DEFEITO</div>
                                         <div className="text-[9px] text-gray-600 font-medium uppercase mt-1 leading-relaxed">
-                                            {stock.find(s => s.stock_id === f.stock_id)?.product_base} - {Math.abs(f.quantity)} {stock.find(s => s.stock_id === f.stock_id)?.unit}
+                                            {f.stock_base_name} - {Math.abs(f.quantity)} {stock.find(s => s.product_base === f.stock_base_name)?.unit || ''}
+                                            {f.created_by && (
+                                                <span className="ml-2 px-2 py-0.5 bg-gray-100 text-gray-500 rounded lowercase text-[7px] font-normal italic">por {f.created_by}</span>
+                                            )}
                                             <br/>
                                             <span className="text-[8px] text-gray-400 italic">Motivo: {f.reason}</span>
                                         </div>

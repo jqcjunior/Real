@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
 import { X, AlertTriangle, Loader2, Trash } from 'lucide-react';
-import { IceCreamStock } from '../../../types';
+import { IceCreamStock, User } from '../../../types';
+import { supabase } from '../../../services/supabaseClient';
 
 interface WastageModalProps {
     isOpen: boolean;
@@ -9,6 +10,7 @@ interface WastageModalProps {
     filteredStock: IceCreamStock[];
     effectiveStoreId: string;
     fetchData?: () => Promise<void>;
+    user: User;
 }
 
 const WastageModal: React.FC<WastageModalProps> = ({
@@ -17,7 +19,8 @@ const WastageModal: React.FC<WastageModalProps> = ({
     onUpdateStock,
     filteredStock,
     effectiveStoreId,
-    fetchData
+    fetchData,
+    user
 }) => {
     const [wastageForm, setWastageForm] = useState({ stockId: '', quantity: '', reason: '' });
     const [isSubmitting, setIsSubmitting] = useState(false);
@@ -31,10 +34,24 @@ const WastageModal: React.FC<WastageModalProps> = ({
             const st = filteredStock.find(s => s.stock_id === wastageForm.stockId);
             if (!st) throw new Error("Insumo não encontrado");
 
+            const qty = parseFloat(wastageForm.quantity.replace(',', '.'));
+
+            // 1. Log especificamente na tabela ice_cream_wastage
+            const { error: wastageError } = await supabase.from('ice_cream_wastage').insert([{
+                store_id: effectiveStoreId,
+                stock_base_name: st.product_base,
+                quantity: qty,
+                reason: wastageForm.reason || null,
+                created_by: user.name
+            }]);
+
+            if (wastageError) throw wastageError;
+
+            // 2. Atualiza estoque
             await onUpdateStock(
                 effectiveStoreId, 
                 st.product_base, 
-                -Math.abs(parseFloat(wastageForm.quantity.replace(',', '.'))), 
+                -Math.abs(qty), 
                 st.unit, 
                 'wastage', 
                 wastageForm.stockId
@@ -45,6 +62,7 @@ const WastageModal: React.FC<WastageModalProps> = ({
             onClose();
             setWastageForm({ stockId: '', quantity: '', reason: '' });
         } catch (e: any) {
+            console.error("Erro ao realizar baixa:", e);
             alert("Erro ao realizar baixa: " + e.message);
         } finally {
             setIsSubmitting(false);

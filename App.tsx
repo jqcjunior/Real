@@ -310,6 +310,7 @@ const App: React.FC = () => {
     const [icSangriaCategories, setIcSangriaCategories] = useState<IceCreamSangriaCategory[]>([]);
     const [icSangrias, setIcSangrias] = useState<IceCreamSangria[]>([]);
     const [icStockMovements, setIcStockMovements] = useState<IceCreamStockMovement[]>([]);
+    const [icWastage, setIcWastage] = useState<any[]>([]);
     const [partners, setPartners] = useState<StoreProfitPartner[]>([]);
     const [adminUsers, setAdminUsers] = useState<AdminUser[]>([]);
     const [paParameters, setPaParameters] = useState<any>(null);
@@ -482,6 +483,7 @@ const App: React.FC = () => {
             let cardSalesQuery = supabase.from('financial_card_sales').select('*');
             let pixSalesQuery = supabase.from('financial_pix_sales').select('*');
             let movementsQuery = supabase.from('ice_cream_stock_movements').select('*');
+            let wastageQuery = supabase.from('ice_cream_wastage').select('*');
             
             if (userRole === 'ICE_CREAM' || userRole === 'SORVETE') {
                 // SORVETE: HOJE + MÊS ATUAL (cancelamentos/avarias)
@@ -504,6 +506,10 @@ const App: React.FC = () => {
                     .gte('created_at', `${today}T00:00:00`);
                 
                 movementsQuery = movementsQuery
+                    .eq('store_id', userStoreId)
+                    .gte('created_at', monthStart);
+
+                wastageQuery = wastageQuery
                     .eq('store_id', userStoreId)
                     .gte('created_at', monthStart);
                     
@@ -547,6 +553,10 @@ const App: React.FC = () => {
                 movementsQuery = movementsQuery
                     .eq('store_id', userStoreId)
                     .gte('created_at', cancelStart);
+
+                wastageQuery = wastageQuery
+                    .eq('store_id', userStoreId)
+                    .gte('created_at', cancelStart);
                     
             } else {
                 // ADMIN: 90 DIAS vendas, 6 MESES cancelamentos (TODAS as lojas)
@@ -562,14 +572,15 @@ const App: React.FC = () => {
                 cardSalesQuery = cardSalesQuery.gte('created_at', ninetyDaysAgo);
                 pixSalesQuery = pixSalesQuery.gte('created_at', ninetyDaysAgo);
                 movementsQuery = movementsQuery.gte('created_at', cancelStart);
+                wastageQuery = wastageQuery.gte('created_at', cancelStart);
             }
-
+ 
             const [
                 {data: pur}, {data: c}, {data: cs}, {data: cd}, {data: cat}, {data: mix},
                 {data: ici}, {data: ics}, {data: icst}, {data: icp}, {data: r}, {data: ce}, {data: ag}, {data: dl}, {data: cl}, {data: lg},
                 {data: cds}, {data: pxs}, {data: sls}, {data: slsp},
                 {data: sangCat}, {data: sang}, {data: movements}, {data: part}, {data: ausers},
-                {data: pm}, {data: fd}
+                {data: pm}, {data: fd}, {data: wst}
             ] = await Promise.all([
                 supabase.from('product_performance').select('*'),
                 supabase.from('cotas_with_category').select('*'),
@@ -597,9 +608,11 @@ const App: React.FC = () => {
                 supabase.from('store_profit_distribution').select('*'),
                 supabase.from('admin_users').select('*'),
                 supabase.from('gestao_compras').select('*'),
-                supabase.from('ice_cream_future_debts').select('*').order('due_date', { ascending: true })
+                supabase.from('ice_cream_future_debts').select('*').order('due_date', { ascending: true }),
+                wastageQuery.order('created_at', { ascending: false })
             ]);
-
+ 
+            if(wst) setIcWastage(wst);
             if(fd) setFutureDebts(fd);
             if(sls) setSales(sls);
             if(slsp) setSalePayments(slsp.map(x => ({ ...x, amount: Number(x.amount || 0) })));
@@ -1165,6 +1178,7 @@ const App: React.FC = () => {
                             sangriaCategories={icSangriaCategories}
                             sangrias={icSangrias}
                             stockMovements={icStockMovements}
+                            wastage={icWastage}
                             partners={partners}
                             adminUsers={adminUsers}
                             futureDebts={futureDebts}

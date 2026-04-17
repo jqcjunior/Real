@@ -64,7 +64,9 @@ const SangriaModal: React.FC<SangriaModalProps> = ({
                         <div className="space-y-2">
                             <div className="flex justify-between items-center ml-2">
                                 <label className="text-[10px] font-black text-gray-400 uppercase flex items-center gap-2"><DollarSign size={12}/> Categoria</label>
-                                <button onClick={onManageCategories} className="text-[9px] font-black text-blue-600 uppercase hover:underline">Gerenciar</button>
+                                <p className="text-[9px] font-black text-blue-500 uppercase">
+                                    💡 Aba Despesas
+                                </p>
                             </div>
                             <select 
                                 value={form.categoryId} 

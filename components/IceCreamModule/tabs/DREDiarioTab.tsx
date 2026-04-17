@@ -4,6 +4,7 @@ import {
     XCircle, ChevronUp, ChevronDown, Wallet, Package 
 } from 'lucide-react';
 import { formatCurrency } from '../../../constants';
+import { User } from '../../../types';
 import WastageModal from '../modals/WastageModal';
 import SangriaModal from '../modals/SangriaModal';
 
@@ -20,6 +21,7 @@ interface DREDiarioTabProps {
     fetchData?: () => Promise<void>;
     onAddSangriaCategory: (name: string, storeId: string) => Promise<void>;
     onShowSangriaDetail: () => void;
+    user: User;
 }
 
 const DREDiarioTab: React.FC<DREDiarioTabProps> = ({
@@ -34,7 +36,8 @@ const DREDiarioTab: React.FC<DREDiarioTabProps> = ({
     filteredStock,
     fetchData,
     onAddSangriaCategory,
-    onShowSangriaDetail
+    onShowSangriaDetail,
+    user
 }) => {
     const [dreSubTab, setDreSubTab] = useState<'resumo' | 'detalhado'>('resumo');
     const [showSangriaModal, setShowSangriaModal] = useState(false);
@@ -241,6 +244,7 @@ const DREDiarioTab: React.FC<DREDiarioTabProps> = ({
                 filteredStock={filteredStock}
                 effectiveStoreId={effectiveStoreId}
                 fetchData={fetchData}
+                user={user}
             />
         </div>
     );

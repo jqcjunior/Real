@@ -63,6 +63,7 @@ const IceCreamModule: React.FC<IceCreamModuleProps> = ({
     sangriaCategories = [],
     sangrias = [],
     stockMovements = [],
+    wastage = [],
     partners = [],
     adminUsers = [],
     onAddSangria,
@@ -300,13 +301,33 @@ const IceCreamModule: React.FC<IceCreamModuleProps> = ({
     }, [sales, selectedAuditDate, effectiveStoreId, auditSearch, salesHeaders, salePayments]);
 
     const filteredAuditWastage = useMemo(() => {
-        return stockMovements.filter(m => {
+        // Combinar stockMovements (tipo AVARIA) com a nova tabela ice_cream_wastage
+        const legacyWastage = stockMovements.filter(m => {
             if (!m.created_at) return false;
             const d = new Date(m.created_at);
             const dateStr = d.toISOString().split('T')[0];
             return dateStr === selectedAuditDate && m.store_id === effectiveStoreId && m.movement_type === 'AVARIA';
+        }).map(m => ({
+            id: m.id,
+            store_id: m.store_id,
+            stock_base_name: stock.find(s => s.stock_id === m.stock_id)?.product_base || '?',
+            quantity: m.quantity,
+            reason: m.reason,
+            created_by: 'Sistema',
+            created_at: m.created_at
+        }));
+
+        const currentWastage = wastage.filter(w => {
+            if (!w.created_at) return false;
+            const d = new Date(w.created_at);
+            const dateStr = d.toISOString().split('T')[0];
+            return dateStr === selectedAuditDate && w.store_id === effectiveStoreId;
         });
-    }, [stockMovements, selectedAuditDate, effectiveStoreId]);
+
+        return [...legacyWastage, ...currentWastage].sort((a, b) => 
+            new Date(b.created_at).getTime() - new Date(a.created_at).getTime()
+        );
+    }, [stockMovements, wastage, selectedAuditDate, effectiveStoreId, stock]);
 
     const filteredCancelations = useMemo(() => {
         const month = parseInt(auditMonth);
@@ -1003,6 +1024,7 @@ const IceCreamModule: React.FC<IceCreamModuleProps> = ({
                         fetchData={fetchData}
                         onAddSangriaCategory={isSorvete ? async () => {} : handleAddSangriaCategory}
                         onShowSangriaDetail={() => setShowSangriaDetailModal('day')}
+                        user={user}
                     />
                 )}
 
@@ -1148,6 +1170,7 @@ const IceCreamModule: React.FC<IceCreamModuleProps> = ({
                     filteredStock={stock.filter(s => s.store_id === effectiveStoreId)}
                     effectiveStoreId={effectiveStoreId}
                     fetchData={fetchData}
+                    user={user}
                 />
             )}
 
