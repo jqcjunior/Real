@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import { X, PencilLine, Loader2, Save } from 'lucide-react';
 import { IceCreamStock } from '../../../types';
 
@@ -23,6 +23,13 @@ const InventoryModal: React.FC<InventoryModalProps> = ({
 }) => {
     const [inventoryForm, setInventoryForm] = useState<Record<string, string>>({});
     const [isSubmitting, setIsSubmitting] = useState(false);
+
+    // Ordem alfabética para os insumos
+    const sortedStock = useMemo(() => {
+        return [...filteredStock].sort((a, b) => 
+            a.product_base.localeCompare(b.product_base, 'pt-BR')
+        );
+    }, [filteredStock]);
 
     useEffect(() => {
         if (isOpen) {
@@ -65,7 +72,7 @@ const InventoryModal: React.FC<InventoryModalProps> = ({
                     <button onClick={onClose} className="text-gray-400 hover:text-red-600"><X size={24}/></button>
                 </div>
                 <div className="flex-1 overflow-y-auto p-10 space-y-4 no-scrollbar">
-                    {filteredStock.map(s => (
+                    {sortedStock.map(s => (
                         <div key={s.stock_id} className="flex items-center gap-4 bg-gray-50 p-4 rounded-2xl border border-gray-100">
                             <div className="flex-1">
                                 <p className="text-[10px] font-black text-blue-950 uppercase italic leading-none">{s.product_base}</p>

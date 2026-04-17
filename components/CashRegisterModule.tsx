@@ -499,6 +499,11 @@ export const printDailyConsolidated = (
         cardsByBrand[c.brand] = (cardsByBrand[c.brand] || 0) + c.value;
     });
     
+    // ✅ DIVIDIR CARTÕES EM 2 COLUNAS para evitar overflow
+    const cardsPerColumn = Math.ceil(cardEntries.length / 2);
+    const cardColumn1 = cardEntries.slice(0, cardsPerColumn);
+    const cardColumn2 = cardEntries.slice(cardsPerColumn);
+    
     // PIX: 3 COLUNAS FIXAS
     const numColumns = 3;
     const itemsPerColumn = Math.ceil(pixEntries.length / numColumns);
@@ -515,7 +520,7 @@ export const printDailyConsolidated = (
         <head>
             <style>
                 @page { 
-                    size: 110mm 170mm; 
+                    size: 80mm auto; 
                     margin: 0; 
                 }
                 * {
@@ -527,34 +532,28 @@ export const printDailyConsolidated = (
                     font-family: 'Courier New', Courier, monospace; 
                     -webkit-print-color-adjust: exact; 
                     print-color-adjust: exact;
-                    width: 110mm;
-                    height: 170mm;
+                    width: 80mm;
                     background: white;
-                    font-size: 9px;
-                    position: absolute;
-                    top: 0;
-                    left: 0;
-                    overflow: hidden;
+                    font-size: 8px;
+                    padding: 10mm 2mm 2mm 10mm;
                 }
                 
                 .container {
-                    padding: 2mm;
-                    height: 170mm;
-                    display: flex;
-                    flex-direction: column;
+                    width: 100%;
                 }
                 
                 .header { 
                     text-align: center; 
                     border-bottom: 2px solid #000; 
                     padding-bottom: 1mm;
-                    margin-bottom: 1mm;
+                    margin-bottom: 1.5mm;
                 }
                 .header h1 { 
-                    font-size: 11px; 
+                    font-size: 10px; 
                     font-weight: 900; 
                     text-transform: uppercase; 
                     line-height: 1.1;
+                    margin-bottom: 0.5mm;
                 }
                 .header p { 
                     font-size: 7px; 
@@ -566,7 +565,7 @@ export const printDailyConsolidated = (
                     font-size: 7px; 
                     display: flex; 
                     justify-content: space-between; 
-                    margin-bottom: 1mm;
+                    margin-bottom: 0.5mm;
                     line-height: 1.2;
                 }
                 
@@ -577,23 +576,20 @@ export const printDailyConsolidated = (
                 
                 .solid-line { 
                     border-top: 2px solid #000; 
-                    margin: 1mm 0; 
+                    margin: 1.5mm 0; 
                 }
                 
-                /* SEÇÃO CARTÕES - 35mm */
+                /* SEÇÃO CARTÕES - RESPONSIVA */
                 .section-cards {
                     border: 2px solid #000;
                     padding: 1.5mm;
                     margin-bottom: 2mm;
-                    height: 35mm;
                     background: #f9f9f9;
-                    overflow: hidden;
-                    flex-shrink: 0;
                 }
                 
                 .section-title {
                     font-weight: 900;
-                    font-size: 9px;
+                    font-size: 8px;
                     text-align: center;
                     margin-bottom: 1mm;
                     padding-bottom: 0.5mm;
@@ -601,21 +597,19 @@ export const printDailyConsolidated = (
                     line-height: 1.1;
                 }
                 
-                /* SEÇÃO PIX - 95mm */
+                /* SEÇÃO PIX - RESPONSIVA */
                 .section-pix {
                     border: 2px solid #000;
                     padding: 1.5mm;
-                    height: 95mm;
                     background: #f9f9f9;
-                    overflow: hidden;
-                    flex-shrink: 0;
+                    margin-bottom: 1.5mm;
                 }
                 
                 .item-line {
                     display: flex;
                     justify-content: space-between;
-                    border-bottom: 1px solid #ddd;
-                    padding: 0.5px 0;
+                    border-bottom: 1px dotted #ddd;
+                    padding: 0.3mm 0;
                     font-size: 7px;
                     line-height: 1.2;
                 }
@@ -628,12 +622,20 @@ export const printDailyConsolidated = (
                     text-align: right; 
                 }
                 
+                /* GRID 2 COLUNAS PARA CARTÕES */
+                .grid-cards {
+                    display: grid;
+                    grid-template-columns: repeat(2, 1fr);
+                    gap: 2mm;
+                    margin-bottom: 1mm;
+                }
+                
+                /* GRID 3 COLUNAS PARA PIX */
                 .grid-pix {
                     display: grid;
                     grid-template-columns: repeat(3, 1fr);
                     gap: 1.5mm;
-                    max-height: 75mm;
-                    overflow: hidden;
+                    margin-bottom: 1mm;
                 }
                 
                 .subtotal {
@@ -641,27 +643,37 @@ export const printDailyConsolidated = (
                     padding-top: 1mm;
                     border-top: 1px solid #000;
                     font-weight: 900;
-                    font-size: 8px;
+                    font-size: 7px;
+                }
+                
+                .brand-totals {
+                    font-size: 6px;
+                    margin-top: 1mm;
+                    padding: 1mm;
+                    background: #fff;
+                    border-radius: 1mm;
+                }
+                
+                .brand-line {
+                    display: flex;
+                    justify-content: space-between;
+                    padding: 0.3mm 0;
+                    line-height: 1.2;
                 }
                 
                 .total-day {
-                    margin-top: 1mm;
                     padding: 2mm;
                     background: #000;
                     color: #fff;
                     text-align: center;
                     font-weight: 900;
-                    font-size: 11px;
-                    flex-shrink: 0;
+                    font-size: 10px;
+                    border-radius: 1mm;
                 }
                 
                 @media print {
                     body { 
-                        width: 110mm; 
-                        height: 170mm; 
-                        position: absolute;
-                        top: 0;
-                        left: 0;
+                        width: 80mm;
                     }
                 }
             </style>
@@ -684,41 +696,50 @@ export const printDailyConsolidated = (
                 
                 <div class="solid-line"></div>
                 
-                <!-- SEÇÃO CARTÕES (35mm) -->
+                <!-- SEÇÃO CARTÕES - 2 COLUNAS -->
                 <div class="section-cards">
                     <div class="section-title">💳 CARTÕES (${cardEntries.length})</div>
                     
-                    <div style="max-height: 13mm; overflow: hidden;">
-                        ${cardEntries.map(c => `
-                            <div class="item-line">
-                                <span class="ticket">#${c.ticket || '---'}</span>
-                                <span style="font-size: 6px; color: #666;">${c.brand}</span>
-                                <span class="value">${new Intl.NumberFormat('pt-BR', { minimumFractionDigits: 2 }).format(c.value)}</span>
-                            </div>
-                        `).join('')}
+                    <div class="grid-cards">
+                        <div>
+                            ${cardColumn1.map(c => `
+                                <div class="item-line">
+                                    <span class="ticket">#${c.ticket || '---'}</span>
+                                    <span class="value">${new Intl.NumberFormat('pt-BR', { minimumFractionDigits: 2 }).format(c.value)}</span>
+                                </div>
+                            `).join('')}
+                        </div>
+                        <div>
+                            ${cardColumn2.map(c => `
+                                <div class="item-line">
+                                    <span class="ticket">#${c.ticket || '---'}</span>
+                                    <span class="value">${new Intl.NumberFormat('pt-BR', { minimumFractionDigits: 2 }).format(c.value)}</span>
+                                </div>
+                            `).join('')}
+                        </div>
                     </div>
                     
                     <div class="dashed-line"></div>
                     
-                    <div style="font-size: 7px;">
-                        <div style="font-weight: bold; margin-bottom: 0.5mm; font-size: 7px;">POR BANDEIRA:</div>
+                    <div class="brand-totals">
+                        <div style="font-weight: bold; margin-bottom: 0.5mm; font-size: 6px; text-align: center;">POR BANDEIRA:</div>
                         ${Object.entries(cardsByBrand).map(([brand, val]) => `
-                            <div style="display: flex; justify-content: space-between; font-size: 7px; line-height: 1.2;">
+                            <div class="brand-line">
                                 <span>${brand}</span>
-                                <span>${new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(val)}</span>
+                                <span style="font-weight: bold;">${new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(val)}</span>
                             </div>
                         `).join('')}
                     </div>
                     
                     <div class="subtotal">
                         <div style="display: flex; justify-content: space-between;">
-                            <span>TOTAL:</span>
+                            <span>TOTAL CARTÕES:</span>
                             <span>${new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(totalCards)}</span>
                         </div>
                     </div>
                 </div>
                 
-                <!-- SEÇÃO PIX (95mm) -->
+                <!-- SEÇÃO PIX - 3 COLUNAS -->
                 <div class="section-pix">
                     <div class="section-title">🔸 PIX (${pixEntries.length}) - 3 colunas</div>
                     

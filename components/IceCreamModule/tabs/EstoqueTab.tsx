@@ -1,126 +1,163 @@
 import React, { useState } from 'react';
-import { Warehouse, Plus, Truck, PencilLine, Package, Trash2, Info } from 'lucide-react';
-import { IceCreamStock } from '../../../types';
+import { Package, Plus, Trash2, Edit, Archive } from 'lucide-react';
 import NewInsumoModal from '../modals/NewInsumoModal';
-import PurchaseModal from '../modals/PurchaseModal';
-import InventoryModal from '../modals/InventoryModal';
-
+ 
 interface EstoqueTabProps {
-    filteredStock: IceCreamStock[];
+    filteredStock: any[];
     isAdmin: boolean;
     onUpdateStock: (storeId: string, base: string, value: number, unit: string, type: any, stockId?: string) => Promise<void>;
     onAddStockBase: (base: string, unit: string, storeId: string) => Promise<void>;
+    onUpdateStockBase?: (id: string, base: string, unit: string) => Promise<void>;
     onDeleteStockBase: (id: string) => Promise<void>;
     onToggleFreezeStock: (id: string, active: boolean) => Promise<void>;
     effectiveStoreId: string;
     fetchData?: () => Promise<void>;
 }
-
+ 
 const EstoqueTab: React.FC<EstoqueTabProps> = ({
     filteredStock,
     isAdmin,
-    onUpdateStock,
     onAddStockBase,
+    onUpdateStockBase,
     onDeleteStockBase,
     onToggleFreezeStock,
     effectiveStoreId,
     fetchData
 }) => {
     const [showNewInsumoModal, setShowNewInsumoModal] = useState(false);
-    const [showPurchaseModal, setShowPurchaseModal] = useState(false);
-    const [showInventoryModal, setShowInventoryModal] = useState(false);
-    const [purchaseForm, setPurchaseForm] = useState<any>({});
-    const [inventoryForm, setInventoryForm] = useState<Record<string, string>>({});
-    const [isSubmitting, setIsSubmitting] = useState(false);
-
-    const handleToggleFreezeStock = async (st: IceCreamStock) => {
-        if (!confirm(`Deseja ${st.is_active === false ? 'reativar' : 'congelar'} o insumo ${st.product_base}?`)) return;
-        try {
-            await onToggleFreezeStock(st.stock_id, st.is_active === false);
-            if (fetchData) await fetchData();
-        } catch (e: any) {
-            alert("Erro: " + e.message);
-        }
+    const [editingItem, setEditingItem] = useState<{ id: string; product_base: string; unit: string } | null>(null);
+ 
+    const handleEdit = (item: any) => {
+        setEditingItem({
+            id: item.id,
+            product_base: item.product_base,
+            unit: item.unit
+        });
+        setShowNewInsumoModal(true);
     };
-
+ 
+    const handleCloseModal = () => {
+        setShowNewInsumoModal(false);
+        setEditingItem(null);
+    };
+ 
+    // ✅ Ordenar ingredientes alfabeticamente
+    const sortedStock = [...filteredStock].sort((a, b) => 
+        a.product_base.localeCompare(b.product_base, 'pt-BR')
+    );
+ 
     return (
         <div className="p-4 md:p-8 space-y-6 animate-in fade-in duration-300 max-w-6xl mx-auto pb-20">
             <div className="bg-white p-8 rounded-[40px] shadow-sm border border-gray-100 flex flex-col md:flex-row justify-between items-center gap-6">
                 <div className="flex items-center gap-4">
-                    <div className="p-4 bg-orange-50 text-orange-600 rounded-3xl">
-                        <Warehouse size={32}/>
+                    <div className="p-4 bg-blue-50 text-blue-700 rounded-3xl">
+                        <Package size={32}/>
                     </div>
                     <div>
                         <h3 className="text-2xl font-black uppercase italic text-blue-950 tracking-tighter">
-                            Controle de <span className="text-orange-600">Insumos</span>
+                            Gestão de <span className="text-blue-700">Estoque</span>
                         </h3>
+                        <p className="text-[10px] font-bold text-gray-400 uppercase mt-1">
+                            Controle de insumos e ingredientes
+                        </p>
                     </div>
                 </div>
                 {isAdmin && (
-                    <div className="flex flex-wrap gap-2">
-                        <button onClick={() => setShowNewInsumoModal(true)} className="px-4 py-2 bg-gray-900 text-white rounded-xl font-black uppercase text-[9px] shadow-lg flex items-center gap-2 border-b-2 border-black active:scale-95"><Plus size={14}/> Novo Insumo</button>
-                        <button onClick={() => { setPurchaseForm({}); setShowPurchaseModal(true); }} className="px-4 py-2 bg-blue-600 text-white rounded-xl font-black uppercase text-[9px] shadow-lg flex items-center gap-2 border-b-2 border-blue-900 active:scale-95"><Truck size={14}/> Lançar Compra</button>
-                        <button onClick={() => { const initialInv: Record<string, string> = {}; filteredStock.forEach(s => initialInv[s.stock_id] = s.stock_current.toString()); setInventoryForm(initialInv); setShowInventoryModal(true); }} className="px-4 py-2 bg-orange-600 text-white rounded-xl font-black uppercase text-[9px] shadow-lg flex items-center gap-2 border-b-2 border-orange-900 active:scale-95"><PencilLine size={14}/> Inventário</button>
-                    </div>
+                    <button
+                        onClick={() => {
+                            setEditingItem(null);
+                            setShowNewInsumoModal(true);
+                        }}
+                        className="px-6 py-3 bg-blue-600 text-white rounded-2xl font-black uppercase text-[10px] shadow-lg flex items-center gap-2 hover:bg-blue-700 transition-all border-b-4 border-blue-800"
+                    >
+                        <Plus size={16}/> Novo Insumo
+                    </button>
                 )}
             </div>
-            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
-                {filteredStock.map(st => (
-                    <div key={st.stock_id} className={`bg-white p-6 rounded-[32px] shadow-sm border border-gray-100 relative group overflow-hidden ${st.is_active === false ? 'opacity-40 grayscale' : ''}`}>
-                        {isAdmin && (
-                            <button 
-                                onClick={() => handleToggleFreezeStock(st)} 
-                                className="absolute top-4 right-4 p-2 text-gray-300 hover:text-red-600 opacity-0 group-hover:opacity-100 transition-all z-10"
-                                title={st.is_active === false ? "Reativar Insumo" : "Congelar Insumo"}
-                            >
-                                <Trash2 size={16}/>
-                            </button>
+ 
+            <div className="bg-white rounded-[40px] shadow-xl border border-gray-100 overflow-hidden">
+                <table className="w-full text-left">
+                    <thead className="bg-gray-50 text-[9px] font-black text-gray-400 uppercase border-b">
+                        <tr>
+                            <th className="px-8 py-5">Insumo / Base</th>
+                            <th className="px-8 py-5">Unidade</th>
+                            <th className="px-8 py-5 text-right">Estoque Atual</th>
+                            {isAdmin && <th className="px-8 py-5 text-center">Ações</th>}
+                        </tr>
+                    </thead>
+                    <tbody className="divide-y divide-gray-50 font-bold text-[10px]">
+                        {sortedStock.map((item: any) => (
+                            <tr key={item.id} className="hover:bg-blue-50/30 transition-all">
+                                <td className="px-8 py-5">
+                                    <span className="text-xs font-black text-blue-950 uppercase italic">
+                                        {item.product_base}
+                                    </span>
+                                </td>
+                                <td className="px-8 py-5">
+                                    <span className="px-3 py-1 rounded-full text-[8px] font-black uppercase border bg-gray-50 text-gray-700 border-gray-200">
+                                        {item.unit || 'N/A'}
+                                    </span>
+                                </td>
+                                <td className="px-8 py-5 text-right">
+                                    <span className="text-sm font-black text-gray-900">
+                                        {item.stock_current} {item.unit}
+                                    </span>
+                                </td>
+                                {isAdmin && (
+                                    <td className="px-8 py-5">
+                                        <div className="flex items-center justify-center gap-2">
+                                            <button
+                                                onClick={() => handleEdit(item)}
+                                                className="p-2 text-orange-400 hover:text-orange-600 transition-all"
+                                                title="Editar Insumo"
+                                            >
+                                                <Edit size={18}/>
+                                            </button>
+                                            <button
+                                                onClick={() => onToggleFreezeStock(item.id, !item.is_active)}
+                                                className="p-2 text-gray-400 hover:text-gray-600 transition-all"
+                                                title={item.is_active ? "Desativar" : "Ativar"}
+                                            >
+                                                <Archive size={18}/>
+                                            </button>
+                                            <button
+                                                onClick={() => {
+                                                    if (confirm(`Desativar "${item.product_base}"?`)) {
+                                                        onDeleteStockBase(item.id);
+                                                    }
+                                                }}
+                                                className="p-2 text-red-400 hover:text-red-600 transition-all"
+                                                title="Excluir Insumo"
+                                            >
+                                                <Trash2 size={18}/>
+                                            </button>
+                                        </div>
+                                    </td>
+                                )}
+                            </tr>
+                        ))}
+                        {sortedStock.length === 0 && (
+                            <tr>
+                                <td colSpan={isAdmin ? 4 : 3} className="px-8 py-16 text-center text-gray-400 uppercase font-black tracking-widest italic">
+                                    Nenhum insumo cadastrado
+                                </td>
+                            </tr>
                         )}
-                        <div className={`p-2 rounded-xl text-white w-fit mb-4 ${st.stock_current <= 5 ? 'bg-red-500 animate-pulse' : 'bg-orange-500'}`}>
-                            <Package size={16}/>
-                        </div>
-                        <h4 className="text-[10px] font-black text-blue-950 uppercase italic leading-none mb-2 truncate pr-6">{st.product_base}</h4>
-                        <div className="flex items-baseline gap-1">
-                            <span className={`text-2xl font-black italic tracking-tighter ${st.stock_current <= 5 ? 'text-red-600' : 'text-gray-900'}`}>{st.stock_current}</span>
-                            <span className="text-[8px] font-bold text-gray-400 uppercase tracking-widest">{st.unit}</span>
-                        </div>
-                    </div>
-                ))}
-                {filteredStock.length === 0 && (
-                    <div className="col-span-full py-20 text-center bg-gray-50 border-2 border-dashed border-gray-200 rounded-[32px]">
-                        <Info className="mx-auto text-gray-300 mb-3" size={40}/>
-                        <p className="text-[10px] font-black text-gray-400 uppercase tracking-widest">Nenhum insumo ativo no momento</p>
-                    </div>
-                )}
+                    </tbody>
+                </table>
             </div>
-
-            {/* Modals */}
-            <NewInsumoModal 
+ 
+            <NewInsumoModal
                 isOpen={showNewInsumoModal}
-                onClose={() => setShowNewInsumoModal(false)}
+                onClose={handleCloseModal}
                 onAdd={onAddStockBase}
+                onUpdate={onUpdateStockBase}
                 effectiveStoreId={effectiveStoreId}
                 fetchData={fetchData}
-            />
-            <PurchaseModal 
-                isOpen={showPurchaseModal}
-                onClose={() => setShowPurchaseModal(false)}
-                onUpdateStock={onUpdateStock}
-                filteredStock={filteredStock}
-                effectiveStoreId={effectiveStoreId}
-                fetchData={fetchData}
-            />
-            <InventoryModal 
-                isOpen={showInventoryModal}
-                onClose={() => setShowInventoryModal(false)}
-                onUpdateStock={onUpdateStock}
-                filteredStock={filteredStock}
-                effectiveStoreId={effectiveStoreId}
-                fetchData={fetchData}
-                initialInventory={inventoryForm}
+                editingItem={editingItem}
             />
         </div>
     );
 };
-
+ 
 export default EstoqueTab;

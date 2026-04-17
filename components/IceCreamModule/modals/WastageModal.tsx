@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useMemo } from 'react';
 import { X, AlertTriangle, Loader2, Trash } from 'lucide-react';
 import { IceCreamStock, User } from '../../../types';
 import { supabase } from '../../../services/supabaseClient';
@@ -24,6 +24,13 @@ const WastageModal: React.FC<WastageModalProps> = ({
 }) => {
     const [wastageForm, setWastageForm] = useState({ stockId: '', quantity: '', reason: '' });
     const [isSubmitting, setIsSubmitting] = useState(false);
+
+    // Ordem alfabética para os insumos
+    const sortedStock = useMemo(() => {
+        return [...filteredStock].sort((a, b) => 
+            a.product_base.localeCompare(b.product_base, 'pt-BR')
+        );
+    }, [filteredStock]);
 
     if (!isOpen) return null;
 
@@ -87,7 +94,7 @@ const WastageModal: React.FC<WastageModalProps> = ({
                             className="w-full p-4 bg-gray-50 rounded-2xl font-black uppercase outline-none shadow-inner border border-gray-100"
                         >
                             <option value="">SELECIONE O INSUMO...</option>
-                            {filteredStock.map(s => (
+                            {sortedStock.map(s => (
                                 <option key={s.stock_id} value={s.stock_id}>
                                     {s.product_base} (Disponível: {s.stock_current} {s.unit})
                                 </option>

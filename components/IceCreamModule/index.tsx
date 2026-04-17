@@ -787,6 +787,24 @@ const IceCreamModule: React.FC<IceCreamModuleProps> = ({
         await onUpdateStock(storeId, base, value, unit, type, stockId);
     };
 
+    const handleUpdateStockBase = async (id: string, base: string, unit: string) => {
+        try {
+            const { error } = await supabase
+                .from('ice_cream_stock')
+                .update({
+                    product_base: base,
+                    unit: unit
+                })
+                .eq('id', id);
+            
+            if (error) throw error;
+            await fetchData();
+        } catch (err: any) {
+            console.error("Erro ao atualizar insumo:", err);
+            throw err;
+        }
+    };
+
     const handleUpdatePartner = async (partner: any) => {
         setIsSubmitting(true);
         try {
@@ -1079,10 +1097,11 @@ const IceCreamModule: React.FC<IceCreamModuleProps> = ({
                         isAdmin={canManage && !isSorvete}
                         onUpdateStock={handleUpdateStock}
                         onAddStockBase={isSorvete ? async () => {} : (base, unit, storeId) => onAddItem(base, 'INSUMO', 0, '', 0, unit, 0, storeId, [])}
+                        onUpdateStockBase={handleUpdateStockBase}
                         onDeleteStockBase={isSorvete ? async () => {} : onDeleteStockItem}
                         onToggleFreezeStock={async (id, active) => {
                             if (isSorvete) return;
-                            const { error } = await supabase.from('ice_cream_stock').update({ is_active: active }).eq('stock_id', id);
+                            const { error } = await supabase.from('ice_cream_stock').update({ is_active: active }).eq('id', id);
                             if (error) throw error;
                         }}
                         effectiveStoreId={effectiveStoreId}

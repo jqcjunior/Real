@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import { X, PackagePlus, Save, Loader2, Trash2, Zap } from 'lucide-react';
 import { PRODUCT_CATEGORIES } from '../constants';
 import { IceCreamCategory, IceCreamRecipeItem } from '../../../types';
@@ -28,7 +28,14 @@ const ProductModal: React.FC<ProductModalProps> = ({
 }) => {
     const [isSubmitting, setIsSubmitting] = useState(false);
     const [newRecipeItem, setNewRecipeItem] = useState({ stock_base_name: '', quantity: '1' });
- 
+
+    // ✅ Insumos ordenados alfabeticamente
+    const sortedStock = useMemo(() => {
+        return stock
+            .filter(s => s.store_id === effectiveStoreId && s.is_active !== false)
+            .sort((a, b) => a.product_base.localeCompare(b.product_base, 'pt-BR'));
+    }, [stock, effectiveStoreId]);
+
     // ✅ RESETAR form quando modal abre/fecha
     useEffect(() => {
         if (isOpen) {
@@ -219,8 +226,10 @@ const ProductModal: React.FC<ProductModalProps> = ({
                                             className="bg-white/10 border-none rounded-xl p-3 text-xs font-black text-white outline-none"
                                         >
                                             <option value="" className="text-black">SELECIONE INSUMO...</option>
-                                            {stock.filter(s => s.store_id === effectiveStoreId && s.is_active !== false).map(s => (
-                                                <option key={s.stock_id} value={s.product_base} className="text-black">{s.product_base}</option>
+                                            {sortedStock.map(s => (
+                                                <option key={s.stock_id} value={s.product_base} className="text-black">
+                                                    {s.product_base} ({s.unit})
+                                                </option>
                                             ))}
                                         </select>
                                         <input 
