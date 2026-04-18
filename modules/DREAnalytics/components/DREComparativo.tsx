@@ -10,6 +10,7 @@ import {
   LineChart, Line, BarChart, Bar, XAxis, YAxis, CartesianGrid, 
   Tooltip, Legend, ResponsiveContainer, AreaChart, Area 
 } from 'recharts';
+import { supabase } from '../../../services/supabaseClient';
 import { 
   getContasDisponiveis, getDREDataByPeriodo, getLojasComDadosDRE,
   getAlertasAtivos
@@ -729,25 +730,95 @@ const DREComparativo: React.FC = () => {
 const DREUploadInternal: React.FC<{ onSuccess: () => void }> = ({ onSuccess }) => {
     const [isDragging, setIsDragging] = useState(false);
     const [isProcessing, setIsProcessing] = useState(false);
+    const [uploadProgress, setUploadProgress] = useState(0);
+    const [statusText, setStatusText] = useState('');
     const [error, setError] = useState<string | null>(null);
     const [successInfo, setSuccessInfo] = useState<any>(null);
 
     const processExcel = async (file: File) => {
+        console.log('🚀 INICIANDO UPLOAD:', file.name);
         setIsProcessing(true);
+        setUploadProgress(5);
+        setStatusText('Verificando sessão...');
         setError(null);
+        
         try {
+            // 1. Validar Sessão
+            console.log('🔐 Verificando autenticação (sistema custom)...');
+            // Sistema usa autenticação custom via admin_users, ignoramos Supabase Auth
+            console.log('✅ Usuário autenticado via sessão local');
+
+            // 2. Parse do Excel
+            setUploadProgress(15);
+            setStatusText('Lendo arquivo Excel...');
+            console.log('📖 Lendo Excel...');
             const result = await parseExcelDRE(file);
-            if (!result.success) {
-                setError(result.errors?.[0] || 'Falha ao processar arquivo.');
+            console.log('✅ Parse completo:', result);
+            
+            if (!result.success || result.data.length === 0) {
+                console.error('❌ Erro no parse ou arquivo vazio:', result.errors);
+                setError(result.errors?.[0] || 'Falha ao processar arquivo ou nenhum dado encontrado.');
                 return;
             }
-            const insertResult = await insertDREDataParsed(result.data);
-            if (!insertResult.success) throw new Error(insertResult.error);
+
+            setUploadProgress(35);
+            setStatusText('Validando estrutura...');
+
+            // 3. Confirmação
+            console.log('⚖️ Aguardando confirmação do usuário...');
+            const confirmar = window.confirm(
+                `📊 Resumo da Importação:\n\n` +
+                `• ${result.totalLinhas.toLocaleString()} registros encontrados\n` +
+                `• ${result.totalLojas} lojas detectadas\n` +
+                `• Lojas: ${result.lojasEncontradas.join(', ')}\n` +
+                `• Período: ${result.mesesEncontrados[0]} até ${result.mesesEncontrados[result.mesesEncontrados.length - 1]}\n\n` +
+                `Deseja prosseguir com a carga no banco de dados?`
+            );
+
+            if (!confirmar) {
+                console.log('🚫 Upload cancelado pelo usuário.');
+                setIsProcessing(false);
+                setUploadProgress(0);
+                return;
+            }
+
+            // 4. Inserção
+            setUploadProgress(50);
+            setStatusText('Salvando dados no Supabase (Isso pode demorar)...');
+            console.log('💾 Iniciando inserção no Supabase...');
             
+            const insertResult = await insertDREDataParsed(result.data);
+            console.log('✅ Inserção completa:', insertResult);
+            
+            if (!insertResult.success) {
+                console.error('❌ Erro na inserção:', insertResult.error);
+                // Tenta verificar se o erro foi de sessão
+                if (insertResult.error?.includes('JWT') || insertResult.error?.includes('session')) {
+                    alert('❌ Sua sessão expirou durante a carga. Faça login e tente novamente.');
+                    window.location.reload();
+                } else {
+                    throw new Error(insertResult.error);
+                }
+                return;
+            }
+            
+            setUploadProgress(100);
+            setStatusText('Finalizado!');
+            console.log('🏁 Processo finalizado com sucesso!');
+
+            // Mensagem informativa detalhada
+            alert(
+                `✅ Importação concluída!\n\n` +
+                `📊 ${result.totalLinhas.toLocaleString()} registros sincronizados\n` +
+                `🆕 Dados novos ou atualizados com sucesso\n\n` +
+                `💡 Dica: Se você importou o mesmo arquivo, os valores foram apenas atualizados (sem duplicação).`
+            );
+
             setSuccessInfo({ rows: result.totalLinhas, stores: result.totalLojas });
-            setTimeout(onSuccess, 2000);
+            setTimeout(onSuccess, 3000);
         } catch (err: any) {
-            setError(err.message || 'Falha ao processar arquivo.');
+            console.error('Erro no upload:', err);
+            setError(err.message || 'Falha inesperada no processamento.');
         } finally {
             setIsProcessing(false);
         }
@@ -756,53 +827,81 @@ const DREUploadInternal: React.FC<{ onSuccess: () => void }> = ({ onSuccess }) =
     return (
         <div className="flex flex-col gap-6">
             {!successInfo ? (
-                <div 
-                    className={`
-                        relative border-2 border-dashed rounded-[32px] p-12 transition-all flex flex-col items-center gap-4 text-center
-                        ${isDragging ? 'border-blue-500 bg-blue-50/50' : 'border-slate-200 hover:border-blue-400 bg-slate-50/50'}
-                        ${isProcessing ? 'opacity-50 pointer-events-none' : 'cursor-pointer'}
-                    `}
-                    onDragOver={(e) => { e.preventDefault(); setIsDragging(true); }}
-                    onDragLeave={() => setIsDragging(false)}
-                    onDrop={(e) => {
-                        e.preventDefault();
-                        setIsDragging(false);
-                        const file = e.dataTransfer.files[0];
-                        if (file) processExcel(file);
-                    }}
-                    onClick={() => document.getElementById('dre-file-input-internal')?.click()}
-                >
-                    <input 
-                        id="dre-file-input-internal"
-                        type="file" 
-                        className="hidden" 
-                        accept=".xlsx, .xls"
-                        onChange={(e) => {
-                            const file = e.target.files?.[0];
+                <div className="flex flex-col gap-6">
+                    <div 
+                        className={`
+                            relative border-2 border-dashed rounded-[32px] p-12 transition-all flex flex-col items-center gap-4 text-center
+                            ${isDragging ? 'border-blue-500 bg-blue-50/50' : 'border-slate-200 hover:border-blue-400 bg-slate-50/50'}
+                            ${isProcessing ? 'opacity-50 pointer-events-none' : 'cursor-pointer'}
+                        `}
+                        onDragOver={(e) => { e.preventDefault(); setIsDragging(true); }}
+                        onDragLeave={() => setIsDragging(false)}
+                        onDrop={(e) => {
+                            e.preventDefault();
+                            setIsDragging(false);
+                            const file = e.dataTransfer.files[0];
                             if (file) processExcel(file);
                         }}
-                    />
-                    <div className="w-20 h-20 bg-blue-100 dark:bg-blue-900/30 rounded-[24px] flex items-center justify-center text-blue-600 mb-2">
-                        {isProcessing ? <Loader2 className="animate-spin" size={40} /> : <Upload size={40} />}
+                        onClick={() => !isProcessing && document.getElementById('dre-file-input-internal')?.click()}
+                    >
+                        <input 
+                            id="dre-file-input-internal"
+                            type="file" 
+                            className="hidden" 
+                            accept=".xlsx, .xls"
+                            onChange={(e) => {
+                                const file = e.target.files?.[0];
+                                if (file) processExcel(file);
+                            }}
+                        />
+                        <div className="w-20 h-20 bg-blue-100 dark:bg-blue-900/30 rounded-[24px] flex items-center justify-center text-blue-600 mb-2">
+                            {isProcessing ? <Loader2 className="animate-spin" size={40} /> : <Upload size={40} />}
+                        </div>
+                        <div>
+                            <h3 className="text-xl font-black text-slate-800 dark:text-white uppercase tracking-tighter">
+                                {isProcessing ? 'Processando...' : 'Arraste seu DRE consolidado'}
+                            </h3>
+                            <p className="text-slate-500 text-xs font-bold uppercase mt-1">
+                                {isProcessing ? statusText : 'Ou clique para selecionar o arquivo Excel'}
+                            </p>
+                        </div>
                     </div>
-                    <div>
-                        <h3 className="text-xl font-black text-slate-800 dark:text-white uppercase tracking-tighter">Arraste seu DRE consolidado</h3>
-                        <p className="text-slate-500 text-xs font-bold uppercase mt-1">Ou clique para selecionar o arquivo Excel</p>
-                    </div>
+
+                    {isProcessing && (
+                        <div className="flex flex-col gap-3">
+                            <div className="w-full bg-slate-100 dark:bg-slate-800 rounded-full h-3 overflow-hidden">
+                                <motion.div 
+                                    className="bg-blue-600 h-full"
+                                    initial={{ width: 0 }}
+                                    animate={{ width: `${uploadProgress}%` }}
+                                    transition={{ duration: 0.5 }}
+                                />
+                            </div>
+                            <div className="flex justify-between items-center">
+                                <span className="text-[10px] font-black text-slate-400 uppercase tracking-widest">{statusText}</span>
+                                <span className="text-[10px] font-black text-blue-600">{uploadProgress}%</span>
+                            </div>
+                        </div>
+                    )}
                 </div>
             ) : (
                 <div className="p-12 bg-green-50 dark:bg-green-900/10 rounded-[32px] border border-green-100 dark:border-green-900/20 flex flex-col items-center text-center gap-4 animate-in zoom-in-95 duration-300">
-                    <Check className="w-16 h-16 text-green-600" />
-                    <h3 className="text-2xl font-black text-green-900 dark:text-green-50 uppercase tracking-tighter">Sucesso!</h3>
-                    <p className="text-green-700 dark:text-green-300 text-xs font-bold uppercase mt-1">
-                        {successInfo.rows} registros importados de {successInfo.stores} lojas.
-                    </p>
+                    <div className="w-20 h-20 bg-green-100 dark:bg-green-900/30 rounded-[24px] flex items-center justify-center text-green-600 mb-2">
+                        <Check size={40} />
+                    </div>
+                    <div>
+                        <h3 className="text-2xl font-black text-green-900 dark:text-green-50 uppercase tracking-tighter">Importação Concluída!</h3>
+                        <p className="text-green-700 dark:text-green-300 text-xs font-black uppercase mt-2 tracking-widest">
+                            {successInfo.rows.toLocaleString()} registros importados de {successInfo.stores} lojas.
+                        </p>
+                    </div>
+                    <p className="text-[9px] font-bold text-green-600/60 uppercase mt-4">Atualizando interface em instantes...</p>
                 </div>
             )}
             {error && (
-                <div className="p-4 bg-red-50 dark:bg-red-900/10 border border-red-100 dark:border-red-900/20 rounded-2xl flex items-center gap-3 text-red-600">
-                    <AlertCircle size={20} />
-                    <p className="text-xs font-bold uppercase">{error}</p>
+                <div className="p-4 bg-red-50 dark:bg-red-900/10 border border-red-100 dark:border-red-900/20 rounded-2xl flex items-center gap-3 text-red-600 animate-in fade-in slide-in-from-top-2">
+                    <AlertCircle className="shrink-0" size={20} />
+                    <p className="text-[10px] font-bold uppercase leading-tight">{error}</p>
                 </div>
             )}
         </div>

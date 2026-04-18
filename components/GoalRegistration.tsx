@@ -1,25 +1,29 @@
 import React, { useState, useEffect, useMemo } from 'react';
 import { User, UserRole, Store, MonthlyGoal } from '../types';
 import { formatCurrency } from '../constants';
-import { Target, Loader2, Save, Calendar, CalendarDays, CheckCircle2, ChevronDown, Activity, Info, Package, DollarSign } from 'lucide-react';
+import { Target, Loader2, Save, Calendar, CalendarDays, CheckCircle2, ChevronDown, Activity, Info, Package, DollarSign, FileSpreadsheet, Upload } from 'lucide-react';
+import { parseMetasFile, insertMetas } from '../services/metasParser.service';
 
 interface GoalRegistrationProps {
   user: User;
   stores: Store[];
   goalsData: MonthlyGoal[];
   onSaveGoals: (data: MonthlyGoal[]) => Promise<void>;
+  onRefresh?: () => void;
 }
 
 const GoalRegistration: React.FC<GoalRegistrationProps> = ({
   user,
   stores,
   goalsData,
-  onSaveGoals
+  onSaveGoals,
+  onRefresh
 }) => {
   const [selectedYear, setSelectedYear] = useState(new Date().getFullYear());
   const [selectedMonth, setSelectedMonth] = useState(new Date().getMonth() + 1);
   const [formData, setFormData] = useState<Record<string, any>>({});
   const [saveStatus, setSaveStatus] = useState<'idle' | 'saving' | 'success' | 'error'>('idle');
+  const [importing, setImporting] = useState(false);
 
   const months = [
     { value: 1, label: 'Janeiro' }, { value: 2, label: 'Fevereiro' }, { value: 3, label: 'Março' },
@@ -70,6 +74,44 @@ const GoalRegistration: React.FC<GoalRegistrationProps> = ({
     } catch { setSaveStatus('error'); }
   };
 
+  const handleMetasUpload = async (event: React.ChangeEvent<HTMLInputElement>) => {
+    const file = event.target.files?.[0];
+    if (!file) return;
+
+    setImporting(true);
+    try {
+      console.log('🚀 Iniciando importação de metas:', file.name);
+      
+      const dados = await parseMetasFile(file);
+      
+      if (dados.length === 0) {
+        alert('Nenhum dado válido encontrado no arquivo.');
+        return;
+      }
+
+      const confirmar = window.confirm(
+        `Importar dados de ${dados.length} lojas?\n\n` +
+        `Período Detectado: ${dados[0].month}/${dados[0].year}\n` +
+        `As metas existentes para estas lojas neste período serão atualizadas.`
+      );
+      
+      if (!confirmar) return;
+      
+      await insertMetas(dados);
+      
+      alert('✅ Metas importadas com sucesso!');
+      if (onRefresh) onRefresh();
+      
+    } catch (error: any) {
+      console.error('❌ Erro na importação:', error);
+      alert(`Erro ao importar: ${error.message}`);
+    } finally {
+      setImporting(false);
+      // Reset input
+      event.target.value = '';
+    }
+  };
+
   return (
     <div className="p-4 md:p-6 space-y-6 flex flex-col h-full bg-[#F8FAFC] dark:bg-slate-950 pb-24 max-w-[1400px] mx-auto">
       
@@ -99,6 +141,28 @@ const GoalRegistration: React.FC<GoalRegistrationProps> = ({
                     {[2024, 2025, 2026].map(y => <option key={y} value={y}>{y}</option>)}
                 </select>
             </div>
+            
+            {isAdmin && (
+              <>
+                <input 
+                  type="file" 
+                  id="metas-upload" 
+                  accept=".xls,.xlsx" 
+                  className="hidden" 
+                  onChange={handleMetasUpload}
+                />
+                <button 
+                  onClick={() => document.getElementById('metas-upload')?.click()}
+                  disabled={importing}
+                  className="bg-emerald-600 text-white px-4 py-2.5 rounded-xl font-black text-[10px] uppercase tracking-widest shadow-xl hover:bg-emerald-700 transition-all active:scale-95 flex items-center gap-2 disabled:opacity-50"
+                  title="Importar metas do sistema (XLS ou XLSX)"
+                >
+                  {importing ? <Loader2 className="animate-spin" size={14} /> : <FileSpreadsheet size={14} />}
+                  {importing ? 'Processando...' : 'Importar Metas'}
+                </button>
+              </>
+            )}
+
             <button onClick={handleSave} disabled={saveStatus === 'saving'} className="bg-slate-950 dark:bg-white dark:text-slate-950 text-white px-6 py-2.5 rounded-xl font-black text-[10px] uppercase tracking-widest shadow-xl hover:bg-blue-600 dark:hover:bg-blue-500 transition-all active:scale-95 border-b-2 border-red-700 disabled:opacity-50 flex items-center gap-2">
                 {saveStatus === 'saving' ? <Loader2 className="animate-spin" size={14} /> : (saveStatus === 'success' ? <CheckCircle2 size={14}/> : <Save size={14} />)}
                 {saveStatus === 'saving' ? 'Gravando...' : (saveStatus === 'success' ? 'Salvo!' : 'Efetivar Metas')}

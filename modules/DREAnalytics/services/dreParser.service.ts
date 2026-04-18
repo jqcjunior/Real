@@ -4,7 +4,19 @@
 // ============================================================================
 
 import * as XLSX from 'xlsx';
-import { supabase } from '../../../services/supabaseClient';
+import { createClient } from '@supabase/supabase-js';
+
+// Credentials para importação (Sem autenticação supabase auth para evitar conflitos com o sistema custom)
+const supabaseUrl = 'https://rwwomakjhmglgoowbmsl.supabase.co';
+const supabaseAnonKey = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InJ3d29tYWtqaG1nbGdvb3dibXNsIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NjU5NzM3NzUsImV4cCI6MjA4MTU0OTc3NX0.f-FbwrnnlUFermnqLUyPHpT-EoUEc1dzXTlV4cXyQ28';
+
+const supabaseImport = createClient(supabaseUrl, supabaseAnonKey, {
+  auth: {
+    persistSession: false,
+    autoRefreshToken: false,
+    detectSessionInUrl: false
+  }
+});
 
 // ============================================================================
 // TIPOS
@@ -155,21 +167,27 @@ function extractLojaNumber(value: any): number | null {
 function parseValor(value: any): number {
   if (value === null || value === undefined || value === '') return 0;
   
-  // Se já é número
+  // Se já é número, retorna direto (evita problemas de parser)
   if (typeof value === 'number') return value;
   
   // Se é string, limpar e converter
   if (typeof value === 'string') {
+    let cleaned = value.trim();
+    
     // 1. Remover R$, espaços e outros caracteres não numéricos exceto ponto e vírgula
-    let cleaned = value.trim()
-      .replace(/R\$/g, '')
-      .replace(/\s/g, '');
+    cleaned = cleaned.replace(/R\$/g, '')
+                     .replace(/\s/g, '')
+                     .replace(/\u00a0/g, ''); // Espaço inseparável comum em Excel
     
-    // 2. Remover pontos (separador de milhar no Brasil)
-    cleaned = cleaned.replace(/\./g, '');
+    // 2. Lógica para Formato Brasileiro (1.234,56)
+    // Se tem vírgula, tratamos como BR: remove pontos e troca vírgula por ponto
+    if (cleaned.includes(',')) {
+      cleaned = cleaned.split('.').join(''); // Remove separadores de milhar
+      cleaned = cleaned.replace(',', '.');    // Converte separador decimal
+    }
     
-    // 3. Trocar vírgula por ponto (separador decimal)
-    cleaned = cleaned.replace(',', '.');
+    // 3. Limpeza final: manter apenas dígitos, ponto decimal e sinal de menos
+    cleaned = cleaned.replace(/[^\d.-]/g, '');
     
     const parsed = parseFloat(cleaned);
     return isNaN(parsed) ? 0 : parsed;
@@ -186,9 +204,11 @@ function parseValor(value: any): number {
  * Parse do arquivo Excel DRE
  */
 export async function parseExcelDRE(file: File): Promise<ParseResult> {
+  console.log('📂 Iniciando parseExcelDRE para:', file.name);
   try {
     // Ler arquivo
     const arrayBuffer = await file.arrayBuffer();
+    console.log('📄 ArrayBuffer lido (tamanho):', arrayBuffer.byteLength);
     const workbook = XLSX.read(arrayBuffer, { 
       type: 'array',
       cellDates: true,
@@ -201,13 +221,17 @@ export async function parseExcelDRE(file: File): Promise<ParseResult> {
     const worksheet = workbook.Sheets[sheetName];
     
     // Converter para array de arrays
+    console.log('📑 Convertendo worksheet para JSON...');
     const rawData = XLSX.utils.sheet_to_json(worksheet, { 
       header: 1,
-      raw: false,
+      raw: true, // Mudado para true para pegar números reais quando possível
       defval: null
     }) as any[][];
     
     console.log('Total de linhas no Excel:', rawData.length);
+    if (rawData.length === 0) {
+      console.warn('⚠️ Planilha está vazia!');
+    }
     
     // ========================================================================
     // EXTRAIR DATAS DOS MESES DO CABEÇALHO
@@ -426,43 +450,60 @@ export async function parseExcelDRE(file: File): Promise<ParseResult> {
 // ============================================================================
 
 /**
- * Insere dados parseados no Supabase
+ * Insere dados parseados no Supabase com lógica de UPSERT (evita duplicados)
  */
 export async function insertDREDataParsed(
   data: DREDataParsed[]
-): Promise<{ success: boolean; error?: string }> {
+): Promise<{ success: boolean; error?: string; inserted: number; updated: number }> {
   
   const BATCH_SIZE = 1000;
+  let totalProcessed = 0;
   
   try {
-    // Inserir em lotes de 1000
+    // Processar em lotes de 1000
     for (let i = 0; i < data.length; i += BATCH_SIZE) {
       const batch = data.slice(i, i + BATCH_SIZE);
       
-      console.log(`Inserindo lote ${Math.floor(i / BATCH_SIZE) + 1} (${batch.length} registros)...`);
+      console.log(`Processando lote ${Math.floor(i / BATCH_SIZE) + 1} (${batch.length} registros)...`);
       
-      const { error } = await supabase
+      // UPSERT: INSERT ou UPDATE se já existe baseado na constraint unique
+      console.log(`🚀 Enviando lote ${Math.floor(i / BATCH_SIZE) + 1} para o Supabase...`);
+      const { error } = await supabaseImport
         .from('dre_data')
-        .insert(batch);
+        .upsert(batch, {
+          onConflict: 'loja_id,mes_referencia,descricao', // Chave única
+          ignoreDuplicates: false // Sempre atualizar se existir para refletir mudanças no Excel
+        })
+        .select('id');
       
       if (error) {
-        console.error('Erro ao inserir lote:', error);
+        console.error('Erro ao processar lote:', error);
         return {
           success: false,
-          error: `Erro ao inserir dados: ${error.message}`
+          error: `Erro ao inserir/atualizar dados: ${error.message}`,
+          inserted: totalProcessed,
+          updated: 0
         };
       }
+      
+      totalProcessed += batch.length; // Usamos o tamanho do lote como total processado
     }
     
-    console.log(`✅ Total de ${data.length} registros inseridos com sucesso!`);
+    console.log(`✅ Processamento concluído: ${totalProcessed} registros sincronizados`);
     
-    return { success: true };
+    return { 
+      success: true, 
+      inserted: totalProcessed,
+      updated: 0 // O Postgrest não distingue insert/update no retorno facilmente usando count
+    };
     
   } catch (error) {
-    console.error('Erro na inserção:', error);
+    console.error('Erro na sincronização:', error);
     return {
       success: false,
-      error: error instanceof Error ? error.message : 'Erro desconhecido'
+      error: error instanceof Error ? error.message : 'Erro desconhecido',
+      inserted: totalProcessed,
+      updated: 0
     };
   }
 }
