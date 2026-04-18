@@ -124,26 +124,33 @@ function excelDateToJSDate(value: any): Date | null {
 function extractLojaNumber(value: any): number | null {
   if (value === null || value === undefined || value === '') return null;
   
-  // Se for número direto
-  if (typeof value === 'number') return Math.floor(value);
-  
   const str = String(value).trim();
   if (!str) return null;
   
-  // Se é "Tot" ou "Total", é uma linha de total (retorna null para não trocar o sticky ID)
-  if (str.toLowerCase() === 'tot' || str.toLowerCase() === 'total' || str.toLowerCase() === 'total rede') return null;
+  const lowerStr = str.toLowerCase();
+  
+  // Se é "Tot" ou "Total" ou "Total Rede", pular (não é uma loja individual)
+  if (lowerStr === 'tot' || lowerStr === 'total' || lowerStr.includes('total rede')) {
+    return null;
+  }
+  
+  // Se for número direto
+  if (typeof value === 'number') return Math.floor(value);
   
   // Tentar extrair apenas números da string (ex: "Loja 01" -> 1)
   const numbers = str.match(/\d+/);
   if (numbers) {
-    return parseInt(numbers[0], 10);
+    const parsed = parseInt(numbers[0], 10);
+    // Se for 999, geralmente é um totalizador no Excel, vamos pular também para garantir
+    if (parsed === 999) return null;
+    return parsed;
   }
   
   return null;
 }
 
 /**
- * Converte valor para número
+ * Converte valor para número (Formato Brasileiro)
  */
 function parseValor(value: any): number {
   if (value === null || value === undefined || value === '') return 0;
@@ -153,10 +160,16 @@ function parseValor(value: any): number {
   
   // Se é string, limpar e converter
   if (typeof value === 'string') {
-    const cleaned = value.trim()
-      .replace(/\s/g, '')
-      .replace(/\./g, '') // Remove pontos (milhares)
-      .replace(',', '.'); // Troca vírgula por ponto
+    // 1. Remover R$, espaços e outros caracteres não numéricos exceto ponto e vírgula
+    let cleaned = value.trim()
+      .replace(/R\$/g, '')
+      .replace(/\s/g, '');
+    
+    // 2. Remover pontos (separador de milhar no Brasil)
+    cleaned = cleaned.replace(/\./g, '');
+    
+    // 3. Trocar vírgula por ponto (separador decimal)
+    cleaned = cleaned.replace(',', '.');
     
     const parsed = parseFloat(cleaned);
     return isNaN(parsed) ? 0 : parsed;

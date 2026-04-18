@@ -149,3 +149,39 @@ export interface FiltrosDRE {
   lojas: number[];
   grupos: string[];
 }
+
+export interface ContaDisponivel {
+  descricao: string;
+  grupo: string;
+  lojas_com_dados: number;
+  total_registros: number;
+}
+
+export interface AlertaAtivo {
+  id: string;
+  loja_id: number;
+  nome_loja: string;
+  mes_referencia: string;
+  tipo_alerta: string;
+  severidade: 'baixa' | 'media' | 'alta' | 'critica';
+  mensagem: string;
+  data_deteccao: string;
+  status: string;
+}
+
+export interface EvolucaoTemporal {
+  loja_id: number;
+  descricao: string;
+  mes_referencia: string;
+  valor: number;
+  variacao_percentual: number | null;
+}
+
+export interface FiltroComparativo {
+  lojasSelecionadas: number[];
+  periodoInicio: string;
+  periodoFim: string;
+  contasSelecionadas: string[];
+  tipoVisualizacao: 'tabela' | 'linha' | 'barras' | 'bi';
+  compararPor: 'loja' | 'mes' | 'ambos';
+}

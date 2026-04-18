@@ -44,7 +44,7 @@ const DashboardPAGerente = lazy(() => import('./components/dashboardPA/Dashboard
 const AdminSurveyManagement = lazy(() => import('./components/AdminSurveyManagement_v3'));
 const MySurveysComponent = lazy(() => import('./components/MySurveysComponent'));
 const SurveyResultsViewer = lazy(() => import('./components/SurveyResultsViewer'));
-const DREDashboardAdmin = lazy(() => import('./modules/DREAnalytics/components/DREDashboardAdmin'));
+const DREComparativo = lazy(() => import('./modules/DREAnalytics/components/DREComparativo'));
 
 import LoginScreen from './components/LoginScreen';
 import NotificationHeader from './components/NotificationHeader';
@@ -932,7 +932,7 @@ const App: React.FC = () => {
                             { id: 'dashboard_loja', label: 'Dashboard Loja', icon: LayoutDashboard, perm: 'MODULE_DASHBOARD_MANAGER', roles: ['manager'] },
                             { id: 'dashboard_pa', label: 'Dashboard P.A.', icon: Trophy, perm: 'MODULE_DASHBOARD_PA', roles: ['admin'] },
                             { id: 'dashboard_pa_manager', label: 'Dashboard P.A.', icon: Trophy, perm: 'MODULE_DASHBOARD_PA_MANAGER', roles: ['manager'] },
-                            { id: 'dre_analytics', label: 'Dashboard DRE', icon: TrendingUp, perm: 'MODULE_DRE_ANALYTICS', roles: ['admin'] },
+                            { id: 'dre_comparativo', label: 'DRE Comparativo', icon: BarChart3, perm: 'MODULE_DRE_ANALYTICS', roles: ['admin'] },
                             { id: 'metas', label: 'Metas', icon: Target, perm: 'MODULE_METAS', roles: ['admin'] },
                             { id: 'cotas', label: 'Cotas OTB', icon: Calculator, perm: 'MODULE_COTAS', roles: ['admin'] },
                             { id: 'compras', label: 'Compras', icon: ShoppingBag, perm: 'MODULE_PURCHASES', roles: ['admin'] },
@@ -1166,7 +1166,7 @@ const App: React.FC = () => {
                             onOpenSpreadsheetModule={() => setCurrentView('spreadsheet_order')}
                             can={can}
                         />;
-                        if (currentView === 'dre_analytics' && can('MODULE_DRE_ANALYTICS')) return <DREDashboardAdmin />;
+                    if (currentView === 'dre_comparativo' && can('MODULE_DRE_ANALYTICS')) return <DREComparativo />;
                         if (currentView === 'pdv_sorveteria' && can('MODULE_ICECREAM')) return <IceCreamModule
                             user={user!} stores={isAdmin ? stores : stores.filter(s => s.id === user?.storeId)} items={iceCreamItems} sales={iceCreamSales} salesHeaders={sales} salePayments={salePayments}
                             stock={iceCreamStock} promissories={icPromissories} can={can}
