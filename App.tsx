@@ -44,6 +44,7 @@ const DashboardPAGerente = lazy(() => import('./components/dashboardPA/Dashboard
 const AdminSurveyManagement = lazy(() => import('./components/AdminSurveyManagement_v3'));
 const MySurveysComponent = lazy(() => import('./components/MySurveysComponent'));
 const SurveyResultsViewer = lazy(() => import('./components/SurveyResultsViewer'));
+const DREDashboardAdmin = lazy(() => import('./modules/DREAnalytics/components/DREDashboardAdmin'));
 
 import LoginScreen from './components/LoginScreen';
 import NotificationHeader from './components/NotificationHeader';
@@ -54,7 +55,7 @@ import ErrorBoundary from './components/ErrorBoundary';
 import {
     LayoutDashboard, Target, ShoppingBag, Calculator, IceCream as IceCreamIcon,
     DollarSign, AlertCircle, Calendar, LogOut, Loader2, Menu, X, ClipboardList, Shield, UserCog, Users, ShieldAlert, Settings, FileSignature, FileText, Download, Lock,
-    Sun, Moon, Trophy, BarChart3, ArrowRight
+    Sun, Moon, Trophy, BarChart3, ArrowRight, TrendingUp
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 
@@ -217,6 +218,7 @@ const App: React.FC = () => {
                 { key: 'MODULE_COTAS', label: 'Cotas OTB', group: 'Inteligência' },
                 { key: 'MODULE_PURCHASES', label: 'Compras', group: 'Inteligência' },
                 { key: 'MODULE_DEMANDS', label: 'Chamado', group: 'Inteligência' },
+                { key: 'MODULE_DRE_ANALYTICS', label: 'Dashboard DRE', group: 'Inteligência' },
                 { key: 'MODULE_ICECREAM', label: 'PDV Gelateria', group: 'Operacional' },
                 { key: 'MODULE_CASH_REGISTER', label: 'Caixa', group: 'Operacional' },
                 { key: 'MODULE_AGENDA', label: 'Agenda Semanal', group: 'Operacional' },
@@ -924,35 +926,23 @@ const App: React.FC = () => {
                     </button>
                 </div>
                 <nav className="flex-1 space-y-6 overflow-y-auto no-scrollbar">
-                    <div className="space-y-1">
-                        <h3 className="px-4 text-[10px] font-black uppercase text-slate-400 dark:text-slate-400 tracking-widest mb-2">Início</h3>
-                        <button
-                            onClick={() => { setCurrentView('welcome'); setIsSidebarOpen(false); }}
-                            className={`w-full text-left py-2.5 px-4 rounded-xl font-black uppercase text-[10px] flex items-center gap-4 transition-all ${
-                                currentView === 'welcome'
-                                    ? 'bg-blue-600 text-white shadow-lg shadow-blue-200 dark:shadow-blue-900/20'
-                                    : 'text-slate-500 dark:text-slate-300 hover:text-slate-900 dark:hover:text-white hover:bg-slate-50 dark:hover:bg-slate-800'
-                            }`}
-                        >
-                            <LayoutDashboard size={20} /> Início
-                        </button>
-                    </div>
                     {[
                         { title: 'Inteligência', items: [
-                            { id: 'dashboard_rede', label: 'Dashboard Rede', icon: LayoutDashboard, perm: 'MODULE_DASHBOARD_ADMIN' },
-                            { id: 'dashboard_loja', label: 'Dashboard Loja', icon: LayoutDashboard, perm: 'MODULE_DASHBOARD_MANAGER' },
-                            { id: 'dashboard_pa', label: 'Dashboard P.A.', icon: Trophy, perm: 'MODULE_DASHBOARD_PA' },
-                            { id: 'dashboard_pa_manager', label: 'Dashboard P.A.', icon: Trophy, perm: 'MODULE_DASHBOARD_PA_MANAGER' },
-                            { id: 'metas', label: 'Metas', icon: Target, perm: 'MODULE_METAS' },
-                            { id: 'cotas', label: 'Cotas OTB', icon: Calculator, perm: 'MODULE_COTAS' },
-                            { id: 'compras', label: 'Compras', icon: ShoppingBag, perm: 'MODULE_PURCHASES' },
-                            { id: 'os_demandas', label: 'Chamado', icon: ClipboardList, perm: 'MODULE_DEMANDS' }
+                            { id: 'dashboard_rede', label: 'Dashboard Rede', icon: LayoutDashboard, perm: 'MODULE_DASHBOARD_ADMIN', roles: ['admin'] },
+                            { id: 'dashboard_loja', label: 'Dashboard Loja', icon: LayoutDashboard, perm: 'MODULE_DASHBOARD_MANAGER', roles: ['manager'] },
+                            { id: 'dashboard_pa', label: 'Dashboard P.A.', icon: Trophy, perm: 'MODULE_DASHBOARD_PA', roles: ['admin'] },
+                            { id: 'dashboard_pa_manager', label: 'Dashboard P.A.', icon: Trophy, perm: 'MODULE_DASHBOARD_PA_MANAGER', roles: ['manager'] },
+                            { id: 'dre_analytics', label: 'Dashboard DRE', icon: TrendingUp, perm: 'MODULE_DRE_ANALYTICS', roles: ['admin'] },
+                            { id: 'metas', label: 'Metas', icon: Target, perm: 'MODULE_METAS', roles: ['admin'] },
+                            { id: 'cotas', label: 'Cotas OTB', icon: Calculator, perm: 'MODULE_COTAS', roles: ['admin'] },
+                            { id: 'compras', label: 'Compras', icon: ShoppingBag, perm: 'MODULE_PURCHASES', roles: ['admin'] },
+                            { id: 'os_demandas', label: 'Chamado', icon: ClipboardList, perm: 'MODULE_DEMANDS', roles: ['admin'] }
                         ] },
                         { title: 'Operacional', items: [
-                            { id: 'pdv_sorveteria', label: 'PDV Gelateria Real', icon: IceCreamIcon, perm: 'MODULE_ICECREAM' },
-                            { id: 'caixa', label: 'Caixa', icon: ClipboardList, perm: 'MODULE_CASH_REGISTER' },
-                            { id: 'agenda', label: 'Agenda Semanal', icon: Calendar, perm: 'MODULE_AGENDA' },
-                            { id: 'my_surveys', label: 'Minhas Pesquisas', icon: ClipboardList, perm: 'ALWAYS' }
+                            { id: 'pdv_sorveteria', label: 'Sorveteria Real', icon: IceCreamIcon, perm: 'MODULE_ICECREAM', roles: ['admin', 'manager', 'sorvete'] },
+                            { id: 'caixa', label: 'Caixa', icon: ClipboardList, perm: 'MODULE_CASH_REGISTER', roles: ['admin', 'manager', 'cashier'] },
+                            { id: 'agenda', label: 'Agenda Semanal', icon: Calendar, perm: 'MODULE_AGENDA', roles: ['admin', 'manager'] },
+                            { id: 'my_surveys', label: 'Minhas Pesquisas', icon: ClipboardList, perm: 'ALWAYS', roles: ['admin', 'manager'] }
                         ] },
                         { title: 'Documentos', items: [ { id: 'autoriz_compra', label: 'Autoriz. Compra', icon: FileSignature, perm: 'MODULE_AUTORIZ_COMPRA' }, { id: 'termo_condicional', label: 'Termo Condicional', icon: FileText, perm: 'MODULE_TERMO_CONDICIONAL' }, { id: 'downloads', label: 'Downloads', icon: Download, perm: 'MODULE_DOWNLOADS' } ] },
                         { title: 'Administração', items: [
@@ -963,7 +953,11 @@ const App: React.FC = () => {
                             { id: 'settings', label: 'Configurações', icon: Settings, perm: 'MODULE_SETTINGS' }
                         ] }
                     ].map(section => {
-                        const visibleItems = section.items.filter(i => can(i.perm));
+                        const visibleItems = section.items.filter(i => {
+                            const userRole = String(user?.role || '').toLowerCase();
+                            const hasRole = (i as any).roles ? (i as any).roles.includes(userRole) : true;
+                            return hasRole && can(i.perm);
+                        });
                         if (visibleItems.length === 0) return null;
                         return (
                             <div key={section.title} className="space-y-1">
@@ -1172,6 +1166,7 @@ const App: React.FC = () => {
                             onOpenSpreadsheetModule={() => setCurrentView('spreadsheet_order')}
                             can={can}
                         />;
+                        if (currentView === 'dre_analytics' && can('MODULE_DRE_ANALYTICS')) return <DREDashboardAdmin />;
                         if (currentView === 'pdv_sorveteria' && can('MODULE_ICECREAM')) return <IceCreamModule
                             user={user!} stores={isAdmin ? stores : stores.filter(s => s.id === user?.storeId)} items={iceCreamItems} sales={iceCreamSales} salesHeaders={sales} salePayments={salePayments}
                             stock={iceCreamStock} promissories={icPromissories} can={can}
