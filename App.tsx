@@ -44,7 +44,8 @@ const DashboardPAGerente = lazy(() => import('./components/dashboardPA/Dashboard
 const AdminSurveyManagement = lazy(() => import('./components/AdminSurveyManagement_v3'));
 const MySurveysComponent = lazy(() => import('./components/MySurveysComponent'));
 const SurveyResultsViewer = lazy(() => import('./components/SurveyResultsViewer'));
-const DREComparativo = lazy(() => import('./modules/DREAnalytics/components/DREComparativo'));
+// DRE Analytics imports removed as requested for cleanup
+const DREAccounts = lazy(() => import('./modules/dre/components/DREAccountsResponsive'));
 
 import LoginScreen from './components/LoginScreen';
 import NotificationHeader from './components/NotificationHeader';
@@ -58,6 +59,7 @@ import {
     Sun, Moon, Trophy, BarChart3, ArrowRight, TrendingUp
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
+import { Toaster } from 'sonner';
 
 const PageLoader = () => (
     <div className="flex items-center justify-center h-full min-h-[400px]">
@@ -218,7 +220,7 @@ const App: React.FC = () => {
                 { key: 'MODULE_COTAS', label: 'Cotas OTB', group: 'Inteligência' },
                 { key: 'MODULE_PURCHASES', label: 'Compras', group: 'Inteligência' },
                 { key: 'MODULE_DEMANDS', label: 'Chamado', group: 'Inteligência' },
-                { key: 'MODULE_DRE_ANALYTICS', label: 'Dashboard DRE', group: 'Inteligência' },
+                { key: 'MODULE_DRE_ACCOUNTS', label: 'Plano de Contas DRE', group: 'Inteligência' },
                 { key: 'MODULE_ICECREAM', label: 'PDV Gelateria', group: 'Operacional' },
                 { key: 'MODULE_CASH_REGISTER', label: 'Caixa', group: 'Operacional' },
                 { key: 'MODULE_AGENDA', label: 'Agenda Semanal', group: 'Operacional' },
@@ -932,7 +934,7 @@ const App: React.FC = () => {
                             { id: 'dashboard_loja', label: 'Dashboard Loja', icon: LayoutDashboard, perm: 'MODULE_DASHBOARD_MANAGER', roles: ['manager'] },
                             { id: 'dashboard_pa', label: 'Dashboard P.A.', icon: Trophy, perm: 'MODULE_DASHBOARD_PA', roles: ['admin'] },
                             { id: 'dashboard_pa_manager', label: 'Dashboard P.A.', icon: Trophy, perm: 'MODULE_DASHBOARD_PA_MANAGER', roles: ['manager'] },
-                            { id: 'dre_comparativo', label: 'DRE Comparativo', icon: BarChart3, perm: 'MODULE_DRE_ANALYTICS', roles: ['admin'] },
+                            { id: 'dre_accounts', label: 'Plano de Contas DRE', icon: ClipboardList, perm: 'MODULE_DRE_ACCOUNTS', roles: ['admin'] },
                             { id: 'metas', label: 'Metas', icon: Target, perm: 'MODULE_METAS', roles: ['admin'] },
                             { id: 'cotas', label: 'Cotas OTB', icon: Calculator, perm: 'MODULE_COTAS', roles: ['admin'] },
                             { id: 'compras', label: 'Compras', icon: ShoppingBag, perm: 'MODULE_PURCHASES', roles: ['admin'] },
@@ -1166,7 +1168,7 @@ const App: React.FC = () => {
                             onOpenSpreadsheetModule={() => setCurrentView('spreadsheet_order')}
                             can={can}
                         />;
-                    if (currentView === 'dre_comparativo' && can('MODULE_DRE_ANALYTICS')) return <DREComparativo />;
+                        if (currentView === 'dre_accounts' && can('MODULE_DRE_ACCOUNTS')) return <DREAccounts />;
                         if (currentView === 'pdv_sorveteria' && can('MODULE_ICECREAM')) return <IceCreamModule
                             user={user!} stores={isAdmin ? stores : stores.filter(s => s.id === user?.storeId)} items={iceCreamItems} sales={iceCreamSales} salesHeaders={sales} salePayments={salePayments}
                             stock={iceCreamStock} promissories={icPromissories} can={can}
@@ -1497,6 +1499,7 @@ const App: React.FC = () => {
                     </div>
                 )}
             </AnimatePresence>
+            <Toaster richColors position="top-center" />
         </div>
         </>
     );

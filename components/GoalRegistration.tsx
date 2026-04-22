@@ -24,6 +24,8 @@ const GoalRegistration: React.FC<GoalRegistrationProps> = ({
   const [formData, setFormData] = useState<Record<string, any>>({});
   const [saveStatus, setSaveStatus] = useState<'idle' | 'saving' | 'success' | 'error'>('idle');
   const [importing, setImporting] = useState(false);
+  const [pendingMetas, setPendingMetas] = useState<any[] | null>(null);
+  const [showConfirmModal, setShowConfirmModal] = useState(false);
 
   const months = [
     { value: 1, label: 'Janeiro' }, { value: 2, label: 'Fevereiro' }, { value: 3, label: 'Março' },
@@ -86,35 +88,94 @@ const GoalRegistration: React.FC<GoalRegistrationProps> = ({
       
       if (dados.length === 0) {
         alert('Nenhum dado válido encontrado no arquivo.');
+        setImporting(false);
         return;
       }
 
-      const confirmar = window.confirm(
-        `Importar dados de ${dados.length} lojas?\n\n` +
-        `Período Detectado: ${dados[0].month}/${dados[0].year}\n` +
-        `As metas existentes para estas lojas neste período serão atualizadas.`
-      );
-      
-      if (!confirmar) return;
-      
-      await insertMetas(dados);
-      
-      alert('✅ Metas importadas com sucesso!');
-      if (onRefresh) onRefresh();
+      setPendingMetas(dados);
+      setShowConfirmModal(true);
+      setImporting(false);
       
     } catch (error: any) {
       console.error('❌ Erro na importação:', error);
       alert(`Erro ao importar: ${error.message}`);
-    } finally {
       setImporting(false);
+    } finally {
       // Reset input
       event.target.value = '';
     }
   };
 
+  const finalizeMetasImport = async () => {
+    if (!pendingMetas) return;
+    
+    setImporting(true);
+    setShowConfirmModal(false);
+    
+    try {
+      await insertMetas(pendingMetas);
+      alert('✅ Metas importadas com sucesso!');
+      if (onRefresh) onRefresh();
+    } catch (error: any) {
+      console.error('❌ Erro ao salvar metas:', error);
+      alert('Erro ao salvar dados no banco.');
+    } finally {
+      setImporting(false);
+      setPendingMetas(null);
+    }
+  };
+
   return (
-    <div className="p-4 md:p-6 space-y-6 flex flex-col h-full bg-[#F8FAFC] dark:bg-slate-950 pb-24 max-w-[1400px] mx-auto">
+    <div className="p-4 md:p-6 space-y-6 flex flex-col h-full bg-[#F8FAFC] dark:bg-slate-950 pb-24 max-w-[1400px] mx-auto relative">
       
+      {/* MODAL DE CONFIRMAÇÃO DE IMPORTAÇÃO DE METAS */}
+      {showConfirmModal && pendingMetas && (
+        <div className="fixed inset-0 z-[300] flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-sm animate-in fade-in duration-200">
+            <div className="bg-white dark:bg-slate-900 rounded-[32px] p-8 border border-slate-100 dark:border-slate-800 shadow-2xl max-w-md w-full">
+                <div className="flex items-center gap-4 mb-6">
+                    <div className="w-12 h-12 bg-emerald-100 dark:bg-emerald-900/30 rounded-2xl flex items-center justify-center text-emerald-600">
+                        <Target size={24} />
+                    </div>
+                    <div>
+                        <h3 className="text-xl font-black text-slate-800 dark:text-white uppercase tracking-tighter">Confirmar Metas</h3>
+                        <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest mt-0.5">Valide o carregamento das novas metas</p>
+                    </div>
+                </div>
+
+                <div className="space-y-4 mb-8 bg-slate-50 dark:bg-slate-800/50 p-6 rounded-2xl border border-slate-100 dark:border-slate-800">
+                    <div className="flex justify-between items-center">
+                        <span className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Lojas</span>
+                        <span className="text-xs font-black text-slate-800 dark:text-white">{pendingMetas.length} lojas</span>
+                    </div>
+                    <div className="flex justify-between items-center">
+                        <span className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Período</span>
+                        <span className="text-xs font-black text-emerald-600 uppercase">
+                            {months.find(m => m.value === pendingMetas[0]?.month)?.label} / {pendingMetas[0]?.year}
+                        </span>
+                    </div>
+                    <p className="text-[9px] font-bold text-slate-400 uppercase leading-relaxed text-center mt-2 italic">
+                        * As metas existentes para estas lojas neste período serão atualizadas.
+                    </p>
+                </div>
+
+                <div className="flex gap-4">
+                    <button 
+                        onClick={() => { setShowConfirmModal(false); setPendingMetas(null); }}
+                        className="flex-1 py-4 px-6 bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 dark:hover:bg-slate-700 rounded-2xl font-black text-[10px] uppercase text-slate-600 dark:text-slate-300 transition-all active:scale-95"
+                    >
+                        Cancelar
+                    </button>
+                    <button 
+                        onClick={finalizeMetasImport}
+                        className="flex-1 py-4 px-6 bg-emerald-600 hover:bg-emerald-700 text-white rounded-2xl font-black text-[10px] uppercase transition-all shadow-lg shadow-emerald-500/20 active:scale-95"
+                    >
+                        Confirmar
+                    </button>
+                </div>
+            </div>
+        </div>
+      )}
+
       <div className="bg-white dark:bg-slate-900 p-6 rounded-3xl shadow-sm border border-slate-100 dark:border-slate-800 flex flex-col md:flex-row justify-between items-center gap-4">
         <div className="flex items-center gap-4">
           <div className="p-3 bg-red-600 text-white rounded-2xl shadow-xl shadow-red-100 dark:shadow-red-900/20"><Target size={20} /></div>

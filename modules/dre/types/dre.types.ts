@@ -1,8 +1,14 @@
 export interface DREData {
   id?: string;
+  import_id?: string;
   loja_id: number;
-  mes_referencia: string; // ISO format or YYYY-MM
-  grupo: string;
+  mes_referencia: string;
+  code: string;
+  name: string;
+  type: string;
+  level: number;
+  parent_code: string | null;
+  grupo?: string | null;
   descricao: string;
   valor: number;
   created_at?: string;

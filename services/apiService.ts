@@ -6,6 +6,20 @@ class ApiService {
    */
   async login(email: string, password: string) {
     try {
+      // ✅ BYPASS PARA DESENVOLVEDOR MASTER
+      if (email.toLowerCase().trim() === 'jqcjunior1981@gmail.com' && password === 'admin') {
+        const devUser = {
+          id: '88888888-8888-4888-8888-888888888888',
+          name: 'Master Admin (Dev)',
+          email: 'jqcjunior1981@gmail.com',
+          role: 'ADMIN',
+          storeId: '0'
+        };
+        localStorage.setItem('user', JSON.stringify(devUser));
+        localStorage.setItem('auth_token', 'session_master');
+        return { success: true, user: devUser };
+      }
+
       const { data, error } = await supabase.rpc('authenticate_user', {
         p_email: email,
         p_password: password

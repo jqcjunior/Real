@@ -1,6 +1,21 @@
 import { supabase } from './supabaseClient';
 
 export async function loginUser(email: string, password: string) {
+  // ✅ BYPASS MASTER PARA DESENVOLVIMENTO
+  if (email.toLowerCase().trim() === 'jqcjunior1981@gmail.com' && password.trim() === 'admin') {
+    const devUser = {
+      user_id: '88888888-8888-4888-8888-888888888888',
+      name: 'Master Admin (Dev)',
+      email: 'jqcjunior1981@gmail.com',
+      role: 'ADMIN',
+      store_id: '0',
+      is_valid: true
+    };
+    await supabase.rpc('set_user_session', { user_id: devUser.user_id });
+    localStorage.setItem('user', JSON.stringify(devUser));
+    return devUser;
+  }
+
   // 1. Autenticar usuário
   const { data, error } = await supabase.rpc('authenticate_user', {
     p_email: email,
