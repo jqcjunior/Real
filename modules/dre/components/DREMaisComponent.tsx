@@ -21,7 +21,8 @@ import {
   Percent
 } from 'lucide-react';
  
-import { DREBenchmarkCorrigidoComponent } from './DREBenchmarkCorrigidoComponent';
+import { DREBenchmarkComponent } from './DREBenchmarkCorrigidoComponent';
+import { DREInsightsPorLojaComponent } from './DREInsightsPorLojaComponent';
 
 interface Anomalia {
   loja_id: number;
@@ -387,44 +388,7 @@ export const DREMaisComponent: React.FC = () => {
         
         {/* TAB: INSIGHTS */}
         {activeTab === 'insights' && (
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-            {insights.length === 0 ? (
-              <div className="col-span-2 bg-gray-50 rounded-xl p-12 text-center">
-                <Lightbulb className="w-16 h-16 text-gray-300 mx-auto mb-4" />
-                <p className="text-gray-500">Nenhum insight disponível no momento</p>
-              </div>
-            ) : (
-              insights.map((insight, idx) => {
-                const color = getInsightColor(insight.tipo);
-                return (
-                  <div
-                    key={idx}
-                    className={`bg-${color}-50 border border-${color}-200 rounded-xl p-6 hover:shadow-lg transition-shadow`}
-                  >
-                    <div className="flex items-start gap-4">
-                      <div className={`p-3 bg-${color}-100 rounded-lg text-${color}-600 flex-shrink-0`}>
-                        {getInsightIcon(insight.tipo)}
-                      </div>
-                      <div className="flex-1 min-w-0">
-                        <div className="flex items-center gap-2 mb-2">
-                          <h3 className={`font-semibold text-${color}-900`}>{insight.titulo}</h3>
-                          <span className={`px-2 py-0.5 rounded text-xs font-medium ${getPriorityBadge(insight.prioridade)}`}>
-                            {insight.prioridade}
-                          </span>
-                        </div>
-                        <p className={`text-sm text-${color}-700`}>{insight.descricao}</p>
-                        {insight.impacto > 0 && (
-                          <p className={`text-xs text-${color}-600 mt-2 font-medium`}>
-                            Impacto: R$ {insight.impacto.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}
-                          </p>
-                        )}
-                      </div>
-                    </div>
-                  </div>
-                );
-              })
-            )}
-          </div>
+          <DREInsightsPorLojaComponent />
         )}
  
         {/* TAB: ANOMALIAS */}
@@ -482,7 +446,7 @@ export const DREMaisComponent: React.FC = () => {
  
         {/* TAB: BENCHMARK */}
         {activeTab === 'benchmark' && (
-          <DREBenchmarkCorrigidoComponent />
+          <DREBenchmarkComponent />
         )}
  
         {/* TAB: PREVISÕES */}

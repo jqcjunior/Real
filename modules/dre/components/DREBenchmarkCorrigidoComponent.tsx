@@ -124,7 +124,7 @@ export const DREBenchmarkComponent: React.FC = () => {
           <AlertCircle className="w-12 h-12 text-yellow-600 mx-auto mb-3" />
           <h3 className="font-semibold text-yellow-900 mb-2">Sem diferenças significativas</h3>
           <p className="text-sm text-yellow-700">
-            Não foram encontradas despesas com diferença > 10% entre as lojas neste mês.
+            Não foram encontradas despesas com diferença {'>'} 10% entre as lojas neste mês.
           </p>
         </div>
       ) : (
