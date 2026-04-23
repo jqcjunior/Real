@@ -56,7 +56,8 @@ const DREDiarioTab: React.FC<DREDiarioTabProps> = ({
                 category_id: sangriaForm.categoryId,
                 description: sangriaForm.description.toUpperCase(),
                 transaction_date: sangriaDate,
-                store_id: effectiveStoreId
+                store_id: effectiveStoreId,
+                user_id: user.id
             });
             setShowSangriaModal(false);
             setSangriaForm({ amount: '', categoryId: '', description: '' });
@@ -91,12 +92,10 @@ const DREDiarioTab: React.FC<DREDiarioTabProps> = ({
                     </div>
                 </div>
                 <div className="flex flex-col items-end gap-3">
-                    {dreStats.user?.role !== 'ICE_CREAM' && (
-                        <div className="flex gap-2">
-                            <button onClick={() => setShowSangriaModal(true)} className="px-6 py-2.5 bg-red-500 text-white rounded-xl font-black uppercase text-[10px] shadow-lg flex items-center gap-2 border-b-4 border-red-700 active:scale-95"><DollarSign size={14}/> Sangria</button>
-                            <button onClick={() => setShowWastageModal(true)} className="px-6 py-2.5 bg-orange-500 text-white rounded-xl font-black uppercase text-[10px] shadow-lg flex items-center gap-2 border-b-4 border-orange-700 active:scale-95"><AlertTriangle size={14}/> Baixa Avaria</button>
-                        </div>
-                    )}
+                    <div className="flex gap-2">
+                        <button onClick={() => setShowSangriaModal(true)} className="px-6 py-2.5 bg-red-500 text-white rounded-xl font-black uppercase text-[10px] shadow-lg flex items-center gap-2 border-b-4 border-red-700 active:scale-95"><DollarSign size={14}/> Sangria</button>
+                        <button onClick={() => setShowWastageModal(true)} className="px-6 py-2.5 bg-orange-500 text-white rounded-xl font-black uppercase text-[10px] shadow-lg flex items-center gap-2 border-b-4 border-orange-700 active:scale-95"><AlertTriangle size={14}/> Baixa Avaria</button>
+                    </div>
                     <button
                         onClick={handlePrintDRE}
                         className="flex items-center gap-2 px-6 py-3 bg-blue-600 text-white rounded-2xl font-black uppercase text-xs hover:bg-blue-700 transition-all shadow-lg active:scale-95 w-full justify-center"

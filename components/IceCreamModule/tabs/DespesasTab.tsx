@@ -30,6 +30,7 @@ interface DespesasTabProps {
     effectiveStoreId: string;
     adminUsers: AdminUser[];
     stores: Store[];
+    user: User;
     can: any;
     fetchData?: () => Promise<void>;
 }
@@ -48,6 +49,7 @@ const DespesasTab: React.FC<DespesasTabProps> = ({
     effectiveStoreId,
     adminUsers,
     stores,
+    user,
     can,
     fetchData
 }) => {
@@ -125,7 +127,8 @@ const DespesasTab: React.FC<DespesasTabProps> = ({
                 category_id: sangriaForm.categoryId,
                 description: sangriaForm.description.toUpperCase(),
                 transaction_date: sangriaDate,
-                store_id: effectiveStoreId
+                store_id: effectiveStoreId,
+                user_id: user.id
             });
             setShowSangriaModal(false);
             setSangriaForm({ amount: '', categoryId: '', description: '' });
@@ -508,7 +511,10 @@ const DespesasTab: React.FC<DespesasTabProps> = ({
                         </div>
 
                         <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                            {sangriaCategories.filter(c => c.store_id === effectiveStoreId).map(cat => (
+                            {sangriaCategories
+                                .filter(c => c.store_id === effectiveStoreId)
+                                .sort((a, b) => a.name.localeCompare(b.name, 'pt-BR'))
+                                .map(cat => (
                                 <div key={cat.id} className="flex justify-between items-center p-5 bg-gray-50 rounded-2xl border border-gray-100 hover:bg-white hover:shadow-md transition-all group">
                                     <div className="flex items-center gap-4">
                                         <div className="w-2 h-2 rounded-full bg-blue-400" />

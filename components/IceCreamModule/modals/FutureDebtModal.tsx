@@ -149,7 +149,7 @@ const FutureDebtModal: React.FC<FutureDebtModalProps> = ({
                                     className="w-full p-4 bg-gray-50 border-none rounded-[20px] font-black text-xs outline-none focus:ring-4 focus:ring-purple-500/20"
                                 >
                                     <option value="">SELECIONE...</option>
-                                    {categories.map(cat => (
+                                    {[...categories].sort((a, b) => a.name.localeCompare(b.name, 'pt-BR')).map(cat => (
                                         <option key={cat.id} value={cat.id}>{cat.name}</option>
                                     ))}
                                 </select>

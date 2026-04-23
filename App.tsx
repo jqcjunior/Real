@@ -346,7 +346,7 @@ const App: React.FC = () => {
             let columnToCheck = '';
             if (roleUpper === 'ADMIN') columnToCheck = 'allow_admin';
             else if (roleUpper === 'MANAGER' || roleUpper === 'GERENTE') columnToCheck = 'allow_manager';
-            else if (roleUpper === 'CASHIER' || roleUpper === 'CAIXA') columnToCheck = 'allow_cashier';
+            else if (roleUpper === 'CASHIER' || roleUpper === 'CAIXA' || roleUpper === 'CASHIER') columnToCheck = 'allow_cashier';
             else if (roleUpper === 'ICE_CREAM' || roleUpper === 'SORVETE' || roleUpper === 'SORVETERIA') columnToCheck = 'allow_sorvete';
 
             if (!columnToCheck) {
@@ -852,6 +852,7 @@ const App: React.FC = () => {
             else if (rawRole === 'MANAGER' || rawRole === 'GERENTE') mappedRole = UserRole.MANAGER;
             else if (rawRole === 'CAIXA' || rawRole === 'CASHIER') mappedRole = UserRole.CASHIER;
             else if (rawRole === 'SORVETE' || rawRole === 'SORVETERIA' || rawRole === 'ICE_CREAM') mappedRole = UserRole.ICE_CREAM;
+            else mappedRole = UserRole.CASHIER; // Default for unknown roles
 
             const loggedUser: User = {
                 id: result.user.id,
@@ -957,10 +958,10 @@ const App: React.FC = () => {
                             { id: 'os_demandas', label: 'Chamado', icon: ClipboardList, perm: 'MODULE_DEMANDS', roles: ['admin'] }
                         ] },
                         { title: 'Operacional', items: [
-                            { id: 'pdv_sorveteria', label: 'Sorveteria Real', icon: IceCreamIcon, perm: 'MODULE_ICECREAM', roles: ['admin', 'manager', 'sorvete'] },
-                            { id: 'caixa', label: 'Caixa', icon: ClipboardList, perm: 'MODULE_CASH_REGISTER', roles: ['admin', 'manager', 'cashier'] },
-                            { id: 'agenda', label: 'Agenda Semanal', icon: Calendar, perm: 'MODULE_AGENDA', roles: ['admin', 'manager'] },
-                            { id: 'my_surveys', label: 'Minhas Pesquisas', icon: ClipboardList, perm: 'ALWAYS', roles: ['admin', 'manager'] }
+                            { id: 'pdv_sorveteria', label: 'Sorveteria Real', icon: IceCreamIcon, perm: 'MODULE_ICECREAM', roles: ['admin', 'manager', 'sorvete', 'ice_cream'] },
+                            { id: 'caixa', label: 'Caixa', icon: ClipboardList, perm: 'MODULE_CASH_REGISTER', roles: ['admin', 'manager', 'cashier', 'caixa'] },
+                            { id: 'agenda', label: 'Agenda Semanal', icon: Calendar, perm: 'MODULE_AGENDA', roles: ['admin', 'manager', 'sorvete', 'ice_cream'] },
+                            { id: 'my_surveys', label: 'Minhas Pesquisas', icon: ClipboardList, perm: 'ALWAYS', roles: ['admin', 'manager', 'cashier', 'caixa', 'sorvete', 'ice_cream'] }
                         ] },
                         { title: 'Documentos', items: [ { id: 'autoriz_compra', label: 'Autoriz. Compra', icon: FileSignature, perm: 'MODULE_AUTORIZ_COMPRA' }, { id: 'termo_condicional', label: 'Termo Condicional', icon: FileText, perm: 'MODULE_TERMO_CONDICIONAL' }, { id: 'downloads', label: 'Downloads', icon: Download, perm: 'MODULE_DOWNLOADS' } ] },
                         { title: 'Administração', items: [

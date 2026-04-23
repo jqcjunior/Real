@@ -36,17 +36,31 @@ const SangriaDetailModal: React.FC<SangriaDetailModalProps> = ({
                 </div>
                 <div className="flex-1 overflow-y-auto p-8 space-y-4 no-scrollbar">
                     {sangrias.map((s: any) => (
-                        <div key={s.id} className="bg-gray-50 p-6 rounded-3xl border border-gray-100 flex justify-between items-center">
+                        <div key={s.id} className="bg-white p-6 rounded-[25px] border border-gray-100 flex justify-between items-center hover:shadow-md transition-all group">
                             <div className="flex-1">
-                                <p className="text-[10px] font-black text-blue-950 uppercase italic">{s.description || 'SEM DESCRIÇÃO'}</p>
+                                <p className="text-[10px] font-black text-blue-950 uppercase italic tracking-tighter">{s.description || 'SEM DESCRIÇÃO'}</p>
                                 <div className="flex items-center gap-2 mt-1">
-                                    <span className="text-[8px] font-bold text-gray-400 uppercase">{categories.find(c => c.id === s.category_id)?.name || 'OUTROS'}</span>
+                                    <span className="text-[8px] font-black text-gray-400 uppercase px-2 py-0.5 bg-gray-100 rounded-full">
+                                        {categories.find(c => c.id === s.category_id)?.name || 'OUTROS'}
+                                    </span>
                                     <span className="text-[8px] text-gray-300">•</span>
-                                    <span className="text-[8px] font-bold text-gray-400 uppercase">{new Date(s.transaction_date).toLocaleDateString()}</span>
+                                    <span className="text-[8px] font-bold text-gray-500 uppercase">
+                                        {new Date(s.transaction_date || s.created_at).toLocaleDateString('pt-BR')}
+                                    </span>
+                                    {s.userName && (
+                                        <>
+                                            <span className="text-[8px] text-gray-300">•</span>
+                                            <span className="text-[8px] font-black text-purple-600 uppercase italic">
+                                                Lançado por: {s.userName}
+                                            </span>
+                                        </>
+                                    )}
                                 </div>
                             </div>
                             <div className="flex items-center gap-4">
-                                <span className="text-lg font-black text-red-600 italic">{formatCurrency(s.amount)}</span>
+                                <span className="text-lg font-black text-red-600 italic tracking-tighter">
+                                    {formatCurrency(Number(s.amount || s.value || 0))}
+                                </span>
                                 {isAdmin && (
                                     <div className="flex gap-2">
                                         <button 
@@ -75,7 +89,9 @@ const SangriaDetailModal: React.FC<SangriaDetailModalProps> = ({
                 </div>
                 <div className="p-8 border-t bg-gray-50 flex justify-between items-center shrink-0">
                     <span className="text-[10px] font-black text-gray-400 uppercase">Total do Período</span>
-                    <span className="text-2xl font-black text-red-600 italic">{formatCurrency(sangrias.reduce((acc, s) => acc + s.amount, 0))}</span>
+                    <span className="text-2xl font-black text-red-600 italic">
+                        {formatCurrency(sangrias.reduce((acc, s) => acc + Number(s.amount || s.value || 0), 0))}
+                    </span>
                 </div>
             </div>
         </div>

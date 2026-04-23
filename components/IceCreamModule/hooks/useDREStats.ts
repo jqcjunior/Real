@@ -1,7 +1,8 @@
 import { useMemo } from 'react';
 import { 
     IceCreamDailySale, Sale, SalePayment, IceCreamSangria, 
-    IceCreamStockMovement, IceCreamFutureDebt, SaleDetailItem, DREMethodCount 
+    IceCreamStockMovement, IceCreamFutureDebt, SaleDetailItem, DREMethodCount,
+    AdminUser
 } from '../../../types';
 
 interface UseDREStatsProps {
@@ -13,6 +14,7 @@ interface UseDREStatsProps {
     stockMovements: IceCreamStockMovement[];
     futureDebts: IceCreamFutureDebt[];
     sangriaCategories: any[];
+    adminUsers: AdminUser[];
     selectedYear: string | number;
     selectedMonth: string | number;
     displayDate: string;
@@ -28,6 +30,7 @@ export const useDREStats = ({
     stockMovements,
     futureDebts,
     sangriaCategories,
+    adminUsers,
     selectedYear,
     selectedMonth,
     displayDate,
@@ -301,16 +304,16 @@ export const useDREStats = ({
             daySangriaTotal,
             daySangrias,
             dayExits: daySangrias.map(s => ({
-                id: s.id,
-                description: s.description,
-                category: sangriaCategories.find(c => c.id === s.category_id)?.name || 'OUTROS',
-                value: s.amount
+                ...s,
+                userName: adminUsers.find(u => u.id === s.user_id)?.name || (s.user_id === user.id ? user.name : 'SISTEMA'),
+                value: s.amount || 0,
+                category: sangriaCategories.find(c => c.id === s.category_id)?.name || 'OUTROS'
             })),
             monthExits: monthSangrias.map(s => ({
-                id: s.id,
-                description: s.description,
-                category: sangriaCategories.find(c => c.id === s.category_id)?.name || 'OUTROS',
-                value: s.amount
+                ...s,
+                userName: adminUsers.find(u => u.id === s.user_id)?.name || (s.user_id === user.id ? user.name : 'SISTEMA'),
+                value: s.amount || 0,
+                category: sangriaCategories.find(c => c.id === s.category_id)?.name || 'OUTROS'
             })),
             dayWastageTotal,
             daySales,
@@ -321,6 +324,6 @@ export const useDREStats = ({
         };
     }, [
         sales, salePayments, salesHeaders, sangrias, stockMovements, 
-        futureDebts, sangriaCategories, selectedYear, selectedMonth, displayDate, effectiveStoreId
+        futureDebts, sangriaCategories, adminUsers, selectedYear, selectedMonth, displayDate, effectiveStoreId
     ]);
 };

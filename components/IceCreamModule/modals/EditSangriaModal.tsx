@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useMemo } from 'react';
 import { X, PencilLine, Loader2, Save, Calendar, FileText, DollarSign } from 'lucide-react';
 import { IceCreamSangriaCategory } from '../../../types';
 
@@ -21,6 +21,10 @@ const EditSangriaModal: React.FC<EditSangriaModalProps> = ({
     categories,
     isSubmitting
 }) => {
+    const sortedCategories = useMemo(() => {
+        return [...categories].sort((a, b) => a.name.localeCompare(b.name, 'pt-BR'));
+    }, [categories]);
+
     if (!isOpen) return null;
 
     return (
@@ -62,7 +66,7 @@ const EditSangriaModal: React.FC<EditSangriaModalProps> = ({
                                 className="w-full p-4 bg-gray-50 rounded-2xl font-black uppercase text-xs outline-none border-2 border-transparent focus:border-blue-100 transition-all"
                             >
                                 <option value="">SELECIONE UMA CATEGORIA</option>
-                                {categories.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
+                                {sortedCategories.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
                             </select>
                         </div>
 

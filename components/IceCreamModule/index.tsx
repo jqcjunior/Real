@@ -159,6 +159,7 @@ const IceCreamModule: React.FC<IceCreamModuleProps> = ({
         stockMovements,
         futureDebts,
         sangriaCategories,
+        adminUsers: adminUsers || [],
         selectedYear,
         selectedMonth,
         displayDate,
@@ -1036,11 +1037,11 @@ const IceCreamModule: React.FC<IceCreamModuleProps> = ({
                         effectiveStoreId={effectiveStoreId}
                         handlePrintDRE={handlePrintDRE}
                         sangriaCategories={sangriaCategories}
-                        onAddSangria={isSorvete ? async () => {} : onAddSangria}
+                        onAddSangria={onAddSangria}
                         onUpdateStock={handleUpdateStock}
                         filteredStock={stock.filter(s => s.store_id === effectiveStoreId)}
                         fetchData={fetchData}
-                        onAddSangriaCategory={isSorvete ? async () => {} : handleAddSangriaCategory}
+                        onAddSangriaCategory={handleAddSangriaCategory}
                         onShowSangriaDetail={() => setShowSangriaDetailModal('day')}
                         user={user}
                     />
@@ -1086,6 +1087,7 @@ const IceCreamModule: React.FC<IceCreamModuleProps> = ({
                         effectiveStoreId={effectiveStoreId}
                         adminUsers={adminUsers}
                         stores={stores}
+                        user={user}
                         can={can}
                         fetchData={fetchData}
                     />
