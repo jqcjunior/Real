@@ -949,7 +949,7 @@ const App: React.FC = () => {
                             { id: 'dashboard_loja', label: 'Dashboard Loja', icon: LayoutDashboard, perm: 'MODULE_DASHBOARD_MANAGER', roles: ['manager'] },
                             { id: 'dashboard_pa', label: 'Dashboard P.A.', icon: Trophy, perm: 'MODULE_DASHBOARD_PA', roles: ['admin'] },
                             { id: 'dashboard_pa_manager', label: 'Dashboard P.A.', icon: Trophy, perm: 'MODULE_DASHBOARD_PA_MANAGER', roles: ['manager'] },
-                            { id: 'buy_orders', label: 'Pedidos Compra', icon: ShoppingBag, perm: 'MODULE_BUY_ORDERS', roles: ['admin'] },
+                            { id: 'buy_orders', label: 'Pedidos Compra', icon: ShoppingBag, perm: 'MODULE_BUY_ORDERS', roles: ['admin', 'manager'] },
                             { id: 'dre_accounts', label: 'Plano de Contas DRE', icon: ClipboardList, perm: 'MODULE_DRE_ACCOUNTS', roles: ['admin'] },
                             { id: 'metas', label: 'Metas', icon: Target, perm: 'MODULE_METAS', roles: ['admin'] },
                             { id: 'cotas', label: 'Cotas OTB', icon: Calculator, perm: 'MODULE_COTAS', roles: ['admin'] },
@@ -1440,7 +1440,7 @@ const App: React.FC = () => {
                             user={user!}
                             store={stores.find(s => s.id === user?.storeId)}
                         />;
-                        if (currentView === 'buy_orders' && can('MODULE_BUY_ORDERS')) return <BuyOrderModule />;
+                        if (currentView === 'buy_orders' && can('MODULE_BUY_ORDERS')) return <BuyOrderModule user={user} />;
                         return <div className="flex items-center justify-center h-full text-gray-400 uppercase tracking-widest font-black text-sm">Selecione um módulo no menu</div>;
                     })()}
                     </Suspense>

@@ -1,5 +1,6 @@
 import { useState, useEffect, useRef, useCallback } from 'react';
 import { supabase } from '../services/supabaseClient';
+import { User } from '../types';
  
 // ─── Tipos ────────────────────────────────────────────────────────────────────
  
@@ -105,13 +106,22 @@ function totPares(qtds: Record<string, number>): number {
  
 // ─── Componente principal ─────────────────────────────────────────────────────
  
-export default function BuyOrderModule() {
+export default function BuyOrderModule({ user }: { user?: User }) {
   const [step, setStep] = useState(0);
   const [cab, setCab] = useState<Cabecalho>({
     role: 'comprador', brand_id: null, marca: '', fornecedor: '',
     representante: '', telefone: '', email: '',
-    fat_inicio: '', fat_fim: '', prazos: [], markup: 2.80, desconto: 0,
+    fat_inicio: '', fat_fim: '', prazos: [], markup: 2.60, desconto: 0,
   });
+
+  useEffect(() => {
+    if (user) {
+      setCab(prev => ({
+        ...prev,
+        role: user.role === 'ADMIN' ? 'comprador' : 'gerente'
+      }));
+    }
+  }, [user]);
   const [prazosRaw, setPrazosRaw] = useState('');
   const [items, setItems] = useState<OrderItem[]>([]);
   const [pedidos, setPedidos] = useState<SubOrder[]>([]);
@@ -276,7 +286,7 @@ export default function BuyOrderModule() {
       alert(`Pedido salvo com sucesso! Nº será gerado automaticamente.`);
       // Reset
       setStep(0);
-      setCab({ role: 'comprador', brand_id: null, marca: '', fornecedor: '', representante: '', telefone: '', email: '', fat_inicio: '', fat_fim: '', prazos: [], markup: 2.80, desconto: 0 });
+      setCab({ role: 'comprador', brand_id: null, marca: '', fornecedor: '', representante: '', telefone: '', email: '', fat_inicio: '', fat_fim: '', prazos: [], markup: 2.60, desconto: 0 });
       setItems([]);
       setPedidos([]);
       setPrazosRaw('');
@@ -368,17 +378,19 @@ export default function BuyOrderModule() {
               <span style={{ fontSize: 15, fontWeight: 500 }}>Novo pedido de compra</span>
             )}
             <span style={{ fontSize: 11, padding: '2px 8px', borderRadius: 20, background: cab.role === 'comprador' ? '#E6F1FB' : '#EAF3DE', color: cab.role === 'comprador' ? '#0C447C' : '#27500A', border: `0.5px solid ${cab.role === 'comprador' ? '#B5D4F4' : '#C0DD97'}` }}>
-              {cab.role === 'comprador' ? 'Comprador' : 'Gerente'}
+              {cab.role === 'comprador' ? 'Modo Comprador' : 'Modo Gerente'}
             </span>
           </div>
-          <div style={{ display: 'flex', gap: 5 }}>
-            {(['comprador', 'gerente'] as const).map(r => (
-              <button key={r} onClick={() => setCab(c => ({ ...c, role: r }))}
-                style={{ height: 26, padding: '0 12px', borderRadius: 5, fontSize: 11, fontWeight: 500, cursor: 'pointer', border: `0.5px solid ${cab.role === r ? '#185FA5' : '#d1d5db'}`, background: cab.role === r ? '#185FA5' : 'transparent', color: cab.role === r ? '#fff' : '#6b7280' }}>
-                {r.charAt(0).toUpperCase() + r.slice(1)}
-              </button>
-            ))}
-          </div>
+          {user?.role === 'ADMIN' && (
+            <div style={{ display: 'flex', gap: 5 }}>
+              {(['comprador', 'gerente'] as const).map(r => (
+                <button key={r} onClick={() => setCab(c => ({ ...c, role: r }))}
+                  style={{ height: 28, minWidth: 90, padding: '0 12px', borderRadius: 6, fontSize: 11, fontWeight: 600, cursor: 'pointer', border: `0.5px solid ${cab.role === r ? '#185FA5' : '#d1d5db'}`, background: cab.role === r ? '#185FA5' : '#fff', color: cab.role === r ? '#fff' : '#64748b', transition: 'all 0.2s', boxShadow: cab.role === r ? '0 2px 4px rgba(24, 95, 165, 0.2)' : 'none' }}>
+                  {r.charAt(0).toUpperCase() + r.slice(1)}
+                </button>
+              ))}
+            </div>
+          )}
         </div>
  
         {/* Stepper */}
@@ -397,7 +409,7 @@ export default function BuyOrderModule() {
         {/* Corpo da etapa */}
         {step === 0 && <StepCabecalho cab={cab} setCab={setCab} prazosRaw={prazosRaw} setPrazosRaw={setPrazosRaw} numeroPedidoSalvo={numeroPedidoSalvo} setNumeroPedidoSalvo={setNumeroPedidoSalvo} />}
         {step === 1 && <StepItens items={items} setItems={setItems} cab={cab} />}
-        {step === 2 && <StepPedidos items={items} pedidos={pedidos} setPedidos={setPedidos} />}
+        {step === 2 && <StepPedidos items={items} pedidos={pedidos} setPedidos={setPedidos} user={user} />}
  
         {/* Footer navegação */}
         {error && (
@@ -488,9 +500,10 @@ function StepCabecalho({ cab, setCab, prazosRaw, setPrazosRaw, numeroPedidoSalvo
   const searchTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   function onMarcaInput(val: string) {
-    setCab(c => ({ ...c, marca: val, brand_id: null }));
+    const uppercaseVal = val.toUpperCase();
+    setCab(c => ({ ...c, marca: uppercaseVal, brand_id: null }));
     if (numeroPedidoSalvo) setNumeroPedidoSalvo(null);
-    if (val.length < 4) { setBrands([]); setShowDrop(false); return; }
+    if (uppercaseVal.length < 4) { setBrands([]); setShowDrop(false); return; }
     clearTimeout(searchTimer.current!);
     setSearching(true);
     setShowDrop(true);
@@ -498,7 +511,7 @@ function StepCabecalho({ cab, setCab, prazosRaw, setPrazosRaw, numeroPedidoSalvo
       const { data } = await supabase
         .from('buy_brands')
         .select('id,marca,fornecedor,representante,telefone,email')
-        .ilike('marca', `%${val}%`)
+        .ilike('marca', `%${uppercaseVal}%`)
         .eq('is_active', true)
         .order('marca', { ascending: true })
         .limit(8);
@@ -533,7 +546,7 @@ function StepCabecalho({ cab, setCab, prazosRaw, setPrazosRaw, numeroPedidoSalvo
               onBlur={() => setTimeout(() => setShowDrop(false), 200)}
               placeholder="Digite 4+ letras..." 
               autoComplete="off" 
-              className="w-full h-9 px-3 border border-slate-300 rounded-lg text-sm" 
+              className="w-full h-9 px-3 border border-slate-300 rounded-lg text-sm uppercase" 
             />
             {showDrop && (
               <div className="absolute top-full left-0 right-0 mt-1 bg-white border border-slate-300 rounded-lg shadow-lg z-50">
@@ -556,18 +569,18 @@ function StepCabecalho({ cab, setCab, prazosRaw, setPrazosRaw, numeroPedidoSalvo
             <label className="block text-xs font-medium text-slate-600 uppercase mb-1">Fornecedor *</label>
             <input 
               value={cab.fornecedor} 
-              onChange={e => setCab(c => ({ ...c, fornecedor: e.target.value }))}
+              onChange={e => setCab(c => ({ ...c, fornecedor: e.target.value.toUpperCase() }))}
               placeholder="Razão social" 
-              className="w-full h-9 px-3 border border-slate-300 rounded-lg text-sm" 
+              className="w-full h-9 px-3 border border-slate-300 rounded-lg text-sm uppercase" 
             />
           </div>
           <div>
             <label className="block text-xs font-medium text-slate-600 uppercase mb-1">Representante *</label>
             <input 
               value={cab.representante} 
-              onChange={e => setCab(c => ({ ...c, representante: e.target.value }))}
+              onChange={e => setCab(c => ({ ...c, representante: e.target.value.toUpperCase() }))}
               placeholder="Nome" 
-              className="w-full h-9 px-3 border border-slate-300 rounded-lg text-sm" 
+              className="w-full h-9 px-3 border border-slate-300 rounded-lg text-sm uppercase" 
             />
           </div>
         </div>
@@ -587,9 +600,9 @@ function StepCabecalho({ cab, setCab, prazosRaw, setPrazosRaw, numeroPedidoSalvo
             <label className="block text-xs font-medium text-slate-600 uppercase mb-1">E-mail</label>
             <input 
               value={cab.email} 
-              onChange={e => setCab(c => ({ ...c, email: e.target.value }))}
+              onChange={e => setCab(c => ({ ...c, email: e.target.value.toUpperCase() }))}
               placeholder="rep@marca.com" 
-              className="w-full h-9 px-3 border border-slate-300 rounded-lg text-sm" 
+              className="w-full h-9 px-3 border border-slate-300 rounded-lg text-sm uppercase" 
             />
           </div>
         </div>
@@ -735,7 +748,8 @@ function StepItens({ items, setItems, cab }: { items: OrderItem[]; setItems: Rea
   function openEdit(i: number) { const it = items[i]; setForm({ ref: it.ref, tipo: it.tipo, cor1: it.cor1, cor2: it.cor2, cor3: it.cor3, modelo: it.modelo || 'FEM', custo: String(it.custo) }); setEditIdx(i); setCor2Manual(!!it.cor2); setCor3Manual(!!it.cor3); setCorSuggestions([]); setTipoSuggestions([]); setShowPopup(true); }
  
   function onCor1(v: string) {
-    setForm(f => ({ ...f, cor1: v, cor2: cor2Manual ? f.cor2 : v, cor3: cor3Manual ? f.cor3 : v }));
+    const vu = v.toUpperCase();
+    setForm(f => ({ ...f, cor1: vu, cor2: cor2Manual ? f.cor2 : vu, cor3: cor3Manual ? f.cor3 : vu }));
   }
  
   function saveItem() {
@@ -812,7 +826,7 @@ function StepItens({ items, setItems, cab }: { items: OrderItem[]; setItems: Rea
               {/* LINHA 1: Referência ocupa linha inteira */}
               <div style={{ marginBottom: 10 }}>
                 <label style={{ fontSize: 10, fontWeight: 500, color: '#6b7280', textTransform: 'uppercase', display: 'block', marginBottom: 3 }}>Referência *</label>
-                <input value={form.ref} onChange={e => setForm(f => ({ ...f, ref: e.target.value }))} placeholder="REF-001" style={{ height: 30, width: '100%', padding: '0 8px', border: '0.5px solid #d1d5db', borderRadius: 5, fontSize: 12, outline: 'none' }} autoFocus />
+                <input value={form.ref} onChange={e => setForm(f => ({ ...f, ref: e.target.value.toUpperCase() }))} placeholder="REF-001" style={{ height: 30, width: '100%', padding: '0 8px', border: '0.5px solid #d1d5db', borderRadius: 5, fontSize: 12, outline: 'none', textTransform: 'uppercase' }} autoFocus />
               </div>
  
               {/* LINHA 2: Tipo com AUTOCOMPLETE */}
@@ -821,12 +835,13 @@ function StepItens({ items, setItems, cab }: { items: OrderItem[]; setItems: Rea
                 <input 
                   value={form.tipo}
                   onChange={e => { 
-                    setForm(f => ({ ...f, tipo: e.target.value })); 
-                    searchTipos(e.target.value); 
+                    const v = e.target.value.toUpperCase();
+                    setForm(f => ({ ...f, tipo: v })); 
+                    searchTipos(v); 
                   }}
                   onBlur={() => setTimeout(() => setShowTipoDropdown(false), 200)}
                   placeholder="Digite o tipo do produto"
-                  style={{ height: 30, width: '100%', padding: '0 8px', border: '0.5px solid #d1d5db', borderRadius: 5, fontSize: 12, outline: 'none' }}
+                  style={{ height: 30, width: '100%', padding: '0 8px', border: '0.5px solid #d1d5db', borderRadius: 5, fontSize: 12, outline: 'none', textTransform: 'uppercase' }}
                 />
                 {showTipoDropdown && tipoSuggestions.length > 0 && (
                   <div style={{ position: 'absolute', top: '100%', left: 0, right: 0, background: '#fff', border: '0.5px solid #d1d5db', borderRadius: 5, zIndex: 110, marginTop: 2, boxShadow: '0 4px 12px rgba(0,0,0,.1)' }}>
@@ -846,18 +861,18 @@ function StepItens({ items, setItems, cab }: { items: OrderItem[]; setItems: Rea
               </div>
               <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: 10, marginBottom: 10 }}>
                 {[
-                  { key: 'cor1', label: 'Cor 1 *', onChange: (v: string) => { onCor1(v); searchCores(v, 'cor1'); } },
-                  { key: 'cor2', label: 'Cor 2', onChange: (v: string) => { setCor2Manual(true); setForm(f => ({ ...f, cor2: v })); searchCores(v, 'cor2'); } },
-                  { key: 'cor3', label: 'Cor 3', onChange: (v: string) => { setCor3Manual(true); setForm(f => ({ ...f, cor3: v })); searchCores(v, 'cor3'); } },
+                  { key: 'cor1', label: 'Cor 1 *', onChange: (v: string) => { const vu = v.toUpperCase(); onCor1(vu); searchCores(vu, 'cor1'); } },
+                  { key: 'cor2', label: 'Cor 2', onChange: (v: string) => { const vu = v.toUpperCase(); setCor2Manual(true); setForm(f => ({ ...f, cor2: vu })); searchCores(vu, 'cor2'); } },
+                  { key: 'cor3', label: 'Cor 3', onChange: (v: string) => { const vu = v.toUpperCase(); setCor3Manual(true); setForm(f => ({ ...f, cor3: vu })); searchCores(vu, 'cor3'); } },
                 ].map(f => (
                   <div key={f.key} style={{ position: 'relative' }}>
                     <label style={{ fontSize: 10, fontWeight: 500, color: '#6b7280', textTransform: 'uppercase', display: 'block', marginBottom: 3 }}>{f.label}</label>
                     <input 
                       value={(form as any)[f.key]} 
-                      onChange={e => f.onChange(e.target.value)} 
+                      onChange={e => f.onChange(e.target.value.toUpperCase())} 
                       onBlur={() => setTimeout(() => setShowCorDropdown({ field: null }), 200)}
                       placeholder="—" 
-                      style={{ height: 30, width: '100%', padding: '0 8px', border: '0.5px solid #d1d5db', borderRadius: 5, fontSize: 12, outline: 'none' }} 
+                      style={{ height: 30, width: '100%', padding: '0 8px', border: '0.5px solid #d1d5db', borderRadius: 5, fontSize: 12, outline: 'none', textTransform: 'uppercase' }} 
                     />
                     {showCorDropdown.field === f.key && corSuggestions.length > 0 && (
                       <div style={{ position: 'absolute', top: '100%', left: 0, right: 0, background: '#fff', border: '0.5px solid #d1d5db', borderRadius: 5, zIndex: 110, marginTop: 2, boxShadow: '0 4px 12px rgba(0,0,0,.1)' }}>
@@ -919,13 +934,23 @@ function StepItens({ items, setItems, cab }: { items: OrderItem[]; setItems: Rea
 
 // ─── Step 2: Pedidos ──────────────────────────────────────────────────────────
 
-function StepPedidos({ items, pedidos, setPedidos }: { items: OrderItem[]; pedidos: SubOrder[]; setPedidos: React.Dispatch<React.SetStateAction<SubOrder[]>> }) {
+function StepPedidos({ items, pedidos, setPedidos, user }: { items: OrderItem[]; pedidos: SubOrder[]; setPedidos: React.Dispatch<React.SetStateAction<SubOrder[]>>, user?: User }) {
+
+  const isGerente = user?.role === 'MANAGER';
+  const userStoreId = user?.storeId ? parseInt(user.storeId) : null;
 
   useEffect(() => {
     if (pedidos.length === 0) {
-      setPedidos([{ num: 1, pedido_numero: '', itensComGrades: [], lojas: [], lojaMode: null }]);
+      const initialStore = isGerente && userStoreId ? [userStoreId] : [];
+      setPedidos([{ 
+        num: 1, 
+        pedido_numero: '', 
+        itensComGrades: [], 
+        lojas: initialStore, 
+        lojaMode: isGerente ? 'all' : null 
+      }]);
     }
-  }, []);
+  }, [pedidos.length, isGerente, userStoreId]);
 
   const [activeGrade, setActiveGrade] = useState<Record<string, number>>({}); // key: "pi-itemIdx", value: gi
 
@@ -1064,9 +1089,9 @@ function StepPedidos({ items, pedidos, setPedidos }: { items: OrderItem[]; pedid
                 </span>
                 <label className="text-xs text-slate-500">Nº fornecedor</label>
                 <input value={ped.pedido_numero} 
-                  onChange={e => updPedido(pi, p => ({ ...p, pedido_numero: e.target.value }))}
+                  onChange={e => updPedido(pi, p => ({ ...p, pedido_numero: e.target.value.toUpperCase() }))}
                   placeholder="12345" 
-                  className="w-20 h-7 px-2 text-xs border border-slate-300 rounded" />
+                  className="w-20 h-7 px-2 text-xs border border-slate-300 rounded uppercase" />
                 {pedidos.length > 1 && (
                    <button onClick={() => delPedido(pi)} className="text-red-600 text-sm">✕</button>
                 )}
@@ -1098,25 +1123,39 @@ function StepPedidos({ items, pedidos, setPedidos }: { items: OrderItem[]; pedid
                 {/* 2. Seleção de Lojas */}
                 <div>
                   <div className="text-xs font-medium text-slate-600 uppercase mb-2">
-                    2. Selecione as lojas
+                    {isGerente ? '2. Sua Loja' : '2. Selecione as lojas'}
                   </div>
-                  <div className="flex flex-wrap gap-2 mb-3">
-                    <button onClick={() => setLojaMode(pi, 'sub')} style={btnStyle(ped.lojaMode === 'sub')}>Subgrupo</button>
-                    <button onClick={() => setLojaMode(pi, 'all')} style={btnStyle(ped.lojaMode === 'all')}>Todas (1-120)</button>
-                    <span style={{ fontSize: 10, color: '#6b7280', marginLeft: 4 }}>{ped.lojas.length} selecionada(s)</span>
-                  </div>
-                  
-                  {pool.length > 0 && (
-                    <div className="overflow-x-auto p-1 bg-slate-50/50 rounded-lg border border-slate-100">
-                      <div className="flex flex-wrap gap-2">
-                        {pool.map(n => (
-                          <div key={n} onClick={() => toggleLoja(pi, n)}
-                            className={`w-10 h-10 flex items-center justify-center text-xs font-medium rounded border cursor-pointer select-none transition-colors ${
-                              ped.lojas.includes(n) ? 'border-blue-300 bg-blue-50 text-blue-800' : 'border-slate-200 bg-white text-slate-500'
-                            }`}>
-                            {n}
+                  {!isGerente ? (
+                    <>
+                      <div className="flex flex-wrap gap-2 mb-3">
+                        <button onClick={() => setLojaMode(pi, 'sub')} style={btnStyle(ped.lojaMode === 'sub')}>Subgrupo</button>
+                        <button onClick={() => setLojaMode(pi, 'all')} style={btnStyle(ped.lojaMode === 'all')}>Todas (1-120)</button>
+                        <span style={{ fontSize: 10, color: '#6b7280', marginLeft: 4 }}>{ped.lojas.length} selecionada(s)</span>
+                      </div>
+                      
+                      {pool.length > 0 && (
+                        <div className="overflow-x-auto p-1 bg-slate-50/50 rounded-lg border border-slate-100">
+                          <div className="flex flex-wrap gap-2">
+                            {pool.map(n => (
+                              <div key={n} onClick={() => toggleLoja(pi, n)}
+                                className={`w-10 h-10 flex items-center justify-center text-xs font-medium rounded border cursor-pointer select-none transition-colors ${
+                                  ped.lojas.includes(n) ? 'border-blue-300 bg-blue-50 text-blue-800' : 'border-slate-200 bg-white text-slate-500'
+                                }`}>
+                                {n}
+                              </div>
+                            ))}
                           </div>
-                        ))}
+                        </div>
+                      )}
+                    </>
+                  ) : (
+                    <div className="flex items-center gap-3 bg-blue-50 border border-blue-200 p-3 rounded-lg">
+                      <div className="w-10 h-10 flex items-center justify-center bg-blue-600 text-white rounded-lg font-bold">
+                        {userStoreId || '?'}
+                      </div>
+                      <div>
+                        <div className="text-xs font-bold text-blue-900">Loja Vinculada</div>
+                        <div className="text-[10px] text-blue-600 uppercase">Seu pedido será direcionado para esta loja</div>
                       </div>
                     </div>
                   )}
