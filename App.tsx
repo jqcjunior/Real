@@ -255,8 +255,8 @@ const App: React.FC = () => {
                         module_group: p.group,
                         allow_admin: true,
                         allow_manager: p.key === 'MODULE_DEMANDS',
-                        allow_cashier: false,
-                        allow_sorvete: p.key === 'MODULE_ICECREAM' || p.key === 'MODULE_AGENDA' || p.key === 'MODULE_DASHBOARD_MANAGER',
+                        allow_cashier: p.key === 'MODULE_DEMANDS',
+                        allow_sorvete: p.key === 'MODULE_ICECREAM' || p.key === 'MODULE_AGENDA' || p.key === 'MODULE_DASHBOARD_MANAGER' || p.key === 'MODULE_DEMANDS',
                         sort_order: 100
                     }]);
                 } else if (!existing.allow_admin) {
@@ -265,10 +265,10 @@ const App: React.FC = () => {
                         .eq('page_key', p.key);
                 }
                 
-                // ✅ GARANTIR QUE GERENTES VEJAM CHAMADOS
+                // ✅ GARANTIR QUE TODOS VEJAM CHAMADOS
                 if (existing && p.key === 'MODULE_DEMANDS') {
                     await supabase.from('page_permissions')
-                        .update({ allow_manager: true })
+                        .update({ allow_manager: true, allow_cashier: true, allow_sorvete: true })
                         .eq('page_key', 'MODULE_DEMANDS');
                 }
             }
@@ -962,7 +962,7 @@ const App: React.FC = () => {
                             { id: 'metas', label: 'Metas', icon: Target, perm: 'MODULE_METAS', roles: ['admin'] },
                             { id: 'cotas', label: 'Cotas OTB', icon: Calculator, perm: 'MODULE_COTAS', roles: ['admin'] },
                             { id: 'compras', label: 'Compras', icon: ShoppingBag, perm: 'MODULE_PURCHASES', roles: ['admin'] },
-                            { id: 'os_demandas', label: 'Chamado', icon: ClipboardList, perm: 'MODULE_DEMANDS', roles: ['admin', 'manager'] }
+                            { id: 'os_demandas', label: 'Chamado', icon: ClipboardList, perm: 'MODULE_DEMANDS' }
                         ] },
                         { title: 'Operacional', items: [
                             { id: 'pdv_sorveteria', label: 'Sorveteria Real', icon: IceCreamIcon, perm: 'MODULE_ICECREAM', roles: ['admin', 'manager', 'sorvete', 'ice_cream'] },

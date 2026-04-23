@@ -191,17 +191,13 @@ const DemandsSystemV2: React.FC<DemandsSystemV2Props> = ({ user, stores }) => {
             if (userRole === 'ADMIN' || userRole === 'TÉCNICO') {
                 console.log(`Visão TOTAL: Admin/Técnico`);
             } 
-            else if (userRole === 'GERENTE' || userRole === 'MANAGER') {
+            else {
                 // @ts-ignore
                 const userStoreId = user.store_id || user.storeId;
                 if (userStoreId) {
                     query = query.eq('store_id', userStoreId);
                 }
-                console.log(`Visão GERENTE`);
-            } 
-            else {
-                query = query.or(`created_by.eq.${currentUserId},assigned_to.eq.${currentUserId}`);
-                console.log(`Visão COLABORADOR`);
+                console.log(`Visão RESTRITA (Loja: ${userStoreId})`);
             }
 
             if (activeTab === 'abertas') {
