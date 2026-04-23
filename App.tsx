@@ -125,11 +125,44 @@ const App: React.FC = () => {
     const [permissionsLoaded, setPermissionsLoaded] = useState(false);
     const [isSidebarOpen, setIsSidebarOpen] = useState(false);
     const [isChangePasswordOpen, setIsChangePasswordOpen] = useState(false);
-    const [sessionWarning, setSessionWarning] = useState(false); // aviso de sessão prestes a expirar
+    const [sessionWarning, setSessionWarning] = useState(false);
+    const [hasUnreadDemands, setHasUnreadDemands] = useState(false);
     const [theme, setTheme] = useState<'light' | 'dark'>(() => {
         const saved = localStorage.getItem('theme');
         return (saved as 'light' | 'dark') || 'light';
     });
+
+    const checkUnreadDemands = async () => {
+        if (!user) return;
+        try {
+            let query = supabase
+                .from('demands_v2')
+                .select('unread_count')
+                .gt('unread_count', 0)
+                .eq('is_archived', false);
+            
+            // @ts-ignore
+            const userStoreId = user.store_id || user.storeId;
+            if (user?.role !== UserRole.ADMIN && userStoreId) {
+                query = query.eq('store_id', userStoreId);
+            }
+
+            const { data, error } = await query;
+            if (error) throw error;
+            
+            setHasUnreadDemands(data && data.length > 0);
+        } catch (err) {
+            console.error("Erro ao checar novos chamados:", err);
+        }
+    };
+
+    useEffect(() => {
+        if (user) {
+            checkUnreadDemands();
+            const interval = setInterval(checkUnreadDemands, 30000); // Checa a cada 30 segundos
+            return () => clearInterval(interval);
+        }
+    }, [user, user?.storeId]);
 
     // ─── SEGURANÇA: Sempre exige login — nunca restaura sessão salva ──────────
     useEffect(() => {
@@ -992,13 +1025,20 @@ const App: React.FC = () => {
                                     <button
                                         key={item.id}
                                         onClick={() => { setCurrentView(item.id); setIsSidebarOpen(false); }}
-                                        className={`w-full text-left py-2.5 px-4 rounded-xl font-black uppercase text-[10px] flex items-center gap-4 transition-all ${
+                                        className={`w-full text-left py-2.5 px-4 rounded-xl font-black uppercase text-[10px] flex items-center gap-4 transition-all relative ${
                                             currentView === item.id
                                                 ? 'bg-blue-600 text-white shadow-lg shadow-blue-200 dark:shadow-blue-900/20'
                                                 : 'text-slate-500 dark:text-slate-300 hover:text-slate-900 dark:hover:text-white hover:bg-slate-50 dark:hover:bg-slate-800'
                                         }`}
                                     >
-                                        <item.icon size={20} /> {item.label}
+                                        <item.icon size={20} /> 
+                                        <span>{item.label}</span>
+                                        {item.id === 'os_demandas' && hasUnreadDemands && (
+                                            <span className="ml-auto flex h-2 w-2">
+                                                <span className="animate-ping absolute inline-flex h-2 w-2 rounded-full bg-green-400 opacity-75"></span>
+                                                <span className="relative inline-flex rounded-full h-2 w-2 bg-green-500 shadow-[0_0_8px_rgba(34,197,94,0.8)]"></span>
+                                            </span>
+                                        )}
                                     </button>
                                 ))}
                             </div>

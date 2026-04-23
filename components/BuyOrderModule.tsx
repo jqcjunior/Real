@@ -183,8 +183,11 @@ export default function BuyOrderModule({ user }: { user?: User }) {
     setSaving(true);
     setError('');
     try {
-      const { data: { session } } = await supabase.auth.getSession();
-      const userId = session?.user?.id ?? (await getCurrentAppUserId());
+      // ✅ GARANTIR SESSÃO NO POSTGRES PARA RLS
+      const userId = user?.id || (await getCurrentAppUserId());
+      if (userId && userId !== '00000000-0000-0000-0000-000000000000') {
+        await supabase.rpc('set_user_session', { user_id: userId });
+      }
  
       // 1. Upsert brand em buy_brands (Preferencialmente via RPC para evitar problemas de RLS)
       let brandId = cab.brand_id;
@@ -229,7 +232,7 @@ export default function BuyOrderModule({ user }: { user?: User }) {
         .from('buy_orders')
         .insert({
           user_id: userId,
-          user_name: session?.user?.email ?? 'sistema',
+          user_name: user?.email || 'sistema',
           user_role: cab.role,
           brand_id: brandId,
           marca: cab.marca,
@@ -285,9 +288,18 @@ export default function BuyOrderModule({ user }: { user?: User }) {
           });
         });
 
-        // Calcular total de pares após agregar todas as grades
-        itemRows.forEach(row => {
-          row.total_pares = Object.values(row.grades).reduce((sum: number, g: any) => sum + totPares(g.qtds), 0);
+        // Calcular total de pares após agregar todas as grades, CONSIDERANDO AS LOJAS
+        itemRows.forEach((row, rowIdx) => {
+          let totalParesItem = 0;
+          pedidos.forEach(ped => {
+            const icg = ped.itensComGrades.find(x => x.itemIdx === rowIdx);
+            if (icg) {
+              icg.grades.forEach(g => {
+                totalParesItem += totPares(g.qtds) * ped.lojas.length;
+              });
+            }
+          });
+          row.total_pares = totalParesItem;
         });
 
         const { error: iErr } = await supabase.from('buy_order_items').insert(itemRows);
@@ -305,6 +317,29 @@ export default function BuyOrderModule({ user }: { user?: User }) {
         const { error: sErr } = await supabase.from('buy_order_sub_orders').insert(subRows);
         if (sErr) throw sErr;
       }
+
+      // 6. Atualizar totais do pedido principal (buy_orders)
+      let totalParesGeral = 0;
+      let totalValorBrutoGeral = 0;
+      pedidos.forEach(ped => {
+        ped.itensComGrades.forEach(icg => {
+          const item = items[icg.itemIdx];
+          icg.grades.forEach(g => {
+            const pairs = totPares(g.qtds) * ped.lojas.length;
+            totalParesGeral += pairs;
+            totalValorBrutoGeral += pairs * item.custo;
+          });
+        });
+      });
+      const totalValorLiquidoGeral = totalValorBrutoGeral * (1 - (cab.desconto || 0) / 100);
+
+      await supabase.from('buy_orders')
+        .update({
+          total_pares: totalParesGeral,
+          total_valor_bruto: totalValorBrutoGeral,
+          total_valor_liquido: totalValorLiquidoGeral
+        })
+        .eq('id', orderId);
  
       alert(`Pedido salvo com sucesso! Nº será gerado automaticamente.`);
       // Reset
@@ -432,7 +467,7 @@ export default function BuyOrderModule({ user }: { user?: User }) {
         {/* Corpo da etapa */}
         {step === 0 && <StepCabecalho cab={cab} setCab={setCab} prazosRaw={prazosRaw} setPrazosRaw={setPrazosRaw} numeroPedidoSalvo={numeroPedidoSalvo} setNumeroPedidoSalvo={setNumeroPedidoSalvo} />}
         {step === 1 && <StepItens items={items} setItems={setItems} cab={cab} />}
-        {step === 2 && <StepPedidos items={items} pedidos={pedidos} setPedidos={setPedidos} user={user} />}
+        {step === 2 && <StepPedidos items={items} pedidos={pedidos} setPedidos={setPedidos} user={user} cab={cab} />}
  
         {/* Footer navegação */}
         {error && (

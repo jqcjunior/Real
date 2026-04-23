@@ -6,7 +6,7 @@ import {
 } from 'lucide-react';
 import { 
     IceCreamSangria, IceCreamSangriaCategory, IceCreamFutureDebt, 
-    AdminUser, Store, IceCreamPaymentMethod 
+    AdminUser, Store, IceCreamPaymentMethod, User 
 } from '../../../types';
 import { formatCurrency } from '../../../constants';
 import { MONTHS } from '../constants';

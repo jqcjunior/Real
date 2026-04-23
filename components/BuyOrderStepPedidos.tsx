@@ -77,24 +77,41 @@ function gerarNumeroPedido(): string {
  
 // ─── Props ────────────────────────────────────────────────────────────────────
  
+interface Cabecalho {
+  role: 'comprador' | 'gerente';
+  brand_id: string | null;
+  marca: string;
+  fornecedor: string;
+  representante: string;
+  telefone: string;
+  email: string;
+  fat_inicio: string;
+  fat_fim: string;
+  prazos: number[];
+  markup: number;
+  desconto: number;
+}
+
 interface StepPedidosProps {
   items: OrderItem[];
   pedidos: SubOrder[];
   setPedidos: React.Dispatch<React.SetStateAction<SubOrder[]>>;
   user?: User;
   brandId?: string; // Receber brandId do cabeçalho para evitar erro RLS
+  cab: Cabecalho;
 }
- 
+  
 // ─── Componente Principal ─────────────────────────────────────────────────────
- 
-export default function StepPedidos({ items, pedidos, setPedidos, user, brandId }: StepPedidosProps) {
+  
+export default function StepPedidos({ items, pedidos, setPedidos, user, brandId, cab }: StepPedidosProps) {
   const isGerente = user?.role === 'MANAGER';
   const userStoreId = user?.storeId ? parseInt(user.storeId) : null;
   
   const [selectedItems, setSelectedItems] = useState<Set<number>>(new Set());
   const [tempPedidoItens, setTempPedidoItens] = useState<ItemComGrades[]>([]);
-  const [gradesGlobais, setGradesGlobais] = useState<Set<string>>(new Set()); // Grades criadas globalmente
-  const [gradeExpandida, setGradeExpandida] = useState<string | null>(null); // Qual grade está com grid aberto
+  // ✅ Grades persistentes globais (A-H)
+  const [gradesGlobais, setGradesGlobais] = useState<Record<string, { cat: string; qtds: Record<string, number> }>>({});
+  const [gradeExpandida, setGradeExpandida] = useState<string | null>(null);
   const [selectedLojas, setSelectedLojas] = useState<number[]>([]);
   const [lojaMode, setLojaMode] = useState<'sub' | 'all' | null>(null);
   const [isMobile, setIsMobile] = useState(false);
@@ -118,9 +135,6 @@ export default function StepPedidos({ items, pedidos, setPedidos, user, brandId 
         lojaMode: isGerente ? 'all' : null 
       }]);
     }
-    
-    // NÃO pré-selecionar lojas - deixar vazio para o usuário escolher
-    // REMOVIDO: setLojaMode('sub'); setSelectedLojas(SUBGRUPO);
   }, [pedidos.length, isGerente, userStoreId, setPedidos]);
  
   function toggleItem(itemIdx: number) {
@@ -136,48 +150,58 @@ export default function StepPedidos({ items, pedidos, setPedidos, user, brandId 
   }
  
   function adicionarGrade() {
-    const usadas = Array.from(gradesGlobais);
-    const proxima = GRADE_LETTERS.split('').find(l => !usadas.includes(l));
+    const letrasUsadas = Object.keys(gradesGlobais);
+    const proxima = GRADE_LETTERS.split('').find(l => !letrasUsadas.includes(l));
     if (proxima) {
-      setGradesGlobais(prev => new Set([...prev, proxima]));
+      const firstItemIdx = Array.from(selectedItems)[0] ?? 0;
+      const initialCat = (items[firstItemIdx]?.modelo || 'MASC') as any;
+      
+      setGradesGlobais(prev => ({
+        ...prev,
+        [proxima]: {
+          cat: initialCat,
+          qtds: {}
+        }
+      }));
       setGradeExpandida(proxima);
     }
   }
  
   function vincularAoPedido() {
-    if (selectedItems.size === 0 || !gradeExpandida) {
+    if (selectedItems.size === 0 || !gradeExpandida || !gradesGlobais[gradeExpandida]) {
       alert('Selecione pelo menos um item e preencha a grade');
       return;
     }
  
+    const gradeTemplate = gradesGlobais[gradeExpandida];
+    if (totPares(gradeTemplate.qtds) === 0) {
+      alert('A grade está vazia');
+      return;
+    }
+
     const novosItens: ItemComGrades[] = [];
     let itensJaVinculados: string[] = [];
- 
+    const updatedTempItens = [...tempPedidoItens];
+
     selectedItems.forEach(itemIdx => {
-      const gradeData = getGradeData(itemIdx, gradeExpandida);
-      if (!gradeData || totPares(gradeData.qtds) === 0) {
-        return;
-      }
- 
-      const existingIdx = tempPedidoItens.findIndex(x => x.itemIdx === itemIdx);
+      const gradeData: GradeItem = {
+        letter: gradeExpandida,
+        cat: gradeTemplate.cat as any,
+        qtds: { ...gradeTemplate.qtds }
+      };
+
+      const existingIdx = updatedTempItens.findIndex(x => x.itemIdx === itemIdx);
       
       if (existingIdx >= 0) {
-        // Item já existe no pedido temporário
-        const existing = tempPedidoItens[existingIdx];
-        
-        // Verificar se a grade já foi vinculada
-        if (existing.grades.some(g => g.letter === gradeExpandida)) {
+        // Item já existe no pedido temporário, verificar se já tem essa letra
+        if (updatedTempItens[existingIdx].grades.some(g => g.letter === gradeExpandida)) {
           itensJaVinculados.push(items[itemIdx].ref);
-          return; // Não adiciona grade duplicada
+        } else {
+          updatedTempItens[existingIdx].grades.push(gradeData);
         }
-        
-        // Adicionar nova grade ao item existente
-        const updatedItens = [...tempPedidoItens];
-        updatedItens[existingIdx].grades.push(gradeData);
-        setTempPedidoItens(updatedItens);
       } else {
-        // Novo item
-        novosItens.push({
+        // Novo item no pedido temporário
+        updatedTempItens.push({
           itemIdx,
           grades: [gradeData]
         });
@@ -187,15 +211,12 @@ export default function StepPedidos({ items, pedidos, setPedidos, user, brandId 
     if (itensJaVinculados.length > 0) {
       alert(`A grade ${gradeExpandida} já foi vinculada para: ${itensJaVinculados.join(', ')}`);
     }
- 
-    if (novosItens.length > 0) {
-      setTempPedidoItens(prev => [...prev, ...novosItens]);
-    }
+
+    setTempPedidoItens(updatedTempItens);
     
-    // Resetar seleção de items
+    // Resetar seleção de items para facilitar o próximo
     setSelectedItems(new Set());
-    // NÃO recolher a grade - manter expandida para reutilização
-    // setGradeExpandida(null); REMOVIDO
+    // MANTER gradeExpandida para que o usuário veja o que acabou de vincular e possa reutilizar
   }
  
   function criarPedido() {
@@ -220,51 +241,31 @@ export default function StepPedidos({ items, pedidos, setPedidos, user, brandId 
       lojaMode: isGerente ? 'all' : lojaMode
     }]);
  
-    // Limpar pedido temporário (MAS MANTER GRADES GLOBAIS E EXPANDIDA)
+    // Limpar pedido temporário
     setTempPedidoItens([]);
     setSelectedItems(new Set());
-    // NÃO resetar gradesGlobais - manter para reutilização
-    // NÃO resetar gradeExpandida - manter a última grade aberta
-    
-    // NÃO resetar lojas - manter selecionadas para próximo pedido
   }
  
   function delPedido(idx: number) {
     setPedidos(ps => ps.filter((_, i) => i !== idx).map((p, i) => ({ ...p, num: i + 1 })));
   }
  
-  function getGradeData(itemIdx: number, letter: string): GradeItem | null {
-    const tempKey = `temp-grade-${itemIdx}-${letter}`;
-    const stored = sessionStorage.getItem(tempKey);
-    if (stored) return JSON.parse(stored);
-    return null;
-  }
- 
-  function setGradeData(itemIdx: number, letter: string, data: GradeItem) {
-    const tempKey = `temp-grade-${itemIdx}-${letter}`;
-    sessionStorage.setItem(tempKey, JSON.stringify(data));
-  }
- 
   function setGradeQtd(size: string, qtd: number) {
-    if (selectedItems.size === 0 || !gradeExpandida) return;
+    if (!gradeExpandida || !gradesGlobais[gradeExpandida]) return;
     
-    selectedItems.forEach(itemIdx => {
-      const item = items[itemIdx];
-      let currentGrade = getGradeData(itemIdx, gradeExpandida);
-      
-      if (!currentGrade) {
-        currentGrade = {
-          letter: gradeExpandida,
-          cat: (item.modelo || 'FEM') as any,
-          qtds: {}
-        };
-      }
- 
-      currentGrade.qtds[size] = Math.max(0, qtd);
-      setGradeData(itemIdx, gradeExpandida, currentGrade);
+    setGradesGlobais(prev => {
+      const current = prev[gradeExpandida];
+      return {
+        ...prev,
+        [gradeExpandida]: {
+          ...current,
+          qtds: {
+            ...current.qtds,
+            [size]: Math.max(0, qtd)
+          }
+        }
+      };
     });
-    
-    setTempPedidoItens(prev => [...prev]);
   }
  
   function toggleLoja(n: number) {
@@ -287,27 +288,30 @@ export default function StepPedidos({ items, pedidos, setPedidos, user, brandId 
  
   const pool = lojaMode === 'sub' ? SUBGRUPO : lojaMode === 'all' ? ALL_LOJAS : [];
  
-  // CÁLCULO CORRETO: Total considerando todas as lojas
+  // CÁLCULO CORRETO: Total considerando todas as lojas, usando CUSTO e aplicando DESCONTO
   function calcPedidoTotals(ped: SubOrder | { itensComGrades: ItemComGrades[] }, lojas?: number[]) {
     let totalParesPorLoja = 0;
-    let totalValorPorLoja = 0;
+    let totalValorBrutoPorLoja = 0;
  
     ped.itensComGrades.forEach(icg => {
       const item = items[icg.itemIdx];
       icg.grades.forEach(g => {
         const pares = totPares(g.qtds);
         totalParesPorLoja += pares;
-        totalValorPorLoja += pares * item.preco_venda;
+        totalValorBrutoPorLoja += pares * item.custo;
       });
     });
  
     const numLojas = lojas ? lojas.length : ('lojas' in ped ? ped.lojas.length : 1);
+    const totalValorLiquidoPorLoja = totalValorBrutoPorLoja * (1 - (cab.desconto || 0) / 100);
     
     return { 
       totalParesPorLoja,
-      totalValorPorLoja,
+      totalValorBrutoPorLoja,
+      totalValorLiquidoPorLoja,
       totalParesGeral: totalParesPorLoja * numLojas,
-      totalValorGeral: totalValorPorLoja * numLojas,
+      totalValorBrutoGeral: totalValorBrutoPorLoja * numLojas,
+      totalValorLiquidoGeral: totalValorLiquidoPorLoja * numLojas,
       numLojas
     };
   }
@@ -418,7 +422,7 @@ export default function StepPedidos({ items, pedidos, setPedidos, user, brandId 
           <div className="flex items-center gap-2 mb-3">
             <span className="bg-blue-600 text-white w-6 h-6 rounded-full flex items-center justify-center text-xs font-bold">2</span>
             <h4 className="text-xs font-bold text-slate-700 uppercase flex-1">Grades</h4>
-            {selectedItems.size > 0 && gradesGlobais.size < 8 && (
+            {Object.keys(gradesGlobais).length < 8 && (
               <button
                 onClick={adicionarGrade}
                 className="px-2 py-1 text-[9px] font-bold bg-green-600 text-white rounded hover:bg-green-700">
@@ -426,24 +430,19 @@ export default function StepPedidos({ items, pedidos, setPedidos, user, brandId 
               </button>
             )}
           </div>
- 
-          {selectedItems.size === 0 && gradesGlobais.size === 0 ? (
+
+          {Object.keys(gradesGlobais).length === 0 ? (
             <div className="text-center py-12 text-slate-400 text-[10px]">
-              ← Selecione itens e<br/>clique em "+ Grade"
-            </div>
-          ) : gradesGlobais.size === 0 ? (
-            <div className="text-center py-12 text-slate-400 text-[10px]">
-              Clique em "+ Grade"
+              Clique em "+ Grade" para começar
             </div>
           ) : (
             <div className="space-y-2 max-h-[500px] overflow-y-auto">
-              {Array.from(gradesGlobais).map(letter => {
+              {Object.keys(gradesGlobais).sort().map(letter => {
                 const isExpanded = gradeExpandida === letter;
-                const firstItemIdx = Array.from(selectedItems)[0] ?? 0;
-                const gradeData = getGradeData(firstItemIdx, letter);
-                const currentCat = gradeData?.cat || (items[firstItemIdx]?.modelo as any);
+                const gradeData = gradesGlobais[letter];
+                const currentCat = gradeData.cat;
                 const sizes = CATS[currentCat]?.sizes || [];
-                const totalPares = gradeData ? totPares(gradeData.qtds) : 0;
+                const totalPares = totPares(gradeData.qtds);
  
                 return (
                   <div 
@@ -484,15 +483,14 @@ export default function StepPedidos({ items, pedidos, setPedidos, user, brandId 
                               <button
                                 key={k}
                                 onClick={() => {
-                                  selectedItems.forEach(itemIdx => {
-                                    const newGrade: GradeItem = {
-                                      letter,
+                                  setGradesGlobais(prev => ({
+                                    ...prev,
+                                    [letter]: {
+                                      ...prev[letter],
                                       cat: k as any,
                                       qtds: {}
-                                    };
-                                    setGradeData(itemIdx, letter, newGrade);
-                                  });
-                                  setTempPedidoItens(prev => [...prev]);
+                                    }
+                                  }));
                                 }}
                                 className={`px-2 py-0.5 text-[8px] font-bold rounded border ${
                                   currentCat === k
@@ -643,7 +641,8 @@ export default function StepPedidos({ items, pedidos, setPedidos, user, brandId 
                 <div>Lojas: <strong>{totaisPedidoTemp.numLojas}</strong></div>
                 <div className="pt-1 border-t border-amber-200">
                   <div className="text-blue-700">Total Geral: <strong>{totaisPedidoTemp.totalParesGeral} pares</strong></div>
-                  <div className="text-green-700">Investimento: <strong>{fmtBRL(totaisPedidoTemp.totalValorGeral)}</strong></div>
+                  <div className="text-slate-500 line-through">Bruto: {fmtBRL(totaisPedidoTemp.totalValorBrutoGeral)}</div>
+                  <div className="text-green-700">Líquido (-{cab.desconto}%): <strong>{fmtBRL(totaisPedidoTemp.totalValorLiquidoGeral)}</strong></div>
                 </div>
               </div>
               <button
@@ -680,7 +679,7 @@ export default function StepPedidos({ items, pedidos, setPedidos, user, brandId 
                   </div>
                   <div className="text-[9px] text-slate-600 space-y-0.5">
                     <div>Pares Total: <strong className="text-green-700">{totals.totalParesGeral}</strong></div>
-                    <div>Valor Total: <strong className="text-green-700">{fmtBRL(totals.totalValorGeral)}</strong></div>
+                    <div>Valor Total: <strong className="text-green-700">{fmtBRL(totals.totalValorLiquidoGeral)}</strong></div>
                   </div>
                 </div>
               );
@@ -694,6 +693,7 @@ export default function StepPedidos({ items, pedidos, setPedidos, user, brandId 
         <EditPedidoPopup
           pedido={pedidos[editingPedido]}
           items={items}
+          cab={cab}
           onClose={() => setEditingPedido(null)}
           onSave={(updated) => {
             setPedidos(ps => ps.map((p, i) => i === editingPedido ? updated : p));
@@ -707,11 +707,12 @@ export default function StepPedidos({ items, pedidos, setPedidos, user, brandId 
  
 // ─── Popup de Edição ──────────────────────────────────────────────────────────
  
-function EditPedidoPopup({ pedido, items, onClose, onSave }: {
+function EditPedidoPopup({ pedido, items, onClose, onSave, cab }: {
   pedido: SubOrder;
   items: OrderItem[];
   onClose: () => void;
   onSave: (updated: SubOrder) => void;
+  cab: Cabecalho;
 }) {
   const [localPedido, setLocalPedido] = useState({ ...pedido });
  
@@ -731,20 +732,23 @@ function EditPedidoPopup({ pedido, items, onClose, onSave }: {
  
   const totals = (() => {
     let totalParesPorLoja = 0;
-    let totalValorPorLoja = 0;
+    let totalValorBrutoPorLoja = 0;
     localPedido.itensComGrades.forEach(icg => {
       const item = items[icg.itemIdx];
       icg.grades.forEach(g => {
         const pares = totPares(g.qtds);
         totalParesPorLoja += pares;
-        totalValorPorLoja += pares * item.preco_venda;
+        totalValorBrutoPorLoja += pares * item.custo;
       });
     });
+    const totalValorLiquidoPorLoja = totalValorBrutoPorLoja * (1 - (cab.desconto || 0) / 100);
     return {
       totalParesPorLoja,
-      totalValorPorLoja,
+      totalValorBrutoPorLoja,
+      totalValorLiquidoPorLoja,
       totalParesGeral: totalParesPorLoja * localPedido.lojas.length,
-      totalValorGeral: totalValorPorLoja * localPedido.lojas.length
+      totalValorBrutoGeral: totalValorBrutoPorLoja * localPedido.lojas.length,
+      totalValorLiquidoGeral: totalValorLiquidoPorLoja * localPedido.lojas.length
     };
   })();
  
@@ -755,7 +759,7 @@ function EditPedidoPopup({ pedido, items, onClose, onSave }: {
           <div>
             <h3 className="text-lg font-bold">Pedido {pedido.num}</h3>
             <p className="text-xs opacity-90">
-              {totals.totalParesGeral} pares · {fmtBRL(totals.totalValorGeral)} · {localPedido.lojas.length} lojas
+              {totals.totalParesGeral} pares · {fmtBRL(totals.totalValorLiquidoGeral)} · {localPedido.lojas.length} lojas
             </p>
           </div>
           <button
@@ -834,8 +838,8 @@ function EditPedidoPopup({ pedido, items, onClose, onSave }: {
  
         <div className="border-t border-slate-200 p-4 flex justify-between items-center bg-slate-50">
           <div className="text-xs text-slate-600">
-            <div>Por Loja: <strong>{totals.totalParesPorLoja}p</strong> · <strong>{fmtBRL(totals.totalValorPorLoja)}</strong></div>
-            <div className="text-green-700">Total Geral: <strong>{totals.totalParesGeral}p</strong> · <strong>{fmtBRL(totals.totalValorGeral)}</strong></div>
+            <div>Por Loja: <strong>{totals.totalParesPorLoja}p</strong> · <strong>{fmtBRL(totals.totalValorLiquidoPorLoja)}</strong></div>
+            <div className="text-green-700">Total Geral: <strong>{totals.totalParesGeral}p</strong> · <strong>{fmtBRL(totals.totalValorLiquidoGeral)}</strong></div>
           </div>
           <div className="flex gap-2">
             <button

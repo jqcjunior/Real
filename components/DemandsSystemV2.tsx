@@ -245,9 +245,12 @@ const DemandsSystemV2: React.FC<DemandsSystemV2Props> = ({ user, stores }) => {
 
             setMessages(messagesWithAttachments);
             
-            if (user.role === 'ADMIN') {
+            // ✅ Resetar contador de não lidas para todos os usuários ao abrir
+            if (demandId) {
                 await supabase.from('demands_v2').update({ unread_count: 0 }).eq('id', demandId);
-                loadStoreCounts();
+                if (user.role === 'ADMIN') {
+                    loadStoreCounts();
+                }
             }
         } catch (err) {
             console.error("Erro ao carregar mensagens:", err);
