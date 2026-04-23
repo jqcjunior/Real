@@ -73,26 +73,55 @@ const DashboardAdmin: React.FC<DashboardAdminProps> = ({ stores, performanceData
             const arrayBuffer = await file.arrayBuffer();
             const workbook = XLSX.read(arrayBuffer, { type: 'array' });
             const worksheet = workbook.Sheets[workbook.SheetNames[0]];
+            
+            // 🔍 DETECÇÃO DE CABEÇALHO RESILIENTE
+            const rawData = XLSX.utils.sheet_to_json(worksheet, { header: 1 }) as any[][];
+            let headerRowIndex = 0;
+            const keywords = ['loja', 'filial', 'venda', 'vendas', 'meta', 'faturamento', 'unidade'];
+            
+            for (let i = 0; i < Math.min(rawData.length, 20); i++) {
+                const row = rawData[i];
+                if (row && Array.isArray(row)) {
+                    // Conta quantas palavras-chave únicas existem na linha
+                    const matches = keywords.filter(kw => 
+                        row.some(cell => String(cell || '').toLowerCase().includes(kw))
+                    );
+                    
+                    if (matches.length >= 2) {
+                        headerRowIndex = i;
+                        break;
+                    }
+                }
+            }
+
             const jsonData = XLSX.utils.sheet_to_json(worksheet, {
                 defval: "",
-                raw: true
+                raw: true,
+                range: headerRowIndex
             }) as any[];
  
-            const mappedData = jsonData.map(row => {
-            const getValue = (row: any, aliases: string[]) => {
-                const keys = Object.keys(row);
-                let foundKey = keys.find(k => 
-                    aliases.some(a => (k || '').trim().toLowerCase() === (a || '').toLowerCase())
-                );
-                
-                if (!foundKey) {
-                    foundKey = keys.find(k => {
-                        const normalizedK = (k || '').trim().toLowerCase();
-                        return aliases.some(a => normalizedK.includes((a || '').toLowerCase()));
-                    });
-                }
-                return foundKey ? row[foundKey] : "";
-            };
+            const mappedData = jsonData.map((row, index) => {
+                const getValue = (row: any, aliases: string[]) => {
+                    const keys = Object.keys(row);
+                    
+                    // 1. Tentar correspondência exata primeiro (case-insensitive)
+                    let foundKey = keys.find(k => 
+                        aliases.some(a => (k || '').trim().toLowerCase() === (a || '').toLowerCase())
+                    );
+                    
+                    // 2. Se não encontrar, tentar correspondência parcial apenas para apelidos longos (> 2 caracteres)
+                    if (!foundKey) {
+                        foundKey = keys.find(k => {
+                            const normalizedK = (k || '').trim().toLowerCase();
+                            return aliases.some(a => {
+                                const normalizedA = (a || '').toLowerCase();
+                                return normalizedA.length > 2 && (normalizedK.includes(normalizedA) || normalizedA.includes(normalizedK));
+                            });
+                        });
+                    }
+                    
+                    return foundKey ? row[foundKey] : "";
+                };
  
                 const parseBRL = (value: any) => {
                     if (value === null || value === undefined || value === "") return 0;
@@ -117,26 +146,52 @@ const DashboardAdmin: React.FC<DashboardAdminProps> = ({ stores, performanceData
                     return isNaN(num) ? 0 : num;
                 };
  
-                const storeRaw = getValue(row, ["loja", "filial", "unidade", "loja"]);
-                const storeNum = String(storeRaw || '').replace(/\D/g, '').replace(/^0+/, '');
-                const targetStore = stores.find(s => s.number === storeNum);
+                // 🏗️ ALIASES AMPLIADOS PARA COMPATIBILIDADE COM DIVERSOS RELATÓRIOS
+                const storeRaw = getValue(row, ["loja", "filial", "unidade", "lojas", "codigo", "cód", "nº", "numero", "id", "a", "descrição", "nome", "unidade", "filial"]);
+                let storeNum = String(storeRaw || '').trim();
                 
-                if (!targetStore) return null;
+                // Limpar número (remover "Loja ", "Filial ", etc e pegar só dígitos)
+                const numericMatch = storeNum.match(/\d+/);
+                const cleanedStoreNum = numericMatch ? numericMatch[0].replace(/^0+/, '') : "";
+                
+                let targetStore = stores.find(s => s.number === cleanedStoreNum);
+                
+                // Fallback 1: Tentar casar pelo número da loja em outras colunas se a principal falhar
+                if (!targetStore) {
+                    const altStoreRaw = getValue(row, ["nº", "id", "cód"]);
+                    const altNumericMatch = String(altStoreRaw || '').match(/\d+/);
+                    const altCleanedStoreNum = altNumericMatch ? altNumericMatch[0].replace(/^0+/, '') : "";
+                    targetStore = stores.find(s => s.number === altCleanedStoreNum);
+                }
+
+                // Fallback 2: Tentar casar pelo nome da loja se o número falhar
+                if (!targetStore && storeNum.length > 2) {
+                    const normalizedStoreNum = storeNum.toLowerCase();
+                    targetStore = stores.find(s => {
+                        const normalizedCity = s.city.toLowerCase().split(' - ')[0];
+                        return normalizedStoreNum.includes(normalizedCity) || normalizedCity.includes(normalizedStoreNum);
+                    });
+                }
+                
+                if (!targetStore) {
+                    console.warn(`Loja não identificada na linha ${index + headerRowIndex + 2}:`, storeRaw);
+                    return null;
+                }
  
                 return {
                     storeId: targetStore.id,
                     month: selectedMonth,
-                    revenueActual: parseBRL(getValue(row, ["valor vendido", "faturamento", "venda", "vendas", "valor", "h"])),
-                    itemsActual: parseBRL(getValue(row, ["quantidade de itens", "qtde itens", "itens", "peças", "pecas", "it", "c"])),
-                    salesActual: parseBRL(getValue(row, ["quantidade de vendas", "qtde vendas", "atendimentos", "vendas", "venda", "atend", "b"])),
-                    paActual: parseBRL(getValue(row, ["p.a.", "p.a", "pa", "p.a ( produtos por atendimento )", "d"])),
-                    puActual: parseBRL(getValue(row, ["p.u.", "p.u", "pu", "p.u ( produtos por unidade )", "e"])),
-                    averageTicket: parseBRL(getValue(row, ["ticket médio", "ticket medio", "ticket", "tm", "f"])),
+                    revenueActual: parseBRL(getValue(row, ["valor vendido", "faturamento", "venda", "vendas", "valor", "valor bruto", "venda bruta", "vlr venda", "h", "receita"])),
+                    itemsActual: parseBRL(getValue(row, ["quantidade de itens", "qtde itens", "itens", "peças", "pecas", "it", "qtd", "c", "quantidade", "qtde"])),
+                    salesActual: parseBRL(getValue(row, ["quantidade de vendas", "qtde vendas", "atendimentos", "vendas", "venda", "atend", "b", "transações", "cupons"])),
+                    paActual: parseBRL(getValue(row, ["p.a.", "p.a", "pa", "p.a ( produtos por atendimento )", "produtos p/ atend", "d", "peças por atendimento"])),
+                    puActual: parseBRL(getValue(row, ["p.u.", "p.u", "pu", "p.u ( produtos por unidade )", "e", "preço médio"])),
+                    averageTicket: parseBRL(getValue(row, ["ticket médio", "ticket medio", "ticket", "tm", "f", "valor médio venda"])),
                     delinquencyRate: parseBRL(getValue(row, ["inadimplencia", "inadimplência", "n"])),
-                    revenueTarget: parseBRL(getValue(row, ["meta", "objetivo", "target", "g"])),
-                    percentMeta: parseBRL(getValue(row, ["percentual da meta", "percentual", "i"])),
+                    revenueTarget: parseBRL(getValue(row, ["meta", "objetivo", "target", "meta faturamento", "g", "objetivo venda"])),
+                    percentMeta: parseBRL(getValue(row, ["percentual da meta", "percentual", "i", "% meta", "% atingimento"])),
                     trend: getValue(row, ["tendência", "tendencia", "l"]),
-                    businessDays: parseBRL(getValue(row, ["período de vendas", "periodo", "j"])) || 26
+                    businessDays: parseBRL(getValue(row, ["período de vendas", "periodo", "dias", "j", "dias úteis"])) || 26
                 };
             }).filter(Boolean);
  
@@ -144,7 +199,11 @@ const DashboardAdmin: React.FC<DashboardAdminProps> = ({ stores, performanceData
                 await onImportPerformance(mappedData);
                 alert(`${mappedData.length} registros importados com sucesso!`);
             } else {
-                alert("Nenhuma loja correspondente encontrada na planilha.");
+                if (jsonData.length > 0) {
+                    alert(`O arquivo possui ${jsonData.length} linhas, mas nenhuma loja foi identificada. Verifique se os números das lojas nas colunas 'Loja' ou 'Filial' conferem com o sistema.`);
+                } else {
+                    alert("Nenhuma linha de dados encontrada na planilha após o cabeçalho.");
+                }
             }
         } catch (err) {
             alert("Erro ao processar planilha. Verifique o formato.");

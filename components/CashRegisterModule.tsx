@@ -195,11 +195,22 @@ export const printReceiptDoc = (r: any) => {
     const printWindow = window.open('', '_blank', 'width=900,height=1200');
     if (!printWindow) return;
  
-    // Mapeamento robusto de campos (banco vs objeto local)
-    const receiptNumber = r.receipt_number || r.id;
-    const finalNumber = r.formatted_number || (r.receipt_number ? `#${String(r.receipt_number).padStart(4, '0')}` : `#${String(r.id).padStart(4, '0')}`);
+    // Priorizar formatted_number para evitar expor IDs internos
+    let finalNumber = r.formatted_number || r.formattedNumber;
+    
+    if (!finalNumber) {
+        // Se não houver formatted_number, tenta usar o número sequencial com prefixo
+        const num = r.receipt_number || r.receiptNumber;
+        if (num) {
+            finalNumber = `REC-${String(num).padStart(4, '0')}`;
+        } else {
+            // Último caso: ID curto
+            finalNumber = `ID-${String(r.id).substring(0, 8)}`;
+        }
+    }
+
     const valueInWords = r.value_in_words || r.valueInWords || 'UNDEFINED';
-    const dateStr = r.receipt_date || r.date;
+    const dateStr = r.date || r.receipt_date;
     
     // Formatação de data robusta (evita fuso horário)
     let formattedDate = 'Invalid Date';

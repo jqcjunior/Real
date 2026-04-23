@@ -414,6 +414,7 @@ export interface Receipt {
   id: string;
   storeId?: string;
   receiptNumber?: number;
+  formattedNumber?: string;
   issuerName: string;
   payer: string;
   recipient: string;

@@ -40,8 +40,12 @@ const LoginScreen: React.FC<LoginScreenProps> = ({ onLoginAttempt, onRegisterReq
     try {
         const result = await onLoginAttempt(email.trim(), password.trim(), rememberMe);
         if (!result.success) {
-            setError(result.error || 'Credenciais inválidas. Use o e-mail jqcjunior1981@gmail.com e a senha padrão "admin".');
-            setPassword(''); // Zerar a senha para nova inserção
+            let msg = result.error || 'Credenciais inválidas.';
+            if (email.trim().toLowerCase() === 'jqcjunior1981@gmail.com') {
+                msg = 'Senha incorreta para o desenvolvedor master. Use "admin".';
+            }
+            setError(msg);
+            setPassword('');
             setIsLoading(false);
         }
     } catch (err) {

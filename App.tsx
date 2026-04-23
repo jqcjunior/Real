@@ -41,6 +41,7 @@ const OSDemandsModule = lazy(() => import('./components/OSDemandsModule'));
 const DemandsSystemV2 = lazy(() => import('./components/DemandsSystemV2'));
 const DashboardPAModule = lazy(() => import('./components/dashboardPA/DashboardPAModule'));
 const DashboardPAGerente = lazy(() => import('./components/dashboardPA/DashboardPAGerente'));
+const BuyOrderModule = lazy(() => import('./components/BuyOrderModule'));
 const AdminSurveyManagement = lazy(() => import('./components/AdminSurveyManagement_v3'));
 const MySurveysComponent = lazy(() => import('./components/MySurveysComponent'));
 const SurveyResultsViewer = lazy(() => import('./components/SurveyResultsViewer'));
@@ -216,6 +217,7 @@ const App: React.FC = () => {
                 { key: 'MODULE_DASHBOARD_MANAGER', label: 'Dashboard Loja', group: 'Inteligência' },
                 { key: 'MODULE_DASHBOARD_PA', label: 'Dashboard P.A.', group: 'Inteligência' },
                 { key: 'MODULE_DASHBOARD_PA_MANAGER', label: 'Dashboard P.A. (Gerente)', group: 'Inteligência' },
+                { key: 'MODULE_BUY_ORDERS', label: 'Pedidos de Compra', group: 'Inteligência' },
                 { key: 'MODULE_METAS', label: 'Metas', group: 'Inteligência' },
                 { key: 'MODULE_COTAS', label: 'Cotas OTB', group: 'Inteligência' },
                 { key: 'MODULE_PURCHASES', label: 'Compras', group: 'Inteligência' },
@@ -636,7 +638,20 @@ const App: React.FC = () => {
             if(pxs) setPixSales(pxs.map(x => ({ id: x.id, storeId: x.store_id, userId: x.user_id, userName: x.user_name, date: x.date, saleCode: x.sale_code, value: Number(x.value || 0), clientName: x.payer_name, createdAt: x.created_at })));
             if(icst) setIceCreamStock(icst.map(item => ({ ...item, stock_id: item.id })));
             if(icp) setIcPromissories(icp);
-            if(r) setReceipts(r.map(x => ({ id: x.id, storeId: x.store_id, issuerName: x.issuer_name, payer: x.payer, recipient: x.recipient, value: Number(x.value || 0), valueInWords: x.value_in_words, date: x.receipt_date, reference: x.reference, createdAt: new Date(x.created_at) })));
+            if(r) setReceipts(r.map(x => ({ 
+                id: x.id, 
+                storeId: x.store_id, 
+                receiptNumber: x.receipt_number,
+                formattedNumber: x.formatted_number,
+                issuerName: x.issuer_name, 
+                payer: x.payer, 
+                recipient: x.recipient, 
+                value: Number(x.value || 0), 
+                valueInWords: x.value_in_words, 
+                date: x.receipt_date, 
+                reference: x.reference, 
+                createdAt: new Date(x.created_at) 
+            })));
             if(ce) setCashErrors(ce.map(x => ({...x, id: x.id, storeId: x.store_id, userId: x.user_id, userName: x.user_name || 'Usuário', date: x.error_date || x.date, value: Number(x.value || 0), type: x.type, reason: x.reason, createdAt: new Date(x.created_at)})));
             if(ag) setAgenda(ag.map(x => ({...x, userId: x.user_id, title: x.title, description: x.description, dueDate: x.due_date ? x.due_date.split('T')[0] : '', dueTime: x.due_time, priority: x.priority, isCompleted: x.is_completed})));
             if(dl) setDownloads(dl.map(x => ({...x, fileName: x.file_name, createdBy: x.created_by})));
@@ -934,6 +949,7 @@ const App: React.FC = () => {
                             { id: 'dashboard_loja', label: 'Dashboard Loja', icon: LayoutDashboard, perm: 'MODULE_DASHBOARD_MANAGER', roles: ['manager'] },
                             { id: 'dashboard_pa', label: 'Dashboard P.A.', icon: Trophy, perm: 'MODULE_DASHBOARD_PA', roles: ['admin'] },
                             { id: 'dashboard_pa_manager', label: 'Dashboard P.A.', icon: Trophy, perm: 'MODULE_DASHBOARD_PA_MANAGER', roles: ['manager'] },
+                            { id: 'buy_orders', label: 'Pedidos Compra', icon: ShoppingBag, perm: 'MODULE_BUY_ORDERS', roles: ['admin'] },
                             { id: 'dre_accounts', label: 'Plano de Contas DRE', icon: ClipboardList, perm: 'MODULE_DRE_ACCOUNTS', roles: ['admin'] },
                             { id: 'metas', label: 'Metas', icon: Target, perm: 'MODULE_METAS', roles: ['admin'] },
                             { id: 'cotas', label: 'Cotas OTB', icon: Calculator, perm: 'MODULE_COTAS', roles: ['admin'] },
@@ -1424,6 +1440,7 @@ const App: React.FC = () => {
                             user={user!}
                             store={stores.find(s => s.id === user?.storeId)}
                         />;
+                        if (currentView === 'buy_orders' && can('MODULE_BUY_ORDERS')) return <BuyOrderModule />;
                         return <div className="flex items-center justify-center h-full text-gray-400 uppercase tracking-widest font-black text-sm">Selecione um módulo no menu</div>;
                     })()}
                     </Suspense>

@@ -90,7 +90,20 @@ const ReceiptsModule: React.FC<ReceiptsModuleProps> = ({ user, stores, receipts,
       const printWindow = window.open('', '_blank', 'width=900,height=1200');
       if (!printWindow) return;
 
-      const finalNumber = receiptNumber || (receipt.receipt_number ? `#${String(receipt.receipt_number).padStart(4, '0')}` : `#${String(receipt.id).padStart(4, '0')}`);
+      // Priorizar formatted_number para evitar expor IDs internos
+      let finalNumber = receiptNumber || receipt.formatted_number || receipt.formattedNumber;
+      
+      if (!finalNumber) {
+          // Se não houver formatted_number, tenta usar o número sequencial com prefixo
+          const num = receipt.receipt_number || receipt.receiptNumber;
+          if (num) {
+              finalNumber = `REC-${String(num).padStart(4, '0')}`;
+          } else {
+              // Último caso: ID curto
+              finalNumber = `ID-${String(receipt.id).substring(0, 8)}`;
+          }
+      }
+      
       const valueInWords = receipt.value_in_words || receipt.valueInWords || 'UNDEFINED';
       const dateStr = receipt.receipt_date || receipt.date;
       

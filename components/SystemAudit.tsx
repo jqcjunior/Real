@@ -361,7 +361,7 @@ const SystemAudit: React.FC<SystemAuditProps> = ({ logs, receipts, store, cashEr
                         }).map(r => (
                             <tr key={r.id} className="hover:bg-gray-50">
                                 <td className="px-8 py-5">
-                                  <div className="font-black text-blue-900 text-xs italic">#{String(r.id).padStart(4, '0')}</div>
+                                  <div className="font-black text-blue-900 text-xs italic">{r.formattedNumber || `#${String(r.receiptNumber || r.id).padStart(4, '0')}`}</div>
                                   <div className="text-[9px] text-gray-400">{new Date(r.date + 'T12:00:00').toLocaleDateString('pt-BR')}</div>
                                 </td>
                                 <td className="px-8 py-5 text-gray-900 uppercase italic text-xs truncate max-w-[200px]">{r.payer}</td>
