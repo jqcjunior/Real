@@ -254,7 +254,7 @@ const App: React.FC = () => {
                         label: p.label,
                         module_group: p.group,
                         allow_admin: true,
-                        allow_manager: false,
+                        allow_manager: p.key === 'MODULE_DEMANDS',
                         allow_cashier: false,
                         allow_sorvete: p.key === 'MODULE_ICECREAM' || p.key === 'MODULE_AGENDA' || p.key === 'MODULE_DASHBOARD_MANAGER',
                         sort_order: 100
@@ -263,6 +263,13 @@ const App: React.FC = () => {
                     await supabase.from('page_permissions')
                         .update({ allow_admin: true })
                         .eq('page_key', p.key);
+                }
+                
+                // ✅ GARANTIR QUE GERENTES VEJAM CHAMADOS
+                if (existing && p.key === 'MODULE_DEMANDS') {
+                    await supabase.from('page_permissions')
+                        .update({ allow_manager: true })
+                        .eq('page_key', 'MODULE_DEMANDS');
                 }
             }
         } catch (err) {
@@ -955,7 +962,7 @@ const App: React.FC = () => {
                             { id: 'metas', label: 'Metas', icon: Target, perm: 'MODULE_METAS', roles: ['admin'] },
                             { id: 'cotas', label: 'Cotas OTB', icon: Calculator, perm: 'MODULE_COTAS', roles: ['admin'] },
                             { id: 'compras', label: 'Compras', icon: ShoppingBag, perm: 'MODULE_PURCHASES', roles: ['admin'] },
-                            { id: 'os_demandas', label: 'Chamado', icon: ClipboardList, perm: 'MODULE_DEMANDS', roles: ['admin'] }
+                            { id: 'os_demandas', label: 'Chamado', icon: ClipboardList, perm: 'MODULE_DEMANDS', roles: ['admin', 'manager'] }
                         ] },
                         { title: 'Operacional', items: [
                             { id: 'pdv_sorveteria', label: 'Sorveteria Real', icon: IceCreamIcon, perm: 'MODULE_ICECREAM', roles: ['admin', 'manager', 'sorvete', 'ice_cream'] },
