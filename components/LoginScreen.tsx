@@ -41,8 +41,9 @@ const LoginScreen: React.FC<LoginScreenProps> = ({ onLoginAttempt, onRegisterReq
         const result = await onLoginAttempt(email.trim(), password.trim(), rememberMe);
         if (!result.success) {
             let msg = result.error || 'Credenciais inválidas.';
-            if (email.trim().toLowerCase() === 'jqcjunior1981@gmail.com') {
-                msg = 'Senha incorreta para o desenvolvedor master. Use "admin".';
+            // Dica específica para o dev master se o erro for genérico de senha
+            if (email.trim().toLowerCase() === 'jqcjunior1981@gmail.com' && (msg.includes('Senha') || msg.includes('Credenciais'))) {
+                msg = 'Senha incorreta para o desenvolvedor master. Dica: use "admin" ou sua senha cadastrada.';
             }
             setError(msg);
             setPassword('');

@@ -1,6 +1,7 @@
 import { useState, useEffect, useRef, useCallback } from 'react';
 import { supabase } from '../services/supabaseClient';
 import { User } from '../types';
+import StepPedidos from './BuyOrderStepPedidos';
  
 // ─── Tipos ────────────────────────────────────────────────────────────────────
  
@@ -122,6 +123,15 @@ export default function BuyOrderModule({ user }: { user?: User }) {
       }));
     }
   }, [user]);
+
+  useEffect(() => {
+    async function setupSession() {
+      if (user?.id) {
+        await supabase.rpc('set_user_session', { user_id: user.id });
+      }
+    }
+    setupSession();
+  }, [user]);
   const [prazosRaw, setPrazosRaw] = useState('');
   const [items, setItems] = useState<OrderItem[]>([]);
   const [pedidos, setPedidos] = useState<SubOrder[]>([]);
@@ -176,22 +186,35 @@ export default function BuyOrderModule({ user }: { user?: User }) {
       const { data: { session } } = await supabase.auth.getSession();
       const userId = session?.user?.id ?? (await getCurrentAppUserId());
  
-      // 1. Upsert brand em buy_brands
+      // 1. Upsert brand em buy_brands (Preferencialmente via RPC para evitar problemas de RLS)
       let brandId = cab.brand_id;
       if (!brandId) {
-        const { data: bData, error: bErr } = await supabase
-          .from('buy_brands')
-          .upsert({
-            marca: cab.marca,
-            fornecedor: cab.fornecedor,
-            representante: cab.representante,
-            telefone: cab.telefone || null,
-            email: cab.email || null,
-          }, { onConflict: 'marca' })
-          .select('id')
-          .single();
-        if (bErr) throw bErr;
-        brandId = bData.id;
+        const { data: bId, error: bErr } = await supabase.rpc('upsert_buy_brand', {
+          p_marca: cab.marca,
+          p_fornecedor: cab.fornecedor,
+          p_representante: cab.representante,
+          p_telefone: cab.telefone || null,
+          p_email: cab.email || null,
+        });
+
+        if (bErr) {
+          console.warn('RPC upsert_buy_brand falhou, tentando upsert direto (requer RLS configurado):', bErr);
+          const { data: bData, error: bErr2 } = await supabase
+            .from('buy_brands')
+            .upsert({
+              marca: cab.marca,
+              fornecedor: cab.fornecedor,
+              representante: cab.representante,
+              telefone: cab.telefone || null,
+              email: cab.email || null,
+            }, { onConflict: 'marca' })
+            .select('id')
+            .single();
+          if (bErr2) throw bErr2;
+          brandId = bData.id;
+        } else {
+          brandId = bId;
+        }
       }
  
       // 2. Calcular vencimentos
@@ -689,6 +712,18 @@ function StepItens({ items, setItems, cab }: { items: OrderItem[]; setItems: Rea
   const [showTipoDropdown, setShowTipoDropdown] = useState(false);
   const [corSuggestions, setCorSuggestions] = useState<string[]>([]);
   const [showCorDropdown, setShowCorDropdown] = useState<{ field: 'cor1' | 'cor2' | 'cor3' | null }>({ field: null });
+  
+  const [isMobile, setIsMobile] = useState(false);
+  const [selectedSuggestionIndex, setSelectedSuggestionIndex] = useState(-1);
+
+  useEffect(() => {
+    const checkDevice = () => {
+      setIsMobile(window.innerWidth < 768 || 'ontouchstart' in window);
+    };
+    checkDevice();
+    window.addEventListener('resize', checkDevice);
+    return () => window.removeEventListener('resize', checkDevice);
+  }, []);
 
   async function searchTipos(query: string) {
     if (query.length < 3) { 
@@ -782,12 +817,18 @@ function StepItens({ items, setItems, cab }: { items: OrderItem[]; setItems: Rea
       </div>
  
       <div className="overflow-x-auto">
-        <table className="w-full text-xs md:text-sm border-collapse table-fixed">
+        <table className="w-full border-collapse table-fixed">
           <thead>
             <tr style={{ background: '#f9fafb' }}>
-              {['#', 'Referência', 'Tipo', 'Cor 1', 'Cor 2', 'Cor 3', 'Custo', 'Venda', 'Ações'].map(h => (
-                <th key={h} style={{ padding: '6px 8px', textAlign: 'left', fontWeight: 500, color: '#6b7280', borderBottom: '0.5px solid #e5e7eb', whiteSpace: 'nowrap' }}>{h}</th>
-              ))}
+              <th className="w-12" style={{ padding: '6px 8px', textAlign: 'left', fontWeight: 500, color: '#6b7280', borderBottom: '0.5px solid #e5e7eb', whiteSpace: 'nowrap' }}>#</th>
+              <th className="w-32" style={{ padding: '6px 8px', textAlign: 'left', fontWeight: 500, color: '#6b7280', borderBottom: '0.5px solid #e5e7eb', whiteSpace: 'nowrap' }}>Referência</th>
+              <th className="w-40 text-xs" style={{ padding: '6px 8px', textAlign: 'left', fontWeight: 500, color: '#6b7280', borderBottom: '0.5px solid #e5e7eb', whiteSpace: 'nowrap' }}>Tipo</th>
+              <th className="w-24 text-xs" style={{ padding: '6px 8px', textAlign: 'left', fontWeight: 500, color: '#6b7280', borderBottom: '0.5px solid #e5e7eb', whiteSpace: 'nowrap' }}>Cor 1</th>
+              <th className="w-24 text-xs" style={{ padding: '6px 8px', textAlign: 'left', fontWeight: 500, color: '#6b7280', borderBottom: '0.5px solid #e5e7eb', whiteSpace: 'nowrap' }}>Cor 2</th>
+              <th className="w-24 text-xs" style={{ padding: '6px 8px', textAlign: 'left', fontWeight: 500, color: '#6b7280', borderBottom: '0.5px solid #e5e7eb', whiteSpace: 'nowrap' }}>Cor 3</th>
+              <th className="w-24" style={{ padding: '6px 8px', textAlign: 'left', fontWeight: 500, color: '#6b7280', borderBottom: '0.5px solid #e5e7eb', whiteSpace: 'nowrap' }}>Custo</th>
+              <th className="w-24" style={{ padding: '6px 8px', textAlign: 'left', fontWeight: 500, color: '#6b7280', borderBottom: '0.5px solid #e5e7eb', whiteSpace: 'nowrap' }}>Venda</th>
+              <th className="w-20" style={{ padding: '6px 8px', textAlign: 'left', fontWeight: 500, color: '#6b7280', borderBottom: '0.5px solid #e5e7eb', whiteSpace: 'nowrap' }}>Ações</th>
             </tr>
           </thead>
           <tbody>
@@ -796,14 +837,14 @@ function StepItens({ items, setItems, cab }: { items: OrderItem[]; setItems: Rea
             )}
             {items.map((it, i) => (
               <tr key={i} style={{ borderBottom: '0.5px solid #f3f4f6' }}>
-                <td style={{ padding: '5px 8px', color: '#9ca3af' }}>{i + 1}</td>
-                <td style={{ padding: '5px 8px', fontWeight: 500 }}>{it.ref || '—'}</td>
-                <td style={{ padding: '5px 8px' }}>{it.tipo || '—'}</td>
-                <td style={{ padding: '5px 8px' }}>{it.cor1 || '—'}</td>
-                <td style={{ padding: '5px 8px', color: '#9ca3af' }}>{it.cor2 || '—'}</td>
-                <td style={{ padding: '5px 8px', color: '#9ca3af' }}>{it.cor3 || '—'}</td>
-                <td style={{ padding: '5px 8px' }}>{fmtBRL(it.custo)}</td>
-                <td style={{ padding: '5px 8px', color: '#185FA5', fontWeight: 500 }}>{fmtBRL(it.preco_venda)}</td>
+                <td className="text-xs" style={{ padding: '5px 8px', color: '#9ca3af' }}>{i + 1}</td>
+                <td className="text-sm" style={{ padding: '5px 8px', fontWeight: 500 }}>{it.ref || '—'}</td>
+                <td className="text-xs" style={{ padding: '5px 8px' }}>{it.tipo || '—'}</td>
+                <td className="text-xs" style={{ padding: '5px 8px' }}>{it.cor1 || '—'}</td>
+                <td className="text-xs" style={{ padding: '5px 8px', color: '#9ca3af' }}>{it.cor2 || '—'}</td>
+                <td className="text-xs" style={{ padding: '5px 8px', color: '#9ca3af' }}>{it.cor3 || '—'}</td>
+                <td className="text-sm" style={{ padding: '5px 8px' }}>{fmtBRL(it.custo)}</td>
+                <td className="text-sm" style={{ padding: '5px 8px', color: '#185FA5', fontWeight: 500 }}>{fmtBRL(it.preco_venda)}</td>
                 <td style={{ padding: '5px 8px' }}>
                   <button onClick={() => openEdit(i)} style={{ border: 'none', background: 'transparent', cursor: 'pointer', fontSize: 11, color: '#185FA5', marginRight: 4 }}>editar</button>
                   <button onClick={() => delItem(i)} style={{ border: 'none', background: 'transparent', cursor: 'pointer', fontSize: 11, color: '#A32D2D' }}>✕</button>
@@ -838,55 +879,112 @@ function StepItens({ items, setItems, cab }: { items: OrderItem[]; setItems: Rea
                     const v = e.target.value.toUpperCase();
                     setForm(f => ({ ...f, tipo: v })); 
                     searchTipos(v); 
+                    setSelectedSuggestionIndex(-1);
                   }}
-                  onBlur={() => setTimeout(() => setShowTipoDropdown(false), 200)}
+                  onKeyDown={!isMobile ? (e) => {
+                    if (!showTipoDropdown || tipoSuggestions.length === 0) return;
+                    if (e.key === 'ArrowDown') {
+                      e.preventDefault();
+                      setSelectedSuggestionIndex(prev => prev < tipoSuggestions.length - 1 ? prev + 1 : prev);
+                    } else if (e.key === 'ArrowUp') {
+                      e.preventDefault();
+                      setSelectedSuggestionIndex(prev => prev > 0 ? prev - 1 : -1);
+                    } else if (e.key === 'Enter' && selectedSuggestionIndex >= 0) {
+                      e.preventDefault();
+                      selectTipo(tipoSuggestions[selectedSuggestionIndex]);
+                      setSelectedSuggestionIndex(-1);
+                    } else if (e.key === 'Escape') {
+                      setShowTipoDropdown(false);
+                      setSelectedSuggestionIndex(-1);
+                    }
+                  } : undefined}
+                  onBlur={() => setTimeout(() => { setShowTipoDropdown(false); setSelectedSuggestionIndex(-1); }, 200)}
                   placeholder="Digite o tipo do produto"
                   style={{ height: 30, width: '100%', padding: '0 8px', border: '0.5px solid #d1d5db', borderRadius: 5, fontSize: 12, outline: 'none', textTransform: 'uppercase' }}
                 />
                 {showTipoDropdown && tipoSuggestions.length > 0 && (
                   <div style={{ position: 'absolute', top: '100%', left: 0, right: 0, background: '#fff', border: '0.5px solid #d1d5db', borderRadius: 5, zIndex: 110, marginTop: 2, boxShadow: '0 4px 12px rgba(0,0,0,.1)' }}>
-                    {tipoSuggestions.map(tipo => (
-                      <div 
-                        key={tipo}
-                        onMouseDown={() => selectTipo(tipo)}
-                        style={{ padding: '7px 10px', fontSize: 12, cursor: 'pointer', borderBottom: '0.5px solid #f3f4f6' }}
-                        onMouseEnter={e => (e.currentTarget.style.background = '#f9fafb')}
-                        onMouseLeave={e => (e.currentTarget.style.background = '')}
-                      >
-                        {tipo}
-                      </div>
-                    ))}
+                    {tipoSuggestions.map((tipo, idx) => {
+                      const isSelected = !isMobile && idx === selectedSuggestionIndex;
+                      return (
+                        <div 
+                          key={tipo}
+                          onMouseDown={() => selectTipo(tipo)}
+                          style={{ 
+                            padding: '7px 10px', 
+                            fontSize: 12, 
+                            cursor: 'pointer', 
+                            borderBottom: '0.5px solid #f3f4f6',
+                            background: isSelected ? '#1d4ed8' : '',
+                            color: isSelected ? '#fff' : ''
+                          }}
+                          onMouseEnter={() => {
+                            if (!isMobile) setSelectedSuggestionIndex(idx);
+                          }}
+                        >
+                          {tipo}
+                        </div>
+                      );
+                    })}
                   </div>
                 )}
               </div>
               <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: 10, marginBottom: 10 }}>
                 {[
-                  { key: 'cor1', label: 'Cor 1 *', onChange: (v: string) => { const vu = v.toUpperCase(); onCor1(vu); searchCores(vu, 'cor1'); } },
-                  { key: 'cor2', label: 'Cor 2', onChange: (v: string) => { const vu = v.toUpperCase(); setCor2Manual(true); setForm(f => ({ ...f, cor2: vu })); searchCores(vu, 'cor2'); } },
-                  { key: 'cor3', label: 'Cor 3', onChange: (v: string) => { const vu = v.toUpperCase(); setCor3Manual(true); setForm(f => ({ ...f, cor3: vu })); searchCores(vu, 'cor3'); } },
+                  { key: 'cor1', label: 'Cor 1 *', onChange: (v: string) => { const vu = v.toUpperCase(); onCor1(vu); searchCores(vu, 'cor1'); setSelectedSuggestionIndex(-1); } },
+                  { key: 'cor2', label: 'Cor 2', onChange: (v: string) => { const vu = v.toUpperCase(); setCor2Manual(true); setForm(f => ({ ...f, cor2: vu })); searchCores(vu, 'cor2'); setSelectedSuggestionIndex(-1); } },
+                  { key: 'cor3', label: 'Cor 3', onChange: (v: string) => { const vu = v.toUpperCase(); setCor3Manual(true); setForm(f => ({ ...f, cor3: vu })); searchCores(vu, 'cor3'); setSelectedSuggestionIndex(-1); } },
                 ].map(f => (
                   <div key={f.key} style={{ position: 'relative' }}>
                     <label style={{ fontSize: 10, fontWeight: 500, color: '#6b7280', textTransform: 'uppercase', display: 'block', marginBottom: 3 }}>{f.label}</label>
                     <input 
                       value={(form as any)[f.key]} 
                       onChange={e => f.onChange(e.target.value.toUpperCase())} 
-                      onBlur={() => setTimeout(() => setShowCorDropdown({ field: null }), 200)}
+                      onKeyDown={!isMobile ? (e) => {
+                        if (showCorDropdown.field !== f.key || corSuggestions.length === 0) return;
+                        if (e.key === 'ArrowDown') {
+                          e.preventDefault();
+                          setSelectedSuggestionIndex(prev => prev < corSuggestions.length - 1 ? prev + 1 : prev);
+                        } else if (e.key === 'ArrowUp') {
+                          e.preventDefault();
+                          setSelectedSuggestionIndex(prev => prev > 0 ? prev - 1 : -1);
+                        } else if (e.key === 'Enter' && selectedSuggestionIndex >= 0) {
+                          e.preventDefault();
+                          selectCor(corSuggestions[selectedSuggestionIndex], f.key as any);
+                          setSelectedSuggestionIndex(-1);
+                        } else if (e.key === 'Escape') {
+                          setShowCorDropdown({ field: null });
+                          setSelectedSuggestionIndex(-1);
+                        }
+                      } : undefined}
+                      onBlur={() => setTimeout(() => { setShowCorDropdown({ field: null }); setSelectedSuggestionIndex(-1); }, 200)}
                       placeholder="—" 
                       style={{ height: 30, width: '100%', padding: '0 8px', border: '0.5px solid #d1d5db', borderRadius: 5, fontSize: 12, outline: 'none', textTransform: 'uppercase' }} 
                     />
                     {showCorDropdown.field === f.key && corSuggestions.length > 0 && (
                       <div style={{ position: 'absolute', top: '100%', left: 0, right: 0, background: '#fff', border: '0.5px solid #d1d5db', borderRadius: 5, zIndex: 110, marginTop: 2, boxShadow: '0 4px 12px rgba(0,0,0,.1)' }}>
-                        {corSuggestions.map(cor => (
-                          <div 
-                            key={cor}
-                            onMouseDown={() => selectCor(cor, f.key as any)}
-                            style={{ padding: '7px 10px', fontSize: 12, cursor: 'pointer', borderBottom: '0.5px solid #f3f4f6' }}
-                            onMouseEnter={e => (e.currentTarget.style.background = '#f9fafb')}
-                            onMouseLeave={e => (e.currentTarget.style.background = '')}
-                          >
-                            {cor}
-                          </div>
-                        ))}
+                        {corSuggestions.map((cor, idx) => {
+                          const isSelected = !isMobile && idx === selectedSuggestionIndex;
+                          return (
+                            <div 
+                              key={cor}
+                              onMouseDown={() => selectCor(cor, f.key as any)}
+                              style={{ 
+                                padding: '7px 10px', 
+                                fontSize: 12, 
+                                cursor: 'pointer', 
+                                borderBottom: '0.5px solid #f3f4f6',
+                                background: isSelected ? '#1d4ed8' : '',
+                                color: isSelected ? '#fff' : ''
+                              }}
+                              onMouseEnter={() => {
+                                if (!isMobile) setSelectedSuggestionIndex(idx);
+                              }}
+                            >
+                              {cor}
+                            </div>
+                          );
+                        })}
                       </div>
                     )}
                   </div>
@@ -934,380 +1032,3 @@ function StepItens({ items, setItems, cab }: { items: OrderItem[]; setItems: Rea
 
 // ─── Step 2: Pedidos ──────────────────────────────────────────────────────────
 
-function StepPedidos({ items, pedidos, setPedidos, user }: { items: OrderItem[]; pedidos: SubOrder[]; setPedidos: React.Dispatch<React.SetStateAction<SubOrder[]>>, user?: User }) {
-
-  const isGerente = user?.role === 'MANAGER';
-  const userStoreId = user?.storeId ? parseInt(user.storeId) : null;
-
-  useEffect(() => {
-    if (pedidos.length === 0) {
-      const initialStore = isGerente && userStoreId ? [userStoreId] : [];
-      setPedidos([{ 
-        num: 1, 
-        pedido_numero: '', 
-        itensComGrades: [], 
-        lojas: initialStore, 
-        lojaMode: isGerente ? 'all' : null 
-      }]);
-    }
-  }, [pedidos.length, isGerente, userStoreId]);
-
-  const [activeGrade, setActiveGrade] = useState<Record<string, number>>({}); // key: "pi-itemIdx", value: gi
-
-  function addPedido() {
-    setPedidos(ps => [...ps, { num: ps.length + 1, pedido_numero: '', itensComGrades: [], lojas: [], lojaMode: null }]);
-  }
-
-  function delPedido(i: number) {
-    setPedidos(ps => ps.filter((_, idx) => idx !== i).map((p, idx) => ({ ...p, num: idx + 1 })));
-  }
-
-  function updPedido(i: number, fn: (p: SubOrder) => SubOrder) {
-    setPedidos(ps => ps.map((p, idx) => idx === i ? fn(p) : p));
-  }
-
-  function toggleItem(pi: number, ii: number) {
-    updPedido(pi, p => {
-      const icgIndex = p.itensComGrades.findIndex(icg => icg.itemIdx === ii);
-      if (icgIndex !== -1) {
-        return { ...p, itensComGrades: p.itensComGrades.filter(icg => icg.itemIdx !== ii) };
-      } else {
-        return { ...p, itensComGrades: [...p.itensComGrades, { itemIdx: ii, grades: [] }] };
-      }
-    });
-  }
-
-  function addGradeToItem(pi: number, itemIdx: number) {
-    updPedido(pi, p => {
-      const icgIndex = p.itensComGrades.findIndex(icg => icg.itemIdx === itemIdx);
-      if (icgIndex === -1) return p;
-      
-      const icg = p.itensComGrades[icgIndex];
-      if (icg.grades.length >= 7) return p;
-      
-      const item = items[itemIdx];
-      const newGrades = [...icg.grades, {
-        letter: GRADE_LETTERS[icg.grades.length],
-        cat: (item.modelo || 'FEM') as any,
-        qtds: {}
-      }];
-      
-      return {
-        ...p,
-        itensComGrades: p.itensComGrades.map((icgObj, i) => 
-          i === icgIndex ? { ...icgObj, grades: newGrades } : icgObj
-        )
-      };
-    });
-
-    // Auto-ativar a nova grade
-    setTimeout(() => {
-      setActiveGrade(prev => {
-        const ped = pedidos[pi];
-        const icg = ped?.itensComGrades.find(x => x.itemIdx === itemIdx);
-        const nextIdx = icg ? icg.grades.length : 0;
-        return { ...prev, [`${pi}-${itemIdx}`]: nextIdx };
-      });
-    }, 0);
-  }
-
-  function delGradeFromItem(pi: number, itemIdx: number, gi: number) {
-    updPedido(pi, p => {
-      const icgIndex = p.itensComGrades.findIndex(icg => icg.itemIdx === itemIdx);
-      if (icgIndex === -1) return p;
-      
-      const icg = p.itensComGrades[icgIndex];
-      const newGrades = icg.grades.filter((_, i) => i !== gi).map((g, i) => ({ ...g, letter: GRADE_LETTERS[i] }));
-      
-      return {
-        ...p,
-        itensComGrades: p.itensComGrades.map((icgObj, i) => 
-          i === icgIndex ? { ...icgObj, grades: newGrades } : icgObj
-        )
-      };
-    });
-    setActiveGrade(prev => {
-      const next = { ...prev };
-      delete next[`${pi}-${itemIdx}`];
-      return next;
-    });
-  }
-
-  function setGradeCat(pi: number, itemIdx: number, gi: number, cat: string) {
-    updPedido(pi, p => ({
-      ...p,
-      itensComGrades: p.itensComGrades.map(icg => {
-        if (icg.itemIdx === itemIdx) {
-          return { ...icg, grades: icg.grades.map((g, i) => i === gi ? { ...g, cat: cat as any, qtds: {} } : g) };
-        }
-        return icg;
-      })
-    }));
-  }
-
-  function setGradeQtd(pi: number, itemIdx: number, gi: number, sz: string, val: number) {
-    updPedido(pi, p => ({
-      ...p,
-      itensComGrades: p.itensComGrades.map(icg => {
-        if (icg.itemIdx === itemIdx) {
-          return { ...icg, grades: icg.grades.map((g, i) => i === gi ? { ...g, qtds: { ...g.qtds, [sz]: val } } : g) };
-        }
-        return icg;
-      })
-    }));
-  }
-
-  function setLojaMode(pi: number, mode: 'sub' | 'all') {
-    updPedido(pi, p => ({ ...p, lojaMode: p.lojaMode === mode ? null : mode, lojas: [] }));
-  }
-
-  function toggleLoja(pi: number, n: number) {
-    updPedido(pi, p => ({ ...p, lojas: p.lojas.includes(n) ? p.lojas.filter(x => x !== n) : [...p.lojas, n] }));
-  }
-
-  const btnStyle = (on: boolean): React.CSSProperties => ({
-    height: 22, padding: '0 8px', borderRadius: 4, fontSize: 10, fontWeight: 500, cursor: 'pointer',
-    border: `0.5px solid ${on ? '#185FA5' : '#d1d5db'}`, background: on ? '#185FA5' : 'transparent', color: on ? '#fff' : '#6b7280',
-  });
-
-  return (
-    <div>
-      <div style={{ padding: '6px 18px', background: '#f9fafb', borderBottom: '0.5px solid #e5e7eb', fontSize: 10, fontWeight: 500, color: '#6b7280', textTransform: 'uppercase', letterSpacing: '0.05em', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-        <span>Distribuição em pedidos</span>
-        <button onClick={addPedido} style={{ height: 22, padding: '0 10px', borderRadius: 4, fontSize: 11, fontWeight: 500, cursor: 'pointer', border: 'none', background: '#185FA5', color: '#fff' }}>+ Pedido</button>
-      </div>
-      <div style={{ padding: 14 }}>
-        {pedidos.map((ped, pi) => {
-          const pool = ped.lojaMode === 'sub' ? SUBGRUPO : ped.lojaMode === 'all' ? ALL_LOJAS : [];
-          return (
-            <div key={pi} style={{ border: '0.5px solid #e5e7eb', borderRadius: 8, marginBottom: 16, overflow: 'hidden' }}>
-
-              <div className="flex items-center gap-2 p-3 bg-slate-50 border-b">
-                <span className="font-medium text-sm">Pedido {ped.num}</span>
-                <span className="text-xs text-slate-500 flex-1">
-                  {ped.itensComGrades.length} itens · {ped.lojas.length} lojas
-                </span>
-                <label className="text-xs text-slate-500">Nº fornecedor</label>
-                <input value={ped.pedido_numero} 
-                  onChange={e => updPedido(pi, p => ({ ...p, pedido_numero: e.target.value.toUpperCase() }))}
-                  placeholder="12345" 
-                  className="w-20 h-7 px-2 text-xs border border-slate-300 rounded uppercase" />
-                {pedidos.length > 1 && (
-                   <button onClick={() => delPedido(pi)} className="text-red-600 text-sm">✕</button>
-                )}
-              </div>
-
-              <div className="p-3 space-y-4">
-                {/* 1. Seleção de Itens */}
-                <div>
-                  <div className="text-xs font-medium text-slate-600 uppercase mb-2">
-                    1. Selecione os itens deste pedido
-                  </div>
-                  <div className="flex flex-wrap gap-2 mb-2">
-                    {items.map((it, ii) => {
-                      const on = ped.itensComGrades.some(icg => icg.itemIdx === ii);
-                      return (
-                        <div key={ii} onClick={() => toggleItem(pi, ii)}
-                          className={`px-3 py-1.5 text-xs rounded-lg border cursor-pointer select-none transition-all ${
-                            on 
-                              ? 'bg-blue-50 border-blue-300 text-blue-700 font-medium' 
-                              : 'bg-white border-slate-200 hover:border-blue-300 text-slate-600'
-                          }`}>
-                          {ii + 1}. {it.ref || `item ${ii + 1}`}
-                        </div>
-                      );
-                    })}
-                  </div>
-                </div>
-
-                {/* 2. Seleção de Lojas */}
-                <div>
-                  <div className="text-xs font-medium text-slate-600 uppercase mb-2">
-                    {isGerente ? '2. Sua Loja' : '2. Selecione as lojas'}
-                  </div>
-                  {!isGerente ? (
-                    <>
-                      <div className="flex flex-wrap gap-2 mb-3">
-                        <button onClick={() => setLojaMode(pi, 'sub')} style={btnStyle(ped.lojaMode === 'sub')}>Subgrupo</button>
-                        <button onClick={() => setLojaMode(pi, 'all')} style={btnStyle(ped.lojaMode === 'all')}>Todas (1-120)</button>
-                        <span style={{ fontSize: 10, color: '#6b7280', marginLeft: 4 }}>{ped.lojas.length} selecionada(s)</span>
-                      </div>
-                      
-                      {pool.length > 0 && (
-                        <div className="overflow-x-auto p-1 bg-slate-50/50 rounded-lg border border-slate-100">
-                          <div className="flex flex-wrap gap-2">
-                            {pool.map(n => (
-                              <div key={n} onClick={() => toggleLoja(pi, n)}
-                                className={`w-10 h-10 flex items-center justify-center text-xs font-medium rounded border cursor-pointer select-none transition-colors ${
-                                  ped.lojas.includes(n) ? 'border-blue-300 bg-blue-50 text-blue-800' : 'border-slate-200 bg-white text-slate-500'
-                                }`}>
-                                {n}
-                              </div>
-                            ))}
-                          </div>
-                        </div>
-                      )}
-                    </>
-                  ) : (
-                    <div className="flex items-center gap-3 bg-blue-50 border border-blue-200 p-3 rounded-lg">
-                      <div className="w-10 h-10 flex items-center justify-center bg-blue-600 text-white rounded-lg font-bold">
-                        {userStoreId || '?'}
-                      </div>
-                      <div>
-                        <div className="text-xs font-bold text-blue-900">Loja Vinculada</div>
-                        <div className="text-[10px] text-blue-600 uppercase">Seu pedido será direcionado para esta loja</div>
-                      </div>
-                    </div>
-                  )}
-                </div>
-
-                {/* 3. Grades por Item */}
-                <div className="space-y-4">
-                  <div className="text-xs font-medium text-slate-600 uppercase mb-2">
-                    3. Defina as grades para cada item
-                  </div>
-                  {ped.itensComGrades.length === 0 && (
-                    <div className="text-sm text-slate-400 text-center py-6 bg-slate-50 rounded-lg">
-                      Selecione itens primeiro para definir as grades
-                    </div>
-                  )}
-                  {ped.itensComGrades.map((icg) => {
-                    const item = items[icg.itemIdx];
-                    const activeGi = activeGrade[`${pi}-${icg.itemIdx}`] ?? -1;
-                    return (
-                      <div key={icg.itemIdx} className="border border-slate-200 rounded-lg p-4 mb-3 bg-white shadow-sm">
-                        
-                        <div className="flex items-center gap-2 mb-3">
-                          <span className="font-bold text-sm text-slate-700">
-                            Item {icg.itemIdx + 1}: {item.ref}
-                          </span>
-                          <span className="text-[10px] bg-slate-100 px-2 py-0.5 rounded text-slate-500 font-bold uppercase tracking-tight">
-                            {item.modelo}
-                          </span>
-                          <span className="text-xs text-slate-400 flex-1">
-                            ({icg.grades.length} grade{icg.grades.length !== 1 ? 's' : ''})
-                          </span>
-                          {icg.grades.length < 7 && (
-                            <button
-                              onClick={() => addGradeToItem(pi, icg.itemIdx)}
-                              className="px-3 py-1 text-[10px] font-bold bg-blue-600 text-white rounded uppercase shadow-sm hover:bg-blue-700 transition-colors">
-                              + Grade
-                            </button>
-                          )}
-                        </div>
-
-                        {icg.grades.length > 0 && (
-                          <div className="flex gap-2 mb-4 flex-wrap">
-                            {icg.grades.map((g, gi) => {
-                              const totalPares = totPares(g.qtds);
-                              const isActive = activeGi === gi;
-                              return (
-                                <button
-                                  key={gi}
-                                  onClick={() => setActiveGrade(prev => ({ ...prev, [`${pi}-${icg.itemIdx}`]: gi }))}
-                                  className={`px-3 py-1.5 text-xs rounded-lg font-medium flex items-center gap-2 transition-all ${
-                                    isActive 
-                                      ? 'bg-blue-600 text-white shadow-md' 
-                                      : 'bg-slate-100 text-slate-600 hover:bg-slate-200 border border-slate-200'
-                                  }`}>
-                                  Grade {g.letter}
-                                  <span className={`text-[10px] px-1.5 py-0.5 rounded font-bold ${
-                                    isActive ? 'bg-white/20 text-white' : 'bg-green-100 text-green-700'
-                                  }`}>
-                                    {totalPares}
-                                  </span>
-                                </button>
-                              );
-                            })}
-                          </div>
-                        )}
-
-                        {activeGi >= 0 && icg.grades[activeGi] && (() => {
-                          const g = icg.grades[activeGi];
-                          const sizes = CATS[g.cat]?.sizes || [];
-                          return (
-                            <div className="bg-slate-50 border border-slate-200 rounded-lg p-3">
-                              <div className="flex items-center gap-2 mb-4">
-                                <div className="w-6 h-6 rounded bg-blue-600 text-white text-[10px] font-bold flex items-center justify-center">
-                                  {g.letter}
-                                </div>
-                                
-                                <div className="flex gap-1">
-                                  {(() => {
-                                    const categoriasCompativeis: Record<string, string[]> = {
-                                      'FEM': ['FEM', 'INF'],
-                                      'MASC': ['MASC', 'INF'],
-                                      'INF': ['INF'],
-                                      'ACESS': ['ACESS']
-                                    };
-                                    const permitidas = categoriasCompativeis[item.modelo] || Object.keys(CATS);
-                                    
-                                    return Object.entries(CATS)
-                                      .filter(([k]) => permitidas.includes(k))
-                                      .map(([k, v]) => (
-                                        <button 
-                                          key={k}
-                                          onClick={() => setGradeCat(pi, icg.itemIdx, activeGi, k)}
-                                          className={`px-2.5 py-1 text-[9px] font-bold rounded border transition-colors ${
-                                            g.cat === k
-                                              ? 'bg-blue-600 text-white border-blue-600'
-                                              : 'bg-white border-slate-200 text-slate-400 hover:border-blue-300'
-                                          }`}>
-                                          {v.label}
-                                        </button>
-                                      ));
-                                  })()}
-                                </div>
-
-                                <span className="ml-auto text-[10px] font-bold px-2 py-1 rounded bg-green-50 text-green-700 border border-green-200">
-                                  {totPares(g.qtds)} pares
-                                </span>
-
-                                <button
-                                  onClick={() => delGradeFromItem(pi, icg.itemIdx, activeGi)}
-                                  className="text-red-500 hover:text-red-700 p-1"
-                                  title="Remover grade">
-                                  ✕
-                                </button>
-                              </div>
-
-                              <div className="grid grid-cols-4 sm:grid-cols-6 lg:grid-cols-10 gap-2">
-                                {sizes.map(sz => (
-                                  <div key={sz} className="flex flex-col items-center gap-1">
-                                    <span className="text-[9px] text-slate-400 font-bold uppercase">{sz}</span>
-                                    <input
-                                      type="number"
-                                      min={0}
-                                      value={g.qtds[sz] || ''}
-                                      placeholder="0"
-                                      onChange={e => setGradeQtd(pi, icg.itemIdx, activeGi, sz, parseInt(e.target.value) || 0)}
-                                      className={`w-full h-8 text-center text-xs border rounded-md transition-all outline-none focus:ring-1 focus:ring-blue-300 ${
-                                        (g.qtds[sz] || 0) > 0
-                                          ? 'bg-green-50 border-green-300 text-green-700 font-bold'
-                                          : 'bg-white border-slate-200'
-                                      }`}
-                                    />
-                                  </div>
-                                ))}
-                              </div>
-                            </div>
-                          );
-                        })()}
-
-                        {icg.grades.length === 0 && (
-                          <div className="text-xs text-slate-400 text-center py-4 border-2 border-dashed border-slate-100 rounded-lg">
-                            Pressione "+ Grade" para adicionar a numeração deste item no pedido.
-                          </div>
-                        )}
-                      </div>
-                    );
-                  })}
-                </div>
-              </div>
-            </div>
-          );
-        })}
-      </div>
-    </div>
-  );
-}

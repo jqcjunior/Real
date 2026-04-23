@@ -7,7 +7,7 @@ class ApiService {
   async login(email: string, password: string) {
     try {
       // ✅ BYPASS PARA DESENVOLVEDOR MASTER
-      if (email.toLowerCase().trim() === 'jqcjunior1981@gmail.com' && password === 'admin') {
+      if (email.toLowerCase().trim() === 'jqcjunior1981@gmail.com' && password.trim() === 'admin') {
         const devUser = {
           id: '88888888-8888-4888-8888-888888888888',
           name: 'Master Admin (Dev)',
