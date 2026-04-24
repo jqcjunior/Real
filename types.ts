@@ -776,3 +776,65 @@ export interface MotivationalPhrase {
   categoria: 'atraso' | 'pressao' | 'meta_batida' | 'vendas';
   created_at?: string;
 }
+
+export interface PurchaseParameterGlobal {
+    id: string;
+    year: number;
+    month: number;
+    feminino_pct: number;
+    infantil_menina_pct: number;
+    infantil_menino_pct: number;
+    masculino_pct: number;
+    acessorio_pct: number;
+    sub_metas: any;
+    cota_default: number;
+    cota_gerente_pct: number;
+    cota_comprador_pct: number;
+    created_at: string;
+}
+
+export interface PurchaseParameterStore {
+    id: string;
+    store_number: string;
+    year: number;
+    month: number;
+    feminino_pct: number | null;
+    infantil_menina_pct: number | null;
+    infantil_menino_pct: number | null;
+    masculino_pct: number | null;
+    acessorio_pct: number | null;
+    sub_metas: any | null;
+    cota_valor: number | null;
+    cota_gerente_pct: number | null;
+    cota_comprador_pct: number | null;
+    created_at: string;
+}
+
+export interface PurchaseQuotaControl {
+    id: string;
+    store_number: string;
+    year: number;
+    month: number;
+    cota_inicial: number;
+    cota_utilizada: number;
+    cota_disponivel: number;
+    cota_gerente_inicial: number;
+    cota_gerente_utilizada: number;
+    cota_gerente_disponivel: number;
+    cota_comprador_inicial: number;
+    cota_comprador_utilizada: number;
+    cota_comprador_disponivel: number;
+    percentual_utilizado: number;
+    status: string;
+}
+
+export interface PurchaseQuotaTransaction {
+    id: string;
+    quota_control_id: string;
+    order_id: string;
+    item_id?: string;
+    valor_abatido: number;
+    tipo_comprador: 'GERENTE' | 'COMPRADOR';
+    descricao: string;
+    created_at: string;
+}

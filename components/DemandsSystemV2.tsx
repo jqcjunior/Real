@@ -48,9 +48,10 @@ import { ptBR } from 'date-fns/locale';
 interface DemandsSystemV2Props {
     user: UserType;
     stores: Store[];
+    onUnreadUpdate?: () => void;
 }
 
-const DemandsSystemV2: React.FC<DemandsSystemV2Props> = ({ user, stores }) => {
+const DemandsSystemV2: React.FC<DemandsSystemV2Props> = ({ user, stores, onUnreadUpdate }) => {
     // States
     const [selectedStoreId, setSelectedStoreId] = useState<string | null>(user.role === 'ADMIN' ? null : user.storeId || null);
     const [demands, setDemands] = useState<DemandV2[]>([]);
@@ -248,6 +249,7 @@ const DemandsSystemV2: React.FC<DemandsSystemV2Props> = ({ user, stores }) => {
             // ✅ Resetar contador de não lidas para todos os usuários ao abrir
             if (demandId) {
                 await supabase.from('demands_v2').update({ unread_count: 0 }).eq('id', demandId);
+                if (onUnreadUpdate) onUnreadUpdate();
                 if (user.role === 'ADMIN') {
                     loadStoreCounts();
                 }
@@ -496,15 +498,32 @@ const DemandsSystemV2: React.FC<DemandsSystemV2Props> = ({ user, stores }) => {
                 isCompressed = true;
             }
 
-            const fileExt = file.name.split('.').pop();
-            const fileName = `${Math.random()}.${fileExt}`;
+            const fileExt = file.name.split('.').pop()?.toLowerCase() || 'bin';
+            const fileName = `${Date.now()}-${Math.floor(Math.random() * 1000)}.${fileExt}`;
             const filePath = `demands/${selectedDemand.id}/${fileName}`;
+
+            console.log("Iniciando upload de arquivo:", {
+                path: filePath,
+                originalSize: originalSize,
+                finalSize: finalFile.size,
+                type: file.type,
+                contentType: isCompressed ? 'image/jpeg' : file.type
+            });
+
+            console.log("Arquivo final preparado:", finalFile);
 
             const { error: uploadError } = await supabase.storage
                 .from('attachments')
-                .upload(filePath, finalFile);
+                .upload(filePath, finalFile, {
+                    cacheControl: '3600',
+                    upsert: false,
+                    contentType: isCompressed ? 'image/jpeg' : (file.type || 'application/octet-stream')
+                });
 
-            if (uploadError) throw uploadError;
+            if (uploadError) {
+                console.error("Erro específico do Supabase Storage:", uploadError);
+                throw uploadError;
+            }
 
             const { data: { publicUrl } } = supabase.storage
                 .from('attachments')
@@ -558,9 +577,9 @@ const DemandsSystemV2: React.FC<DemandsSystemV2Props> = ({ user, stores }) => {
 
             setSelectedTargetUser(null);
             loadMessages(selectedDemand.id);
-        } catch (err) {
+        } catch (err: any) {
             console.error("Erro no upload:", err);
-            alert("Erro ao enviar arquivo.");
+            alert(`Erro ao enviar arquivo: ${err.message || 'Erro desconhecido'}`);
         } finally {
             setIsSending(false);
             if (fileInputRef.current) fileInputRef.current.value = '';

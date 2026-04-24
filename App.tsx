@@ -42,6 +42,10 @@ const DemandsSystemV2 = lazy(() => import('./components/DemandsSystemV2'));
 const DashboardPAModule = lazy(() => import('./components/dashboardPA/DashboardPAModule'));
 const DashboardPAGerente = lazy(() => import('./components/dashboardPA/DashboardPAGerente'));
 const BuyOrderModule = lazy(() => import('./components/BuyOrderModule'));
+const BuyOrderParams = lazy(() => import('./components/BuyOrderParams'));
+const BuyOrderDashboard = lazy(() => import('./components/BuyOrderDashboard'));
+const StockForecastDashboard = lazy(() => import('./components/StockForecastDashboard'));
+const ReportsPage = lazy(() => import('./components/ReportsPage'));
 const AdminSurveyManagement = lazy(() => import('./components/AdminSurveyManagement_v3'));
 const MySurveysComponent = lazy(() => import('./components/MySurveysComponent'));
 const SurveyResultsViewer = lazy(() => import('./components/SurveyResultsViewer'));
@@ -990,6 +994,10 @@ const App: React.FC = () => {
                             { id: 'dashboard_loja', label: 'Dashboard Loja', icon: LayoutDashboard, perm: 'MODULE_DASHBOARD_MANAGER', roles: ['manager'] },
                             { id: 'dashboard_pa', label: 'Dashboard P.A.', icon: Trophy, perm: 'MODULE_DASHBOARD_PA', roles: ['admin'] },
                             { id: 'dashboard_pa_manager', label: 'Dashboard P.A.', icon: Trophy, perm: 'MODULE_DASHBOARD_PA_MANAGER', roles: ['manager'] },
+                            { id: 'stock_forecast', label: 'Previsão de Estoque', icon: TrendingUp, perm: 'MODULE_BUY_ORDERS', roles: ['admin', 'manager'] },
+                            { id: 'buy_order_dashboard', label: 'Dashboard Compras', icon: BarChart3, perm: 'MODULE_BUY_ORDERS', roles: ['admin', 'manager'] },
+                            { id: 'reports_dashboard', label: 'Relatórios Executivos', icon: FileText, perm: 'MODULE_BUY_ORDERS', roles: ['admin'] },
+                            { id: 'purchase_params', label: 'Parâmetros Compras', icon: Settings, perm: 'MODULE_PURCHASES', roles: ['admin'] },
                             { id: 'buy_orders', label: 'Pedidos Compra', icon: ShoppingBag, perm: 'MODULE_BUY_ORDERS', roles: ['admin', 'manager'] },
                             { id: 'dre_accounts', label: 'Plano de Contas DRE', icon: ClipboardList, perm: 'MODULE_DRE_ACCOUNTS', roles: ['admin'] },
                             { id: 'metas', label: 'Metas', icon: Target, perm: 'MODULE_METAS', roles: ['admin'] },
@@ -1233,6 +1241,10 @@ const App: React.FC = () => {
                             can={can}
                         />;
                         if (currentView === 'dre_accounts' && can('MODULE_DRE_ACCOUNTS')) return <DREAccounts />;
+                        if (currentView === 'stock_forecast' && can('MODULE_BUY_ORDERS')) return <StockForecastDashboard user={user!} stores={isAdmin ? stores : stores.filter(s => s.id === user?.storeId)} />;
+                        if (currentView === 'buy_order_dashboard' && can('MODULE_BUY_ORDERS')) return <BuyOrderDashboard user={user!} />;
+                        if (currentView === 'purchase_params') return <BuyOrderParams user={user!} />;
+                        if (currentView === 'reports_dashboard') return <ReportsPage user={user!} />;
                         if (currentView === 'pdv_sorveteria' && can('MODULE_ICECREAM')) return <IceCreamModule
                             user={user!} stores={isAdmin ? stores : stores.filter(s => s.id === user?.storeId)} items={iceCreamItems} sales={iceCreamSales} salesHeaders={sales} salePayments={salePayments}
                             stock={iceCreamStock} promissories={icPromissories} can={can}
@@ -1477,7 +1489,13 @@ const App: React.FC = () => {
                         if (currentView === 'audit' && can('MODULE_AUDIT')) return <SystemAudit currentUser={user!} logs={logs} receipts={receipts} cashErrors={cashErrors} iceCreamSales={iceCreamSales} icPromissories={icPromissories} cardSales={cardSales} pixSales={pixSales} closures={closures} stores={isAdmin ? stores : stores.filter(s => s.id === user?.storeId)} can={can} />;
                         if (currentView === 'settings' && can('MODULE_SETTINGS')) return <AdminSettings stores={stores} onAddStore={async (s) => { await supabase.from('stores').insert([s]); fetchData(); }} onUpdateStore={async (s) => { await supabase.from('stores').update(s).eq('id', s.id); fetchData(); }} onDeleteStore={async (id) => { await supabase.from('stores').delete().eq('id', id); fetchData(); }} />;
                         if (currentView === 'spreadsheet_order' && can('MODULE_PURCHASES')) return <SpreadsheetOrderModule user={user!} onClose={() => setCurrentView('compras')} />;
-                        if (currentView === 'os_demandas' && can('MODULE_DEMANDS')) return <DemandsSystemV2 user={user!} stores={stores} />;
+                        if (currentView === 'os_demandas' && can('MODULE_DEMANDS')) return (
+                            <DemandsSystemV2 
+                                user={user!} 
+                                stores={stores} 
+                                onUnreadUpdate={checkUnreadDemands}
+                            />
+                        );
                         if (currentView === 'dashboard_pa' && can('MODULE_DASHBOARD_PA')) return <DashboardPAModule
                             user={user!}
                             stores={stores}

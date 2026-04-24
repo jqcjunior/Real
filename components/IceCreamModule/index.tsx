@@ -1108,6 +1108,9 @@ const IceCreamModule: React.FC<IceCreamModuleProps> = ({
                         }}
                         effectiveStoreId={effectiveStoreId}
                         fetchData={fetchData}
+                        onOpenPurchaseModal={() => setShowPurchaseModal(true)}
+                        onOpenInventoryModal={() => setShowInventoryModal(true)}
+                        onOpenWastageModal={() => setShowWastageModal(true)}
                     />
                 )}
 

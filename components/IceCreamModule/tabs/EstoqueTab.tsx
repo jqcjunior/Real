@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { Package, Plus, Trash2, Edit, Archive } from 'lucide-react';
+import { Package, Plus, Trash2, Edit, Archive, ShoppingCart, ClipboardList, AlertTriangle } from 'lucide-react';
 import NewInsumoModal from '../modals/NewInsumoModal';
  
 interface EstoqueTabProps {
@@ -12,6 +12,10 @@ interface EstoqueTabProps {
     onToggleFreezeStock: (id: string, active: boolean) => Promise<void>;
     effectiveStoreId: string;
     fetchData?: () => Promise<void>;
+    // ✅ NOVOS HANDLERS PARA ABRIR MODAIS
+    onOpenPurchaseModal?: () => void;
+    onOpenInventoryModal?: () => void;
+    onOpenWastageModal?: () => void;
 }
  
 const EstoqueTab: React.FC<EstoqueTabProps> = ({
@@ -22,7 +26,10 @@ const EstoqueTab: React.FC<EstoqueTabProps> = ({
     onDeleteStockBase,
     onToggleFreezeStock,
     effectiveStoreId,
-    fetchData
+    fetchData,
+    onOpenPurchaseModal,
+    onOpenInventoryModal,
+    onOpenWastageModal
 }) => {
     const [showNewInsumoModal, setShowNewInsumoModal] = useState(false);
     const [editingItem, setEditingItem] = useState<{ id: string; product_base: string; unit: string } | null>(null);
@@ -62,17 +69,53 @@ const EstoqueTab: React.FC<EstoqueTabProps> = ({
                         </p>
                     </div>
                 </div>
-                {isAdmin && (
-                    <button
-                        onClick={() => {
-                            setEditingItem(null);
-                            setShowNewInsumoModal(true);
-                        }}
-                        className="px-6 py-3 bg-blue-600 text-white rounded-2xl font-black uppercase text-[10px] shadow-lg flex items-center gap-2 hover:bg-blue-700 transition-all border-b-4 border-blue-800"
-                    >
-                        <Plus size={16}/> Novo Insumo
-                    </button>
-                )}
+                
+                {/* ✅ BOTÕES DE AÇÃO - NOVA SEÇÃO */}
+                <div className="flex flex-wrap gap-2">
+                    {isAdmin && (
+                        <>
+                            <button
+                                onClick={() => {
+                                    setEditingItem(null);
+                                    setShowNewInsumoModal(true);
+                                }}
+                                className="px-4 py-3 bg-blue-600 text-white rounded-2xl font-black uppercase text-[10px] shadow-lg flex items-center gap-2 hover:bg-blue-700 transition-all border-b-4 border-blue-800"
+                            >
+                                <Plus size={16}/> Novo Insumo
+                            </button>
+                            
+                            {onOpenPurchaseModal && (
+                                <button
+                                    onClick={onOpenPurchaseModal}
+                                    className="px-4 py-3 bg-green-600 text-white rounded-2xl font-black uppercase text-[10px] shadow-lg flex items-center gap-2 hover:bg-green-700 transition-all border-b-4 border-green-800"
+                                    title="Registrar entrada de mercadoria"
+                                >
+                                    <ShoppingCart size={16}/> Entrada
+                                </button>
+                            )}
+                            
+                            {onOpenInventoryModal && (
+                                <button
+                                    onClick={onOpenInventoryModal}
+                                    className="px-4 py-3 bg-purple-600 text-white rounded-2xl font-black uppercase text-[10px] shadow-lg flex items-center gap-2 hover:bg-purple-700 transition-all border-b-4 border-purple-800"
+                                    title="Fazer inventário completo"
+                                >
+                                    <ClipboardList size={16}/> Inventário
+                                </button>
+                            )}
+                            
+                            {onOpenWastageModal && (
+                                <button
+                                    onClick={onOpenWastageModal}
+                                    className="px-4 py-3 bg-red-600 text-white rounded-2xl font-black uppercase text-[10px] shadow-lg flex items-center gap-2 hover:bg-red-700 transition-all border-b-4 border-red-800"
+                                    title="Registrar avarias/perdas"
+                                >
+                                    <AlertTriangle size={16}/> Avarias
+                                </button>
+                            )}
+                        </>
+                    )}
+                </div>
             </div>
  
             <div className="bg-white rounded-[40px] shadow-xl border border-gray-100 overflow-hidden">

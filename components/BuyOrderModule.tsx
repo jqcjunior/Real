@@ -318,21 +318,83 @@ export default function BuyOrderModule({ user }: { user?: User }) {
         if (sErr) throw sErr;
       }
 
-      // 6. Atualizar totais do pedido principal (buy_orders)
+      // 6. Atualizar totais do pedido principal (buy_orders) e processar cotas
       let totalParesGeral = 0;
       let totalValorBrutoGeral = 0;
+      
+      const transactionsToInsert: any[] = [];
+      const fatFimDate = cab.fat_fim ? new Date(cab.fat_fim + 'T00:00:00') : new Date();
+      const quotaMonth = fatFimDate.getMonth() + 1;
+      const quotaYear = fatFimDate.getFullYear();
+
+      // Identificar tipo de comprador baseado no role
+      const roleUpper = (user?.role || 'COMPRADOR').toUpperCase();
+      const tipoComprador: 'GERENTE' | 'COMPRADOR' = (roleUpper === 'GERENTE' || roleUpper === 'MANAGER') ? 'GERENTE' : 'COMPRADOR';
+
+      // 6.1 Buscar IDs de controle de cota para as lojas envolvidas
+      const allStoreNums = Array.from(new Set(pedidos.flatMap(p => p.lojas)));
+      const { data: qcData } = await supabase
+        .from('buyorder_quota_control')
+        .select('id, store_number')
+        .eq('year', quotaYear)
+        .eq('month', quotaMonth)
+        .in('store_number', allStoreNums);
+
       pedidos.forEach(ped => {
+        let valorBrutoPedido = 0;
         ped.itensComGrades.forEach(icg => {
           const item = items[icg.itemIdx];
           icg.grades.forEach(g => {
-            const pairs = totPares(g.qtds) * ped.lojas.length;
-            totalParesGeral += pairs;
-            totalValorBrutoGeral += pairs * item.custo;
+            const pairsForItems = totPares(g.qtds);
+            const pairsTotal = pairsForItems * ped.lojas.length;
+            totalParesGeral += pairsTotal;
+            totalValorBrutoGeral += pairsTotal * item.custo;
+            valorBrutoPedido += pairsForItems * item.custo;
           });
         });
+
+        const valorLiquidoSub = valorBrutoPedido * (1 - (cab.desconto || 0) / 100);
+        
+        // Calcular valor abatido por parcela
+        const parcelasCount = vencimentos.length > 0 ? vencimentos.length : 1;
+        const valorPorParcela = valorLiquidoSub / parcelasCount;
+
+        // Registrar transação de cota para cada loja deste sub-pedido (dividido pelos vencimentos)
+        ped.lojas.forEach(storeNum => {
+          const qc = qcData?.find(q => q.store_number === storeNum);
+          if (qc) {
+            if (vencimentos.length > 0) {
+              vencimentos.forEach((vencData, idx) => {
+                transactionsToInsert.push({
+                  quota_control_id: qc.id,
+                  order_id: orderId,
+                  valor_abatido: valorPorParcela,
+                  tipo_comprador: tipoComprador,
+                  vencimento_data: vencData,
+                  aplicado: false, // O abate ocorre apenas no vencimento
+                  descricao: `Pedido ${cab.marca} - Sub ${ped.num} (Parc. ${idx + 1}/${parcelasCount})`
+                });
+              });
+            } else {
+              transactionsToInsert.push({
+                quota_control_id: qc.id,
+                order_id: orderId,
+                valor_abatido: valorPorParcela,
+                tipo_comprador: tipoComprador,
+                vencimento_data: new Date().toISOString().split('T')[0],
+                aplicado: false,
+                descricao: `Pedido ${cab.marca} - Sub ${ped.num}`
+              });
+            }
+          } else {
+            console.warn(`Controle de cota não encontrado para loja ${storeNum} em ${quotaMonth}/${quotaYear}. Tente inicializar cotas.`);
+          }
+        });
       });
+
       const totalValorLiquidoGeral = totalValorBrutoGeral * (1 - (cab.desconto || 0) / 100);
 
+      // Atualizar totais no pedido
       await supabase.from('buy_orders')
         .update({
           total_pares: totalParesGeral,
@@ -340,6 +402,14 @@ export default function BuyOrderModule({ user }: { user?: User }) {
           total_valor_liquido: totalValorLiquidoGeral
         })
         .eq('id', orderId);
+      
+      // 7. Inserir transações de cota
+      if (transactionsToInsert.length > 0) {
+        const { error: transErr } = await supabase.from('buyorder_quota_transactions').insert(transactionsToInsert);
+        if (transErr) {
+          console.error("Erro ao registrar transações de cota:", transErr);
+        }
+      }
  
       alert(`Pedido salvo com sucesso! Nº será gerado automaticamente.`);
       // Reset

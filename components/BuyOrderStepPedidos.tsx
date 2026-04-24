@@ -39,7 +39,7 @@ interface SubOrder {
 const SUBGRUPO = [5,8,9,26,31,34,40,43,44,45,50,56,72,88,96,100,102,109];
 const ALL_LOJAS = Array.from({ length: 120 }, (_, i) => i + 1);
 const GRADE_LETTERS = 'ABCDEFGH';
- 
+
 const CATS: Record<string, { label: string; sizes: string[] }> = {
   MASC:  { label: 'Masc',  sizes: [37,38,39,40,41,42,43,44,45,46,47,48].map(String) },
   FEM:   { label: 'Fem',   sizes: [33,34,35,36,37,38,39,40,41,42].map(String) },
@@ -406,8 +406,13 @@ export default function StepPedidos({ items, pedidos, setPedidos, user, brandId,
                       <div className="text-[9px] text-slate-600">
                         {item.tipo} · {item.modelo}
                       </div>
-                      <div className="text-xs font-bold text-green-700">
-                        {fmtBRL(item.preco_venda)}
+                      <div className="flex items-center gap-2">
+                        <div className="text-[10px] font-bold text-green-700">
+                          Custo: {fmtBRL(item.custo * (1 - (cab.desconto || 0) / 100))}
+                        </div>
+                        <div className="text-[8px] text-slate-400 line-through">
+                          {fmtBRL(item.preco_venda)}
+                        </div>
                       </div>
                     </div>
                   </div>
