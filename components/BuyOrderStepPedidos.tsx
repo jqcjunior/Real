@@ -1,21 +1,21 @@
-import React, { useState, useEffect, Dispatch, SetStateAction } from 'react';
+import React, { useState, useEffect, useRef, Dispatch, SetStateAction } from 'react';
 import { supabase } from '../services/supabaseClient';
 import { User } from '../types';
 
 // ─── Tipos ────────────────────────────────────────────────────────────────────
  
-interface GradeItem {
+export interface GradeItem {
   letter: string;
   cat: 'MASC' | 'FEM' | 'INF' | 'ACESS';
   qtds: Record<string, number>;
 }
  
-interface ItemComGrades {
+export interface ItemComGrades {
   itemIdx: number;
   grades: GradeItem[];
 }
  
-interface OrderItem {
+export interface OrderItem {
   ref: string;
   tipo: string;
   cor1: string;
@@ -26,12 +26,30 @@ interface OrderItem {
   preco_venda: number;
 }
  
-interface SubOrder {
+export interface SubOrder {
   num: number;
   pedido_numero: string;
   itensComGrades: ItemComGrades[];
   lojas: number[];
   lojaMode: 'sub' | 'all' | null;
+}
+
+export interface StoreRequirement {
+  categoria: string;
+  tamanhos_obrigatorios: number[];
+  mensagem: string;
+}
+
+export interface BrandRestriction {
+  lojas_proibidas_encontradas: number[];
+  mensagem_alerta: string;
+  tem_restricao: boolean;
+}
+ 
+export interface ProductRestriction {
+  lojas_proibidas_encontradas: number[];
+  mensagem_alerta: string;
+  tem_restricao: boolean;
 }
  
 // ─── Constantes ───────────────────────────────────────────────────────────────
@@ -77,7 +95,7 @@ function gerarNumeroPedido(): string {
  
 // ─── Props ────────────────────────────────────────────────────────────────────
  
-interface Cabecalho {
+export interface Cabecalho {
   role: 'comprador' | 'gerente';
   brand_id: string | null;
   marca: string;
@@ -99,23 +117,162 @@ interface StepPedidosProps {
   user?: User;
   brandId?: string; // Receber brandId do cabeçalho para evitar erro RLS
   cab: Cabecalho;
+  step2State: {
+    selectedItems: Set<number>;
+    tempPedidoItens: ItemComGrades[];
+    gradesGlobais: Record<string, { cat: string; qtds: Record<string, number> }>;
+    gradeExpandida: string | null;
+    selectedLojas: number[];
+    lojaMode: 'sub' | 'all' | null;
+  };
+  setStep2State: Dispatch<SetStateAction<any>>;
 }
   
 // ─── Componente Principal ─────────────────────────────────────────────────────
   
-export default function StepPedidos({ items, pedidos, setPedidos, user, brandId, cab }: StepPedidosProps) {
+export default function StepPedidos({ items, pedidos, setPedidos, user, brandId, cab, step2State, setStep2State }: StepPedidosProps) {
   const isGerente = user?.role === 'MANAGER';
   const userStoreId = user?.storeId ? parseInt(user.storeId) : null;
   
-  const [selectedItems, setSelectedItems] = useState<Set<number>>(new Set());
-  const [tempPedidoItens, setTempPedidoItens] = useState<ItemComGrades[]>([]);
-  // ✅ Grades persistentes globais (A-H)
-  const [gradesGlobais, setGradesGlobais] = useState<Record<string, { cat: string; qtds: Record<string, number> }>>({});
-  const [gradeExpandida, setGradeExpandida] = useState<string | null>(null);
-  const [selectedLojas, setSelectedLojas] = useState<number[]>([]);
-  const [lojaMode, setLojaMode] = useState<'sub' | 'all' | null>(null);
+  const {
+    selectedItems,
+    tempPedidoItens,
+    gradesGlobais,
+    gradeExpandida,
+    selectedLojas,
+    lojaMode
+  } = step2State;
+  
   const [isMobile, setIsMobile] = useState(false);
   const [editingPedido, setEditingPedido] = useState<number | null>(null);
+
+  const [storeRequirements, setStoreRequirements] = useState<StoreRequirement[]>([]);
+  const [brandRestriction, setBrandRestriction] = useState<BrandRestriction | null>(null);
+  const [productRestrictions, setProductRestrictions] = useState<ProductRestriction[]>([]);
+
+  useEffect(() => {
+    async function fetchRequirements() {
+      if (selectedLojas.length === 0) {
+        setStoreRequirements([]);
+        return;
+      }
+      
+      const allRequirements: StoreRequirement[] = [];
+      
+      // Para cada loja selecionada, buscar requisitos
+      for (const lojaId of selectedLojas) {
+        const { data, error } = await supabase.rpc('check_store_requirements', {
+          p_store_id: lojaId,
+          p_categoria: 'TODOS' // Por enquanto, buscar todos
+        });
+        
+        if (data && data.length > 0) {
+          allRequirements.push(...data);
+        }
+      }
+      
+      setStoreRequirements(allRequirements);
+    }
+    
+    fetchRequirements();
+  }, [selectedLojas]);
+
+  useEffect(() => {
+    async function fetchBrandRestrictions() {
+      if (selectedLojas.length === 0) {
+        setBrandRestriction(null);
+        return;
+      }
+      
+      // Pegar marca do cabeçalho do pedido
+      const marca = cab.marca;
+      
+      if (!marca) {
+        setBrandRestriction(null);
+        return;
+      }
+      
+      const { data, error } = await supabase.rpc('check_brand_restrictions', {
+        p_marca: marca,
+        p_lojas_selecionadas: selectedLojas
+      });
+      
+      if (data && data.length > 0) {
+        const resultado = data[0];
+        if (resultado.tem_restricao) {
+          setBrandRestriction(resultado);
+        } else {
+          setBrandRestriction(null);
+        }
+      }
+    }
+    
+    fetchBrandRestrictions();
+  }, [selectedLojas, cab.marca]);
+
+  // ═══════════════════════════════════════════════════════════════
+  // 3. Buscar restrições de PRODUTO quando itens/lojas mudarem (NOVO!)
+  // ═══════════════════════════════════════════════════════════════
+  useEffect(() => {
+    async function fetchProductRestrictions() {
+      if (selectedLojas.length === 0 || selectedItems.size === 0) {
+        setProductRestrictions([]);
+        return;
+      }
+      
+      const allRestrictions: ProductRestriction[] = [];
+      
+      // Para cada item selecionado, verificar se há restrição
+      for (const itemIdx of Array.from(selectedItems)) {
+        const item = items[itemIdx as number];
+        if (!item || !item.tipo) continue;
+        
+        const { data, error } = await supabase.rpc('check_product_restrictions', {
+          p_tipo_produto: item.tipo,
+          p_lojas_selecionadas: selectedLojas
+        });
+        
+        if (data && data.length > 0) {
+          const resultado = data[0];
+          if (resultado.tem_restricao) {
+            allRestrictions.push(resultado);
+          }
+        }
+      }
+      
+      setProductRestrictions(allRestrictions);
+    }
+    
+    fetchProductRestrictions();
+  }, [selectedLojas, selectedItems, items]);
+
+  const inputRefs = useRef<Record<string, HTMLInputElement | null>>({});
+
+  function handleGradeKeyDown(
+    e: React.KeyboardEvent, 
+    currentSize: string, 
+    allSizes: string[]
+  ) {
+    if (!gradeExpandida) return;
+    
+    const currentIdx = allSizes.indexOf(currentSize);
+    let nextIdx = -1;
+
+    if (e.key === 'ArrowRight' || e.key === 'ArrowDown') {
+      nextIdx = currentIdx + 1;
+    } else if (e.key === 'ArrowLeft' || e.key === 'ArrowUp') {
+      nextIdx = currentIdx - 1;
+    } else if (e.key === 'Enter') {
+      nextIdx = currentIdx + 1; // ENTER também avança
+    }
+
+    if (nextIdx >= 0 && nextIdx < allSizes.length) {
+      e.preventDefault();
+      const nextKey = `${gradeExpandida}-${allSizes[nextIdx]}`;
+      inputRefs.current[nextKey]?.focus();
+      inputRefs.current[nextKey]?.select();
+    }
+  }
  
   useEffect(() => {
     const checkMobile = () => setIsMobile(window.innerWidth < 768);
@@ -138,14 +295,14 @@ export default function StepPedidos({ items, pedidos, setPedidos, user, brandId,
   }, [pedidos.length, isGerente, userStoreId, setPedidos]);
  
   function toggleItem(itemIdx: number) {
-    setSelectedItems(prev => {
-      const next = new Set(prev);
+    setStep2State((prev: any) => {
+      const next = new Set(prev.selectedItems);
       if (next.has(itemIdx)) {
         next.delete(itemIdx);
       } else {
         next.add(itemIdx);
       }
-      return next;
+      return { ...prev, selectedItems: next };
     });
   }
  
@@ -156,14 +313,17 @@ export default function StepPedidos({ items, pedidos, setPedidos, user, brandId,
       const firstItemIdx = Array.from(selectedItems)[0] ?? 0;
       const initialCat = (items[firstItemIdx]?.modelo || 'MASC') as any;
       
-      setGradesGlobais(prev => ({
+      setStep2State((prev: any) => ({
         ...prev,
-        [proxima]: {
-          cat: initialCat,
-          qtds: {}
-        }
+        gradesGlobais: {
+          ...prev.gradesGlobais,
+          [proxima]: {
+            cat: initialCat,
+            qtds: {}
+          }
+        },
+        gradeExpandida: proxima
       }));
-      setGradeExpandida(proxima);
     }
   }
  
@@ -212,10 +372,11 @@ export default function StepPedidos({ items, pedidos, setPedidos, user, brandId,
       alert(`A grade ${gradeExpandida} já foi vinculada para: ${itensJaVinculados.join(', ')}`);
     }
 
-    setTempPedidoItens(updatedTempItens);
-    
-    // Resetar seleção de items para facilitar o próximo
-    setSelectedItems(new Set());
+    setStep2State((prev: any) => ({
+      ...prev,
+      tempPedidoItens: updatedTempItens,
+      selectedItems: new Set()
+    }));
     // MANTER gradeExpandida para que o usuário veja o que acabou de vincular e possa reutilizar
   }
  
@@ -242,8 +403,8 @@ export default function StepPedidos({ items, pedidos, setPedidos, user, brandId,
     }]);
  
     // Limpar pedido temporário
-    setTempPedidoItens([]);
-    setSelectedItems(new Set());
+    setStep2State((prev: any) => ({ ...prev, tempPedidoItens: [] }));
+    setStep2State((prev: any) => ({ ...prev, selectedItems: new Set() }));
   }
  
   function delPedido(idx: number) {
@@ -253,15 +414,18 @@ export default function StepPedidos({ items, pedidos, setPedidos, user, brandId,
   function setGradeQtd(size: string, qtd: number) {
     if (!gradeExpandida || !gradesGlobais[gradeExpandida]) return;
     
-    setGradesGlobais(prev => {
-      const current = prev[gradeExpandida];
+    setStep2State((prev: any) => {
+      const current = prev.gradesGlobais[gradeExpandida];
       return {
         ...prev,
-        [gradeExpandida]: {
-          ...current,
-          qtds: {
-            ...current.qtds,
-            [size]: Math.max(0, qtd)
+        gradesGlobais: {
+          ...prev.gradesGlobais,
+          [gradeExpandida]: {
+            ...current,
+            qtds: {
+              ...current.qtds,
+              [size]: Math.max(0, qtd)
+            }
           }
         }
       };
@@ -269,19 +433,19 @@ export default function StepPedidos({ items, pedidos, setPedidos, user, brandId,
   }
  
   function toggleLoja(n: number) {
-    setSelectedLojas(prev => 
-      prev.includes(n) ? prev.filter(x => x !== n) : [...prev, n]
-    );
+    setStep2State((prev: any) => ({
+      ...prev,
+      selectedLojas: prev.selectedLojas.includes(n) ? prev.selectedLojas.filter((x: number) => x !== n) : [...prev.selectedLojas, n]
+    }));
   }
  
   function selectLojaMode(mode: 'sub' | 'all') {
     if (lojaMode === mode) {
       // Se já está ativo, desativa
-      setLojaMode(null);
-      setSelectedLojas([]);
+      setStep2State((prev: any) => ({ ...prev, lojaMode: null, selectedLojas: [] }));
     } else {
       // Ativa o modo MAS NÃO pré-seleciona as lojas
-      setLojaMode(mode);
+      setStep2State((prev: any) => ({ ...prev, lojaMode: mode }));
       // REMOVIDO: setSelectedLojas(...) - usuário escolhe manualmente
     }
   }
@@ -346,7 +510,7 @@ export default function StepPedidos({ items, pedidos, setPedidos, user, brandId,
         </p>
       </div>
  
-      <div className={`grid ${isMobile ? 'grid-cols-1 gap-4' : 'grid-cols-4 gap-0'} bg-white border border-slate-200 rounded-b-lg overflow-hidden`}>
+      <div className={`grid ${isMobile ? 'grid-cols-1 gap-4' : isGerente ? 'grid-cols-3 gap-0' : 'grid-cols-4 gap-0'} bg-white border border-slate-200 rounded-b-lg overflow-hidden`}>
         
         {/* COLUNA 1: ITENS */}
         <div className={`p-3 ${!isMobile && 'border-r border-slate-200'} bg-slate-50`}>
@@ -358,18 +522,18 @@ export default function StepPedidos({ items, pedidos, setPedidos, user, brandId,
           {/* Botões Selecionar/Desmarcar Todos */}
           <div className="flex gap-1.5 mb-2">
             <button
-              onClick={() => setSelectedItems(new Set(items.map((_, idx) => idx)))}
+              onClick={() => setStep2State((prev: any) => ({ ...prev, selectedItems: new Set(items.map((_, idx) => idx)) }))}
               className="flex-1 px-2 py-1 text-[8px] font-bold bg-blue-600 text-white rounded-md hover:bg-blue-700 transition-colors shadow-sm active:scale-95">
               ✓ Todos
             </button>
             <button
-              onClick={() => setSelectedItems(new Set())}
+              onClick={() => setStep2State((prev: any) => ({ ...prev, selectedItems: new Set() }))}
               className="flex-1 px-2 py-1 text-[8px] font-bold bg-slate-400 text-white rounded-md hover:bg-slate-500 transition-colors shadow-sm active:scale-95">
               ✕ Limpar
             </button>
           </div>
  
-          <div className="space-y-2 max-h-[500px] overflow-y-auto">
+          <div className={`${isGerente ? 'grid grid-cols-2 gap-2' : 'space-y-2'} max-h-[500px] overflow-y-auto`}>
             {items.map((item, idx) => {
               const isSelected = selectedItems.has(idx);
               const jaVinculado = tempPedidoItens.some(icg => icg.itemIdx === idx);
@@ -392,18 +556,18 @@ export default function StepPedidos({ items, pedidos, setPedidos, user, brandId,
                       onChange={() => {}}
                       className="mt-0.5"
                     />
-                    <div className="flex-1">
+                    <div className="flex-1 min-w-0">
                       <div className="flex items-center gap-2">
-                        <div className="text-xs font-bold text-slate-800">
+                        <div className="text-xs font-bold text-slate-800 truncate">
                           {item.ref}
                         </div>
                         {jaVinculado && (
-                          <span className="bg-green-600 text-white text-[7px] font-bold px-1.5 py-0.5 rounded uppercase">
+                          <span className="bg-green-600 text-white text-[7px] font-bold px-1.5 py-0.5 rounded uppercase shrink-0">
                             Vinculado
                           </span>
                         )}
                       </div>
-                      <div className="text-[9px] text-slate-600">
+                      <div className="text-[9px] text-slate-600 truncate">
                         {item.tipo} · {item.modelo}
                       </div>
                       <div className="flex items-center gap-2">
@@ -457,7 +621,7 @@ export default function StepPedidos({ items, pedidos, setPedidos, user, brandId,
                     {/* Header da Grade (sempre visível) */}
                     <div 
                       className="flex items-center gap-2 cursor-pointer"
-                      onClick={() => setGradeExpandida(isExpanded ? null : letter)}>
+                      onClick={() => setStep2State((prev: any) => ({ ...prev, gradeExpandida: isExpanded ? null : letter }))}>
                       <div className="w-6 h-6 bg-blue-600 text-white rounded font-bold flex items-center justify-center text-xs">
                         {letter}
                       </div>
@@ -488,12 +652,15 @@ export default function StepPedidos({ items, pedidos, setPedidos, user, brandId,
                               <button
                                 key={k}
                                 onClick={() => {
-                                  setGradesGlobais(prev => ({
+                                  setStep2State((prev: any) => ({
                                     ...prev,
-                                    [letter]: {
-                                      ...prev[letter],
-                                      cat: k as any,
-                                      qtds: {}
+                                    gradesGlobais: {
+                                      ...prev.gradesGlobais,
+                                      [letter]: {
+                                        ...prev.gradesGlobais[letter],
+                                        cat: k as any,
+                                        qtds: {}
+                                      }
                                     }
                                   }));
                                 }}
@@ -535,10 +702,12 @@ export default function StepPedidos({ items, pedidos, setPedidos, user, brandId,
                                 ) : (
                                   // Desktop: Input
                                   <input
+                                    ref={(el) => { inputRefs.current[`${letter}-${sz}`] = el; }}
                                     type="number"
                                     min={0}
                                     value={qtd || ''}
                                     onChange={e => setGradeQtd(sz, parseInt(e.target.value) || 0)}
+                                    onKeyDown={(e) => handleGradeKeyDown(e, sz, sizes)}
                                     className={`w-full h-6 text-center text-[10px] border rounded ${
                                       qtd > 0
                                         ? 'bg-green-50 border-green-300 text-green-700 font-bold'
@@ -550,14 +719,15 @@ export default function StepPedidos({ items, pedidos, setPedidos, user, brandId,
                             );
                           })}
                         </div>
- 
-                        <button
-                          onClick={vincularAoPedido}
-                          className="mt-2 w-full px-2 py-1 bg-blue-600 text-white text-[9px] font-bold rounded hover:bg-blue-700">
-                          ✓ Vincular
-                        </button>
                       </div>
                     )}
+                      
+                    <button
+                        onClick={vincularAoPedido}
+                        disabled={!isExpanded || totalPares === 0}
+                        className="mt-2 w-full px-2 py-1 bg-blue-600 text-white text-[9px] font-bold rounded hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed">
+                        ✓ Vincular Grade {letter}
+                      </button>
                   </div>
                 );
               })}
@@ -566,77 +736,171 @@ export default function StepPedidos({ items, pedidos, setPedidos, user, brandId,
         </div>
  
         {/* COLUNA 3: LOJAS */}
-        <div className={`p-3 ${!isMobile && 'border-r border-slate-200'} bg-slate-50`}>
-          <div className="flex items-center gap-2 mb-3">
-            <span className="bg-blue-600 text-white w-6 h-6 rounded-full flex items-center justify-center text-xs font-bold">3</span>
-            <h4 className="text-xs font-bold text-slate-700 uppercase">Lojas</h4>
-          </div>
- 
-          {isGerente ? (
-            <div className="flex items-center gap-2 bg-blue-50 border border-blue-200 p-2 rounded-lg">
-              <div className="w-10 h-10 flex items-center justify-center bg-blue-600 text-white rounded-lg font-bold">
-                {userStoreId}
-              </div>
-              <div>
-                <div className="text-xs font-bold text-blue-900">Sua Loja</div>
-                <div className="text-[9px] text-blue-600">Automático</div>
-              </div>
+        {!isGerente && (
+          <div className={`p-3 ${!isMobile && 'border-r border-slate-200'} bg-slate-50`}>
+            <div className="flex items-center gap-2 mb-3">
+              <span className="bg-blue-600 text-white w-6 h-6 rounded-full flex items-center justify-center text-xs font-bold">3</span>
+              <h4 className="text-xs font-bold text-slate-700 uppercase">Lojas</h4>
             </div>
-          ) : (
-            <>
-              <div className="flex gap-2 mb-2">
-                <button
-                  onClick={() => selectLojaMode('sub')}
-                  className={`px-2 py-1 text-[10px] rounded font-medium ${
-                    lojaMode === 'sub'
-                      ? 'bg-blue-600 text-white'
-                      : 'bg-white border border-slate-300 text-slate-600'
-                  }`}>
-                  Sub
-                </button>
-                <button
-                  onClick={() => selectLojaMode('all')}
-                  className={`px-2 py-1 text-[10px] rounded font-medium ${
-                    lojaMode === 'all'
-                      ? 'bg-blue-600 text-white'
-                      : 'bg-white border border-slate-300 text-slate-600'
-                  }`}>
-                  Todas
-                </button>
-                <span className="text-[9px] text-slate-500 self-center ml-auto">
-                  {selectedLojas.length} sel.
-                </span>
-              </div>
- 
-              {pool.length > 0 && (
-                <div className="max-h-[400px] overflow-y-auto">
-                  <div className="flex flex-wrap gap-1.5">
-                    {pool.map(n => (
-                      <div
-                        key={n}
-                        onClick={() => toggleLoja(n)}
-                        className={`w-9 h-9 flex items-center justify-center text-[10px] font-bold rounded border cursor-pointer ${
-                          selectedLojas.includes(n)
-                            ? 'bg-blue-600 text-white border-blue-600'
-                            : 'bg-white border-slate-200 text-slate-500'
-                        }`}>
-                        {n}
-                      </div>
-                    ))}
-                  </div>
+  
+            <div className="flex gap-2 mb-2">
+              <button
+                onClick={() => selectLojaMode('sub')}
+                className={`px-2 py-1 text-[10px] rounded font-medium ${
+                  lojaMode === 'sub'
+                    ? 'bg-blue-600 text-white'
+                    : 'bg-white border border-slate-300 text-slate-600'
+                }`}>
+                Sub
+              </button>
+              <button
+                onClick={() => selectLojaMode('all')}
+                className={`px-2 py-1 text-[10px] rounded font-medium ${
+                  lojaMode === 'all'
+                    ? 'bg-blue-600 text-white'
+                    : 'bg-white border border-slate-300 text-slate-600'
+                }`}>
+                Todas
+              </button>
+              <span className="text-[9px] text-slate-500 self-center ml-auto">
+                {selectedLojas.length} sel.
+              </span>
+            </div>
+
+            {pool.length > 0 && (
+              <div className="max-h-[400px] overflow-y-auto">
+                <div className="flex flex-wrap gap-1.5">
+                  {pool.map(n => (
+                    <div
+                      key={n}
+                      onClick={() => toggleLoja(n)}
+                      className={`w-9 h-9 flex items-center justify-center text-[10px] font-bold rounded border cursor-pointer ${
+                        selectedLojas.includes(n)
+                          ? 'bg-blue-600 text-white border-blue-600'
+                          : 'bg-white border-slate-200 text-slate-500'
+                      }`}>
+                      {n}
+                    </div>
+                  ))}
                 </div>
-              )}
-            </>
-          )}
-        </div>
+              </div>
+            )}
+
+            {/* ⚠️ ALERTAS: RESTRIÇÕES DE MARCA/PRODUTO E REQUISITOS DE GRADE */}
+            {(brandRestriction || productRestrictions.length > 0 || storeRequirements.length > 0) && (
+              <div className="mt-3 space-y-2">
+                
+                {/* ALERTA DE RESTRIÇÃO DE MARCA (VERMELHO ESCURO) */}
+                {brandRestriction && (
+                  <div className="p-3 bg-red-50 border-2 border-red-500 rounded-lg">
+                    <div className="flex items-center gap-2 mb-2">
+                      <span className="text-red-600 text-xl">⛔</span>
+                      <h5 className="text-xs font-bold text-red-900 uppercase">
+                        Atenção: Restrição de Marca
+                      </h5>
+                    </div>
+                    
+                    <div className="bg-white rounded p-2 border border-red-300">
+                      <div className="flex items-start gap-2">
+                        <span className="text-red-600 text-lg">🚫</span>
+                        <div className="flex-1">
+                          <div className="text-xs font-bold text-red-900">
+                            {brandRestriction.mensagem_alerta}
+                          </div>
+                          <div className="text-[10px] text-red-700 mt-1">
+                            Lojas selecionadas com restrição: {brandRestriction.lojas_proibidas_encontradas.join(', ')}
+                          </div>
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+                )}
+                
+                {/* ALERTA DE RESTRIÇÃO DE PRODUTO (VERMELHO CLARO) */}
+                {productRestrictions.length > 0 && (
+                  <div className="p-3 bg-orange-50 border-2 border-orange-400 rounded-lg">
+                    <div className="flex items-center gap-2 mb-2">
+                      <span className="text-orange-600 text-xl">⚠️</span>
+                      <h5 className="text-xs font-bold text-orange-900 uppercase">
+                        Atenção: Produto Não Vendido
+                      </h5>
+                    </div>
+                    
+                    <div className="space-y-2">
+                      {productRestrictions.map((res, idx) => (
+                        <div key={idx} className="bg-white rounded p-2 border border-orange-300">
+                          <div className="flex items-start gap-2">
+                            <span className="text-orange-600 text-lg">🚫</span>
+                            <div className="flex-1">
+                              <div className="text-xs font-bold text-orange-900">
+                                {res.mensagem_alerta}
+                              </div>
+                              <div className="text-[10px] text-orange-700 mt-1">
+                                Lojas selecionadas: {res.lojas_proibidas_encontradas.join(', ')}
+                              </div>
+                            </div>
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                )}
+                
+                {/* ALERTA DE REQUISITOS DE GRADE (AMARELO) */}
+                {storeRequirements.length > 0 && (
+                  <div className="p-3 bg-amber-50 border border-amber-300 rounded-lg">
+                    <div className="flex items-center gap-2 mb-2">
+                      <span className="text-amber-600 text-lg">⚠️</span>
+                      <h5 className="text-xs font-bold text-amber-900 uppercase">
+                        Atenção: Requisitos de Grade
+                      </h5>
+                    </div>
+                    
+                    <div className="space-y-2">
+                      {storeRequirements.map((req, idx) => (
+                        <div key={idx} className="bg-white rounded p-2 border border-amber-200">
+                          <div className="flex items-start gap-2">
+                            <span className="text-amber-600">📍</span>
+                            <div className="flex-1">
+                              <div className="text-xs font-bold text-amber-900">
+                                {req.mensagem}
+                              </div>
+                              <div className="text-[10px] text-amber-700 mt-1">
+                                Tamanhos obrigatórios: {req.tamanhos_obrigatorios.join(', ')}
+                              </div>
+                            </div>
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                )}
+                
+              </div>
+            )}
+          </div>
+        )}
  
         {/* COLUNA 4: FINALIZAÇÃO COM LISTA DE PEDIDOS */}
         <div className="p-3 flex flex-col">
           <div className="flex items-center gap-2 mb-3">
-            <span className="bg-green-600 text-white w-6 h-6 rounded-full flex items-center justify-center text-xs font-bold">4</span>
+            <span className="bg-green-600 text-white w-6 h-6 rounded-full flex items-center justify-center text-xs font-bold">{isGerente ? '3' : '4'}</span>
             <h4 className="text-xs font-bold text-slate-700 uppercase flex-1">Pedidos</h4>
           </div>
- 
+  
+          {/* Badge informativo para gerente */}
+          {isGerente && userStoreId && (
+            <div className="mb-3 bg-blue-50 border border-blue-200 rounded-lg p-2 flex items-center gap-2">
+              <div className="w-8 h-8 flex items-center justify-center bg-blue-600 text-white rounded font-bold text-sm">
+                {userStoreId}
+              </div>
+              <div className="flex-1">
+                <div className="text-[10px] font-bold text-blue-900">Sua Loja</div>
+                <div className="text-[8px] text-blue-600">Pedido automático</div>
+              </div>
+            </div>
+          )}
+
           {/* Pedido Temporário */}
           {tempPedidoItens.length > 0 && (
             <div className="bg-amber-50 border border-amber-300 rounded-lg p-2 mb-3">

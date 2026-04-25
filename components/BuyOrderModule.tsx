@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useRef, useCallback, Dispatch, SetStateAction } from 'react';
 import { supabase } from '../services/supabaseClient';
 import { User } from '../types';
-import StepPedidos from './BuyOrderStepPedidos';
+import StepPedidos, { GradeItem, ItemComGrades, OrderItem, SubOrder, Cabecalho } from './BuyOrderStepPedidos';
 
 // ─── Tipos ────────────────────────────────────────────────────────────────────
  
@@ -12,51 +12,6 @@ interface Brand {
   representante: string;
   telefone: string;
   email: string;
-}
- 
-interface GradeItem {
-  letter: string;
-  cat: 'MASC' | 'FEM' | 'INF' | 'ACESS';
-  qtds: Record<string, number>;
-}
- 
-interface ItemComGrades {
-  itemIdx: number;
-  grades: GradeItem[];
-}
-
-interface OrderItem {
-  ref: string;
-  tipo: string;
-  cor1: string;
-  cor2: string;
-  cor3: string;
-  modelo: string;
-  custo: number;
-  preco_venda: number;
-}
-
-interface SubOrder {
-  num: number;
-  pedido_numero: string;
-  itensComGrades: ItemComGrades[];
-  lojas: number[];
-  lojaMode: 'sub' | 'all' | null;
-}
- 
-interface Cabecalho {
-  role: 'comprador' | 'gerente';
-  brand_id: string | null;
-  marca: string;
-  fornecedor: string;
-  representante: string;
-  telefone: string;
-  email: string;
-  fat_inicio: string;
-  fat_fim: string;
-  prazos: number[];
-  markup: number;
-  desconto: number;
 }
  
 // ─── Constantes ───────────────────────────────────────────────────────────────
@@ -85,16 +40,37 @@ function addDays(dateStr: string, days: number): string {
   return d.toLocaleDateString('pt-BR');
 }
  
-function calcPrecoVenda(custo: number, desconto: number, markup: number): number {
-  const liq = custo * (1 - desconto / 100);
-  if (liq <= 0 || markup <= 0) return 0;
-  
-  const bruto = liq * markup;
-  const brutoMais10 = bruto + 10;
-  const dezena = Math.ceil(brutoMais10 / 10);
-  const precoFinal = (dezena * 10) - 0.01;
-  
-  return Math.round(precoFinal * 100) / 100;
+function useSmartPrice(custo: number, desconto: number, markup: number): number {
+  const [preco, setPreco] = useState(0);
+
+  useEffect(() => {
+    let active = true;
+    const liq = custo * (1 - (desconto || 0) / 100);
+    const bruto = liq * (markup || 0);
+
+    if (bruto <= 0) {
+      setPreco(0);
+      return;
+    }
+
+    const timer = setTimeout(async () => {
+      try {
+        const { data, error } = await supabase.rpc('round_price_smart', { preco_calculado: Math.round(bruto * 100) / 100 });
+        if (!error && active && data != null) {
+          setPreco(data);
+        }
+      } catch (err) {
+        console.error(err);
+      }
+    }, 300);
+
+    return () => {
+      active = false;
+      clearTimeout(timer);
+    };
+  }, [custo, desconto, markup]);
+
+  return preco;
 }
  
 function fmtBRL(v: number): string {
@@ -138,6 +114,27 @@ export default function BuyOrderModule({ user }: { user?: User }) {
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState('');
   const [numeroPedidoSalvo, setNumeroPedidoSalvo] = useState<number | null>(null);
+  const [roundBase, setRoundBase] = useState(15.50);
+
+  const [step2State, setStep2State] = useState({
+    selectedItems: new Set<number>(),
+    tempPedidoItens: [] as ItemComGrades[],
+    gradesGlobais: {} as Record<string, { cat: string; qtds: Record<string, number> }>,
+    gradeExpandida: null as string | null,
+    selectedLojas: [] as number[],
+    lojaMode: null as 'sub' | 'all' | null
+  });
+
+  useEffect(() => {
+    supabase.from('pricing_round_parameters')
+      .select('round_base')
+      .maybeSingle()
+      .then(({ data, error }) => {
+        if (!error && data?.round_base != null) {
+          setRoundBase(Number(data.round_base));
+        }
+      });
+  }, []);
  
   const [recentOrders, setRecentOrders] = useState<any[]>([]);
  
@@ -320,8 +317,34 @@ export default function BuyOrderModule({ user }: { user?: User }) {
           row.total_pares = totalParesItem;
         });
 
-        const { error: iErr } = await supabase.from('buy_order_items').insert(itemRows);
+        const { data: insertedItems, error: iErr } = await supabase.from('buy_order_items').insert(itemRows).select('id, item_order');
         if (iErr) throw iErr;
+
+        // ✅ NOVO: Salvar qual grade o item usa em cada sub-pedido
+        const gradesSubPedidos: any[] = [];
+        
+        pedidos.forEach(ped => {
+          ped.itensComGrades.forEach(icg => {
+            const insertedItem = insertedItems.find(i => i.item_order === icg.itemIdx + 1);
+            if (!insertedItem) return;
+
+            icg.grades.forEach(g => {
+              gradesSubPedidos.push({
+                item_id: insertedItem.id,
+                sub_order_num: ped.num, // 1 a 5
+                grade_letra: g.letter   // 'A', 'B', etc.
+              });
+            });
+          });
+        });
+
+        if (gradesSubPedidos.length > 0) {
+          const { error: gsErr } = await supabase.from('buy_order_item_suborder_grades').insert(gradesSubPedidos);
+          if (gsErr) {
+            console.error('Erro ao salvar grade do sub-pedido:', gsErr);
+            throw gsErr;
+          }
+        }
       }
  
       // 5. Insert buy_order_sub_orders (um por pedido)
@@ -553,9 +576,9 @@ export default function BuyOrderModule({ user }: { user?: User }) {
         </div>
  
         {/* Corpo da etapa */}
-        {step === 0 && <StepCabecalho cab={cab} setCab={setCab} prazosRaw={prazosRaw} setPrazosRaw={setPrazosRaw} numeroPedidoSalvo={numeroPedidoSalvo} setNumeroPedidoSalvo={setNumeroPedidoSalvo} />}
-        {step === 1 && <StepItens items={items} setItems={setItems} cab={cab} />}
-        {step === 2 && <StepPedidos items={items} pedidos={pedidos} setPedidos={setPedidos} user={user} cab={cab} />}
+        {step === 0 && <StepCabecalho cab={cab} setCab={setCab} prazosRaw={prazosRaw} setPrazosRaw={setPrazosRaw} numeroPedidoSalvo={numeroPedidoSalvo} setNumeroPedidoSalvo={setNumeroPedidoSalvo} roundBase={roundBase} />}
+        {step === 1 && <StepItens items={items} setItems={setItems} cab={cab} roundBase={roundBase} />}
+        {step === 2 && <StepPedidos items={items} pedidos={pedidos} setPedidos={setPedidos} user={user} cab={cab} step2State={step2State} setStep2State={setStep2State} />}
  
         {/* Footer navegação */}
         {error && (
@@ -634,11 +657,12 @@ export default function BuyOrderModule({ user }: { user?: User }) {
 
 // ─── Step 0: Cabeçalho ────────────────────────────────────────────────────────
 
-function StepCabecalho({ cab, setCab, prazosRaw, setPrazosRaw, numeroPedidoSalvo, setNumeroPedidoSalvo }: {
+function StepCabecalho({ cab, setCab, prazosRaw, setPrazosRaw, numeroPedidoSalvo, setNumeroPedidoSalvo, roundBase }: {
   cab: Cabecalho; setCab: Dispatch<SetStateAction<Cabecalho>>;
   prazosRaw: string; setPrazosRaw: (s: string) => void;
   numeroPedidoSalvo: number | null;
   setNumeroPedidoSalvo: (n: number | null) => void;
+  roundBase: number;
 }) {
   const [brands, setBrands] = useState<Brand[]>([]);
   const [showDrop, setShowDrop] = useState(false);
@@ -652,21 +676,21 @@ function StepCabecalho({ cab, setCab, prazosRaw, setPrazosRaw, numeroPedidoSalvo
     
     if (field === 'marca' && numeroPedidoSalvo) setNumeroPedidoSalvo(null);
     
-    if (['marca', 'fornecedor', 'representante'].includes(field)) {
+    if (['marca', 'fornecedor', 'representante'].includes(field as string)) {
       if (uppercaseVal.length < 3) { setBrands([]); setShowDrop(false); return; }
       
       clearTimeout(searchTimer.current!);
       setSearching(true);
       setShowDrop(true);
-      setActiveSearchField(field);
+      setActiveSearchField(field as string);
       
       searchTimer.current = setTimeout(async () => {
         const { data } = await supabase
           .from('buy_brands')
           .select('id,marca,fornecedor,representante,telefone,email')
-          .ilike(field, `%${uppercaseVal}%`)
+          .ilike(field as string, `%${uppercaseVal}%`)
           .eq('is_active', true)
-          .order(field, { ascending: true })
+          .order(field as string, { ascending: true })
           .limit(8);
         setBrands(data ?? []);
         setSearching(false);
@@ -689,7 +713,7 @@ function StepCabecalho({ cab, setCab, prazosRaw, setPrazosRaw, numeroPedidoSalvo
   }
 
   const liq = 100 * (1 - (cab.desconto || 0) / 100);
-  const exVenda = calcPrecoVenda(100, cab.desconto, cab.markup);
+  const exVenda = useSmartPrice(100, cab.desconto, cab.markup);
 
   const inputStyle: React.CSSProperties = { height: 35, padding: '0 10px', border: '1px solid #d1d5db', borderRadius: 8, fontSize: 13, outline: 'none', width: '100%', background: 'var(--color-background-primary)', color: 'var(--color-text-primary)' };
   const labelStyle: React.CSSProperties = { fontSize: 11, fontWeight: 600, color: '#475569', textTransform: 'uppercase', letterSpacing: '0.04em', marginBottom: 4, display: 'block' };
@@ -842,7 +866,11 @@ function StepCabecalho({ cab, setCab, prazosRaw, setPrazosRaw, numeroPedidoSalvo
             <input type="number" min={1} max={10} step={0.01} value={cab.markup}
               onChange={e => setCab(c => ({ ...c, markup: parseFloat(e.target.value) || 0 }))} 
               className="w-full h-10 px-3 border border-slate-300 rounded-lg text-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none transition-all" />
-            <div style={{ fontSize: 10, color: '#94a3b8', marginTop: 3 }}>Fórmula: custo líquido × markup = preço venda</div>
+            <div style={{ fontSize: 10, color: '#94a3b8', marginTop: 3 }}>
+              Fórmula: custo líquido × markup = preço venda
+              <br/>
+              <span className="text-[9px]">(Base: Até X{String(roundBase).replace('.', ',')} → X19,99 | Acima → X29,99)</span>
+            </div>
           </div>
           <div>
             <label style={labelStyle}>Desconto do Fornecedor (%)</label>
@@ -883,12 +911,13 @@ function StepCabecalho({ cab, setCab, prazosRaw, setPrazosRaw, numeroPedidoSalvo
  
 // ─── Step 1: Itens ────────────────────────────────────────────────────────────
  
-function StepItens({ items, setItems, cab }: { items: OrderItem[]; setItems: Dispatch<SetStateAction<OrderItem[]>>; cab: Cabecalho }) {
+function StepItens({ items, setItems, cab, roundBase }: { items: OrderItem[]; setItems: Dispatch<SetStateAction<OrderItem[]>>; cab: Cabecalho; roundBase: number }) {
   const [showPopup, setShowPopup] = useState(false);
   const [editIdx, setEditIdx] = useState(-1);
   const [form, setForm] = useState({ ref: '', tipo: '', cor1: '', cor2: '', cor3: '', modelo: 'FEM', custo: '' });
   const [cor2Manual, setCor2Manual] = useState(false);
   const [cor3Manual, setCor3Manual] = useState(false);
+  const [isCalculating, setIsCalculating] = useState(false);
  
   const [tipoSuggestions, setTipoSuggestions] = useState<string[]>([]);
   const [showTipoDropdown, setShowTipoDropdown] = useState(false);
@@ -897,6 +926,22 @@ function StepItens({ items, setItems, cab }: { items: OrderItem[]; setItems: Dis
   
   const [isMobile, setIsMobile] = useState(false);
   const [selectedSuggestionIndex, setSelectedSuggestionIndex] = useState(-1);
+
+  const refInputRef = useRef<HTMLInputElement>(null);
+  const tipoInputRef = useRef<HTMLInputElement>(null);
+  const cor1InputRef = useRef<HTMLInputElement>(null);
+  const cor2InputRef = useRef<HTMLInputElement>(null);
+  const cor3InputRef = useRef<HTMLInputElement>(null);
+  const modeloInputRef = useRef<HTMLSelectElement>(null);
+  const custoInputRef = useRef<HTMLInputElement>(null);
+  const btnSalvarRef = useRef<HTMLButtonElement>(null);
+
+  function handleEnterKey(e: React.KeyboardEvent, nextRef: React.RefObject<any>, ignoreDropdown = false) {
+    if (e.key === 'Enter' && (ignoreDropdown || selectedSuggestionIndex === -1)) {
+      e.preventDefault();
+      nextRef.current?.focus();
+    }
+  }
 
   useEffect(() => {
     const checkDevice = () => {
@@ -969,9 +1014,18 @@ function StepItens({ items, setItems, cab }: { items: OrderItem[]; setItems: Dis
     setForm(f => ({ ...f, cor1: vu, cor2: cor2Manual ? f.cor2 : vu, cor3: cor3Manual ? f.cor3 : vu }));
   }
  
-  function saveItem() {
+  async function saveItem() {
+    setIsCalculating(true);
     const custo = parseFloat(form.custo) || 0;
-    const preco_venda = calcPrecoVenda(custo, cab.desconto, cab.markup);
+    const liq = custo * (1 - (cab.desconto || 0) / 100);
+    const bruto = liq * (cab.markup || 0);
+
+    let preco_venda = 0;
+    if (bruto > 0) {
+      const { data } = await supabase.rpc('round_price_smart', { preco_calculado: Math.round(bruto * 100) / 100 });
+      if (data != null) preco_venda = data;
+    }
+
     const item: OrderItem = { 
       ref: form.ref, 
       tipo: form.tipo, 
@@ -985,11 +1039,12 @@ function StepItens({ items, setItems, cab }: { items: OrderItem[]; setItems: Dis
     if (editIdx >= 0) setItems(its => its.map((it, i) => i === editIdx ? item : it));
     else setItems(its => [...its, item]);
     setShowPopup(false);
+    setIsCalculating(false);
   }
  
   function delItem(i: number) { setItems(its => its.filter((_, idx) => idx !== i)); }
  
-  const estVenda = calcPrecoVenda(parseFloat(form.custo) || 0, cab.desconto, cab.markup);
+  const estVenda = useSmartPrice(parseFloat(form.custo) || 0, cab.desconto, cab.markup);
  
   return (
     <div>
@@ -1049,13 +1104,14 @@ function StepItens({ items, setItems, cab }: { items: OrderItem[]; setItems: Dis
               {/* LINHA 1: Referência ocupa linha inteira */}
               <div style={{ marginBottom: 10 }}>
                 <label style={{ fontSize: 10, fontWeight: 500, color: '#6b7280', textTransform: 'uppercase', display: 'block', marginBottom: 3 }}>Referência *</label>
-                <input value={form.ref} onChange={e => setForm(f => ({ ...f, ref: e.target.value.toUpperCase() }))} placeholder="REF-001" style={{ height: 30, width: '100%', padding: '0 8px', border: '0.5px solid #d1d5db', borderRadius: 5, fontSize: 12, outline: 'none', textTransform: 'uppercase' }} autoFocus />
+                <input ref={refInputRef} onKeyDown={(e) => handleEnterKey(e, tipoInputRef, true)} value={form.ref} onChange={e => setForm(f => ({ ...f, ref: e.target.value.toUpperCase() }))} placeholder="REF-001" style={{ height: 30, width: '100%', padding: '0 8px', border: '0.5px solid #d1d5db', borderRadius: 5, fontSize: 12, outline: 'none', textTransform: 'uppercase' }} autoFocus />
               </div>
  
               {/* LINHA 2: Tipo com AUTOCOMPLETE */}
               <div style={{ marginBottom: 10, position: 'relative' }}>
                 <label style={{ fontSize: 10, fontWeight: 500, color: '#6b7280', textTransform: 'uppercase', display: 'block', marginBottom: 3 }}>Tipo</label>
                 <input 
+                  ref={tipoInputRef}
                   value={form.tipo}
                   onChange={e => { 
                     const v = e.target.value.toUpperCase();
@@ -1063,23 +1119,34 @@ function StepItens({ items, setItems, cab }: { items: OrderItem[]; setItems: Dis
                     searchTipos(v); 
                     setSelectedSuggestionIndex(-1);
                   }}
-                  onKeyDown={!isMobile ? (e) => {
-                    if (!showTipoDropdown || tipoSuggestions.length === 0) return;
-                    if (e.key === 'ArrowDown') {
-                      e.preventDefault();
-                      setSelectedSuggestionIndex(prev => prev < tipoSuggestions.length - 1 ? prev + 1 : prev);
-                    } else if (e.key === 'ArrowUp') {
-                      e.preventDefault();
-                      setSelectedSuggestionIndex(prev => prev > 0 ? prev - 1 : -1);
-                    } else if (e.key === 'Enter' && selectedSuggestionIndex >= 0) {
-                      e.preventDefault();
-                      selectTipo(tipoSuggestions[selectedSuggestionIndex]);
-                      setSelectedSuggestionIndex(-1);
-                    } else if (e.key === 'Escape') {
-                      setShowTipoDropdown(false);
-                      setSelectedSuggestionIndex(-1);
+                  onKeyDown={(e) => {
+                    if (isMobile) {
+                      handleEnterKey(e, cor1InputRef, true);
+                      return;
                     }
-                  } : undefined}
+                    if (showTipoDropdown && tipoSuggestions.length > 0) {
+                      if (e.key === 'ArrowDown') {
+                        e.preventDefault();
+                        setSelectedSuggestionIndex(prev => prev < tipoSuggestions.length - 1 ? prev + 1 : prev);
+                        return;
+                      } else if (e.key === 'ArrowUp') {
+                        e.preventDefault();
+                        setSelectedSuggestionIndex(prev => prev > 0 ? prev - 1 : -1);
+                        return;
+                      } else if (e.key === 'Enter' && selectedSuggestionIndex >= 0) {
+                        e.preventDefault();
+                        selectTipo(tipoSuggestions[selectedSuggestionIndex]);
+                        setSelectedSuggestionIndex(-1);
+                        cor1InputRef.current?.focus();
+                        return;
+                      } else if (e.key === 'Escape') {
+                        setShowTipoDropdown(false);
+                        setSelectedSuggestionIndex(-1);
+                        return;
+                      }
+                    }
+                    handleEnterKey(e, cor1InputRef);
+                  }}
                   onBlur={() => setTimeout(() => { setShowTipoDropdown(false); setSelectedSuggestionIndex(-1); }, 200)}
                   placeholder="Digite o tipo do produto"
                   style={{ height: 30, width: '100%', padding: '0 8px', border: '0.5px solid #d1d5db', borderRadius: 5, fontSize: 12, outline: 'none', textTransform: 'uppercase' }}
@@ -1113,32 +1180,44 @@ function StepItens({ items, setItems, cab }: { items: OrderItem[]; setItems: Dis
               </div>
               <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: 10, marginBottom: 10 }}>
                 {[
-                  { key: 'cor1', label: 'Cor 1 *', onChange: (v: string) => { const vu = v.toUpperCase(); onCor1(vu); searchCores(vu, 'cor1'); setSelectedSuggestionIndex(-1); } },
-                  { key: 'cor2', label: 'Cor 2', onChange: (v: string) => { const vu = v.toUpperCase(); setCor2Manual(true); setForm(f => ({ ...f, cor2: vu })); searchCores(vu, 'cor2'); setSelectedSuggestionIndex(-1); } },
-                  { key: 'cor3', label: 'Cor 3', onChange: (v: string) => { const vu = v.toUpperCase(); setCor3Manual(true); setForm(f => ({ ...f, cor3: vu })); searchCores(vu, 'cor3'); setSelectedSuggestionIndex(-1); } },
+                  { key: 'cor1', label: 'Cor 1 *', ref: cor1InputRef, nextRef: cor2InputRef, onChange: (v: string) => { const vu = v.toUpperCase(); onCor1(vu); searchCores(vu, 'cor1'); setSelectedSuggestionIndex(-1); } },
+                  { key: 'cor2', label: 'Cor 2', ref: cor2InputRef, nextRef: cor3InputRef, onChange: (v: string) => { const vu = v.toUpperCase(); setCor2Manual(true); setForm(f => ({ ...f, cor2: vu })); searchCores(vu, 'cor2'); setSelectedSuggestionIndex(-1); } },
+                  { key: 'cor3', label: 'Cor 3', ref: cor3InputRef, nextRef: modeloInputRef, onChange: (v: string) => { const vu = v.toUpperCase(); setCor3Manual(true); setForm(f => ({ ...f, cor3: vu })); searchCores(vu, 'cor3'); setSelectedSuggestionIndex(-1); } },
                 ].map(f => (
                   <div key={f.key} style={{ position: 'relative' }}>
                     <label style={{ fontSize: 10, fontWeight: 500, color: '#6b7280', textTransform: 'uppercase', display: 'block', marginBottom: 3 }}>{f.label}</label>
                     <input 
+                      ref={f.ref}
                       value={(form as any)[f.key]} 
                       onChange={e => f.onChange(e.target.value.toUpperCase())} 
-                      onKeyDown={!isMobile ? (e) => {
-                        if (showCorDropdown.field !== f.key || corSuggestions.length === 0) return;
-                        if (e.key === 'ArrowDown') {
-                          e.preventDefault();
-                          setSelectedSuggestionIndex(prev => prev < corSuggestions.length - 1 ? prev + 1 : prev);
-                        } else if (e.key === 'ArrowUp') {
-                          e.preventDefault();
-                          setSelectedSuggestionIndex(prev => prev > 0 ? prev - 1 : -1);
-                        } else if (e.key === 'Enter' && selectedSuggestionIndex >= 0) {
-                          e.preventDefault();
-                          selectCor(corSuggestions[selectedSuggestionIndex], f.key as any);
-                          setSelectedSuggestionIndex(-1);
-                        } else if (e.key === 'Escape') {
-                          setShowCorDropdown({ field: null });
-                          setSelectedSuggestionIndex(-1);
+                      onKeyDown={(e) => {
+                        if (isMobile) {
+                          handleEnterKey(e, f.nextRef, true);
+                          return;
                         }
-                      } : undefined}
+                        if (showCorDropdown.field === f.key && corSuggestions.length > 0) {
+                          if (e.key === 'ArrowDown') {
+                            e.preventDefault();
+                            setSelectedSuggestionIndex(prev => prev < corSuggestions.length - 1 ? prev + 1 : prev);
+                            return;
+                          } else if (e.key === 'ArrowUp') {
+                            e.preventDefault();
+                            setSelectedSuggestionIndex(prev => prev > 0 ? prev - 1 : -1);
+                            return;
+                          } else if (e.key === 'Enter' && selectedSuggestionIndex >= 0) {
+                            e.preventDefault();
+                            selectCor(corSuggestions[selectedSuggestionIndex], f.key as any);
+                            setSelectedSuggestionIndex(-1);
+                            f.nextRef.current?.focus();
+                            return;
+                          } else if (e.key === 'Escape') {
+                            setShowCorDropdown({ field: null });
+                            setSelectedSuggestionIndex(-1);
+                            return;
+                          }
+                        }
+                        handleEnterKey(e, f.nextRef);
+                      }}
                       onBlur={() => setTimeout(() => { setShowCorDropdown({ field: null }); setSelectedSuggestionIndex(-1); }, 200)}
                       placeholder="—" 
                       style={{ height: 30, width: '100%', padding: '0 8px', border: '0.5px solid #d1d5db', borderRadius: 5, fontSize: 12, outline: 'none', textTransform: 'uppercase' }} 
@@ -1179,7 +1258,9 @@ function StepItens({ items, setItems, cab }: { items: OrderItem[]; setItems: Dis
                   Modelo *
                 </label>
                 <select
+                  ref={modeloInputRef}
                   value={form.modelo}
+                  onKeyDown={(e) => handleEnterKey(e, custoInputRef, true)}
                   onChange={e => setForm(f => ({ ...f, modelo: e.target.value }))}
                   style={{ height: 30, width: '100%', padding: '0 8px', border: '0.5px solid #d1d5db', borderRadius: 5, fontSize: 12, outline: 'none', background: '#fff' }}>
                   <option value="MASC">Masculino</option>
@@ -1191,7 +1272,7 @@ function StepItens({ items, setItems, cab }: { items: OrderItem[]; setItems: Dis
 
               <div style={{ marginBottom: 10 }}>
                 <label style={{ fontSize: 10, fontWeight: 500, color: '#6b7280', textTransform: 'uppercase', display: 'block', marginBottom: 3 }}>Custo (R$)</label>
-                <input type="number" step={0.01} value={form.custo} onChange={e => setForm(f => ({ ...f, custo: e.target.value }))} placeholder="0,00" style={{ height: 30, width: 140, padding: '0 8px', border: '0.5px solid #d1d5db', borderRadius: 5, fontSize: 12, outline: 'none' }} />
+                <input ref={custoInputRef} onKeyDown={(e) => handleEnterKey(e, btnSalvarRef, true)} type="number" step={0.01} value={form.custo} onChange={e => setForm(f => ({ ...f, custo: e.target.value }))} placeholder="0,00" style={{ height: 30, width: 140, padding: '0 8px', border: '0.5px solid #d1d5db', borderRadius: 5, fontSize: 12, outline: 'none' }} />
               </div>
 
               <div style={{ background: '#f9fafb', border: '0.5px solid #e5e7eb', borderRadius: 6, padding: '8px 12px', display: 'flex', alignItems: 'center', gap: 10 }}>
@@ -1201,8 +1282,8 @@ function StepItens({ items, setItems, cab }: { items: OrderItem[]; setItems: Dis
             </div>
             <div style={{ padding: '10px 16px', borderTop: '0.5px solid #e5e7eb', display: 'flex', justifyContent: 'flex-end', gap: 8 }}>
               <button onClick={() => setShowPopup(false)} style={{ height: 28, padding: '0 14px', borderRadius: 5, fontSize: 12, cursor: 'pointer', border: '0.5px solid #d1d5db', background: 'transparent' }}>Cancelar</button>
-              <button onClick={saveItem} style={{ height: 28, padding: '0 14px', borderRadius: 5, fontSize: 12, fontWeight: 500, cursor: 'pointer', border: 'none', background: '#185FA5', color: '#fff' }}>
-                {editIdx >= 0 ? 'Salvar' : 'Adicionar'}
+              <button ref={btnSalvarRef} onKeyDown={(e) => { if (e.key === 'Enter') saveItem(); }} onClick={saveItem} disabled={isCalculating} style={{ height: 28, padding: '0 14px', borderRadius: 5, fontSize: 12, fontWeight: 500, cursor: 'pointer', border: 'none', background: isCalculating ? '#9ca3af' : '#185FA5', color: '#fff' }}>
+                {isCalculating ? 'Calculando...' : (editIdx >= 0 ? 'Salvar' : 'Adicionar')}
               </button>
             </div>
           </div>
