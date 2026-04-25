@@ -1415,7 +1415,7 @@ const App: React.FC = () => {
                             onUpdateStock={async (sId, b, v, u, type) => {
                                 const { data: current } = await supabase.from('ice_cream_stock').select('stock_current').eq('store_id', sId).eq('product_base', b).maybeSingle();
                                 let finalVal = v;
-                                if (current && (type === 'purchase' || type === 'adjustment' || type === 'production')) { finalVal = Number(current.stock_current || 0) + v; }
+                                if (current && (type === 'purchase' || type === 'adjustment' || type === 'production' || type === 'INVENTARIO')) { finalVal = Number(current.stock_current || 0) + v; }
                                 await supabase.from('ice_cream_stock').upsert({ store_id: sId, product_base: b, stock_current: finalVal, unit: u, is_active: true }, { onConflict: 'store_id, product_base' });
                                 await fetchData();
                             }}

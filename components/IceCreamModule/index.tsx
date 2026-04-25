@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useMemo } from 'react';
+import React, { useState, useEffect, useMemo, useCallback, Suspense, lazy } from 'react';
 import { 
     LayoutDashboard, History, Package, TrendingUp, 
     Settings, Users, ShoppingCart, DollarSign, Clock,
@@ -17,26 +17,28 @@ import { formatCurrency } from '../../constants';
 import { MONTHS } from './constants';
 import { useDREStats } from './hooks/useDREStats';
 
-// Tabs
+// Tab imports (main ones stay direct)
 import PDVTab from './tabs/PDVTab';
-import EstoqueTab from './tabs/EstoqueTab';
 import DREDiarioTab from './tabs/DREDiarioTab';
-import DREMensalTab from './tabs/DREMensalTab';
-import AuditoriaTab from './tabs/AuditoriaTab';
-import ProdutosTab from './tabs/ProdutosTab';
-import DespesasTab from './tabs/DespesasTab';
 
-// Modals
-import NewInsumoModal from './modals/NewInsumoModal';
-import PurchaseModal from './modals/PurchaseModal';
-import InventoryModal from './modals/InventoryModal';
-import WastageModal from './modals/WastageModal';
-import PartnersModal from './modals/PartnersModal';
-import ProductModal from './modals/ProductModal';
-import CancelSaleModal from './modals/CancelSaleModal';
-import TicketModal from './modals/TicketModal';
-import SangriaDetailModal from './modals/SangriaDetailModal';
-import EditSangriaModal from './modals/EditSangriaModal';
+// Lazy Tab imports
+const DREMensalTab = lazy(() => import('./tabs/DREMensalTab'));
+const DespesasTab = lazy(() => import('./tabs/DespesasTab'));
+const EstoqueTab = lazy(() => import('./tabs/EstoqueTab'));
+const AuditoriaTab = lazy(() => import('./tabs/AuditoriaTab'));
+const ProdutosTab = lazy(() => import('./tabs/ProdutosTab'));
+
+// Lazy Modal imports
+const NewInsumoModal = lazy(() => import('./modals/NewInsumoModal'));
+const PurchaseModal = lazy(() => import('./modals/PurchaseModal'));
+const InventoryModal = lazy(() => import('./modals/InventoryModal'));
+const WastageModal = lazy(() => import('./modals/WastageModal'));
+const PartnersModal = lazy(() => import('./modals/PartnersModal'));
+const ProductModal = lazy(() => import('./modals/ProductModal'));
+const CancelSaleModal = lazy(() => import('./modals/CancelSaleModal'));
+const TicketModal = lazy(() => import('./modals/TicketModal'));
+const SangriaDetailModal = lazy(() => import('./modals/SangriaDetailModal'));
+const EditSangriaModal = lazy(() => import('./modals/EditSangriaModal'));
 
 import { IceCreamModuleProps } from './types';
 
@@ -1048,107 +1050,117 @@ const IceCreamModule: React.FC<IceCreamModuleProps> = ({
                 )}
 
                 {activeTab === 'dre_mensal' && (
-                    <DREMensalTab 
-                        selectedMonth={selectedMonth}
-                        setSelectedMonth={setSelectedMonth}
-                        selectedYear={selectedYear}
-                        setSelectedYear={setSelectedYear}
-                        dreStats={dreStats}
-                        monthFiadoGrouped={monthFiadoGrouped}
-                        handlePrintDreMensal={handlePrintDreMensal}
-                        sangrias={sangrias}
-                        sangriaCategories={sangriaCategories}
-                        adminUsers={adminUsers}
-                        stores={stores}
-                        partners={filteredPartners}
-                        effectiveStoreId={effectiveStoreId}
-                        can={can}
-                        onAddFutureDebt={onAddFutureDebt}
-                        onUpdatePartner={handleUpdatePartner}
-                        onAddPartner={handleSavePartner}
-                        onDeletePartner={handleDeletePartner}
-                        onTogglePartner={handleTogglePartner}
-                        fetchData={fetchData}
-                    />
+                    <Suspense fallback={<div className="p-20 text-center"><Loader2 className="animate-spin mx-auto text-blue-600 mb-4" size={40}/><p className="text-[10px] font-black text-gray-400 uppercase tracking-widest">Carregando DRE Mensal...</p></div>}>
+                        <DREMensalTab 
+                            selectedMonth={selectedMonth}
+                            setSelectedMonth={setSelectedMonth}
+                            selectedYear={selectedYear}
+                            setSelectedYear={setSelectedYear}
+                            dreStats={dreStats}
+                            monthFiadoGrouped={monthFiadoGrouped}
+                            handlePrintDreMensal={handlePrintDreMensal}
+                            sangrias={sangrias}
+                            sangriaCategories={sangriaCategories}
+                            adminUsers={adminUsers}
+                            stores={stores}
+                            partners={filteredPartners}
+                            effectiveStoreId={effectiveStoreId}
+                            can={can}
+                            onAddFutureDebt={onAddFutureDebt}
+                            onUpdatePartner={handleUpdatePartner}
+                            onAddPartner={handleSavePartner}
+                            onDeletePartner={handleDeletePartner}
+                            onTogglePartner={handleTogglePartner}
+                            fetchData={fetchData}
+                        />
+                    </Suspense>
                 )}
 
                 {activeTab === 'despesas' && (
-                    <DespesasTab 
-                        sangrias={sangrias}
-                        futureDebts={futureDebts}
-                        sangriaCategories={sangriaCategories}
-                        onAddSangria={onAddSangria}
-                        onAddFutureDebt={onAddFutureDebt}
-                        onPayFutureDebt={handlePayFutureDebt}
-                        onDeleteSangria={handleDeleteSangria}
-                        onUpdateSangria={handleUpdateSangria}
-                        onAddSangriaCategory={handleAddSangriaCategory}
-                        onDeleteSangriaCategory={onDeleteSangriaCategory}
-                        effectiveStoreId={effectiveStoreId}
-                        adminUsers={adminUsers}
-                        stores={stores}
-                        user={user}
-                        can={can}
-                        fetchData={fetchData}
-                    />
+                    <Suspense fallback={<div className="p-20 text-center"><Loader2 className="animate-spin mx-auto text-blue-600 mb-4" size={40}/><p className="text-[10px] font-black text-gray-400 uppercase tracking-widest">Carregando Despesas...</p></div>}>
+                        <DespesasTab 
+                            sangrias={sangrias}
+                            futureDebts={futureDebts}
+                            sangriaCategories={sangriaCategories}
+                            onAddSangria={onAddSangria}
+                            onAddFutureDebt={onAddFutureDebt}
+                            onPayFutureDebt={handlePayFutureDebt}
+                            onDeleteSangria={handleDeleteSangria}
+                            onUpdateSangria={handleUpdateSangria}
+                            onAddSangriaCategory={handleAddSangriaCategory}
+                            onDeleteSangriaCategory={onDeleteSangriaCategory}
+                            effectiveStoreId={effectiveStoreId}
+                            adminUsers={adminUsers}
+                            stores={stores}
+                            user={user}
+                            can={can}
+                            fetchData={fetchData}
+                        />
+                    </Suspense>
                 )}
 
                 {activeTab === 'stock' && (
-                    <EstoqueTab 
-                        filteredStock={stock.filter(s => s.store_id === effectiveStoreId)}
-                        isAdmin={canManage && !isSorvete}
-                        onUpdateStock={handleUpdateStock}
-                        onAddStockBase={isSorvete ? async () => {} : (base, unit, storeId) => onAddItem(base, 'INSUMO', 0, '', 0, unit, 0, storeId, [])}
-                        onUpdateStockBase={handleUpdateStockBase}
-                        onDeleteStockBase={isSorvete ? async () => {} : onDeleteStockItem}
-                        onToggleFreezeStock={async (id, active) => {
-                            if (isSorvete) return;
-                            const { error } = await supabase.from('ice_cream_stock').update({ is_active: active }).eq('id', id);
-                            if (error) throw error;
-                        }}
-                        effectiveStoreId={effectiveStoreId}
-                        fetchData={fetchData}
-                        onOpenPurchaseModal={() => setShowPurchaseModal(true)}
-                        onOpenInventoryModal={() => setShowInventoryModal(true)}
-                        onOpenWastageModal={() => setShowWastageModal(true)}
-                    />
+                    <Suspense fallback={<div className="p-20 text-center"><Loader2 className="animate-spin mx-auto text-blue-600 mb-4" size={40}/><p className="text-[10px] font-black text-gray-400 uppercase tracking-widest">Carregando Estoque...</p></div>}>
+                        <EstoqueTab 
+                            filteredStock={stock.filter(s => s.store_id === effectiveStoreId)}
+                            isAdmin={canManage && !isSorvete}
+                            onUpdateStock={handleUpdateStock}
+                            onAddStockBase={isSorvete ? async () => {} : (base, unit, storeId) => onAddItem(base, 'INSUMO', 0, '', 0, unit, 0, storeId, [])}
+                            onUpdateStockBase={handleUpdateStockBase}
+                            onDeleteStockBase={isSorvete ? async () => {} : onDeleteStockItem}
+                            onToggleFreezeStock={async (id, active) => {
+                                if (isSorvete) return;
+                                const { error } = await supabase.from('ice_cream_stock').update({ is_active: active }).eq('id', id);
+                                if (error) throw error;
+                            }}
+                            effectiveStoreId={effectiveStoreId}
+                            fetchData={fetchData}
+                            onOpenPurchaseModal={() => setShowPurchaseModal(true)}
+                            onOpenInventoryModal={() => setShowInventoryModal(true)}
+                            onOpenWastageModal={() => setShowWastageModal(true)}
+                        />
+                    </Suspense>
                 )}
 
                 {activeTab === 'audit' && (
-                    <AuditoriaTab 
-                        auditSubTab={auditSubTab}
-                        setAuditSubTab={setAuditSubTab}
-                        showDaySummary={showDaySummary}
-                        setShowDaySummary={setShowDaySummary}
-                        auditDay={auditDay}
-                        setAuditDay={setAuditDay}
-                        auditMonth={auditMonth}
-                        setAuditMonth={setAuditMonth}
-                        auditYear={auditYear}
-                        setAuditYear={setAuditYear}
-                        auditSearch={auditSearch}
-                        setAuditSearch={setAuditSearch}
-                        auditSummary={auditSummary}
-                        groupedAuditSales={groupedAuditSales}
-                        filteredAuditWastage={filteredAuditWastage}
-                        filteredCancelations={filteredCancelations}
-                        handleOpenPrintPreview={handleOpenPrintPreview}
-                        onCancelSale={(id, code) => setShowCancelModal({id, code})}
-                        items={items}
-                        stock={stock}
-                        isSorvete={isSorvete}
-                    />
+                    <Suspense fallback={<div className="p-20 text-center"><Loader2 className="animate-spin mx-auto text-blue-600 mb-4" size={40}/><p className="text-[10px] font-black text-gray-400 uppercase tracking-widest">Carregando Auditoria...</p></div>}>
+                        <AuditoriaTab 
+                            auditSubTab={auditSubTab}
+                            setAuditSubTab={setAuditSubTab}
+                            showDaySummary={showDaySummary}
+                            setShowDaySummary={setShowDaySummary}
+                            auditDay={auditDay}
+                            setAuditDay={setAuditDay}
+                            auditMonth={auditMonth}
+                            setAuditMonth={setAuditMonth}
+                            auditYear={auditYear}
+                            setAuditYear={setAuditYear}
+                            auditSearch={auditSearch}
+                            setAuditSearch={setAuditSearch}
+                            auditSummary={auditSummary}
+                            groupedAuditSales={groupedAuditSales}
+                            filteredAuditWastage={filteredAuditWastage}
+                            filteredCancelations={filteredCancelations}
+                            handleOpenPrintPreview={handleOpenPrintPreview}
+                            onCancelSale={(id, code) => setShowCancelModal({id, code})}
+                            items={items}
+                            stock={stock}
+                            isSorvete={isSorvete}
+                        />
+                    </Suspense>
                 )}
 
                 {activeTab === 'produtos' && (
-                    <ProdutosTab 
-                        filteredItems={items.filter(i => i.storeId === effectiveStoreId)}
-                        onDeleteItem={onDeleteItem}
-                        onSaveProduct={onSaveProduct}
-                        stock={stock}
-                        effectiveStoreId={effectiveStoreId}
-                        fetchData={fetchData}
-                    />
+                    <Suspense fallback={<div className="p-20 text-center"><Loader2 className="animate-spin mx-auto text-blue-600 mb-4" size={40}/><p className="text-[10px] font-black text-gray-400 uppercase tracking-widest">Carregando Produtos...</p></div>}>
+                        <ProdutosTab 
+                            filteredItems={items.filter(i => i.storeId === effectiveStoreId)}
+                            onDeleteItem={onDeleteItem}
+                            onSaveProduct={onSaveProduct}
+                            stock={stock}
+                            effectiveStoreId={effectiveStoreId}
+                            fetchData={fetchData}
+                        />
+                    </Suspense>
                 )}
             </main>
 

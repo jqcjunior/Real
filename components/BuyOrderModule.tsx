@@ -1,8 +1,8 @@
-import { useState, useEffect, useRef, useCallback } from 'react';
+import React, { useState, useEffect, useRef, useCallback, Dispatch, SetStateAction } from 'react';
 import { supabase } from '../services/supabaseClient';
 import { User } from '../types';
 import StepPedidos from './BuyOrderStepPedidos';
- 
+
 // ─── Tipos ────────────────────────────────────────────────────────────────────
  
 interface Brand {
@@ -160,8 +160,26 @@ export default function BuyOrderModule({ user }: { user?: User }) {
  
   function navNext() {
     if (step === 0) {
-      if (!cab.marca || !cab.fornecedor || !cab.representante || !cab.fat_fim || !cab.markup) {
-        setError('Preencha os campos obrigatórios: Marca, Fornecedor, Representante, Fat. Fim e Markup.');
+      const requiredFields = [
+        { key: 'marca', label: 'Marca' },
+        { key: 'fornecedor', label: 'Fornecedor' },
+        { key: 'representante', label: 'Representante' },
+        { key: 'telefone', label: 'Telefone' },
+        { key: 'email', label: 'E-mail' },
+        { key: 'fat_inicio', label: 'Fat. Início' },
+        { key: 'fat_fim', label: 'Fat. Fim' },
+        { key: 'markup', label: 'Markup' }
+      ];
+
+      const missing = requiredFields.filter(f => !cab[f.key as keyof Cabecalho]);
+
+      if (missing.length > 0) {
+        setError(`Preencha todos os campos obrigatórios: ${missing.map(m => m.label).join(', ')}.`);
+        return;
+      }
+
+      if (!cab.prazos || cab.prazos.length === 0) {
+        setError('Defina ao menos um prazo de pagamento (ex: 30/60/90).');
         return;
       }
     }
@@ -617,7 +635,7 @@ export default function BuyOrderModule({ user }: { user?: User }) {
 // ─── Step 0: Cabeçalho ────────────────────────────────────────────────────────
 
 function StepCabecalho({ cab, setCab, prazosRaw, setPrazosRaw, numeroPedidoSalvo, setNumeroPedidoSalvo }: {
-  cab: Cabecalho; setCab: React.Dispatch<React.SetStateAction<Cabecalho>>;
+  cab: Cabecalho; setCab: Dispatch<SetStateAction<Cabecalho>>;
   prazosRaw: string; setPrazosRaw: (s: string) => void;
   numeroPedidoSalvo: number | null;
   setNumeroPedidoSalvo: (n: number | null) => void;
@@ -625,65 +643,82 @@ function StepCabecalho({ cab, setCab, prazosRaw, setPrazosRaw, numeroPedidoSalvo
   const [brands, setBrands] = useState<Brand[]>([]);
   const [showDrop, setShowDrop] = useState(false);
   const [searching, setSearching] = useState(false);
+  const [activeSearchField, setActiveSearchField] = useState<string | null>(null);
   const searchTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
-  function onMarcaInput(val: string) {
+  function onFieldInput(field: keyof Cabecalho, val: string) {
     const uppercaseVal = val.toUpperCase();
-    setCab(c => ({ ...c, marca: uppercaseVal, brand_id: null }));
-    if (numeroPedidoSalvo) setNumeroPedidoSalvo(null);
-    if (uppercaseVal.length < 4) { setBrands([]); setShowDrop(false); return; }
-    clearTimeout(searchTimer.current!);
-    setSearching(true);
-    setShowDrop(true);
-    searchTimer.current = setTimeout(async () => {
-      const { data } = await supabase
-        .from('buy_brands')
-        .select('id,marca,fornecedor,representante,telefone,email')
-        .ilike('marca', `%${uppercaseVal}%`)
-        .eq('is_active', true)
-        .order('marca', { ascending: true })
-        .limit(8);
-      setBrands(data ?? []);
-      setSearching(false);
-    }, 300);
+    setCab(c => ({ ...c, [field]: uppercaseVal, brand_id: field === 'marca' ? null : c.brand_id }));
+    
+    if (field === 'marca' && numeroPedidoSalvo) setNumeroPedidoSalvo(null);
+    
+    if (['marca', 'fornecedor', 'representante'].includes(field)) {
+      if (uppercaseVal.length < 3) { setBrands([]); setShowDrop(false); return; }
+      
+      clearTimeout(searchTimer.current!);
+      setSearching(true);
+      setShowDrop(true);
+      setActiveSearchField(field);
+      
+      searchTimer.current = setTimeout(async () => {
+        const { data } = await supabase
+          .from('buy_brands')
+          .select('id,marca,fornecedor,representante,telefone,email')
+          .ilike(field, `%${uppercaseVal}%`)
+          .eq('is_active', true)
+          .order(field, { ascending: true })
+          .limit(8);
+        setBrands(data ?? []);
+        setSearching(false);
+      }, 300);
+    }
   }
 
   function selectBrand(b: Brand) {
-    setCab(c => ({ ...c, brand_id: b.id, marca: b.marca, fornecedor: b.fornecedor, representante: b.representante, telefone: b.telefone ?? '', email: b.email ?? '' }));
+    setCab(c => ({ 
+      ...c, 
+      brand_id: b.id, 
+      marca: b.marca, 
+      fornecedor: b.fornecedor, 
+      representante: b.representante, 
+      telefone: b.telefone ?? '', 
+      email: b.email ?? '' 
+    }));
     setShowDrop(false);
+    setActiveSearchField(null);
   }
 
   const liq = 100 * (1 - (cab.desconto || 0) / 100);
   const exVenda = calcPrecoVenda(100, cab.desconto, cab.markup);
 
-  const inputStyle: React.CSSProperties = { height: 30, padding: '0 8px', border: '0.5px solid #d1d5db', borderRadius: 5, fontSize: 12, outline: 'none', width: '100%', background: 'var(--color-background-primary)', color: 'var(--color-text-primary)' };
-  const labelStyle: React.CSSProperties = { fontSize: 10, fontWeight: 500, color: '#6b7280', textTransform: 'uppercase', letterSpacing: '0.04em', marginBottom: 3, display: 'block' };
+  const inputStyle: React.CSSProperties = { height: 35, padding: '0 10px', border: '1px solid #d1d5db', borderRadius: 8, fontSize: 13, outline: 'none', width: '100%', background: 'var(--color-background-primary)', color: 'var(--color-text-primary)' };
+  const labelStyle: React.CSSProperties = { fontSize: 11, fontWeight: 600, color: '#475569', textTransform: 'uppercase', letterSpacing: '0.04em', marginBottom: 4, display: 'block' };
 
   return (
     <div>
       {/* Fornecedor */}
-      <div style={{ padding: '6px 18px', background: '#f9fafb', borderBottom: '0.5px solid #e5e7eb', fontSize: 10, fontWeight: 500, color: '#6b7280', textTransform: 'uppercase', letterSpacing: '0.05em' }}>Fornecedor</div>
-      <div className="p-4 md:p-6 border-b border-slate-200 space-y-4">
+      <div style={{ padding: '8px 18px', background: '#f8fafc', borderBottom: '1px solid #e2e8f0', fontSize: 11, fontWeight: 700, color: '#64748b', textTransform: 'uppercase', letterSpacing: '0.05em' }}>Dados do Fornecedor (Obrigatórios)</div>
+      <div className="p-4 md:p-6 border-b border-slate-200 space-y-5">
         {/* Linha 1: Marca */}
         <div className="grid grid-cols-1 gap-4">
           <div className="relative">
-            <label className="block text-xs font-medium text-slate-600 uppercase mb-1">Marca *</label>
+            <label style={labelStyle}>Marca *</label>
             <input 
               value={cab.marca} 
-              onChange={e => onMarcaInput(e.target.value)} 
-              onBlur={() => setTimeout(() => setShowDrop(false), 200)}
-              placeholder="Digite 4+ letras..." 
+              onChange={e => onFieldInput('marca', e.target.value)} 
+              onBlur={() => setTimeout(() => setShowDrop(false), 250)}
+              placeholder="Digite o nome da marca para buscar ou cadastrar..." 
               autoComplete="off" 
-              className="w-full h-9 px-3 border border-slate-300 rounded-lg text-sm uppercase" 
+              className="w-full h-10 px-3 border border-slate-300 rounded-lg text-sm uppercase font-bold focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none transition-all" 
             />
-            {showDrop && (
-              <div className="absolute top-full left-0 right-0 mt-1 bg-white border border-slate-300 rounded-lg shadow-lg z-50">
-                {searching && <div className="p-3 text-xs text-slate-500">Buscando...</div>}
-                {!searching && brands.length === 0 && <div className="p-3 text-xs text-slate-500">Nenhum resultado</div>}
+            {showDrop && activeSearchField === 'marca' && (
+              <div className="absolute top-full left-0 right-0 mt-1 bg-white border border-slate-300 rounded-lg shadow-xl z-50 max-h-60 overflow-y-auto">
+                {searching && <div className="p-4 text-xs text-slate-500 italic">Buscando marca...</div>}
+                {!searching && brands.length === 0 && <div className="p-4 text-xs text-slate-500 italic">Marca nova (será cadastrada ao salvar)</div>}
                 {!searching && brands.map(b => (
-                  <div key={b.id} onMouseDown={() => selectBrand(b)} className="p-3 text-sm cursor-pointer hover:bg-slate-50 border-b last:border-0">
-                    <div className="font-medium">{b.marca}</div>
-                    <div className="text-xs text-slate-500 mt-0.5">{b.fornecedor} · {b.representante}</div>
+                  <div key={b.id} onMouseDown={() => selectBrand(b)} className="p-3 text-sm cursor-pointer hover:bg-blue-50 border-b border-slate-50 last:border-0 transition-colors">
+                    <div className="font-bold text-blue-900">{b.marca}</div>
+                    <div className="text-[10px] text-slate-500 mt-1 uppercase">{b.fornecedor} • {b.representante}</div>
                   </div>
                 ))}
               </div>
@@ -692,110 +727,152 @@ function StepCabecalho({ cab, setCab, prazosRaw, setPrazosRaw, numeroPedidoSalvo
         </div>
 
         {/* Linha 2: Fornecedor e Representante */}
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-          <div>
-            <label className="block text-xs font-medium text-slate-600 uppercase mb-1">Fornecedor *</label>
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
+          <div className="relative">
+            <label style={labelStyle}>Fornecedor *</label>
             <input 
               value={cab.fornecedor} 
-              onChange={e => setCab(c => ({ ...c, fornecedor: e.target.value.toUpperCase() }))}
+              onChange={e => onFieldInput('fornecedor', e.target.value)}
+              onBlur={() => setTimeout(() => setShowDrop(false), 250)}
               placeholder="Razão social" 
-              className="w-full h-9 px-3 border border-slate-300 rounded-lg text-sm uppercase" 
+              autoComplete="off"
+              className="w-full h-10 px-3 border border-slate-300 rounded-lg text-sm uppercase focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none transition-all" 
             />
+            {showDrop && activeSearchField === 'fornecedor' && (
+              <div className="absolute top-full left-0 right-0 mt-1 bg-white border border-slate-300 rounded-lg shadow-xl z-50 max-h-60 overflow-y-auto">
+                {searching && <div className="p-4 text-xs text-slate-500 italic">Buscando fornecedor...</div>}
+                {!searching && brands.map(b => (
+                  <div key={b.id} onMouseDown={() => selectBrand(b)} className="p-3 text-sm cursor-pointer hover:bg-blue-50 border-b border-slate-50 last:border-0 transition-colors">
+                    <div className="font-bold text-blue-900">{b.fornecedor}</div>
+                    <div className="text-[10px] text-slate-500 mt-1 uppercase">Marca: {b.marca} • Rep: {b.representante}</div>
+                  </div>
+                ))}
+              </div>
+            )}
           </div>
-          <div>
-            <label className="block text-xs font-medium text-slate-600 uppercase mb-1">Representante *</label>
+          <div className="relative">
+            <label style={labelStyle}>Representante *</label>
             <input 
               value={cab.representante} 
-              onChange={e => setCab(c => ({ ...c, representante: e.target.value.toUpperCase() }))}
-              placeholder="Nome" 
-              className="w-full h-9 px-3 border border-slate-300 rounded-lg text-sm uppercase" 
+              onChange={e => onFieldInput('representante', e.target.value)}
+              onBlur={() => setTimeout(() => setShowDrop(false), 250)}
+              placeholder="Nome do representante" 
+              autoComplete="off"
+              className="w-full h-10 px-3 border border-slate-300 rounded-lg text-sm uppercase focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none transition-all" 
             />
+            {showDrop && activeSearchField === 'representante' && (
+              <div className="absolute top-full left-0 right-0 mt-1 bg-white border border-slate-300 rounded-lg shadow-xl z-50 max-h-60 overflow-y-auto">
+                {searching && <div className="p-4 text-xs text-slate-500 italic">Buscando representante...</div>}
+                {!searching && brands.map(b => (
+                  <div key={b.id} onMouseDown={() => selectBrand(b)} className="p-3 text-sm cursor-pointer hover:bg-blue-50 border-b border-slate-50 last:border-0 transition-colors">
+                    <div className="font-bold text-blue-900">{b.representante}</div>
+                    <div className="text-[10px] text-slate-500 mt-1 uppercase">Marca: {b.marca} • Forn: {b.fornecedor}</div>
+                  </div>
+                ))}
+              </div>
+            )}
           </div>
         </div>
 
         {/* Linha 3: Telefone e Email */}
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
           <div>
-            <label className="block text-xs font-medium text-slate-600 uppercase mb-1">Telefone</label>
+            <label style={labelStyle}>Telefone *</label>
             <input 
               value={cab.telefone} 
               onChange={e => setCab(c => ({ ...c, telefone: e.target.value }))}
               placeholder="(00) 00000-0000" 
-              className="w-full h-9 px-3 border border-slate-300 rounded-lg text-sm" 
+              className="w-full h-10 px-3 border border-slate-300 rounded-lg text-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none transition-all" 
             />
           </div>
           <div>
-            <label className="block text-xs font-medium text-slate-600 uppercase mb-1">E-mail</label>
+            <label style={labelStyle}>E-mail *</label>
             <input 
               value={cab.email} 
               onChange={e => setCab(c => ({ ...c, email: e.target.value.toUpperCase() }))}
-              placeholder="rep@marca.com" 
-              className="w-full h-9 px-3 border border-slate-300 rounded-lg text-sm uppercase" 
+              placeholder="vendas@fornecedor.com.br" 
+              className="w-full h-10 px-3 border border-slate-300 rounded-lg text-sm uppercase focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none transition-all" 
             />
           </div>
         </div>
       </div>
 
       {/* Faturamento */}
-      <div style={{ padding: '6px 18px', background: '#f9fafb', borderBottom: '0.5px solid #e5e7eb', fontSize: 10, fontWeight: 500, color: '#6b7280', textTransform: 'uppercase', letterSpacing: '0.05em' }}>Faturamento e condições</div>
-      <div className="p-4 border-b">
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4 mb-4">
+      <div style={{ padding: '8px 18px', background: '#f8fafc', borderBottom: '1px solid #e2e8f0', fontSize: 11, fontWeight: 700, color: '#64748b', textTransform: 'uppercase', letterSpacing: '0.05em' }}>Faturamento e Condições de Pagamento</div>
+      <div className="p-4 md:p-6 border-b border-slate-200">
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-5 mb-5">
           <div>
-            <label className="block text-xs font-medium text-slate-600 uppercase mb-1">Fat. início</label>
-            <input type="date" value={cab.fat_inicio} onChange={e => setCab(c => ({ ...c, fat_inicio: e.target.value }))} className="w-full h-9 px-3 border border-slate-300 rounded-lg text-sm" />
+            <label style={labelStyle}>Fat. Início *</label>
+            <input type="date" value={cab.fat_inicio} onChange={e => setCab(c => ({ ...c, fat_inicio: e.target.value }))} className="w-full h-10 px-3 border border-slate-300 rounded-lg text-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none transition-all" />
           </div>
           <div>
-            <label className="block text-xs font-medium text-slate-600 uppercase mb-1">Fat. fim *</label>
-            <input type="date" value={cab.fat_fim} onChange={e => setCab(c => ({ ...c, fat_fim: e.target.value }))} className="w-full h-9 px-3 border border-slate-300 rounded-lg text-sm" />
+            <label style={labelStyle}>Fat. Fim *</label>
+            <input type="date" value={cab.fat_fim} onChange={e => setCab(c => ({ ...c, fat_fim: e.target.value }))} className="w-full h-10 px-3 border border-slate-300 rounded-lg text-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none transition-all" />
           </div>
           <div>
-            <label className="block text-xs font-medium text-slate-600 uppercase mb-1">Prazos (separar por /)</label>
+            <label style={labelStyle}>Prazos * (ex: 30/60/90)</label>
             <input value={prazosRaw} onChange={e => { setPrazosRaw(e.target.value); setCab(c => ({ ...c, prazos: parsePrazos(e.target.value) })); }}
-              placeholder="Ex: 90/120/150" className="w-full h-9 px-3 border border-slate-300 rounded-lg text-sm" />
-            <div className="text-xs text-slate-500 mt-1">máx 7 parcelas</div>
+              placeholder="Ex: 90/120/150" className="w-full h-10 px-3 border border-slate-300 rounded-lg text-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none transition-all" />
+            <div className="text-[10px] text-slate-400 mt-1 italic">Separe os prazos por barras (/)</div>
           </div>
           
-          {/* VENCIMENTOS - CORRIGIDO */}
           <div>
-            <label className="block text-xs font-medium text-slate-600 uppercase mb-1">Vencimentos</label>
-            <div className="grid grid-cols-3 gap-1 pt-1">
-              {cab.prazos.slice(0, 7).map((p, i) => {
+            <label style={labelStyle}>Vencimentos Estimados</label>
+            <div className="grid grid-cols-2 gap-1.5 pt-0.5">
+              {cab.prazos.map((p, i) => {
                 if (!cab.fat_fim) return null;
                 const dataVenc = new Date(cab.fat_fim + 'T00:00:00');
                 dataVenc.setDate(dataVenc.getDate() + p);
                 const mes = dataVenc.toLocaleDateString('pt-BR', { month: 'short' }).replace('.', '');
                 const ano = dataVenc.getFullYear().toString().slice(-2);
                 return (
-                  <div key={i} className="text-xs px-2 py-1 rounded bg-slate-100 border border-slate-200 text-center whitespace-nowrap">
+                  <div key={i} className="text-[10px] px-2 py-1.5 rounded bg-slate-50 border border-slate-200 text-center font-bold text-slate-700">
                     {mes}/{ano}
                   </div>
                 );
               })}
+              {cab.prazos.length === 0 && <div className="col-span-2 text-[10px] text-slate-300 italic">Aguardando prazos...</div>}
             </div>
           </div>
         </div>
 
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
           <div>
-            <label style={labelStyle}>Markup (fator) *</label>
+            <label style={labelStyle}>Markup (Fator Multiplicador) *</label>
             <input type="number" min={1} max={10} step={0.01} value={cab.markup}
-              onChange={e => setCab(c => ({ ...c, markup: parseFloat(e.target.value) || 0 }))} style={inputStyle} />
-            <div style={{ fontSize: 10, color: '#9ca3af', marginTop: 2 }}>custo líquido × markup = preço venda</div>
+              onChange={e => setCab(c => ({ ...c, markup: parseFloat(e.target.value) || 0 }))} 
+              className="w-full h-10 px-3 border border-slate-300 rounded-lg text-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none transition-all" />
+            <div style={{ fontSize: 10, color: '#94a3b8', marginTop: 3 }}>Fórmula: custo líquido × markup = preço venda</div>
           </div>
           <div>
-            <label style={labelStyle}>Desconto fornecedor (%)</label>
+            <label style={labelStyle}>Desconto do Fornecedor (%)</label>
             <input type="number" min={0} max={100} step={0.1} value={cab.desconto}
-              onChange={e => setCab(c => ({ ...c, desconto: parseFloat(e.target.value) || 0 }))} style={inputStyle} />
-            <div style={{ fontSize: 10, color: '#9ca3af', marginTop: 2 }}>aplicado sobre custo antes do markup</div>
+              onChange={e => setCab(c => ({ ...c, desconto: parseFloat(e.target.value) || 0 }))} 
+              className="w-full h-10 px-3 border border-slate-300 rounded-lg text-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none transition-all" />
+            <div style={{ fontSize: 10, color: '#94a3b8', marginTop: 3 }}>Aplicado antes do cálculo do markup</div>
           </div>
           <div>
-            <label style={{ ...labelStyle, visibility: 'hidden' }}>x</label>
-            <div style={{ background: '#f9fafb', border: '0.5px solid #e5e7eb', borderRadius: 6, padding: '8px 12px', display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap' }}>
-              <div><div style={{ fontSize: 10, color: '#6b7280' }}>Custo bruto</div><div style={{ fontSize: 12, fontWeight: 500 }}>R$ 100,00</div></div>
-              <span style={{ fontSize: 12, color: '#9ca3af' }}>− {cab.desconto}%</span>
-              <div><div style={{ fontSize: 10, color: '#6b7280' }}>Líquido</div><div style={{ fontSize: 12, fontWeight: 500 }}>R$ {liq.toFixed(2).replace('.', ',')}</div></div>
-              <span style={{ fontSize: 12, color: '#9ca3af' }}>× {cab.markup.toFixed(2)}</span>
-              <div><div style={{ fontSize: 10, color: '#6b7280' }}>Venda</div><div style={{ fontSize: 14, fontWeight: 500, color: '#185FA5' }}>{fmtBRL(exVenda)}</div></div>
+            <label style={{ ...labelStyle, visibility: 'hidden' }}>Simulação</label>
+            <div style={{ background: '#f8fafc', border: '1px solid #e2e8f0', borderRadius: 8, padding: '10px 15px', display: 'flex', alignItems: 'center', gap: 12, flexWrap: 'wrap', justifyContent: 'space-between' }}>
+              <div className="text-center">
+                <div style={{ fontSize: 9, color: '#64748b', fontWeight: 700, textTransform: 'uppercase' }}>Custo</div>
+                <div style={{ fontSize: 12, fontWeight: 700 }}>R$ 100,00</div>
+              </div>
+              <div className="text-[11px] text-slate-300 font-bold">−</div>
+              <div className="text-center">
+                <div style={{ fontSize: 9, color: '#64748b', fontWeight: 700, textTransform: 'uppercase' }}>Desc.</div>
+                <div style={{ fontSize: 12, fontWeight: 700, color: '#dc2626' }}>{cab.desconto.toFixed(1)}%</div>
+              </div>
+              <div className="text-[11px] text-slate-300 font-bold">=</div>
+              <div className="text-center">
+                <div style={{ fontSize: 9, color: '#64748b', fontWeight: 700, textTransform: 'uppercase' }}>Liq.</div>
+                <div style={{ fontSize: 12, fontWeight: 700 }}>R$ {liq.toFixed(2).replace('.', ',')}</div>
+              </div>
+              <div className="text-[11px] text-slate-300 font-bold">×</div>
+              <div className="text-center">
+                <div style={{ fontSize: 9, color: '#1d4ed8', fontWeight: 700, textTransform: 'uppercase' }}>Venda</div>
+                <div style={{ fontSize: 15, fontWeight: 800, color: '#1d4ed8' }}>{fmtBRL(exVenda)}</div>
+              </div>
             </div>
           </div>
         </div>
@@ -806,7 +883,7 @@ function StepCabecalho({ cab, setCab, prazosRaw, setPrazosRaw, numeroPedidoSalvo
  
 // ─── Step 1: Itens ────────────────────────────────────────────────────────────
  
-function StepItens({ items, setItems, cab }: { items: OrderItem[]; setItems: React.Dispatch<React.SetStateAction<OrderItem[]>>; cab: Cabecalho }) {
+function StepItens({ items, setItems, cab }: { items: OrderItem[]; setItems: Dispatch<SetStateAction<OrderItem[]>>; cab: Cabecalho }) {
   const [showPopup, setShowPopup] = useState(false);
   const [editIdx, setEditIdx] = useState(-1);
   const [form, setForm] = useState({ ref: '', tipo: '', cor1: '', cor2: '', cor3: '', modelo: 'FEM', custo: '' });

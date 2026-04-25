@@ -1,7 +1,7 @@
-import { useState, useEffect } from 'react';
+import React, { useState, useEffect, Dispatch, SetStateAction } from 'react';
 import { supabase } from '../services/supabaseClient';
 import { User } from '../types';
- 
+
 // ─── Tipos ────────────────────────────────────────────────────────────────────
  
 interface GradeItem {
@@ -95,7 +95,7 @@ interface Cabecalho {
 interface StepPedidosProps {
   items: OrderItem[];
   pedidos: SubOrder[];
-  setPedidos: React.Dispatch<React.SetStateAction<SubOrder[]>>;
+  setPedidos: Dispatch<SetStateAction<SubOrder[]>> | any; // Fix potential type issues with setPedidos
   user?: User;
   brandId?: string; // Receber brandId do cabeçalho para evitar erro RLS
   cab: Cabecalho;
