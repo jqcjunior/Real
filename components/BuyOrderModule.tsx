@@ -40,37 +40,13 @@ function addDays(dateStr: string, days: number): string {
   return d.toLocaleDateString('pt-BR');
 }
  
-function useSmartPrice(custo: number, desconto: number, markup: number): number {
-  const [preco, setPreco] = useState(0);
-
-  useEffect(() => {
-    let active = true;
-    const liq = custo * (1 - (desconto || 0) / 100);
-    const bruto = liq * (markup || 0);
-
-    if (bruto <= 0) {
-      setPreco(0);
-      return;
-    }
-
-    const timer = setTimeout(async () => {
-      try {
-        const { data, error } = await supabase.rpc('round_price_smart', { preco_calculado: Math.round(bruto * 100) / 100 });
-        if (!error && active && data != null) {
-          setPreco(data);
-        }
-      } catch (err) {
-        console.error(err);
-      }
-    }, 300);
-
-    return () => {
-      active = false;
-      clearTimeout(timer);
-    };
-  }, [custo, desconto, markup]);
-
-  return preco;
+function calcularPrecoVenda(custo: number, desconto: number, markup: number): number {
+  if (!custo || custo <= 0 || !markup || markup <= 0) return 0;
+  const custoLiquido = custo * (1 - (desconto || 0) / 100);
+  const valorBase = custoLiquido * markup;
+  const dezena = Math.floor(valorBase / 10) * 10;
+  
+  return valorBase < dezena + 5 ? dezena + 9.99 : dezena + 19.99;
 }
  
 function fmtBRL(v: number): string {
@@ -735,7 +711,7 @@ function StepCabecalho({ cab, setCab, prazosRaw, setPrazosRaw, numeroPedidoSalvo
   }
 
   const liq = 100 * (1 - (cab.desconto || 0) / 100);
-  const exVenda = useSmartPrice(100, cab.desconto, cab.markup);
+  const exVenda = calcularPrecoVenda(100, cab.desconto, cab.markup);
 
   const labelStyle: React.CSSProperties = { fontSize: 11, fontWeight: 600, color: '#475569', textTransform: 'uppercase', letterSpacing: '0.04em', marginBottom: 4, display: 'block' };
 
@@ -863,8 +839,8 @@ function StepCabecalho({ cab, setCab, prazosRaw, setPrazosRaw, numeroPedidoSalvo
       {/* SEÇÃO 3: PRECIFICAÇÃO */}
       <div style={{ padding: '10px 18px', background: '#f8fafc', borderBottom: '1px solid #e2e8f0', fontSize: 11, fontWeight: 800, color: '#1e293b', textTransform: 'uppercase', letterSpacing: '0.05em' }}>💰 Precificação</div>
       <div className="p-4 md:p-6 border-b border-slate-200">
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-          <div>
+        <div className="flex flex-col md:flex-row gap-6 items-start">
+          <div className="w-full md:w-[15%]">
             <label style={labelStyle}>Markup (%) *</label>
             <input 
               type="number" 
@@ -877,7 +853,7 @@ function StepCabecalho({ cab, setCab, prazosRaw, setPrazosRaw, numeroPedidoSalvo
             />
             <div className="text-[10px] text-slate-400 mt-1 italic">Fator multiplicador (ex: 2.60)</div>
           </div>
-          <div>
+          <div className="w-full md:w-[15%]">
             <label style={labelStyle}>Desconto do Fornecedor (%)</label>
             <input 
               type="number" 
@@ -889,19 +865,19 @@ function StepCabecalho({ cab, setCab, prazosRaw, setPrazosRaw, numeroPedidoSalvo
               className="w-full h-10 px-3 border border-slate-300 rounded-lg text-sm focus:ring-2 focus:ring-blue-500 outline-none transition-all" 
             />
           </div>
-          <div className="hidden lg:block lg:pt-5">
-            <div style={{ background: '#f8fafc', border: '1px solid #e2e8f0', borderRadius: 8, padding: '12px 15px', display: 'flex', alignItems: 'center', gap: 12, justifyContent: 'space-between' }}>
-              <div className="text-center">
-                <div style={{ fontSize: 9, color: '#64748b', fontWeight: 700, textTransform: 'uppercase' }}>Custo</div>
-                <div style={{ fontSize: 12, fontWeight: 700 }}>R$ 100,00</div>
+          <div className="w-full md:w-[70%] pt-0 md:pt-[18px]">
+            <div style={{ background: '#f8fafc', border: '1px solid #e2e8f0', borderRadius: 8, padding: '0 20px', display: 'flex', alignItems: 'center', height: 40, justifyContent: 'space-between' }}>
+              <div className="flex items-center gap-2">
+                <div style={{ fontSize: 10, color: '#64748b', fontWeight: 700, textTransform: 'uppercase' }}>Custo</div>
+                <div style={{ fontSize: 13, fontWeight: 700 }}>R$ 100,00</div>
               </div>
-              <div className="text-center">
-                <div style={{ fontSize: 9, color: '#64748b', fontWeight: 700, textTransform: 'uppercase' }}>Desc.</div>
-                <div style={{ fontSize: 11, fontWeight: 700, color: '#dc2626' }}>{cab.desconto.toFixed(1)}%</div>
+              <div className="flex items-center gap-2">
+                <div style={{ fontSize: 10, color: '#64748b', fontWeight: 700, textTransform: 'uppercase' }}>Desc.</div>
+                <div style={{ fontSize: 12, fontWeight: 700, color: '#dc2626' }}>{cab.desconto.toFixed(1)}%</div>
               </div>
-              <div className="text-center">
-                <div style={{ fontSize: 9, color: '#1d4ed8', fontWeight: 700, textTransform: 'uppercase' }}>Venda Est.</div>
-                <div style={{ fontSize: 14, fontWeight: 800, color: '#1d4ed8' }}>{fmtBRL(exVenda)}</div>
+              <div className="flex items-center gap-2">
+                <div style={{ fontSize: 10, color: '#1d4ed8', fontWeight: 700, textTransform: 'uppercase' }}>Venda Est.</div>
+                <div style={{ fontSize: 15, fontWeight: 800, color: '#1d4ed8' }}>{fmtBRL(exVenda)}</div>
               </div>
             </div>
           </div>
@@ -1046,7 +1022,7 @@ function StepItens({ items, setItems, cab, roundBase }: { items: OrderItem[]; se
  
   function delItem(i: number) { setItems(its => its.filter((_, idx) => idx !== i)); }
  
-  const estVenda = useSmartPrice(parseFloat(form.custo) || 0, cab.desconto, cab.markup);
+  const estVenda = calcularPrecoVenda(parseFloat(form.custo) || 0, cab.desconto, cab.markup);
  
   return (
     <div>
