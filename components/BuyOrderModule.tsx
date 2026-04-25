@@ -88,7 +88,7 @@ export default function BuyOrderModule({ user }: { user?: User }) {
   const [cab, setCab] = useState<Cabecalho>({
     role: 'comprador', brand_id: null, marca: '', fornecedor: '',
     representante: '', telefone: '', email: '',
-    fat_inicio: '', fat_fim: '', prazos: [], markup: 0, desconto: 0,
+    fat_inicio: '', fat_fim: '', prazos: [], markup: 2.6, desconto: 0,
   });
 
   useEffect(() => {
@@ -667,6 +667,31 @@ function StepCabecalho({ cab, setCab, prazosRaw, setPrazosRaw, numeroPedidoSalvo
   const [activeSearchField, setActiveSearchField] = useState<string | null>(null);
   const searchTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
+  const [vencimentosCalculados, setVencimentosCalculados] = useState<string[]>([]);
+
+  const calculateVencimentos = (dataFinal: string, prazosStr: string) => {
+    if (!dataFinal || !prazosStr) return [];
+    
+    // Configura 12:00 UTC para evitar que a conversão por fuso decaia para o dia anterior
+    const data = new Date(dataFinal + 'T12:00:00');
+    const prazos = prazosStr.split(/[,;\/\s]+/).map(p => parseInt(p.trim())).filter(p => !isNaN(p));
+    
+    return prazos.map(prazo => {
+      const venc = new Date(data);
+      venc.setDate(venc.getDate() + prazo);
+      const meses = ['JAN','FEV','MAR','ABR','MAI','JUN','JUL','AGO','SET','OUT','NOV','DEZ'];
+      return `${meses[venc.getMonth()]}/${venc.getFullYear().toString().slice(-2)}`;
+    });
+  };
+
+  useEffect(() => {
+    if (cab.fat_fim && prazosRaw) {
+      setVencimentosCalculados(calculateVencimentos(cab.fat_fim, prazosRaw));
+    } else {
+      setVencimentosCalculados([]);
+    }
+  }, [cab.fat_fim, prazosRaw]);
+
   function onFieldInput(field: keyof Cabecalho, val: string) {
     const uppercaseVal = val.toUpperCase();
     setCab(c => ({ ...c, [field]: uppercaseVal, brand_id: field === 'marca' ? null : c.brand_id }));
@@ -792,7 +817,7 @@ function StepCabecalho({ cab, setCab, prazosRaw, setPrazosRaw, numeroPedidoSalvo
       {/* SEÇÃO 2: FATURAMENTO */}
       <div style={{ padding: '10px 18px', background: '#f8fafc', borderBottom: '1px solid #e2e8f0', fontSize: 11, fontWeight: 800, color: '#1e293b', textTransform: 'uppercase', letterSpacing: '0.05em' }}>📅 Faturamento</div>
       <div className="p-4 md:p-6 border-b border-slate-200">
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-5 mb-5">
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-5 mb-5">
           <div>
             <label style={labelStyle}>Data Inicial *</label>
             <input 
@@ -819,6 +844,18 @@ function StepCabecalho({ cab, setCab, prazosRaw, setPrazosRaw, numeroPedidoSalvo
               placeholder="Ex: 90/120/150 cada parcela" 
               className={`w-full h-10 px-3 border rounded-lg text-sm focus:ring-2 focus:ring-blue-500 outline-none transition-all ${!prazosRaw ? 'border-red-300 bg-red-50/30' : 'border-slate-300'}`} 
             />
+            {vencimentosCalculados.length > 0 && (
+              <div className="flex gap-2 flex-wrap mt-2">
+                {vencimentosCalculados.map((v, idx) => (
+                  <span 
+                    key={idx}
+                    className="px-3 py-1 bg-blue-100 dark:bg-blue-900/30 text-blue-700 dark:text-blue-400 rounded-full text-[10px] font-bold"
+                  >
+                    {v}
+                  </span>
+                ))}
+              </div>
+            )}
           </div>
         </div>
       </div>
@@ -826,7 +863,7 @@ function StepCabecalho({ cab, setCab, prazosRaw, setPrazosRaw, numeroPedidoSalvo
       {/* SEÇÃO 3: PRECIFICAÇÃO */}
       <div style={{ padding: '10px 18px', background: '#f8fafc', borderBottom: '1px solid #e2e8f0', fontSize: 11, fontWeight: 800, color: '#1e293b', textTransform: 'uppercase', letterSpacing: '0.05em' }}>💰 Precificação</div>
       <div className="p-4 md:p-6 border-b border-slate-200">
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
           <div>
             <label style={labelStyle}>Markup (%) *</label>
             <input 
