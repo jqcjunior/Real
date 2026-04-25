@@ -24,6 +24,7 @@ export interface OrderItem {
   modelo: string;
   custo: number;
   preco_venda: number;
+  historico_preco_venda?: number;
 }
  
 export interface SubOrder {
@@ -282,17 +283,9 @@ export default function StepPedidos({ items, pedidos, setPedidos, user, brandId,
   }, []);
  
   useEffect(() => {
-    if (pedidos.length === 0) {
-      const initialStore = isGerente && userStoreId ? [userStoreId] : [];
-      setPedidos([{ 
-        num: 1, 
-        pedido_numero: '', 
-        itensComGrades: [], 
-        lojas: initialStore, 
-        lojaMode: isGerente ? 'all' : null 
-      }]);
-    }
-  }, [pedidos.length, isGerente, userStoreId, setPedidos]);
+    // Empty useEffect or remove initialization logic
+    // Removing the default empty order to prevent skipping order number "1"
+  }, []);
  
   function toggleItem(itemIdx: number) {
     setStep2State((prev: any) => {
@@ -327,13 +320,13 @@ export default function StepPedidos({ items, pedidos, setPedidos, user, brandId,
     }
   }
  
-  function vincularAoPedido() {
-    if (selectedItems.size === 0 || !gradeExpandida || !gradesGlobais[gradeExpandida]) {
+  function vincularAoPedido(gradeLetter: string) {
+    if (selectedItems.size === 0 || !gradeLetter || !gradesGlobais[gradeLetter]) {
       alert('Selecione pelo menos um item e preencha a grade');
       return;
     }
  
-    const gradeTemplate = gradesGlobais[gradeExpandida];
+    const gradeTemplate = gradesGlobais[gradeLetter];
     if (totPares(gradeTemplate.qtds) === 0) {
       alert('A grade está vazia');
       return;
@@ -345,7 +338,7 @@ export default function StepPedidos({ items, pedidos, setPedidos, user, brandId,
 
     selectedItems.forEach(itemIdx => {
       const gradeData: GradeItem = {
-        letter: gradeExpandida,
+        letter: gradeLetter,
         cat: gradeTemplate.cat as any,
         qtds: { ...gradeTemplate.qtds }
       };
@@ -354,7 +347,7 @@ export default function StepPedidos({ items, pedidos, setPedidos, user, brandId,
       
       if (existingIdx >= 0) {
         // Item já existe no pedido temporário, verificar se já tem essa letra
-        if (updatedTempItens[existingIdx].grades.some(g => g.letter === gradeExpandida)) {
+        if (updatedTempItens[existingIdx].grades.some(g => g.letter === gradeLetter)) {
           itensJaVinculados.push(items[itemIdx].ref);
         } else {
           updatedTempItens[existingIdx].grades.push(gradeData);
@@ -369,7 +362,7 @@ export default function StepPedidos({ items, pedidos, setPedidos, user, brandId,
     });
  
     if (itensJaVinculados.length > 0) {
-      alert(`A grade ${gradeExpandida} já foi vinculada para: ${itensJaVinculados.join(', ')}`);
+      alert(`A grade ${gradeLetter} já foi vinculada para: ${itensJaVinculados.join(', ')}`);
     }
 
     setStep2State((prev: any) => ({
@@ -620,26 +613,32 @@ export default function StepPedidos({ items, pedidos, setPedidos, user, brandId,
                     
                     {/* Header da Grade (sempre visível) */}
                     <div 
-                      className="flex items-center gap-2 cursor-pointer"
+                      className="flex items-center gap-2 cursor-pointer pb-2"
                       onClick={() => setStep2State((prev: any) => ({ ...prev, gradeExpandida: isExpanded ? null : letter }))}>
                       <div className="w-6 h-6 bg-blue-600 text-white rounded font-bold flex items-center justify-center text-xs">
                         {letter}
                       </div>
-                      <div className="flex-1">
-                        {totalPares > 0 && (
-                          <div className="text-[9px] text-slate-500">
-                            {Object.entries(gradeData?.qtds || {})
-                              .filter(([_, v]) => v > 0)
-                              .map(([sz, v]) => `${sz}-${v}`)
-                              .join(' * ')}
-                          </div>
-                        )}
+                      <div className="flex-1 font-semibold text-[10px] text-slate-600">
+                        {totalPares > 0 ? "Pares" : "Grade Vazia"}
                       </div>
                       <span className="bg-green-100 text-green-700 px-2 py-0.5 rounded text-[10px] font-bold">
                         {totalPares}p
                       </span>
-                      <span className="text-slate-400 text-xs">{isExpanded ? '▼' : '▶'}</span>
+                      <span className="text-slate-400 text-[10px]">{isExpanded ? '▼' : '▶'}</span>
                     </div>
+                    
+                    {/* Resumo da Grade (sempre visível se houver pares e não estiver expandido, ou sempre acima do botão) */}
+                    {!isExpanded && totalPares > 0 && (
+                      <div className="flex flex-wrap gap-2.5 mb-2 px-1">
+                        {Object.entries(gradeData?.qtds || {})
+                          .filter(([_, v]) => v > 0)
+                          .map(([sz, v]) => (
+                            <div key={sz} className="text-[10px] text-slate-600">
+                              <span className="font-bold text-slate-800">{sz}-</span>{v}
+                            </div>
+                          ))}
+                      </div>
+                    )}
  
                     {/* Grid Expandido */}
                     {isExpanded && (
@@ -723,8 +722,8 @@ export default function StepPedidos({ items, pedidos, setPedidos, user, brandId,
                     )}
                       
                     <button
-                        onClick={vincularAoPedido}
-                        disabled={!isExpanded || totalPares === 0}
+                        onClick={() => vincularAoPedido(letter)}
+                        disabled={totalPares === 0}
                         className="mt-2 w-full px-2 py-1 bg-blue-600 text-white text-[9px] font-bold rounded hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed">
                         ✓ Vincular Grade {letter}
                       </button>

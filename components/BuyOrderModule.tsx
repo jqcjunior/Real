@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useRef, useCallback, Dispatch, SetStateAction } from 'react';
+import { Pencil, X } from 'lucide-react';
 import { supabase } from '../services/supabaseClient';
 import { User } from '../types';
 import StepPedidos, { GradeItem, ItemComGrades, OrderItem, SubOrder, Cabecalho } from './BuyOrderStepPedidos';
@@ -220,7 +221,7 @@ export default function BuyOrderModule({ user }: { user?: User }) {
         .from('buy_orders')
         .insert({
           user_id: userId,
-          user_name: user?.email || 'sistema',
+          user_name: user?.name || user?.email || 'sistema',
           user_role: cab.role,
           brand_id: brandId,
           marca: cab.marca,
@@ -234,7 +235,7 @@ export default function BuyOrderModule({ user }: { user?: User }) {
           vencimentos,
           desconto: cab.desconto,
           markup: cab.markup,
-          status: 'rascunho',
+          status: 'confirmado',
         })
         .select('id, numero_pedido')
         .single();
@@ -839,33 +840,35 @@ function StepCabecalho({ cab, setCab, prazosRaw, setPrazosRaw, numeroPedidoSalvo
       {/* SEÇÃO 3: PRECIFICAÇÃO */}
       <div style={{ padding: '10px 18px', background: '#f8fafc', borderBottom: '1px solid #e2e8f0', fontSize: 11, fontWeight: 800, color: '#1e293b', textTransform: 'uppercase', letterSpacing: '0.05em' }}>💰 Precificação</div>
       <div className="p-4 md:p-6 border-b border-slate-200">
-        <div className="flex flex-col md:flex-row gap-6 items-start">
-          <div className="w-full md:w-[15%]">
-            <label style={labelStyle}>Markup (%) *</label>
-            <input 
-              type="number" 
-              min={0} 
-              max={10} 
-              step={0.01} 
-              value={cab.markup}
-              onChange={e => setCab(c => ({ ...c, markup: parseFloat(e.target.value) || 0 }))} 
-              className={`w-full h-10 px-3 border rounded-lg text-sm focus:ring-2 focus:ring-blue-500 outline-none transition-all ${cab.markup === 0 ? 'border-amber-300 bg-amber-50/30' : 'border-slate-300'}`} 
-            />
-            <div className="text-[10px] text-slate-400 mt-1 italic">Fator multiplicador (ex: 2.60)</div>
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-6 items-start">
+          <div className="grid grid-cols-2 gap-4">
+            <div className="w-full">
+              <label style={labelStyle} className="text-left w-full block">Markup (%) *</label>
+              <input 
+                type="number" 
+                min={0} 
+                max={10} 
+                step={0.01} 
+                value={cab.markup === 0 ? '' : cab.markup}
+                onChange={e => setCab(c => ({ ...c, markup: parseFloat(e.target.value) || 0 }))} 
+                className={`w-full h-10 px-3 text-center font-bold text-blue-600 border rounded-lg text-sm focus:ring-2 focus:ring-blue-500 outline-none transition-all ${cab.markup === 0 ? 'border-amber-300 bg-amber-50/30' : 'border-slate-300'}`} 
+              />
+              <div className="text-[10px] text-slate-400 mt-1 italic text-left">Fator multiplicador (ex: 2.60)</div>
+            </div>
+            <div className="w-full">
+              <label style={labelStyle} className="text-left w-full block">Desconto (%)</label>
+              <input 
+                type="number" 
+                min={0} 
+                max={100} 
+                step={0.1} 
+                value={cab.desconto === 0 ? '' : cab.desconto}
+                onChange={e => setCab(c => ({ ...c, desconto: parseFloat(e.target.value) || 0 }))} 
+                className="w-full h-10 px-3 text-center font-bold text-blue-600 border border-slate-300 rounded-lg text-sm focus:ring-2 focus:ring-blue-500 outline-none transition-all" 
+              />
+            </div>
           </div>
-          <div className="w-full md:w-[15%]">
-            <label style={labelStyle}>Desconto do Fornecedor (%)</label>
-            <input 
-              type="number" 
-              min={0} 
-              max={100} 
-              step={0.1} 
-              value={cab.desconto}
-              onChange={e => setCab(c => ({ ...c, desconto: parseFloat(e.target.value) || 0 }))} 
-              className="w-full h-10 px-3 border border-slate-300 rounded-lg text-sm focus:ring-2 focus:ring-blue-500 outline-none transition-all" 
-            />
-          </div>
-          <div className="w-full md:w-[70%] pt-0 md:pt-[18px]">
+          <div className="w-full pt-0 md:pt-[18px]">
             <div style={{ background: '#f8fafc', border: '1px solid #e2e8f0', borderRadius: 8, padding: '0 20px', display: 'flex', alignItems: 'center', height: 40, justifyContent: 'space-between' }}>
               <div className="flex items-center gap-2">
                 <div style={{ fontSize: 10, color: '#64748b', fontWeight: 700, textTransform: 'uppercase' }}>Custo</div>
@@ -880,6 +883,7 @@ function StepCabecalho({ cab, setCab, prazosRaw, setPrazosRaw, numeroPedidoSalvo
                 <div style={{ fontSize: 15, fontWeight: 800, color: '#1d4ed8' }}>{fmtBRL(exVenda)}</div>
               </div>
             </div>
+            <div className="text-[10px] text-slate-400 mt-1 italic text-right">Marcação do markup e desconto estimado</div>
           </div>
         </div>
       </div>
@@ -893,6 +897,23 @@ function StepItens({ items, setItems, cab, roundBase }: { items: OrderItem[]; se
   const [showPopup, setShowPopup] = useState(false);
   const [editIdx, setEditIdx] = useState(-1);
   const [form, setForm] = useState({ ref: '', tipo: '', cor1: '', cor2: '', cor3: '', modelo: 'FEM', custo: '' });
+  const [historicPrice, setHistoricPrice] = useState<number | null>(null);
+
+  useEffect(() => {
+    if (form.ref && form.ref.length >= 3) {
+      const timer = setTimeout(async () => {
+        const { data, error } = await supabase.from('buy_order_items').select('preco_venda').eq('ref', form.ref).order('created_at', { ascending: false }).limit(1);
+        if (!error && data && data.length > 0) {
+          setHistoricPrice(data[0].preco_venda);
+        } else {
+          setHistoricPrice(null);
+        }
+      }, 500);
+      return () => clearTimeout(timer);
+    } else {
+      setHistoricPrice(null);
+    }
+  }, [form.ref]);
   const [cor2Manual, setCor2Manual] = useState(false);
   const [cor3Manual, setCor3Manual] = useState(false);
   const [isCalculating, setIsCalculating] = useState(false);
@@ -995,14 +1016,7 @@ function StepItens({ items, setItems, cab, roundBase }: { items: OrderItem[]; se
   async function saveItem() {
     setIsCalculating(true);
     const custo = parseFloat(form.custo) || 0;
-    const liq = custo * (1 - (cab.desconto || 0) / 100);
-    const bruto = liq * (cab.markup || 0);
-
-    let preco_venda = 0;
-    if (bruto > 0) {
-      const { data } = await supabase.rpc('round_price_smart', { preco_calculado: Math.round(bruto * 100) / 100 });
-      if (data != null) preco_venda = data;
-    }
+    const preco_venda = estVenda;
 
     const item: OrderItem = { 
       ref: form.ref, 
@@ -1012,7 +1026,8 @@ function StepItens({ items, setItems, cab, roundBase }: { items: OrderItem[]; se
       cor3: form.cor3, 
       modelo: form.modelo,
       custo, 
-      preco_venda 
+      preco_venda,
+      historico_preco_venda: historicPrice || undefined
     };
     if (editIdx >= 0) setItems(its => its.map((it, i) => i === editIdx ? item : it));
     else setItems(its => [...its, item]);
@@ -1035,15 +1050,15 @@ function StepItens({ items, setItems, cab, roundBase }: { items: OrderItem[]; se
         <table className="w-full border-collapse table-fixed">
           <thead>
             <tr style={{ background: '#f9fafb' }}>
-              <th className="w-12" style={{ padding: '6px 8px', textAlign: 'left', fontWeight: 500, color: '#6b7280', borderBottom: '0.5px solid #e5e7eb', whiteSpace: 'nowrap' }}>#</th>
-              <th className="w-32" style={{ padding: '6px 8px', textAlign: 'left', fontWeight: 500, color: '#6b7280', borderBottom: '0.5px solid #e5e7eb', whiteSpace: 'nowrap' }}>Referência</th>
-              <th className="w-40 text-xs" style={{ padding: '6px 8px', textAlign: 'left', fontWeight: 500, color: '#6b7280', borderBottom: '0.5px solid #e5e7eb', whiteSpace: 'nowrap' }}>Tipo</th>
-              <th className="w-24 text-xs" style={{ padding: '6px 8px', textAlign: 'left', fontWeight: 500, color: '#6b7280', borderBottom: '0.5px solid #e5e7eb', whiteSpace: 'nowrap' }}>Cor 1</th>
-              <th className="w-24 text-xs" style={{ padding: '6px 8px', textAlign: 'left', fontWeight: 500, color: '#6b7280', borderBottom: '0.5px solid #e5e7eb', whiteSpace: 'nowrap' }}>Cor 2</th>
-              <th className="w-24 text-xs" style={{ padding: '6px 8px', textAlign: 'left', fontWeight: 500, color: '#6b7280', borderBottom: '0.5px solid #e5e7eb', whiteSpace: 'nowrap' }}>Cor 3</th>
-              <th className="w-24" style={{ padding: '6px 8px', textAlign: 'left', fontWeight: 500, color: '#6b7280', borderBottom: '0.5px solid #e5e7eb', whiteSpace: 'nowrap' }}>Custo</th>
-              <th className="w-24" style={{ padding: '6px 8px', textAlign: 'left', fontWeight: 500, color: '#6b7280', borderBottom: '0.5px solid #e5e7eb', whiteSpace: 'nowrap' }}>Venda</th>
-              <th className="w-20" style={{ padding: '6px 8px', textAlign: 'left', fontWeight: 500, color: '#6b7280', borderBottom: '0.5px solid #e5e7eb', whiteSpace: 'nowrap' }}>Ações</th>
+              <th className="w-8" style={{ padding: '6px 4px', textAlign: 'left', fontWeight: 500, color: '#6b7280', borderBottom: '0.5px solid #e5e7eb', whiteSpace: 'nowrap' }}>#</th>
+              <th className="w-28" style={{ padding: '6px 4px', textAlign: 'left', fontWeight: 500, color: '#6b7280', borderBottom: '0.5px solid #e5e7eb', whiteSpace: 'nowrap' }}>Referência</th>
+              <th className="w-48 text-xs" style={{ padding: '6px 4px', textAlign: 'left', fontWeight: 500, color: '#6b7280', borderBottom: '0.5px solid #e5e7eb', whiteSpace: 'nowrap' }}>Tipo</th>
+              <th className="w-20 text-xs" style={{ padding: '6px 4px', textAlign: 'left', fontWeight: 500, color: '#6b7280', borderBottom: '0.5px solid #e5e7eb', whiteSpace: 'nowrap' }}>Cor 1</th>
+              <th className="w-20 text-xs" style={{ padding: '6px 4px', textAlign: 'left', fontWeight: 500, color: '#6b7280', borderBottom: '0.5px solid #e5e7eb', whiteSpace: 'nowrap' }}>Cor 2</th>
+              <th className="w-20 text-xs" style={{ padding: '6px 4px', textAlign: 'left', fontWeight: 500, color: '#6b7280', borderBottom: '0.5px solid #e5e7eb', whiteSpace: 'nowrap' }}>Cor 3</th>
+              <th className="w-24 text-right" style={{ padding: '6px 8px', fontWeight: 500, color: '#6b7280', borderBottom: '0.5px solid #e5e7eb', whiteSpace: 'nowrap' }}>Custo</th>
+              <th className="w-24 text-right" style={{ padding: '6px 12px', fontWeight: 500, color: '#6b7280', borderBottom: '0.5px solid #e5e7eb', whiteSpace: 'nowrap' }}>Venda</th>
+              <th className="w-16 text-right" style={{ padding: '6px 12px', fontWeight: 500, color: '#6b7280', borderBottom: '0.5px solid #e5e7eb', whiteSpace: 'nowrap' }}>Ações</th>
             </tr>
           </thead>
           <tbody>
@@ -1052,17 +1067,23 @@ function StepItens({ items, setItems, cab, roundBase }: { items: OrderItem[]; se
             )}
             {items.map((it, i) => (
               <tr key={i} style={{ borderBottom: '0.5px solid #f3f4f6' }}>
-                <td className="text-xs" style={{ padding: '5px 8px', color: '#9ca3af' }}>{i + 1}</td>
-                <td className="text-sm" style={{ padding: '5px 8px', fontWeight: 500 }}>{it.ref || '—'}</td>
-                <td className="text-xs" style={{ padding: '5px 8px' }}>{it.tipo || '—'}</td>
-                <td className="text-xs" style={{ padding: '5px 8px' }}>{it.cor1 || '—'}</td>
-                <td className="text-xs" style={{ padding: '5px 8px', color: '#9ca3af' }}>{it.cor2 || '—'}</td>
-                <td className="text-xs" style={{ padding: '5px 8px', color: '#9ca3af' }}>{it.cor3 || '—'}</td>
-                <td className="text-sm" style={{ padding: '5px 8px' }}>{fmtBRL(it.custo)}</td>
-                <td className="text-sm" style={{ padding: '5px 8px', color: '#185FA5', fontWeight: 500 }}>{fmtBRL(it.preco_venda)}</td>
-                <td style={{ padding: '5px 8px' }}>
-                  <button onClick={() => openEdit(i)} style={{ border: 'none', background: 'transparent', cursor: 'pointer', fontSize: 11, color: '#185FA5', marginRight: 4 }}>editar</button>
-                  <button onClick={() => delItem(i)} style={{ border: 'none', background: 'transparent', cursor: 'pointer', fontSize: 11, color: '#A32D2D' }}>✕</button>
+                <td className="text-[10px]" style={{ padding: '5px 4px', color: '#9ca3af' }}>{i + 1}</td>
+                <td className="text-xs" style={{ padding: '5px 4px', fontWeight: 500 }}>{it.ref || '—'}</td>
+                <td className="text-[10px]" style={{ padding: '5px 4px' }}>{it.tipo || '—'}</td>
+                <td className="text-[10px]" style={{ padding: '5px 4px' }}>{it.cor1 || '—'}</td>
+                <td className="text-[10px]" style={{ padding: '5px 4px', color: '#9ca3af' }}>{it.cor2 || '—'}</td>
+                <td className="text-[10px]" style={{ padding: '5px 4px', color: '#9ca3af' }}>{it.cor3 || '—'}</td>
+                <td className="text-[11px] text-right font-medium" style={{ padding: '5px 8px', color: '#64748b' }}>{fmtBRL(it.custo)}</td>
+                <td className={`text-xs text-right font-semibold ${it.historico_preco_venda && it.preco_venda > it.historico_preco_venda ? 'text-emerald-600 animate-pulse' : it.historico_preco_venda && it.preco_venda < it.historico_preco_venda ? 'text-amber-500 animate-pulse' : 'text-[#185FA5]'}`} style={{ padding: '5px 12px' }}>
+                  {fmtBRL(it.preco_venda)}
+                </td>
+                <td className="text-right" style={{ padding: '5px 12px' }}>
+                  <button onClick={() => openEdit(i)} style={{ border: 'none', background: 'transparent', cursor: 'pointer', color: '#185FA5', marginRight: 8 }} title="Editar">
+                    <Pencil size={12} strokeWidth={2.5} />
+                  </button>
+                  <button onClick={() => delItem(i)} style={{ border: 'none', background: 'transparent', cursor: 'pointer', color: '#dc2626' }} title="Excluir">
+                    <X size={14} strokeWidth={2.5} />
+                  </button>
                 </td>
               </tr>
             ))}
@@ -1255,7 +1276,14 @@ function StepItens({ items, setItems, cab, roundBase }: { items: OrderItem[]; se
 
               <div style={{ background: '#f9fafb', border: '0.5px solid #e5e7eb', borderRadius: 6, padding: '8px 12px', display: 'flex', alignItems: 'center', gap: 10 }}>
                 <span style={{ fontSize: 11, color: '#6b7280' }}>Desconto {cab.desconto}% → Markup {cab.markup}x → Venda:</span>
-                <span style={{ fontSize: 15, fontWeight: 500, color: '#185FA5' }}>{form.custo ? fmtBRL(estVenda) : '—'}</span>
+                <span className={`text-[15px] font-medium ${historicPrice && estVenda > historicPrice ? 'text-emerald-600 animate-pulse' : historicPrice && estVenda < historicPrice ? 'text-amber-500 animate-pulse' : 'text-[#185FA5]'}`}>
+                  {form.custo ? fmtBRL(estVenda) : '—'}
+                </span>
+                {historicPrice && form.custo && (
+                  <span className="text-[10px] text-slate-400 ml-auto italic">
+                    Último: {fmtBRL(historicPrice)}
+                  </span>
+                )}
               </div>
             </div>
             <div style={{ padding: '10px 16px', borderTop: '0.5px solid #e5e7eb', display: 'flex', justifyContent: 'flex-end', gap: 8 }}>

@@ -9,6 +9,7 @@ import {
 import { supabase } from './services/supabaseClient';
 import apiService from './services/apiService';
 import { ensureSession } from './services/authService';
+import { setUserSession } from './utils/authSession';
 import { BRAND_LOGO } from './constants';
 
 // Módulos com Lazy Loading
@@ -176,9 +177,23 @@ const App: React.FC = () => {
             setIsSidebarOpen(true);
         }
 
+        const initializeSession = async () => {
+          const userStr = localStorage.getItem('user');
+          if (userStr) {
+            try {
+              const user = JSON.parse(userStr);
+              await setUserSession(user.id);
+            } catch (err) {
+              console.error('Erro ao restaurar sessão:', err);
+              localStorage.removeItem('user');
+            }
+          }
+        };
+
         const init = async () => {
             setIsLoading(true);
             try {
+                await initializeSession();
                 await ensureSession();
                 await bootstrapPermissions();
                 await bootstrapParameters();
@@ -889,6 +904,12 @@ const App: React.FC = () => {
 
             if (!result || !result.user) {
                 throw new Error('Resposta de login inválida');
+            }
+
+            // CRÍTICO: Definir sessão no banco
+            const sessionOk = await setUserSession(result.user.id);
+            if (!sessionOk) {
+                throw new Error('Erro ao iniciar sessão. Tente novamente.');
             }
 
             const rawRole = (result.user.role || '').toUpperCase().trim();
