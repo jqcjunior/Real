@@ -854,3 +854,94 @@ BEGIN
   );
 END;
 $$ LANGUAGE plpgsql;
+
+-- Buscar cotas futuras COM abatimentos em tempo real
+CREATE OR REPLACE FUNCTION get_buy_order_quotas_future(p_store_number text, p_tipo_comprador text)
+RETURNS TABLE (
+  id UUID,
+  store_number text,
+  year integer,
+  month integer,
+  cota_inicial numeric,
+  cota_comprometida numeric,
+  cota_disponivel numeric
+) AS $$
+BEGIN
+  RETURN QUERY
+  SELECT 
+    qc.id,
+    qc.store_number,
+    qc.year::integer,
+    qc.month::integer,
+    
+    CASE WHEN p_tipo_comprador = 'COMPRADOR' THEN qc.cota_comprador_inicial ELSE qc.cota_gerente_inicial END as cota_inicial,
+    
+    COALESCE(SUM(
+      CASE 
+        WHEN qt.tipo_comprador = p_tipo_comprador AND qt.aplicado = false 
+        THEN qt.valor_abatido 
+        ELSE 0 
+      END
+    ), 0) AS cota_comprometida,
+    
+    (CASE WHEN p_tipo_comprador = 'COMPRADOR' THEN qc.cota_comprador_inicial ELSE qc.cota_gerente_inicial END) - 
+    COALESCE(SUM(
+      CASE 
+        WHEN qt.tipo_comprador = p_tipo_comprador AND qt.aplicado = false 
+        THEN qt.valor_abatido 
+        ELSE 0 
+      END
+    ), 0) AS cota_disponivel
+
+  FROM buyorder_quota_control qc
+  LEFT JOIN buyorder_quota_transactions qt 
+    ON EXTRACT(YEAR FROM qt.vencimento_data) = qc.year
+    AND EXTRACT(MONTH FROM qt.vencimento_data) = qc.month
+    AND qt.tipo_comprador = p_tipo_comprador
+    AND qt.aplicado = false
+    
+  WHERE qc.store_number = p_store_number
+    AND qc.year >= EXTRACT(YEAR FROM CURRENT_DATE)
+    AND (
+      qc.year > EXTRACT(YEAR FROM CURRENT_DATE)
+      OR qc.month >= EXTRACT(MONTH FROM CURRENT_DATE)
+    )
+    
+  GROUP BY qc.id, qc.store_number, qc.year, qc.month, qc.cota_comprador_inicial, qc.cota_gerente_inicial
+  ORDER BY qc.year, qc.month
+  LIMIT 12;
+END;
+$$ LANGUAGE plpgsql;
+
+-- Listar pedidos que vencem num mês específico
+CREATE OR REPLACE FUNCTION get_buy_order_quota_transactions_details(p_store_number text, p_year integer, p_month integer, p_tipo_comprador text)
+RETURNS TABLE (
+  numero_pedido integer,
+  marca text,
+  created_at timestamptz,
+  prazos integer[],
+  vencimentos date[],
+  valor_abatido numeric,
+  tipo_comprador text
+) AS $$
+BEGIN
+  RETURN QUERY
+  SELECT 
+    o.numero_pedido,
+    o.marca,
+    o.created_at,
+    o.prazos,
+    o.vencimentos,
+    qt.valor_abatido,
+    qt.tipo_comprador::text
+  FROM buyorder_quota_transactions qt
+  JOIN buy_orders o ON o.id = qt.order_id
+  JOIN buyorder_quota_control qc ON qc.id = qt.quota_control_id
+  WHERE EXTRACT(YEAR FROM qt.vencimento_data) = p_year
+    AND EXTRACT(MONTH FROM qt.vencimento_data) = p_month
+    AND qt.tipo_comprador = p_tipo_comprador
+    AND qt.aplicado = false
+    AND qc.store_number = p_store_number
+  ORDER BY o.created_at DESC;
+END;
+$$ LANGUAGE plpgsql;

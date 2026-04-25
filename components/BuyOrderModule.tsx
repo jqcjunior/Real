@@ -88,7 +88,7 @@ export default function BuyOrderModule({ user }: { user?: User }) {
   const [cab, setCab] = useState<Cabecalho>({
     role: 'comprador', brand_id: null, marca: '', fornecedor: '',
     representante: '', telefone: '', email: '',
-    fat_inicio: '', fat_fim: '', prazos: [], markup: 2.60, desconto: 0,
+    fat_inicio: '', fat_fim: '', prazos: [], markup: 0, desconto: 0,
   });
 
   useEffect(() => {
@@ -138,6 +138,21 @@ export default function BuyOrderModule({ user }: { user?: User }) {
  
   const [recentOrders, setRecentOrders] = useState<any[]>([]);
  
+  const isHeaderValid = !!(
+    cab.marca && 
+    cab.fornecedor && 
+    cab.representante && 
+    cab.telefone && 
+    cab.email && 
+    cab.fat_inicio && 
+    cab.fat_fim && 
+    cab.prazos.length > 0 &&
+    cab.markup >= 0 &&
+    cab.desconto >= 0 && cab.desconto < 100 &&
+    (new Date(cab.fat_inicio + 'T00:00:00').getMonth() === new Date(cab.fat_fim + 'T00:00:00').getMonth()) &&
+    (new Date(cab.fat_inicio + 'T00:00:00').getFullYear() === new Date(cab.fat_fim + 'T00:00:00').getFullYear())
+  );
+
   const fetchRecentOrders = useCallback(async () => {
     const { data } = await supabase
       .from('buy_orders')
@@ -157,26 +172,8 @@ export default function BuyOrderModule({ user }: { user?: User }) {
  
   function navNext() {
     if (step === 0) {
-      const requiredFields = [
-        { key: 'marca', label: 'Marca' },
-        { key: 'fornecedor', label: 'Fornecedor' },
-        { key: 'representante', label: 'Representante' },
-        { key: 'telefone', label: 'Telefone' },
-        { key: 'email', label: 'E-mail' },
-        { key: 'fat_inicio', label: 'Fat. Início' },
-        { key: 'fat_fim', label: 'Fat. Fim' },
-        { key: 'markup', label: 'Markup' }
-      ];
-
-      const missing = requiredFields.filter(f => !cab[f.key as keyof Cabecalho]);
-
-      if (missing.length > 0) {
-        setError(`Preencha todos os campos obrigatórios: ${missing.map(m => m.label).join(', ')}.`);
-        return;
-      }
-
-      if (!cab.prazos || cab.prazos.length === 0) {
-        setError('Defina ao menos um prazo de pagamento (ex: 30/60/90).');
+      if (!isHeaderValid) {
+        setError('Preencha todos os campos obrigatórios do cabeçalho (verifique se as datas de faturamento estão no mesmo mês).');
         return;
       }
     }
@@ -593,8 +590,8 @@ export default function BuyOrderModule({ user }: { user?: User }) {
             <span style={{ fontSize: 11, color: '#6b7280' }}>
               {cab.marca && `${cab.marca} · `}{items.length > 0 && `${items.length} itens`}
             </span>
-            <button onClick={navNext} disabled={saving}
-              style={{ height: 30, padding: '0 18px', borderRadius: 5, fontSize: 12, fontWeight: 500, cursor: 'pointer', border: 'none', background: step === STEPS.length - 1 ? '#27500A' : '#185FA5', color: '#fff', opacity: saving ? 0.7 : 1 }}>
+            <button onClick={navNext} disabled={saving || !isHeaderValid}
+              style={{ height: 30, padding: '0 18px', borderRadius: 5, fontSize: 12, fontWeight: 500, cursor: 'pointer', border: 'none', background: step === STEPS.length - 1 ? '#27500A' : '#185FA5', color: '#fff', opacity: (saving || !isHeaderValid) ? 0.7 : 1 }}>
               {saving ? 'Salvando...' : step === STEPS.length - 1 ? 'Salvar pedido' : 'Próximo →'}
             </button>
           </div>
@@ -715,30 +712,28 @@ function StepCabecalho({ cab, setCab, prazosRaw, setPrazosRaw, numeroPedidoSalvo
   const liq = 100 * (1 - (cab.desconto || 0) / 100);
   const exVenda = useSmartPrice(100, cab.desconto, cab.markup);
 
-  const inputStyle: React.CSSProperties = { height: 35, padding: '0 10px', border: '1px solid #d1d5db', borderRadius: 8, fontSize: 13, outline: 'none', width: '100%', background: 'var(--color-background-primary)', color: 'var(--color-text-primary)' };
   const labelStyle: React.CSSProperties = { fontSize: 11, fontWeight: 600, color: '#475569', textTransform: 'uppercase', letterSpacing: '0.04em', marginBottom: 4, display: 'block' };
 
   return (
     <div>
-      {/* Fornecedor */}
-      <div style={{ padding: '8px 18px', background: '#f8fafc', borderBottom: '1px solid #e2e8f0', fontSize: 11, fontWeight: 700, color: '#64748b', textTransform: 'uppercase', letterSpacing: '0.05em' }}>Dados do Fornecedor (Obrigatórios)</div>
+      {/* SEÇÃO 1: DADOS DO FORNECEDOR */}
+      <div style={{ padding: '10px 18px', background: '#f8fafc', borderBottom: '1px solid #e2e8f0', fontSize: 11, fontWeight: 800, color: '#1e293b', textTransform: 'uppercase', letterSpacing: '0.05em' }}>📦 Dados do Fornecedor</div>
       <div className="p-4 md:p-6 border-b border-slate-200 space-y-5">
-        {/* Linha 1: Marca */}
-        <div className="grid grid-cols-1 gap-4">
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
           <div className="relative">
             <label style={labelStyle}>Marca *</label>
             <input 
               value={cab.marca} 
               onChange={e => onFieldInput('marca', e.target.value)} 
               onBlur={() => setTimeout(() => setShowDrop(false), 250)}
-              placeholder="Digite o nome da marca para buscar ou cadastrar..." 
+              placeholder="Digite a marca..." 
               autoComplete="off" 
-              className="w-full h-10 px-3 border border-slate-300 rounded-lg text-sm uppercase font-bold focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none transition-all" 
+              className={`w-full h-10 px-3 border rounded-lg text-sm uppercase font-bold focus:ring-2 focus:ring-blue-500 outline-none transition-all ${!cab.marca ? 'border-red-300 bg-red-50/30' : 'border-slate-300'}`} 
             />
             {showDrop && activeSearchField === 'marca' && (
               <div className="absolute top-full left-0 right-0 mt-1 bg-white border border-slate-300 rounded-lg shadow-xl z-50 max-h-60 overflow-y-auto">
                 {searching && <div className="p-4 text-xs text-slate-500 italic">Buscando marca...</div>}
-                {!searching && brands.length === 0 && <div className="p-4 text-xs text-slate-500 italic">Marca nova (será cadastrada ao salvar)</div>}
+                {!searching && brands.length === 0 && <div className="p-4 text-xs text-slate-500 italic">Marca nova</div>}
                 {!searching && brands.map(b => (
                   <div key={b.id} onMouseDown={() => selectBrand(b)} className="p-3 text-sm cursor-pointer hover:bg-blue-50 border-b border-slate-50 last:border-0 transition-colors">
                     <div className="font-bold text-blue-900">{b.marca}</div>
@@ -748,10 +743,6 @@ function StepCabecalho({ cab, setCab, prazosRaw, setPrazosRaw, numeroPedidoSalvo
               </div>
             )}
           </div>
-        </div>
-
-        {/* Linha 2: Fornecedor e Representante */}
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
           <div className="relative">
             <label style={labelStyle}>Fornecedor *</label>
             <input 
@@ -760,20 +751,12 @@ function StepCabecalho({ cab, setCab, prazosRaw, setPrazosRaw, numeroPedidoSalvo
               onBlur={() => setTimeout(() => setShowDrop(false), 250)}
               placeholder="Razão social" 
               autoComplete="off"
-              className="w-full h-10 px-3 border border-slate-300 rounded-lg text-sm uppercase focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none transition-all" 
+              className={`w-full h-10 px-3 border rounded-lg text-sm uppercase focus:ring-2 focus:ring-blue-500 outline-none transition-all ${!cab.fornecedor ? 'border-red-300 bg-red-50/30' : 'border-slate-300'}`} 
             />
-            {showDrop && activeSearchField === 'fornecedor' && (
-              <div className="absolute top-full left-0 right-0 mt-1 bg-white border border-slate-300 rounded-lg shadow-xl z-50 max-h-60 overflow-y-auto">
-                {searching && <div className="p-4 text-xs text-slate-500 italic">Buscando fornecedor...</div>}
-                {!searching && brands.map(b => (
-                  <div key={b.id} onMouseDown={() => selectBrand(b)} className="p-3 text-sm cursor-pointer hover:bg-blue-50 border-b border-slate-50 last:border-0 transition-colors">
-                    <div className="font-bold text-blue-900">{b.fornecedor}</div>
-                    <div className="text-[10px] text-slate-500 mt-1 uppercase">Marca: {b.marca} • Rep: {b.representante}</div>
-                  </div>
-                ))}
-              </div>
-            )}
           </div>
+        </div>
+
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-5">
           <div className="relative">
             <label style={labelStyle}>Representante *</label>
             <input 
@@ -782,124 +765,106 @@ function StepCabecalho({ cab, setCab, prazosRaw, setPrazosRaw, numeroPedidoSalvo
               onBlur={() => setTimeout(() => setShowDrop(false), 250)}
               placeholder="Nome do representante" 
               autoComplete="off"
-              className="w-full h-10 px-3 border border-slate-300 rounded-lg text-sm uppercase focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none transition-all" 
+              className={`w-full h-10 px-3 border rounded-lg text-sm uppercase focus:ring-2 focus:ring-blue-500 outline-none transition-all ${!cab.representante ? 'border-red-300 bg-red-50/30' : 'border-slate-300'}`} 
             />
-            {showDrop && activeSearchField === 'representante' && (
-              <div className="absolute top-full left-0 right-0 mt-1 bg-white border border-slate-300 rounded-lg shadow-xl z-50 max-h-60 overflow-y-auto">
-                {searching && <div className="p-4 text-xs text-slate-500 italic">Buscando representante...</div>}
-                {!searching && brands.map(b => (
-                  <div key={b.id} onMouseDown={() => selectBrand(b)} className="p-3 text-sm cursor-pointer hover:bg-blue-50 border-b border-slate-50 last:border-0 transition-colors">
-                    <div className="font-bold text-blue-900">{b.representante}</div>
-                    <div className="text-[10px] text-slate-500 mt-1 uppercase">Marca: {b.marca} • Forn: {b.fornecedor}</div>
-                  </div>
-                ))}
-              </div>
-            )}
           </div>
-        </div>
-
-        {/* Linha 3: Telefone e Email */}
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
           <div>
-            <label style={labelStyle}>Telefone *</label>
+            <label style={labelStyle}>Telefone Rep. *</label>
             <input 
               value={cab.telefone} 
               onChange={e => setCab(c => ({ ...c, telefone: e.target.value }))}
               placeholder="(00) 00000-0000" 
-              className="w-full h-10 px-3 border border-slate-300 rounded-lg text-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none transition-all" 
+              className={`w-full h-10 px-3 border rounded-lg text-sm focus:ring-2 focus:ring-blue-500 outline-none transition-all ${!cab.telefone ? 'border-red-300 bg-red-50/30' : 'border-slate-300'}`} 
             />
           </div>
           <div>
-            <label style={labelStyle}>E-mail *</label>
+            <label style={labelStyle}>Email Rep. *</label>
             <input 
               value={cab.email} 
               onChange={e => setCab(c => ({ ...c, email: e.target.value.toUpperCase() }))}
               placeholder="vendas@fornecedor.com.br" 
-              className="w-full h-10 px-3 border border-slate-300 rounded-lg text-sm uppercase focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none transition-all" 
+              className={`w-full h-10 px-3 border rounded-lg text-sm uppercase focus:ring-2 focus:ring-blue-500 outline-none transition-all ${!cab.email ? 'border-red-300 bg-red-50/30' : 'border-slate-300'}`} 
             />
           </div>
         </div>
       </div>
 
-      {/* Faturamento */}
-      <div style={{ padding: '8px 18px', background: '#f8fafc', borderBottom: '1px solid #e2e8f0', fontSize: 11, fontWeight: 700, color: '#64748b', textTransform: 'uppercase', letterSpacing: '0.05em' }}>Faturamento e Condições de Pagamento</div>
+      {/* SEÇÃO 2: FATURAMENTO */}
+      <div style={{ padding: '10px 18px', background: '#f8fafc', borderBottom: '1px solid #e2e8f0', fontSize: 11, fontWeight: 800, color: '#1e293b', textTransform: 'uppercase', letterSpacing: '0.05em' }}>📅 Faturamento</div>
       <div className="p-4 md:p-6 border-b border-slate-200">
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-5 mb-5">
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-5 mb-5">
           <div>
-            <label style={labelStyle}>Fat. Início *</label>
-            <input type="date" value={cab.fat_inicio} onChange={e => setCab(c => ({ ...c, fat_inicio: e.target.value }))} className="w-full h-10 px-3 border border-slate-300 rounded-lg text-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none transition-all" />
+            <label style={labelStyle}>Data Inicial *</label>
+            <input 
+              type="date" 
+              value={cab.fat_inicio} 
+              onChange={e => setCab(c => ({ ...c, fat_inicio: e.target.value }))} 
+              className={`w-full h-10 px-3 border rounded-lg text-sm focus:ring-2 focus:ring-blue-500 outline-none transition-all ${(!cab.fat_inicio || (cab.fat_fim && (new Date(cab.fat_inicio+'T00:00:00').getMonth() !== new Date(cab.fat_fim+'T00:00:00').getMonth() || new Date(cab.fat_inicio+'T00:00:00').getFullYear() !== new Date(cab.fat_fim+'T00:00:00').getFullYear()))) ? 'border-red-300 bg-red-50/30' : 'border-slate-300'}`} 
+            />
           </div>
           <div>
-            <label style={labelStyle}>Fat. Fim *</label>
-            <input type="date" value={cab.fat_fim} onChange={e => setCab(c => ({ ...c, fat_fim: e.target.value }))} className="w-full h-10 px-3 border border-slate-300 rounded-lg text-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none transition-all" />
+            <label style={labelStyle}>Data Final *</label>
+            <input 
+              type="date" 
+              value={cab.fat_fim} 
+              onChange={e => setCab(c => ({ ...c, fat_fim: e.target.value }))} 
+              className={`w-full h-10 px-3 border rounded-lg text-sm focus:ring-2 focus:ring-blue-500 outline-none transition-all ${(!cab.fat_fim || (cab.fat_inicio && (new Date(cab.fat_inicio+'T00:00:00').getMonth() !== new Date(cab.fat_fim+'T00:00:00').getMonth() || new Date(cab.fat_inicio+'T00:00:00').getFullYear() !== new Date(cab.fat_fim+'T00:00:00').getFullYear()))) ? 'border-red-300 bg-red-50/30' : 'border-slate-300'}`} 
+            />
           </div>
           <div>
-            <label style={labelStyle}>Prazos * (ex: 30/60/90)</label>
-            <input value={prazosRaw} onChange={e => { setPrazosRaw(e.target.value); setCab(c => ({ ...c, prazos: parsePrazos(e.target.value) })); }}
-              placeholder="Ex: 90/120/150" className="w-full h-10 px-3 border border-slate-300 rounded-lg text-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none transition-all" />
-            <div className="text-[10px] text-slate-400 mt-1 italic">Separe os prazos por barras (/)</div>
-          </div>
-          
-          <div>
-            <label style={labelStyle}>Vencimentos Estimados</label>
-            <div className="grid grid-cols-2 gap-1.5 pt-0.5">
-              {cab.prazos.map((p, i) => {
-                if (!cab.fat_fim) return null;
-                const dataVenc = new Date(cab.fat_fim + 'T00:00:00');
-                dataVenc.setDate(dataVenc.getDate() + p);
-                const mes = dataVenc.toLocaleDateString('pt-BR', { month: 'short' }).replace('.', '');
-                const ano = dataVenc.getFullYear().toString().slice(-2);
-                return (
-                  <div key={i} className="text-[10px] px-2 py-1.5 rounded bg-slate-50 border border-slate-200 text-center font-bold text-slate-700">
-                    {mes}/{ano}
-                  </div>
-                );
-              })}
-              {cab.prazos.length === 0 && <div className="col-span-2 text-[10px] text-slate-300 italic">Aguardando prazos...</div>}
-            </div>
+            <label style={labelStyle}>Prazos * (ex: 90/120/150)</label>
+            <input 
+              value={prazosRaw} 
+              onChange={e => { setPrazosRaw(e.target.value); setCab(c => ({ ...c, prazos: parsePrazos(e.target.value) })); }}
+              placeholder="Ex: 90/120/150 cada parcela" 
+              className={`w-full h-10 px-3 border rounded-lg text-sm focus:ring-2 focus:ring-blue-500 outline-none transition-all ${!prazosRaw ? 'border-red-300 bg-red-50/30' : 'border-slate-300'}`} 
+            />
           </div>
         </div>
+      </div>
 
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+      {/* SEÇÃO 3: PRECIFICAÇÃO */}
+      <div style={{ padding: '10px 18px', background: '#f8fafc', borderBottom: '1px solid #e2e8f0', fontSize: 11, fontWeight: 800, color: '#1e293b', textTransform: 'uppercase', letterSpacing: '0.05em' }}>💰 Precificação</div>
+      <div className="p-4 md:p-6 border-b border-slate-200">
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
           <div>
-            <label style={labelStyle}>Markup (Fator Multiplicador) *</label>
-            <input type="number" min={1} max={10} step={0.01} value={cab.markup}
+            <label style={labelStyle}>Markup (%) *</label>
+            <input 
+              type="number" 
+              min={0} 
+              max={10} 
+              step={0.01} 
+              value={cab.markup}
               onChange={e => setCab(c => ({ ...c, markup: parseFloat(e.target.value) || 0 }))} 
-              className="w-full h-10 px-3 border border-slate-300 rounded-lg text-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none transition-all" />
-            <div style={{ fontSize: 10, color: '#94a3b8', marginTop: 3 }}>
-              Fórmula: custo líquido × markup = preço venda
-              <br/>
-              <span className="text-[9px]">(Base: Até X{String(roundBase).replace('.', ',')} → X19,99 | Acima → X29,99)</span>
-            </div>
+              className={`w-full h-10 px-3 border rounded-lg text-sm focus:ring-2 focus:ring-blue-500 outline-none transition-all ${cab.markup === 0 ? 'border-amber-300 bg-amber-50/30' : 'border-slate-300'}`} 
+            />
+            <div className="text-[10px] text-slate-400 mt-1 italic">Fator multiplicador (ex: 2.60)</div>
           </div>
           <div>
             <label style={labelStyle}>Desconto do Fornecedor (%)</label>
-            <input type="number" min={0} max={100} step={0.1} value={cab.desconto}
+            <input 
+              type="number" 
+              min={0} 
+              max={100} 
+              step={0.1} 
+              value={cab.desconto}
               onChange={e => setCab(c => ({ ...c, desconto: parseFloat(e.target.value) || 0 }))} 
-              className="w-full h-10 px-3 border border-slate-300 rounded-lg text-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none transition-all" />
-            <div style={{ fontSize: 10, color: '#94a3b8', marginTop: 3 }}>Aplicado antes do cálculo do markup</div>
+              className="w-full h-10 px-3 border border-slate-300 rounded-lg text-sm focus:ring-2 focus:ring-blue-500 outline-none transition-all" 
+            />
           </div>
-          <div>
-            <label style={{ ...labelStyle, visibility: 'hidden' }}>Simulação</label>
-            <div style={{ background: '#f8fafc', border: '1px solid #e2e8f0', borderRadius: 8, padding: '10px 15px', display: 'flex', alignItems: 'center', gap: 12, flexWrap: 'wrap', justifyContent: 'space-between' }}>
+          <div className="hidden lg:block lg:pt-5">
+            <div style={{ background: '#f8fafc', border: '1px solid #e2e8f0', borderRadius: 8, padding: '12px 15px', display: 'flex', alignItems: 'center', gap: 12, justifyContent: 'space-between' }}>
               <div className="text-center">
                 <div style={{ fontSize: 9, color: '#64748b', fontWeight: 700, textTransform: 'uppercase' }}>Custo</div>
                 <div style={{ fontSize: 12, fontWeight: 700 }}>R$ 100,00</div>
               </div>
-              <div className="text-[11px] text-slate-300 font-bold">−</div>
               <div className="text-center">
                 <div style={{ fontSize: 9, color: '#64748b', fontWeight: 700, textTransform: 'uppercase' }}>Desc.</div>
-                <div style={{ fontSize: 12, fontWeight: 700, color: '#dc2626' }}>{cab.desconto.toFixed(1)}%</div>
+                <div style={{ fontSize: 11, fontWeight: 700, color: '#dc2626' }}>{cab.desconto.toFixed(1)}%</div>
               </div>
-              <div className="text-[11px] text-slate-300 font-bold">=</div>
               <div className="text-center">
-                <div style={{ fontSize: 9, color: '#64748b', fontWeight: 700, textTransform: 'uppercase' }}>Liq.</div>
-                <div style={{ fontSize: 12, fontWeight: 700 }}>R$ {liq.toFixed(2).replace('.', ',')}</div>
-              </div>
-              <div className="text-[11px] text-slate-300 font-bold">×</div>
-              <div className="text-center">
-                <div style={{ fontSize: 9, color: '#1d4ed8', fontWeight: 700, textTransform: 'uppercase' }}>Venda</div>
-                <div style={{ fontSize: 15, fontWeight: 800, color: '#1d4ed8' }}>{fmtBRL(exVenda)}</div>
+                <div style={{ fontSize: 9, color: '#1d4ed8', fontWeight: 700, textTransform: 'uppercase' }}>Venda Est.</div>
+                <div style={{ fontSize: 14, fontWeight: 800, color: '#1d4ed8' }}>{fmtBRL(exVenda)}</div>
               </div>
             </div>
           </div>

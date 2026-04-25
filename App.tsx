@@ -45,6 +45,7 @@ const BuyOrderModule = lazy(() => import('./components/BuyOrderModule'));
 const BuyOrderParams = lazy(() => import('./components/BuyOrderParams'));
 const BuyOrderDashboard = lazy(() => import('./components/BuyOrderDashboard'));
 const StockForecastDashboard = lazy(() => import('./components/StockForecastDashboard'));
+const BuyOrderQuotaView = lazy(() => import('./components/BuyOrderQuotaView'));
 const ReportsPage = lazy(() => import('./components/ReportsPage'));
 const AdminSurveyManagement = lazy(() => import('./components/AdminSurveyManagement_v3'));
 const MySurveysComponent = lazy(() => import('./components/MySurveysComponent'));
@@ -125,6 +126,7 @@ const App: React.FC = () => {
     const [user, setUser] = useState<User | null>(null);
     const isAdmin = user?.role === UserRole.ADMIN;
     const [currentView, setCurrentView] = useState<string>('welcome');
+    const [gestaoComprasOpen, setGestaoComprasOpen] = useState(false);
     const [isLoading, setIsLoading] = useState(true);
     const [permissionsLoaded, setPermissionsLoaded] = useState(false);
     const [isSidebarOpen, setIsSidebarOpen] = useState(false);
@@ -994,15 +996,17 @@ const App: React.FC = () => {
                             { id: 'dashboard_loja', label: 'Dashboard Loja', icon: LayoutDashboard, perm: 'MODULE_DASHBOARD_MANAGER', roles: ['manager'] },
                             { id: 'dashboard_pa', label: 'Dashboard P.A.', icon: Trophy, perm: 'MODULE_DASHBOARD_PA', roles: ['admin'] },
                             { id: 'dashboard_pa_manager', label: 'Dashboard P.A.', icon: Trophy, perm: 'MODULE_DASHBOARD_PA_MANAGER', roles: ['manager'] },
-                            { id: 'stock_forecast', label: 'Previsão de Estoque', icon: TrendingUp, perm: 'MODULE_BUY_ORDERS', roles: ['admin', 'manager'] },
-                            { id: 'buy_order_dashboard', label: 'Dashboard Compras', icon: BarChart3, perm: 'MODULE_BUY_ORDERS', roles: ['admin', 'manager'] },
-                            { id: 'reports_dashboard', label: 'Relatórios Executivos', icon: FileText, perm: 'MODULE_BUY_ORDERS', roles: ['admin'] },
-                            { id: 'purchase_params', label: 'Parâmetros Compras', icon: Settings, perm: 'MODULE_PURCHASES', roles: ['admin'] },
-                            { id: 'buy_orders', label: 'Pedidos Compra', icon: ShoppingBag, perm: 'MODULE_BUY_ORDERS', roles: ['admin', 'manager'] },
+                            { id: 'gestao_compras', label: 'Gestão de Compras', icon: ShoppingBag, perm: 'MODULE_BUY_ORDERS', isGroup: true, subItems: [
+                                { id: 'buy_order_dashboard', label: 'Dashboard Compras', icon: BarChart3, perm: 'MODULE_BUY_ORDERS', roles: ['admin', 'manager'] },
+                                { id: 'buy_orders', label: 'Pedido de Compra', icon: ShoppingBag, perm: 'MODULE_BUY_ORDERS', roles: ['admin', 'manager'] },
+                                { id: 'buy_order_quota', label: 'Cota de Compra', icon: DollarSign, perm: 'MODULE_BUY_ORDERS', roles: ['admin', 'manager'] },
+                                { id: 'purchase_params', label: 'Parâmetros de Compra', icon: Settings, perm: 'MODULE_PURCHASES', roles: ['admin'] },
+                                { id: 'reports_dashboard', label: 'Relatórios Executivos', icon: FileText, perm: 'MODULE_BUY_ORDERS', roles: ['admin'] },
+                                { id: 'stock_forecast', label: 'Previsão de Estoque', icon: TrendingUp, perm: 'MODULE_BUY_ORDERS', roles: ['admin', 'manager'] }
+                            ]},
                             { id: 'dre_accounts', label: 'Plano de Contas DRE', icon: ClipboardList, perm: 'MODULE_DRE_ACCOUNTS', roles: ['admin'] },
                             { id: 'metas', label: 'Metas', icon: Target, perm: 'MODULE_METAS', roles: ['admin'] },
                             { id: 'cotas', label: 'Cotas OTB', icon: Calculator, perm: 'MODULE_COTAS', roles: ['admin'] },
-                            { id: 'compras', label: 'Compras', icon: ShoppingBag, perm: 'MODULE_PURCHASES', roles: ['admin'] },
                             { id: 'os_demandas', label: 'Chamado', icon: ClipboardList, perm: 'MODULE_DEMANDS' }
                         ] },
                         { title: 'Operacional', items: [
@@ -1021,6 +1025,7 @@ const App: React.FC = () => {
                         ] }
                     ].map(section => {
                         const visibleItems = section.items.filter(i => {
+                            if ((i as any).isGroup) return true;
                             const userRole = String(user?.role || '').toLowerCase();
                             const hasRole = (i as any).roles ? (i as any).roles.includes(userRole) : true;
                             return hasRole && can(i.perm);
@@ -1029,26 +1034,75 @@ const App: React.FC = () => {
                         return (
                             <div key={section.title} className="space-y-1">
                                 <h3 className="px-4 text-[10px] font-black uppercase text-slate-400 dark:text-slate-400 tracking-widest mb-2">{section.title}</h3>
-                                {visibleItems.map(item => (
-                                    <button
-                                        key={item.id}
-                                        onClick={() => { setCurrentView(item.id); setIsSidebarOpen(false); }}
-                                        className={`w-full text-left py-2.5 px-4 rounded-xl font-black uppercase text-[10px] flex items-center gap-4 transition-all relative ${
-                                            currentView === item.id
-                                                ? 'bg-blue-600 text-white shadow-lg shadow-blue-200 dark:shadow-blue-900/20'
-                                                : 'text-slate-500 dark:text-slate-300 hover:text-slate-900 dark:hover:text-white hover:bg-slate-50 dark:hover:bg-slate-800'
-                                        }`}
-                                    >
-                                        <item.icon size={20} /> 
-                                        <span>{item.label}</span>
-                                        {item.id === 'os_demandas' && hasUnreadDemands && (
-                                            <span className="ml-auto flex h-2 w-2">
-                                                <span className="animate-ping absolute inline-flex h-2 w-2 rounded-full bg-green-400 opacity-75"></span>
-                                                <span className="relative inline-flex rounded-full h-2 w-2 bg-green-500 shadow-[0_0_8px_rgba(34,197,94,0.8)]"></span>
-                                            </span>
-                                        )}
-                                    </button>
-                                ))}
+                                {visibleItems.map((item: any) => {
+                                    if (item.isGroup) {
+                                        const visibleSubItems = item.subItems!.filter((sub: any) => {
+                                            const setRole = String(user?.role || '').toLowerCase();
+                                            const hasRole = sub.roles ? sub.roles.includes(setRole) : true;
+                                            return hasRole && can(sub.perm);
+                                        });
+                                        if (visibleSubItems.length === 0) return null;
+                                        const isActiveGroup = visibleSubItems.some((sub: any) => sub.id === currentView);
+                                        return (
+                                            <div key={item.id} className="space-y-1 mt-2">
+                                                <button
+                                                    onClick={() => {
+                                                        setGestaoComprasOpen(!gestaoComprasOpen);
+                                                        setCurrentView('buy_order_dashboard');
+                                                        if (window.innerWidth < 768) setIsSidebarOpen(false);
+                                                    }}
+                                                    className={`w-full text-left py-2.5 px-4 rounded-xl font-black uppercase text-[10px] flex items-center gap-4 transition-all relative ${
+                                                        isActiveGroup
+                                                            ? 'bg-blue-600/10 text-blue-600 dark:text-blue-400'
+                                                            : 'text-slate-500 dark:text-slate-300 hover:text-slate-900 dark:hover:text-white hover:bg-slate-50 dark:hover:bg-slate-800'
+                                                    }`}
+                                                >
+                                                    <item.icon size={20} /> 
+                                                    <span>{item.label}</span>
+                                                    <span className="ml-auto text-[8px]">{gestaoComprasOpen ? '▼' : '▶️'}</span>
+                                                </button>
+                                                {gestaoComprasOpen && (
+                                                    <div className="pl-6 space-y-1 mt-1 border-l-2 border-slate-200 dark:border-slate-700 ml-6">
+                                                        {visibleSubItems.map((subItem: any) => (
+                                                            <button
+                                                                key={subItem.id}
+                                                                onClick={() => { setCurrentView(subItem.id); setIsSidebarOpen(false); }}
+                                                                className={`w-full text-left py-2 px-4 rounded-lg font-bold uppercase text-[9px] flex items-center gap-3 transition-all relative ${
+                                                                    currentView === subItem.id
+                                                                        ? 'text-blue-600 dark:text-blue-400 bg-blue-50 dark:bg-blue-900/20'
+                                                                        : 'text-slate-400 hover:text-slate-700 dark:hover:text-slate-300 hover:bg-slate-50/50 dark:hover:bg-slate-800/50'
+                                                                }`}
+                                                            >
+                                                                <subItem.icon size={14} /> 
+                                                                <span>{subItem.label}</span>
+                                                            </button>
+                                                        ))}
+                                                    </div>
+                                                )}
+                                            </div>
+                                        );
+                                    }
+                                    return (
+                                        <button
+                                            key={item.id}
+                                            onClick={() => { setCurrentView(item.id); setIsSidebarOpen(false); }}
+                                            className={`w-full text-left py-2.5 px-4 rounded-xl font-black uppercase text-[10px] flex items-center gap-4 transition-all relative ${
+                                                currentView === item.id
+                                                    ? 'bg-blue-600 text-white shadow-lg shadow-blue-200 dark:shadow-blue-900/20'
+                                                    : 'text-slate-500 dark:text-slate-300 hover:text-slate-900 dark:hover:text-white hover:bg-slate-50 dark:hover:bg-slate-800'
+                                            }`}
+                                        >
+                                            <item.icon size={20} /> 
+                                            <span>{item.label}</span>
+                                            {item.id === 'os_demandas' && hasUnreadDemands && (
+                                                <span className="ml-auto flex h-2 w-2">
+                                                    <span className="animate-ping absolute inline-flex h-2 w-2 rounded-full bg-green-400 opacity-75"></span>
+                                                    <span className="relative inline-flex rounded-full h-2 w-2 bg-green-500 shadow-[0_0_8px_rgba(34,197,94,0.8)]"></span>
+                                                </span>
+                                            )}
+                                        </button>
+                                    );
+                                })}
                             </div>
                         );
                     })}
@@ -1243,6 +1297,7 @@ const App: React.FC = () => {
                         if (currentView === 'dre_accounts' && can('MODULE_DRE_ACCOUNTS')) return <DREAccounts />;
                         if (currentView === 'stock_forecast' && can('MODULE_BUY_ORDERS')) return <StockForecastDashboard user={user!} stores={isAdmin ? stores : stores.filter(s => s.id === user?.storeId)} />;
                         if (currentView === 'buy_order_dashboard' && can('MODULE_BUY_ORDERS')) return <BuyOrderDashboard user={user!} />;
+                        if (currentView === 'buy_order_quota' && can('MODULE_BUY_ORDERS')) return <BuyOrderQuotaView user={user!} />;
                         if (currentView === 'purchase_params') return <BuyOrderParams user={user!} />;
                         if (currentView === 'reports_dashboard') return <ReportsPage user={user!} />;
                         if (currentView === 'pdv_sorveteria' && can('MODULE_ICECREAM')) return <IceCreamModule

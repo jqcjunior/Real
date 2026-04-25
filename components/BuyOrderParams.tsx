@@ -642,6 +642,8 @@ export default function BuyOrderParams({ user }: { user: any }) {
     month: number;
     cotaTotal: number;
     despesas: number;
+    cotaGerenteValor?: number;
+    cotaCompradorValor?: number;
     // Removido cotaGerentePct e cotaCompradorPct (agora são anuais)
   }
 
@@ -649,7 +651,9 @@ export default function BuyOrderParams({ user }: { user: any }) {
     Array.from({ length: 12 }).map((_, i) => ({
       month: i + 1,
       cotaTotal: 0,
-      despesas: 0
+      despesas: 0,
+      cotaGerenteValor: 0,
+      cotaCompradorValor: 0
     }))
   );
 
@@ -723,8 +727,10 @@ export default function BuyOrderParams({ user }: { user: any }) {
             const p = data.find(x => x.month === m);
             return {
               month: m,
-              cotaTotal: p ? (p.cota_valor || p.cota_default || 0) : 0,
-              despesas: p ? (p.despesas_comprometidas || 0) : 0
+              cotaTotal: p ? (p.cota_valor || 0) : 0,
+              despesas: p ? (p.despesas_comprometidas || 0) : 0,
+              cotaGerenteValor: p ? (p.cota_gerente_valor || 0) : 0,
+              cotaCompradorValor: p ? (p.cota_comprador_valor || 0) : 0
             };
           });
           setMonthlyData(newMonthly);
@@ -758,8 +764,10 @@ export default function BuyOrderParams({ user }: { user: any }) {
             const p = data.find(x => x.month === m);
             return {
               month: m,
-              cotaTotal: p ? (p.cota_valor || p.cota_default || 0) : 0,
-              despesas: p ? (p.despesas_comprometidas || 0) : 0
+              cotaTotal: p ? (p.cota_valor || 0) : 0,
+              despesas: p ? (p.despesas_comprometidas || 0) : 0,
+              cotaGerenteValor: p ? (p.cota_gerente_valor || 0) : 0,
+              cotaCompradorValor: p ? (p.cota_comprador_valor || 0) : 0
             };
           });
           setMonthlyData(newMonthly);
@@ -772,14 +780,18 @@ export default function BuyOrderParams({ user }: { user: any }) {
           setMonthlyData(Array.from({ length: 12 }).map((_, i) => ({
             month: i + 1,
             cotaTotal: 0,
-            despesas: 0
+            despesas: 0,
+            cotaGerenteValor: 0,
+            cotaCompradorValor: 0
           })));
         }
       } catch (err) {
         setMonthlyData(Array.from({ length: 12 }).map((_, i) => ({
           month: i + 1,
           cotaTotal: 0,
-          despesas: 0
+          despesas: 0,
+          cotaGerenteValor: 0,
+          cotaCompradorValor: 0
         })));
       }
     }
@@ -824,7 +836,6 @@ export default function BuyOrderParams({ user }: { user: any }) {
         masculino_pct: masculino,
         acessorio_pct: acessorio,
         cota_valor: m.cotaTotal,
-        cota_default: m.cotaTotal, // For reference if needed later
         despesas_comprometidas: m.despesas,
         cota_gerente_pct: cotaGerentePctAnual,
         cota_comprador_pct: cotaCompradorPctAnual,
@@ -1144,11 +1155,16 @@ export default function BuyOrderParams({ user }: { user: any }) {
                         <th className="text-[10px] font-black text-slate-500 uppercase tracking-widest p-2 border-b border-slate-200 dark:border-slate-700 w-32">Cota Total (R$)</th>
                         <th className="text-[10px] font-black text-slate-500 uppercase tracking-widest p-2 border-b border-slate-200 dark:border-slate-700 w-32">Despesas (R$)</th>
                         <th className="text-[10px] font-black text-slate-500 uppercase tracking-widest p-2 border-b border-slate-200 dark:border-slate-700 w-32 text-right">Cota Limpa</th>
+                        <th className="text-[10px] font-black text-slate-500 uppercase tracking-widest p-2 border-b border-slate-200 dark:border-slate-700 w-32 text-right">Cota Gerente</th>
+                        <th className="text-[10px] font-black text-slate-500 uppercase tracking-widest p-2 border-b border-slate-200 dark:border-slate-700 w-32 text-right">Cota Comprador</th>
                       </tr>
                     </thead>
                     <tbody>
                       {monthlyData.map((data, index) => {
                         const cotaLimpa = Math.max(0, data.cotaTotal - data.despesas);
+                        const formatarMoeda = (valor: number) => 
+                          valor.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' });
+
                         return (
                           <tr key={index} className="border-b border-slate-100 dark:border-slate-800/50 hover:bg-slate-50 dark:hover:bg-slate-800/50 transition-colors">
                             <td className="p-2 text-xs font-bold text-slate-700 dark:text-slate-300 uppercase">
@@ -1170,8 +1186,14 @@ export default function BuyOrderParams({ user }: { user: any }) {
                                 className="w-full bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-lg px-2 py-1.5 text-xs font-black outline-none focus:border-orange-400 transition-all text-slate-900 dark:text-white" 
                               />
                             </td>
-                            <td className="p-2 text-xs font-black text-blue-600 dark:text-blue-400 text-right">
-                              {cotaLimpa.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })}
+                            <td className="p-2 text-xs font-black text-slate-400 text-right">
+                              {formatarMoeda(cotaLimpa)}
+                            </td>
+                            <td className="p-2 text-xs font-black text-blue-600 dark:text-blue-400 text-right bg-blue-50/10">
+                              {formatarMoeda(data.cotaGerenteValor || 0)}
+                            </td>
+                            <td className="p-2 text-xs font-black text-emerald-600 dark:text-emerald-400 text-right bg-emerald-50/10">
+                              {formatarMoeda(data.cotaCompradorValor || 0)}
                             </td>
                           </tr>
                         );
