@@ -902,7 +902,7 @@ function StepItens({ items, setItems, cab, roundBase }: { items: OrderItem[]; se
   useEffect(() => {
     if (form.ref && form.ref.length >= 3) {
       const timer = setTimeout(async () => {
-        const { data, error } = await supabase.from('buy_order_items').select('preco_venda').eq('ref', form.ref).order('created_at', { ascending: false }).limit(1);
+        const { data, error } = await supabase.from('buy_order_items').select('preco_venda').eq('referencia', form.ref).order('created_at', { ascending: false }).limit(1);
         if (!error && data && data.length > 0) {
           setHistoricPrice(data[0].preco_venda);
         } else {
