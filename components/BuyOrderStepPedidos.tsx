@@ -6,7 +6,7 @@ import { User } from '../types';
  
 export interface GradeItem {
   letter: string;
-  cat: 'MASC' | 'FEM' | 'INF' | 'ACESS';
+  cat: 'MASC' | 'FEM' | 'INF' | 'ACES';
   qtds: Record<string, number>;
 }
  
@@ -63,14 +63,14 @@ const CATS: Record<string, { label: string; sizes: string[] }> = {
   MASC:  { label: 'Masc',  sizes: [37,38,39,40,41,42,43,44,45,46,47,48].map(String) },
   FEM:   { label: 'Fem',   sizes: [33,34,35,36,37,38,39,40,41,42].map(String) },
   INF:   { label: 'Inf',   sizes: [16,17,18,19,20,21,22,23,24,25,26,27,28,29,30,31,32,33,34,35,36].map(String) },
-  ACESS: { label: 'Acess', sizes: ['UN', 'P', 'M', 'G', 'GG'] },
+  ACES: { label: 'Acess', sizes: ['UN', 'P', 'M', 'G', 'GG'] },
 };
  
 const CATS_COMPATIVEIS: Record<string, string[]> = {
   'FEM': ['FEM', 'INF'],
   'MASC': ['MASC', 'INF'],
   'INF': ['INF'],
-  'ACESS': ['ACESS']
+  'ACES': ['ACES']
 };
  
 // ─── Helpers ──────────────────────────────────────────────────────────────────

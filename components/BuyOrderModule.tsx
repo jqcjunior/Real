@@ -2,6 +2,13 @@ import React, { useState, useEffect, useRef, useCallback, Dispatch, SetStateActi
 import { Pencil, X } from 'lucide-react';
 import { supabase } from '../services/supabaseClient';
 import { User } from '../types';
+import { 
+  insertBuyOrderItems, 
+  fetchPreviousPrice, 
+  tipoParaModelo, 
+  normalizeGrades,
+  BuyOrderItemInput 
+} from '../utils/buyOrderItems.utils';
 import StepPedidos, { GradeItem, ItemComGrades, OrderItem, SubOrder, Cabecalho } from './BuyOrderStepPedidos';
 
 // ─── Tipos ────────────────────────────────────────────────────────────────────
@@ -25,7 +32,7 @@ const CATS: Record<string, { label: string; sizes: string[] }> = {
   MASC:  { label: 'Masc',  sizes: [37,38,39,40,41,42,43,44,45,46,47,48].map(String) },
   FEM:   { label: 'Fem',   sizes: [33,34,35,36,37,38,39,40,41,42].map(String) },
   INF:   { label: 'Inf',   sizes: [16,17,18,19,20,21,22,23,24,25,26,27,28,29,30,31,32].map(String) },
-  ACESS: { label: 'Acess', sizes: ['UN', 'P', 'M', 'G', 'GG'] },
+  ACES: { label: 'Acess', sizes: ['UN', 'P', 'M', 'G', 'GG'] },
 };
  
 // ─── Helpers ──────────────────────────────────────────────────────────────────
@@ -245,56 +252,47 @@ export default function BuyOrderModule({ user }: { user?: User }) {
  
       // 4. Insert buy_order_items
       if (items.length > 0) {
-        const itemRows: any[] = items.map((it, idx) => ({
-          order_id: orderId,
-          item_order: idx + 1,
-          referencia: it.ref,
-          tipo: it.tipo || null,
-          cor1: it.cor1,
-          cor2: it.cor2 || null,
-          cor3: it.cor3 || null,
-          modelo: it.modelo,
-          custo: it.custo,
-          preco_venda: it.preco_venda,
-          grades: {}, // será preenchido abaixo
-          total_pares: 0,
-          markup_aplicado: cab.markup,
-        }));
-
-        // Preencher grades por pedido (agregando todas as grades de todos os pedidos para o item)
-        pedidos.forEach(ped => {
-          ped.itensComGrades.forEach(icg => {
-            const itemRow = itemRows[icg.itemIdx];
-            if (!itemRow) return;
-
-            // Converter grades para formato JSONB
-            icg.grades.forEach(g => {
-              itemRow.grades[g.letter] = {
-                cat: g.cat,
-                qtds: g.qtds
-              };
-            });
-          });
-        });
-
-        // Calcular total de pares após agregar todas as grades, CONSIDERANDO AS LOJAS
-        itemRows.forEach((row, rowIdx) => {
+        const itemInputs: BuyOrderItemInput[] = items.map((it, idx) => {
+          const itemGradesObj: Record<string, any> = {};
           let totalParesItem = 0;
+
           pedidos.forEach(ped => {
-            const icg = ped.itensComGrades.find(x => x.itemIdx === rowIdx);
+            const icg = ped.itensComGrades.find(x => x.itemIdx === idx);
             if (icg) {
               icg.grades.forEach(g => {
+                // Mapeia a letra da grade para suas quantidades (normalizeGrades cuidará do resto)
+                itemGradesObj[g.letter] = g.qtds;
                 totalParesItem += totPares(g.qtds) * ped.lojas.length;
               });
             }
           });
-          row.total_pares = totalParesItem;
+
+          return {
+            order_id: orderId,
+            item_order: idx + 1,
+            referencia: it.ref,
+            tipo: it.tipo || '',
+            cor1: it.cor1,
+            cor2: it.cor2 || null,
+            cor3: it.cor3 || null,
+            modelo: (it.modelo as any) || tipoParaModelo(it.tipo),
+            custo: it.custo,
+            preco_venda: it.preco_venda,
+            grades: itemGradesObj,
+            total_pares: totalParesItem,
+            markup_aplicado: cab.markup,
+          };
         });
 
-        const { data: insertedItems, error: iErr } = await supabase.from('buy_order_items').insert(itemRows).select('id, item_order');
-        if (iErr) throw iErr;
+        const result = await insertBuyOrderItems(itemInputs);
+        if (!result.success) {
+          const firstErr = result.errors?.[0];
+          throw new Error(firstErr ? `Erro no item ${firstErr.referencia}: ${firstErr.message}` : 'Erro ao salvar itens. Verifique os dados.');
+        }
+        
+        const insertedItems = result.data!;
 
-        // ✅ NOVO: Salvar qual grade o item usa em cada sub-pedido
+        // ✅ Salvar qual grade o item usa em cada sub-pedido
         const gradesSubPedidos: any[] = [];
         
         pedidos.forEach(ped => {
@@ -900,11 +898,11 @@ function StepItens({ items, setItems, cab, roundBase }: { items: OrderItem[]; se
   const [historicPrice, setHistoricPrice] = useState<number | null>(null);
 
   useEffect(() => {
-    if (form.ref && form.ref.length >= 3) {
+    if (form.ref && form.ref.length >= 5) {
       const timer = setTimeout(async () => {
-        const { data, error } = await supabase.from('buy_order_items').select('preco_venda').eq('referencia', form.ref).order('created_at', { ascending: false }).limit(1);
-        if (!error && data && data.length > 0) {
-          setHistoricPrice(data[0].preco_venda);
+        const preco = await fetchPreviousPrice(form.ref);
+        if (preco) {
+          setHistoricPrice(preco);
         } else {
           setHistoricPrice(null);
         }
@@ -1265,7 +1263,7 @@ function StepItens({ items, setItems, cab, roundBase }: { items: OrderItem[]; se
                   <option value="MASC">Masculino</option>
                   <option value="FEM">Feminino</option>
                   <option value="INF">Infantil</option>
-                  <option value="ACESS">Acessório</option>
+                  <option value="ACES">Acessório</option>
                 </select>
               </div>
 
