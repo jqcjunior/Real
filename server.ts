@@ -4,7 +4,7 @@ import path from "path";
 import { fileURLToPath } from "url";
 import { exec } from "child_process";
 import fs from "fs";
-import { exportBuyOrderToExcel } from "./services/excelExportService.js";
+import { exportBuyOrderToExcel } from "./services/excelExportService";
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
