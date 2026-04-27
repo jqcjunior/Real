@@ -448,32 +448,11 @@ export default function BuyOrderModule({ user }: { user?: User }) {
  
   async function handleExportExcel(orderId: string) {
     try {
-      // Buscar dados completos do pedido
-      const { data: order } = await supabase
-        .from('buy_orders')
-        .select('*')
-        .eq('id', orderId)
-        .single();
- 
-      const { data: orderItems } = await supabase
-        .from('buy_order_items')
-        .select('*')
-        .eq('order_id', orderId)
-        .order('item_order');
- 
-      const { data: subOrders } = await supabase
-        .from('buy_order_sub_orders')
-        .select('*')
-        .eq('order_id', orderId)
-        .order('sub_order_num');
- 
-      if (!order) throw new Error('Pedido não encontrado');
- 
-      // Chamar API Python para gerar Excel
+      // Chamar API para gerar Excel usando ExcelJS no servidor
       const response = await fetch('/api/export-buy-order-excel', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ order, items: orderItems, subOrders }),
+        body: JSON.stringify({ orderId }),
       });
  
       if (!response.ok) {
@@ -490,11 +469,12 @@ export default function BuyOrderModule({ user }: { user?: User }) {
       window.location.href = `/api/download-file/${result.downloadId}`;
  
       // Marcar como exportado no Supabase
+      const userId = user?.id || await getCurrentAppUserId();
       await supabase
         .from('buy_orders')
         .update({ 
           exported_at: new Date().toISOString(), 
-          exported_by: await getCurrentAppUserId() 
+          exported_by: userId 
         })
         .eq('id', orderId);
  

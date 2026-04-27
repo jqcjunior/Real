@@ -4,6 +4,7 @@ import path from "path";
 import { fileURLToPath } from "url";
 import { exec } from "child_process";
 import fs from "fs";
+import { exportBuyOrderToExcel } from "./services/excelExportService.js";
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -28,62 +29,34 @@ async function startServer() {
   // Middleware para JSON com limite maior para pedidos grandes
   app.use(express.json({ limit: '50mb' }));
 
-  // Endpoint para exportação de pedido de compra via Python/OpenPyXL
+  // Endpoint para exportação de pedido de compra usando ExcelJS
   app.post("/api/export-buy-order-excel", async (req, res) => {
     try {
-      const { order, items, subOrders } = req.body;
-      if (!order) return res.status(400).send("Dados do pedido ausentes");
+      const { orderId } = req.body;
 
-      const templatePath = path.join(__dirname, 'public', 'templates', 'buy_order_template.xlsx');
-      const outputPath = path.join(__dirname, 'temp', `export_${Date.now()}.xlsx`);
-      const scriptPath = path.join(__dirname, 'scripts', 'export_buy_order.py');
-
-      // Garantir que a pasta temp existe
-      if (!fs.existsSync(path.join(__dirname, 'temp'))) {
-        fs.mkdirSync(path.join(__dirname, 'temp'), { recursive: true });
+      if (!orderId) {
+        return res.status(400).json({ error: 'orderId é obrigatório' });
       }
 
-      const orderJson = JSON.stringify(order);
-      const itemsJson = JSON.stringify(items || []);
-      const subOrdersJson = JSON.stringify(subOrders || []);
+      console.log(`📦 Exportando pedido: ${orderId}`);
 
-      // Comando Python - usando escape simples para os argumentos JSON
-      // PS: Em produção, o controle de argumentos via shell deve ser robusto
-      const command = `python3 "${scriptPath}" "${templatePath}" "${outputPath}" '${orderJson}' '${itemsJson}' '${subOrdersJson}'`;
+      // Gerar Excel usando o novo serviço ExcelJS
+      const excelBuffer = await exportBuyOrderToExcel(orderId);
 
-      exec(command, (error, stdout, stderr) => {
-        if (error) {
-          console.error("Erro ao executar script Python:", stderr);
-          // Se falhar o Python (ex: falta openpyxl), podemos tentar um fallback ou retornar o erro
-          return res.status(500).json({ error: "Erro na geração do Excel via Python", details: stderr });
-        }
+      const fileName = `Pedido_${orderId}.xlsx`;
+      
+      // Armazena no cache para download direto (evita problemas de Blob em iFrame)
+      const id = Math.random().toString(36).substring(2, 15);
+      fileCache.set(id, { buffer: excelBuffer, fileName, timestamp: Date.now() });
 
-        try {
-          const result = JSON.parse(stdout);
-          if (result.status === 'success' && fs.existsSync(outputPath)) {
-            const buffer = fs.readFileSync(outputPath);
-            const fileName = `Pedido_${order.numero_pedido || 'Novo'}.xlsx`;
-            
-            // Armazena no cache para download direto (evita problemas de Blob em iFrame)
-            const id = Math.random().toString(36).substring(2, 15);
-            fileCache.set(id, { buffer, fileName, timestamp: Date.now() });
+      res.json({ success: true, downloadId: id });
 
-            // Remove o arquivo temporário
-            fs.unlinkSync(outputPath);
-
-            res.json({ success: true, downloadId: id });
-          } else {
-            res.status(500).json({ error: "Falha na geração do arquivo", details: result.message });
-          }
-        } catch (e) {
-          console.error("Erro ao parsear saída do Python:", stdout);
-          res.status(500).json({ error: "Saída inválida do gerador", details: stdout });
-        }
+    } catch (error: any) {
+      console.error('❌ Erro ao exportar Excel:', error);
+      res.status(500).json({ 
+        error: 'Erro ao gerar Excel',
+        message: error.message
       });
-
-    } catch (error) {
-      console.error("Erro na rota de exportação:", error);
-      res.status(500).send("Erro interno ao exportar pedido");
     }
   });
 
