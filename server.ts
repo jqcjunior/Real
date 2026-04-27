@@ -30,7 +30,7 @@ async function startServer() {
   app.use(express.json({ limit: '50mb' }));
 
   // Endpoint para exportação de pedido de compra usando ExcelJS
-  app.post("/api/export-buy-order-excel", async (req, res) => {
+  app.post("/api/exportar-comprar-ordem-excel", async (req, res) => {
     try {
       const { orderId } = req.body;
 

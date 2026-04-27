@@ -449,7 +449,7 @@ export default function BuyOrderModule({ user }: { user?: User }) {
   async function handleExportExcel(orderId: string) {
     try {
       // Chamar API para gerar Excel usando ExcelJS no servidor
-      const response = await fetch('/api/export-buy-order-excel', {
+      const response = await fetch('/api/exportar-comprar-ordem-excel', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ orderId }),
