@@ -33,10 +33,11 @@ const EstoqueTab: React.FC<EstoqueTabProps> = ({
 }) => {
     const [showNewInsumoModal, setShowNewInsumoModal] = useState(false);
     const [editingItem, setEditingItem] = useState<{ id: string; product_base: string; unit: string } | null>(null);
+    const [deletingId, setDeletingId] = useState<string | null>(null);
  
     const handleEdit = (item: any) => {
         setEditingItem({
-            id: item.id,
+            id: item.stock_id,
             product_base: item.product_base,
             unit: item.unit
         });
@@ -157,7 +158,7 @@ const EstoqueTab: React.FC<EstoqueTabProps> = ({
                                                 <Edit size={18}/>
                                             </button>
                                             <button
-                                                onClick={() => onToggleFreezeStock(item.id, !item.is_active)}
+                                                onClick={() => onToggleFreezeStock(item.stock_id, !item.is_active)}
                                                 className="p-2 text-gray-400 hover:text-gray-600 transition-all"
                                                 title={item.is_active ? "Desativar" : "Ativar"}
                                             >
@@ -165,14 +166,22 @@ const EstoqueTab: React.FC<EstoqueTabProps> = ({
                                             </button>
                                             <button
                                                 onClick={() => {
-                                                    if (confirm(`Desativar "${item.product_base}"?`)) {
-                                                        onDeleteStockBase(item.id);
+                                                    if (deletingId === item.stock_id) {
+                                                        onDeleteStockBase(item.stock_id);
+                                                        setDeletingId(null);
+                                                    } else {
+                                                        setDeletingId(item.stock_id);
                                                     }
                                                 }}
-                                                className="p-2 text-red-400 hover:text-red-600 transition-all"
+                                                onBlur={() => setDeletingId(null)}
+                                                className={`p-2 transition-all ${
+                                                    deletingId === item.stock_id
+                                                        ? 'text-white bg-red-600 rounded-lg px-3 text-[9px] font-black uppercase'
+                                                        : 'text-red-400 hover:text-red-600'
+                                                }`}
                                                 title="Excluir Insumo"
                                             >
-                                                <Trash2 size={18}/>
+                                                {deletingId === item.stock_id ? 'Confirmar?' : <Trash2 size={18}/>}
                                             </button>
                                         </div>
                                     </td>
