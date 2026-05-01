@@ -29,7 +29,7 @@ async function startServer() {
   // Middleware para JSON com limite maior para pedidos grandes
   app.use(express.json({ limit: '50mb' }));
 
-  // Endpoint para exportação de pedido de compra usando ExcelJS
+  // Endpoint para exportação de pedido de compra usando XLSX (SheetJS)
   app.post("/api/exportar-comprar-ordem-excel", async (req, res) => {
     try {
       const { orderId } = req.body;
@@ -40,7 +40,7 @@ async function startServer() {
 
       console.log(`📦 Exportando pedido: ${orderId}`);
 
-      // Gerar Excel usando o novo serviço ExcelJS
+      // Gerar Excel usando o serviço XLSX (SheetJS)
       const excelBuffer = await exportBuyOrderToExcel(orderId);
 
       const fileName = `Pedido_${orderId}.xlsx`;

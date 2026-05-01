@@ -1,6 +1,7 @@
 import { createClient } from '@supabase/supabase-js';
-import ExcelJS from 'exceljs';
+import * as XLSX from 'xlsx';
 import path from 'path';
+import fs from 'fs';
 import { fileURLToPath } from 'url';
 
 const __filename = fileURLToPath(import.meta.url);
@@ -55,9 +56,9 @@ async function fetchOrderData(orderId: string) {
 /**
  * Mapeia tamanhos para colunas do Excel
  */
-const TAMANHO_COLS: Record<string, string> = {
-    '20': 'M', '21': 'N', '22': 'O', '23': 'P', '24': 'Q', '25': 'R', '26': 'S', '27': 'T',
-    '28': 'U', '29': 'V', '30': 'W', '31': 'X', '32': 'Y', '33': 'Z', '34': 'AA', '35': 'AB'
+const TAMANHO_COLS: Record<string, number> = {
+    '20': 12, '21': 13, '22': 14, '23': 15, '24': 16, '25': 17, '26': 18, '27': 19,
+    '28': 20, '29': 21, '30': 22, '31': 23, '32': 24, '33': 25, '34': 26, '35': 27
 };
 
 /**
@@ -75,118 +76,103 @@ export async function exportBuyOrderToExcel(orderId: string) {
     const { order, subOrders, items } = await fetchOrderData(orderId);
 
     // Carregar template
-    // Nota: Ajustamos o caminho para a estrutura do projeto
     const templatePath = path.join(process.cwd(), 'templates', 'Template.xlsx');
-    
-    // Fallback para o template antigo se o novo não existir
     const altTemplatePath = path.join(process.cwd(), 'public', 'templates', 'buy_order_template.xlsx');
     
     let finalTemplatePath = templatePath;
-    const fs = await import('fs');
     if (!fs.existsSync(templatePath) && fs.existsSync(altTemplatePath)) {
         finalTemplatePath = altTemplatePath;
     }
 
-    const workbook = new ExcelJS.Workbook();
-    await workbook.xlsx.readFile(finalTemplatePath);
+    if (!fs.existsSync(finalTemplatePath)) {
+        throw new Error(`Template não encontrado em ${finalTemplatePath}`);
+    }
 
-    const worksheet = workbook.getWorksheet('PEDIDO');
-    if (!worksheet) {
+    const arrayBuffer = fs.readFileSync(finalTemplatePath);
+    const wb = XLSX.read(arrayBuffer, { type: 'buffer' });
+    const ws = wb.Sheets['PEDIDO'];
+    if (!ws) {
         throw new Error('Aba PEDIDO não encontrada no template');
     }
 
+    const safeSet = (addr: string, value: any, numFmt?: string) => {
+        if (value === null || value === undefined) return;
+        if (!ws[addr]) ws[addr] = { t: 's', v: '' };
+        if (ws[addr].f) return;
+        
+        if (typeof value === 'number') {
+            ws[addr].t = 'n';
+            ws[addr].v = value;
+        } else if (value instanceof Date) {
+            ws[addr].t = 'd';
+            ws[addr].v = value;
+            if (!ws[addr].z) ws[addr].z = 'dd/mm/yyyy';
+        } else {
+            ws[addr].t = 's';
+            ws[addr].v = value.toString();
+        }
+        if (numFmt) ws[addr].z = numFmt;
+    };
+
     console.log('✏️ Preenchendo template...');
 
-    // ========================================
-    // CABEÇALHO - Linha 2
-    // ========================================
-    worksheet.getCell('N2').value = order.numero_pedido;
-    worksheet.getCell('AA2').value = order.user_name;
-    worksheet.getCell('AN2').value = order.created_at ? new Date(order.created_at) : '';
+    // Cabeçalho
+    safeSet('N2', order.numero_pedido);
+    safeSet('AA2', order.user_name);
+    if (order.created_at) safeSet('AN2', new Date(order.created_at));
 
-    // ========================================
-    // CABEÇALHO - Linha 3
-    // ========================================
-    worksheet.getCell('N3').value = order.marca;
-    worksheet.getCell('AA3').value = order.representante;
-    worksheet.getCell('AN3').value = order.telefone_representante || order.telefone;
+    safeSet('N3', order.marca);
+    safeSet('AA3', order.representante);
+    safeSet('AN3', order.telefone_representante || order.telefone);
 
-    // ========================================
-    // CABEÇALHO - Linha 4
-    // ========================================
-    worksheet.getCell('N4').value = order.fornecedor;
-    worksheet.getCell('AA4').value = order.email_representante || order.email;
+    safeSet('N4', order.fornecedor);
+    safeSet('AA4', order.email_representante || order.email);
 
-    // ========================================
-    // CABEÇALHO - Linha 5
-    // ========================================
-    worksheet.getCell('N5').value = order.prazos?.[0] || 0;
-    worksheet.getCell('AA5').value = order.fat_inicio ? new Date(order.fat_inicio) : '';
-    worksheet.getCell('AH5').value = order.fat_fim ? new Date(order.fat_fim) : '';
+    safeSet('N5', order.prazos?.[0] || 0);
+    if (order.fat_inicio) safeSet('AA5', new Date(order.fat_inicio));
+    if (order.fat_fim) safeSet('AH5', new Date(order.fat_fim));
 
-    // ========================================
-    // CABEÇALHO - Linha 6
-    // ========================================
-    // Z6 mantém a porcentagem
-    worksheet.getCell('Z6').value = parseFloat(order.desconto || 0) / 100;
-    worksheet.getCell('AF6').value = parseFloat(order.markup || 0);
+    safeSet('Z6', parseFloat(order.desconto || 0) / 100, '0.00%');
+    safeSet('AF6', parseFloat(order.markup || 0), '0.0');
 
-    // ========================================
-    // LOJA - D23 (primeiro sub-pedido)
-    // ========================================
     if (subOrders.length > 0 && subOrders[0].lojas_numeros?.length > 0) {
-        worksheet.getCell('D23').value = subOrders[0].lojas_numeros[0];
+        safeSet('D23', subOrders[0].lojas_numeros[0]);
     }
 
-    // ========================================
-    // GRADES - Linhas 14-21
-    // ========================================
-    console.log('📊 Preenchendo grades...');
+    // Grades
     items.forEach(item => {
         if (!item.grades || !Array.isArray(item.grades) || item.grades.length === 0) return;
-
-        const grade = item.grades[0]; // Primeira grade do item
+        const grade = item.grades[0];
         const gradeLetra = grade.letra;
-        
         if (!gradeLetra || !GRADE_ROWS[gradeLetra]) return;
         
-        const row = GRADE_ROWS[gradeLetra];
+        const rowNum = GRADE_ROWS[gradeLetra];
         const tamanhos = grade.tamanhos || {};
 
         Object.entries(tamanhos).forEach(([tamanho, qtd]) => {
             if (TAMANHO_COLS[tamanho]) {
-                const col = TAMANHO_COLS[tamanho];
-                worksheet.getCell(`${col}${row}`).value = Number(qtd);
+                const colIdx = TAMANHO_COLS[tamanho];
+                const addr = XLSX.utils.encode_cell({ r: rowNum - 1, c: colIdx });
+                safeSet(addr, Number(qtd));
             }
         });
     });
 
-    // ========================================
-    // ITENS - Linhas 36+ (DINÂMICO)
-    // ========================================
-    console.log(`🛍️ Preenchendo ${items.length} itens...`);
-    const BASE_ROW = 36;
-    
+    // Itens
     items.forEach((item, index) => {
-        const row = BASE_ROW + index;
+        const row = 36 + index;
         const gradeLetra = (item.grades && Array.isArray(item.grades) && item.grades.length > 0) 
             ? item.grades[0].letra 
             : '';
 
-        worksheet.getCell(`C${row}`).value = item.referencia;
-        worksheet.getCell(`H${row}`).value = item.tipo;
-        worksheet.getCell(`R${row}`).value = item.cor1;
-        worksheet.getCell(`U${row}`).value = item.modelo;
-        worksheet.getCell(`X${row}`).value = gradeLetra;
-        worksheet.getCell(`AL${row}`).value = parseFloat(item.custo || 0);
-        worksheet.getCell(`AO${row}`).value = parseFloat(item.preco_venda || 0);
-        
-        console.log(`   ✓ Linha ${row}: ${item.referencia} - R$ ${item.custo} / R$ ${item.preco_venda}`);
+        safeSet(`C${row}`, item.referencia);
+        safeSet(`H${row}`, item.tipo);
+        safeSet(`R${row}`, item.cor1);
+        safeSet(`U${row}`, item.modelo);
+        safeSet(`X${row}`, gradeLetra);
+        safeSet(`AL${row}`, parseFloat(item.custo || 0), '"R$" #,##0.00');
+        safeSet(`AO${row}`, parseFloat(item.preco_venda || 0), '"R$" #,##0.00');
     });
 
-    console.log(`✅ Template preenchido com ${items.length} itens!`);
-
-    // Gerar buffer
-    const buffer = await workbook.xlsx.writeBuffer();
-    return buffer as Buffer;
+    return XLSX.write(wb, { type: 'buffer', bookType: 'xlsx' });
 }

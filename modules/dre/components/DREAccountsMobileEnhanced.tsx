@@ -1,5 +1,6 @@
 import React, { useState, useRef, useEffect, useMemo, useCallback } from 'react';
 import * as XLSX from 'xlsx';
+import { saveAs } from 'file-saver';
 import { Search } from 'lucide-react';
 import {
   Menu,
@@ -352,10 +353,13 @@ export const DREAccountsMobileEnhanced: React.FC = () => {
     }
   };
 
-  const downloadTemplate = () => {
+  const downloadTemplate = async () => {
+    const wb = XLSX.utils.book_new();
+    
+    // Cabeçalhos e dados
     const data = [
-      ['DRE - Março/2025'], // Row 0
-      ['Código', 'Descrição', 'Loja 5', 'Loja 26', 'Loja 31'], // Row 1
+      ['DRE - Março/2025'],
+      ['Código', 'Descrição', 'Loja 5', 'Loja 26', 'Loja 31'],
       ['1', 'RECEITA BRUTA', 150000, 180000, 120000],
       ['1.1', '(-) IMPOSTOS', -15000, -18000, -12000],
       ['1.2', 'RECEITA LÍQUIDA', 135000, 162000, 108000],
@@ -366,9 +370,11 @@ export const DREAccountsMobileEnhanced: React.FC = () => {
     ];
     
     const ws = XLSX.utils.aoa_to_sheet(data);
-    const wb = XLSX.utils.book_new();
-    XLSX.utils.book_append_sheet(wb, ws, "Modelo DRE");
-    XLSX.writeFile(wb, "Modelo_Importacao_DRE.xlsx");
+    XLSX.utils.book_append_sheet(wb, ws, 'Modelo DRE');
+
+    const wbout = XLSX.write(wb, { bookType: 'xlsx', type: 'array' });
+    const blob = new Blob([wbout], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' });
+    saveAs(blob, "Modelo_Importacao_DRE.xlsx");
   };
 
   // ============================================================================

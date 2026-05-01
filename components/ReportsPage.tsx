@@ -74,10 +74,10 @@ export default function ReportsGenerator({ user }: { user: any }) {
         [],
         ['RESUMO GERAL'],
         ['Total de Lojas', reportData.resumo_geral.total_lojas],
-        ['Cota Total Inicial', `R$ ${reportData.resumo_geral.cota_total_inicial.toLocaleString('pt-BR', {minimumFractionDigits: 2})}`],
-        ['Cota Total Utilizada', `R$ ${reportData.resumo_geral.cota_total_utilizada.toLocaleString('pt-BR', {minimumFractionDigits: 2})}`],
-        ['Cota Total Disponível', `R$ ${reportData.resumo_geral.cota_total_disponivel.toLocaleString('pt-BR', {minimumFractionDigits: 2})}`],
-        ['Percentual Médio', `${reportData.resumo_geral.percentual_medio}%`],
+        ['Cota Total Inicial', reportData.resumo_geral.cota_total_inicial],
+        ['Cota Total Utilizada', reportData.resumo_geral.cota_total_utilizada],
+        ['Cota Total Disponível', reportData.resumo_geral.cota_total_disponivel],
+        ['Percentual Médio', reportData.resumo_geral.percentual_medio / 100],
         [],
         ['DISTRIBUIÇÃO POR STATUS'],
         ['Lojas OK', reportData.resumo_geral.lojas_ok],
@@ -85,86 +85,91 @@ export default function ReportsGenerator({ user }: { user: any }) {
         ['Lojas Críticas', reportData.resumo_geral.lojas_critico]
       ];
       
-      const resumoWs = XLSX.utils.aoa_to_sheet(resumoData);
+      const wsResumo = XLSX.utils.aoa_to_sheet(resumoData);
       
-      // Larguras das colunas
-      resumoWs['!cols'] = [
-        { wch: 30 },
-        { wch: 20 }
-      ];
+      // Formatação de moeda e porcentagem no Resumo
+      const currencyRows = [5, 6, 7]; // 1-based no Excel, 0-based no código (mais 1 do worksheet)
+      currencyRows.forEach(row => {
+        const cell = wsResumo[XLSX.utils.encode_cell({ r: row - 1, c: 1 })];
+        if (cell) cell.z = '"R$" #,##0.00';
+      });
+      const pctCell = wsResumo[XLSX.utils.encode_cell({ r: 7, c: 1 })];
+      if (pctCell) pctCell.z = '0.00%';
       
-      XLSX.utils.book_append_sheet(wb, resumoWs, 'Resumo');
+      XLSX.utils.book_append_sheet(wb, wsResumo, 'Resumo');
 
       // 4. ABA 2: Detalhamento por Loja
       if (reportData.por_loja && reportData.por_loja.length > 0) {
-        const lojasFormatted = reportData.por_loja.map(loja => ({
-          'Loja': loja.store_number,
-          'Nome': loja.store_name,
-          'Cidade': loja.city,
-          'Cota Inicial': loja.cota_inicial,
-          'Cota Utilizada': loja.cota_utilizada,
-          'Cota Disponível': loja.cota_disponivel,
-          '% Utilizado': loja.percentual_utilizado,
-          'Status': loja.status,
-          'Gerente Inicial': loja.gerente_inicial,
-          'Gerente Utilizada': loja.gerente_utilizada,
-          'Gerente %': loja.gerente_pct,
-          'Comprador Inicial': loja.comprador_inicial,
-          'Comprador Utilizada': loja.comprador_utilizada,
-          'Comprador %': loja.comprador_pct,
-          'Alertas': loja.alertas_ativos
-        }));
-
-        const lojasWs = XLSX.utils.json_to_sheet(lojasFormatted);
-        
-        // Larguras das colunas
-        lojasWs['!cols'] = [
-          { wch: 6 },  // Loja
-          { wch: 25 }, // Nome
-          { wch: 15 }, // Cidade
-          { wch: 12 }, // Cota Inicial
-          { wch: 12 }, // Cota Utilizada
-          { wch: 12 }, // Cota Disponível
-          { wch: 10 }, // % Utilizado
-          { wch: 12 }, // Status
-          { wch: 12 }, // Gerente Inicial
-          { wch: 12 }, // Gerente Utilizada
-          { wch: 10 }, // Gerente %
-          { wch: 12 }, // Comprador Inicial
-          { wch: 12 }, // Comprador Utilizada
-          { wch: 10 }, // Comprador %
-          { wch: 8 }   // Alertas
+        const headers = [
+          'Loja', 'Nome', 'Cidade', 'Cota Inicial', 'Cota Utilizada', 
+          'Cota Disponível', '% Utilizado', 'Status', 'Gerente Inicial', 
+          'Gerente Utilizada', 'Gerente %', 'Comprador Inicial', 
+          'Comprador Utilizada', 'Comprador %', 'Alertas'
         ];
         
-        XLSX.utils.book_append_sheet(wb, lojasWs, 'Por Loja');
+        const rows = reportData.por_loja.map(loja => [
+          loja.store_number,
+          loja.store_name,
+          loja.city,
+          loja.cota_inicial,
+          loja.cota_utilizada,
+          loja.cota_disponivel,
+          loja.percentual_utilizado / 100,
+          loja.status,
+          loja.gerente_inicial,
+          loja.gerente_utilizada,
+          loja.gerente_pct / 100,
+          loja.comprador_inicial,
+          loja.comprador_utilizada,
+          loja.comprador_pct / 100,
+          loja.alertas_ativos
+        ]);
+
+        const wsLojas = XLSX.utils.aoa_to_sheet([headers, ...rows]);
+        
+        // Formatações
+        const range = XLSX.utils.decode_range(wsLojas['!ref'] || 'A1');
+        const currencyCols = [3, 4, 5, 8, 9, 11, 12];
+        const pctCols = [6, 10, 13];
+        
+        for (let R = 1; R <= range.e.r; R++) {
+          currencyCols.forEach(C => {
+            const cell = wsLojas[XLSX.utils.encode_cell({ r: R, c: C })];
+            if (cell) cell.z = '"R$" #,##0.00';
+          });
+          pctCols.forEach(C => {
+            const cell = wsLojas[XLSX.utils.encode_cell({ r: R, c: C })];
+            if (cell) cell.z = '0.00%';
+          });
+        }
+        
+        XLSX.utils.book_append_sheet(wb, wsLojas, 'Por Loja');
       }
 
       // 5. ABA 3: Alertas Críticos
       if (reportData.alertas_criticos && reportData.alertas_criticos.length > 0) {
-        const alertasFormatted = reportData.alertas_criticos.map(alerta => ({
-          'Loja': alerta.store_number,
-          'Nome': alerta.store_name,
-          'Tipo': alerta.tipo_comprador,
-          'Nível': alerta.nivel,
-          '% Utilizado': alerta.percentual
-        }));
-
-        const alertasWs = XLSX.utils.json_to_sheet(alertasFormatted);
+        const headers = ['Loja', 'Nome', 'Tipo', 'Nível', '% Utilizado'];
+        const rows = reportData.alertas_criticos.map(alerta => [
+          alerta.store_number,
+          alerta.store_name,
+          alerta.tipo_comprador,
+          alerta.nivel,
+          alerta.percentual / 100
+        ]);
         
-        alertasWs['!cols'] = [
-          { wch: 6 },
-          { wch: 25 },
-          { wch: 12 },
-          { wch: 15 },
-          { wch: 12 }
-        ];
+        const wsAlertas = XLSX.utils.aoa_to_sheet([headers, ...rows]);
+        const range = XLSX.utils.decode_range(wsAlertas['!ref'] || 'A1');
+        for (let R = 1; R <= range.e.r; R++) {
+          const cell = wsAlertas[XLSX.utils.encode_cell({ r: R, c: 4 })];
+          if (cell) cell.z = '0.00%';
+        }
         
-        XLSX.utils.book_append_sheet(wb, alertasWs, 'Alertas Críticos');
+        XLSX.utils.book_append_sheet(wb, wsAlertas, 'Alertas Críticos');
       }
 
       // 6. Gerar e baixar arquivo
       const wbout = XLSX.write(wb, { bookType: 'xlsx', type: 'array' });
-      const blob = new Blob([wbout], { type: 'application/octet-stream' });
+      const blob = new Blob([wbout], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' });
       saveAs(blob, `Relatorio_Cotas_${selectedYear}_${String(selectedMonth).padStart(2, '0')}.xlsx`);
 
       alert('✅ Relatório Excel gerado com sucesso!');
@@ -202,66 +207,70 @@ export default function ReportsGenerator({ user }: { user: any }) {
         ['Execuções com Sucesso', data.resumo.execucoes_sucesso],
         ['Execuções com Erro', data.resumo.execucoes_erro],
         ['Total de Abatimentos', data.resumo.total_abatimentos],
-        ['Valor Total Abatido', `R$ ${data.resumo.valor_total?.toLocaleString('pt-BR', {minimumFractionDigits: 2}) || '0,00'}`],
+        ['Valor Total Abatido', data.resumo.valor_total || 0],
         ['Tempo Médio (ms)', data.resumo.tempo_medio_ms],
         ['Tempo Máximo (ms)', data.resumo.tempo_max_ms],
         ['Tempo Mínimo (ms)', data.resumo.tempo_min_ms]
       ];
 
-      const resumoWs = XLSX.utils.aoa_to_sheet(resumoData);
-      resumoWs['!cols'] = [{ wch: 30 }, { wch: 20 }];
-      XLSX.utils.book_append_sheet(wb, resumoWs, 'Resumo');
+      const wsResumo = XLSX.utils.aoa_to_sheet(resumoData);
+      const valAbatidoCell = wsResumo[XLSX.utils.encode_cell({ r: 7, c: 1 })];
+      if (valAbatidoCell) valAbatidoCell.z = '"R$" #,##0.00';
+      
+      XLSX.utils.book_append_sheet(wb, wsResumo, 'Resumo');
 
       // ABA 2: Execuções
       if (data.execucoes && data.execucoes.length > 0) {
-        const execucoesFormatted = data.execucoes.map((exec: any) => ({
-          'Data/Hora': new Date(exec.execution_time).toLocaleString('pt-BR'),
-          'Abatimentos': exec.total_aplicado,
-          'Valor Total': exec.valor_total,
-          'Sucesso': exec.success ? 'Sim' : 'Não',
-          'Erro': exec.error_message || '-',
-          'Tempo (ms)': exec.execution_duration_ms
-        }));
-
-        const execWs = XLSX.utils.json_to_sheet(execucoesFormatted);
-        execWs['!cols'] = [
-          { wch: 18 },
-          { wch: 12 },
-          { wch: 15 },
-          { wch: 8 },
-          { wch: 40 },
-          { wch: 12 }
-        ];
-        XLSX.utils.book_append_sheet(wb, execWs, 'Execuções');
+        const headers = ['Data/Hora', 'Abatimentos', 'Valor Total', 'Sucesso', 'Erro', 'Tempo (ms)'];
+        const rows = data.execucoes.map((exec: any) => [
+          new Date(exec.execution_time),
+          exec.total_aplicado,
+          exec.valor_total,
+          exec.success ? 'Sim' : 'Não',
+          exec.error_message || '-',
+          exec.execution_duration_ms
+        ]);
+        
+        const wsExec = XLSX.utils.aoa_to_sheet([headers, ...rows]);
+        const range = XLSX.utils.decode_range(wsExec['!ref'] || 'A1');
+        for (let R = 1; R <= range.e.r; R++) {
+          const cellVal = wsExec[XLSX.utils.encode_cell({ r: R, c: 2 })];
+          if (cellVal) cellVal.z = '"R$" #,##0.00';
+          const cellTime = wsExec[XLSX.utils.encode_cell({ r: R, c: 0 })];
+          if (cellTime) cellTime.z = 'dd/mm/yyyy hh:mm';
+        }
+        
+        XLSX.utils.book_append_sheet(wb, wsExec, 'Execuções');
       }
 
       // ABA 3: Por Loja
       if (data.por_loja && data.por_loja.length > 0) {
-        const lojasFormatted = data.por_loja.map((loja: any) => ({
-          'Loja': loja.store_number,
-          'Nome': loja.store_name,
-          'Total Abatido': loja.total_abatido,
-          'Quantidade': loja.qtd_abatimentos,
-          'Gerente': loja.gerente_abatido,
-          'Comprador': loja.comprador_abatido,
-          'Futuro Agendado': loja.futuro_agendado
-        }));
-
-        const lojasWs = XLSX.utils.json_to_sheet(lojasFormatted);
-        lojasWs['!cols'] = [
-          { wch: 6 },
-          { wch: 25 },
-          { wch: 15 },
-          { wch: 12 },
-          { wch: 15 },
-          { wch: 15 },
-          { wch: 15 }
-        ];
-        XLSX.utils.book_append_sheet(wb, lojasWs, 'Por Loja');
+        const headers = ['Loja', 'Nome', 'Total Abatido', 'Quantidade', 'Gerente', 'Comprador', 'Futuro Agendado'];
+        const rows = data.por_loja.map((loja: any) => [
+          loja.store_number,
+          loja.store_name,
+          loja.total_abatido,
+          loja.qtd_abatimentos,
+          loja.gerente_abatido,
+          loja.comprador_abatido,
+          loja.futuro_agendado
+        ]);
+        
+        const wsLojas = XLSX.utils.aoa_to_sheet([headers, ...rows]);
+        const range = XLSX.utils.decode_range(wsLojas['!ref'] || 'A1');
+        const currencyCols = [2, 4, 5, 6];
+        for (let R = 1; R <= range.e.r; R++) {
+          currencyCols.forEach(C => {
+            const cell = wsLojas[XLSX.utils.encode_cell({ r: R, c: C })];
+            if (cell) cell.z = '"R$" #,##0.00';
+          });
+        }
+        
+        XLSX.utils.book_append_sheet(wb, wsLojas, 'Por Loja');
       }
 
       const wbout = XLSX.write(wb, { bookType: 'xlsx', type: 'array' });
-      const blob = new Blob([wbout], { type: 'application/octet-stream' });
+      const blob = new Blob([wbout], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' });
       saveAs(blob, `Relatorio_Monitoramento_${selectedYear}_${String(selectedMonth).padStart(2, '0')}.xlsx`);
 
       alert('✅ Relatório de Monitoramento gerado com sucesso!');

@@ -3,12 +3,13 @@ import { Store, User } from '../../types';
 import { 
   BarChart3, Trophy, Calendar, Filter, Eye,
   Medal, Gem, Zap, Settings, X, Check, ChevronRight, Loader2,
-  RotateCcw, Lock, Unlock, AlertCircle, TrendingUp
+  RotateCcw, Lock, Unlock, AlertCircle, TrendingUp, FileText
 } from 'lucide-react';
 import { supabase } from '../../services/supabaseClient';
 import { format } from 'date-fns';
 import { ptBR } from 'date-fns/locale';
 import { autoGenerateWeeksIfNeeded } from './WeeklyPASystem';
+import { MonthlyPrizesReport } from './MonthlyPrizesReport';
  
 interface DashboardPAAdminProps {
   user: User;
@@ -512,6 +513,7 @@ const DashboardPAAdmin: React.FC<DashboardPAAdminProps> = ({ user, stores, onRef
   const [performance, setPerformance] = useState<StoreWeekPerformance[]>([]);
   const [loading, setLoading] = useState(false);
   const [showParamsModal, setShowParamsModal] = useState(false);
+  const [showMonthlyReport, setShowMonthlyReport] = useState(false);
   const [reopeningId, setReopeningId] = useState<string | null>(null);
   const [toast, setToast] = useState<{ message: string; type: 'success' | 'error' } | null>(null);
  
@@ -757,6 +759,11 @@ const DashboardPAAdmin: React.FC<DashboardPAAdminProps> = ({ user, stores, onRef
           }}
         />
       )}
+
+      <MonthlyPrizesReport 
+        isOpen={showMonthlyReport}
+        onClose={() => setShowMonthlyReport(false)}
+      />
  
       {/* Header */}
       <div className="bg-white dark:bg-slate-900 rounded-3xl shadow-sm border border-slate-200 dark:border-slate-800 p-6 space-y-6">
@@ -779,6 +786,14 @@ const DashboardPAAdmin: React.FC<DashboardPAAdminProps> = ({ user, stores, onRef
           >
             <Settings size={16} />
             <span className="hidden sm:inline">Parâmetros</span>
+          </button>
+
+          <button
+            onClick={() => setShowMonthlyReport(true)}
+            className="flex items-center gap-2 px-4 py-2.5 bg-blue-600 hover:bg-blue-700 text-white rounded-xl font-black uppercase text-xs shadow-lg border-b-4 border-blue-800 transition-all active:scale-95"
+          >
+            <FileText size={16} />
+            <span className="hidden sm:inline">Relatório Mensal</span>
           </button>
         </div>
  

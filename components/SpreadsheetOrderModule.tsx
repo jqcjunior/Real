@@ -1,6 +1,8 @@
 import React, { useState, useEffect, useMemo } from "react";
-import ExcelJS from 'exceljs';
+import * as XLSX from 'xlsx';
 import { saveAs } from 'file-saver';
+import JSZip from 'jszip';
+import { toast } from 'sonner';
 import { 
   Download, Trash2, X, ShoppingBag, ListFilter, Layers, Calendar, Zap, Percent, Hash, Info, Plus, ChevronRight, CreditCard
 } from "lucide-react";
@@ -77,7 +79,8 @@ const SpreadsheetOrderModule = ({ user, onClose }: { user: any, onClose: () => v
   const [pedidoExpandido, setPedidoExpandido] = useState<string | null>(null);
   const [isMobile, setIsMobile] = useState(false);
   const [showGradeModal, setShowGradeModal] = useState(false);
-
+  const [exportando, setExportando] = useState(false);
+  
   useEffect(() => {
     const checkMobile = () => setIsMobile(window.innerWidth < 640);
     checkMobile();
@@ -118,6 +121,8 @@ const SpreadsheetOrderModule = ({ user, onClose }: { user: any, onClose: () => v
     reference_id: null
   });
   const [isSaving, setIsSaving] = useState(false);
+  const [pedidosRecentes, setPedidosRecentes] = useState<any[]>([]);
+  const [loadingRecentes, setLoadingRecentes] = useState(false);
   const [dbSuggestions, setDbSuggestions] = useState({
     marcas: [] as string[],
     fornecedores: [] as string[],
@@ -373,26 +378,6 @@ const SpreadsheetOrderModule = ({ user, onClose }: { user: any, onClose: () => v
     if (ws[addr].w) delete ws[addr].w;
   };
 
-  const forcedSetCell = (ws: any, addr: string, value: any, isDate = false) => {
-    if (value === null || value === undefined || value === "") return;
-    if (ws[addr]?.f) return; // nunca sobrescreve fórmulas
-    if (!ws[addr]) {
-      ws[addr] = {};
-    }
-    if (isDate && value instanceof Date) {
-      ws[addr].t = 'd';
-      ws[addr].v = value;
-      ws[addr].z = 'DD/MM/YYYY';
-    } else if (typeof value === 'number') {
-      ws[addr].t = 'n';
-      ws[addr].v = value;
-    } else {
-      ws[addr].t = 's';
-      ws[addr].v = String(value);
-    }
-    if (ws[addr].w) delete ws[addr].w;
-  };
-
   const fetchTemplate = () => fetch("https://rwwomakjhmglgoowbmsl.supabase.co/storage/v1/object/public/template/Template.xlsx");
 
   useEffect(() => {
@@ -413,471 +398,366 @@ const SpreadsheetOrderModule = ({ user, onClose }: { user: any, onClose: () => v
     prefetch();
   }, []);
 
-  // CORRIGIDO: downloadWorkbook com try-catch e setTimeout para evitar erro de permissão
-  const downloadWorkbook = async (wb: any, fileName: string) => {
-    const XLSX = await import('xlsx');
+  const exportarPlanilhaFinal = async () => {
     try {
-      const wbout = XLSX.write(wb, { bookType: "xlsx", type: "array" });
-      const blob = new Blob([wbout], {
-        type: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
-      });
-      const url = window.URL.createObjectURL(blob);
-      const a = document.createElement("a");
-      a.href = url;
-      a.download = fileName;
-      document.body.appendChild(a);
-      a.click();
-      document.body.removeChild(a);
-      // CORRIGIDO: Adicionado setTimeout de 1500ms antes do revokeObjectURL
-      setTimeout(() => {
-        window.URL.revokeObjectURL(url);
-      }, 1500);
-    } catch (err) {
-      console.error("Erro ao baixar planilha:", err);
-      alert("Erro ao realizar o download do arquivo Excel. Tente novamente.");
-    }
-  };
-
-  const exportarPlanilhaFinal = async (hD?: any) => {
-    if (lotesFinalizados.length === 0) {
-      alert("Adicione itens e distribua nas lojas primeiro.");
-      return;
-    }
-
-    try {
-      const dataHeader = hD || pedido;
-      const templateUrl = "https://rwwomakjhmglgoowbmsl.supabase.co/storage/v1/object/public/template/Template.xlsx";
+      setExportando(true);
       
-      let arrayBuffer: ArrayBuffer;
-      if (localTemplate) {
-        arrayBuffer = localTemplate;
-      } else {
-        const response = await fetch(templateUrl);
-        arrayBuffer = await response.arrayBuffer();
-      }
-
-      const workbook = new ExcelJS.Workbook();
-      await workbook.xlsx.load(arrayBuffer);
-      const worksheet = workbook.getWorksheet(1); // Pega a primeira aba (PEDIDO)
-
-      if (!worksheet) {
-        throw new Error("Aba 'PEDIDO' não encontrada no template.");
-      }
-
-      const comprador = dataHeader.comprador || pedido.comprador;
-      const marca = dataHeader.marca || pedido.marca;
-      const representante = dataHeader.representante || pedido.representante;
-      const telefone = dataHeader.telefone || pedido.telefone;
-      const fornecedor = dataHeader.fornecedor || pedido.fornecedor;
-      const email = dataHeader.email || pedido.email;
-      const embInicio = dataHeader.embarqueInicio || dataHeader.embarque_inicio || pedido.embarqueInicio;
-      const embFim = dataHeader.embarqueFim || dataHeader.embarque_fim || pedido.embarqueFim;
-      const prazos = dataHeader.prazos || pedido.prazos;
-      const numPedido = dataHeader.numero_pedido || pedido.numero_pedido;
-
-      // Helper to set value only if not a formula
-      const safeSet = (addr: string, value: any) => {
-        const cell = worksheet.getCell(addr);
-        if (cell.formula) return;
-        cell.value = value;
-      };
-
-      // Helper for vencimentos
-      const getVencimentoTexto = (dataBase: string, prazoDias: number) => {
-        if (!dataBase) return "";
-        const date = new Date(dataBase + "T12:00:00");
-        if (prazoDias % 30 === 0) {
-          date.setMonth(date.getMonth() + (prazoDias / 30));
-        } else {
-          date.setDate(date.getDate() + prazoDias);
-        }
-        const meses = ["Janeiro", "Fevereiro", "Março", "Abril", "Maio", "Junho", "Julho", "Agosto", "Setembro", "Outubro", "Novembro", "Dezembro"];
-        return `${meses[date.getMonth()]}/${date.getFullYear().toString().slice(-2)}`;
-      };
-
-      // --- 1. CABEÇALHO ---
-      if (numPedido) safeSet('N2', numPedido);
-      if (marca) safeSet('N3', marca.toUpperCase());
-      if (fornecedor) safeSet('N4', fornecedor.toUpperCase());
-      if (comprador) safeSet('AA2', comprador.toUpperCase());
-      if (representante) safeSet('AA3', representante.toUpperCase());
-      if (telefone) safeSet('AN3', telefone);
-      if (email) safeSet('AA4', email.toLowerCase());
-      
-      if (embInicio) {
-        const d = toExcelDate(embInicio);
-        if (d) {
-          const cell = worksheet.getCell('AA5');
-          cell.value = d;
-          cell.numFmt = 'DD/MM/YYYY';
-        }
-      }
-      if (embFim) {
-        const d = toExcelDate(embFim);
-        if (d) {
-          const cell = worksheet.getCell('AH5');
-          cell.value = d;
-          cell.numFmt = 'DD/MM/YYYY';
-        }
-      }
-      
-      safeSet('Z6', (dataHeader.desconto || pedido.desconto || 0) / 100);
-      safeSet('AF6', (dataHeader.markup || pedido.markup || 0));
-      
-      const todayCell = worksheet.getCell('AN2');
-      todayCell.value = new Date();
-      todayCell.numFmt = 'DD/MM/YYYY';
-      
-      safeSet('AN4', "CIF");
-
-      // Prazos e Vencimentos
-      if (prazos) {
-        const pArray = prazos.split('/');
-        const colPrazos = ['N', 'Q', 'T'];
-        pArray.forEach((p: string, i: number) => {
-          if (i > 2) return;
-          const col = colPrazos[i];
-          const dias = parseInt(p.trim());
-          if (!isNaN(dias)) {
-            safeSet(`${col}5`, dias);
-            if (embFim) {
-              safeSet(`${col}6`, getVencimentoTexto(embFim, dias));
-            }
-          }
-        });
-      }
-
-      // --- 2. CONSTANTES FISCAIS ---
-      safeSet('BF21', 49);         // IPI
-      safeSet('BF22', 70);         // PIS
-      safeSet('BF23', 70);         // COFINS
-      safeSet('BF24', "000");      // ICMS
-      safeSet('BF26', "UN");       // Unidade
-      safeSet('BF27', "64042000"); // NCM
-      safeSet('BF29', "2805900");  // CEST
-      safeSet('BE37', "T");        // IPPT e FAIXA
-
-      // --- 3. GRADES (LINHAS 14-18) ---
-      const allPossibleSizes = ["UN","P","M","G","GG","15","16","17","18","19","20","21","22","23","24","25","26","27","28","29","30","31","32","33","34","35","36","37","38","39","40","41","42","43","44","45","46","47","48"];
-      
-      const lotesIds = Array.from(new Set(lotesFinalizados.map(l => l.idVinculo)));
-      lotesIds.slice(0, 5).forEach((idV, idx) => {
-        const rowNum = 14 + idx;
-        const primeiroItemDoLote = lotesFinalizados.find(l => l.idVinculo === idV);
-        if (primeiroItemDoLote) {
-          safeSet(`B${rowNum}`, primeiroItemDoLote.gradeLetra);
-          const gradeInfo = gradesSalvas.find(g => g.letra === primeiroItemDoLote.gradeLetra);
-          if (gradeInfo) {
-            Object.entries(gradeInfo.valores).forEach(([tam, qtd]) => {
-              const sIdx = allPossibleSizes.indexOf(tam === "17/18" ? "18" : tam);
-              if (sIdx !== -1 && (qtd as any) > 0) {
-                // Column D is 4th column
-                const colNum = 4 + sIdx;
-                const cell = worksheet.getRow(rowNum).getCell(colNum);
-                if (!cell.formula) cell.value = qtd as any;
-              }
-            });
-          }
-        }
-      });
-
-      // --- 4. LOJAS POR LOTE (LINHAS 23-27) ---
-      lotesIds.slice(0, 5).forEach((idV, idx) => {
-        const rowNum = 23 + idx;
-        const lojasDoLote = [...new Set(lotesFinalizados.filter(l => l.idVinculo === idV).map(l => l.loja))];
-        lojasDoLote.forEach((numLoja, lIdx) => {
-          const colNum = 4 + lIdx;
-          const cell = worksheet.getRow(rowNum).getCell(colNum);
-          if (!cell.formula) cell.value = numLoja as any;
-        });
-      });
-
-      // --- 5. ITENS (LINHA 36+) ---
-      const itensUnicos = lotesFinalizados.reduce((acc: any[], curr) => {
-        const exists = acc.find(it => it.referencia === curr.referencia && it.corEscolhida === curr.corEscolhida);
-        if (!exists) acc.push(curr);
-        return acc;
-      }, []);
-
-      itensUnicos.forEach((it, idx) => {
-        if (!it) return;
-        const rowNum = 36 + idx;
-        if (rowNum > 166) return;
-
-        const row = worksheet.getRow(rowNum);
-        
-        // B = Seq
-        const cellB = row.getCell(2);
-        if (!cellB.formula) cellB.value = idx + 1;
-
-        // C = Referência
-        const cellC = row.getCell(3);
-        if (!cellC.formula) cellC.value = it.referencia.trim().toUpperCase();
-
-        // H = Tipo
-        const cellH = row.getCell(8);
-        if (!cellH.formula) cellH.value = it.tipo.trim().toUpperCase();
-
-        // R = Cor 1
-        const cellR = row.getCell(18);
-        if (!cellR.formula) cellR.value = (it.corEscolhida || it.cor1).trim().toUpperCase();
-
-        // U = Modelo
-        const cellU = row.getCell(21);
-        if (!cellU.formula) cellU.value = it.modelo;
-
-        // AL = Preço Custo
-        const cellAL = row.getCell(38);
-        if (!cellAL.formula) cellAL.value = it.valorCompra;
-
-        // AO = Preço Venda
-        const cellAO = row.getCell(41);
-        if (!cellAO.formula) cellAO.value = it.precoVenda || it.valorVenda;
-
-        // X, AA, AD, AG, AJ = Letra da Grade do Lote
-        lotesIds.slice(0, 5).forEach((idV, lIdx) => {
-          const loteItem = lotesFinalizados.find(l => l.idVinculo === idV && l.referencia === it.referencia && l.corEscolhida === it.corEscolhida);
-          if (loteItem) {
-            const colGradeNum = [24, 27, 30, 33, 36][lIdx]; // X, AA, AD, AG, AJ
-            const cellGrade = row.getCell(colGradeNum);
-            if (!cellGrade.formula) cellGrade.value = loteItem.gradeLetra;
-          }
-        });
-
-        // Mapeamento das Grades por Loja (AT+)
-        // As lojas começam na coluna 46 (AT)
-        const lotesDesteItem = lotesFinalizados.filter(l => l.referencia === it.referencia && l.corEscolhida === it.corEscolhida);
-        lotesDesteItem.forEach(l => {
-          const lojaNum = parseInt(l.loja);
-          if (!isNaN(lojaNum)) {
-            const colDestino = 45 + lojaNum; 
-            const cellLoja = row.getCell(colDestino);
-            if (!cellLoja.formula) cellLoja.value = l.gradeLetra as any;
-          }
-        });
-
-        row.commit();
-      });
-
-      if (marca) {
-        const savedBrands = localStorage.getItem("order_brands_cache");
-        const brandsMap = savedBrands ? JSON.parse(savedBrands) : {};
-        brandsMap[marca.toUpperCase()] = {
-          fornecedor: fornecedor,
-          representante: representante,
-          telefone: telefone,
-          email: email
-        };
-        localStorage.setItem("order_brands_cache", JSON.stringify(brandsMap));
-      }
-
-      const buffer = await workbook.xlsx.writeBuffer();
-      const blob = new Blob([buffer], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' });
-      saveAs(blob, `Pedido_Final_${(marca || "CONSOLIDADO")}_${new Date().getTime()}.xlsx`);
-
-    } catch (err) {
-      console.error("Erro na exportação ExcelJS:", err);
-      alert("Erro ao gerar planilha: " + (err instanceof Error ? err.message : "Erro desconhecido"));
-    }
-  };
-
-  // CORRIGIDO: exportarPedidosPorLoja refatorado para usar JSZip e evitar bloqueio de múltiplos downloads
-  const exportarPedidosPorLoja = async () => {
-    const XLSX = await import('xlsx');
-    if (lotesFinalizados.length === 0) {
-      alert("Nenhum lote encontrado.");
-      return;
-    }
-
-    try {
+      // 1. CARREGAR TEMPLATE
       let templateBuffer: ArrayBuffer;
-
+      
       if (localTemplate) {
         templateBuffer = localTemplate;
       } else {
+        const templateUrl = 'https://rwwomakjhmglgoowbmsl.supabase.co/storage/v1/object/public/template/Template.xlsx';
+        const response = await fetch(templateUrl);
+        if (!response.ok) throw new Error('Erro ao carregar template');
+        templateBuffer = await response.arrayBuffer();
+      }
+      
+      // 2. LER WORKBOOK
+      const workbook = XLSX.read(templateBuffer, { 
+        type: 'array',
+        cellFormula: true,  // MANTER fórmulas
+        cellStyles: true    // MANTER estilos
+      });
+      
+      const worksheet = workbook.Sheets['PEDIDO'];
+      if (!worksheet) throw new Error('Aba PEDIDO não encontrada');
+      
+      // 3. PREENCHER CABEÇALHO
+      worksheet['N2'] = { v: pedido.numero_pedido || '', t: 's' };
+      worksheet['AA2'] = { v: pedido.comprador || '', t: 's' };
+      worksheet['AN2'] = { f: 'TODAY()', t: 'n' };  // Fórmula
+      worksheet['N3'] = { v: pedido.marca || '', t: 's' };
+      worksheet['AA3'] = { v: pedido.representante || '', t: 's' };
+      worksheet['N4'] = { v: pedido.fornecedor || '', t: 's' };
+      worksheet['N5'] = { v: pedido.prazos || '', t: 's' }; // Original pedia prazo_pag mas o estado usa prazos
+      worksheet['AA5'] = { v: pedido.embarqueInicio || '', t: 'd' }; // Original pedia faturamento
+      worksheet['AH5'] = { v: pedido.embarqueFim || '', t: 'd' }; // Original pedia limite_entrega
+      worksheet['Z6'] = { v: (pedido.desconto || 0) / 100, t: 'n', z: '0.00%' };
+      worksheet['AF6'] = { v: pedido.markup || 0, t: 'n' };
+      
+      // Fórmulas de vencimento
+      worksheet['N6'] = { f: 'N5+AA5', t: 'n' };
+      worksheet['Q6'] = { f: 'Q5+AA5', t: 'n' };
+      worksheet['T6'] = { f: 'T5+AA5', t: 'n' };
+      
+      // Número da loja (opcional se consolidado)
+      // worksheet['D23'] = { v: '', t: 'n' };
+      
+      // 4. PREENCHER PRODUTOS
+      const produtosArray = itens;
+      let linhaAtual = 36;
+      
+      for (let idx = 0; idx < produtosArray.length; idx++) {
+        const produto = produtosArray[idx];
+        const cellRow = linhaAtual + idx;
+        
+        // Colunas principais
+        worksheet[`B${cellRow}`] = { v: idx + 1, t: 'n' };
+        worksheet[`C${cellRow}`] = { v: (produto.referencia || '').toUpperCase(), t: 's' };
+        worksheet[`H${cellRow}`] = { v: (produto.tipo || '').toUpperCase(), t: 's' };
+        worksheet[`R${cellRow}`] = { v: (produto.cor1 || '').toUpperCase(), t: 's' };
+        
+        // NÃO preencher S e T - elas têm fórmulas
+        
+        // Grade (letra A, B, C...)
+        const assignment = persistAssignments[produto.id];
+        const gradeLetra = assignment?.gradeLetra || 'A';
+        worksheet[`X${cellRow}`] = { v: gradeLetra, t: 's' };
+        
+        // Valores (usar try/catch se célula mesclada)
         try {
-          const response = await fetchTemplate();
-          templateBuffer = await response.arrayBuffer();
-        } catch (fetchErr: any) {
-          console.error("Erro ao buscar template:", fetchErr);
-          alert(`Erro ao baixar template: ${fetchErr.message}. Tente carregar o arquivo .xlsx manualmente.`);
-          return;
+          worksheet[`U${cellRow}`] = { v: produto.modelo || '', t: 's' };
+          worksheet[`AL${cellRow}`] = { v: produto.valorCompra || 0, t: 'n', z: '"R$" #,##0.00' };
+          worksheet[`AO${cellRow}`] = { v: produto.precoVenda || 0, t: 'n', z: '"R$" #,##0.00' };
+        } catch (e) {
+          console.warn(`Célula mesclada na linha ${cellRow}:`, e);
         }
       }
-
-      // Validação obrigatória do header do arquivo (PK)
-      const bytes = new Uint8Array(templateBuffer.slice(0, 4));
-      if (bytes[0] !== 0x50 || bytes[1] !== 0x4B) {
-        throw new Error("Arquivo inválido: não é um Excel válido (PK não encontrada)");
-      }
-
-      const JSZip = (await import("jszip")).default;
-      const zip = new JSZip();
-      const lojasUnicas = [...new Set(lotesFinalizados.map((l) => l.loja))].sort();
-
-      // Helper for vencimentos
-      const getVencimentoTexto = (dataBase: string, prazoDias: number) => {
-        if (!dataBase) return "";
-        const date = new Date(dataBase + "T12:00:00");
-        if (prazoDias % 30 === 0) {
-          date.setMonth(date.getMonth() + (prazoDias / 30));
-        } else {
-          date.setDate(date.getDate() + prazoDias);
-        }
-        const meses = ["Janeiro", "Fevereiro", "Março", "Abril", "Maio", "Junho", "Julho", "Agosto", "Setembro", "Outubro", "Novembro", "Dezembro"];
-        return `${meses[date.getMonth()]}/${date.getFullYear().toString().slice(-2)}`;
-      };
-
-      for (const loja of lojasUnicas as string[]) {
-        const wb = XLSX.read(templateBuffer, {
-          type: "array",
-          cellStyles: true,
-          cellNF: true,
-          cellDates: true,
-          cellText: false
-        });
-        
-        const sheetName = wb.SheetNames.find(n => n.trim().toUpperCase() === "PEDIDO");
-
-        if (!sheetName) continue;
-        const ws = wb.Sheets[sheetName];
-
-        // --- 1. CABEÇALHO (Aba PEDIDO) ---
-        if (pedido.numero_pedido) forcedSetCell(ws, 'N2', pedido.numero_pedido);
-        if (pedido.marca) forcedSetCell(ws, 'N3', pedido.marca.toUpperCase());
-        if (pedido.fornecedor) forcedSetCell(ws, 'N4', pedido.fornecedor.toUpperCase());
-        if (pedido.comprador) forcedSetCell(ws, 'AA2', pedido.comprador.toUpperCase());
-        if (pedido.representante) forcedSetCell(ws, 'AA3', pedido.representante.toUpperCase());
-        if (pedido.telefone) forcedSetCell(ws, 'AN3', pedido.telefone);
-        if (pedido.email) forcedSetCell(ws, 'AA4', pedido.email.toLowerCase());
-        
-        forcedSetCell(ws, 'AN2', new Date(), true);
-        forcedSetCell(ws, 'AN4', "CIF");
-
-        if (pedido.embarqueInicio) {
-          forcedSetCell(ws, 'AA5', toExcelDate(pedido.embarqueInicio), true);
-        }
-
-        if (pedido.embarqueFim) {
-          forcedSetCell(ws, 'AH5', toExcelDate(pedido.embarqueFim), true);
-        }
-
-        forcedSetCell(ws, 'Z6', (pedido.desconto || 0) / 100);
-        forcedSetCell(ws, 'AF6', (pedido.markup || 0));
-
-        // Prazos e Vencimentos
-        if (pedido.prazos) {
-          const prazosArr = pedido.prazos.split('/');
-          const colPrazos = ['N', 'Q', 'T'];
-          prazosArr.forEach((p, i) => {
-            if (i > 2) return;
-            const val = parseInt(p.trim());
-            if (!isNaN(val)) {
-              const col = colPrazos[i];
-              forcedSetCell(ws, `${col}5`, val);
-              if (pedido.embarqueFim) {
-                forcedSetCell(ws, `${col}6`, getVencimentoTexto(pedido.embarqueFim, val));
-              }
-            }
-          });
-        }
-
-        // --- 2. CONSTANTES FISCAIS (Aba PEDIDO) ---
-        forcedSetCell(ws, 'BF21', 49);
-        forcedSetCell(ws, 'BF22', 70);
-        forcedSetCell(ws, 'BF23', 70);
-        forcedSetCell(ws, 'BF24', "000");
-        forcedSetCell(ws, 'BF26', "UN");
-        forcedSetCell(ws, 'BF27', "64042000");
-        forcedSetCell(ws, 'BF29', "2805900");
-        forcedSetCell(ws, 'BE37', "T");
-
-        // --- 3. GRADES (LINHAS 14-18) ---
-        const allPossibleSizes = ["UN","P","M","G","GG","15","16","17","18","19","20","21","22","23","24","25","26","27","28","29","30","31","32","33","34","35","36","37","38","39","40","41","42","43","44","45","46","47","48"];
-        const colSizes = ["D","E","F","G","H","I","J","K","L","M","N","O","P","Q","R","S","T","U","V","W","X","Y","Z","AA","AB","AC","AD","AE","AF","AG","AH","AI","AJ","AK","AL","AM","AN","AO","AP","AQ"];
-        
-        const idsVinculosGrades = [...new Set(lotesFinalizados.map(l => l.idVinculo))].slice(0, 5);
-        idsVinculosGrades.forEach((idV, idx) => {
-          const row = 14 + idx;
-          const l = lotesFinalizados.find(item => item.idVinculo === idV);
-          if (l) {
-            forcedSetCell(ws, `B${row}`, l.gradeLetra);
-            const gradeInfo = gradesSalvas.find(g => g.letra === l.gradeLetra);
-            if (gradeInfo) {
-              Object.entries(gradeInfo.valores).forEach(([tam, qtd]) => {
-                const sIdx = allPossibleSizes.indexOf(tam === "17/18" ? "18" : tam);
-                if (sIdx !== -1 && (qtd as any) > 0) {
-                  forcedSetCell(ws, `${colSizes[sIdx]}${row}`, qtd);
-                }
-              });
-            }
-          }
-        });
-
-        // --- 4. LOJAS POR LOTE (LINHAS 23-27) ---
-        idsVinculosGrades.forEach((idV, idx) => {
-          const row = 23 + idx;
-          const lojasDoLote = [...new Set(lotesFinalizados.filter(l => l.idVinculo === idV).map(l => l.loja))];
-          lojasDoLote.forEach((numLoja, lIdx) => {
-            if (lIdx < colSizes.length) {
-              const colLetter = colSizes[lIdx];
-              forcedSetCell(ws, `${colLetter}${row}`, numLoja);
-            }
-          });
-        });
-
-        // --- 5. ITENS (LINHA 36+) ---
-        const lotesDaLoja = lotesFinalizados.filter((l) => l.loja === loja);
-        
-        lotesDaLoja.forEach((l, idx) => {
-          const r = 36 + idx;
-          if (r > 166) return;
-
-          forcedSetCell(ws, `B${r}`, idx + 1); // Número sequencial
-          if (l.referencia) forcedSetCell(ws, `C${r}`, l.referencia.trim().toUpperCase());
-          if (l.tipo) forcedSetCell(ws, `H${r}`, l.tipo.trim().toUpperCase());
-          if (l.corEscolhida || l.cor1) forcedSetCell(ws, `R${r}`, (l.corEscolhida || l.cor1).trim().toUpperCase());
-          if (l.modelo) forcedSetCell(ws, `U${r}`, l.modelo);
-          if (l.valorCompra) forcedSetCell(ws, `AL${r}`, l.valorCompra);
-          if (l.precoVenda) forcedSetCell(ws, `AO${r}`, l.precoVenda);
-
-          const loteIndex = idsVinculosGrades.indexOf(l.idVinculo);
-          if (loteIndex !== -1) {
-            const colGrade = ['X', 'AA', 'AD', 'AG', 'AJ'][loteIndex];
-            forcedSetCell(ws, `${colGrade}${r}`, l.gradeLetra);
-          }
-
-          // Mapeamento da Grade para esta Loja (AT+)
-          const lojaNum = parseInt(loja as string);
-          if (!isNaN(lojaNum)) {
-            const colLetter = XLSX.utils.encode_col(45 + lojaNum);
-            forcedSetCell(ws, `${colLetter}${r}`, l.gradeLetra);
-          }
-        });
-
-        // --- 6. IDENTIFICAÇÃO DA LOJA ---
-        forcedSetCell(ws, 'D25', loja);
-
-
-        const wbout = XLSX.write(wb, { bookType: "xlsx", type: "array" });
-        zip.file(`Pedido_Loja_${loja}_${(pedido.marca || "FINAL")}.xlsx`, wbout);
-      }
-
-      const zipContent = await zip.generateAsync({ type: "blob" });
-      const url = window.URL.createObjectURL(zipContent);
-      const a = document.createElement("a");
-      a.href = url;
-      a.download = `Pedidos_Por_Loja_${pedido.marca || "FINAL"}.zip`;
-      document.body.appendChild(a);
-      a.click();
-      document.body.removeChild(a);
-      setTimeout(() => window.URL.revokeObjectURL(url), 1500);
-
-    } catch (err) {
-      console.error("Erro ao exportar pedidos por loja:", err);
-      alert(`Erro ao exportar pedidos por loja: ${err instanceof Error ? err.message : "Erro desconhecido"}`);
+      
+      // 5. GERAR ARQUIVO (NÃO modificar EXPORTAR USE - tem fórmulas)
+      const wbout = XLSX.write(workbook, { 
+        bookType: 'xlsx', 
+        type: 'array',
+        cellStyles: true    // PRESERVAR estilos
+      });
+      
+      // 6. DOWNLOAD
+      const blob = new Blob([wbout], { 
+        type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' 
+      });
+      
+      saveAs(blob, `Pedido_${pedido.numero_pedido}_${new Date().toISOString().split('T')[0]}.xlsx`);
+      
+      toast.success('Pedido exportado com sucesso!');
+      
+    } catch (error: any) {
+      console.error('Erro ao exportar:', error);
+      toast.error(`Erro ao exportar: ${error.message}`);
+    } finally {
+      setExportando(false);
     }
   };
+
+  const exportarPedidosPorLoja = async () => {
+    try {
+      setExportando(true);
+      
+      // 1. CARREGAR TEMPLATE UMA VEZ
+      let templateBuffer: ArrayBuffer;
+      
+      if (localTemplate) {
+        templateBuffer = localTemplate;
+      } else {
+        const templateUrl = 'https://rwwomakjhmglgoowbmsl.supabase.co/storage/v1/object/public/template/Template.xlsx';
+        const response = await fetch(templateUrl);
+        if (!response.ok) throw new Error('Erro ao carregar template');
+        templateBuffer = await response.arrayBuffer();
+      }
+      
+      // 2. CRIAR ZIP
+      const zip = new JSZip();
+      
+      // 3. OBTER LOJAS ÚNICAS
+      const lojasUnicas = [...new Set(lotesFinalizados.map(l => l.loja))];
+      
+      // 4. PARA CADA LOJA
+      for (const lojaId of lojasUnicas) {
+        // CLONAR o buffer para cada loja (CRÍTICO!)
+        const bufferCopy = templateBuffer.slice(0);
+        
+        // Ler workbook NOVO para cada loja
+        const workbook = XLSX.read(bufferCopy, { 
+          type: 'array',
+          cellFormula: true,
+          cellStyles: true
+        });
+        
+        const worksheet = workbook.Sheets['PEDIDO'];
+        if (!worksheet) continue;
+        
+        // Filtrar produtos desta loja
+        const produtosDaLoja = lotesFinalizados.filter(l => l.loja === lojaId);
+        
+        // PREENCHER CABEÇALHO (igual função 1)
+        worksheet['N2'] = { v: pedido.numero_pedido || '', t: 's' };
+        worksheet['AA2'] = { v: (pedido.comprador || '').toUpperCase(), t: 's' };
+        worksheet['AN2'] = { f: 'TODAY()', t: 'n' };
+        worksheet['N3'] = { v: (pedido.marca || '').toUpperCase(), t: 's' };
+        worksheet['AA3'] = { v: (pedido.representante || '').toUpperCase(), t: 's' };
+        worksheet['N4'] = { v: (pedido.fornecedor || '').toUpperCase(), t: 's' };
+        worksheet['N5'] = { v: pedido.prazos || '', t: 's' };
+        worksheet['AA5'] = { v: pedido.embarqueInicio || '', t: 'd' };
+        worksheet['AH5'] = { v: pedido.embarqueFim || '', t: 'd' };
+        worksheet['Z6'] = { v: (pedido.desconto || 0) / 100, t: 'n', z: '0.00%' };
+        worksheet['AF6'] = { v: pedido.markup || 0, t: 'n' };
+        worksheet['N6'] = { f: 'N5+AA5', t: 'n' };
+        worksheet['Q6'] = { f: 'Q5+AA5', t: 'n' };
+        worksheet['T6'] = { f: 'T5+AA5', t: 'n' };
+        worksheet['D23'] = { v: lojaId, t: 's' };  // LOJA ESPECÍFICA
+        
+        // PREENCHER PRODUTOS DESTA LOJA
+        let linhaAtual = 36;
+        
+        for (let idx = 0; idx < produtosDaLoja.length; idx++) {
+          const lote = produtosDaLoja[idx];
+          const cellRow = linhaAtual + idx;
+          
+          worksheet[`B${cellRow}`] = { v: idx + 1, t: 'n' };
+          worksheet[`C${cellRow}`] = { v: (lote.referencia || '').toUpperCase(), t: 's' };
+          worksheet[`H${cellRow}`] = { v: (lote.tipo || '').toUpperCase(), t: 's' };
+          worksheet[`R${cellRow}`] = { v: (lote.corEscolhida || lote.cor1 || '').toUpperCase(), t: 's' };
+          
+          const gradeLetra = lote.gradeLetra || 'A';
+          worksheet[`X${cellRow}`] = { v: gradeLetra, t: 's' };
+          
+          try {
+            worksheet[`U${cellRow}`] = { v: lote.modelo || '', t: 's' };
+            worksheet[`AL${cellRow}`] = { v: lote.valorCompra || 0, t: 'n', z: '"R$" #,##0.00' };
+            worksheet[`AO${cellRow}`] = { v: lote.precoVenda || 0, t: 'n', z: '"R$" #,##0.00' };
+          } catch (e) {
+            console.warn(`Célula mesclada:`, e);
+          }
+        }
+        
+        // GERAR ARQUIVO DESTA LOJA
+        const wbout = XLSX.write(workbook, { 
+          bookType: 'xlsx', 
+          type: 'array',
+          cellStyles: true
+        });
+        
+        // ADICIONAR AO ZIP
+        const nomeArquivo = `Pedido_Loja_${lojaId}_${pedido.numero_pedido}.xlsx`;
+        zip.file(nomeArquivo, wbout);
+      }
+      
+      // 5. GERAR ZIP FINAL (AGUARDAR!)
+      const zipBlob = await zip.generateAsync({ 
+        type: 'blob',
+        compression: 'DEFLATE',
+        compressionOptions: { level: 6 }
+      });
+      
+      // 6. DOWNLOAD
+      saveAs(zipBlob, `Pedidos_Por_Loja_${pedido.numero_pedido}.zip`);
+      
+      toast.success(`${lojasUnicas.length} pedidos exportados com sucesso!`);
+      
+    } catch (error: any) {
+      console.error('Erro ao exportar por loja:', error);
+      toast.error(`Erro ao exportar: ${error.message}`);
+    } finally {
+      setExportando(false);
+    }
+  };
+
+  console.log('🟢 [DEBUG] Definindo função exportarPedidoSalvo');
+  const exportarPedidoSalvo = async (pedidoId: string) => {
+    console.log('🔵 [DEBUG] exportarPedidoSalvo INICIADA');
+    console.log('🔵 [DEBUG] pedidoId recebido:', pedidoId);
+    console.log('🔵 [DEBUG] Estado exportando:', exportando);
+    
+    try {
+      setExportando(true);
+      console.log('🟢 [DEBUG] Estado exportando alterado para TRUE');
+      
+      // 1. BUSCAR DADOS DO PEDIDO NO SUPABASE
+      console.log('🔵 [DEBUG] Iniciando busca no Supabase...');
+      const { data: header, error: headerError } = await supabase
+        .from('Pedido_Header')
+        .select('*')
+        .eq('id', pedidoId)
+        .single();
+      
+      console.log('🔵 [DEBUG] Resposta Supabase Header:', { header, headerError });
+      
+      if (headerError || !header) {
+        console.error('🔴 [DEBUG] ERRO ao buscar header:', headerError);
+        throw new Error('Pedido não encontrado');
+      }
+      
+      console.log('🟢 [DEBUG] Header encontrado:', header.numero_pedido);
+      
+      // 2. BUSCAR ITENS DO PEDIDO
+      const { data: items, error: itemsError } = await supabase
+        .from('Pedido_Items')
+        .select(`
+          *,
+          Pedido_Colors!color1_id (name),
+          Pedido_Types (name, publico)
+        `)
+        .eq('pedido_id', pedidoId);
+      
+      if (itemsError) {
+        console.error('🔴 [DEBUG] ERRO ao buscar itens:', itemsError);
+        throw new Error('Erro ao buscar itens');
+      }
+      
+      console.log('🟢 [DEBUG] Itens encontrados:', items?.length);
+      
+      // 3. BUSCAR DISTRIBUIÇÃO
+      const { data: distribuicao } = await supabase
+        .from('Pedido_Distribuicao')
+        .select('*')
+        .in('item_id', (items || []).map(i => i.id));
+      
+      console.log('🟢 [DEBUG] Distribuição encontrada:', distribuicao?.length);
+      
+      // 4. CARREGAR TEMPLATE
+      let templateBuffer: ArrayBuffer;
+      
+      if (localTemplate) {
+        console.log('🔵 [DEBUG] Usando template local');
+        templateBuffer = localTemplate;
+      } else {
+        console.log('🔵 [DEBUG] Baixando template do Supabase Storage');
+        const templateUrl = 'https://rwwomakjhmglgoowbmsl.supabase.co/storage/v1/object/public/template/Template.xlsx';
+        const response = await fetch(templateUrl);
+        if (!response.ok) throw new Error('Erro ao carregar template');
+        templateBuffer = await response.arrayBuffer();
+      }
+      
+      // 5. LER WORKBOOK
+      const workbook = XLSX.read(templateBuffer, { 
+        type: 'array',
+        cellFormula: true,
+        cellStyles: true
+      });
+      
+      const worksheet = workbook.Sheets['PEDIDO'];
+      if (!worksheet) throw new Error('Aba PEDIDO não encontrada');
+      
+      // 6. PREENCHER CABEÇALHO
+      worksheet['N2'] = { v: header.numero_pedido || '', t: 's' };
+      worksheet['AA2'] = { v: header.comprador || '', t: 's' };
+      worksheet['AN2'] = { f: 'TODAY()', t: 'n' };
+      worksheet['N3'] = { v: header.marca || '', t: 's' };
+      worksheet['AA3'] = { v: header.representante || '', t: 's' };
+      worksheet['N4'] = { v: header.fornecedor || '', t: 's' };
+      worksheet['N5'] = { v: header.prazos || '', t: 's' };
+      worksheet['AA5'] = { v: header.embarque_inicio || '', t: 'd' };
+      worksheet['AH5'] = { v: header.embarque_fim || '', t: 'd' };
+      worksheet['Z6'] = { v: (header.desconto || 0) / 100, t: 'n', z: '0.00%' };
+      worksheet['AF6'] = { v: header.markup || 0, t: 'n' };
+      worksheet['N6'] = { f: 'N5+AA5', t: 'n' };
+      worksheet['Q6'] = { f: 'Q5+AA5', t: 'n' };
+      worksheet['T6'] = { f: 'T5+AA5', t: 'n' };
+      
+      // 7. PREENCHER PRODUTOS
+      let linhaAtual = 36;
+      
+      const itemsList = items || [];
+      for (let idx = 0; idx < itemsList.length; idx++) {
+        const item = itemsList[idx];
+        const cellRow = linhaAtual + idx;
+        
+        worksheet[`B${cellRow}`] = { v: idx + 1, t: 'n' };
+        worksheet[`C${cellRow}`] = { v: (item.referencia || '').toUpperCase(), t: 's' };
+        worksheet[`H${cellRow}`] = { v: (item.tipo || '').toUpperCase(), t: 's' };
+        worksheet[`R${cellRow}`] = { v: (item.Pedido_Colors?.name || '').toUpperCase(), t: 's' };
+        
+        // Grade da distribuição
+        const dist = (distribuicao || []).find(d => d.item_id === item.id);
+        const gradeLetra = dist?.grade_letra || 'A';
+        worksheet[`X${cellRow}`] = { v: gradeLetra, t: 's' };
+        
+        try {
+          worksheet[`U${cellRow}`] = { v: item.modelo || '', t: 's' };
+          worksheet[`AL${cellRow}`] = { v: item.valor_compra || 0, t: 'n', z: '"R$" #,##0.00' };
+          worksheet[`AO${cellRow}`] = { v: item.preco_venda || 0, t: 'n', z: '"R$" #,##0.00' };
+        } catch (e) {
+          console.warn(`Célula mesclada na linha ${cellRow}:`, e);
+        }
+      }
+      
+      // 8. GERAR ARQUIVO
+      const wbout = XLSX.write(workbook, { 
+        bookType: 'xlsx', 
+        type: 'array',
+        cellStyles: true
+      });
+      
+      // 9. DOWNLOAD
+      const blob = new Blob([wbout], { 
+        type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' 
+      });
+      
+      saveAs(blob, `Pedido_${header.numero_pedido}_${new Date().toISOString().split('T')[0]}.xlsx`);
+      
+      toast.success('Pedido exportado com sucesso!');
+      
+    } catch (error: any) {
+      console.error('🔴 [DEBUG] ERRO ao exportar pedido salvo:', error);
+      console.error('🔴 [DEBUG] Stack:', error.stack);
+      toast.error(`Erro ao exportar: ${error.message}`);
+    } finally {
+      console.log('🔵 [DEBUG] Finalizando função, setando exportando=false');
+      setExportando(false);
+    }
+  };
+  console.log('🟢 [DEBUG] Função exportarPedidoSalvo definida:', typeof exportarPedidoSalvo);
 
   const salvarPedidoCompleto = async () => {
     if (lotesFinalizados.length === 0) return alert("Não há dados para salvar.");
@@ -1004,7 +884,39 @@ const SpreadsheetOrderModule = ({ user, onClose }: { user: any, onClose: () => v
     fetchNextOrderNumber();
   }, []);
 
-  // Auto-preenchimento de fornecedor baseado na marca (Removido por redundância)
+  const fetchPedidosRecentes = async () => {
+    console.log('🔵 [DEBUG] Buscando pedidos recentes...');
+    setLoadingRecentes(true);
+    try {
+      const { data, error } = await supabase
+        .from('Pedido_Header')
+        .select('*')
+        .order('created_at', { ascending: false })
+        .limit(5);
+      
+      console.log('🔵 [DEBUG] Resposta Supabase:', { data, error });
+      console.log('🔵 [DEBUG] Total de pedidos:', data?.length);
+      
+      if (error) {
+        console.error('🔴 [DEBUG] Erro ao buscar pedidos:', error);
+        throw error;
+      }
+      
+      setPedidosRecentes(data || []);
+      console.log('🟢 [DEBUG] Pedidos salvos no estado:', data);
+    } catch (err) {
+      console.error("🔴 [DEBUG] Erro geral ao carregar pedidos recentes:", err);
+    } finally {
+      setLoadingRecentes(false);
+    }
+  };
+
+  useEffect(() => {
+    if (etapa === 1) {
+      console.log('🔵 [DEBUG] Etapa 1 ativa, buscando pedidos...');
+      fetchPedidosRecentes();
+    }
+  }, [etapa]);
 
   // Salvar dados da marca no cache ao sair do campo
   const salvarCacheMarca = () => {
@@ -1215,6 +1127,65 @@ const SpreadsheetOrderModule = ({ user, onClose }: { user: any, onClose: () => v
                         </p>
                       </div>
                     </div>
+                  )}
+                </div>
+              </div>
+
+              {/* SEÇÃO PEDIDOS RECENTES */}
+              <div className="bg-white p-6 rounded-3xl shadow-sm border border-slate-100 flex flex-col gap-4">
+                <div className="flex justify-between items-center px-2">
+                  <h3 className="text-[10px] font-black text-slate-800 uppercase tracking-widest italic">Pedidos Recentes</h3>
+                  <button onClick={fetchPedidosRecentes} className="text-blue-600 hover:rotate-180 transition-all duration-500">
+                    <Zap size={14} />
+                  </button>
+                </div>
+
+                <div className="space-y-3">
+                  {(() => {
+                    console.log('🟡 [DEBUG] Renderizando PEDIDOS RECENTES');
+                    console.log('🟡 [DEBUG] pedidosRecentes:', pedidosRecentes);
+                    console.log('🟡 [DEBUG] loadingRecentes:', loadingRecentes);
+                    console.log('🟡 [DEBUG] Total:', pedidosRecentes.length);
+                    return null;
+                  })()}
+
+                  {loadingRecentes ? (
+                    <div className="py-8 flex justify-center"><div className="w-6 h-6 border-2 border-blue-600 border-t-transparent rounded-full animate-spin"></div></div>
+                  ) : pedidosRecentes.length > 0 ? (
+                    pedidosRecentes.map((p, index) => {
+                      console.log(`🟡 [DEBUG] Renderizando pedido ${index + 1}:`, p);
+                      return (
+                        <div key={p.id} className="bg-slate-50 p-3 rounded-2xl border border-slate-100 flex justify-between items-center group">
+                          <div className="flex flex-col">
+                            <span className="text-[10px] font-black text-slate-800 uppercase leading-none">Pedido {p.numero_pedido || 'S/N'}</span>
+                            <span className="text-[8px] font-bold text-slate-400 uppercase mt-1">{p.marca} • {new Date(p.created_at).toLocaleDateString('pt-BR')}</span>
+                          </div>
+                          <button 
+                            onClick={(e) => {
+                              e.preventDefault();
+                              console.log('🟡 [DEBUG] BOTÃO CLICADO!');
+                              console.log('🟡 [DEBUG] Pedido completo:', p);
+                              console.log('🟡 [DEBUG] Pedido ID:', p.id);
+                              console.log('🟡 [DEBUG] Função existe?', typeof exportarPedidoSalvo);
+                              
+                              if (!p.id) {
+                                console.error('🔴 [DEBUG] ERRO: pedido.id está undefined!');
+                                alert('ERRO: ID do pedido não encontrado!');
+                                return;
+                              }
+                              
+                              exportarPedidoSalvo(p.id);
+                            }}
+                            disabled={exportando}
+                            className="px-4 py-2 bg-blue-600 text-white rounded-lg font-bold text-xs hover:bg-blue-700 transition-all shadow-sm active:scale-95 disabled:opacity-50 disabled:cursor-not-allowed"
+                          >
+                            {exportando ? '⏳ Exportando...' : '📥 Exportar XLSX'}
+                          </button>
+                        </div>
+                      );
+                    })
+                  ) : (
+                    <div className="py-8 text-center opacity-30"><p className="text-[9px] font-black uppercase">Nenhum pedido recente</p></div>
                   )}
                 </div>
               </div>
@@ -1598,15 +1569,17 @@ const SpreadsheetOrderModule = ({ user, onClose }: { user: any, onClose: () => v
             </button>
             <button 
               onClick={() => exportarPlanilhaFinal()} 
-              className="flex-1 md:flex-none md:w-48 bg-red-600 text-white px-4 py-3 rounded-xl font-black text-[9px] uppercase shadow-lg hover:bg-red-700 transition-all border-b-4 border-red-900 active:scale-95 flex items-center justify-center gap-2 min-h-[44px]"
+              disabled={exportando}
+              className={`flex-1 md:flex-none md:w-48 bg-red-600 text-white px-4 py-3 rounded-xl font-black text-[9px] uppercase shadow-lg transition-all border-b-4 border-red-900 active:scale-95 flex items-center justify-center gap-2 min-h-[44px] ${exportando ? 'opacity-50 cursor-not-allowed' : 'hover:bg-red-700'}`}
             >
-              <Download size={18}/> Exportar Excel
+              <Download size={18}/> {exportando ? 'Exportando...' : 'Exportar Excel'}
             </button>
             <button
               onClick={() => exportarPedidosPorLoja()}
-              className="flex-1 md:flex-none md:w-48 bg-blue-700 text-white px-4 py-3 rounded-xl font-black text-[9px] uppercase shadow-lg hover:bg-blue-800 transition-all border-b-4 border-blue-900 active:scale-95 flex items-center justify-center gap-2 min-h-[44px]"
+              disabled={exportando}
+              className={`flex-1 md:flex-none md:w-48 bg-blue-700 text-white px-4 py-3 rounded-xl font-black text-[9px] uppercase shadow-lg transition-all border-b-4 border-blue-900 active:scale-95 flex items-center justify-center gap-2 min-h-[44px] ${exportando ? 'opacity-50 cursor-not-allowed' : 'hover:bg-blue-800'}`}
             >
-              <Download size={18}/> Pedidos por Loja
+              <Download size={18}/> {exportando ? 'Zipando...' : 'Pedidos por Loja'}
             </button>
           </div>
         </div>
