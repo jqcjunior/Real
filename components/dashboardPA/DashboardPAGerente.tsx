@@ -745,7 +745,7 @@ const DashboardPAGerente: React.FC<DashboardPAGerenteProps> = ({ user, store }) 
           )}
  
           {/* Stats Grid */}
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+          <div className="grid grid-cols-1 md:grid-cols-4 gap-6">
             {(() => {
               const currentWeek = weeks.find(w => w.id === selectedWeek);
               const metaVendasSemana = currentWeek ? metaSemanaPorDias(currentWeek, monthlyGoal) : 0;
@@ -757,11 +757,21 @@ const DashboardPAGerente: React.FC<DashboardPAGerenteProps> = ({ user, store }) 
               return [
                 { 
                   label: 'Vendas da Semana', 
-                  value: `R$ ${totalStoreSales.toLocaleString()}`, 
-                  target: metaVendasSemana > 0 ? `Meta: R$ ${metaVendasSemana.toLocaleString(undefined, { maximumFractionDigits: 0 })}` : 'Sem meta definida',
+                  value: `R$ ${totalStoreSales.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`, 
+                  target: metaVendasSemana > 0 ? `Meta: R$ ${metaVendasSemana.toLocaleString('pt-BR', { maximumFractionDigits: 0 })}` : 'Sem meta definida',
                   percent: vendasPercent,
                   icon: TrendingUp, 
                   color: 'orange' 
+                },
+                { 
+                  label: 'Ticket Médio', 
+                  value: (() => {
+                    const tickets = sales.filter(s => s.ticket_medio && Number(s.ticket_medio) > 0).map(s => Number(s.ticket_medio));
+                    const avgTicket = tickets.length > 0 ? tickets.reduce((a, b) => a + b, 0) / tickets.length : 0;
+                    return avgTicket > 0 ? `R$ ${avgTicket.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}` : '—';
+                  })(),
+                  icon: DollarSign, 
+                  color: 'amber' 
                 },
                 { 
                   label: 'P.A. Médio', 
@@ -773,7 +783,7 @@ const DashboardPAGerente: React.FC<DashboardPAGerenteProps> = ({ user, store }) 
                 },
                 { 
                   label: 'Premiação Total', 
-                  value: `R$ ${totalAwards.toLocaleString()}`, 
+                  value: `R$ ${totalAwards.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`, 
                   icon: DollarSign, 
                   color: 'emerald' 
                 }
@@ -866,17 +876,26 @@ const DashboardPAGerente: React.FC<DashboardPAGerenteProps> = ({ user, store }) 
                       <div>
                         <div className="flex justify-between text-[10px] font-black italic uppercase tracking-tighter mb-1">
                           <span className={isSelected ? 'text-orange-100' : 'text-black dark:text-white'}>Vendas R$</span>
-                          <span>{cache?.total ? `R$ ${(cache.total / 1000).toFixed(0)}k` : ''} {percentVendas.toFixed(0)}%</span>
+                          <span className={isSelected ? 'text-white' : 'text-black dark:text-white'}>
+                            {cache?.total ? `R$ ${cache.total.toLocaleString('pt-BR', { maximumFractionDigits: 0 })}` : 'R$ 0'}
+                            {' '}<span className="opacity-60">{percentVendas.toFixed(0)}%</span>
+                          </span>
                         </div>
                         <div className={`h-1 w-full rounded-full overflow-hidden ${isSelected ? 'bg-white/20' : 'bg-slate-100 dark:bg-slate-800'}`}>
-                          <div className={`h-full rounded-full ${isSelected ? 'bg-white' : 'bg-orange-500'}`} style={{ width: `${percentVendas}%` }} />
+                          <div className={`h-full rounded-full ${isSelected ? 'bg-white' : 'bg-orange-500'}`} style={{ width: `${Math.min(percentVendas, 100)}%` }} />
                         </div>
                       </div>
 
                       <div>
                         <div className="flex justify-between text-[10px] font-black italic uppercase tracking-tighter mb-1">
                           <span className={isSelected ? 'text-orange-100' : 'text-black dark:text-white'}>Ticket</span>
-                          <span>R$</span>
+                          <span className={isSelected ? 'text-white' : 'text-black dark:text-white'}>
+                            {(() => {
+                              const weekSales = sales.filter ? [] : [];
+                              const tickets = (weeksSalesCache[w.id] as any)?.tickets;
+                              return tickets ? `R$ ${Number(tickets).toLocaleString('pt-BR', { maximumFractionDigits: 0 })}` : 'R$';
+                            })()}
+                          </span>
                         </div>
                         <div className={`h-1 w-full rounded-full overflow-hidden ${isSelected ? 'bg-white/20' : 'bg-slate-100 dark:bg-slate-800'}`}>
                           <div className={`h-full rounded-full ${isSelected ? 'bg-white' : 'bg-amber-500'}`} style={{ width: '100%' }} />
@@ -886,10 +905,13 @@ const DashboardPAGerente: React.FC<DashboardPAGerenteProps> = ({ user, store }) 
                       <div>
                         <div className="flex justify-between text-[10px] font-black italic uppercase tracking-tighter mb-1">
                           <span className={isSelected ? 'text-orange-100' : 'text-black dark:text-white'}>P.A.</span>
-                          <span>{cache?.pa ? cache.pa.toFixed(2) : ''} {percentPA.toFixed(0)}%</span>
+                          <span className={isSelected ? 'text-white' : 'text-black dark:text-white'}>
+                            {cache?.pa ? cache.pa.toFixed(2) : '0.00'}
+                            {' '}<span className="opacity-60">{percentPA.toFixed(0)}%</span>
+                          </span>
                         </div>
                         <div className={`h-1 w-full rounded-full overflow-hidden ${isSelected ? 'bg-white/20' : 'bg-slate-100 dark:bg-slate-800'}`}>
-                          <div className={`h-full rounded-full ${isSelected ? 'bg-white' : 'bg-blue-500'}`} style={{ width: `${percentPA}%` }} />
+                          <div className={`h-full rounded-full ${isSelected ? 'bg-white' : 'bg-blue-500'}`} style={{ width: `${Math.min(percentPA, 100)}%` }} />
                         </div>
                       </div>
                     </div>

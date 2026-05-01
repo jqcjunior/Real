@@ -351,7 +351,7 @@ const DREMensalTab: React.FC<DREMensalTabProps> = ({
                             </tr>
                         </thead>
                         <tbody className="divide-y divide-gray-50 font-bold text-[10px]">
-                            {monthFiadoGrouped.map((f, i) => (
+                            {[...monthFiadoGrouped].sort((a, b) => a.name.localeCompare(b.name, 'pt-BR')).map((f, i) => (
                                 <React.Fragment key={f.name}>
                                     <tr 
                                         onClick={() => setExpandedEmployee(expandedEmployee === f.name ? null : f.name)} 
