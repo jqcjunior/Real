@@ -47,7 +47,7 @@ async function startServer() {
       
       // Armazena no cache para download direto (evita problemas de Blob em iFrame)
       const id = Math.random().toString(36).substring(2, 15);
-      fileCache.set(id, { buffer: excelBuffer, fileName, timestamp: Date.now() });
+      fileCache.set(id, { buffer: excelBuffer as Buffer, fileName, timestamp: Date.now() });
 
       res.json({ success: true, downloadId: id });
 
@@ -57,6 +57,26 @@ async function startServer() {
         error: 'Erro ao gerar Excel',
         message: error.message
       });
+    }
+  });
+
+  app.post('/api/export-buy-order', async (req, res) => {
+    try {
+        const { orderId } = req.body;
+        
+        if (!orderId) {
+            return res.status(400).json({ error: 'orderId obrigatório' });
+        }
+
+        const buffer = await exportBuyOrderToExcel(orderId);
+        
+        res.setHeader('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
+        res.setHeader('Content-Disposition', `attachment; filename="Pedido_${Date.now()}.xlsx"`);
+        res.send(Buffer.from(buffer as ArrayBuffer));
+        
+    } catch (error: any) {
+        console.error('Erro ao exportar:', error);
+        res.status(500).json({ error: error.message });
     }
   });
 
