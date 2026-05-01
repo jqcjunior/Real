@@ -1016,8 +1016,8 @@ const App: React.FC = () => {
                         { title: 'Inteligência', items: [
                             { id: 'dashboard_rede', label: 'Dashboard Rede', icon: LayoutDashboard, perm: 'MODULE_DASHBOARD_ADMIN', roles: ['admin'] },
                             { id: 'dashboard_loja', label: 'Dashboard Loja', icon: LayoutDashboard, perm: 'MODULE_DASHBOARD_MANAGER', roles: ['manager'] },
-                            { id: 'dashboard_pa', label: 'Dashboard P.A.', icon: Trophy, perm: 'MODULE_DASHBOARD_PA', roles: ['admin'] },
-                            { id: 'dashboard_pa_manager', label: 'Dashboard P.A.', icon: Trophy, perm: 'MODULE_DASHBOARD_PA_MANAGER', roles: ['manager'] },
+                            { id: 'dashboard_pa', label: 'Dashboard Semanal', icon: Trophy, perm: 'MODULE_DASHBOARD_PA', roles: ['admin'] },
+                            { id: 'dashboard_pa_manager', label: 'Dashboard Semanal', icon: Trophy, perm: 'MODULE_DASHBOARD_PA_MANAGER', roles: ['manager'] },
                             { id: 'gestao_compras', label: 'Gestão de Compras', icon: ShoppingBag, perm: 'MODULE_BUY_ORDERS', isGroup: true, subItems: [
                                 { id: 'buy_order_dashboard', label: 'Dashboard Compras', icon: BarChart3, perm: 'MODULE_BUY_ORDERS', roles: ['admin', 'manager'] },
                                 { id: 'buy_orders', label: 'Pedido de Compra', icon: ShoppingBag, perm: 'MODULE_BUY_ORDERS', roles: ['admin', 'manager'] },

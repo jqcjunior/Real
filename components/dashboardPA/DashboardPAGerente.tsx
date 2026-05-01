@@ -823,7 +823,7 @@ const DashboardPAGerente: React.FC<DashboardPAGerenteProps> = ({ user, store }) 
           {/* Weeks Summary */}
           <div className="space-y-6">
             <h2 className="text-2xl font-black italic uppercase tracking-tighter text-slate-900 dark:text-white">
-              Resumo das <span className="text-orange-500">Semanas</span> — PA · Vendas · Ticket
+              Resumo das <span className="text-orange-500">Semanas</span> — <span className="text-black dark:text-white">Vendas · Ticket · P.A.</span>
             </h2>
             <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
               {weeks.map((w, i) => {
@@ -865,40 +865,31 @@ const DashboardPAGerente: React.FC<DashboardPAGerenteProps> = ({ user, store }) 
                     <div className="space-y-3">
                       <div>
                         <div className="flex justify-between text-[10px] font-black italic uppercase tracking-tighter mb-1">
-                          <span className={isSelected ? 'text-orange-100' : 'text-slate-400'}>Vendas R$</span>
-                          <span>{percentVendas.toFixed(0)}%</span>
+                          <span className={isSelected ? 'text-orange-100' : 'text-black dark:text-white'}>Vendas R$</span>
+                          <span>{cache?.total ? `R$ ${(cache.total / 1000).toFixed(0)}k` : ''} {percentVendas.toFixed(0)}%</span>
                         </div>
                         <div className={`h-1 w-full rounded-full overflow-hidden ${isSelected ? 'bg-white/20' : 'bg-slate-100 dark:bg-slate-800'}`}>
-                          <div 
-                            className={`h-full rounded-full ${isSelected ? 'bg-white' : 'bg-orange-500'}`}
-                            style={{ width: `${percentVendas}%` }}
-                          />
+                          <div className={`h-full rounded-full ${isSelected ? 'bg-white' : 'bg-orange-500'}`} style={{ width: `${percentVendas}%` }} />
                         </div>
                       </div>
 
                       <div>
                         <div className="flex justify-between text-[10px] font-black italic uppercase tracking-tighter mb-1">
-                          <span className={isSelected ? 'text-orange-100' : 'text-slate-400'}>P.A.</span>
-                          <span>{percentPA.toFixed(0)}%</span>
+                          <span className={isSelected ? 'text-orange-100' : 'text-black dark:text-white'}>Ticket</span>
+                          <span>R$</span>
                         </div>
                         <div className={`h-1 w-full rounded-full overflow-hidden ${isSelected ? 'bg-white/20' : 'bg-slate-100 dark:bg-slate-800'}`}>
-                          <div 
-                            className={`h-full rounded-full ${isSelected ? 'bg-white' : 'bg-blue-500'}`}
-                            style={{ width: `${percentPA}%` }}
-                          />
+                          <div className={`h-full rounded-full ${isSelected ? 'bg-white' : 'bg-amber-500'}`} style={{ width: '100%' }} />
                         </div>
                       </div>
 
                       <div>
                         <div className="flex justify-between text-[10px] font-black italic uppercase tracking-tighter mb-1">
-                          <span className={isSelected ? 'text-orange-100' : 'text-slate-400'}>Ticket</span>
-                          <span style={{fontSize:'9px'}}>R$</span>
+                          <span className={isSelected ? 'text-orange-100' : 'text-black dark:text-white'}>P.A.</span>
+                          <span>{cache?.pa ? cache.pa.toFixed(2) : ''} {percentPA.toFixed(0)}%</span>
                         </div>
                         <div className={`h-1 w-full rounded-full overflow-hidden ${isSelected ? 'bg-white/20' : 'bg-slate-100 dark:bg-slate-800'}`}>
-                          <div 
-                            className={`h-full rounded-full ${isSelected ? 'bg-white' : 'bg-amber-500'}`}
-                            style={{ width: '100%' }}
-                          />
+                          <div className={`h-full rounded-full ${isSelected ? 'bg-white' : 'bg-blue-500'}`} style={{ width: `${percentPA}%` }} />
                         </div>
                       </div>
                     </div>
@@ -933,36 +924,20 @@ const DashboardPAGerente: React.FC<DashboardPAGerenteProps> = ({ user, store }) 
                     </div>
                     <div className="grid grid-cols-2 gap-2 text-[10px]">
                       <div>
-                        <p className="text-slate-400 font-black italic uppercase tracking-tighter">Vendas</p>
+                        <p className="text-slate-400 font-black italic uppercase tracking-tighter">Total Vendas</p>
                         <p className="text-slate-900 dark:text-white font-black italic uppercase tracking-tighter">R$ {row.total_vendas.toLocaleString()}</p>
+                      </div>
+                      <div>
+                        <p className="text-slate-400 font-black italic uppercase tracking-tighter">Ticket Médio</p>
+                        <p className="text-slate-900 dark:text-white font-black italic uppercase tracking-tighter">{row.ticket_medio ? `R$ ${Number(row.ticket_medio).toFixed(0)}` : '—'}</p>
+                      </div>
+                      <div>
+                        <p className="text-slate-400 font-black italic uppercase tracking-tighter">P.A.</p>
+                        <p className="text-slate-900 dark:text-white font-black italic uppercase tracking-tighter">{row.pa.toFixed(2)}</p>
                       </div>
                       <div>
                         <p className="text-slate-400 font-black italic uppercase tracking-tighter">Itens</p>
                         <p className="text-slate-900 dark:text-white font-black italic uppercase tracking-tighter">{row.qtde_itens}</p>
-                      </div>
-                      <div>
-                        <p className="text-slate-400 font-black italic uppercase tracking-tighter">Prêmio PA</p>
-                        <p style={{color:'#185FA5'}} className="font-black italic uppercase tracking-tighter">
-                          {(row.valor_premio_pa ?? 0) > 0 ? `R$ ${(row.valor_premio_pa ?? 0).toFixed(2)}` : '-'}
-                        </p>
-                      </div>
-                      <div>
-                        <p className="text-slate-400 font-black italic uppercase tracking-tighter">Prêmio Venda</p>
-                        <p style={{color:'#3B6D11'}} className="font-black italic uppercase tracking-tighter">
-                          {(row.valor_premio_vendas ?? 0) > 0 ? `R$ ${(row.valor_premio_vendas ?? 0).toFixed(2)}` : '-'}
-                        </p>
-                      </div>
-                      <div>
-                        <p className="text-slate-400 font-black italic uppercase tracking-tighter">Prêmio Ticket</p>
-                        <p style={{color:'#854F0B'}} className="font-black italic uppercase tracking-tighter">
-                          {(row.valor_premio_ticket ?? 0) > 0 ? `R$ ${(row.valor_premio_ticket ?? 0).toFixed(2)}` : '-'}
-                        </p>
-                      </div>
-                      <div>
-                        <p className="text-slate-400 font-black italic uppercase tracking-tighter">Total</p>
-                        <p className="text-emerald-500 font-black italic uppercase tracking-tighter">
-                          {(row.valor_premio_total ?? 0) > 0 ? `R$ ${(row.valor_premio_total ?? 0).toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}` : '-'}
-                        </p>
                       </div>
                       <div>
                         <p className="text-slate-400 font-black italic uppercase tracking-tighter">Status</p>
@@ -982,13 +957,10 @@ const DashboardPAGerente: React.FC<DashboardPAGerenteProps> = ({ user, store }) 
                     <tr className="border-bottom border-slate-50 dark:border-slate-800/50">
                       <th className="p-6 font-black italic uppercase tracking-tighter text-xs text-slate-400">Vendedor</th>
                       <th className="p-6 font-black italic uppercase tracking-tighter text-xs text-slate-400">Total Vendas</th>
+                      <th className="p-6 font-black italic uppercase tracking-tighter text-xs text-slate-400 text-center">Ticket</th>
                       <th className="p-6 font-black italic uppercase tracking-tighter text-xs text-slate-400 text-center">P.A.</th>
                       <th className="p-6 font-black italic uppercase tracking-tighter text-xs text-slate-400 text-center">Itens</th>
                       <th className="p-6 font-black italic uppercase tracking-tighter text-xs text-slate-400 text-center">Status</th>
-                      <th className="p-6 font-black italic uppercase tracking-tighter text-xs text-slate-400 text-right" style={{color:'#185FA5'}}>PA</th>
-                      <th className="p-6 font-black italic uppercase tracking-tighter text-xs text-slate-400 text-right" style={{color:'#3B6D11'}}>Vendas</th>
-                      <th className="p-6 font-black italic uppercase tracking-tighter text-xs text-slate-400 text-right" style={{color:'#854F0B'}}>Ticket</th>
-                      <th className="p-6 font-black italic uppercase tracking-tighter text-xs text-slate-400 text-right">Total</th>
                     </tr>
                   </thead>
                   <tbody>
@@ -1014,10 +986,13 @@ const DashboardPAGerente: React.FC<DashboardPAGerenteProps> = ({ user, store }) 
                         <td className="p-6 font-black italic uppercase tracking-tighter text-slate-900 dark:text-white">
                           R$ {row.total_vendas.toLocaleString()}
                         </td>
+                        <td className="p-6 text-center font-black italic uppercase tracking-tighter text-slate-900 dark:text-white">
+                          {row.ticket_medio ? `R$ ${Number(row.ticket_medio).toFixed(0)}` : '—'}
+                        </td>
                         <td className="p-6 text-center">
                           <span className={`px-4 py-1 rounded-full font-black italic uppercase tracking-tighter text-xs ${
-                            row.pa >= (params?.pa_inicial || 0) 
-                              ? 'bg-emerald-500/10 text-emerald-500' 
+                            row.pa >= (params?.pa_inicial || 0)
+                              ? 'bg-emerald-500/10 text-emerald-500'
                               : 'bg-slate-100 dark:bg-slate-800 text-slate-400'
                           }`}>
                             {row.pa.toFixed(2)}
@@ -1043,20 +1018,6 @@ const DashboardPAGerente: React.FC<DashboardPAGerenteProps> = ({ user, store }) 
                               <span className="font-black italic uppercase tracking-tighter text-[10px]">NÃO ATINGIU</span>
                             </div>
                           )}
-                        </td>
-                        <td className="p-6 text-right font-black italic uppercase tracking-tighter text-xs" style={{color:'#185FA5'}}>
-                          {(row.valor_premio_pa ?? 0) > 0 ? `R$ ${(row.valor_premio_pa ?? 0).toFixed(2)}` : '-'}
-                        </td>
-                        <td className="p-6 text-right font-black italic uppercase tracking-tighter text-xs" style={{color:'#3B6D11'}}>
-                          {(row.valor_premio_vendas ?? 0) > 0 ? `R$ ${(row.valor_premio_vendas ?? 0).toFixed(2)}` : '-'}
-                        </td>
-                        <td className="p-6 text-right font-black italic uppercase tracking-tighter text-xs" style={{color:'#854F0B'}}>
-                          {(row.valor_premio_ticket ?? 0) > 0 ? `R$ ${(row.valor_premio_ticket ?? 0).toFixed(2)}` : '-'}
-                        </td>
-                        <td className="p-6 text-right font-black italic uppercase tracking-tighter text-emerald-500">
-                          {(row.valor_premio_total ?? 0) > 0
-                            ? `R$ ${(row.valor_premio_total ?? 0).toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`
-                            : '-'}
                         </td>
                       </motion.tr>
                     ))}

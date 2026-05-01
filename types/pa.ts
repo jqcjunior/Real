@@ -49,6 +49,12 @@ export interface PASale {
   pa: number;
   total_vendas: number;
   perc_total?: string;
+  ticket_medio?: number | null;
+  preco_medio?: number | null;
+  total_vista?: number | null;
+  perc_vista?: string | null;
+  total_prazo?: number | null;
+  perc_prazo?: string | null;
   importado_por?: string;
   importado_em?: string;
   // Campos vindos do JOIN com Premiacoes:
