@@ -21,6 +21,7 @@ interface ModelStat {
   pares: number;
   valor: number;
   percentual: number;
+  pares_por_loja?: Record<number, number>;
 }
 
 interface StoreStat {
@@ -87,10 +88,20 @@ export default function BuyOrderDashboard({ user }: { user: any }) {
       const typeAgg = new Map<string, { 
         pares: number; 
         valor: number; 
-        modelStats: Map<string, { pares: number; valor: number }> 
+        modelStats: Map<string, { 
+          pares: number; 
+          valor: number;
+          pares_por_loja: Map<number, number>; // NOVO: rastrear por loja
+        }> 
       }>();
 
       for (const order of (orders || [])) {
+        const subOrders = order.buy_order_sub_orders || [];
+        const numLojas = subOrders.reduce((acc, sub) => acc + (sub.lojas_numeros?.length || 0), 0);
+        
+        // Se não tem lojas, pula
+        if (numLojas === 0) continue;
+
         let orderPares = 0;
         let orderCusto = 0;
 
@@ -124,13 +135,28 @@ export default function BuyOrderDashboard({ user }: { user: any }) {
             }
           }
 
+          // ✅ DISTRIBUIÇÃO CORRETA: dividir pares entre as lojas
+          const paresPorLoja = p / numLojas;
+
           const tAgg = typeAgg.get(dept) || { pares: 0, valor: 0, modelStats: new Map() };
           tAgg.pares += p;
           tAgg.valor += v;
           
-          const mAgg = tAgg.modelStats.get(mapKey) || { pares: 0, valor: 0 };
+          const mAgg = tAgg.modelStats.get(mapKey) || { 
+            pares: 0, 
+            valor: 0,
+            pares_por_loja: new Map()
+          };
           mAgg.pares += p;
           mAgg.valor += v;
+          
+          // ✅ RASTREAR PARES POR LOJA
+          subOrders.forEach((sub: any) => {
+            (sub.lojas_numeros || []).forEach((lojaNum: number) => {
+              const currentPares = mAgg.pares_por_loja.get(lojaNum) || 0;
+              mAgg.pares_por_loja.set(lojaNum, currentPares + paresPorLoja);
+            });
+          });
           
           tAgg.modelStats.set(mapKey, mAgg);
           typeAgg.set(dept, tAgg);
@@ -145,18 +171,17 @@ export default function BuyOrderDashboard({ user }: { user: any }) {
         bAgg.valor += orderCusto;
         brandAgg.set(order.marca, bAgg);
 
-        // Store Agg
-        for (const sub of (order.buy_order_sub_orders || [])) {
-          const lojas = sub.lojas_numeros || [];
-          for (const lojaRaw of lojas) {
+        // ✅ Store Agg CORRIGIDO
+        subOrders.forEach((sub: any) => {
+          (sub.lojas_numeros || []).forEach((lojaRaw: number) => {
             const loja = String(lojaRaw);
             const sAgg = storeAgg.get(loja) || { pares: 0, valor: 0, pedidos: new Set() };
-            sAgg.pares += orderPares;
-            sAgg.valor += orderCusto;
+            sAgg.pares += orderPares / numLojas; // ← CORRIGIDO!
+            sAgg.valor += orderCusto / numLojas;
             sAgg.pedidos.add(order.id);
             storeAgg.set(loja, sAgg);
-          }
-        }
+          });
+        });
       }
 
       setSummary({ total_pares: totalPares, valor_total: valorTotal });
@@ -188,12 +213,20 @@ export default function BuyOrderDashboard({ user }: { user: any }) {
             subtipo = parts[0];
             modelo = parts[1];
           }
+          
+          // ✅ CONVERTER Map para objeto para uso no componente
+          const paresPorLojaObj: Record<number, number> = {};
+          mAgg.pares_por_loja.forEach((pares, loja) => {
+            paresPorLojaObj[loja] = Math.round(pares); // Arredondar para inteiro
+          });
+          
           return {
             subtipo,
             modelo,
             pares: mAgg.pares,
             valor: mAgg.valor,
-            percentual: typePares > 0 ? (mAgg.pares / typePares) * 100 : 0
+            percentual: typePares > 0 ? (mAgg.pares / typePares) * 100 : 0,
+            pares_por_loja: paresPorLojaObj // ✅ ADICIONAR DADOS POR LOJA
           };
         }).sort((a, b) => b.pares - a.pares);
 
@@ -336,79 +369,108 @@ export default function BuyOrderDashboard({ user }: { user: any }) {
         </div>
 
         {/* DETALHAMENTO EXPANDIDO */}
-        {expandedStat && (
-          <div className="animate-in fade-in slide-in-from-top-4 duration-300">
-            <div className={`rounded-xl shadow-md border ${getTypeStyles(expandedStat.tipo)} p-0 overflow-hidden dark:bg-slate-800 dark:border-slate-700`}>
-              <div className="px-6 py-4 border-b border-opacity-20 flex items-center gap-2 font-bold uppercase tracking-wider text-sm dark:text-slate-200">
-                {getTypeIcons(expandedStat.tipo)} {expandedStat.tipo} - Modelos Comprados
-              </div>
-              
-              {expandedStat.tipo === 'INFANTIL' ? (
-                // Infantil precisa dividir por gênero
-                <div className="bg-white dark:bg-slate-900 border-t border-opacity-20">
-                  {['FEMININO', 'MASCULINO', 'UNISSEX'].map(subtipo => {
-                    const subModelos = expandedStat.modelos.filter(m => m.subtipo === subtipo);
-                    if (subModelos.length === 0) return null;
-                    return (
-                      <div key={subtipo} className="border-b last:border-0 border-slate-100 dark:border-slate-800">
-                        <div className="bg-slate-50 dark:bg-slate-800/50 px-6 py-2 font-black text-[11px] text-slate-500 dark:text-slate-400 uppercase tracking-widest">
-                          {getTypeIcons(subtipo)} {subtipo} INFANTIL
-                        </div>
-                        <table className="w-full text-left text-sm whitespace-nowrap">
-                          <thead className="bg-white dark:bg-slate-900">
-                            <tr>
-                              <th className="px-6 py-3 font-bold text-xs uppercase tracking-wider text-slate-400 dark:text-slate-500">Modelo</th>
-                              <th className="px-6 py-3 font-bold text-xs uppercase tracking-wider text-slate-400 dark:text-slate-500 text-right">Pares</th>
-                              <th className="px-6 py-3 font-bold text-xs uppercase tracking-wider text-slate-400 dark:text-slate-500 text-right">Valor</th>
-                              <th className="px-6 py-3 font-bold text-xs uppercase tracking-wider text-slate-400 dark:text-slate-500 text-right w-32">% do Tipo</th>
-                            </tr>
-                          </thead>
-                          <tbody className="divide-y divide-slate-100 dark:divide-slate-800 bg-white dark:bg-slate-900">
-                            {subModelos.map(m => (
-                              <tr key={m.modelo} className="hover:bg-slate-50 dark:hover:bg-slate-800/50 transition-colors">
-                                <td className="px-6 py-3 font-bold text-slate-900 dark:text-slate-200">{m.modelo}</td>
-                                <td className="px-6 py-3 text-right font-medium text-slate-700 dark:text-slate-300">{formatNum(m.pares)}</td>
-                                <td className="px-6 py-3 text-right font-medium text-emerald-600 dark:text-emerald-400">{formatBRLValue(m.valor)}</td>
-                                <td className="px-6 py-3 text-right font-bold text-slate-500">{m.percentual.toFixed(1)}%</td>
+        {expandedStat && (() => {
+          // Extrair lojas únicas para este tipo específico para criar as colunas
+          const storesInType = Array.from(new Set(
+            expandedStat.modelos.flatMap(m => Object.keys(m.pares_por_loja || {}).map(Number))
+          )).sort((a, b) => a - b);
+
+          return (
+            <div className="animate-in fade-in slide-in-from-top-4 duration-300">
+              <div className={`rounded-xl shadow-md border ${getTypeStyles(expandedStat.tipo)} p-0 overflow-hidden dark:bg-slate-800 dark:border-slate-700`}>
+                <div className="px-6 py-4 border-b border-opacity-20 flex items-center gap-2 font-bold uppercase tracking-wider text-sm dark:text-slate-200">
+                  {getTypeIcons(expandedStat.tipo)} {expandedStat.tipo} - Modelos Comprados
+                </div>
+                
+                {expandedStat.tipo === 'INFANTIL' ? (
+                  // Infantil precisa dividir por gênero
+                  <div className="bg-white dark:bg-slate-900 border-t border-opacity-20 overflow-auto">
+                    {['FEMININO', 'MASCULINO', 'UNISSEX'].map(subtipo => {
+                      const subModelos = expandedStat.modelos.filter(m => m.subtipo === subtipo);
+                      if (subModelos.length === 0) return null;
+                      return (
+                        <div key={subtipo} className="border-b last:border-0 border-slate-100 dark:border-slate-800">
+                          <div className="bg-slate-50 dark:bg-slate-800/50 px-6 py-2 font-black text-[11px] text-slate-500 dark:text-slate-400 uppercase tracking-widest sticky left-0">
+                            {getTypeIcons(subtipo)} {subtipo} INFANTIL
+                          </div>
+                          <table className="w-full text-left text-sm whitespace-nowrap min-w-max">
+                            <thead className="bg-white dark:bg-slate-900 border-b border-slate-200 dark:border-slate-700">
+                              <tr>
+                                <th className="px-6 py-3 font-bold text-xs uppercase tracking-wider text-slate-400 dark:text-slate-500 sticky left-0 bg-white dark:bg-slate-900 z-10">Modelo</th>
+                                {storesInType.map(loja => (
+                                  <th key={loja} className="px-3 py-3 font-bold text-xs uppercase tracking-wider text-blue-600 dark:text-blue-400 text-center min-w-[60px]">L{loja.toString().padStart(2, '0')}</th>
+                                ))}
+                                <th className="px-6 py-3 font-bold text-xs uppercase tracking-wider text-slate-400 dark:text-slate-500 text-right">Total</th>
+                                <th className="px-6 py-3 font-bold text-xs uppercase tracking-wider text-slate-400 dark:text-slate-500 text-right">Valor</th>
+                                <th className="px-6 py-3 font-bold text-xs uppercase tracking-wider text-slate-400 dark:text-slate-500 text-right w-24">%</th>
                               </tr>
-                            ))}
-                          </tbody>
-                        </table>
-                      </div>
-                    )
-                  })}
-                </div>
-              ) : (
-                // Outros tipos são tabelas simples
-                <div className="bg-white dark:bg-slate-900 p-0 border-t border-opacity-20 overflow-auto max-h-[400px]">
-                  <table className="w-full text-left text-sm whitespace-nowrap">
-                    <thead className="bg-slate-50 dark:bg-slate-900 sticky top-0 shadow-sm">
-                      <tr>
-                        <th className="px-6 py-3 font-bold text-xs uppercase tracking-wider text-slate-400 dark:text-slate-500">Modelo</th>
-                        <th className="px-6 py-3 font-bold text-xs uppercase tracking-wider text-slate-400 dark:text-slate-500 text-right">{expandedStat.tipo === 'ACESSÓRIO' ? 'Unid.' : 'Pares'}</th>
-                        <th className="px-6 py-3 font-bold text-xs uppercase tracking-wider text-slate-400 dark:text-slate-500 text-right">Valor</th>
-                        <th className="px-6 py-3 font-bold text-xs uppercase tracking-wider text-slate-400 dark:text-slate-500 text-right w-32">% do Tipo</th>
-                      </tr>
-                    </thead>
-                    <tbody className="divide-y divide-slate-100 dark:divide-slate-800">
-                      {expandedStat.modelos.map(m => (
-                        <tr key={m.modelo} className="hover:bg-slate-50 dark:hover:bg-slate-800/50 transition-colors">
-                          <td className="px-6 py-3 font-bold text-slate-900 dark:text-slate-200">{m.modelo}</td>
-                          <td className="px-6 py-3 text-right font-medium text-slate-700 dark:text-slate-300">{formatNum(m.pares)}</td>
-                          <td className="px-6 py-3 text-right font-medium text-emerald-600 dark:text-emerald-400">{formatBRLValue(m.valor)}</td>
-                          <td className="px-6 py-3 text-right font-bold text-slate-500">{m.percentual.toFixed(1)}%</td>
+                            </thead>
+                            <tbody className="divide-y divide-slate-100 dark:divide-slate-800 bg-white dark:bg-slate-900">
+                              {subModelos.map(m => (
+                                <tr key={m.modelo} className="hover:bg-slate-50 dark:hover:bg-slate-800/50 transition-colors">
+                                  <td className="px-6 py-3 font-bold text-slate-900 dark:text-slate-200 bg-inherit sticky left-0">{m.modelo}</td>
+                                  {storesInType.map(loja => {
+                                    const pares = m.pares_por_loja?.[loja] || 0;
+                                    return (
+                                      <td key={loja} className={`px-3 py-3 text-center font-medium ${pares > 0 ? 'text-green-700 dark:text-green-400' : 'text-slate-300 dark:text-slate-600'}`}>
+                                        {pares > 0 ? formatNum(pares) : '—'}
+                                      </td>
+                                    );
+                                  })}
+                                  <td className="px-6 py-3 text-right font-bold text-slate-900 dark:text-slate-200">{formatNum(m.pares)}</td>
+                                  <td className="px-6 py-3 text-right font-medium text-emerald-600 dark:text-emerald-400">{formatBRLValue(m.valor)}</td>
+                                  <td className="px-6 py-3 text-right font-bold text-slate-500">{m.percentual.toFixed(1)}%</td>
+                                </tr>
+                              ))}
+                            </tbody>
+                          </table>
+                        </div>
+                      )
+                    })}
+                  </div>
+                ) : (
+                  // Outros tipos são tabelas simples
+                  <div className="bg-white dark:bg-slate-900 p-0 border-t border-opacity-20 overflow-auto max-h-[400px]">
+                    <table className="w-full text-left text-sm whitespace-nowrap min-w-max">
+                      <thead className="bg-slate-50 dark:bg-slate-900 sticky top-0 shadow-sm border-b border-slate-200 dark:border-slate-700 z-20">
+                        <tr>
+                          <th className="px-6 py-3 font-bold text-xs uppercase tracking-wider text-slate-400 dark:text-slate-500 sticky left-0 bg-slate-50 dark:bg-slate-900 z-10">Modelo</th>
+                          {storesInType.map(loja => (
+                            <th key={loja} className="px-3 py-3 font-bold text-xs uppercase tracking-wider text-blue-600 dark:text-blue-400 text-center min-w-[60px]">L{loja.toString().padStart(2, '0')}</th>
+                          ))}
+                          <th className="px-6 py-3 font-bold text-xs uppercase tracking-wider text-slate-400 dark:text-slate-500 text-right">Total</th>
+                          <th className="px-6 py-3 font-bold text-xs uppercase tracking-wider text-slate-400 dark:text-slate-500 text-right">Valor</th>
+                          <th className="px-6 py-3 font-bold text-xs uppercase tracking-wider text-slate-400 dark:text-slate-500 text-right w-24">%</th>
                         </tr>
-                      ))}
-                      {expandedStat.modelos.length === 0 && (
-                        <tr><td colSpan={4} className="py-8 text-center text-slate-400 italic">Nenhum dado encontrado</td></tr>
-                      )}
-                    </tbody>
-                  </table>
-                </div>
-              )}
+                      </thead>
+                      <tbody className="divide-y divide-slate-100 dark:divide-slate-800">
+                        {expandedStat.modelos.map(m => (
+                          <tr key={m.modelo} className="hover:bg-slate-50 dark:hover:bg-slate-800/50 transition-colors">
+                            <td className="px-6 py-3 font-bold text-slate-900 dark:text-slate-200 bg-inherit sticky left-0">{m.modelo}</td>
+                            {storesInType.map(loja => {
+                              const pares = m.pares_por_loja?.[loja] || 0;
+                              return (
+                                <td key={loja} className={`px-3 py-3 text-center font-medium ${pares > 0 ? 'text-green-700 dark:text-green-400' : 'text-slate-300 dark:text-slate-600'}`}>
+                                  {pares > 0 ? formatNum(pares) : '—'}
+                                </td>
+                              );
+                            })}
+                            <td className="px-6 py-3 text-right font-bold text-slate-900 dark:text-slate-200">{formatNum(m.pares)}</td>
+                            <td className="px-6 py-3 text-right font-medium text-emerald-600 dark:text-emerald-400">{formatBRLValue(m.valor)}</td>
+                            <td className="px-6 py-3 text-right font-bold text-slate-500">{m.percentual.toFixed(1)}%</td>
+                          </tr>
+                        ))}
+                        {expandedStat.modelos.length === 0 && (
+                          <tr><td colSpan={storesInType.length + 4} className="py-8 text-center text-slate-400 italic">Nenhum dado encontrado</td></tr>
+                        )}
+                      </tbody>
+                    </table>
+                  </div>
+                )}
+              </div>
             </div>
-          </div>
-        )}
+          );
+        })()}
 
         {/* TABELAS */}
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 pt-4">
