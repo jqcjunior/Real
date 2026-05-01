@@ -912,7 +912,13 @@ const IceCreamModule: React.FC<IceCreamModuleProps> = ({
     };
 
     const handlePayFutureDebt = async (debtId: string) => {
-        const paymentDate = new Date().toISOString().split('T')[0];
+        const hoje = new Date().toISOString().split('T')[0];
+        const input = window.prompt(
+            'Data do pagamento (AAAA-MM-DD):\nDeixe a data de hoje ou altere para uma data retroativa.',
+            hoje
+        );
+        if (input === null) return; // cancelou
+        const paymentDate = input.trim() || hoje;
         try {
             await onPayFutureDebt(debtId, paymentDate);
             if (fetchData) await fetchData();
@@ -1105,7 +1111,7 @@ const IceCreamModule: React.FC<IceCreamModuleProps> = ({
                             filteredStock={stock.filter(s => s.store_id === effectiveStoreId)}
                             isAdmin={canManage && !isSorvete}
                             onUpdateStock={handleUpdateStock}
-                            onAddStockBase={isSorvete ? async () => {} : (base, unit, storeId) => onAddItem(base, 'INSUMO', 0, '', 0, unit, 0, storeId, [])}
+                            onAddStockBase={isSorvete ? async () => {} : (base, unit, storeId) => handleUpdateStock(storeId, base, 0, unit, 'CADASTRO')}
                             onUpdateStockBase={handleUpdateStockBase}
                             onDeleteStockBase={isSorvete ? async () => {} : onDeleteStockItem}
                             onToggleFreezeStock={async (id, active) => {

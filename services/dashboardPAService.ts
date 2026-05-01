@@ -108,7 +108,13 @@ export const dashboardPAService = {
         valor_premio: premiacao?.valor_premio || 0,
         faixas_acima: premiacao?.faixas_acima || 0,
         pa_atingido: premiacao?.pa_atingido || venda.pa,
-        pa_meta: premiacao?.pa_meta || 0
+        pa_meta: premiacao?.pa_meta || 0,
+        valor_premio_pa: premiacao?.valor_premio_pa || 0,
+        valor_premio_vendas: premiacao?.valor_premio_vendas || 0,
+        valor_premio_ticket: premiacao?.valor_premio_ticket || 0,
+        valor_premio_total: premiacao?.valor_premio_total || premiacao?.valor_premio || 0,
+        atingiu_meta_vendas: !!premiacao?.atingiu_meta_vendas,
+        atingiu_meta_ticket: !!premiacao?.atingiu_meta_ticket
       };
     });
   },
@@ -132,6 +138,14 @@ export const dashboardPAService = {
       pa: Number(row.pa) || 0,
       total_vendas: Number(row.total_vendas) || 0,
       perc_total: row.perc_total || '0%',
+      trocas: row.trocas ?? null,
+      bonus_baixados: row.bonus_baixados ?? null,
+      ticket_medio: row.ticket_medio ?? null,
+      preco_medio: row.preco_medio ?? null,
+      total_vista: row.total_vista ?? null,
+      perc_vista: row.perc_vista ?? null,
+      total_prazo: row.total_prazo ?? null,
+      perc_prazo: row.perc_prazo ?? null,
       importado_por: importadoPor,
       importado_em: new Date().toISOString()
     }));
@@ -146,36 +160,80 @@ export const dashboardPAService = {
 
     // 4. Calculate and upsert awards
     const awardsToUpsert = insertedSales.map(venda => {
-      const pa = Number(venda.pa);
-      const pa_inicial = Number(params.pa_inicial);
-      const incremento_pa = Number(params.incremento_pa);
-      const valor_base = Number(params.valor_base);
+      const pa           = Number(venda.pa);
+      const totalVendas  = Number(venda.total_vendas);
+      const ticketMedio  = Number(venda.ticket_medio) || 0;
+
+      // ── PA ──
+      const pa_inicial     = Number(params.pa_inicial);
+      const incremento_pa  = Number(params.incremento_pa);
+      const valor_base     = Number(params.valor_base);
       const incremento_valor = Number(params.incremento_valor);
 
       let atingiu_meta = false;
       let faixas_acima = 0;
-      let valor_premio = 0;
+      let valor_premio_pa = 0;
 
-      if (pa >= pa_inicial) {
+      if (pa >= pa_inicial && incremento_pa > 0) {
         atingiu_meta = true;
-        // Calculate bands above the initial one
-        // Example: pa=1.68, pa_inicial=1.60, inc=0.05 -> 1.68 - 1.60 = 0.08. 0.08 / 0.05 = 1.6 -> floor is 1.
-        faixas_acima = Math.floor(Math.max(0, pa - pa_inicial) / incremento_pa);
-        valor_premio = valor_base + (faixas_acima * incremento_valor);
+        faixas_acima = Math.floor((pa - pa_inicial) / incremento_pa);
+        valor_premio_pa = valor_base + (faixas_acima * incremento_valor);
       }
 
+      // ── VENDAS (valor total R$) ──
+      let atingiu_meta_vendas = false;
+      let valor_premio_vendas = 0;
+
+      if (params.vendas_minimo && params.vendas_incremento && params.vendas_valor_base) {
+        const vMin  = Number(params.vendas_minimo);
+        const vInc  = Number(params.vendas_incremento);
+        const vBase = Number(params.vendas_valor_base);
+        const vIncV = Number(params.vendas_inc_valor || 0);
+
+        if (totalVendas >= vMin && vInc > 0) {
+          atingiu_meta_vendas = true;
+          const faixas = Math.floor((totalVendas - vMin) / vInc);
+          valor_premio_vendas = vBase + (faixas * vIncV);
+        }
+      }
+
+      // ── TICKET MÉDIO ──
+      let atingiu_meta_ticket = false;
+      let valor_premio_ticket = 0;
+
+      if (params.ticket_minimo && params.ticket_incremento && params.ticket_valor_base) {
+        const tMin  = Number(params.ticket_minimo);
+        const tInc  = Number(params.ticket_incremento);
+        const tBase = Number(params.ticket_valor_base);
+        const tIncV = Number(params.ticket_inc_valor || 0);
+
+        if (ticketMedio >= tMin && tInc > 0) {
+          atingiu_meta_ticket = true;
+          const faixas = Math.floor((ticketMedio - tMin) / tInc);
+          valor_premio_ticket = tBase + (faixas * tIncV);
+        }
+      }
+
+      const valor_premio_total = valor_premio_pa + valor_premio_vendas + valor_premio_ticket;
+
       return {
-        venda_id: venda.id,
-        semana_id: weekId,
-        store_id: storeId,
-        cod_vendedor: venda.cod_vendedor,
-        nome_vendedor: venda.nome_vendedor,
-        pa_atingido: pa,
-        pa_meta: pa_inicial,
-        faixas_acima: faixas_acima,
-        valor_premio: valor_premio,
-        atingiu_meta: atingiu_meta,
-        calculado_em: new Date().toISOString()
+        venda_id:             venda.id,
+        semana_id:            weekId,
+        store_id:             storeId,
+        cod_vendedor:         venda.cod_vendedor,
+        nome_vendedor:        venda.nome_vendedor,
+        pa_atingido:          pa,
+        pa_meta:              pa_inicial,
+        faixas_acima:         faixas_acima,
+        valor_premio:         valor_premio_total,
+        atingiu_meta:         atingiu_meta || atingiu_meta_vendas || atingiu_meta_ticket,
+        calculado_em:         new Date().toISOString(),
+        valor_premio_pa,
+        valor_premio_vendas,
+        valor_premio_ticket,
+        valor_premio_total,
+        atingiu_meta_vendas,
+        atingiu_meta_ticket,
       };
     });
 

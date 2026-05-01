@@ -782,6 +782,7 @@ const App: React.FC = () => {
             .on('postgres_changes', { event: '*', schema: 'public', table: 'ice_cream_sales' }, () => fetchData())
             .on('postgres_changes', { event: '*', schema: 'public', table: 'ice_cream_daily_sales' }, () => fetchData())
             .on('postgres_changes', { event: '*', schema: 'public', table: 'gestao_compras' }, () => fetchData())
+            .on('postgres_changes', { event: '*', schema: 'public', table: 'ice_cream_future_debts' }, () => fetchData())
             .on('postgres_changes', { event: '*', schema: 'public', table: 'monthly_performance_actual' }, () => fetchData())
             .on('postgres_changes', { event: '*', schema: 'public', table: 'monthly_goals' }, () => fetchData())
             .on('postgres_changes', { event: '*', schema: 'public', table: 'stores' }, () => fetchData())
@@ -1488,15 +1489,25 @@ const App: React.FC = () => {
                             onAddItem={async (n, c, p, f, si, u, cps, tsId, r) => { await handleSaveIceCreamProduct({ storeId: tsId, name: n, category: c as any, price: p, flavor: f, recipe: r }); }}
                             onSaveProduct={handleSaveIceCreamProduct}
                             onDeleteItem={async (id) => { await supabase.from('ice_cream_items').delete().eq('id', id); await fetchData(); }}
-                            onUpdateStock={async (sId, b, v, u, type) => {
-                                const { data: current } = await supabase.from('ice_cream_stock').select('stock_current').eq('store_id', sId).eq('product_base', b).maybeSingle();
-                                let finalVal = v;
-                                if (current && (type === 'purchase' || type === 'adjustment' || type === 'production' || (type as string) === 'INVENTARIO')) { finalVal = Number(current.stock_current || 0) + v; }
-                                await supabase.from('ice_cream_stock').upsert({ store_id: sId, product_base: b, stock_current: finalVal, unit: u, is_active: true }, { onConflict: 'store_id, product_base' });
+                            onUpdateStock={async (sId, b, v, u, type, stockId) => {
+                                if (type === 'INVENTARIO' && stockId) {
+                                    const { error } = await supabase.rpc('perform_inventory', {
+                                        p_stock_id:     stockId,
+                                        p_new_quantity: v,
+                                        p_user_id:      null,
+                                        p_notes:        'Inventário manual'
+                                    });
+                                    if (error) throw error;
+                                } else {
+                                    const { data: current } = await supabase.from('ice_cream_stock').select('stock_current').eq('store_id', sId).eq('product_base', b).maybeSingle();
+                                    let finalVal = v;
+                                    if (current) { finalVal = Number(current.stock_current || 0) + v; }
+                                    await supabase.from('ice_cream_stock').upsert({ store_id: sId, product_base: b, stock_current: finalVal, unit: u, is_active: true }, { onConflict: 'store_id, product_base' });
+                                }
                                 await fetchData();
                             }}
                             liquidatePromissory={async (id) => { await supabase.from('ice_cream_promissory_notes').update({ status: 'paid' }).eq('id', id); await fetchData(); }}
-                            onDeleteStockItem={async (id) => { if (can('MODULE_ADMIN_STOCK_DELETE')) { await supabase.from('ice_cream_stock').update({ is_active: false }).eq('id', id); await fetchData(); } }}
+                            onDeleteStockItem={async (id) => { if (can('MODULE_ADMIN_STOCK_DELETE') || can('MODULE_ADMIN')) { await supabase.from('ice_cream_stock').delete().eq('id', id); await fetchData(); } }}
                         />;
                         if (currentView === 'caixa' && can('MODULE_CASH_REGISTER')) return (
                             <CashRegisterModule

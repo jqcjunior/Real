@@ -131,11 +131,16 @@ const EstoqueTab: React.FC<EstoqueTabProps> = ({
                     </thead>
                     <tbody className="divide-y divide-gray-50 font-bold text-[10px]">
                         {sortedStock.map((item: any) => (
-                            <tr key={item.id} className="hover:bg-blue-50/30 transition-all">
+                            <tr key={item.id} className={`hover:bg-blue-50/30 transition-all ${!item.is_active ? 'opacity-50 bg-gray-50' : ''}`}>
                                 <td className="px-8 py-5">
-                                    <span className="text-xs font-black text-blue-950 uppercase italic">
-                                        {item.product_base}
-                                    </span>
+                                    <div className="flex items-center gap-2">
+                                        <span className="text-xs font-black text-blue-950 uppercase italic">
+                                            {item.product_base}
+                                        </span>
+                                        {!item.is_active && (
+                                            <span className="px-2 py-0.5 rounded text-[8px] font-black uppercase bg-gray-200 text-gray-500">Inativo</span>
+                                        )}
+                                    </div>
                                 </td>
                                 <td className="px-8 py-5">
                                     <span className="px-3 py-1 rounded-full text-[8px] font-black uppercase border bg-gray-50 text-gray-700 border-gray-200">

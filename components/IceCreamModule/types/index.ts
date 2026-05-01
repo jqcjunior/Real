@@ -22,7 +22,7 @@ export interface IceCreamModuleProps {
   onAddItem: (name: string, category: string, price: number, flavor?: string, stockInitial?: number, unit?: string, consumptionPerSale?: number, targetStoreId?: string, recipe?: IceCreamRecipeItem[]) => Promise<void>;
   onSaveProduct: (product: Partial<IceCreamItem>) => Promise<void>;
   onDeleteItem: (id: string) => Promise<void>;
-  onUpdateStock: (storeId: string, base: string, value: number, unit: string, type: 'production' | 'adjustment' | 'purchase' | 'inventory', stockId?: string) => Promise<void>;
+  onUpdateStock: (storeId: string, base: string, value: number, unit: string, type: 'production' | 'adjustment' | 'purchase' | 'inventory' | 'INVENTARIO', stockId?: string) => Promise<void>;
   liquidatePromissory: (id: string) => Promise<void>;
   onDeleteStockItem: (id: string) => Promise<void>;
   sangriaCategories: IceCreamSangriaCategory[];

@@ -84,9 +84,9 @@ const InventoryModal: React.FC<InventoryModalProps> = ({
                 return onUpdateStock(
                     effectiveStoreId, 
                     st.product_base, 
-                    diff,  // ✅ Passa a diferença correta
+                    newVal,
                     st.unit, 
-                    'INVENTARIO',  // ✅ Tipo específico para rastreamento
+                    'INVENTARIO',
                     stockId
                 );
             });

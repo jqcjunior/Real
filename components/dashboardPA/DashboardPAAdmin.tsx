@@ -36,6 +36,14 @@ interface PAParametros {
   incremento_pa: number;
   valor_base: number;
   incremento_valor: number;
+  vendas_minimo: number | null;
+  vendas_incremento: number | null;
+  vendas_valor_base: number | null;
+  vendas_inc_valor: number | null;
+  ticket_minimo: number | null;
+  ticket_incremento: number | null;
+  ticket_valor_base: number | null;
+  ticket_inc_valor: number | null;
 }
  
 interface StoreWeekPerformance {
@@ -104,9 +112,17 @@ const ParametrosModal: React.FC<ParametrosModalProps> = ({ stores, onClose, onSa
     setDraft(params[storeId] || {
       store_id: storeId,
       pa_inicial: 1.60,
-      incremento_pa: 4,
+      incremento_pa: 0.05,
       valor_base: 50,
-      incremento_valor: 0.10,
+      incremento_valor: 10,
+      vendas_minimo: null,
+      vendas_incremento: null,
+      vendas_valor_base: null,
+      vendas_inc_valor: null,
+      ticket_minimo: null,
+      ticket_incremento: null,
+      ticket_valor_base: null,
+      ticket_inc_valor: null,
     });
   };
  
@@ -306,6 +322,128 @@ const ParametrosModal: React.FC<ParametrosModalProps> = ({ stores, onClose, onSa
                   </div>
                 </div>
  
+                {/* Seção Vendas */}
+                <div className="mt-4">
+                  <p className="text-[10px] font-black text-emerald-600 dark:text-emerald-400 uppercase tracking-widest mb-3">
+                    Premiação por Valor de Vendas (R$)
+                  </p>
+                  <div className="grid grid-cols-2 gap-4">
+                    <div>
+                      <label className="text-[10px] font-black text-slate-500 uppercase tracking-widest mb-1.5 block">
+                        Valor mínimo (R$)
+                      </label>
+                      <input
+                        type="number" step="500" min="0"
+                        value={draft.vendas_minimo ?? ''}
+                        onChange={e => setDraft({ ...draft, vendas_minimo: e.target.value ? Number(e.target.value) : null })}
+                        placeholder="Ex: 8000"
+                        className="w-full bg-slate-50 dark:bg-slate-800 border-2 border-slate-200 dark:border-slate-700 focus:border-emerald-400 rounded-xl px-4 py-3 text-sm font-black text-slate-900 dark:text-white outline-none transition-all"
+                      />
+                      <p className="text-[10px] text-slate-400 mt-1">Total vendido mínimo para ganhar</p>
+                    </div>
+                    <div>
+                      <label className="text-[10px] font-black text-slate-500 uppercase tracking-widest mb-1.5 block">
+                        Incremento (R$)
+                      </label>
+                      <input
+                        type="number" step="500" min="0"
+                        value={draft.vendas_incremento ?? ''}
+                        onChange={e => setDraft({ ...draft, vendas_incremento: e.target.value ? Number(e.target.value) : null })}
+                        placeholder="Ex: 2000"
+                        className="w-full bg-slate-50 dark:bg-slate-800 border-2 border-slate-200 dark:border-slate-700 focus:border-emerald-400 rounded-xl px-4 py-3 text-sm font-black text-slate-900 dark:text-white outline-none transition-all"
+                      />
+                      <p className="text-[10px] text-slate-400 mt-1">A cada R$ X acima do mínimo</p>
+                    </div>
+                    <div>
+                      <label className="text-[10px] font-black text-slate-500 uppercase tracking-widest mb-1.5 block">
+                        Prêmio base (R$)
+                      </label>
+                      <input
+                        type="number" step="5" min="0"
+                        value={draft.vendas_valor_base ?? ''}
+                        onChange={e => setDraft({ ...draft, vendas_valor_base: e.target.value ? Number(e.target.value) : null })}
+                        placeholder="Ex: 30"
+                        className="w-full bg-slate-50 dark:bg-slate-800 border-2 border-slate-200 dark:border-slate-700 focus:border-emerald-400 rounded-xl px-4 py-3 text-sm font-black text-slate-900 dark:text-white outline-none transition-all"
+                      />
+                      <p className="text-[10px] text-slate-400 mt-1">Valor ao atingir o mínimo</p>
+                    </div>
+                    <div>
+                      <label className="text-[10px] font-black text-slate-500 uppercase tracking-widest mb-1.5 block">
+                        +R$ por faixa acima
+                      </label>
+                      <input
+                        type="number" step="5" min="0"
+                        value={draft.vendas_inc_valor ?? ''}
+                        onChange={e => setDraft({ ...draft, vendas_inc_valor: e.target.value ? Number(e.target.value) : null })}
+                        placeholder="Ex: 10"
+                        className="w-full bg-slate-50 dark:bg-slate-800 border-2 border-slate-200 dark:border-slate-700 focus:border-emerald-400 rounded-xl px-4 py-3 text-sm font-black text-slate-900 dark:text-white outline-none transition-all"
+                      />
+                      <p className="text-[10px] text-slate-400 mt-1">Incremento por faixa</p>
+                    </div>
+                  </div>
+                </div>
+
+                {/* Seção Ticket */}
+                <div className="mt-4">
+                  <p className="text-[10px] font-black text-amber-600 dark:text-amber-400 uppercase tracking-widest mb-3">
+                    Premiação por Ticket Médio (R$)
+                  </p>
+                  <div className="grid grid-cols-2 gap-4">
+                    <div>
+                      <label className="text-[10px] font-black text-slate-500 uppercase tracking-widest mb-1.5 block">
+                        Ticket mínimo (R$)
+                      </label>
+                      <input
+                        type="number" step="10" min="0"
+                        value={draft.ticket_minimo ?? ''}
+                        onChange={e => setDraft({ ...draft, ticket_minimo: e.target.value ? Number(e.target.value) : null })}
+                        placeholder="Ex: 200"
+                        className="w-full bg-slate-50 dark:bg-slate-800 border-2 border-slate-200 dark:border-slate-700 focus:border-amber-400 rounded-xl px-4 py-3 text-sm font-black text-slate-900 dark:text-white outline-none transition-all"
+                      />
+                      <p className="text-[10px] text-slate-400 mt-1">Ticket médio mínimo para ganhar</p>
+                    </div>
+                    <div>
+                      <label className="text-[10px] font-black text-slate-500 uppercase tracking-widest mb-1.5 block">
+                        Incremento (R$)
+                      </label>
+                      <input
+                        type="number" step="10" min="0"
+                        value={draft.ticket_incremento ?? ''}
+                        onChange={e => setDraft({ ...draft, ticket_incremento: e.target.value ? Number(e.target.value) : null })}
+                        placeholder="Ex: 30"
+                        className="w-full bg-slate-50 dark:bg-slate-800 border-2 border-slate-200 dark:border-slate-700 focus:border-amber-400 rounded-xl px-4 py-3 text-sm font-black text-slate-900 dark:text-white outline-none transition-all"
+                      />
+                      <p className="text-[10px] text-slate-400 mt-1">A cada R$ X acima do mínimo</p>
+                    </div>
+                    <div>
+                      <label className="text-[10px] font-black text-slate-500 uppercase tracking-widest mb-1.5 block">
+                        Prêmio base (R$)
+                      </label>
+                      <input
+                        type="number" step="5" min="0"
+                        value={draft.ticket_valor_base ?? ''}
+                        onChange={e => setDraft({ ...draft, ticket_valor_base: e.target.value ? Number(e.target.value) : null })}
+                        placeholder="Ex: 20"
+                        className="w-full bg-slate-50 dark:bg-slate-800 border-2 border-slate-200 dark:border-slate-700 focus:border-amber-400 rounded-xl px-4 py-3 text-sm font-black text-slate-900 dark:text-white outline-none transition-all"
+                      />
+                      <p className="text-[10px] text-slate-400 mt-1">Valor ao atingir o mínimo</p>
+                    </div>
+                    <div>
+                      <label className="text-[10px] font-black text-slate-500 uppercase tracking-widest mb-1.5 block">
+                        +R$ por faixa acima
+                      </label>
+                      <input
+                        type="number" step="5" min="0"
+                        value={draft.ticket_inc_valor ?? ''}
+                        onChange={e => setDraft({ ...draft, ticket_inc_valor: e.target.value ? Number(e.target.value) : null })}
+                        placeholder="Ex: 10"
+                        className="w-full bg-slate-50 dark:bg-slate-800 border-2 border-slate-200 dark:border-slate-700 focus:border-amber-400 rounded-xl px-4 py-3 text-sm font-black text-slate-900 dark:text-white outline-none transition-all"
+                      />
+                      <p className="text-[10px] text-slate-400 mt-1">Incremento por faixa</p>
+                    </div>
+                  </div>
+                </div>
+
                 {/* Preview da Fórmula */}
                 <div className="bg-gradient-to-br from-orange-50 to-amber-50 dark:from-orange-900/20 dark:to-amber-900/10 rounded-2xl p-4 border-2 border-orange-200 dark:border-orange-800 space-y-3">
                   <p className="text-[10px] font-black text-orange-600 dark:text-orange-400 uppercase tracking-widest">
@@ -628,10 +766,10 @@ const DashboardPAAdmin: React.FC<DashboardPAAdminProps> = ({ user, stores, onRef
           </div>
           <div className="flex-1">
             <h1 className="text-2xl sm:text-3xl font-black text-slate-900 dark:text-white uppercase italic">
-              Dashboard P.A <span className="text-orange-600">Admin</span>
+              Dashboard Semanal <span className="text-orange-600">Admin</span>
             </h1>
             <p className="text-xs font-bold text-slate-500 dark:text-slate-400 uppercase tracking-widest">
-              Visão Consolidada da Rede
+              Premiação por PA · Vendas · Ticket
             </p>
           </div>
           {/* Botão de Parâmetros */}

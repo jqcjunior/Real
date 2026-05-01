@@ -12,6 +12,10 @@ interface VendedorPremio {
   total_vendas: number;
   qtde_vendas: number;
   qtde_itens: number;
+  valor_premio_pa: number;
+  valor_premio_vendas: number;
+  valor_premio_ticket: number;
+  valor_premio_total: number;
 }
 
 interface RelatorioProps {
@@ -101,15 +105,19 @@ const RelatorioPAImprimivel: React.FC<RelatorioProps> = ({ storeId, storeName, s
 
       if (premios) {
         const vendedoresPremio: VendedorPremio[] = premios.map((p: any) => ({
-          cod_vendedor: p.cod_vendedor,
-          nome_vendedor: p.nome_vendedor,
-          pa_atingido: Number(p.pa_atingido || 0),
-          pa_meta: Number(p.pa_meta || 0),
-          valor_premio: Number(p.valor_premio || 0),
-          faixas_acima: Number(p.faixas_acima || 0),
-          total_vendas: Number(p.venda?.total_vendas || 0),
-          qtde_vendas: Number(p.venda?.qtde_vendas || 0),
-          qtde_itens: Number(p.venda?.qtde_itens || 0),
+          cod_vendedor:        p.cod_vendedor,
+          nome_vendedor:       p.nome_vendedor,
+          pa_atingido:         Number(p.pa_atingido || 0),
+          pa_meta:             Number(p.pa_meta || 0),
+          valor_premio:        Number(p.valor_premio_total || p.valor_premio || 0),
+          faixas_acima:        Number(p.faixas_acima || 0),
+          total_vendas:        Number(p.venda?.total_vendas || 0),
+          qtde_vendas:         Number(p.venda?.qtde_vendas || 0),
+          qtde_itens:          Number(p.venda?.qtde_itens || 0),
+          valor_premio_pa:     Number(p.valor_premio_pa || 0),
+          valor_premio_vendas: Number(p.valor_premio_vendas || 0),
+          valor_premio_ticket: Number(p.valor_premio_ticket || 0),
+          valor_premio_total:  Number(p.valor_premio_total || p.valor_premio || 0),
         }));
         setVendedores(vendedoresPremio);
       }
@@ -209,7 +217,7 @@ const RelatorioPAImprimivel: React.FC<RelatorioProps> = ({ storeId, storeName, s
       {/* ── Controles (não aparecem na impressão) ── */}
       <div className="no-print bg-white dark:bg-slate-900 p-4 sm:p-6 rounded-2xl shadow-sm border border-slate-200 dark:border-slate-800 space-y-4">
         <h2 className="text-lg sm:text-xl font-black text-slate-900 dark:text-white uppercase italic">
-          📄 Relatório de <span className="text-blue-600">Premiação P.A</span>
+          📄 Relatório de <span className="text-blue-600">Premiação Semanal</span>
         </h2>
 
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
@@ -280,7 +288,7 @@ const RelatorioPAImprimivel: React.FC<RelatorioProps> = ({ storeId, storeName, s
               </h1>
             </div>
             <p className="text-xs font-bold uppercase tracking-widest opacity-90 mt-1">
-              Premiação P.A — Semana {dataInicio} a {dataFim}
+              Premiação Semanal — Semana {dataInicio} a {dataFim}
             </p>
             <p className="text-xs font-black text-yellow-200 mt-0.5">
               📅 Pagamento: {dataPagamento}
@@ -341,17 +349,39 @@ const RelatorioPAImprimivel: React.FC<RelatorioProps> = ({ storeId, storeName, s
                       <p className="text-[9px] font-bold text-slate-400 mt-0.5">meta {v.pa_meta.toFixed(2)}</p>
                     </div>
 
-                    {/* Vendas */}
-                    <div className="bg-white rounded-lg p-2 border-2 border-slate-200 text-center w-24">
-                      <p className="text-[9px] font-black text-slate-400 uppercase leading-none mb-1">Vendas</p>
-                      <p className="text-sm font-black text-indigo-600 leading-none">
-                        R$ {v.total_vendas.toLocaleString('pt-BR', { minimumFractionDigits: 0 })}
+                    {/* Prêmios detalhados */}
+                    <div className="flex flex-col gap-1">
+                      {v.valor_premio_pa > 0 && (
+                        <div className="bg-blue-50 rounded-lg px-2 py-1 text-center border border-blue-200">
+                          <p className="text-[8px] font-black text-blue-400 uppercase leading-none">PA</p>
+                          <p className="text-xs font-black text-blue-700">R$ {v.valor_premio_pa.toFixed(2)}</p>
+                        </div>
+                      )}
+                      {v.valor_premio_vendas > 0 && (
+                        <div className="bg-green-50 rounded-lg px-2 py-1 text-center border border-green-200">
+                          <p className="text-[8px] font-black text-green-400 uppercase leading-none">Vendas</p>
+                          <p className="text-xs font-black text-green-700">R$ {v.valor_premio_vendas.toFixed(2)}</p>
+                        </div>
+                      )}
+                      {v.valor_premio_ticket > 0 && (
+                        <div className="bg-amber-50 rounded-lg px-2 py-1 text-center border border-amber-200">
+                          <p className="text-[8px] font-black text-amber-500 uppercase leading-none">Ticket</p>
+                          <p className="text-xs font-black text-amber-700">R$ {v.valor_premio_ticket.toFixed(2)}</p>
+                        </div>
+                      )}
+                    </div>
+
+                    {/* Total */}
+                    <div className="bg-white rounded-lg p-2 border-2 border-purple-300 text-center w-24">
+                      <p className="text-[9px] font-black text-purple-400 uppercase leading-none mb-1">Total</p>
+                      <p className="text-sm font-black text-purple-700 leading-none">
+                        R$ {v.valor_premio_total.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}
                       </p>
                       <p className="text-[9px] font-bold text-slate-400 mt-0.5">{v.qtde_vendas} atend.</p>
                     </div>
 
                     {/* Itens */}
-                    <div className="bg-white rounded-lg p-2 border-2 border-slate-200 text-center w-16">
+                    <div className="bg-white rounded-lg p-2 border-2 border-slate-200 text-center w-14">
                       <p className="text-[9px] font-black text-slate-400 uppercase leading-none mb-1">Itens</p>
                       <p className="text-xl font-black text-purple-600 leading-none">{v.qtde_itens}</p>
                       <p className="text-[9px] font-bold text-slate-400 mt-0.5">peças</p>

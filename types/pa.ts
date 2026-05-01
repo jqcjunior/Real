@@ -5,6 +5,14 @@ export interface PAParameters {
   incremento_pa: number;
   valor_base: number;
   incremento_valor: number;
+  vendas_minimo: number | null;
+  vendas_incremento: number | null;
+  vendas_valor_base: number | null;
+  vendas_inc_valor: number | null;
+  ticket_minimo: number | null;
+  ticket_incremento: number | null;
+  ticket_valor_base: number | null;
+  ticket_inc_valor: number | null;
   criado_por_role?: string;
   criado_por_id?: string;
   updated_at?: string;
@@ -49,6 +57,12 @@ export interface PASale {
   faixas_acima?: number;
   pa_atingido?: number;
   pa_meta?: number;
+  valor_premio_pa?: number;
+  valor_premio_vendas?: number;
+  valor_premio_ticket?: number;
+  valor_premio_total?: number;
+  atingiu_meta_vendas?: boolean;
+  atingiu_meta_ticket?: boolean;
 }
 
 export interface PAStoreSummary {
