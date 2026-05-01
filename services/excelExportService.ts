@@ -78,11 +78,41 @@ export async function exportBuyOrderToExcel(orderId: string) {
         setVal('N4', (order.fornecedor || '').toUpperCase());
         setVal('AA4', (order.email_representante || order.email || '').toLowerCase());
 
-        const prazosStr = Array.isArray(order.prazos) ? order.prazos.join('/') : (order.prazos || '');
-        setVal('N5', prazosStr);
+        // PRAZOS - Cada prazo em sua coluna (N5, Q5, T5)
+        const prazosArray = Array.isArray(order.prazos) 
+            ? order.prazos 
+            : (order.prazos || '').toString().split(/[\/,;\s]+/).filter(Boolean);
+
+        const PRAZO_COLS = ['N', 'Q', 'T']; 
+
+        prazosArray.forEach((prazo: any, idx: number) => {
+            if (idx < PRAZO_COLS.length) {
+                const col = PRAZO_COLS[idx];
+                sheet.cell(`${col}5`).value(Number(prazo) || 0);
+            }
+        });
         
         if (order.fat_inicio) setVal('AA5', new Date(order.fat_inicio));
         if (order.fat_fim) setVal('AH5', new Date(order.fat_fim));
+
+        // 4.1 LOJAS VINCULADAS (Sub-pedidos) - Linha 23
+        const subOrders = order.buy_order_sub_orders || [];
+        const LOJA_START_COL = 4; // D = coluna 4
+
+        subOrders.forEach((subOrder: any, idx: number) => {
+            const colIdx = LOJA_START_COL + idx;
+            
+            if (subOrder.loja_id) {
+                sheet.row(23).cell(colIdx).value(subOrder.loja_id);
+            }
+            
+            if (subOrder.lojas_numeros && Array.isArray(subOrder.lojas_numeros)) {
+                subOrder.lojas_numeros.forEach((loja: any, lojaIdx: number) => {
+                    const col = colIdx + lojaIdx;
+                    sheet.row(23).cell(col).value(Number(loja));
+                });
+            }
+        });
 
         // Números
         sheet.cell('Z6').value(Number(order.desconto || 0) / 100);
