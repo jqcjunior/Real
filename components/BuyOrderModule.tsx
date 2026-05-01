@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useRef, useCallback, Dispatch, SetStateAction } from 'react';
 import { Pencil, X, Download } from 'lucide-react';
-import * as XLSX from 'xlsx';
+import ExcelJS from 'exceljs';
 import { saveAs } from 'file-saver';
 import { toast } from 'sonner';
 import { supabase } from '../services/supabaseClient';
@@ -448,21 +448,15 @@ export default function BuyOrderModule({ user }: { user?: User }) {
     return data ?? '00000000-0000-0000-0000-000000000000';
   }
  
-  // ─── Exportar para Excel (CLIENT-SIDE) ───────────────────────────────────────
- 
+  // ─── Exportar para Excel (EXCELJS) ──────────────────────────────────────────
+
   async function handleExportExcel(orderId: string) {
-    console.log('🔵 [DEBUG] BuyOrderModule: handleExportExcel INICIADA');
-    console.log('🔵 [DEBUG] OrderId:', orderId);
-    
     if (exportando) return;
 
     try {
       setExportando(true);
-      const startTime = performance.now();
-      console.log(`[Export] Start - Order ID: ${orderId}`);
 
-      // 1. Fetch Order Data with relations
-      // buy_order_items.grades is a JSONB field: { "A": { "36": 2, ... }, "B": { ... } }
+      // 1. BUSCAR DADOS
       const { data: order, error: orderError } = await supabase
         .from('buy_orders')
         .select(`
@@ -474,118 +468,158 @@ export default function BuyOrderModule({ user }: { user?: User }) {
         .single();
 
       if (orderError) throw orderError;
-      if (!order) throw new Error('Pedido não encontrado no banco de dados.');
+      if (!order) throw new Error('Pedido não encontrado');
 
-      // 2. Fetch Template using public URL
+      // 2. BAIXAR TEMPLATE
       const TEMPLATE_URL = 'https://rwwomakjhmglgoowbmsl.supabase.co/storage/v1/object/public/template/buy_order_template.xlsx';
-      console.log('[Export] Downloading template...');
+      
+      console.log('📥 Baixando template de:', TEMPLATE_URL);
       
       const response = await fetch(TEMPLATE_URL);
-      if (!response.ok) throw new Error(`Falha ao baixar template: ${response.statusText}`);
       
-      const templateBuffer = await response.arrayBuffer();
+      console.log('📊 Status:', response.status);
+      console.log('📊 Headers:', response.headers.get('content-type'));
+      console.log('📊 Content-Length:', response.headers.get('content-length'));
+      
+      if (!response.ok) {
+        throw new Error(`Erro ao baixar template: ${response.status} ${response.statusText}`);
+      }
+      
+      const arrayBuffer = await response.arrayBuffer();
+      const bufferSize = arrayBuffer.byteLength;
+      
+      console.log('✅ Template baixado:', bufferSize, 'bytes');
+      
+      if (bufferSize < 10000) {
+        throw new Error(`Template muito pequeno (${bufferSize} bytes). Arquivo corrompido?`);
+      }
 
-      // 3. Initialize Workbook
-      const workbook = XLSX.read(templateBuffer, { type: 'array' });
-      const wsName = 'PEDIDO';
-      const worksheet = workbook.Sheets[wsName] || workbook.Sheets[workbook.SheetNames[0]];
+      // 3. LER COM EXCELJS (PRESERVA CÉLULAS MESCLADAS!)
+      const workbook = new ExcelJS.Workbook();
+      await workbook.xlsx.load(arrayBuffer);
+      
+      console.log('📋 Abas no template:', workbook.worksheets.map(ws => ws.name));
+      
+      const worksheet = workbook.getWorksheet('PEDIDO');
+      if (!worksheet) throw new Error('Aba PEDIDO não encontrada');
+      
+      console.log('✅ Worksheet PEDIDO carregado');
+      console.log('📏 Dimensões:', worksheet.rowCount, 'linhas');
 
-      if (!worksheet) throw new Error('Aba PEDIDO não localizada no template.');
+      // 4. PREENCHER CABEÇALHO
+      worksheet.getCell('N2').value = order.numero_pedido || '';
+      worksheet.getCell('AA2').value = (order.user_name || '').toUpperCase();
+      worksheet.getCell('AN2').value = new Date(order.created_at);
 
-      // Atomic cell writer
-      const write = (cell: string, val: any, type: XLSX.ExcelDataType = 's') => {
-        if (val === null || val === undefined) return;
-        if (!worksheet[cell]) worksheet[cell] = { t: type, v: '' };
-        worksheet[cell].v = val;
-        worksheet[cell].t = type;
-      };
+      worksheet.getCell('N3').value = (order.marca || '').toUpperCase();
+      worksheet.getCell('AA3').value = (order.representante || '').toUpperCase();
+      
+      // CORREÇÃO: Usar fallback telefone se telefone_representante for null
+      worksheet.getCell('AN3').value = order.telefone_representante || order.telefone || '';
 
-      // 4. Header Mapping
-      console.log('[Export] Filling header...');
-      write('N2', order.numero_pedido || '', 's');
-      write('AA2', (order.user_name || '').toUpperCase(), 's');
-      write('AN2', new Date(order.created_at).toLocaleDateString('pt-BR'), 's');
-
-      write('N3', (order.marca || '').toUpperCase(), 's');
-      write('AA3', (order.representante || '').toUpperCase(), 's');
-      write('AN3', order.telefone_representante || '', 's');
-
-      write('N4', (order.fornecedor || '').toUpperCase(), 's');
-      write('AA4', (order.email_representante || '').toLowerCase(), 's');
+      worksheet.getCell('N4').value = (order.fornecedor || '').toUpperCase();
+      
+      // CORREÇÃO: Usar fallback email se email_representante for null
+      worksheet.getCell('AA4').value = (order.email_representante || order.email || '').toLowerCase();
 
       const prazos = Array.isArray(order.prazos) ? order.prazos.join('/') : order.prazos;
-      write('N5', prazos || '', 's');
+      worksheet.getCell('N5').value = prazos || '';
       
-      if (order.fat_inicio) write('AA5', new Date(order.fat_inicio).toLocaleDateString('pt-BR'), 's');
-      if (order.fat_fim) write('AH5', new Date(order.fat_fim).toLocaleDateString('pt-BR'), 's');
+      if (order.fat_inicio) {
+        worksheet.getCell('AA5').value = new Date(order.fat_inicio);
+      }
+      
+      if (order.fat_fim) {
+        worksheet.getCell('AH5').value = new Date(order.fat_fim);
+      }
 
-      write('Z6', (Number(order.desconto || 0) / 100), 'n');
-      write('AF6', Number(order.markup || 0), 'n');
+      worksheet.getCell('Z6').value = Number(order.desconto || 0) / 100;
+      worksheet.getCell('AF6').value = Number(order.markup || 0);
 
-      // 5. Item Processing
-      console.log('[Export] Processing items...');
+      // 5. PREENCHER ITENS
       const items = order.buy_order_items || [];
       const START_ROW = 36;
-      
-      const GRADE_MAP: Record<string, number> = { A: 14, B: 15, C: 16, D: 17, E: 18, F: 19 };
-      const COL_MAP: Record<string, number> = {
-        '20': 11, '21': 12, '22': 13, '23': 14, '24': 15, '25': 16, '26': 17, '27': 18,
-        '28': 19, '29': 20, '30': 21, '31': 22, '32': 23, '33': 24, '34': 25, '35': 26,
-        '36': 27, '37': 28, '38': 29, '39': 30, '40': 31, '41': 32, '42': 33, '43': 34, '44': 35
-      };
 
       items.forEach((item: any, idx: number) => {
         const row = START_ROW + idx;
-        if (row > 500) return; 
 
-        write(`C${row}`, (item.referencia || '').toUpperCase(), 's');
-        write(`H${row}`, (item.tipo || '').toUpperCase(), 's');
-        write(`R${row}`, (item.cor1 || '').toUpperCase(), 's');
-        write(`U${row}`, (item.modelo || item.tipo_footwear || '').toUpperCase(), 's');
-        write(`AL${row}`, Number(item.custo || 0), 'n');
-        write(`AO${row}`, Number(item.preco_venda || 0), 'n');
+        worksheet.getCell(`C${row}`).value = (item.referencia || '').toUpperCase();
+        worksheet.getCell(`H${row}`).value = (item.tipo || '').toUpperCase();
+        worksheet.getCell(`R${row}`).value = (item.cor1 || '').toUpperCase();
+        worksheet.getCell(`U${row}`).value = (item.modelo || item.tipo_footwear || '').toUpperCase();
+        worksheet.getCell(`AL${row}`).value = Number(item.custo || 0);
+        worksheet.getCell(`AO${row}`).value = Number(item.preco_venda || 0);
 
-        // Logic for Grade letters and quantities from JSONB
-        const gradesJson = item.grades || {}; 
-        const gradeKeys = Object.keys(gradesJson);
+        // CORREÇÃO: grades é ARRAY [{ letra, tamanhos }]
+        const gradesArray = item.grades || [];
         
-        if (gradeKeys.length > 0) {
-          const firstLetter = gradeKeys[0]; // Usually 'A'
-          write(`X${row}`, firstLetter, 's');
-          
-          const gRow = GRADE_MAP[firstLetter];
-          const tamanhos = gradesJson[firstLetter];
-          
-          if (gRow && tamanhos) {
-            Object.entries(tamanhos).forEach(([tam, qtd]) => {
-              const colIdx = COL_MAP[tam];
-              if (colIdx !== undefined) {
-                const addr = XLSX.utils.encode_cell({ r: gRow - 1, c: colIdx });
-                if (!worksheet[addr]) worksheet[addr] = { t: 'n', v: 0 };
-                worksheet[addr].v = Number(qtd);
-                worksheet[addr].t = 'n';
-              }
-            });
-          }
+        if (Array.isArray(gradesArray) && gradesArray.length > 0) {
+          const firstGrade = gradesArray[0];
+          worksheet.getCell(`X${row}`).value = firstGrade.letra || '';
         }
       });
 
-      // 6. Generate and Download
-      const out = XLSX.write(workbook, { bookType: 'xlsx', type: 'array' });
-      const blob = new Blob([out], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' });
-      saveAs(blob, `Pedido_${order.numero_pedido || 'Export'}_${new Date().getTime()}.xlsx`);
-
-      // 7. Metadata Update
-      await supabase.from('buy_orders').update({ exported_at: new Date().toISOString() }).eq('id', orderId);
+      // 6. PREENCHER GRADES (TABELA DE QUANTIDADES)
+      const GRADE_MAP: Record<string, number> = { 
+        A: 14, B: 15, C: 16, D: 17, E: 18, F: 19, G: 20 
+      };
       
-      const duration = (performance.now() - startTime).toFixed(2);
-      console.log(`[Export] Success in ${duration}ms`);
-      toast.success('Excel exportado!');
+      const COL_MAP: Record<string, number> = {
+        '20': 12, '21': 13, '22': 14, '23': 15, '24': 16, '25': 17, 
+        '26': 18, '27': 19, '28': 20, '29': 21, '30': 22, '31': 23, 
+        '32': 24, '33': 25, '34': 26, '35': 27, '36': 28, '37': 29, 
+        '38': 30, '39': 31, '40': 32, '41': 33, '42': 34, '43': 35, '44': 36
+      };
+
+      // CORREÇÃO: Iterar corretamente sobre o array de grades
+      items.forEach((item: any) => {
+        const gradesArray = item.grades || [];
+        
+        if (!Array.isArray(gradesArray)) return;
+
+        gradesArray.forEach((gradeObj: any) => {
+          const letra = gradeObj.letra;
+          const tamanhos = gradeObj.tamanhos || {};
+          
+          const rowNum = GRADE_MAP[letra];
+          if (!rowNum) return;
+
+          Object.entries(tamanhos).forEach(([tamanho, qtd]: any) => {
+            const colNum = COL_MAP[tamanho];
+            if (!colNum) return;
+
+            const cell = worksheet.getCell(rowNum, colNum);
+            cell.value = Number(qtd);
+          });
+        });
+      });
+
+      // 7. GERAR ARQUIVO (EXCELJS PRESERVA TUDO!)
+      const buffer = await workbook.xlsx.writeBuffer();
+
+      const blob = new Blob([buffer], {
+        type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+      });
+
+      const url = window.URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = `Pedido_${order.numero_pedido || orderId}_${Date.now()}.xlsx`;
+      a.click();
+      window.URL.revokeObjectURL(url);
+
+      // 8. ATUALIZAR STATUS NO BANCO
+      await supabase
+        .from('buy_orders')
+        .update({ exported_at: new Date().toISOString() })
+        .eq('id', orderId);
+
+      toast.success('✅ Pedido exportado com sucesso!');
       fetchRecentOrders();
 
     } catch (err: any) {
-      console.error('[Export] Fatal Error:', err);
-      toast.error(`Falha na exportação: ${err.message}`);
+      console.error('Erro ao exportar:', err);
+      toast.error(`❌ Erro: ${err.message}`);
     } finally {
       setExportando(false);
     }
