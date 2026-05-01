@@ -189,7 +189,12 @@ export async function exportBuyOrderToExcel(orderId: string) {
 
         // 8. GERAR O BUFFER DE SAÍDA
         console.log('[Export] Gerando buffer de saída...');
-        return await workbook.outputAsync();
+        const buffer = await workbook.outputAsync();
+
+        return {
+            buffer,
+            numeroPedido: order.numero_pedido
+        };
 
     } catch (err) {
         console.error('[Export] Erro fatal no serviço de exportação:', err);

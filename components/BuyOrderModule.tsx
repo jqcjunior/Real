@@ -1,8 +1,8 @@
 import React, { useState, useEffect, useRef, useCallback, Dispatch, SetStateAction } from 'react';
-import { Pencil, X, Download } from 'lucide-react';
+import { Pencil, X, Download, RefreshCw } from 'lucide-react';
 import { toast } from 'sonner';
 import { supabase } from '../services/supabaseClient';
-import { User } from '../types';
+import { User, UserRole } from '../types';
 import { 
   insertBuyOrderItems, 
   fetchPreviousPrice, 
@@ -99,7 +99,11 @@ export default function BuyOrderModule({ user }: { user?: User }) {
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState('');
   const [numeroPedidoSalvo, setNumeroPedidoSalvo] = useState<number | null>(null);
-  const [exportando, setExportando] = useState(false);
+  const [exportando, setExportando] = useState<string | null>(null);
+  const [searchTerm, setSearchTerm] = useState('');
+  const [selectedLoja, setSelectedLoja] = useState<number | null>(null);
+  const [limitPedidos, setLimitPedidos] = useState(5);
+  const [totalPedidos, setTotalPedidos] = useState(0);
   const [roundBase, setRoundBase] = useState(15.50);
 
   const [step2State, setStep2State] = useState({
@@ -140,13 +144,57 @@ export default function BuyOrderModule({ user }: { user?: User }) {
   );
 
   const fetchRecentOrders = useCallback(async () => {
-    const { data } = await supabase
-      .from('buy_orders')
-      .select('*')
-      .order('created_at', { ascending: false })
-      .limit(10);
-    setRecentOrders(data || []);
-  }, []);
+    try {
+      // 1. Buscar pedidos base
+      let query = supabase
+        .from('buy_orders')
+        .select('*, buy_order_sub_orders(lojas_numeros)', { count: 'exact' })
+        .order('created_at', { ascending: false });
+      
+      // 2. Aplicar busca por texto
+      if (searchTerm.trim()) {
+        query = query.or(`numero_pedido.eq.${searchTerm},marca.ilike.%${searchTerm}%,fornecedor.ilike.%${searchTerm}%`);
+      }
+      
+      // 3. Limitar quantidade
+      query = query.limit(limitPedidos);
+      
+      const { data, count, error } = await query;
+      
+      if (error) throw error;
+      
+      let filteredData = data || [];
+      
+      // 4. Filtrar por loja se necessário
+      const userStoreId = user?.storeId;
+      const isAdmin = user?.role === UserRole.ADMIN;
+      
+      if (!isAdmin && userStoreId) {
+        // Gerente: filtrar apenas pedidos que incluem sua loja
+        filteredData = filteredData.filter(order => {
+          const subOrders = order.buy_order_sub_orders || [];
+          return subOrders.some((sub: any) => 
+            sub.lojas_numeros?.includes(userStoreId)
+          );
+        });
+      } else if (isAdmin && selectedLoja) {
+        // Admin com filtro de loja selecionado
+        filteredData = filteredData.filter(order => {
+          const subOrders = order.buy_order_sub_orders || [];
+          return subOrders.some((sub: any) => 
+            sub.lojas_numeros?.includes(selectedLoja)
+          );
+        });
+      }
+      
+      setRecentOrders(filteredData);
+      setTotalPedidos(count || 0);
+      
+    } catch (error) {
+      console.error('Erro ao buscar pedidos:', error);
+      toast.error('Erro ao carregar pedidos');
+    }
+  }, [searchTerm, selectedLoja, limitPedidos, user]);
  
   useEffect(() => {
     fetchRecentOrders();
@@ -449,10 +497,10 @@ export default function BuyOrderModule({ user }: { user?: User }) {
   // ─── Exportar para Excel (EXCELJS) ──────────────────────────────────────────
 
   async function handleExportExcel(orderId: string) {
-    if (exportando) return;
+    if (exportando === orderId) return;
 
     try {
-        setExportando(true);
+        setExportando(orderId);
 
         // Chamar backend
         const response = await fetch('/api/export-buy-order', {
@@ -466,12 +514,23 @@ export default function BuyOrderModule({ user }: { user?: User }) {
             throw new Error(error.error || 'Erro ao exportar');
         }
 
+        // Obter nome do arquivo do header (se houver) ou criar padrão
+        let fileName = `Pedido_${Date.now()}.xlsx`;
+        const disposition = response.headers.get('content-disposition');
+        if (disposition && disposition.indexOf('attachment') !== -1) {
+            const filenameRegex = /filename[^;=\n]*=((['"]).*?\2|[^;\n]*)/;
+            const matches = filenameRegex.exec(disposition);
+            if (matches != null && matches[1]) {
+                fileName = matches[1].replace(/['"]/g, '');
+            }
+        }
+
         // Download do arquivo
         const blob = await response.blob();
         const url = window.URL.createObjectURL(blob);
         const a = document.createElement('a');
         a.href = url;
-        a.download = `Pedido_${Date.now()}.xlsx`;
+        a.download = fileName;
         a.click();
         window.URL.revokeObjectURL(url);
 
@@ -482,7 +541,7 @@ export default function BuyOrderModule({ user }: { user?: User }) {
         console.error('Erro:', err);
         toast.error(`❌ ${err.message}`);
     } finally {
-        setExportando(false);
+        setExportando(null);
     }
   }
  
@@ -558,71 +617,198 @@ export default function BuyOrderModule({ user }: { user?: User }) {
  
       {/* Lista de Pedidos Recentes */}
       <div style={{ marginTop: 24, background: '#fff', border: '0.5px solid #e5e7eb', borderRadius: 10, overflow: 'hidden' }}>
-        <div style={{ padding: '11px 18px', borderBottom: '0.5px solid #e5e7eb', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-          <span style={{ fontSize: 13, fontWeight: 600, color: '#374151', textTransform: 'uppercase', letterSpacing: '0.05em' }}>Pedidos Recentes</span>
-          <button onClick={fetchRecentOrders} style={{ background: 'none', border: 'none', color: '#185FA5', fontSize: 11, cursor: 'pointer', fontWeight: 500 }}>Atualizar</button>
+        
+        {/* Cabeçalho com filtros */}
+        <div style={{ padding: '16px 18px', borderBottom: '0.5px solid #e5e7eb' }}>
+          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 12 }}>
+            <span style={{ fontSize: 13, fontWeight: 600, color: '#374151', textTransform: 'uppercase', letterSpacing: '0.05em' }}>
+              Pedidos Recentes ({recentOrders.length})
+            </span>
+            <button 
+              onClick={fetchRecentOrders} 
+              style={{ 
+                background: 'none', 
+                border: 'none', 
+                color: '#185FA5', 
+                fontSize: 11, 
+                cursor: 'pointer', 
+                fontWeight: 500,
+                display: 'flex',
+                alignItems: 'center',
+                gap: 4
+              }}
+            >
+              <RefreshCw size={12} />
+              Atualizar
+            </button>
+          </div>
+          
+          {/* Filtros */}
+          <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+            {/* Busca */}
+            <input
+              type="text"
+              placeholder="Buscar por nº, marca ou fornecedor..."
+              value={searchTerm}
+              onChange={(e) => setSearchTerm(e.target.value)}
+              style={{
+                flex: 1,
+                minWidth: 200,
+                padding: '6px 10px',
+                border: '1px solid #d1d5db',
+                borderRadius: 6,
+                fontSize: 11
+              }}
+            />
+            
+            {/* Filtro de loja (só para admin) */}
+            {user?.role === UserRole.ADMIN && (
+              <select
+                value={selectedLoja || ''}
+                onChange={(e) => setSelectedLoja(e.target.value ? Number(e.target.value) : null)}
+                style={{
+                  padding: '6px 10px',
+                  border: '1px solid #d1d5db',
+                  borderRadius: 6,
+                  fontSize: 11,
+                  minWidth: 120
+                }}
+              >
+                <option value="">Todas as lojas</option>
+                <option value="5">Loja 05</option>
+                <option value="8">Loja 08</option>
+                <option value="26">Loja 26</option>
+                <option value="102">Loja 102</option>
+                <option value="109">Loja 109</option>
+                {/* Adicionar mais lojas conforme necessário */}
+              </select>
+            )}
+            
+            {/* Info para gerente */}
+            {user?.role !== UserRole.ADMIN && user?.storeId && (
+              <span style={{ 
+                padding: '6px 10px', 
+                background: '#f3f4f6', 
+                borderRadius: 6, 
+                fontSize: 10,
+                color: '#6b7280'
+              }}>
+                📍 Loja {user.storeId}
+              </span>
+            )}
+          </div>
         </div>
+        
+        {/* Tabela */}
         <div style={{ overflowX: 'auto' }}>
           <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 11 }}>
             <thead>
               <tr style={{ background: '#f9fafb' }}>
                 <th style={{ padding: '8px 12px', textAlign: 'left', fontWeight: 600, color: '#6b7280', borderBottom: '0.5px solid #e5e7eb' }}>Data/Marca</th>
                 <th style={{ padding: '8px 12px', textAlign: 'left', fontWeight: 600, color: '#6b7280', borderBottom: '0.5px solid #e5e7eb' }}>Número</th>
+                <th style={{ padding: '8px 12px', textAlign: 'left', fontWeight: 600, color: '#6b7280', borderBottom: '0.5px solid #e5e7eb' }}>Lojas</th>
                 <th style={{ padding: '8px 12px', textAlign: 'left', fontWeight: 600, color: '#6b7280', borderBottom: '0.5px solid #e5e7eb' }}>Status</th>
                 <th style={{ padding: '8px 12px', textAlign: 'right', fontWeight: 600, color: '#6b7280', borderBottom: '0.5px solid #e5e7eb' }}>Ação</th>
               </tr>
             </thead>
             <tbody>
               {recentOrders.length === 0 && (
-                <tr><td colSpan={4} style={{ padding: '20px', textAlign: 'center', color: '#9ca3af' }}>Nenhum pedido encontrado.</td></tr>
+                <tr><td colSpan={5} style={{ padding: '20px', textAlign: 'center', color: '#9ca3af' }}>
+                  {searchTerm ? 'Nenhum pedido encontrado com esse filtro.' : 'Nenhum pedido encontrado.'}
+                </td></tr>
               )}
-              {recentOrders.map((o) => (
-                <tr key={o.id} style={{ borderBottom: '0.5px solid #f3f4f6' }}>
-                  <td style={{ padding: '10px 12px' }}>
-                    <div style={{ fontWeight: 600, color: '#111' }}>{o.marca}</div>
-                    <div style={{ fontSize: 10, color: '#9ca3af' }}>{new Date(o.created_at).toLocaleDateString('pt-BR')}</div>
-                  </td>
-                  <td style={{ padding: '10px 12px', color: '#6b7280' }}>
-                    {o.numero_pedido || '—'}
-                  </td>
-                  <td style={{ padding: '10px 12px' }}>
-                    {o.exported_at ? (
-                      <span style={{ fontSize: 9, color: '#27500A', background: '#EAF3DE', padding: '2px 6px', borderRadius: 10, border: '0.5px solid #C0DD97' }}>Exportado</span>
-                    ) : (
-                      <span style={{ fontSize: 9, color: '#b45309', background: '#fffbeb', padding: '2px 6px', borderRadius: 10, border: '0.5px solid #fde68a' }}>Pendente</span>
-                    )}
-                  </td>
-                  <td style={{ padding: '10px 12px', textAlign: 'right' }}>
-                    <button 
-                      onClick={() => {
-                        console.log('🟡 [DEBUG] Clique detectado no botão Exportar!');
-                        handleExportExcel(o.id);
-                      }}
-                      disabled={exportando}
-                      style={{ 
-                        height: 24, 
-                        padding: '0 10px', 
-                        background: exportando ? '#94a3b8' : '#185FA5', 
-                        color: '#fff', 
-                        border: 'none', 
-                        borderRadius: 4, 
-                        fontSize: 10, 
-                        fontWeight: 600, 
-                        cursor: exportando ? 'not-allowed' : 'pointer',
-                        display: 'flex',
-                        alignItems: 'center',
-                        gap: 4
-                      }}
-                    >
-                      {exportando ? '...' : <Download size={12} />}
-                      {exportando ? 'Exportando' : 'Exportar XLSX'}
-                    </button>
-                  </td>
-                </tr>
-              ))}
+              {recentOrders.map((o) => {
+                // Extrair lojas do pedido
+                const subOrders = o.buy_order_sub_orders || [];
+                const todasLojas = subOrders.flatMap((sub: any) => sub.lojas_numeros || []) as number[];
+                const lojasUnicas = [...new Set(todasLojas)].sort((a, b) => a - b);
+                
+                return (
+                  <tr key={o.id} style={{ borderBottom: '0.5px solid #f3f4f6' }}>
+                    <td style={{ padding: '10px 12px' }}>
+                      <div style={{ fontWeight: 600, color: '#111' }}>{o.marca}</div>
+                      <div style={{ fontSize: 10, color: '#9ca3af' }}>{new Date(o.created_at).toLocaleDateString('pt-BR')}</div>
+                    </td>
+                    <td style={{ padding: '10px 12px', color: '#6b7280', fontWeight: 600 }}>
+                      #{o.numero_pedido || '—'}
+                    </td>
+                    <td style={{ padding: '10px 12px' }}>
+                      <div style={{ display: 'flex', gap: 4, flexWrap: 'wrap' }}>
+                        {lojasUnicas.length > 0 ? (
+                          lojasUnicas.map(loja => (
+                            <span key={loja} style={{ 
+                              fontSize: 9, 
+                              color: '#374151', 
+                              background: '#f3f4f6', 
+                              padding: '2px 6px', 
+                              borderRadius: 4,
+                              border: '0.5px solid #d1d5db'
+                            }}>
+                              {loja}
+                            </span>
+                          ))
+                        ) : (
+                          <span style={{ fontSize: 10, color: '#9ca3af' }}>—</span>
+                        )}
+                      </div>
+                    </td>
+                    <td style={{ padding: '10px 12px' }}>
+                      {o.exported_at ? (
+                        <span style={{ fontSize: 9, color: '#27500A', background: '#EAF3DE', padding: '2px 6px', borderRadius: 10, border: '0.5px solid #C0DD97' }}>Exportado</span>
+                      ) : (
+                        <span style={{ fontSize: 9, color: '#b45309', background: '#fffbeb', padding: '2px 6px', borderRadius: 10, border: '0.5px solid #fde68a' }}>Pendente</span>
+                      )}
+                    </td>
+                    <td style={{ padding: '10px 12px', textAlign: 'right' }}>
+                      <button 
+                        onClick={() => handleExportExcel(o.id)}
+                        disabled={exportando === o.id}
+                        style={{ 
+                          height: 24, 
+                          padding: '0 10px', 
+                          background: exportando === o.id ? '#94a3b8' : '#185FA5', 
+                          color: '#fff', 
+                          border: 'none', 
+                          borderRadius: 4, 
+                          fontSize: 10, 
+                          fontWeight: 600, 
+                          cursor: exportando === o.id ? 'not-allowed' : 'pointer',
+                          display: 'flex',
+                          alignItems: 'center',
+                          gap: 4
+                        }}
+                      >
+                        {exportando === o.id ? '...' : <Download size={12} />}
+                        {exportando === o.id ? 'Exportando' : 'Exportar'}
+                      </button>
+                    </td>
+                  </tr>
+                );
+              })}
             </tbody>
           </table>
         </div>
+        
+        {/* Botão Ver Mais */}
+        {recentOrders.length >= limitPedidos && (
+          <div style={{ padding: 12, textAlign: 'center', borderTop: '0.5px solid #e5e7eb' }}>
+            <button
+              onClick={() => setLimitPedidos(prev => prev + 10)}
+              style={{
+                padding: '6px 16px',
+                background: '#f3f4f6',
+                border: '1px solid #d1d5db',
+                borderRadius: 6,
+                fontSize: 11,
+                fontWeight: 500,
+                cursor: 'pointer',
+                color: '#374151'
+              }}
+            >
+              Ver mais 10 pedidos
+            </button>
+          </div>
+        )}
       </div>
     </div>
   );

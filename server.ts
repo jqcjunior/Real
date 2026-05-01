@@ -40,14 +40,14 @@ async function startServer() {
 
       console.log(`📦 Exportando pedido: ${orderId}`);
 
-      // Gerar Excel usando o serviço XLSX (SheetJS)
-      const excelBuffer = await exportBuyOrderToExcel(orderId);
+      // Gerar Excel usando o serviço atualizado
+      const result = await exportBuyOrderToExcel(orderId);
 
-      const fileName = `Pedido_${orderId}.xlsx`;
+      const fileName = `Pedido_${result.numeroPedido || orderId}.xlsx`;
       
       // Armazena no cache para download direto (evita problemas de Blob em iFrame)
       const id = Math.random().toString(36).substring(2, 15);
-      fileCache.set(id, { buffer: excelBuffer as Buffer, fileName, timestamp: Date.now() });
+      fileCache.set(id, { buffer: result.buffer as Buffer, fileName, timestamp: Date.now() });
 
       res.json({ success: true, downloadId: id });
 
@@ -68,11 +68,13 @@ async function startServer() {
             return res.status(400).json({ error: 'orderId obrigatório' });
         }
 
-        const buffer = await exportBuyOrderToExcel(orderId);
+        const result = await exportBuyOrderToExcel(orderId);
+        
+        const filename = `Pedido_${result.numeroPedido || 'Export'}_${Date.now()}.xlsx`;
         
         res.setHeader('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
-        res.setHeader('Content-Disposition', `attachment; filename="Pedido_${Date.now()}.xlsx"`);
-        res.send(Buffer.from(buffer as ArrayBuffer));
+        res.setHeader('Content-Disposition', `attachment; filename="${filename}"`);
+        res.send(Buffer.from(result.buffer as ArrayBuffer));
         
     } catch (error: any) {
         console.error('Erro ao exportar:', error);
