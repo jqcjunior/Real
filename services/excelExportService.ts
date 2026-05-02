@@ -78,38 +78,59 @@ export async function exportBuyOrderToExcel(orderId: string) {
         setVal('N4', (order.fornecedor || '').toUpperCase());
         setVal('AA4', (order.email_representante || order.email || '').toLowerCase());
 
-        // PRAZOS - Cada prazo em sua coluna (N5, Q5, T5)
+        // ✅ CORREÇÃO 1: PRAZOS E VENCIMENTOS - Cada prazo em sua coluna (N5, Q5, T5) e vencimentos (N6, Q6, T6)
         const prazosArray = Array.isArray(order.prazos) 
             ? order.prazos 
             : (order.prazos || '').toString().split(/[\/,;\s]+/).filter(Boolean);
 
+        const vencimentosArray = Array.isArray(order.vencimentos) 
+            ? order.vencimentos 
+            : [];
+
         const PRAZO_COLS = ['N', 'Q', 'T']; 
+        const MESES = ['jan', 'fev', 'mar', 'abr', 'mai', 'jun', 'jul', 'ago', 'set', 'out', 'nov', 'dez'];
 
         prazosArray.forEach((prazo: any, idx: number) => {
             if (idx < PRAZO_COLS.length) {
                 const col = PRAZO_COLS[idx];
+                // Preencher prazo (linha 5)
                 sheet.cell(`${col}5`).value(Number(prazo) || 0);
+                
+                // Preencher vencimento (linha 6) no formato "mmm/aa"
+                if (vencimentosArray[idx]) {
+                    const vencDate = new Date(vencimentosArray[idx]);
+                    const mes = MESES[vencDate.getMonth()];
+                    const ano = vencDate.getFullYear().toString().slice(-2);
+                    sheet.cell(`${col}6`).value(`${mes}/${ano}`);
+                }
             }
         });
         
         if (order.fat_inicio) setVal('AA5', new Date(order.fat_inicio));
         if (order.fat_fim) setVal('AH5', new Date(order.fat_fim));
 
-        // 4.1 LOJAS VINCULADAS (Sub-pedidos) - Linha 23
+        // ✅ CORREÇÃO 2: LOJAS VINCULADAS POR SUB-PEDIDO
+        // Cada sub-pedido (1 a 5) ocupa uma linha (23 a 27)
+        // Cada loja do sub-pedido ocupa uma coluna a partir da D (coluna 4)
         const subOrders = order.buy_order_sub_orders || [];
-        const LOJA_START_COL = 4; // D = coluna 4
 
-        subOrders.forEach((subOrder: any, idx: number) => {
-            const colIdx = LOJA_START_COL + idx;
+        subOrders.forEach((subOrder: any, subIdx: number) => {
+            // Linha do sub-pedido: 23 para pedido 1, 24 para pedido 2, etc.
+            const rowNum = 23 + subIdx;
             
-            if (subOrder.loja_id) {
-                sheet.row(23).cell(colIdx).value(subOrder.loja_id);
-            }
+            // Máximo de 5 sub-pedidos (linhas 23-27)
+            if (subIdx >= 5) return;
             
-            if (subOrder.lojas_numeros && Array.isArray(subOrder.lojas_numeros)) {
-                subOrder.lojas_numeros.forEach((loja: any, lojaIdx: number) => {
-                    const col = colIdx + lojaIdx;
-                    sheet.row(23).cell(col).value(Number(loja));
+            // lojas_numeros é um array com os números das lojas
+            const lojasArray = subOrder.lojas_numeros || [];
+            
+            if (Array.isArray(lojasArray)) {
+                lojasArray.forEach((lojaNum: any, lojaIdx: number) => {
+                    // Coluna D = 4, E = 5, F = 6, etc.
+                    const colNum = 4 + lojaIdx;
+                    
+                    // Preencher número da loja
+                    sheet.row(rowNum).cell(colNum).value(Number(lojaNum));
                 });
             }
         });

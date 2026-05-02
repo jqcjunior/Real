@@ -133,7 +133,24 @@ interface StepPedidosProps {
   
 export default function StepPedidos({ items, pedidos, setPedidos, user, brandId, cab, step2State, setStep2State }: StepPedidosProps) {
   const isGerente = user?.role === 'MANAGER';
-  const userStoreId = user?.storeId ? parseInt(user.storeId) : null;
+  const [userStoreNumber, setUserStoreNumber] = useState<number | null>(null);
+
+  useEffect(() => {
+    async function fetchUserStoreNumber() {
+      if (user && user.role === 'MANAGER' && user.storeId) {
+        const { data } = await supabase
+          .from('stores')
+          .select('number')
+          .eq('id', user.storeId)
+          .single();
+        
+        if (data?.number) {
+          setUserStoreNumber(parseInt(data.number));
+        }
+      }
+    }
+    fetchUserStoreNumber();
+  }, [user]);
   
   const {
     selectedItems,
@@ -384,7 +401,7 @@ export default function StepPedidos({ items, pedidos, setPedidos, user, brandId,
       return;
     }
  
-    const lojasParaPedido = isGerente && userStoreId ? [userStoreId] : selectedLojas;
+    const lojasParaPedido = isGerente && userStoreNumber ? [userStoreNumber] : selectedLojas;
     const numeroPedido = gerarNumeroPedido();
  
     setPedidos(ps => [...ps, {
@@ -489,7 +506,7 @@ export default function StepPedidos({ items, pedidos, setPedidos, user, brandId,
  
   const totaisPedidoTemp = calcPedidoTotals(
     { itensComGrades: tempPedidoItens }, 
-    isGerente && userStoreId ? [userStoreId] : selectedLojas
+    isGerente && userStoreNumber ? [userStoreNumber] : selectedLojas
   );
  
   return (
@@ -888,10 +905,10 @@ export default function StepPedidos({ items, pedidos, setPedidos, user, brandId,
           </div>
   
           {/* Badge informativo para gerente */}
-          {isGerente && userStoreId && (
+          {isGerente && userStoreNumber && (
             <div className="mb-3 bg-blue-50 border border-blue-200 rounded-lg p-2 flex items-center gap-2">
               <div className="w-8 h-8 flex items-center justify-center bg-blue-600 text-white rounded font-bold text-sm">
-                {userStoreId}
+                {userStoreNumber}
               </div>
               <div className="flex-1">
                 <div className="text-[10px] font-bold text-blue-900">Sua Loja</div>

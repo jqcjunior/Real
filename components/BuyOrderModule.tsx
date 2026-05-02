@@ -98,6 +98,24 @@ export default function BuyOrderModule({ user }: { user?: User }) {
   const [pedidos, setPedidos] = useState<SubOrder[]>([]);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState('');
+  const [userStoreNumber, setUserStoreNumber] = useState<number | null>(null);
+
+  useEffect(() => {
+    async function fetchUserStoreNumber() {
+      if (user && user.role !== UserRole.ADMIN && user.storeId) {
+        const { data } = await supabase
+          .from('stores')
+          .select('number')
+          .eq('id', user.storeId)
+          .single();
+        
+        if (data?.number) {
+          setUserStoreNumber(parseInt(data.number));
+        }
+      }
+    }
+    fetchUserStoreNumber();
+  }, [user]);
   const [numeroPedidoSalvo, setNumeroPedidoSalvo] = useState<number | null>(null);
   const [exportando, setExportando] = useState<string | null>(null);
   const [searchTerm, setSearchTerm] = useState('');
@@ -166,15 +184,14 @@ export default function BuyOrderModule({ user }: { user?: User }) {
       let filteredData = data || [];
       
       // 4. Filtrar por loja se necessário
-      const userStoreId = user?.storeId;
       const isAdmin = user?.role === UserRole.ADMIN;
       
-      if (!isAdmin && userStoreId) {
+      if (!isAdmin && userStoreNumber) {
         // Gerente: filtrar apenas pedidos que incluem sua loja
         filteredData = filteredData.filter(order => {
           const subOrders = order.buy_order_sub_orders || [];
           return subOrders.some((sub: any) => 
-            sub.lojas_numeros?.includes(userStoreId)
+            sub.lojas_numeros?.includes(userStoreNumber)
           );
         });
       } else if (isAdmin && selectedLoja) {
@@ -194,7 +211,7 @@ export default function BuyOrderModule({ user }: { user?: User }) {
       console.error('Erro ao buscar pedidos:', error);
       toast.error('Erro ao carregar pedidos');
     }
-  }, [searchTerm, selectedLoja, limitPedidos, user]);
+  }, [searchTerm, selectedLoja, limitPedidos, user, userStoreNumber]);
  
   useEffect(() => {
     fetchRecentOrders();
@@ -685,7 +702,7 @@ export default function BuyOrderModule({ user }: { user?: User }) {
             )}
             
             {/* Info para gerente */}
-            {user?.role !== UserRole.ADMIN && user?.storeId && (
+            {user?.role !== UserRole.ADMIN && userStoreNumber && (
               <span style={{ 
                 padding: '6px 10px', 
                 background: '#f3f4f6', 
@@ -693,7 +710,7 @@ export default function BuyOrderModule({ user }: { user?: User }) {
                 fontSize: 10,
                 color: '#6b7280'
               }}>
-                📍 Loja {user.storeId}
+                📍 Loja {userStoreNumber}
               </span>
             )}
           </div>

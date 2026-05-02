@@ -41,6 +41,7 @@ interface BrandStat {
 
 export default function BuyOrderDashboard({ user }: { user: any }) {
   const [loading, setLoading] = useState(true);
+  const [userStoreNumber, setUserStoreNumber] = useState<number | null>(null);
   const [summary, setSummary] = useState<DashboardSummary | null>(null);
   const [typeStats, setTypeStats] = useState<TypeStat[]>([]);
   const [storeStats, setStoreStats] = useState<StoreStat[]>([]);
@@ -49,8 +50,30 @@ export default function BuyOrderDashboard({ user }: { user: any }) {
   const [expandedType, setExpandedType] = useState<string | null>(null);
 
   useEffect(() => {
+    async function fetchStoreNumber() {
+      if (!user?.storeId || user.role === 'ADMIN') {
+        setUserStoreNumber(null);
+        return;
+      }
+      
+      const { data } = await supabase
+        .from('stores')
+        .select('number')
+        .eq('id', user.storeId)
+        .single();
+      
+      if (data?.number) {
+        setUserStoreNumber(parseInt(data.number));
+        console.log('✅ Dashboard: Loja do gerente:', data.number);
+      }
+    }
+    
+    fetchStoreNumber();
+  }, [user]);
+
+  useEffect(() => {
     fetchData();
-  }, []);
+  }, [userStoreNumber]);
 
   const fetchData = async () => {
     setLoading(true);
@@ -97,6 +120,19 @@ export default function BuyOrderDashboard({ user }: { user: any }) {
 
       for (const order of (orders || [])) {
         const subOrders = order.buy_order_sub_orders || [];
+        
+        // ✅ FILTRAR: Se for gerente, pular pedidos que não incluem sua loja
+        if (user?.role !== 'ADMIN' && userStoreNumber) {
+          const incluiLoja = subOrders.some((sub: any) => 
+            sub.lojas_numeros?.includes(userStoreNumber)
+          );
+          
+          if (!incluiLoja) {
+            console.log('🔍 Pedido ignorado (não inclui loja', userStoreNumber, ')');
+            continue; // ← Pula este pedido
+          }
+        }
+        
         const numLojas = subOrders.reduce((acc, sub) => acc + (sub.lojas_numeros?.length || 0), 0);
         
         // Se não tem lojas, pula
@@ -192,7 +228,15 @@ export default function BuyOrderDashboard({ user }: { user: any }) {
         pares: agg.pares,
         valor: agg.valor,
         pedidos: agg.pedidos.size
-      })).sort((a, b) => Number(a.loja) - Number(b.loja));
+      }))
+      .filter(s => {
+        // ✅ FILTRAR: Se for gerente, mostrar apenas sua loja
+        if (user?.role !== 'ADMIN' && userStoreNumber) {
+          return parseInt(s.loja) === userStoreNumber;
+        }
+        return true; // Admin vê todas
+      })
+      .sort((a, b) => Number(a.loja) - Number(b.loja));
       setStoreStats(stStats);
 
       const brStats: BrandStat[] = Array.from(brandAgg.entries()).map(([marca, agg]) => ({
@@ -482,7 +526,7 @@ export default function BuyOrderDashboard({ user }: { user: any }) {
                 <StoreIcon size={18} /> Compras por Loja
               </h2>
               <span className="text-[10px] font-bold text-slate-400 dark:text-slate-500 bg-slate-200 dark:bg-slate-700 px-2 py-1 rounded">
-                18 Lojas
+                {user?.role === 'ADMIN' ? '18 Lojas' : '1 Loja'}
               </span>
             </div>
             <div className="overflow-auto flex-1 p-0">

@@ -14,9 +14,14 @@ export default function StockForecastDashboard({ user, stores }: { user: any; st
   useEffect(() => {
     if (stores && stores.length > 0 && !selectedStore) {
       if (user?.role === 'MANAGER' && user?.storeId) {
-        setSelectedStore(user.storeId.toString());
+        const userStore = stores.find(s => s.id === user.storeId);
+        if (userStore && userStore.number) {
+          setSelectedStore(userStore.number.toString());
+        } else {
+           setSelectedStore(user.storeId.toString()); // fallback maybe? but UUID will fail backend
+        }
       } else {
-        setSelectedStore(stores[0].number || stores[0].id.toString());
+        setSelectedStore(stores[0].number?.toString() || stores[0].id.toString());
       }
     }
   }, [stores, user]);

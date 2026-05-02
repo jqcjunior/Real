@@ -60,7 +60,7 @@ interface StoreItem {
 export default function BuyOrderQuotaView({ user }: { user: User }) {
   const [loading, setLoading] = useState(true);
   const [quotas, setQuotas] = useState<QuotaData[]>([]);
-  const [selectedStore, setSelectedStore] = useState<number>(Number(user.storeId) || 5);
+  const [selectedStore, setSelectedStore] = useState<number | null>(null);
   const [stores, setStores] = useState<StoreItem[]>([]);
   const [roleMode, setRoleMode] = useState<'COMPRADOR' | 'GERENTE'>(
     (user.role === UserRole.MANAGER) ? 'GERENTE' : 'COMPRADOR'
@@ -70,6 +70,27 @@ export default function BuyOrderQuotaView({ user }: { user: User }) {
   const [loadingDetails, setLoadingDetails] = useState<string | null>(null);
 
   const isAdmin = user.role === UserRole.ADMIN;
+
+  useEffect(() => {
+    async function fetchUserStoreNumber() {
+      if (user && user.role !== UserRole.ADMIN && user.storeId) {
+        const { data } = await supabase
+          .from('stores')
+          .select('number')
+          .eq('id', user.storeId)
+          .single();
+        
+        if (data?.number) {
+          setSelectedStore(parseInt(data.number));
+        } else {
+          setSelectedStore(5); // fallback
+        }
+      } else if (isAdmin) {
+        setSelectedStore(5); // default for admin
+      }
+    }
+    fetchUserStoreNumber();
+  }, [user, isAdmin]);
 
   // 1. Carregar Lojas (se admin)
   useEffect(() => {
@@ -90,6 +111,7 @@ export default function BuyOrderQuotaView({ user }: { user: User }) {
 
   // 2. Query Principal: Buscar Cotas Futuras
   const fetchQuotas = useCallback(async () => {
+    if (selectedStore === null) return;
     setLoading(true);
     try {
       const now = new Date();
