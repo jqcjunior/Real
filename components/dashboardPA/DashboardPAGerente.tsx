@@ -336,9 +336,20 @@ const DashboardPAGerente: React.FC<DashboardPAGerenteProps> = ({ user, store }) 
         const iPercItens   = colIdx('%');
         const iPercTotal   = colIdx('%');
 
-        const parseNum = (val: any): number => {
-          if (val === undefined || val === null || val === '') return 0;
-          return Number(String(val).replace(/\./g, '').replace(',', '.')) || 0;
+        const parseBR = (v: string | number | null | undefined): number => {
+          if (v === null || v === undefined || v === '' || v === '-') return 0;
+          const str = String(v).trim();
+          // Remove pontos de milhar, substitui vírgula decimal por ponto
+          return parseFloat(str.replace(/\./g, '').replace(',', '.')) || 0;
+        };
+
+        const formatPercent = (val: any) => {
+          if (val === undefined || val === null || val === '') return '0%';
+          const str = String(val).trim();
+          if (str.endsWith('%')) return str;
+          const n = Number(str.replace(',', '.'));
+          if (!isNaN(n)) return `${Math.round(n * 100)}%`;
+          return str + '%';
         };
 
         const mappedData = dataRows.map(row => {
@@ -356,20 +367,20 @@ const DashboardPAGerente: React.FC<DashboardPAGerenteProps> = ({ user, store }) 
             nome_vendedor:    partes ? partes[2].trim() : vendedor,
             dias_trabalhados: Number(row[iDias]  || 0),
             qtde_vendas:      Number(row[iVendas] || 0),
-            perc_vendas:      String(row[allPercentIdx[0]] || '0%'),
+            perc_vendas:      formatPercent(row[allPercentIdx[0]]),
             qtde_itens:       Number(row[iItens] || 0),
-            perc_itens:       String(row[allPercentIdx[1]] || '0%'),
-            pa:               parseNum(row[iPA]),
-            total_vendas:     parseNum(row[iTotalVenda]),
-            perc_total:       String(row[allPercentIdx[2]] || '0%'),
+            perc_itens:       formatPercent(row[allPercentIdx[1]]),
+            pa:               parseBR(row[iPA]),
+            total_vendas:     parseBR(row[iTotalVenda]),
+            perc_total:       formatPercent(row[allPercentIdx[2]]),
             trocas:           iTrocas >= 0 ? Number(row[iTrocas] || 0) : null,
-            bonus_baixados:   iBonus >= 0  ? parseNum(row[iBonus])  : null,
-            ticket_medio:     iTicket >= 0 ? parseNum(row[iTicket]) : null,
-            preco_medio:      iPreco >= 0  ? parseNum(row[iPreco])  : null,
-            total_vista:      iVista >= 0  ? parseNum(row[iVista])  : null,
-            perc_vista:       iVista >= 0  ? String(row[allPercentIdx[3]] || '0%') : null,
-            total_prazo:      iPrazo >= 0  ? parseNum(row[iPrazo])  : null,
-            perc_prazo:       iPrazo >= 0  ? String(row[allPercentIdx[4]] || '0%') : null,
+            bonus_baixados:   iBonus >= 0  ? parseBR(row[iBonus])  : null,
+            ticket_medio:     iTicket >= 0 ? parseBR(row[iTicket]) : null,
+            preco_medio:      iPreco >= 0  ? parseBR(row[iPreco])  : null,
+            total_vista:      iVista >= 0  ? parseBR(row[iVista])  : null,
+            perc_vista:       iVista >= 0  ? formatPercent(row[allPercentIdx[3]]) : null,
+            total_prazo:      iPrazo >= 0  ? parseBR(row[iPrazo])  : null,
+            perc_prazo:       iPrazo >= 0  ? formatPercent(row[allPercentIdx[4]]) : null,
           };
         }).filter(s =>
           s.nome_vendedor &&
