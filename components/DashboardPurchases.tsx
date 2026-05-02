@@ -1,5 +1,6 @@
 
 import React, { useState, useMemo, useRef } from 'react';
+import * as XLSX from 'xlsx';
 import { Store, ProductPerformance, User, AdminUser, PurchasingManagement } from '../types';
 import { formatCurrency } from '../constants';
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer, PieChart, Pie, Cell } from 'recharts';
@@ -122,7 +123,6 @@ const DashboardPurchases: React.FC<DashboardPurchasesProps> = ({ stores, data, m
   }, [currentData]);
 
   const handleProcessImport = async () => {
-      const XLSX = await import('xlsx');
       if (!selectedFile) return;
       setIsProcessing(true);
       try {
@@ -204,7 +204,6 @@ const DashboardPurchases: React.FC<DashboardPurchasesProps> = ({ stores, data, m
   }, [filteredManagementData]);
 
   const handleProcessManagementImport = async () => {
-      const XLSX = await import('xlsx');
       if (!selectedManagementFile) return;
       setIsProcessing(true);
       try {

@@ -268,142 +268,117 @@ const DashboardPAGerente: React.FC<DashboardPAGerenteProps> = ({ user, store }) 
   const handleFileUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file || !selectedWeek) return;
- 
+
     setImporting(true);
     try {
-        const XLSX = await import('xlsx');
-        const arrayBuffer = await file.arrayBuffer();
-        const wb = XLSX.read(arrayBuffer, { type: 'array' });
-        const wsname = wb.SheetNames[0];
-        const ws = wb.Sheets[wsname];
- 
-        const rawData: any[][] = XLSX.utils.sheet_to_json(ws, { header: 1 });
- 
-        const headerRowIndex = rawData.findIndex(row =>
-          row.some(cell => String(cell || '').trim().toLowerCase() === 'vendedor')
-        );
- 
-        if (headerRowIndex === -1) {
-          throw new Error('Formato inválido: coluna "Vendedor" não encontrada no arquivo.');
-        }
- 
-        const headers = rawData[headerRowIndex];
-        const dataRows = rawData.slice(headerRowIndex + 1);
- 
-        const week = weeks.find(w => w.id === selectedWeek);
-        if (week) {
-          const titleRow = rawData.find(row => 
-            row.some(cell => String(cell || '').toUpperCase().includes('PERÍODO'))
-          );
-          
-          if (titleRow) {
-            const titleText = titleRow.find(cell => String(cell || '').toUpperCase().includes('PERÍODO'));
-            const dates = titleText.match(/(\d{2}\/\d{2}\/\d{4})/g);
-            
-            if (dates && dates.length >= 2) {
-              const [d1, m1, y1] = dates[0].split('/');
-              const [d2, m2, y2] = dates[1].split('/');
-              const arquivoInicio = parseLocalDate(y1 + '-' + m1 + '-' + d1).toISOString().split('T')[0];
-              const arquivoFim = parseLocalDate(y2 + '-' + m2 + '-' + d2).toISOString().split('T')[0];
-              
-              const dataFimSexta = week.data_fim;
-              const dataFimSabado = new Date(parseLocalDate(week.data_fim).getTime() + 86400000).toISOString().split('T')[0];
- 
-              if (arquivoInicio !== week.data_inicio || (arquivoFim !== dataFimSexta && arquivoFim !== dataFimSabado)) {
-                throw new Error(`As datas do arquivo (${dates[0]} a ${dates[1]}) não coincidem com a semana selecionada.`);
-              }
-            }
-          }
-        }
- 
-        const colIdx = (name: string) =>
-          headers.findIndex((h: any) => String(h || '').trim().toLowerCase() === name.toLowerCase());
+      // Lê como texto — o arquivo é HTML disfarçado de XLS
+      const text = await file.text();
 
-        const iVendedor    = colIdx('Vendedor');
-        const iDias        = colIdx('Dias');
-        const iVendas      = colIdx('Vendas');
-        const iItens       = colIdx('Itens');
-        const iPA          = colIdx('P.A.');
-        const iTotalVenda  = colIdx('Total Vendas');
-        const iTrocas      = colIdx('Trocas');
-        const iBonus       = colIdx('Bônus Baixados');
-        const iTicket      = colIdx('Ticket Médio');
-        const iPreco       = colIdx('Preço Médio');
-        const iVista       = colIdx('Total a Vista');
-        const iPercVista   = colIdx('%');
-        const iPrazo       = colIdx('Total a Prazo');
-        const iPercVendas  = colIdx('%');
-        const iPercItens   = colIdx('%');
-        const iPercTotal   = colIdx('%');
+      // Extrai todas as células th (headers)
+      const thMatches = [...text.matchAll(/<th[^>]*>(.*?)<\/th>/gis)];
+      const headers = thMatches.map(m => m[1].replace(/<[^>]+>/g, '').trim());
 
-        const parseBR = (v: string | number | null | undefined): number => {
-          if (v === null || v === undefined || v === '' || v === '-') return 0;
-          const str = String(v).trim();
-          // Remove pontos de milhar, substitui vírgula decimal por ponto
-          return parseFloat(str.replace(/\./g, '').replace(',', '.')) || 0;
-        };
-
-        const formatPercent = (val: any) => {
-          if (val === undefined || val === null || val === '') return '0%';
-          const str = String(val).trim();
-          if (str.endsWith('%')) return str;
-          const n = Number(str.replace(',', '.'));
-          if (!isNaN(n)) return `${Math.round(n * 100)}%`;
-          return str + '%';
-        };
-
-        const mappedData = dataRows.map(row => {
-          const vendedor = String(row[iVendedor] || '');
-          const partes = vendedor.match(/^\d+-(\d+)\s+(.+)$/);
-
-          // Para colunas com header '%' repetido, pegar pela posição real
-          const allPercentIdx = headers.reduce((acc: number[], h: any, i: number) => {
-            if (String(h || '').trim() === '%') acc.push(i);
-            return acc;
-          }, []);
-
-          return {
-            cod_vendedor:     partes ? partes[1] : vendedor,
-            nome_vendedor:    partes ? partes[2].trim() : vendedor,
-            dias_trabalhados: Number(row[iDias]  || 0),
-            qtde_vendas:      Number(row[iVendas] || 0),
-            perc_vendas:      formatPercent(row[allPercentIdx[0]]),
-            qtde_itens:       Number(row[iItens] || 0),
-            perc_itens:       formatPercent(row[allPercentIdx[1]]),
-            pa:               parseBR(row[iPA]),
-            total_vendas:     parseBR(row[iTotalVenda]),
-            perc_total:       formatPercent(row[allPercentIdx[2]]),
-            trocas:           iTrocas >= 0 ? Number(row[iTrocas] || 0) : null,
-            bonus_baixados:   iBonus >= 0  ? parseBR(row[iBonus])  : null,
-            ticket_medio:     iTicket >= 0 ? parseBR(row[iTicket]) : null,
-            preco_medio:      iPreco >= 0  ? parseBR(row[iPreco])  : null,
-            total_vista:      iVista >= 0  ? parseBR(row[iVista])  : null,
-            perc_vista:       iVista >= 0  ? formatPercent(row[allPercentIdx[3]]) : null,
-            total_prazo:      iPrazo >= 0  ? parseBR(row[iPrazo])  : null,
-            perc_prazo:       iPrazo >= 0  ? formatPercent(row[allPercentIdx[4]]) : null,
-          };
-        }).filter(s =>
-          s.nome_vendedor &&
-          s.nome_vendedor.toUpperCase() !== 'TOTAL' &&
-          !isNaN(s.pa) &&
-          s.pa > 0
-        );
- 
-        if (mappedData.length === 0) {
-          throw new Error('Nenhum dado válido encontrado no arquivo.');
-        }
- 
-        await dashboardPAService.importSales(selectedWeek, store.id, mappedData, user.email || user.name);
-        await loadSales(selectedWeek);
-        setShowImportModal(false);
-        showToast('Importação concluída com sucesso!', 'success');
-      } catch (error: any) {
-        console.error('Error importing XLS:', error);
-        showToast(error.message || 'Erro ao importar arquivo. Verifique o formato.', 'error');
-      } finally {
-        setImporting(false);
-        if (fileInputRef.current) fileInputRef.current.value = '';
+      if (!headers.some(h => h.toLowerCase().includes('vendedor'))) {
+        throw new Error('Formato inválido: coluna "Vendedor" não encontrada no arquivo.');
       }
+
+      // Extrai todas as linhas tr de dados (ignora thead)
+      // Pega todos os <tr> que têm <td>
+      const trMatches = [...text.matchAll(/<tr[^>]*>([\s\S]*?)<\/tr>/gi)];
+      
+      const dataRows = trMatches
+        .map(tr => {
+          const tds = [...tr[1].matchAll(/<td[^>]*>([\s\S]*?)<\/td>/gi)];
+          return tds.map(td => td[1].replace(/<[^>]+>/g, '').trim());
+        })
+        .filter(row => row.length > 3 && row[0] && !row[0].toUpperCase().includes('TOTAL'));
+
+      const colIdx = (name: string) =>
+        headers.findIndex(h =>
+          h.normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase() ===
+          name.normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase()
+        );
+
+      const allPercentIdx = headers.reduce((acc: number[], h, i) => {
+        if (h.trim() === '%') acc.push(i);
+        return acc;
+      }, []);
+
+      const iVendedor   = colIdx('Vendedor');
+      const iDias       = colIdx('Dias');
+      const iVendas     = colIdx('Vendas');
+      const iItens      = colIdx('Itens');
+      const iPA         = colIdx('P.A.');
+      const iTrocas     = colIdx('Trocas');
+      const iTotalVenda = colIdx('Total Vendas');
+      const iBonus      = colIdx('Bônus Baixados');
+      const iTicket     = colIdx('Ticket Medio');
+      const iPreco      = colIdx('Preco Medio');
+      const iVista      = colIdx('Total a Vista');
+      const iPrazo      = colIdx('Total a Prazo');
+
+      const parseBR = (v: string | number | null | undefined): number => {
+        if (v === null || v === undefined || v === '' || v === '-') return 0;
+        const str = String(v).trim();
+        return parseFloat(str.replace(/\./g, '').replace(',', '.')) || 0;
+      };
+
+      const formatPercent = (val: any) => {
+        if (val === undefined || val === null || val === '') return '0%';
+        const str = String(val).trim();
+        if (str.endsWith('%')) return str;
+        const n = Number(str.replace(',', '.'));
+        if (!isNaN(n)) return `${Math.round(n * 100)}%`;
+        return str + '%';
+      };
+
+      const mappedData = dataRows.map(row => {
+        const vendedor = String(row[iVendedor] || '');
+        const partes = vendedor.match(/^\d+-(\d+)\s+(.+)$/);
+
+        return {
+          cod_vendedor:     partes ? partes[1] : vendedor,
+          nome_vendedor:    partes ? partes[2].trim() : vendedor,
+          dias_trabalhados: Number(row[iDias] || 0),
+          qtde_vendas:      Number(row[iVendas] || 0),
+          perc_vendas:      formatPercent(row[allPercentIdx[0]]),
+          qtde_itens:       Number(row[iItens] || 0),
+          perc_itens:       formatPercent(row[allPercentIdx[1]]),
+          pa:               parseBR(row[iPA]),
+          total_vendas:     parseBR(row[iTotalVenda]),
+          perc_total:       formatPercent(row[allPercentIdx[2]]),
+          trocas:           iTrocas >= 0 ? Number(row[iTrocas] || 0) : null,
+          bonus_baixados:   iBonus >= 0  ? parseBR(row[iBonus])  : null,
+          ticket_medio:     iTicket >= 0 ? parseBR(row[iTicket]) : null,
+          preco_medio:      iPreco >= 0  ? parseBR(row[iPreco])  : null,
+          total_vista:      iVista >= 0  ? parseBR(row[iVista])  : null,
+          perc_vista:       iVista >= 0  ? formatPercent(row[allPercentIdx[3]]) : null,
+          total_prazo:      iPrazo >= 0  ? parseBR(row[iPrazo])  : null,
+          perc_prazo:       iPrazo >= 0  ? formatPercent(row[allPercentIdx[4]]) : null,
+        };
+      }).filter(s =>
+        s.nome_vendedor &&
+        s.nome_vendedor.toUpperCase() !== 'TOTAL' &&
+        !isNaN(s.pa) &&
+        s.pa > 0
+      );
+
+      if (mappedData.length === 0) {
+        throw new Error('Nenhum dado válido encontrado no arquivo.');
+      }
+
+      await dashboardPAService.importSales(selectedWeek, store.id, mappedData, user.email || user.name);
+      await loadSales(selectedWeek);
+      setShowImportModal(false);
+      showToast('Importação concluída com sucesso!', 'success');
+
+    } catch (error: any) {
+      console.error('Error importing XLS:', error);
+      showToast(error.message || 'Erro ao importar arquivo. Verifique o formato.', 'error');
+    } finally {
+      setImporting(false);
+      if (fileInputRef.current) fileInputRef.current.value = '';
+    }
   };
  
   const imprimirRecibos = async () => {
