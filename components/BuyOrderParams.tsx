@@ -642,8 +642,8 @@ export default function BuyOrderParams({ user }: { user: any }) {
     month: number;
     cotaTotal: number;
     despesas: number;
-    cotaGerenteValor?: number;
-    cotaCompradorValor?: number;
+    cota_gerente_valor?: number;
+    cota_comprador_valor?: number;
     // Removido cotaGerentePct e cotaCompradorPct (agora são anuais)
   }
 
@@ -652,8 +652,8 @@ export default function BuyOrderParams({ user }: { user: any }) {
       month: i + 1,
       cotaTotal: 0,
       despesas: 0,
-      cotaGerenteValor: 0,
-      cotaCompradorValor: 0
+      cota_gerente_valor: 0,
+      cota_comprador_valor: 0
     }))
   );
 
@@ -729,8 +729,8 @@ export default function BuyOrderParams({ user }: { user: any }) {
               month: m,
               cotaTotal: p ? (p.cota_valor || 0) : 0,
               despesas: p ? (p.despesas_comprometidas || 0) : 0,
-              cotaGerenteValor: p ? (p.cota_gerente_valor || 0) : 0,
-              cotaCompradorValor: p ? (p.cota_comprador_valor || 0) : 0
+              cota_gerente_valor: p ? Number(p.cota_gerente_valor || 0) : 0,
+              cota_comprador_valor: p ? Number(p.cota_comprador_valor || 0) : 0
             };
           });
           setMonthlyData(newMonthly);
@@ -766,8 +766,8 @@ export default function BuyOrderParams({ user }: { user: any }) {
               month: m,
               cotaTotal: p ? (p.cota_valor || 0) : 0,
               despesas: p ? (p.despesas_comprometidas || 0) : 0,
-              cotaGerenteValor: p ? (p.cota_gerente_valor || 0) : 0,
-              cotaCompradorValor: p ? (p.cota_comprador_valor || 0) : 0
+              cota_gerente_valor: p ? Number(p.cota_gerente_valor || 0) : 0,
+              cota_comprador_valor: p ? Number(p.cota_comprador_valor || 0) : 0
             };
           });
           setMonthlyData(newMonthly);
@@ -781,8 +781,8 @@ export default function BuyOrderParams({ user }: { user: any }) {
             month: i + 1,
             cotaTotal: 0,
             despesas: 0,
-            cotaGerenteValor: 0,
-            cotaCompradorValor: 0
+            cota_gerente_valor: 0,
+            cota_comprador_valor: 0
           })));
         }
       } catch (err) {
@@ -790,8 +790,8 @@ export default function BuyOrderParams({ user }: { user: any }) {
           month: i + 1,
           cotaTotal: 0,
           despesas: 0,
-          cotaGerenteValor: 0,
-          cotaCompradorValor: 0
+          cota_gerente_valor: 0,
+          cota_comprador_valor: 0
         })));
       }
     }
@@ -1190,10 +1190,10 @@ export default function BuyOrderParams({ user }: { user: any }) {
                               {formatarMoeda(cotaLimpa)}
                             </td>
                             <td className="p-2 text-xs font-black text-blue-600 dark:text-blue-400 text-right bg-blue-50/10">
-                              {formatarMoeda(data.cotaGerenteValor || 0)}
+                              {formatarMoeda(data.cota_gerente_valor || 0)}
                             </td>
                             <td className="p-2 text-xs font-black text-emerald-600 dark:text-emerald-400 text-right bg-emerald-50/10">
-                              {formatarMoeda(data.cotaCompradorValor || 0)}
+                              {formatarMoeda(data.cota_comprador_valor || 0)}
                             </td>
                           </tr>
                         );

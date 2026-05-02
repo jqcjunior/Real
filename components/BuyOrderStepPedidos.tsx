@@ -163,6 +163,10 @@ export default function StepPedidos({ items, pedidos, setPedidos, user, brandId,
   
   const [isMobile, setIsMobile] = useState(false);
   const [editingPedido, setEditingPedido] = useState<number | null>(null);
+  
+  const [editingTempItem, setEditingTempItem] = useState<number | null>(null);
+  const [deletingTempItem, setDeletingTempItem] = useState<number | null>(null);
+  const [showCancelOrderModal, setShowCancelOrderModal] = useState(false);
 
   const [storeRequirements, setStoreRequirements] = useState<StoreRequirement[]>([]);
   const [brandRestriction, setBrandRestriction] = useState<BrandRestriction | null>(null);
@@ -509,6 +513,23 @@ export default function StepPedidos({ items, pedidos, setPedidos, user, brandId,
     isGerente && userStoreNumber ? [userStoreNumber] : selectedLojas
   );
  
+  const handleRemoveTempItem = (idx: number) => {
+    setStep2State((prev: any) => ({
+      ...prev,
+      tempPedidoItens: prev.tempPedidoItens.filter((_: any, i: number) => i !== idx)
+    }));
+    setDeletingTempItem(null);
+  };
+
+  const handleCancelOrder = () => {
+    setStep2State((prev: any) => ({
+      ...prev,
+      tempPedidoItens: [],
+      selectedItems: new Set()
+    }));
+    setShowCancelOrderModal(false);
+  };
+
   return (
     <div className="p-4">
       <div className="bg-gradient-to-r from-blue-600 to-blue-700 text-white p-3 rounded-t-lg">
@@ -919,8 +940,18 @@ export default function StepPedidos({ items, pedidos, setPedidos, user, brandId,
 
           {/* Pedido Temporário */}
           {tempPedidoItens.length > 0 && (
-            <div className="bg-amber-50 border border-amber-300 rounded-lg p-2 mb-3">
-              <div className="text-xs font-bold text-amber-900 mb-2">Pedido Temporário</div>
+            <div className="bg-amber-50 border border-amber-300 rounded-lg p-2 mb-3 flex flex-col max-h-[50vh]">
+              <div className="flex justify-between items-center mb-2">
+                <div className="text-xs font-bold text-amber-900">Pedido Temporário</div>
+                <button 
+                  onClick={() => setShowCancelOrderModal(true)}
+                  className="text-[9px] bg-red-100 text-red-700 px-2 py-1 rounded hover:bg-red-200 border border-red-200 font-bold flex items-center gap-1 transition-colors"
+                  title="Cancelar Pedido Inteiro"
+                >
+                  <span className="text-red-500 text-sm leading-none">🗑️</span> Cancelar Pedido
+                </button>
+              </div>
+
               <div className="text-[9px] text-amber-700 space-y-0.5 mb-2">
                 <div>Pares/Loja: <strong>{totaisPedidoTemp.totalParesPorLoja}</strong></div>
                 <div>Lojas: <strong>{totaisPedidoTemp.numLojas}</strong></div>
@@ -930,9 +961,52 @@ export default function StepPedidos({ items, pedidos, setPedidos, user, brandId,
                   <div className="text-green-700">Líquido (-{cab.desconto}%): <strong>{fmtBRL(totaisPedidoTemp.totalValorLiquidoGeral)}</strong></div>
                 </div>
               </div>
+
+              <div className="mt-1 mb-2 flex-1 overflow-y-auto bg-white rounded border border-amber-200 shadow-sm">
+                <table className="w-full text-left text-[9px]">
+                  <thead className="bg-amber-100 sticky top-0 shadow-sm">
+                    <tr>
+                      <th className="p-1 px-2 border-b border-amber-200 font-bold text-amber-900">Ref</th>
+                      <th className="p-1 border-b border-amber-200 font-bold text-amber-900 text-center">Pares</th>
+                      <th className="p-1 border-b border-amber-200 font-bold text-amber-900 text-center w-14">Ações</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {tempPedidoItens.map((icg, idx) => {
+                      const item = items[icg.itemIdx];
+                      const totalItem = icg.grades.reduce((s, g) => s + totPares(g.qtds), 0);
+                      return (
+                        <tr key={idx} className="border-b border-amber-50 hover:bg-amber-50 transition-colors">
+                          <td className="p-1 px-2 font-medium text-slate-800 truncate max-w-[80px]" title={item.ref}>{item.ref}</td>
+                          <td className="p-1 text-center font-bold text-slate-700">{totalItem}</td>
+                          <td className="p-1 text-center">
+                            <div className="flex gap-2 justify-center items-center h-full">
+                              <button 
+                                onClick={() => setEditingTempItem(idx)} 
+                                className="text-blue-600 hover:text-blue-800 transition-colors" 
+                                title="Editar item"
+                              >
+                                ✏️
+                              </button>
+                              <button 
+                                onClick={() => setDeletingTempItem(idx)} 
+                                className="text-red-600 hover:text-red-800 transition-colors" 
+                                title="Excluir item"
+                              >
+                                🗑️
+                              </button>
+                            </div>
+                          </td>
+                        </tr>
+                      );
+                    })}
+                  </tbody>
+                </table>
+              </div>
+
               <button
                 onClick={criarPedido}
-                className="w-full px-2 py-1.5 bg-green-600 text-white text-[10px] font-bold rounded hover:bg-green-700">
+                className="w-full px-2 py-1.5 bg-green-600 text-white text-[10px] font-bold rounded hover:bg-green-700 mt-auto">
                 ✓ Criar Pedido
               </button>
             </div>
@@ -986,11 +1060,261 @@ export default function StepPedidos({ items, pedidos, setPedidos, user, brandId,
           }}
         />
       )}
+
+      {/* POPUP DE EDIÇÃO ITEM TEMPORÁRIO */}
+      {editingTempItem !== null && (
+        <EditTempItemPopup
+          itemComGrade={tempPedidoItens[editingTempItem]}
+          itemData={items[tempPedidoItens[editingTempItem].itemIdx]}
+          cab={cab}
+          onClose={() => setEditingTempItem(null)}
+          onSave={(updated) => {
+            setStep2State((prev: any) => {
+               const newItens = [...prev.tempPedidoItens];
+               
+               // Verifica se ainda há pares na grade
+               const totalPares = updated.grades.reduce((acc: number, g: any) => {
+                 return acc + Object.values(g.qtds as Record<string, number>).reduce((s: number, q: number) => s + (q || 0), 0);
+               }, 0);
+
+               if (totalPares > 0) {
+                 newItens[editingTempItem] = updated;
+               } else {
+                 // Remove if 0 pairs remaining
+                 newItens.splice(editingTempItem, 1);
+               }
+               return { ...prev, tempPedidoItens: newItens };
+            });
+            setEditingTempItem(null);
+          }}
+        />
+      )}
+
+      {/* MODAL CANCELAR PEDIDO INTEIRO */}
+      {showCancelOrderModal && (
+        <div className="fixed inset-0 bg-black/60 backdrop-blur-sm flex items-center justify-center z-50 p-4">
+          <div className="bg-white rounded-2xl shadow-xl w-full max-w-sm overflow-hidden animate-fade-in-up border border-slate-100">
+            <div className="bg-red-50 p-6 flex flex-col items-center border-b border-red-100">
+              <div className="w-16 h-16 bg-red-100 text-red-600 rounded-full flex items-center justify-center text-3xl mb-4 shadow-sm border border-red-200">
+                ⚠️
+              </div>
+              <h3 className="text-lg font-black text-red-900 text-center uppercase tracking-tight">Cancelar Pedido Completo?</h3>
+            </div>
+            
+            <div className="p-6">
+              <p className="text-sm text-slate-600 text-center mb-6">
+                Tem certeza que deseja cancelar <strong>TODO O PEDIDO</strong>?
+              </p>
+              
+              <div className="bg-slate-50 border border-slate-200 rounded-xl p-4 mb-6">
+                <div className="flex justify-between items-center text-xs mb-2">
+                  <span className="text-slate-500 font-medium font-sans uppercase tracking-wider">Total Pares</span>
+                  <span className="text-slate-900 font-black">{totaisPedidoTemp.totalParesGeral}</span>
+                </div>
+                <div className="flex justify-between items-center text-xs mb-2">
+                  <span className="text-slate-500 font-medium font-sans uppercase tracking-wider">Total Valor</span>
+                  <span className="text-slate-900 font-black">{fmtBRL(totaisPedidoTemp.totalValorLiquidoGeral)}</span>
+                </div>
+                <div className="flex justify-between items-center text-xs">
+                  <span className="text-slate-500 font-medium font-sans uppercase tracking-wider">Lojas</span>
+                  <span className="text-slate-900 font-black">{totaisPedidoTemp.numLojas}</span>
+                </div>
+              </div>
+
+              <p className="text-xs text-red-600/80 text-center font-bold mb-6 italic">
+                ⚠️ TODOS os itens serão perdidos! Esta ação não pode ser desfeita.
+              </p>
+
+              <div className="flex gap-3">
+                <button
+                  onClick={() => setShowCancelOrderModal(false)}
+                  className="flex-1 px-4 py-3 bg-white border border-slate-300 text-slate-700 font-bold text-xs uppercase tracking-wider rounded-xl hover:bg-slate-50 hover:border-slate-400 transition-all shadow-sm"
+                >
+                  Não, Manter
+                </button>
+                <button
+                  onClick={handleCancelOrder}
+                  className="flex-1 px-4 py-3 bg-red-600 text-white font-bold text-xs uppercase tracking-wider rounded-xl hover:bg-red-700 transition-all shadow-sm flex justify-center items-center gap-2"
+                >
+                  ❌ Sim, Cancelar
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* MODAL EXCLUIR ITEM TEMPORÁRIO */}
+      {deletingTempItem !== null && (
+        <div className="fixed inset-0 bg-black/60 backdrop-blur-sm flex items-center justify-center z-50 p-4">
+          <div className="bg-white rounded-2xl shadow-xl w-full max-w-sm overflow-hidden animate-fade-in-up border border-slate-100">
+             <div className="bg-red-50 p-5 flex flex-col items-center border-b border-red-100">
+               <div className="w-12 h-12 bg-red-100 text-red-600 rounded-full flex items-center justify-center text-2xl mb-3 shadow-sm border border-red-200">
+                 🗑️
+               </div>
+               <h3 className="text-md font-black text-red-900 text-center uppercase tracking-tight">Confirmar Exclusão</h3>
+             </div>
+             
+             <div className="p-5">
+               <p className="text-sm text-slate-600 text-center mb-4">
+                 Tem certeza que deseja excluir?
+               </p>
+               
+               <div className="bg-slate-50 border border-slate-200 rounded-xl p-3 mb-5">
+                 <div className="text-xs font-black text-slate-800 mb-1">📦 Ref: {items[tempPedidoItens[deletingTempItem].itemIdx].ref}</div>
+                 <div className="text-[10px] text-slate-600 uppercase mb-2 line-clamp-1">{items[tempPedidoItens[deletingTempItem].itemIdx].modelo}</div>
+                 <div className="flex justify-between items-center pt-2 border-t border-slate-200">
+                   <div className="text-[10px] font-bold text-blue-700">{tempPedidoItens[deletingTempItem].grades.reduce((s, g) => s + totPares(g.qtds), 0)} pares</div>
+                   <div className="text-[10px] font-bold text-green-700">{fmtBRL(tempPedidoItens[deletingTempItem].grades.reduce((s, g) => s + totPares(g.qtds), 0) * (items[tempPedidoItens[deletingTempItem].itemIdx].custo * (1 - (cab.desconto || 0) / 100)))}</div>
+                 </div>
+               </div>
+
+               <p className="text-xs text-red-600/80 text-center font-bold mb-5 italic">
+                 ⚠️ Esta ação não pode ser desfeita.
+               </p>
+
+               <div className="flex gap-2">
+                 <button
+                   onClick={() => setDeletingTempItem(null)}
+                   className="flex-1 px-3 py-2.5 bg-white border border-slate-300 text-slate-700 font-bold text-[10px] uppercase tracking-wider rounded-xl hover:bg-slate-50 hover:border-slate-400 transition-all shadow-sm"
+                 >
+                   Não, Cancelar
+                 </button>
+                 <button
+                   onClick={() => handleRemoveTempItem(deletingTempItem)}
+                   className="flex-1 px-3 py-2.5 bg-red-600 text-white font-bold text-[10px] uppercase tracking-wider rounded-xl hover:bg-red-700 transition-all shadow-sm flex justify-center items-center gap-1"
+                 >
+                   ❌ Sim, Excluir
+                 </button>
+               </div>
+             </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
  
-// ─── Popup de Edição ──────────────────────────────────────────────────────────
+// ─── Popup de Edição Item Temporário ──────────────────────────────────────────────────
+
+function EditTempItemPopup({ itemComGrade, itemData, cab, onClose, onSave }: {
+  itemComGrade: ItemComGrades;
+  itemData: OrderItem;
+  cab: Cabecalho;
+  onClose: () => void;
+  onSave: (updated: ItemComGrades) => void;
+}) {
+  const [localItem, setLocalItem] = useState<ItemComGrades>(JSON.parse(JSON.stringify(itemComGrade)));
+
+  const updateQtd = (gradeIndex: number, size: string, value: number) => {
+    setLocalItem(prev => {
+      const copy = { ...prev };
+      copy.grades[gradeIndex].qtds[size] = Math.max(0, value);
+      return copy;
+    });
+  };
+
+  const removeGrade = (gradeIndex: number) => {
+    setLocalItem(prev => {
+      const copy = { ...prev };
+      copy.grades = copy.grades.filter((_, i) => i !== gradeIndex);
+      return copy;
+    });
+  };
+
+  const calculateTotalPares = () => {
+    return localItem.grades.reduce((sum, g) => sum + totPares(g.qtds), 0);
+  };
+
+  const totalPares = calculateTotalPares();
+  const totalCusto = totalPares * (itemData.custo * (1 - (cab.desconto || 0) / 100));
+
+  return (
+    <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
+      <div className="bg-white rounded-lg shadow-2xl max-w-xl w-full max-h-[90vh] overflow-hidden flex flex-col">
+        <div className="bg-gradient-to-r from-blue-600 to-blue-700 text-white p-4 flex items-center justify-between">
+          <div>
+            <h3 className="text-lg font-bold">✏️ Editar Item do Pedido</h3>
+            <p className="text-xs opacity-90 truncate max-w-sm">
+              Ref: {itemData.ref}
+            </p>
+          </div>
+          <button
+            onClick={onClose}
+            className="text-white hover:bg-white/20 rounded-lg w-8 h-8 flex items-center justify-center text-xl">
+            ✕
+          </button>
+        </div>
+
+        <div className="p-4 overflow-y-auto flex-1">
+          <div className="bg-slate-50 rounded-lg p-3 border border-slate-200 mb-4">
+            <div className="font-bold text-slate-800">📦 REFERÊNCIA: {itemData.ref}</div>
+            <div className="text-xs text-slate-600 mt-1 uppercase">DESCRIÇÃO: {itemData.modelo}</div>
+            <div className="text-xs text-slate-600 uppercase">TIPO: {itemData.tipo}</div>
+            <div className="text-xs text-slate-600 uppercase">CUSTO (Líquido): {fmtBRL(itemData.custo * (1 - (cab.desconto || 0) / 100))}</div>
+          </div>
+
+          <div className="text-sm font-bold text-slate-800 mb-3 border-b border-slate-200 pb-1">
+            🔢 GRADES VINCULADAS:
+          </div>
+
+          {localItem.grades.length === 0 ? (
+            <div className="text-xs italic text-red-500 py-4 text-center">Nenhuma grade vinculada. Ao salvar, este item não fará parte do pedido.</div>
+          ) : (
+            <div className="space-y-4">
+              {localItem.grades.map((grade, gIdx) => {
+                const paresDaGrade = totPares(grade.qtds);
+                return (
+                  <div key={gIdx} className="border border-slate-200 rounded-lg overflow-hidden">
+                    <div className="bg-slate-100 flex justify-between items-center px-3 py-2 border-b border-slate-200">
+                      <div className="font-bold text-sm text-slate-800">Grade {grade.letter} <span className="text-xs font-normal text-slate-500 ml-2">- {paresDaGrade} pares</span></div>
+                      <button onClick={() => removeGrade(gIdx)} className="text-red-500 hover:text-red-700 text-xs font-bold uppercase">
+                        Remover Grade
+                      </button>
+                    </div>
+                    <div className="p-3 bg-white flex flex-wrap gap-2 justify-center">
+                      {Object.keys(grade.qtds).map(sz => (
+                        <div key={sz} className="w-12 text-center">
+                          <label className="block text-[10px] font-bold text-slate-600 mb-1">{sz}</label>
+                          <input
+                            type="number"
+                            min="0"
+                            className="w-full text-center border border-slate-300 rounded p-1 text-sm bg-slate-50 focus:bg-white focus:border-blue-500 outline-none"
+                            value={grade.qtds[sz] || 0}
+                            onChange={(e) => updateQtd(gIdx, sz, parseInt(e.target.value) || 0)}
+                          />
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          )}
+        </div>
+
+        <div className="border-t border-slate-200 p-4 bg-slate-50">
+          <div className="flex justify-between items-center mb-4">
+             <div className="text-slate-600 text-sm font-medium">Total: <strong className="text-slate-900">{totalPares} pares</strong></div>
+             <div className="text-slate-600 text-sm font-medium">Subtotal: <strong className="text-green-700">{fmtBRL(totalCusto)}</strong></div>
+          </div>
+          <div className="flex gap-2">
+            <button
+              onClick={onClose}
+              className="flex-1 px-4 py-2 text-sm border border-slate-300 bg-white text-slate-700 rounded-lg hover:bg-slate-50 font-bold uppercase">
+              Cancelar
+            </button>
+            <button
+              onClick={() => onSave(localItem)}
+              className="flex-1 px-4 py-2 text-sm bg-blue-600 text-white rounded-lg hover:bg-blue-700 font-bold flex justify-center items-center gap-2 uppercase">
+              💾 Salvar
+            </button>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
  
 function EditPedidoPopup({ pedido, items, onClose, onSave, cab }: {
   pedido: SubOrder;

@@ -49,7 +49,7 @@ class ApiService {
  
         // 3. Persistência Limpa
         // Usamos localStorage para suportar auto-login e consistência com ensureSession
-        localStorage.setItem('user', JSON.stringify(mappedUser));
+        localStorage.setItem('realcalcados_user', JSON.stringify(mappedUser));
         localStorage.setItem('auth_token', 'session_' + user.user_id);
  
         return { success: true, user: mappedUser };
@@ -67,7 +67,7 @@ class ApiService {
  
   getUser() {
     try {
-      const userStr = localStorage.getItem('user');
+      const userStr = localStorage.getItem('realcalcados_user');
       return userStr ? JSON.parse(userStr) : null;
     } catch (error) {
       return null;
@@ -79,7 +79,7 @@ class ApiService {
   }
  
   isAuthenticated(): boolean {
-    return !!localStorage.getItem('user');
+    return !!localStorage.getItem('realcalcados_user');
   }
  
   /**

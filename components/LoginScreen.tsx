@@ -41,10 +41,6 @@ const LoginScreen: React.FC<LoginScreenProps> = ({ onLoginAttempt, onRegisterReq
         const result = await onLoginAttempt(email.trim(), password.trim(), rememberMe);
         if (!result.success) {
             let msg = result.error || 'Credenciais inválidas.';
-            // Dica específica para o dev master se o erro for genérico de senha
-            if (email.trim().toLowerCase() === 'jqcjunior1981@gmail.com' && (msg.includes('Senha') || msg.includes('Credenciais'))) {
-                msg = 'Senha incorreta para o desenvolvedor master. Dica: use "admin" ou sua senha cadastrada.';
-            }
             setError(msg);
             setPassword('');
             setIsLoading(false);
@@ -94,8 +90,8 @@ const LoginScreen: React.FC<LoginScreenProps> = ({ onLoginAttempt, onRegisterReq
         </div>
 
         <div className="text-center mb-10">
-            <h1 className="text-3xl font-black text-blue-950 uppercase italic tracking-tighter leading-none">REAL <span className="text-red-600">ADMIN</span></h1>
-            <p className="text-[9px] text-blue-400 uppercase tracking-[0.5em] font-black mt-2 opacity-80">Segurança & Inteligência</p>
+            <h1 className="text-3xl font-black text-blue-950 uppercase italic tracking-tighter leading-none">ACESSO <span className="text-red-600">RESTRITO</span></h1>
+            <p className="text-[9px] text-blue-400 uppercase tracking-[0.5em] font-black mt-2 opacity-80">Real Calçados</p>
         </div>
 
         <form onSubmit={handleSubmit} className="space-y-6">

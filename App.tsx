@@ -171,51 +171,36 @@ const App: React.FC = () => {
         }
     }, [user, user?.storeId]);
 
-    // ─── SEGURANÇA: Sempre exige login — nunca restaura sessão salva ──────────
+    // ─── INICIALIZAÇÃO E SESSÃO ──────────
     useEffect(() => {
         if (window.innerWidth >= 1024) {
             setIsSidebarOpen(true);
         }
 
-        const initializeSession = async () => {
-          const storedUser = localStorage.getItem('user');
-          
-          if (!storedUser) {
-            setUser(null);
+        const storedUser = localStorage.getItem('realcalcados_user');
+
+        if (!storedUser) {
+            setUser(null); // Vai para /login
+            setIsLoading(false);
             return;
-          }
-          
-          try {
-            const user = JSON.parse(storedUser);
-            await supabase.rpc('set_user_session', {
-              user_id: user.id
-            });
-            setUser(user);
-          } catch (err) {
-            console.error('Erro ao restaurar sessão:', err);
-            localStorage.clear();
-            setUser(null);
-          }
-        };
+        }
 
         const init = async () => {
             setIsLoading(true);
             try {
-                await initializeSession();
+                const user = JSON.parse(storedUser);
+                await supabase.rpc('set_user_session', {
+                    user_id: user.id
+                });
+                setUser(user);
+
                 await ensureSession();
                 await bootstrapPermissions();
                 await bootstrapParameters();
-
-                // ✅ SEGURANÇA: O bloco de restauração automática de sessão foi
-                // removido intencionalmente. O sistema NÃO restaura mais o usuário
-                // salvo — isso garante que o login seja sempre exigido ao abrir o app.
-                // Não chamamos apiService.logout() aqui pois isso causaria uma
-                // condição de corrida: o init é assíncrono e demorado
-                // (bootstrapPermissions faz ~24 chamadas ao banco), e o logout
-                // poderia ser executado DEPOIS que o usuário já fez login, desfazendo-o.
-
-            } catch (error) {
-                console.error("Erro crítico na carga do sistema:", error);
+            } catch (err) {
+                console.error('Erro ao restaurar sessão:', err);
+                localStorage.clear();
+                setUser(null); // Vai para login
             } finally {
                 setIsLoading(false);
             }
@@ -957,9 +942,6 @@ const App: React.FC = () => {
     };
 
     const handleLogout = async () => {
-        if (user) {
-            localStorage.removeItem(`realcalcados_lastView_${user.id}`);
-        }
         await apiService.logout();
         localStorage.clear();
         sessionStorage.clear();
