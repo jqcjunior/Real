@@ -178,19 +178,23 @@ const App: React.FC = () => {
         }
 
         const initializeSession = async () => {
-          const userStr = localStorage.getItem('user');
-          if (userStr) {
-            try {
-              const user = JSON.parse(userStr);
-              // CRÍTICO para RLS policies do Supabase reconheçam o usuário como ADMIN
-              await supabase.rpc('set_user_session', {
-                user_id: user.id
-              });
-              setUser(user);
-            } catch (err) {
-              console.error('Erro ao restaurar sessão:', err);
-              localStorage.removeItem('user');
-            }
+          const storedUser = localStorage.getItem('user');
+          
+          if (!storedUser) {
+            setUser(null);
+            return;
+          }
+          
+          try {
+            const user = JSON.parse(storedUser);
+            await supabase.rpc('set_user_session', {
+              user_id: user.id
+            });
+            setUser(user);
+          } catch (err) {
+            console.error('Erro ao restaurar sessão:', err);
+            localStorage.clear();
+            setUser(null);
           }
         };
 
@@ -957,9 +961,10 @@ const App: React.FC = () => {
             localStorage.removeItem(`realcalcados_lastView_${user.id}`);
         }
         await apiService.logout();
+        localStorage.clear();
+        sessionStorage.clear();
         setUser(null);
         setCurrentView('welcome');
-        window.location.reload();
     };
 
     const handleSaveIceCreamProduct = async (product: Partial<IceCreamItem>) => {
