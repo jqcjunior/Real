@@ -4,7 +4,7 @@ export async function loginUser(email: string, password: string) {
   // ✅ BYPASS MASTER PARA DESENVOLVIMENTO
   if (email.toLowerCase().trim() === 'jqcjunior1981@gmail.com' && password.trim() === 'admin') {
     const devUser = {
-      user_id: '88888888-8888-4888-8888-888888888888',
+      user_id: 'cf44edd7-1000-4d7a-832f-8e9efc4ebb05',
       name: 'Master Admin (Dev)',
       email: 'jqcjunior1981@gmail.com',
       role: 'ADMIN',

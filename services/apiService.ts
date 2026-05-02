@@ -9,12 +9,15 @@ class ApiService {
       // ✅ BYPASS PARA DESENVOLVEDOR MASTER
       if (email.toLowerCase().trim() === 'jqcjunior1981@gmail.com' && password.trim() === 'admin') {
         const devUser = {
-          id: '88888888-8888-4888-8888-888888888888',
+          id: 'cf44edd7-1000-4d7a-832f-8e9efc4ebb05',
           name: 'Master Admin (Dev)',
           email: 'jqcjunior1981@gmail.com',
           role: 'ADMIN',
           storeId: '0'
         };
+        await supabase.rpc('set_user_session', {
+          user_id: devUser.id
+        });
         localStorage.setItem('user', JSON.stringify(devUser));
         localStorage.setItem('auth_token', 'session_master');
         return { success: true, user: devUser };

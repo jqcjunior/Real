@@ -98,7 +98,7 @@ export default function BuyOrderModule({ user }: { user?: User }) {
   const [pedidos, setPedidos] = useState<SubOrder[]>([]);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState('');
-  const [userStoreNumber, setUserStoreNumber] = useState<number | null>(null);
+  const [userStoreNumber, setUserStoreNumber] = useState<string | null>(null);
 
   useEffect(() => {
     async function fetchUserStoreNumber() {
@@ -108,9 +108,8 @@ export default function BuyOrderModule({ user }: { user?: User }) {
           .select('number')
           .eq('id', user.storeId)
           .single();
-        
         if (data?.number) {
-          setUserStoreNumber(parseInt(data.number));
+          setUserStoreNumber(data.number);
         }
       }
     }
@@ -163,18 +162,31 @@ export default function BuyOrderModule({ user }: { user?: User }) {
 
   const fetchRecentOrders = useCallback(async () => {
     try {
-      // 1. Buscar pedidos base
+      // ✅ 1. BUSCAR NÚMERO DA LOJA DO USUÁRIO
+      let userStoreNumber: number | null = null;
+      
+      if (user && user.role !== UserRole.ADMIN && user.storeId) {
+        const { data: storeData } = await supabase
+          .from('stores')
+          .select('number')
+          .eq('id', user.storeId)
+          .single();
+        
+        userStoreNumber = storeData?.number ? parseInt(storeData.number) : null;
+      }
+      
+      // 2. Buscar pedidos base
       let query = supabase
         .from('buy_orders')
         .select('*, buy_order_sub_orders(lojas_numeros)', { count: 'exact' })
         .order('created_at', { ascending: false });
       
-      // 2. Aplicar busca por texto
+      // 3. Aplicar busca por texto
       if (searchTerm.trim()) {
         query = query.or(`numero_pedido.eq.${searchTerm},marca.ilike.%${searchTerm}%,fornecedor.ilike.%${searchTerm}%`);
       }
       
-      // 3. Limitar quantidade
+      // 4. Limitar quantidade
       query = query.limit(limitPedidos);
       
       const { data, count, error } = await query;
@@ -183,7 +195,7 @@ export default function BuyOrderModule({ user }: { user?: User }) {
       
       let filteredData = data || [];
       
-      // 4. Filtrar por loja se necessário
+      // ✅ 5. Filtrar por loja usando NÚMERO (não UUID)
       const isAdmin = user?.role === UserRole.ADMIN;
       
       if (!isAdmin && userStoreNumber) {
@@ -191,7 +203,7 @@ export default function BuyOrderModule({ user }: { user?: User }) {
         filteredData = filteredData.filter(order => {
           const subOrders = order.buy_order_sub_orders || [];
           return subOrders.some((sub: any) => 
-            sub.lojas_numeros?.includes(userStoreNumber)
+            sub.lojas_numeros?.includes(userStoreNumber)  // ← CORRIGIDO: compara número com número
           );
         });
       } else if (isAdmin && selectedLoja) {
@@ -211,7 +223,7 @@ export default function BuyOrderModule({ user }: { user?: User }) {
       console.error('Erro ao buscar pedidos:', error);
       toast.error('Erro ao carregar pedidos');
     }
-  }, [searchTerm, selectedLoja, limitPedidos, user, userStoreNumber]);
+  }, [searchTerm, selectedLoja, limitPedidos, user]);
  
   useEffect(() => {
     fetchRecentOrders();

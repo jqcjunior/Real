@@ -182,7 +182,11 @@ const App: React.FC = () => {
           if (userStr) {
             try {
               const user = JSON.parse(userStr);
-              await setUserSession(user.id);
+              // CRÍTICO para RLS policies do Supabase reconheçam o usuário como ADMIN
+              await supabase.rpc('set_user_session', {
+                user_id: user.id
+              });
+              setUser(user);
             } catch (err) {
               console.error('Erro ao restaurar sessão:', err);
               localStorage.removeItem('user');
@@ -908,6 +912,9 @@ const App: React.FC = () => {
             }
 
             // CRÍTICO: Definir sessão no banco
+            await supabase.rpc('set_user_session', {
+              user_id: result.user.id
+            });
             const sessionOk = await setUserSession(result.user.id);
             if (!sessionOk) {
                 throw new Error('Erro ao iniciar sessão. Tente novamente.');
