@@ -121,13 +121,13 @@ const RelatorioPAImprimivel: React.FC<RelatorioProps> = ({ storeId, storeName, s
           qtde_itens:          Number(p.venda?.qtde_itens || 0),
         }));
 
-        const calcScore = (s: VendedorPremio) => {
-          const maxVendas = Math.max(...vendedoresPremio.map(x => x.total_vendas || 0)) || 1;
-          const maxTicket = Math.max(...vendedoresPremio.map(x => x.ticket_medio || 0)) || 1;
-          const maxPA     = Math.max(...vendedoresPremio.map(x => x.pa_atingido || 0)) || 1;
+        const calcScore = (s: VendedorPremio, allSales: VendedorPremio[]) => {
+          const maxVendas = Math.max(...allSales.map(x => x.total_vendas || 0)) || 1;
+          const maxTicket = Math.max(...allSales.map(x => Number(x.ticket_medio) || 0)) || 1;
+          const maxPA     = Math.max(...allSales.map(x => x.pa_atingido || 0)) || 1;
 
           const scoreVendas = ((s.total_vendas || 0) / maxVendas) * 50;
-          const scoreTicket = ((s.ticket_medio || 0) / maxTicket) * 30;
+          const scoreTicket = ((Number(s.ticket_medio) || 0) / maxTicket) * 30;
           const scorePA     = ((s.pa_atingido || 0) / maxPA) * 20;
 
           return scoreVendas + scoreTicket + scorePA;
@@ -135,7 +135,7 @@ const RelatorioPAImprimivel: React.FC<RelatorioProps> = ({ storeId, storeName, s
 
         const ranked = [...vendedoresPremio]
           .filter(s => s.pa_atingido > 0)
-          .sort((a, b) => calcScore(b) - calcScore(a));
+          .sort((a, b) => calcScore(b, vendedoresPremio) - calcScore(a, vendedoresPremio));
 
         setVendedores(ranked);
       }
