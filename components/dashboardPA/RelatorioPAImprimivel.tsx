@@ -220,14 +220,36 @@ const RelatorioPAImprimivel: React.FC<RelatorioProps> = ({ storeId, storeName, s
     return { emoji: '⭐', label: `${posicao + 1}º LUGAR`, isPodium: false };
   };
 
+  const calcDataPagamento = (dataFim: string): Date => {
+    const fim = new Date(dataFim + 'T00:00:00');
+    fim.setDate(fim.getDate() + 1); // sempre +1 dia (sábado)
+    return fim;
+  };
+
+  const handleYearChange = (year: number) => {
+    setSelectedYear(year);
+    setSemanaSelecionada('');
+    setVendedores([]);
+    setShowPreview(false);
+  };
+
+  const handleMonthChange = (month: number) => {
+    setSelectedMonth(month);
+    setSemanaSelecionada('');
+    setVendedores([]);
+    setShowPreview(false);
+  };
+
+  const handleWeekChange = (weekId: string) => {
+    setSemanaSelecionada(weekId);
+    setVendedores([]);
+    setShowPreview(false);
+  };
+
   const semanaAtual = semanas.find(s => s.id === semanaSelecionada);
   const dataInicio = semanaAtual ? parseLocalDate(semanaAtual.data_inicio).toLocaleDateString('pt-BR') : '';
   const dataFim = semanaAtual ? parseLocalDate(semanaAtual.data_fim).toLocaleDateString('pt-BR') : '';
-  const dataPagamento = semanaAtual
-    ? (semanaAtual.data_pagamento
-        ? parseLocalDate(semanaAtual.data_pagamento).toLocaleDateString('pt-BR')
-        : new Date(parseLocalDate(semanaAtual.data_fim).getTime() + 86400000).toLocaleDateString('pt-BR'))
-    : '';
+  const dataPagamento = semanaAtual ? calcDataPagamento(semanaAtual.data_fim).toLocaleDateString('pt-BR') : '';
 
   return (
     <div className="p-4 sm:p-6 space-y-4">
@@ -246,7 +268,7 @@ const RelatorioPAImprimivel: React.FC<RelatorioProps> = ({ storeId, storeName, s
             <div className="flex gap-4">
               <select 
                 value={selectedYear} 
-                onChange={e => { setSelectedYear(Number(e.target.value)); setSemanaSelecionada(''); }}
+                onChange={e => handleYearChange(Number(e.target.value))}
                 className="flex-1 bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl px-4 py-3 text-sm font-bold text-slate-900 dark:text-white"
               >
                 {[2024, 2025, 2026].map(y => <option key={y} value={y}>{y}</option>)}
@@ -254,7 +276,7 @@ const RelatorioPAImprimivel: React.FC<RelatorioProps> = ({ storeId, storeName, s
 
               <select 
                 value={selectedMonth} 
-                onChange={e => { setSelectedMonth(Number(e.target.value)); setSemanaSelecionada(''); }}
+                onChange={e => handleMonthChange(Number(e.target.value))}
                 className="flex-1 bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl px-4 py-3 text-sm font-bold text-slate-900 dark:text-white"
               >
                 {Array.from({length: 12}, (_, i) => (
@@ -266,7 +288,7 @@ const RelatorioPAImprimivel: React.FC<RelatorioProps> = ({ storeId, storeName, s
 
               <select 
                 value={semanaSelecionada} 
-                onChange={e => setSemanaSelecionada(e.target.value)}
+                onChange={e => handleWeekChange(e.target.value)}
                 className="flex-[2] bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl px-4 py-3 text-sm font-bold text-slate-900 dark:text-white"
               >
                 <option value="">Selecione a semana</option>

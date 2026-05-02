@@ -404,13 +404,19 @@ const DashboardPAGerente: React.FC<DashboardPAGerenteProps> = ({ user, store }) 
     }
   };
  
+  const calcDataPagamento = (dataFim: string): Date => {
+    const fim = new Date(dataFim + 'T00:00:00');
+    fim.setDate(fim.getDate() + 1); // sempre +1 dia (sábado)
+    return fim;
+  };
+
   const gerarHTMLRecibos = (vendedores: PASale[], week: PAWeek, store: any): string => {
     const paginas: PASale[][] = [];
     for (let i = 0; i < vendedores.length; i += 3) {
       paginas.push(vendedores.slice(i, i + 3));
     }
  
-    const dataPagamento = week.data_pagamento ? parseLocalDate(week.data_pagamento) : new Date(parseLocalDate(week.data_fim).getTime() + 86400000);
+    const dataPagamento = calcDataPagamento(week.data_fim);
     
     return `
       <html>
@@ -607,7 +613,7 @@ const DashboardPAGerente: React.FC<DashboardPAGerenteProps> = ({ user, store }) 
           >
             {weeks.length === 0 && <option value="">Nenhuma semana encontrada</option>}
             {weeks.map(w => {
-              const dataPagamento = w.data_pagamento ? parseLocalDate(w.data_pagamento) : new Date(parseLocalDate(w.data_fim).getTime() + 86400000);
+              const dataPagamento = calcDataPagamento(w.data_fim);
               return (
                 <option key={w.id} value={w.id}>
                   {format(parseLocalDate(w.data_inicio), 'dd/MM', { locale: ptBR })} a {format(parseLocalDate(w.data_fim), 'dd/MM', { locale: ptBR })} — Pagamento: {format(dataPagamento, 'dd/MM', { locale: ptBR })} ({w.status})
@@ -709,7 +715,7 @@ const DashboardPAGerente: React.FC<DashboardPAGerenteProps> = ({ user, store }) 
                     <p className="text-orange-100 font-black italic uppercase tracking-tighter text-[10px] mt-1">
                       Pagamento (Sábado): {(() => {
                         const w = weeks.find(w => w.id === selectedWeek)!;
-                        const dp = w.data_pagamento ? parseLocalDate(w.data_pagamento) : new Date(parseLocalDate(w.data_fim).getTime() + 86400000);
+                        const dp = calcDataPagamento(w.data_fim);
                         return format(dp, 'dd/MM/yyyy');
                       })()}
                     </p>
