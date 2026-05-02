@@ -1,21 +1,19 @@
 import React, { useState, useEffect } from 'react';
 import { supabase } from '../../services/supabaseClient';
 import { Printer, Trophy, Medal, Star, Award, TrendingUp } from 'lucide-react';
+import { format } from 'date-fns';
+import { ptBR } from 'date-fns/locale';
 
 interface VendedorPremio {
   cod_vendedor: string;
   nome_vendedor: string;
   pa_atingido: number;
   pa_meta: number;
-  valor_premio: number;
   faixas_acima: number;
   total_vendas: number;
+  ticket_medio: number;
   qtde_vendas: number;
   qtde_itens: number;
-  valor_premio_pa: number;
-  valor_premio_vendas: number;
-  valor_premio_ticket: number;
-  valor_premio_total: number;
 }
 
 interface RelatorioProps {
@@ -26,12 +24,19 @@ interface RelatorioProps {
 
 const RelatorioPAImprimivel: React.FC<RelatorioProps> = ({ storeId, storeName, storeNumber }) => {
   const [semanas, setSemanas] = useState<any[]>([]);
+  const [selectedYear, setSelectedYear] = useState(new Date().getFullYear());
+  const [selectedMonth, setSelectedMonth] = useState(new Date().getMonth() + 1);
   const [semanaSelecionada, setSemanaSelecionada] = useState<string>('');
   const [vendedores, setVendedores] = useState<VendedorPremio[]>([]);
   const [parametros, setParametros] = useState<any>(null);
   const [loading, setLoading] = useState(false);
   const [showPreview, setShowPreview] = useState(false);
   const [fraseMotivacional, setFraseMotivacional] = useState<string>('Juntos somos mais fortes. Próxima semana tem mais! 💪');
+
+  const weeksFiltradas = semanas.filter(w => {
+    const d = new Date(w.data_inicio + 'T00:00:00');
+    return d.getFullYear() === selectedYear && d.getMonth() + 1 === selectedMonth;
+  });
 
   // Busca uma frase motivacional aleatória do banco sempre que o relatório é exibido
   useEffect(() => {
@@ -62,8 +67,7 @@ const RelatorioPAImprimivel: React.FC<RelatorioProps> = ({ storeId, storeName, s
         .from('Dashboard_PA_Semanas')
         .select('*')
         .eq('store_id', storeId)
-        .order('data_inicio', { ascending: false })
-        .limit(10);
+        .order('data_inicio', { ascending: false });
 
       if (data && !error) {
         setSemanas(data);
@@ -96,7 +100,8 @@ const RelatorioPAImprimivel: React.FC<RelatorioProps> = ({ storeId, storeName, s
           venda:Dashboard_PA_Vendas!venda_id (
             total_vendas,
             qtde_vendas,
-            qtde_itens
+            qtde_itens,
+            ticket_medio
           )
         `)
         .eq('semana_id', semanaSelecionada)
@@ -109,17 +114,30 @@ const RelatorioPAImprimivel: React.FC<RelatorioProps> = ({ storeId, storeName, s
           nome_vendedor:       p.nome_vendedor,
           pa_atingido:         Number(p.pa_atingido || 0),
           pa_meta:             Number(p.pa_meta || 0),
-          valor_premio:        Number(p.valor_premio_total || p.valor_premio || 0),
           faixas_acima:        Number(p.faixas_acima || 0),
           total_vendas:        Number(p.venda?.total_vendas || 0),
+          ticket_medio:        Number(p.venda?.ticket_medio || 0),
           qtde_vendas:         Number(p.venda?.qtde_vendas || 0),
           qtde_itens:          Number(p.venda?.qtde_itens || 0),
-          valor_premio_pa:     Number(p.valor_premio_pa || 0),
-          valor_premio_vendas: Number(p.valor_premio_vendas || 0),
-          valor_premio_ticket: Number(p.valor_premio_ticket || 0),
-          valor_premio_total:  Number(p.valor_premio_total || p.valor_premio || 0),
         }));
-        setVendedores(vendedoresPremio);
+
+        const calcScore = (s: VendedorPremio) => {
+          const maxVendas = Math.max(...vendedoresPremio.map(x => x.total_vendas || 0)) || 1;
+          const maxTicket = Math.max(...vendedoresPremio.map(x => x.ticket_medio || 0)) || 1;
+          const maxPA     = Math.max(...vendedoresPremio.map(x => x.pa_atingido || 0)) || 1;
+
+          const scoreVendas = ((s.total_vendas || 0) / maxVendas) * 50;
+          const scoreTicket = ((s.ticket_medio || 0) / maxTicket) * 30;
+          const scorePA     = ((s.pa_atingido || 0) / maxPA) * 20;
+
+          return scoreVendas + scoreTicket + scorePA;
+        };
+
+        const ranked = [...vendedoresPremio]
+          .filter(s => s.pa_atingido > 0)
+          .sort((a, b) => calcScore(b) - calcScore(a));
+
+        setVendedores(ranked);
       }
       setLoading(false);
     };
@@ -223,19 +241,42 @@ const RelatorioPAImprimivel: React.FC<RelatorioProps> = ({ storeId, storeName, s
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
           <div>
             <label className="text-xs font-black text-slate-500 dark:text-slate-400 uppercase tracking-widest mb-2 block">
-              Selecionar Semana
+              Selecionar Período
             </label>
-            <select
-              value={semanaSelecionada}
-              onChange={(e) => setSemanaSelecionada(e.target.value)}
-              className="w-full bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl px-4 py-3 text-sm font-bold text-slate-900 dark:text-white"
-            >
-              {semanas.map(s => (
-                <option key={s.id} value={s.id}>
-                  {parseLocalDate(s.data_inicio).toLocaleDateString('pt-BR')} a {parseLocalDate(s.data_fim).toLocaleDateString('pt-BR')}
-                </option>
-              ))}
-            </select>
+            <div className="flex gap-4">
+              <select 
+                value={selectedYear} 
+                onChange={e => { setSelectedYear(Number(e.target.value)); setSemanaSelecionada(''); }}
+                className="flex-1 bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl px-4 py-3 text-sm font-bold text-slate-900 dark:text-white"
+              >
+                {[2024, 2025, 2026].map(y => <option key={y} value={y}>{y}</option>)}
+              </select>
+
+              <select 
+                value={selectedMonth} 
+                onChange={e => { setSelectedMonth(Number(e.target.value)); setSemanaSelecionada(''); }}
+                className="flex-1 bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl px-4 py-3 text-sm font-bold text-slate-900 dark:text-white"
+              >
+                {Array.from({length: 12}, (_, i) => (
+                  <option key={i+1} value={i+1}>
+                    {format(new Date(2024, i, 1), 'MMMM', { locale: ptBR })}
+                  </option>
+                ))}
+              </select>
+
+              <select 
+                value={semanaSelecionada} 
+                onChange={e => setSemanaSelecionada(e.target.value)}
+                className="flex-[2] bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl px-4 py-3 text-sm font-bold text-slate-900 dark:text-white"
+              >
+                <option value="">Selecione a semana</option>
+                {weeksFiltradas.map(w => (
+                  <option key={w.id} value={w.id}>
+                    {format(new Date(w.data_inicio + 'T00:00:00'), 'dd/MM')} a {format(new Date(w.data_fim + 'T00:00:00'), 'dd/MM')}
+                  </option>
+                ))}
+              </select>
+            </div>
           </div>
 
           <div className="flex items-end gap-2">
@@ -342,49 +383,35 @@ const RelatorioPAImprimivel: React.FC<RelatorioProps> = ({ storeId, storeName, s
 
                   {/* Métricas */}
                   <div className="flex gap-2 flex-shrink-0">
-                    {/* P.A */}
-                    <div className="bg-white rounded-lg p-2 border-2 border-slate-200 text-center w-20">
-                      <p className="text-[9px] font-black text-slate-400 uppercase leading-none mb-1">P.A Ating.</p>
-                      <p className="text-base font-black text-green-600 leading-none">{v.pa_atingido.toFixed(2)}</p>
-                      <p className="text-[9px] font-bold text-slate-400 mt-0.5">meta {v.pa_meta.toFixed(2)}</p>
-                    </div>
-
-                    {/* Prêmios detalhados */}
-                    <div className="flex flex-col gap-1">
-                      {v.valor_premio_pa > 0 && (
-                        <div className="bg-blue-50 rounded-lg px-2 py-1 text-center border border-blue-200">
-                          <p className="text-[8px] font-black text-blue-400 uppercase leading-none">PA</p>
-                          <p className="text-xs font-black text-blue-700">R$ {v.valor_premio_pa.toFixed(2)}</p>
-                        </div>
-                      )}
-                      {v.valor_premio_vendas > 0 && (
-                        <div className="bg-green-50 rounded-lg px-2 py-1 text-center border border-green-200">
-                          <p className="text-[8px] font-black text-green-400 uppercase leading-none">Vendas</p>
-                          <p className="text-xs font-black text-green-700">R$ {v.valor_premio_vendas.toFixed(2)}</p>
-                        </div>
-                      )}
-                      {v.valor_premio_ticket > 0 && (
-                        <div className="bg-amber-50 rounded-lg px-2 py-1 text-center border border-amber-200">
-                          <p className="text-[8px] font-black text-amber-500 uppercase leading-none">Ticket</p>
-                          <p className="text-xs font-black text-amber-700">R$ {v.valor_premio_ticket.toFixed(2)}</p>
-                        </div>
-                      )}
-                    </div>
-
-                    {/* Total */}
-                    <div className="bg-white rounded-lg p-2 border-2 border-purple-300 text-center w-24">
-                      <p className="text-[9px] font-black text-purple-400 uppercase leading-none mb-1">Total</p>
-                      <p className="text-sm font-black text-purple-700 leading-none">
-                        R$ {v.valor_premio_total.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}
+                    {/* Vendas */}
+                    <div className="bg-white rounded-lg p-2 border-2 border-blue-200 text-center w-24 flex flex-col justify-center">
+                      <p className="text-[9px] font-black text-blue-400 uppercase leading-none mb-1">Vendas</p>
+                      <p className="text-xs font-black text-blue-700 leading-none">
+                        R$ {v.total_vendas.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}
                       </p>
-                      <p className="text-[9px] font-bold text-slate-400 mt-0.5">{v.qtde_vendas} atend.</p>
+                      <p className="text-[9px] font-bold text-slate-400 mt-1">{v.qtde_vendas} atend.</p>
+                    </div>
+
+                    {/* Ticket Médio */}
+                    <div className="bg-white rounded-lg p-2 border-2 border-amber-200 text-center w-24 flex flex-col justify-center">
+                      <p className="text-[9px] font-black text-amber-500 uppercase leading-none mb-1">Ticket Médio</p>
+                      <p className="text-sm font-black text-amber-700 leading-none">
+                        R$ {v.ticket_medio.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}
+                      </p>
+                    </div>
+
+                    {/* P.A */}
+                    <div className="bg-white rounded-lg p-2 border-2 border-green-200 text-center w-20 flex flex-col justify-center">
+                      <p className="text-[9px] font-black text-green-500 uppercase leading-none mb-1">P.A. Ating.</p>
+                      <p className="text-base font-black text-green-700 leading-none">{v.pa_atingido.toFixed(2)}</p>
+                      <p className="text-[9px] font-bold text-slate-400 mt-1">meta {v.pa_meta.toFixed(2)}</p>
                     </div>
 
                     {/* Itens */}
-                    <div className="bg-white rounded-lg p-2 border-2 border-slate-200 text-center w-14">
-                      <p className="text-[9px] font-black text-slate-400 uppercase leading-none mb-1">Itens</p>
+                    <div className="bg-white rounded-lg p-2 border-2 border-purple-200 text-center w-16 flex flex-col justify-center">
+                      <p className="text-[9px] font-black text-purple-400 uppercase leading-none mb-1">Itens</p>
                       <p className="text-xl font-black text-purple-600 leading-none">{v.qtde_itens}</p>
-                      <p className="text-[9px] font-bold text-slate-400 mt-0.5">peças</p>
+                      <p className="text-[9px] font-bold text-slate-400 mt-1">peças</p>
                     </div>
                   </div>
                 </div>
