@@ -11,6 +11,7 @@ import {
   BuyOrderItemInput 
 } from '../utils/buyOrderItems.utils';
 import StepPedidos, { GradeItem, ItemComGrades, OrderItem, SubOrder, Cabecalho } from './BuyOrderStepPedidos';
+import { BuyOrderModuleModal } from './BuyOrderModuleModal';
 
 // ─── Tipos ────────────────────────────────────────────────────────────────────
  
@@ -78,9 +79,10 @@ export default function BuyOrderModule({ user }: { user?: User }) {
 
   useEffect(() => {
     if (user) {
+      const role = String(user?.role || '').toUpperCase();
       setCab(prev => ({
         ...prev,
-        role: user.role === 'ADMIN' ? 'comprador' : 'gerente'
+        role: role === 'ADMIN' ? 'comprador' : 'gerente'
       }));
     }
   }, [user]);
@@ -102,7 +104,8 @@ export default function BuyOrderModule({ user }: { user?: User }) {
 
   useEffect(() => {
     async function fetchUserStoreNumber() {
-      if (user && user.role !== UserRole.ADMIN && user.storeId) {
+      const isAdmin = String(user?.role || '').toUpperCase() === 'ADMIN';
+      if (user && !isAdmin && user.storeId) {
         const { data } = await supabase
           .from('stores')
           .select('number')
@@ -122,6 +125,9 @@ export default function BuyOrderModule({ user }: { user?: User }) {
   const [limitPedidos, setLimitPedidos] = useState(5);
   const [totalPedidos, setTotalPedidos] = useState(0);
   const [roundBase, setRoundBase] = useState(15.50);
+  const [editingOrder, setEditingOrder] = useState<any | null>(null);
+  const [loadingOrderDetails, setLoadingOrderDetails] = useState<boolean>(false);
+  const [deletingOrder, setDeletingOrder] = useState<any | null>(null);
 
   const [step2State, setStep2State] = useState({
     selectedItems: new Set<number>(),
@@ -165,7 +171,12 @@ export default function BuyOrderModule({ user }: { user?: User }) {
       // ✅ 1. BUSCAR NÚMERO DA LOJA DO USUÁRIO
       let userStoreNumber: number | null = null;
       
-      if (user && user.role !== UserRole.ADMIN && user.storeId) {
+      const roleUpper = (user?.role || '').toUpperCase();
+      const isGerente = roleUpper === 'MANAGER' || roleUpper === 'GERENTE';
+      const isComprador = roleUpper === 'COMPRADOR';
+      const isAdmin = roleUpper === 'ADMIN';
+      
+      if (user && user.storeId && (isGerente || (!isAdmin && !isComprador))) {
         const { data: storeData } = await supabase
           .from('stores')
           .select('number')
@@ -186,42 +197,48 @@ export default function BuyOrderModule({ user }: { user?: User }) {
         query = query.or(`numero_pedido.eq.${searchTerm},marca.ilike.%${searchTerm}%,fornecedor.ilike.%${searchTerm}%`);
       }
       
-      // 4. Limitar quantidade
-      query = query.limit(limitPedidos);
-      
-      const { data, count, error } = await query;
-      
-      if (error) throw error;
-      
-      let filteredData = data || [];
-      
-      // ✅ 5. Filtrar por loja usando NÚMERO (não UUID)
-      const isAdmin = user?.role === UserRole.ADMIN;
-      
-      if (!isAdmin && userStoreNumber) {
-        // Gerente: filtrar apenas pedidos que incluem sua loja
-        filteredData = filteredData.filter(order => {
+      // ✅ FILTRO CORRETO
+      // ADMIN/COMPRADOR: vê todos os pedidos
+      // GERENTE: vê apenas pedidos que incluem sua loja
+      if (isGerente && userStoreNumber) {
+        // Buscar TODOS os pedidos
+        const { data: allOrders, error: fetchError } = await query.limit(500);
+        
+        if (fetchError) throw fetchError;
+        
+        // Filtrar no frontend os pedidos que incluem a loja do gerente
+        const filtered = (allOrders || []).filter((order: any) => {
           const subOrders = order.buy_order_sub_orders || [];
-          return subOrders.some((sub: any) => 
-            sub.lojas_numeros?.includes(userStoreNumber)  // ← CORRIGIDO: compara número com número
-          );
+          const todasLojas = subOrders.flatMap((sub: any) => sub.lojas_numeros || []);
+          return todasLojas.includes(userStoreNumber);
         });
-      } else if (isAdmin && selectedLoja) {
-        // Admin com filtro de loja selecionado
-        filteredData = filteredData.filter(order => {
-          const subOrders = order.buy_order_sub_orders || [];
-          return subOrders.some((sub: any) => 
-            sub.lojas_numeros?.includes(selectedLoja)
-          );
-        });
+        
+        setRecentOrders(filtered.slice(0, limitPedidos));
+        setTotalPedidos(filtered.length);
+      } else {
+        // ADMIN/COMPRADOR vê todos
+        const { data, count, error } = await query.limit(limitPedidos);
+        
+        if (error) throw error;
+        
+        let finalData = data || [];
+        
+        // Se Admin tiver um filtro de loja selecionado na interface
+        if (isAdmin && selectedLoja) {
+          finalData = finalData.filter(order => {
+             const subOrders = order.buy_order_sub_orders || [];
+             const todasLojas = subOrders.flatMap((sub: any) => sub.lojas_numeros || []);
+             return todasLojas.includes(selectedLoja);
+          });
+        }
+        
+        setRecentOrders(finalData);
+        setTotalPedidos(count || 0);
       }
       
-      setRecentOrders(filteredData);
-      setTotalPedidos(count || 0);
-      
-    } catch (error) {
+    } catch (error: any) {
       console.error('Erro ao buscar pedidos:', error);
-      toast.error('Erro ao carregar pedidos');
+      toast.error(`❌ ${error.message || 'Erro ao carregar pedidos'}`);
     }
   }, [searchTerm, selectedLoja, limitPedidos, user]);
  
@@ -453,33 +470,36 @@ export default function BuyOrderModule({ user }: { user?: User }) {
 
         // Registrar transação de cota para cada loja deste sub-pedido (dividido pelos vencimentos)
         ped.lojas.forEach(storeNum => {
-          const qc = qcData?.find(q => q.store_number === storeNum);
-          if (qc) {
-            if (vencimentos.length > 0) {
-              vencimentos.forEach((vencData, idx) => {
-                transactionsToInsert.push({
-                  quota_control_id: qc.id,
-                  order_id: orderId,
-                  valor_abatido: valorPorParcela,
-                  tipo_comprador: tipoComprador,
-                  vencimento_data: vencData,
-                  aplicado: false, // O abate ocorre apenas no vencimento
-                  descricao: `Pedido ${cab.marca} - Sub ${ped.num} (Parc. ${idx + 1}/${parcelasCount})`
-                });
-              });
-            } else {
+          const qc = qcData?.find(q => q.store_number === String(storeNum));
+          
+          if (vencimentos.length > 0) {
+            vencimentos.forEach((vencData, idx) => {
               transactionsToInsert.push({
-                quota_control_id: qc.id,
+                quota_control_id: qc?.id || null, // Se não tiver QC para esse mês, ainda registramos com store_number
+                store_number: String(storeNum),
                 order_id: orderId,
                 valor_abatido: valorPorParcela,
                 tipo_comprador: tipoComprador,
-                vencimento_data: new Date().toISOString().split('T')[0],
+                vencimento_data: vencData,
                 aplicado: false,
-                descricao: `Pedido ${cab.marca} - Sub ${ped.num}`
+                descricao: `Pedido ${cab.marca} - Sub ${ped.num} (Parc. ${idx + 1}/${parcelasCount})`
               });
-            }
+            });
           } else {
-            console.warn(`Controle de cota não encontrado para loja ${storeNum} em ${quotaMonth}/${quotaYear}. Tente inicializar cotas.`);
+            transactionsToInsert.push({
+              quota_control_id: qc?.id || null,
+              store_number: String(storeNum),
+              order_id: orderId,
+              valor_abatido: valorPorParcela,
+              tipo_comprador: tipoComprador,
+              vencimento_data: new Date().toISOString().split('T')[0],
+              aplicado: false,
+              descricao: `Pedido ${cab.marca} - Sub ${ped.num}`
+            });
+          }
+          
+          if (!qc) {
+            console.warn(`Controle de cota (Snapshot) não encontrado para loja ${storeNum} no mês do faturamento. O abatimento será computado via store_number.`);
           }
         });
       });
@@ -531,7 +551,6 @@ export default function BuyOrderModule({ user }: { user?: User }) {
     try {
         setExportando(orderId);
 
-        // Chamar backend
         const response = await fetch('/api/export-buy-order', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
@@ -543,7 +562,6 @@ export default function BuyOrderModule({ user }: { user?: User }) {
             throw new Error(error.error || 'Erro ao exportar');
         }
 
-        // Obter nome do arquivo do header (se houver) ou criar padrão
         let fileName = `Pedido_${Date.now()}.xlsx`;
         const disposition = response.headers.get('content-disposition');
         if (disposition && disposition.indexOf('attachment') !== -1) {
@@ -554,7 +572,6 @@ export default function BuyOrderModule({ user }: { user?: User }) {
             }
         }
 
-        // Download do arquivo
         const blob = await response.blob();
         const url = window.URL.createObjectURL(blob);
         const a = document.createElement('a');
@@ -573,6 +590,92 @@ export default function BuyOrderModule({ user }: { user?: User }) {
         setExportando(null);
     }
   }
+
+  const handleEditOrder = async (orderId: string) => {
+    setLoadingOrderDetails(true);
+    try {
+      // Query completa e explícita
+      const { data, error } = await supabase
+        .from('buy_orders')
+        .select(`
+          id,
+          numero_pedido,
+          marca,
+          fornecedor,
+          representante,
+          telefone,
+          email,
+          fat_inicio,
+          fat_fim,
+          prazos,
+          desconto,
+          markup,
+          user_name,
+          user_role,
+          created_at,
+          exported_at,
+          buy_order_items (
+            id,
+            referencia,
+            tipo,
+            total_pares,
+            custo,
+            preco_venda,
+            grades
+          ),
+          buy_order_sub_orders (
+            id,
+            lojas_numeros
+          )
+        `)
+        .eq('id', orderId)
+        .single();
+  
+      if (error) throw error;
+  
+      // Logs para debug
+      console.log('📦 Pedido completo buscado:', data);
+      console.log('📋 Itens retornados:', data?.buy_order_items);
+      console.log('🔢 Quantidade de itens:', data?.buy_order_items?.length || 0);
+      console.log('🏪 Sub-pedidos:', data?.buy_order_sub_orders);
+  
+      // Validações
+      if (!data) {
+        throw new Error('Pedido não encontrado');
+      }
+  
+      if (!data.buy_order_items || data.buy_order_items.length === 0) {
+        console.error('⚠️ NENHUM ITEM RETORNADO DA QUERY!');
+        toast.error('⚠️ Este pedido não possui itens cadastrados');
+      }
+  
+      setEditingOrder(data);
+  
+    } catch (err: any) {
+      console.error('❌ Erro ao buscar pedido:', err);
+      toast.error(`❌ Erro: ${err.message}`);
+    } finally {
+      setLoadingOrderDetails(false);
+    }
+  };
+
+  const handleDeleteOrder = async (orderId: string) => {
+    try {
+      const { error } = await supabase
+        .from('buy_orders')
+        .delete()
+        .eq('id', orderId);
+  
+      if (error) throw error;
+  
+      toast.success('✅ Pedido excluído com sucesso!');
+      fetchRecentOrders();
+      setDeletingOrder(null);
+    } catch (err: any) {
+      console.error('Erro ao excluir:', err);
+      toast.error(`❌ ${err.message}`);
+    }
+  };
  
   // ─── Render ──────────────────────────────────────────────────────────────────
  
@@ -593,7 +696,7 @@ export default function BuyOrderModule({ user }: { user?: User }) {
               {cab.role === 'comprador' ? 'Modo Comprador' : 'Modo Gerente'}
             </span>
           </div>
-          {user?.role === 'ADMIN' && (
+          {String(user?.role || '').toUpperCase() === 'ADMIN' && (
             <div style={{ display: 'flex', gap: 5 }}>
               {(['comprador', 'gerente'] as const).map(r => (
                 <button key={r} onClick={() => setCab(c => ({ ...c, role: r }))}
@@ -691,7 +794,7 @@ export default function BuyOrderModule({ user }: { user?: User }) {
             />
             
             {/* Filtro de loja (só para admin) */}
-            {user?.role === UserRole.ADMIN && (
+            {String(user?.role || '').toUpperCase() === 'ADMIN' && (
               <select
                 value={selectedLoja || ''}
                 onChange={(e) => setSelectedLoja(e.target.value ? Number(e.target.value) : null)}
@@ -714,7 +817,7 @@ export default function BuyOrderModule({ user }: { user?: User }) {
             )}
             
             {/* Info para gerente */}
-            {user?.role !== UserRole.ADMIN && userStoreNumber && (
+            {String(user?.role || '').toUpperCase() !== 'ADMIN' && userStoreNumber && (
               <span style={{ 
                 padding: '6px 10px', 
                 background: '#f3f4f6', 
@@ -736,31 +839,36 @@ export default function BuyOrderModule({ user }: { user?: User }) {
                 <th style={{ padding: '8px 12px', textAlign: 'left', fontWeight: 600, color: '#6b7280', borderBottom: '0.5px solid #e5e7eb' }}>Data/Marca</th>
                 <th style={{ padding: '8px 12px', textAlign: 'left', fontWeight: 600, color: '#6b7280', borderBottom: '0.5px solid #e5e7eb' }}>Número</th>
                 <th style={{ padding: '8px 12px', textAlign: 'left', fontWeight: 600, color: '#6b7280', borderBottom: '0.5px solid #e5e7eb' }}>Lojas</th>
+                <th style={{ padding: '8px 12px', textAlign: 'left', fontWeight: 600, color: '#6b7280', borderBottom: '0.5px solid #e5e7eb' }}>Criado por</th>
                 <th style={{ padding: '8px 12px', textAlign: 'left', fontWeight: 600, color: '#6b7280', borderBottom: '0.5px solid #e5e7eb' }}>Status</th>
                 <th style={{ padding: '8px 12px', textAlign: 'right', fontWeight: 600, color: '#6b7280', borderBottom: '0.5px solid #e5e7eb' }}>Ação</th>
               </tr>
             </thead>
             <tbody>
               {recentOrders.length === 0 && (
-                <tr><td colSpan={5} style={{ padding: '20px', textAlign: 'center', color: '#9ca3af' }}>
+                <tr><td colSpan={6} style={{ padding: '20px', textAlign: 'center', color: '#9ca3af' }}>
                   {searchTerm ? 'Nenhum pedido encontrado com esse filtro.' : 'Nenhum pedido encontrado.'}
                 </td></tr>
               )}
               {recentOrders.map((o) => {
-                // Extrair lojas do pedido
                 const subOrders = o.buy_order_sub_orders || [];
                 const todasLojas = subOrders.flatMap((sub: any) => sub.lojas_numeros || []) as number[];
                 const lojasUnicas = [...new Set(todasLojas)].sort((a, b) => a - b);
                 
                 return (
                   <tr key={o.id} style={{ borderBottom: '0.5px solid #f3f4f6' }}>
+                    {/* Data/Marca */}
                     <td style={{ padding: '10px 12px' }}>
                       <div style={{ fontWeight: 600, color: '#111' }}>{o.marca}</div>
                       <div style={{ fontSize: 10, color: '#9ca3af' }}>{new Date(o.created_at).toLocaleDateString('pt-BR')}</div>
                     </td>
+
+                    {/* Número */}
                     <td style={{ padding: '10px 12px', color: '#6b7280', fontWeight: 600 }}>
                       #{o.numero_pedido || '—'}
                     </td>
+
+                    {/* Lojas */}
                     <td style={{ padding: '10px 12px' }}>
                       <div style={{ display: 'flex', gap: 4, flexWrap: 'wrap' }}>
                         {lojasUnicas.length > 0 ? (
@@ -781,6 +889,31 @@ export default function BuyOrderModule({ user }: { user?: User }) {
                         )}
                       </div>
                     </td>
+
+                    {/* ✅ NOVA COLUNA: Criado por */}
+                    <td style={{ padding: '10px 12px' }}>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+                        {o.user_role === 'comprador' || o.user_role === 'ADMIN' ? (
+                          <>
+                            <span style={{ fontSize: 14 }}>⚙️</span>
+                            <div>
+                              <div style={{ fontSize: 10, fontWeight: 600, color: '#7c3aed' }}>COMPRADOR</div>
+                              <div style={{ fontSize: 9, color: '#9ca3af' }}>{o.user_name || '—'}</div>
+                            </div>
+                          </>
+                        ) : (
+                          <>
+                            <span style={{ fontSize: 14 }}>👤</span>
+                            <div>
+                              <div style={{ fontSize: 10, fontWeight: 600, color: '#16a34a' }}>GERENTE</div>
+                              <div style={{ fontSize: 9, color: '#9ca3af' }}>{o.user_name || '—'}</div>
+                            </div>
+                          </>
+                        )}
+                      </div>
+                    </td>
+
+                    {/* Status */}
                     <td style={{ padding: '10px 12px' }}>
                       {o.exported_at ? (
                         <span style={{ fontSize: 9, color: '#27500A', background: '#EAF3DE', padding: '2px 6px', borderRadius: 10, border: '0.5px solid #C0DD97' }}>Exportado</span>
@@ -788,28 +921,77 @@ export default function BuyOrderModule({ user }: { user?: User }) {
                         <span style={{ fontSize: 9, color: '#b45309', background: '#fffbeb', padding: '2px 6px', borderRadius: 10, border: '0.5px solid #fde68a' }}>Pendente</span>
                       )}
                     </td>
+
+                    {/* ✅ AÇÕES: 3 botões (Exportar, Editar, Excluir) */}
                     <td style={{ padding: '10px 12px', textAlign: 'right' }}>
-                      <button 
-                        onClick={() => handleExportExcel(o.id)}
-                        disabled={exportando === o.id}
-                        style={{ 
-                          height: 24, 
-                          padding: '0 10px', 
-                          background: exportando === o.id ? '#94a3b8' : '#185FA5', 
-                          color: '#fff', 
-                          border: 'none', 
-                          borderRadius: 4, 
-                          fontSize: 10, 
-                          fontWeight: 600, 
-                          cursor: exportando === o.id ? 'not-allowed' : 'pointer',
-                          display: 'flex',
-                          alignItems: 'center',
-                          gap: 4
-                        }}
-                      >
-                        {exportando === o.id ? '...' : <Download size={12} />}
-                        {exportando === o.id ? 'Exportando' : 'Exportar'}
-                      </button>
+                      <div style={{ display: 'flex', gap: 6, justifyContent: 'flex-end', alignItems: 'center' }}>
+                        {/* Botão Exportar */}
+                        <button 
+                          onClick={() => handleExportExcel(o.id)}
+                          disabled={exportando === o.id}
+                          title="Exportar Excel"
+                          style={{ 
+                            width: 28,
+                            height: 28,
+                            padding: 0,
+                            display: 'flex',
+                            alignItems: 'center',
+                            justifyContent: 'center',
+                            background: exportando === o.id ? '#94a3b8' : '#185FA5', 
+                            color: '#fff', 
+                            border: 'none', 
+                            borderRadius: 6, 
+                            cursor: exportando === o.id ? 'not-allowed' : 'pointer',
+                            transition: 'all 0.2s'
+                          }}
+                        >
+                          <Download size={14} />
+                        </button>
+
+                        {/* Botão Editar */}
+                        <button 
+                          onClick={() => handleEditOrder(o.id)}
+                          title="Editar"
+                          style={{ 
+                            width: 28,
+                            height: 28,
+                            padding: 0,
+                            display: 'flex',
+                            alignItems: 'center',
+                            justifyContent: 'center',
+                            background: '#fff',
+                            color: '#6b7280',
+                            border: '1px solid #d1d5db',
+                            borderRadius: 6,
+                            cursor: 'pointer',
+                            transition: 'all 0.2s'
+                          }}
+                        >
+                          <Pencil size={14} />
+                        </button>
+
+                        {/* Botão Excluir */}
+                        <button 
+                          onClick={() => setDeletingOrder(o)}
+                          title="Excluir"
+                          style={{ 
+                            width: 28,
+                            height: 28,
+                            padding: 0,
+                            display: 'flex',
+                            alignItems: 'center',
+                            justifyContent: 'center',
+                            background: '#fff',
+                            color: '#dc2626',
+                            border: '1px solid #fca5a5',
+                            borderRadius: 6,
+                            cursor: 'pointer',
+                            transition: 'all 0.2s'
+                          }}
+                        >
+                          <X size={14} />
+                        </button>
+                      </div>
                     </td>
                   </tr>
                 );
@@ -839,6 +1021,43 @@ export default function BuyOrderModule({ user }: { user?: User }) {
           </div>
         )}
       </div>
+
+      {/* Modal de Edição */}
+      {editingOrder && (
+        <BuyOrderModuleModal
+          order={editingOrder}
+          onClose={() => setEditingOrder(null)}
+          onSave={() => {
+            fetchRecentOrders();
+          }}
+        />
+      )}
+
+      {/* Modal de Confirmação de Exclusão */}
+      {deletingOrder && (
+        <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.6)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 100 }}>
+          <div style={{ background: '#fff', borderRadius: 10, width: 400, overflow: 'hidden' }}>
+            <div style={{ padding: '16px', background: '#fef2f2', borderBottom: '1px solid #fecaca' }}>
+              <div style={{ fontSize: 16, fontWeight: 700, color: '#991b1b', textAlign: 'center' }}>⚠️ Confirmar Exclusão</div>
+            </div>
+            <div style={{ padding: 20 }}>
+              <p style={{ fontSize: 13, color: '#374151', textAlign: 'center', marginBottom: 16 }}>
+                Tem certeza que deseja excluir o pedido <strong>#{deletingOrder.numero_pedido}</strong>?
+              </p>
+              <div style={{ background: '#f9fafb', border: '1px solid #e5e7eb', borderRadius: 8, padding: 12 }}>
+                <div style={{ fontSize: 11, color: '#6b7280', marginBottom: 4 }}><strong>Marca:</strong> {deletingOrder.marca}</div>
+                <div style={{ fontSize: 11, color: '#6b7280' }}><strong>Criado em:</strong> {new Date(deletingOrder.created_at).toLocaleDateString('pt-BR')}</div>
+              </div>
+              <p style={{ fontSize: 11, color: '#dc2626', textAlign: 'center', marginTop: 12, fontWeight: 600 }}>⚠️ Esta ação não pode ser desfeita!</p>
+            </div>
+            <div style={{ padding: '12px 16px', borderTop: '0.5px solid #e5e7eb', display: 'flex', justifyContent: 'flex-end', gap: 8 }}>
+              <button onClick={() => setDeletingOrder(null)} style={{ height: 32, padding: '0 16px', borderRadius: 6, border: '1px solid #d1d5db', background: '#fff', cursor: 'pointer', fontSize: 12 }}>Cancelar</button>
+              <button onClick={() => handleDeleteOrder(deletingOrder.id)} style={{ height: 32, padding: '0 16px', borderRadius: 6, border: 'none', background: '#dc2626', color: '#fff', cursor: 'pointer', fontSize: 12, fontWeight: 600 }}>❌ Excluir</button>
+            </div>
+          </div>
+        </div>
+      )}
+
     </div>
   );
 }

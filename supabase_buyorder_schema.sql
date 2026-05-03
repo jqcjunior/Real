@@ -73,6 +73,7 @@ ALTER TABLE buyorder_quota_control ADD COLUMN IF NOT EXISTS status TEXT GENERATE
 CREATE TABLE IF NOT EXISTS buyorder_quota_transactions (
     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     quota_control_id UUID REFERENCES buyorder_quota_control(id),
+    store_number TEXT, -- Adicionado para facilitar filtros por loja em vencimentos futuros
     order_id UUID NOT NULL, -- FK para buy_orders (assumindo UUID)
     item_id UUID,          -- FK para buy_order_items (se houver)
     valor_abatido DECIMAL(12,2) NOT NULL,
@@ -83,7 +84,15 @@ CREATE TABLE IF NOT EXISTS buyorder_quota_transactions (
     created_at TIMESTAMPTZ DEFAULT now()
 );
 
--- 5. Função para Inicializar Cotas
+-- Adicionar coluna se não existir (para bancos legados)
+DO $$
+BEGIN
+    IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name='buyorder_quota_transactions' AND column_name='store_number') THEN
+        ALTER TABLE buyorder_quota_transactions ADD COLUMN store_number TEXT;
+    END IF;
+END $$;
+
+-- 5. Função para Inicializar Cotas (Melhorada para garantir sincronia com parâmetros)
 CREATE OR REPLACE FUNCTION inicializar_cotas_mes(p_year INT, p_month INT)
 RETURNS JSONB AS $$
 DECLARE
@@ -97,29 +106,28 @@ BEGIN
     -- Busca parâmetros globais
     SELECT * INTO v_global FROM buyorder_parameters_global WHERE year = p_year AND month = p_month;
     
-    IF NOT FOUND THEN
-        RETURN jsonb_build_object('success', false, 'error', 'Parâmetros globais não encontrados para este período.');
-    END IF;
-
     -- Itera sobre lojas ativas (da tabela 'stores')
     FOR v_store IN SELECT number FROM stores WHERE is_active = true LOOP
         
-        -- Calcula cota predefinida por loja ou o global fall-back
-        v_cota_inicial := COALESCE(
-                            (SELECT cota_valor FROM buyorder_parameters_store WHERE store_number = v_store.number AND year = p_year AND month = p_month),
-                            v_global.cota_default
-                        );
-                        
-        -- Calcula as porcentagens
-        v_gerente_pct := COALESCE(
-                            (SELECT cota_gerente_pct FROM buyorder_parameters_store WHERE store_number = v_store.number AND year = p_year AND month = p_month),
-                            v_global.cota_gerente_pct
-                        );
-                        
-        v_comprador_pct := COALESCE(
-                            (SELECT cota_comprador_pct FROM buyorder_parameters_store WHERE store_number = v_store.number AND year = p_year AND month = p_month),
-                            v_global.cota_comprador_pct
-                        );
+        -- Busca parâmetros específicos da loja (Normalizando store_number para evitar problema de zero à esquerda)
+        SELECT cota_valor, cota_gerente_pct, cota_comprador_pct 
+        INTO v_cota_inicial, v_gerente_pct, v_comprador_pct
+        FROM buyorder_parameters_store 
+        WHERE (store_number::INTEGER = v_store.number::INTEGER) 
+          AND year = p_year 
+          AND month = p_month;
+
+        -- Se não houver parâmetros específicos, usa globais
+        IF v_cota_inicial IS NULL AND v_global IS NOT NULL THEN
+            v_cota_inicial := v_global.cota_default;
+            v_gerente_pct := v_global.cota_gerente_pct;
+            v_comprador_pct := v_global.cota_comprador_pct;
+        END IF;
+
+        -- Fallback se tudo falhar
+        v_cota_inicial := COALESCE(v_cota_inicial, 0);
+        v_gerente_pct := COALESCE(v_gerente_pct, 80);
+        v_comprador_pct := COALESCE(v_comprador_pct, 20);
                         
         INSERT INTO buyorder_quota_control (store_number, year, month, cota_inicial, cota_gerente_inicial, cota_comprador_inicial)
         VALUES (
@@ -135,6 +143,10 @@ BEGIN
             cota_gerente_inicial = EXCLUDED.cota_gerente_inicial,
             cota_comprador_inicial = EXCLUDED.cota_comprador_inicial;
         
+        -- Normalizar também o store_number da tabela de controle para o formato da tabela de lojas
+        UPDATE buyorder_quota_control SET store_number = v_store.number 
+        WHERE store_number::INTEGER = v_store.number::INTEGER;
+
         v_count := v_count + 1;
     END LOOP;
 
@@ -142,7 +154,7 @@ BEGIN
 END;
 $$ LANGUAGE plpgsql;
 
--- 6. Triggers de Validação da Divisão de Cotas
+-- 6. Triggers de Validação e Sincronização
 CREATE OR REPLACE FUNCTION validate_quota_split()
 RETURNS TRIGGER AS $$
 BEGIN
@@ -150,6 +162,56 @@ BEGIN
     RAISE EXCEPTION 'A soma de cota_gerente_pct (%) + cota_comprador_pct (%) deve ser 100%%';
   END IF;
   RETURN NEW;
+END;
+$$ LANGUAGE plpgsql;
+
+-- Trigger para sincronizar parâmetros com controle de quotas automaticamente
+CREATE OR REPLACE FUNCTION sync_params_to_quota_control()
+RETURNS TRIGGER AS $$
+DECLARE
+    v_gerente_valor DECIMAL(12,2);
+    v_comprador_valor DECIMAL(12,2);
+    v_normalized_store TEXT;
+BEGIN
+    -- Normalizar store_number baseado na tabela de lojas
+    SELECT number INTO v_normalized_store FROM stores WHERE number::INTEGER = NEW.store_number::INTEGER LIMIT 1;
+    v_normalized_store := COALESCE(v_normalized_store, NEW.store_number);
+
+    v_gerente_valor := (COALESCE(NEW.cota_valor, 0) * COALESCE(NEW.cota_gerente_pct, 0) / 100);
+    v_comprador_valor := (COALESCE(NEW.cota_valor, 0) * COALESCE(NEW.cota_comprador_pct, 0) / 100);
+
+    INSERT INTO buyorder_quota_control (store_number, year, month, cota_inicial, cota_gerente_inicial, cota_comprador_inicial)
+    VALUES (v_normalized_store, NEW.year, NEW.month, COALESCE(NEW.cota_valor, 0), v_gerente_valor, v_comprador_valor)
+    ON CONFLICT (store_number, year, month) DO UPDATE 
+    SET cota_inicial = EXCLUDED.cota_inicial,
+        cota_gerente_inicial = EXCLUDED.cota_gerente_inicial,
+        cota_comprador_inicial = EXCLUDED.cota_comprador_inicial;
+    
+    RETURN NEW;
+END;
+$$ LANGUAGE plpgsql;
+
+DROP TRIGGER IF EXISTS trg_sync_params_to_quota ON buyorder_parameters_store;
+CREATE TRIGGER trg_sync_params_to_quota
+AFTER INSERT OR UPDATE ON buyorder_parameters_store
+FOR EACH ROW
+EXECUTE FUNCTION sync_params_to_quota_control();
+
+-- Função para Inicializar Cotas para um ANO INTEIRO
+CREATE OR REPLACE FUNCTION inicializar_cotas_ano(p_year INT)
+RETURNS JSONB AS $$
+DECLARE
+    v_month INT;
+    v_results JSONB := '[]'::jsonb;
+BEGIN
+    FOR v_month IN 1..12 LOOP
+        v_results := v_results || inicializar_cotas_mes(p_year, v_month);
+    END LOOP;
+    
+    -- Após inicializar o ano, repara as transações para vincular pedidos órfãos
+    PERFORM reparar_transacoes_cotas();
+    
+    RETURN v_results;
 END;
 $$ LANGUAGE plpgsql;
 
@@ -165,6 +227,21 @@ BEFORE INSERT OR UPDATE ON buyorder_parameters_store
 FOR EACH ROW
 WHEN (NEW.cota_gerente_pct IS NOT NULL AND NEW.cota_comprador_pct IS NOT NULL)
 EXECUTE FUNCTION validate_quota_split();
+
+-- Gatilho para limpar transações de cota ao excluir um pedido
+CREATE OR REPLACE FUNCTION clean_order_quota_transactions()
+RETURNS TRIGGER AS $$
+BEGIN
+    DELETE FROM buyorder_quota_transactions WHERE order_id = OLD.id;
+    RETURN OLD;
+END;
+$$ LANGUAGE plpgsql;
+
+DROP TRIGGER IF EXISTS trg_clean_order_quota ON buy_orders;
+CREATE TRIGGER trg_clean_order_quota
+BEFORE DELETE ON buy_orders
+FOR EACH ROW
+EXECUTE FUNCTION clean_order_quota_transactions();
 
 -- 7. Log de Execuções do Cron (Monitoramento)
 CREATE TABLE IF NOT EXISTS buyorder_cron_logs (
@@ -210,15 +287,17 @@ DECLARE
     v_error TEXT;
 BEGIN
     FOR r IN 
-        SELECT pqt.id, pqt.valor_abatido, pqt.tipo_comprador, pqc.store_number
+        SELECT pqt.id, pqt.valor_abatido, pqt.tipo_comprador, COALESCE(pqt.store_number, pqc.store_number) as store_number, pqt.vencimento_data
         FROM buyorder_quota_transactions pqt
-        JOIN buyorder_quota_control pqc ON pqt.quota_control_id = pqc.id
+        LEFT JOIN buyorder_quota_control pqc ON pqt.quota_control_id = pqc.id
         WHERE pqt.aplicado = false AND pqt.vencimento_data <= CURRENT_DATE
     LOOP
-        -- Find the quota control for the CURRENT month/year for this store
+        -- Find the quota control for the month/year of the TRANSACTION
         SELECT id INTO v_qc_id
         FROM buyorder_quota_control
-        WHERE store_number = r.store_number AND year = v_ano AND month = v_mes;
+        WHERE store_number = r.store_number 
+          AND year = EXTRACT(YEAR FROM r.vencimento_data) 
+          AND month = EXTRACT(MONTH FROM r.vencimento_data);
 
         -- If it doesn't exist, we skip for now
         IF FOUND THEN
@@ -855,7 +934,30 @@ BEGIN
 END;
 $$ LANGUAGE plpgsql;
 
--- Buscar cotas futuras COM abatimentos em tempo real
+-- 8. Função para Reparar Dados Órfãos (Corrige pedidos que não estão abatendo)
+CREATE OR REPLACE FUNCTION reparar_transacoes_cotas()
+RETURNS VOID AS $$
+BEGIN
+    -- Preenche store_number em transações que estão nulas, buscando do pedido original
+    UPDATE buyorder_quota_transactions qt
+    SET store_number = s.number
+    FROM buy_orders o
+    JOIN stores s ON s.id = o.store_id
+    WHERE qt.order_id = o.id 
+      AND (qt.store_number IS NULL OR qt.store_number::INTEGER != s.number::INTEGER);
+
+    -- Tenta vincular quota_control_id se o registro já existir agora
+    UPDATE buyorder_quota_transactions qt
+    SET quota_control_id = qc.id
+    FROM buyorder_quota_control qc
+    WHERE qt.store_number::INTEGER = qc.store_number::INTEGER
+      AND EXTRACT(YEAR FROM qt.vencimento_data) = qc.year
+      AND EXTRACT(MONTH FROM qt.vencimento_data) = qc.month
+      AND (qt.quota_control_id IS NULL OR qt.quota_control_id != qc.id);
+END;
+$$ LANGUAGE plpgsql;
+
+-- Buscar cotas futuras COM abatimentos em tempo real (ATUALIZADO PARA AUTO-REPARO)
 CREATE OR REPLACE FUNCTION get_buy_order_quotas_future(p_store_number text, p_tipo_comprador text)
 RETURNS TABLE (
   id UUID,
@@ -867,6 +969,9 @@ RETURNS TABLE (
   cota_disponivel numeric
 ) AS $$
 BEGIN
+  -- Tenta reparar dados órfãos antes de calcular
+  PERFORM reparar_transacoes_cotas();
+
   RETURN QUERY
   SELECT 
     qc.id,
@@ -874,40 +979,40 @@ BEGIN
     qc.year::integer,
     qc.month::integer,
     
+    -- Cota Inicial
     CASE WHEN p_tipo_comprador = 'COMPRADOR' THEN qc.cota_comprador_inicial ELSE qc.cota_gerente_inicial END as cota_inicial,
     
-    COALESCE(SUM(
-      CASE 
-        WHEN qt.tipo_comprador = p_tipo_comprador AND qt.aplicado = false 
-        THEN qt.valor_abatido 
-        ELSE 0 
-      END
+    -- Cota Comprometida (Soma do que já foi aplicado no snapshot + o que está pendente nas transações)
+    (CASE WHEN p_tipo_comprador = 'COMPRADOR' THEN qc.cota_comprador_utilizada ELSE qc.cota_gerente_utilizada END) +
+    COALESCE((
+      SELECT SUM(qt.valor_abatido)
+      FROM buyorder_quota_transactions qt
+      WHERE (qt.store_number::INTEGER = qc.store_number::INTEGER OR qt.quota_control_id = qc.id)
+        AND EXTRACT(YEAR FROM qt.vencimento_data) = qc.year
+        AND EXTRACT(MONTH FROM qt.vencimento_data) = qc.month
+        AND qt.tipo_comprador = p_tipo_comprador
+        AND qt.aplicado = false
     ), 0) AS cota_comprometida,
     
+    -- Cota Disponível
     (CASE WHEN p_tipo_comprador = 'COMPRADOR' THEN qc.cota_comprador_inicial ELSE qc.cota_gerente_inicial END) - 
-    COALESCE(SUM(
-      CASE 
-        WHEN qt.tipo_comprador = p_tipo_comprador AND qt.aplicado = false 
-        THEN qt.valor_abatido 
-        ELSE 0 
-      END
-    ), 0) AS cota_disponivel
+    ((CASE WHEN p_tipo_comprador = 'COMPRADOR' THEN qc.cota_comprador_utilizada ELSE qc.cota_gerente_utilizada END) +
+    COALESCE((
+      SELECT SUM(qt.valor_abatido)
+      FROM buyorder_quota_transactions qt
+      WHERE (qt.store_number::INTEGER = qc.store_number::INTEGER OR qt.quota_control_id = qc.id)
+        AND EXTRACT(YEAR FROM qt.vencimento_data) = qc.year
+        AND EXTRACT(MONTH FROM qt.vencimento_data) = qc.month
+        AND qt.tipo_comprador = p_tipo_comprador
+        AND qt.aplicado = false
+    ), 0)) AS cota_disponivel
 
   FROM buyorder_quota_control qc
-  LEFT JOIN buyorder_quota_transactions qt 
-    ON EXTRACT(YEAR FROM qt.vencimento_data) = qc.year
-    AND EXTRACT(MONTH FROM qt.vencimento_data) = qc.month
-    AND qt.tipo_comprador = p_tipo_comprador
-    AND qt.aplicado = false
-    
-  WHERE qc.store_number = p_store_number
-    AND qc.year >= EXTRACT(YEAR FROM CURRENT_DATE)
+  WHERE qc.store_number::INTEGER = p_store_number::INTEGER
     AND (
-      qc.year > EXTRACT(YEAR FROM CURRENT_DATE)
-      OR qc.month >= EXTRACT(MONTH FROM CURRENT_DATE)
+      (qc.year = EXTRACT(YEAR FROM CURRENT_DATE) AND qc.month >= EXTRACT(MONTH FROM CURRENT_DATE))
+      OR (qc.year > EXTRACT(YEAR FROM CURRENT_DATE))
     )
-    
-  GROUP BY qc.id, qc.store_number, qc.year, qc.month, qc.cota_comprador_inicial, qc.cota_gerente_inicial
   ORDER BY qc.year, qc.month
   LIMIT 12;
 END;
@@ -936,12 +1041,14 @@ BEGIN
     qt.tipo_comprador::text
   FROM buyorder_quota_transactions qt
   JOIN buy_orders o ON o.id = qt.order_id
-  JOIN buyorder_quota_control qc ON qc.id = qt.quota_control_id
-  WHERE EXTRACT(YEAR FROM qt.vencimento_data) = p_year
+  WHERE (qt.store_number = p_store_number OR EXISTS (
+    SELECT 1 FROM buyorder_quota_control qc 
+    WHERE qc.id = qt.quota_control_id AND qc.store_number = p_store_number
+  ))
+    AND EXTRACT(YEAR FROM qt.vencimento_data) = p_year
     AND EXTRACT(MONTH FROM qt.vencimento_data) = p_month
     AND qt.tipo_comprador = p_tipo_comprador
     AND qt.aplicado = false
-    AND qc.store_number = p_store_number
   ORDER BY o.created_at DESC;
 END;
 $$ LANGUAGE plpgsql;

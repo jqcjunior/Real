@@ -1,5 +1,5 @@
 import React, { useState, useMemo } from 'react';
-import { User, Store, MonthlyGoal, MonthlyPerformance, ProductPerformance, IceCreamSangria, IceCreamStockMovement, IceCreamStock, DetailedAdvice, MotivationalPhrase } from '../types';
+import { User, Store, MonthlyGoal, MonthlyPerformance, IceCreamSangria, IceCreamStockMovement, IceCreamStock, DetailedAdvice, MotivationalPhrase } from '../types';
 import { formatCurrency, formatDecimal } from '../constants';
 import { ShoppingBag, DollarSign, Package, Hash, AlertCircle, Trophy, BarChart3, TrendingUp, Target, Clock, BrainCircuit, Sparkles, Loader2, Zap, X, TrendingDown, Percent, Activity, Users, Medal, Gem, Minus, Quote } from 'lucide-react';
 import { supabase } from '../services/supabaseClient';
@@ -9,7 +9,6 @@ interface DashboardManagerProps {
   stores: Store[];
   performanceData: any[]; 
   goalsData: MonthlyGoal[];
-  purchasingData: ProductPerformance[];
   sangrias: IceCreamSangria[];
   stockMovements: IceCreamStockMovement[];
   stock: IceCreamStock[];

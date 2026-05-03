@@ -4,11 +4,12 @@ import { Package, Store as StoreIcon, Activity, BarChart3, Tag, ChevronDown, Che
 
 interface DashboardSummary {
   total_pares: number;
+  total_unidades: number; // ✅ NOVO
   valor_total: number;
 }
 
 interface TypeStat {
-  tipo: string; // The normalized name: FEMININO, MASCULINO, etc.
+  tipo: string;
   pares: number;
   valor: number;
   percentual: number;
@@ -16,8 +17,8 @@ interface TypeStat {
 }
 
 interface ModelStat {
-  subtipo?: string; // For Infantil: FEMININO / MASCULINO
-  modelo: string; // Actually 'tipo' in DB
+  subtipo?: string;
+  modelo: string;
   pares: number;
   valor: number;
   percentual: number;
@@ -102,26 +103,26 @@ export default function BuyOrderDashboard({ user }: { user: any }) {
       storesObj?.forEach(s => cityMap.set(String(s.number), s.city));
 
       let totalPares = 0;
+      let totalUnidades = 0; // ✅ NOVO: contador separado para acessórios
       let valorTotal = 0;
 
       const storeAgg = new Map<string, { pares: number; valor: number; pedidos: Set<number> }>();
       const brandAgg = new Map<string, { pares: number; valor: number }>();
       
-      // key: Normalized Department (FEMININO, etc.)
       const typeAgg = new Map<string, { 
         pares: number; 
         valor: number; 
         modelStats: Map<string, { 
           pares: number; 
           valor: number;
-          pares_por_loja: Map<number, number>; // NOVO: rastrear por loja
+          pares_por_loja: Map<number, number>;
         }> 
       }>();
 
       for (const order of (orders || [])) {
         const subOrders = order.buy_order_sub_orders || [];
         
-        // ✅ FILTRAR: Se for gerente, pular pedidos que não incluem sua loja
+        // ✅ CORREÇÃO: Verificar se o gerente está em ALGUM sub-pedido
         if (user?.role !== 'ADMIN' && userStoreNumber) {
           const incluiLoja = subOrders.some((sub: any) => 
             sub.lojas_numeros?.includes(userStoreNumber)
@@ -129,13 +130,12 @@ export default function BuyOrderDashboard({ user }: { user: any }) {
           
           if (!incluiLoja) {
             console.log('🔍 Pedido ignorado (não inclui loja', userStoreNumber, ')');
-            continue; // ← Pula este pedido
+            continue;
           }
         }
         
         const numLojas = subOrders.reduce((acc, sub) => acc + (sub.lojas_numeros?.length || 0), 0);
         
-        // Se não tem lojas, pula
         if (numLojas === 0) continue;
 
         let orderPares = 0;
@@ -148,18 +148,21 @@ export default function BuyOrderDashboard({ user }: { user: any }) {
           orderPares += p;
           orderCusto += v;
 
-          // Type Aggregation
-          // Note: our DB stores 'FEM', 'MASC', 'INF', 'ACESS' in `modelo`
-          // And the actual footwear type (Sandália, Tênis) in `tipo`
           let dept = (item.modelo || 'OUTROS').toUpperCase();
           if (dept === 'FEM') dept = 'FEMININO';
           if (dept === 'MASC') dept = 'MASCULINO';
           if (dept === 'INF') dept = 'INFANTIL';
-          if (dept === 'ACESS') dept = 'ACESSÓRIO';
+          if (dept === 'ACES') dept = 'ACESSÓRIO';
+          
+          // ✅ CORREÇÃO: Somar acessórios em contador separado
+          if (dept === 'ACESSÓRIO') {
+            totalUnidades += p;
+          } else {
+            totalPares += p;
+          }
           
           let subCat = (item.tipo || 'OUTROS').toUpperCase();
           
-          // For Infantil, we split into FEMININO/MASCULINO based on the string
           let mapKey = subCat;
           if (dept === 'INFANTIL') {
             if (subCat.includes('FEM') || subCat.includes('MENINA')) {
@@ -171,7 +174,6 @@ export default function BuyOrderDashboard({ user }: { user: any }) {
             }
           }
 
-          // ✅ DISTRIBUIÇÃO CORRETA: dividir pares entre as lojas
           const paresPorLoja = p / numLojas;
 
           const tAgg = typeAgg.get(dept) || { pares: 0, valor: 0, modelStats: new Map() };
@@ -186,7 +188,6 @@ export default function BuyOrderDashboard({ user }: { user: any }) {
           mAgg.pares += p;
           mAgg.valor += v;
           
-          // ✅ RASTREAR PARES POR LOJA
           subOrders.forEach((sub: any) => {
             (sub.lojas_numeros || []).forEach((lojaNum: number) => {
               const currentPares = mAgg.pares_por_loja.get(lojaNum) || 0;
@@ -198,21 +199,18 @@ export default function BuyOrderDashboard({ user }: { user: any }) {
           typeAgg.set(dept, tAgg);
         }
 
-        totalPares += orderPares;
         valorTotal += orderCusto;
 
-        // Brand Agg
         const bAgg = brandAgg.get(order.marca) || { pares: 0, valor: 0 };
         bAgg.pares += orderPares;
         bAgg.valor += orderCusto;
         brandAgg.set(order.marca, bAgg);
 
-        // ✅ Store Agg CORRIGIDO
         subOrders.forEach((sub: any) => {
           (sub.lojas_numeros || []).forEach((lojaRaw: number) => {
             const loja = String(lojaRaw);
             const sAgg = storeAgg.get(loja) || { pares: 0, valor: 0, pedidos: new Set() };
-            sAgg.pares += orderPares / numLojas; // ← CORRIGIDO!
+            sAgg.pares += orderPares / numLojas;
             sAgg.valor += orderCusto / numLojas;
             sAgg.pedidos.add(order.id);
             storeAgg.set(loja, sAgg);
@@ -220,7 +218,11 @@ export default function BuyOrderDashboard({ user }: { user: any }) {
         });
       }
 
-      setSummary({ total_pares: totalPares, valor_total: valorTotal });
+      setSummary({ 
+        total_pares: totalPares, 
+        total_unidades: totalUnidades, // ✅ NOVO
+        valor_total: valorTotal 
+      });
 
       const stStats: StoreStat[] = Array.from(storeAgg.entries()).map(([loja, agg]) => ({
         loja,
@@ -230,11 +232,10 @@ export default function BuyOrderDashboard({ user }: { user: any }) {
         pedidos: agg.pedidos.size
       }))
       .filter(s => {
-        // ✅ FILTRAR: Se for gerente, mostrar apenas sua loja
         if (user?.role !== 'ADMIN' && userStoreNumber) {
           return parseInt(s.loja) === userStoreNumber;
         }
-        return true; // Admin vê todas
+        return true;
       })
       .sort((a, b) => Number(a.loja) - Number(b.loja));
       setStoreStats(stStats);
@@ -243,7 +244,7 @@ export default function BuyOrderDashboard({ user }: { user: any }) {
         marca: marca || 'SEM MARCA',
         pares: agg.pares,
         valor: agg.valor,
-        percentual: totalPares > 0 ? (agg.pares / totalPares) * 100 : 0
+        percentual: (totalPares + totalUnidades) > 0 ? (agg.pares / (totalPares + totalUnidades)) * 100 : 0 // ✅ CORREÇÃO
       })).sort((a, b) => b.pares - a.pares).slice(0, 18);
       setBrandStats(brStats);
 
@@ -258,10 +259,9 @@ export default function BuyOrderDashboard({ user }: { user: any }) {
             modelo = parts[1];
           }
           
-          // ✅ CONVERTER Map para objeto para uso no componente
           const paresPorLojaObj: Record<number, number> = {};
           mAgg.pares_por_loja.forEach((pares, loja) => {
-            paresPorLojaObj[loja] = Math.round(pares); // Arredondar para inteiro
+            paresPorLojaObj[loja] = Math.round(pares);
           });
           
           return {
@@ -270,7 +270,7 @@ export default function BuyOrderDashboard({ user }: { user: any }) {
             pares: mAgg.pares,
             valor: mAgg.valor,
             percentual: typePares > 0 ? (mAgg.pares / typePares) * 100 : 0,
-            pares_por_loja: paresPorLojaObj // ✅ ADICIONAR DADOS POR LOJA
+            pares_por_loja: paresPorLojaObj
           };
         }).sort((a, b) => b.pares - a.pares);
 
@@ -278,7 +278,7 @@ export default function BuyOrderDashboard({ user }: { user: any }) {
           tipo,
           pares: agg.pares,
           valor: agg.valor,
-          percentual: totalPares > 0 ? (agg.pares / totalPares) * 100 : 0,
+          percentual: (totalPares + totalUnidades) > 0 ? (agg.pares / (totalPares + totalUnidades)) * 100 : 0, // ✅ CORREÇÃO
           modelos: typeModelos
         };
       });
@@ -361,8 +361,8 @@ export default function BuyOrderDashboard({ user }: { user: any }) {
           </div>
         </div>
 
-        {/* 1. CARDS DE RESUMO (mesmo tamanho, lado a lado) */}
-        <div className="grid grid-cols-2 gap-4">
+        {/* ✅ CARDS DE RESUMO - DIVIDIDOS EM 3 (PARES / UNIDADES / VALOR) */}
+        <div className="grid grid-cols-3 gap-4">
           <div className="bg-white dark:bg-slate-800 rounded-xl shadow-sm border border-slate-200 dark:border-slate-700 p-5 flex flex-col justify-center">
             <div className="text-xs font-bold uppercase tracking-wider text-slate-500 mb-1 flex items-center gap-2">
               <Package size={16} /> Total de Pares
@@ -370,7 +370,19 @@ export default function BuyOrderDashboard({ user }: { user: any }) {
             <div className="text-2xl lg:text-3xl font-black text-slate-900 dark:text-white">
               {formatNum(summary?.total_pares || 0)} <span className="text-lg font-medium text-slate-400">pares</span>
             </div>
+            <div className="text-[10px] text-slate-400 mt-1">Calçados</div>
           </div>
+          
+          <div className="bg-white dark:bg-slate-800 rounded-xl shadow-sm border border-slate-200 dark:border-slate-700 p-5 flex flex-col justify-center">
+            <div className="text-xs font-bold uppercase tracking-wider text-slate-500 mb-1 flex items-center gap-2">
+              <Package size={16} /> Total de Unidades
+            </div>
+            <div className="text-2xl lg:text-3xl font-black text-slate-900 dark:text-white">
+              {formatNum(summary?.total_unidades || 0)} <span className="text-lg font-medium text-slate-400">unid.</span>
+            </div>
+            <div className="text-[10px] text-slate-400 mt-1">Acessórios</div>
+          </div>
+          
           <div className="bg-white dark:bg-slate-800 rounded-xl shadow-sm border border-slate-200 dark:border-slate-700 p-5 flex flex-col justify-center">
             <div className="text-xs font-bold uppercase tracking-wider text-slate-500 mb-1 flex items-center gap-2">
               <DollarSign size={16} /> Total Compra
@@ -381,7 +393,7 @@ export default function BuyOrderDashboard({ user }: { user: any }) {
           </div>
         </div>
 
-        {/* 2. CARDS POR TIPO */}
+        {/* CARDS POR TIPO */}
         <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
           {['FEMININO', 'MASCULINO', 'INFANTIL', 'ACESSÓRIO'].map((tipoBase) => {
             const stat = typeStats.find(t => t.tipo === tipoBase) || { tipo: tipoBase, pares: 0, valor: 0, percentual: 0, modelos: [] };
@@ -414,7 +426,6 @@ export default function BuyOrderDashboard({ user }: { user: any }) {
 
         {/* DETALHAMENTO EXPANDIDO */}
         {expandedStat && (() => {
-          // Extrair lojas únicas para este tipo específico para criar as colunas
           const storesInType = Array.from(new Set(
             expandedStat.modelos.flatMap(m => Object.keys(m.pares_por_loja || {}).map(Number))
           )).sort((a, b) => a - b);
@@ -427,7 +438,6 @@ export default function BuyOrderDashboard({ user }: { user: any }) {
                 </div>
                 
                 {expandedStat.tipo === 'INFANTIL' ? (
-                  // Infantil precisa dividir por gênero
                   <div className="bg-white dark:bg-slate-900 border-t border-opacity-20 overflow-auto">
                     {['FEMININO', 'MASCULINO', 'UNISSEX'].map(subtipo => {
                       const subModelos = expandedStat.modelos.filter(m => m.subtipo === subtipo);
@@ -473,7 +483,6 @@ export default function BuyOrderDashboard({ user }: { user: any }) {
                     })}
                   </div>
                 ) : (
-                  // Outros tipos são tabelas simples
                   <div className="bg-white dark:bg-slate-900 p-0 border-t border-opacity-20 overflow-auto max-h-[400px]">
                     <table className="w-full text-left text-sm whitespace-nowrap min-w-max">
                       <thead className="bg-slate-50 dark:bg-slate-900 sticky top-0 shadow-sm border-b border-slate-200 dark:border-slate-700 z-20">

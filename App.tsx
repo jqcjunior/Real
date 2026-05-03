@@ -1,9 +1,9 @@
 import React, { useState, useEffect, lazy, Suspense } from 'react';
 import {
-    User, Store, MonthlyPerformance, UserRole, Cota, CotaSettings, CotaDebts, QuotaCategory, QuotaMixParameter,
-    IceCreamItem, IceCreamDailySale, CashRegisterClosure, ProductPerformance, Receipt, IceCreamStock, IceCreamPromissoryNote, AgendaItem, DownloadItem, CashError, SystemLog, MonthlyGoal, CreditCardSale, PixSale,
+    User, Store, MonthlyPerformance, UserRole,
+    IceCreamItem, IceCreamDailySale, CashRegisterClosure, Receipt, IceCreamStock, IceCreamPromissoryNote, AgendaItem, DownloadItem, CashError, SystemLog, MonthlyGoal, CreditCardSale, PixSale,
     Sale, SalePayment, IceCreamSangria, IceCreamSangriaCategory,
-    IceCreamStockMovement, StoreProfitPartner, AdminUser, PurchasingManagement, IceCreamFutureDebt,
+    IceCreamStockMovement, StoreProfitPartner, AdminUser, IceCreamFutureDebt,
     Survey
 } from './types';
 import { supabase } from './services/supabaseClient';
@@ -13,7 +13,6 @@ import { setUserSession } from './utils/authSession';
 import { BRAND_LOGO } from './constants';
 
 // Módulos com Lazy Loading
-const CotasManagement = lazy(() => import('./components/CotasManagement').then(m => ({ default: m.CotasManagement })));
 const DashboardAdmin = lazy(() => {
     return import('./components/DashboardAdmin').catch(err => {
         console.error("Erro ao carregar DashboardAdmin:", err);
@@ -26,7 +25,6 @@ const DashboardAdmin = lazy(() => {
 });
 const DashboardManager = lazy(() => import('./components/DashboardManager'));
 const GoalRegistration = lazy(() => import('./components/GoalRegistration'));
-const DashboardPurchases = lazy(() => import('./components/DashboardPurchases'));
 const IceCreamModule = lazy(() => import('./components/IceCreamModule'));
 const CashRegisterModule = lazy(() => import('./components/CashRegisterModule'));
 const AgendaSystem = lazy(() => import('./components/AgendaSystem'));
@@ -37,7 +35,6 @@ const AccessControlManagement = lazy(() => import('./components/AccessControlMan
 const PurchaseAuthorization = lazy(() => import('./components/PurchaseAuthorization'));
 const TermoAutorizacao = lazy(() => import('./components/TermoAutorizacao'));
 const SystemAudit = lazy(() => import('./components/SystemAudit'));
-const SpreadsheetOrderModule = lazy(() => import('./components/SpreadsheetOrderModule'));
 const OSDemandsModule = lazy(() => import('./components/OSDemandsModule'));
 const DemandsSystemV2 = lazy(() => import('./components/DemandsSystemV2'));
 const DashboardPAModule = lazy(() => import('./components/dashboardPA/DashboardPAModule'));
@@ -63,7 +60,7 @@ import ErrorBoundary from './components/ErrorBoundary';
 import {
     LayoutDashboard, Target, ShoppingBag, Calculator, IceCream as IceCreamIcon,
     DollarSign, AlertCircle, Calendar, LogOut, Loader2, Menu, X, ClipboardList, Shield, UserCog, Users, ShieldAlert, Settings, FileSignature, FileText, Download, Lock,
-    Sun, Moon, Trophy, BarChart3, ArrowRight, TrendingUp
+    Sun, Moon, Trophy, BarChart3, ArrowRight, TrendingUp, ShoppingCart
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 import { Toaster } from 'sonner';
@@ -177,7 +174,7 @@ const App: React.FC = () => {
             setIsSidebarOpen(true);
         }
 
-        const storedUser = localStorage.getItem('realcalcados_user');
+        const storedUser = sessionStorage.getItem('realcalcados_v3_user');
 
         if (!storedUser) {
             setUser(null); // Vai para /login
@@ -199,7 +196,7 @@ const App: React.FC = () => {
                 await bootstrapParameters();
             } catch (err) {
                 console.error('Erro ao restaurar sessão:', err);
-                localStorage.clear();
+                sessionStorage.clear();
                 setUser(null); // Vai para login
             } finally {
                 setIsLoading(false);
@@ -227,7 +224,7 @@ const App: React.FC = () => {
         // Logout automático ao completar 1 hora
         const timerLogout = setTimeout(async () => {
             setSessionWarning(false);
-            if (user) localStorage.removeItem(`realcalcados_lastView_${user.id}`);
+            if (user) sessionStorage.removeItem(`realcalcados_lastView_${user.id}`);
             await apiService.logout();
             setUser(null);
             setCurrentView('welcome');
@@ -347,12 +344,6 @@ const App: React.FC = () => {
     const [stores, setStores] = useState<Store[]>([]);
     const [performanceData, setPerformanceData] = useState<MonthlyPerformance[]>([]);
     const [goalsData, setGoalsData] = useState<MonthlyGoal[]>([]);
-    const [purchasingData, setPurchasingData] = useState<ProductPerformance[]>([]);
-    const [cotas, setCotas] = useState<Cota[]>([]);
-    const [cotaSettings, setCotaSettings] = useState<CotaSettings[]>([]);
-    const [cotaDebts, setCotaDebts] = useState<CotaDebts[]>([]);
-    const [quotaCategories, setQuotaCategories] = useState<QuotaCategory[]>([]);
-    const [quotaMixParams, setQuotaMixParams] = useState<QuotaMixParameter[]>([]);
     const [iceCreamItems, setIceCreamItems] = useState<IceCreamItem[]>([]);
     const [iceCreamSales, setIceCreamSales] = useState<IceCreamDailySale[]>([]);
     const [sales, setSales] = useState<Sale[]>([]);
@@ -375,7 +366,6 @@ const App: React.FC = () => {
     const [adminUsers, setAdminUsers] = useState<AdminUser[]>([]);
     const [paParameters, setPaParameters] = useState<any>(null);
     const [goalsRankingParams, setGoalsRankingParams] = useState<any>(null);
-    const [purchasingManagement, setPurchasingManagement] = useState<PurchasingManagement[]>([]);
     const [futureDebts, setFutureDebts] = useState<IceCreamFutureDebt[]>([]);
     const [selectedSurveyForResults, setSelectedSurveyForResults] = useState<Survey | null>(null);
     const [pendingSurveys, setPendingSurveys] = useState<Survey[]>([]);
@@ -636,18 +626,11 @@ const App: React.FC = () => {
             }
  
             const [
-                {data: pur}, {data: c}, {data: cs}, {data: cd}, {data: cat}, {data: mix},
                 {data: ici}, {data: ics}, {data: icst}, {data: icp}, {data: r}, {data: ce}, {data: ag}, {data: dl}, {data: cl}, {data: lg},
                 {data: cds}, {data: pxs}, {data: sls}, {data: slsp},
                 {data: sangCat}, {data: sang}, {data: movements}, {data: part}, {data: ausers},
-                {data: pm}, {data: fd}, {data: wst}
+                {data: fd}, {data: wst}
             ] = await Promise.all([
-                supabase.from('product_performance').select('*'),
-                supabase.from('cotas_with_category').select('*'),
-                supabase.from('cota_settings').select('*'),
-                supabase.from('cota_debts').select('*'),
-                supabase.from('quota_product_categories').select('*'),
-                supabase.from('quota_mix_parameters').select('*'),
                 supabase.from('ice_cream_items').select('*'),
                 salesQuery.order('created_at', { ascending: false }),
                 supabase.from('ice_cream_stock').select('*'),
@@ -667,7 +650,6 @@ const App: React.FC = () => {
                 movementsQuery.order('created_at', { ascending: false }),
                 supabase.from('store_profit_distribution').select('*'),
                 supabase.from('admin_users').select('*'),
-                supabase.from('gestao_compras').select('*'),
                 supabase.from('ice_cream_future_debts').select('*').order('due_date', { ascending: true }),
                 wastageQuery.order('created_at', { ascending: false })
             ]);
@@ -676,16 +658,6 @@ const App: React.FC = () => {
             if(fd) setFutureDebts(fd);
             if(sls) setSales(sls);
             if(slsp) setSalePayments(slsp.map(x => ({ ...x, amount: Number(x.amount || 0) })));
-            if(pur) setPurchasingData(pur.map(x => ({...x, storeId: x.store_id, pairsSold: x.pairs_sold})));
-            if(c) setCotas(c.map(x => ({ ...x, id: x.id, storeId: x.store_id, totalValue: Number(x.total_value || 0), shipmentDate: x.shipment_date, paymentTerms: x.payment_terms, createdByRole: x.created_by_role, category_id: x.category_id, category_name: x.category_name || x.classification, createdAt: new Date(x.created_at) })));
-            if(cs) setCotaSettings(cs.map(x => ({
-                storeId: x.store_id,
-                budgetValue: Number(x.budget_value || 0),
-                managerPercent: Number(x.manager_percent || 0)
-            })));
-            if(cd) setCotaDebts(cd.map(x => ({...x, storeId: x.store_id})));
-            if(cat) setQuotaCategories(cat);
-            if(mix) setQuotaMixParams(mix.map(x => ({ ...x, storeId: x.store_id, category_name: x.parent_category, percentage: Number(x.mix_percentage || 0) })));
             if(ici) setIceCreamItems(ici.map(x => ({ id: x.id, storeId: x.store_id, name: x.name, category: x.category, price: Number(x.price || 0), flavor: x.flavor, active: x.active, consumption_per_sale: x.consumption_per_sale || 0, recipe: typeof x.recipe === 'string' ? JSON.parse(x.recipe) : (x.recipe || []), image_url: x.image_url })));
             if(ics) setIceCreamSales(ics.map(x => ({ id: x.id, storeId: x.store_id, itemId: x.item_id, productName: x.product_name, category: x.category, flavor: x.flavor, unitsSold: Number(x.units_sold || 0), unitPrice: Number(x.unit_price || 0), totalValue: Number(x.total_value || 0), paymentMethod: x.payment_method, saleCode: x.sale_code, buyer_name: x.buyer_name, createdAt: x.created_at, status: x.status, cancel_reason: x.cancel_reason, canceled_by: x.canceled_by })));
             if(cds) setCardSales(cds.map(x => ({ id: x.id, storeId: x.store_id, userId: x.user_id, userName: x.user_name, date: x.date, brand: x.brand, value: Number(x.value || 0), authorizationCode: x.authorization_code, saleCode: x.sale_code, createdAt: x.created_at })));
@@ -742,21 +714,6 @@ const App: React.FC = () => {
                     setPendingSurveys(pending);
                 }
             }
-
-            if(pm) setPurchasingManagement(pm.map(x => ({
-                id: x.id,
-                storeId: x.store_id,
-                brand: x.brand,
-                productType: x.product_type,
-                stockQty: Number(x.stock_qty || 0),
-                buyQty: Number(x.buy_qty || 0),
-                sellQty: Number(x.sell_qty || 0),
-                sellPrice: Number(x.sell_price || 0),
-                lastBuyDate: x.last_buy_date,
-                year: Number(x.year || 0),
-                month: Number(x.month || 0),
-                updatedAt: x.updated_at
-            })));
         } catch (err) { 
             console.error("Erro Sincronismo:", err); 
         }
@@ -774,7 +731,6 @@ const App: React.FC = () => {
             .on('postgres_changes', { event: '*', schema: 'public', table: 'ice_cream_daily_sales_payments' }, () => fetchData())
             .on('postgres_changes', { event: '*', schema: 'public', table: 'ice_cream_sales' }, () => fetchData())
             .on('postgres_changes', { event: '*', schema: 'public', table: 'ice_cream_daily_sales' }, () => fetchData())
-            .on('postgres_changes', { event: '*', schema: 'public', table: 'gestao_compras' }, () => fetchData())
             .on('postgres_changes', { event: '*', schema: 'public', table: 'ice_cream_future_debts' }, () => fetchData())
             .on('postgres_changes', { event: '*', schema: 'public', table: 'monthly_performance_actual' }, () => fetchData())
             .on('postgres_changes', { event: '*', schema: 'public', table: 'monthly_goals' }, () => fetchData())
@@ -794,7 +750,6 @@ const App: React.FC = () => {
                 buttons.push(
                     { key: 'dashboard_rede', label: 'Dashboard Rede', icon: '📊', color: 'from-blue-500 to-blue-600' },
                     { key: 'users', label: 'Usuários', icon: '👥', color: 'from-purple-500 to-purple-600' },
-                    { key: 'compras', label: 'Compras', icon: '🛒', color: 'from-green-500 to-green-600' },
                     { key: 'surveys', label: 'Pesquisas', icon: '📋', color: 'from-orange-500 to-orange-600' }
                 );
             } else if (userRole === UserRole.MANAGER) {
@@ -944,7 +899,6 @@ const App: React.FC = () => {
     const handleLogout = async () => {
         await apiService.logout();
         localStorage.clear();
-        sessionStorage.clear();
         setUser(null);
         setCurrentView('welcome');
     };
@@ -1012,17 +966,22 @@ const App: React.FC = () => {
                             { id: 'dashboard_loja', label: 'Dashboard Loja', icon: LayoutDashboard, perm: 'MODULE_DASHBOARD_MANAGER', roles: ['manager'] },
                             { id: 'dashboard_pa', label: 'Dashboard Semanal', icon: Trophy, perm: 'MODULE_DASHBOARD_PA', roles: ['admin'] },
                             { id: 'dashboard_pa_manager', label: 'Dashboard Semanal', icon: Trophy, perm: 'MODULE_DASHBOARD_PA_MANAGER', roles: ['manager'] },
-                            { id: 'gestao_compras', label: 'Gestão de Compras', icon: ShoppingBag, perm: 'MODULE_BUY_ORDERS', isGroup: true, subItems: [
-                                { id: 'buy_order_dashboard', label: 'Dashboard Compras', icon: BarChart3, perm: 'MODULE_BUY_ORDERS', roles: ['admin', 'manager'] },
-                                { id: 'buy_orders', label: 'Pedido de Compra', icon: ShoppingBag, perm: 'MODULE_BUY_ORDERS', roles: ['admin', 'manager'] },
-                                { id: 'buy_order_quota', label: 'Cota de Compra', icon: DollarSign, perm: 'MODULE_BUY_ORDERS', roles: ['admin', 'manager'] },
-                                { id: 'purchase_params', label: 'Parâmetros de Compra', icon: Settings, perm: 'MODULE_PURCHASES', roles: ['admin'] },
-                                { id: 'reports_dashboard', label: 'Relatórios Executivos', icon: FileText, perm: 'MODULE_BUY_ORDERS', roles: ['admin'] },
-                                { id: 'stock_forecast', label: 'Previsão de Estoque', icon: TrendingUp, perm: 'MODULE_BUY_ORDERS', roles: ['admin', 'manager'] }
-                            ]},
+                            { 
+                                id: 'gestao-compras', 
+                                label: 'GESTÃO DE COMPRAS', 
+                                icon: ShoppingCart, 
+                                isGroup: true, 
+                                subItems: [
+                                    { id: 'buy_order_dashboard', label: 'DASHBOARD COMPRAS', icon: BarChart3, perm: 'MODULE_BUY_ORDERS', roles: ['admin', 'manager'] },
+                                    { id: 'buy_orders', label: 'PEDIDO DE COMPRA', icon: ShoppingBag, perm: 'MODULE_BUY_ORDERS', roles: ['admin', 'manager'] },
+                                    { id: 'buy_order_quota', label: 'COTA DE COMPRA', icon: DollarSign, perm: 'MODULE_BUY_ORDERS', roles: ['admin', 'manager'] },
+                                    { id: 'purchase_params', label: 'PARÂMETROS DE COMPRA', icon: Settings, perm: 'MODULE_PURCHASES', roles: ['admin'] },
+                                    { id: 'reports_dashboard', label: 'RELATÓRIOS EXECUTIVOS', icon: FileText, perm: 'MODULE_BUY_ORDERS', roles: ['admin'] },
+                                    { id: 'stock_forecast', label: 'PREVISÃO DE ESTOQUE', icon: TrendingUp, perm: 'MODULE_BUY_ORDERS', roles: ['admin', 'manager'] }
+                                ] 
+                            },
                             { id: 'dre_accounts', label: 'Plano de Contas DRE', icon: ClipboardList, perm: 'MODULE_DRE_ACCOUNTS', roles: ['admin'] },
                             { id: 'metas', label: 'Metas', icon: Target, perm: 'MODULE_METAS', roles: ['admin'] },
-                            { id: 'cotas', label: 'Cotas OTB', icon: Calculator, perm: 'MODULE_COTAS', roles: ['admin'] },
                             { id: 'os_demandas', label: 'Chamado', icon: ClipboardList, perm: 'MODULE_DEMANDS' }
                         ] },
                         { title: 'Operacional', items: [
@@ -1278,38 +1237,8 @@ const App: React.FC = () => {
                                 fetchData();
                             }
                         }} />;
-                        if (currentView === 'dashboard_loja' && can('MODULE_DASHBOARD_MANAGER')) return <DashboardManager user={user!} stores={stores} performanceData={performanceData} goalsData={goalsData} purchasingData={purchasingData} sangrias={icSangrias} stockMovements={icStockMovements} stock={iceCreamStock} weightRevenue={goalsRankingParams?.weight_revenue ?? 70} weightPA={goalsRankingParams?.weight_pa ?? 30} />;
+                        if (currentView === 'dashboard_loja' && can('MODULE_DASHBOARD_MANAGER')) return <DashboardManager user={user!} stores={stores} performanceData={performanceData} goalsData={goalsData} sangrias={icSangrias} stockMovements={icStockMovements} stock={iceCreamStock} weightRevenue={goalsRankingParams?.weight_revenue ?? 70} weightPA={goalsRankingParams?.weight_pa ?? 30} />;
                         if (currentView === 'metas' && can('MODULE_METAS')) return <GoalRegistration user={user!} stores={isAdmin ? stores : stores.filter(s => s.id === user?.storeId)} goalsData={goalsData} onRefresh={fetchData} onSaveGoals={async (data) => { for(const row of data) { await supabase.from('monthly_goals').upsert({ store_id: row.storeId, year: row.year, month: row.month, revenue_target: row.revenueTarget, pa_target: row.paTarget, pu_target: row.puTarget, ticket_target: row.ticketTarget, items_target: row.itemsTarget, business_days: row.businessDays, delinquency_target: row.delinquencyTarget, trend: row.trend }, { onConflict: 'store_id, year, month' }); } fetchData(); }} />;
-                        if (currentView === 'cotas' && can('MODULE_COTAS')) return <CotasManagement user={user!} stores={isAdmin ? stores : stores.filter(s => s.id === user?.storeId)} cotas={cotas} cotaSettings={cotaSettings} cotaDebts={cotaDebts} performanceData={performanceData} productCategories={quotaCategories} mixParameters={quotaMixParams} onAddCota={async (c) => { await supabase.from('cotas').insert([{ store_id: c.storeId, brand: c.brand, category_id: c.category_id, total_value: c.totalValue, shipment_date: `${c.shipmentDate}-01`, payment_terms: c.paymentTerms, pairs: c.pairs, installments: c.installments, status: 'ABERTA' }]); fetchData(); }} onUpdateCota={async (id, u) => { await supabase.from('cotas').update(u).eq('id', id); fetchData(); }} onDeleteCota={async (id) => { await supabase.from('cotas').delete().eq('id', id); fetchData(); }} onSaveSettings={async (s) => { await supabase.from('cota_settings').upsert({ store_id: s.storeId, budget_value: s.budgetValue, manager_percent: s.managerPercent }, { onConflict: 'store_id' }); fetchData(); }} onSaveDebts={async (d) => { await supabase.from('cota_debts').upsert({ store_id: d.storeId, month: d.month, value: d.value }, { onConflict: 'store_id, month' }); fetchData(); }} onDeleteDebt={async (id) => { await supabase.from('cota_debts').delete().eq('id', id); fetchData(); }} onUpdateMixParameter={async (id, sId, cat, pct, sem) => { if (id) { await supabase.from('quota_mix_parameters').update({ mix_percentage: pct }).eq('id', id); } else { await supabase.from('quota_mix_parameters').insert([{ store_id: sId, parent_category: cat, mix_percentage: pct, semester: sem }]); } fetchData(); }} can={can} />;
-                        if (currentView === 'compras' && can('MODULE_PURCHASES')) return <DashboardPurchases
-                            user={user!}
-                            stores={stores}
-                            data={purchasingData}
-                            managementData={purchasingManagement}
-                            adminUsers={adminUsers}
-                            onImport={async (d) => { await supabase.from('product_performance').insert(d.map(x => ({ store_id: x.storeId, month: x.month, brand: x.brand, category: x.category, pairs_sold: x.pairsSold, revenue: x.revenue }))); fetchData(); }}
-                            onImportManagement={async (d, shouldFetch = true) => {
-                                const { error } = await supabase.from('gestao_compras').upsert(d.map(x => ({
-                                    store_id: x.storeId,
-                                    brand: x.brand,
-                                    product_type: x.productType,
-                                    stock_qty: x.stockQty,
-                                    buy_qty: x.buyQty,
-                                    sell_qty: x.sellQty,
-                                    sell_price: x.sellPrice,
-                                    last_buy_date: x.lastBuyDate,
-                                    year: x.year,
-                                    month: x.month
-                                })), { onConflict: 'store_id, brand, product_type, year, month' });
-                                if (error) {
-                                    console.error("Erro Supabase (gestao_compras):", error);
-                                    throw error;
-                                }
-                                if (shouldFetch) fetchData();
-                            }}
-                            onOpenSpreadsheetModule={() => setCurrentView('spreadsheet_order')}
-                            can={can}
-                        />;
                         if (currentView === 'dre_accounts' && can('MODULE_DRE_ACCOUNTS')) return <DREAccounts />;
                         if (currentView === 'stock_forecast' && can('MODULE_BUY_ORDERS')) return <StockForecastDashboard user={user!} stores={isAdmin ? stores : stores.filter(s => s.id === user?.storeId)} />;
                         if (currentView === 'buy_order_dashboard' && can('MODULE_BUY_ORDERS')) return <BuyOrderDashboard user={user!} />;
@@ -1569,7 +1498,6 @@ const App: React.FC = () => {
                         if (currentView === 'access' && can('MODULE_ACCESS_CONTROL')) return <AccessControlManagement />;
                         if (currentView === 'audit' && can('MODULE_AUDIT')) return <SystemAudit currentUser={user!} logs={logs} receipts={receipts} cashErrors={cashErrors} iceCreamSales={iceCreamSales} icPromissories={icPromissories} cardSales={cardSales} pixSales={pixSales} closures={closures} stores={isAdmin ? stores : stores.filter(s => s.id === user?.storeId)} can={can} />;
                         if (currentView === 'settings' && can('MODULE_SETTINGS')) return <AdminSettings stores={stores} onAddStore={async (s) => { await supabase.from('stores').insert([s]); fetchData(); }} onUpdateStore={async (s) => { await supabase.from('stores').update(s).eq('id', s.id); fetchData(); }} onDeleteStore={async (id) => { await supabase.from('stores').delete().eq('id', id); fetchData(); }} />;
-                        if (currentView === 'spreadsheet_order' && can('MODULE_PURCHASES')) return <SpreadsheetOrderModule user={user!} onClose={() => setCurrentView('compras')} />;
                         if (currentView === 'os_demandas' && can('MODULE_DEMANDS')) return (
                             <DemandsSystemV2 
                                 user={user!} 

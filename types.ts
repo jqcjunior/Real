@@ -20,57 +20,6 @@ export interface User {
 }
 
 /* =========================
-   CATEGORIAS / COTAS
-========================= */
-export interface QuotaCategory {
-  id: string;
-  parent_category: string;
-  category_name: string;
-  is_active?: boolean;
-  created_at?: string;
-}
-
-export interface QuotaMixParameter {
-  id: string;
-  category_name: string;
-  percentage: number;
-  semester?: 1 | 2;
-  created_at?: string;
-  store_id?: string;
-  storeId?: string;
-}
-
-export interface Cota {
-  id: string;
-  storeId: string;
-  brand: string;
-  category_id: string;
-  category_name?: string;
-  classification?: string;
-  totalValue: number;
-  shipmentDate: string;
-  paymentTerms: string;
-  pairs: number;
-  installments: any;
-  status: string;
-  createdByRole?: string;
-  createdAt: Date;
-}
-
-export interface CotaSettings {
-  storeId: string;
-  budgetValue: number;
-  managerPercent: number;
-}
-
-export interface CotaDebts {
-  id?: string;
-  storeId: string;
-  month: string;
-  value: number;
-}
-
-/* =========================
    ESTOQUE / SORVETERIA
 ========================= */
 export interface IceCreamStock {
@@ -338,15 +287,6 @@ export interface MonthlyPerformance {
   businessDays: number;
 }
 
-export interface ProductPerformance {
-  storeId: string;
-  month: string;
-  brand: string;
-  category: string;
-  pairsSold: number;
-  revenue: number;
-}
-
 export interface CashRegisterClosure {
   id: string;
   storeId: string;
@@ -530,21 +470,6 @@ export interface SurveyInvitation {
   created_at: string;
 }
 
-export interface PurchasingManagement {
-  id?: string;
-  storeId: string;
-  brand: string;
-  productType: string;
-  stockQty: number;
-  buyQty: number;
-  sellQty: number;
-  sellPrice: number;
-  lastBuyDate: string | null;
-  year: number;
-  month: number;
-  updatedAt?: string;
-}
-
 /* =========================
    🔹 DEMANDAS (OS)
 ========================= */
@@ -668,40 +593,6 @@ export interface DemandNotificationV2 {
   message: string;
   is_read: boolean;
   read_at: string | null;
-  created_at: string;
-}
-
-/* =========================
-   🔹 QUESTIONÁRIOS DE COMPRAS
-========================= */
-export interface Questionnaire {
-  id: string;
-  store_id: string | null;
-  title: string;
-  description: string;
-  created_by: string;
-  created_at: string;
-  is_active: boolean;
-}
-
-export interface QuestionnaireProduct {
-  id: string;
-  questionnaire_id: string;
-  product_name: string;
-  brand: string;
-  category: string;
-  one_drive_image_url: string;
-  created_at: string;
-}
-
-export interface QuestionnaireAnswer {
-  id: string;
-  questionnaire_id: string;
-  product_id: string;
-  user_id: string;
-  rating: number;
-  suggested_quantity: number;
-  comment: string;
   created_at: string;
 }
 

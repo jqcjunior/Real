@@ -18,14 +18,14 @@ export async function loginUser(email: string, password: string) {
     user_id: user.user_id
   });
 
-  // 3. Salvar no localStorage
-  localStorage.setItem('realcalcados_user', JSON.stringify(user));
+  // 3. Salvar no sessionStorage
+  sessionStorage.setItem('realcalcados_v3_user', JSON.stringify(user));
 
   return user;
 }
 
 export async function ensureSession() {
-  const userStr = localStorage.getItem('realcalcados_user');
+  const userStr = sessionStorage.getItem('realcalcados_v3_user');
   if (!userStr) return;
 
   try {
@@ -38,7 +38,7 @@ export async function ensureSession() {
     }
   } catch (e) {
     console.error('Erro ao restaurar sessão:', e);
-    localStorage.removeItem('realcalcados_user');
+    sessionStorage.removeItem('realcalcados_v3_user');
   }
 }
 

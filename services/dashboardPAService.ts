@@ -176,7 +176,7 @@ export const dashboardPAService = {
 
       if (pa >= pa_inicial && incremento_pa > 0) {
         atingiu_meta = true;
-        faixas_acima = Math.floor((pa - pa_inicial) / incremento_pa);
+        faixas_acima = Math.floor((pa - pa_inicial + 0.0001) / incremento_pa);
         valor_premio_pa = valor_base + (faixas_acima * incremento_valor);
       }
 
@@ -184,7 +184,7 @@ export const dashboardPAService = {
       let atingiu_meta_vendas = false;
       let valor_premio_vendas = 0;
 
-      if (params.vendas_minimo && params.vendas_incremento && params.vendas_valor_base) {
+      if (params.vendas_minimo !== null && params.vendas_incremento && params.vendas_valor_base !== null) {
         const vMin  = Number(params.vendas_minimo);
         const vInc  = Number(params.vendas_incremento);
         const vBase = Number(params.vendas_valor_base);
@@ -192,7 +192,7 @@ export const dashboardPAService = {
 
         if (totalVendas >= vMin && vInc > 0) {
           atingiu_meta_vendas = true;
-          const faixas = Math.floor((totalVendas - vMin) / vInc);
+          const faixas = Math.floor((totalVendas - vMin + 0.0001) / vInc);
           valor_premio_vendas = vBase + (faixas * vIncV);
         }
       }
@@ -201,7 +201,7 @@ export const dashboardPAService = {
       let atingiu_meta_ticket = false;
       let valor_premio_ticket = 0;
 
-      if (params.ticket_minimo && params.ticket_incremento && params.ticket_valor_base) {
+      if (params.ticket_minimo !== null && params.ticket_incremento && params.ticket_valor_base !== null) {
         const tMin  = Number(params.ticket_minimo);
         const tInc  = Number(params.ticket_incremento);
         const tBase = Number(params.ticket_valor_base);
@@ -209,7 +209,7 @@ export const dashboardPAService = {
 
         if (ticketMedio >= tMin && tInc > 0) {
           atingiu_meta_ticket = true;
-          const faixas = Math.floor((ticketMedio - tMin) / tInc);
+          const faixas = Math.floor((ticketMedio - tMin + 0.0001) / tInc);
           valor_premio_ticket = tBase + (faixas * tIncV);
         }
       }

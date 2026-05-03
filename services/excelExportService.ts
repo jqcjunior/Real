@@ -10,12 +10,12 @@ const supabase = createClient(supabaseUrl, supabaseServiceKey);
 /**
  * SERVIÇO DE EXPORTAÇÃO DE PEDIDO DE COMPRA (BACKEND)
  * 
- * Abordagem Escolhida: xlsx-populate
- * Por que: Esta biblioteca é superior ao ExcelJS para preenchimento de templates,
- * pois ela trabalha modificando o XML original sem tentar reconstruir todo o 
- * modelo de estilos do zero, preservando 100% das larguras de colunas, 
- * alturas de linhas, células mescladas e formatações complexas que o ExcelJS 
- * muitas vezes perde no ciclo load -> write.
+ * Versão Corrigida - 02/05/2026
+ * Correções aplicadas:
+ * ✅ 1. Prazos separados em colunas distintas (N5, Q5, T5)
+ * ✅ 2. Vencimentos calculados (N6, Q6, T6)
+ * ✅ 3. Número da loja preenchido (D23) para pedidos de gerente
+ * ✅ 4. Quantidades das grades consolidadas na coluna D (UN)
  */
 export async function exportBuyOrderToExcel(orderId: string) {
     console.log(`[Export] Iniciando exportação definitiva para ID: ${orderId}`);
@@ -47,7 +47,6 @@ export async function exportBuyOrderToExcel(orderId: string) {
         const arrayBuffer = await response.arrayBuffer();
 
         // 3. CARREGAR WORKBOOK COM xlsx-populate
-        // fromDataAsync aceita Buffers/ArrayBuffers no Node.js
         const workbook = await XlsxPopulate.fromDataAsync(Buffer.from(arrayBuffer));
         const sheet = workbook.sheet('PEDIDO');
         
@@ -58,7 +57,6 @@ export async function exportBuyOrderToExcel(orderId: string) {
         console.log('[Export] Preenchendo cabeçalho...');
 
         // 4. PREENCHER CABEÇALHO
-        // Usamos helpers para evitar erros de undefined
         const setVal = (cell: string, val: any) => {
             if (val !== undefined && val !== null) {
                 sheet.cell(cell).value(val);
@@ -68,7 +66,6 @@ export async function exportBuyOrderToExcel(orderId: string) {
         setVal('N2', order.numero_pedido);
         setVal('AA2', (order.user_name || '').toUpperCase());
         
-        // Datas: xlsx-populate lida bem com objetos Date
         if (order.created_at) setVal('AN2', new Date(order.created_at));
 
         setVal('N3', (order.marca || '').toUpperCase());
@@ -78,7 +75,7 @@ export async function exportBuyOrderToExcel(orderId: string) {
         setVal('N4', (order.fornecedor || '').toUpperCase());
         setVal('AA4', (order.email_representante || order.email || '').toLowerCase());
 
-        // ✅ CORREÇÃO 1: PRAZOS E VENCIMENTOS - Cada prazo em sua coluna (N5, Q5, T5) e vencimentos (N6, Q6, T6)
+        // ✅ CORREÇÃO 1: PRAZOS E VENCIMENTOS SEPARADOS
         const prazosArray = Array.isArray(order.prazos) 
             ? order.prazos 
             : (order.prazos || '').toString().split(/[\/,;\s]+/).filter(Boolean);
@@ -90,63 +87,141 @@ export async function exportBuyOrderToExcel(orderId: string) {
         const PRAZO_COLS = ['N', 'Q', 'T']; 
         const MESES = ['jan', 'fev', 'mar', 'abr', 'mai', 'jun', 'jul', 'ago', 'set', 'out', 'nov', 'dez'];
 
+        // Preencher prazos (linha 5)
         prazosArray.forEach((prazo: any, idx: number) => {
             if (idx < PRAZO_COLS.length) {
                 const col = PRAZO_COLS[idx];
-                // Preencher prazo (linha 5)
-                sheet.cell(`${col}5`).value(Number(prazo) || 0);
-                
-                // Preencher vencimento (linha 6) no formato "mmm/aa"
-                if (vencimentosArray[idx]) {
-                    const vencDate = new Date(vencimentosArray[idx]);
-                    const mes = MESES[vencDate.getMonth()];
-                    const ano = vencDate.getFullYear().toString().slice(-2);
-                    sheet.cell(`${col}6`).value(`${mes}/${ano}`);
-                }
+                setVal(`${col}5`, Number(prazo) || 0);
+            }
+        });
+
+        // Preencher vencimentos (linha 6)
+        vencimentosArray.forEach((vencimento: any, idx: number) => {
+            if (idx < PRAZO_COLS.length) {
+                const col = PRAZO_COLS[idx];
+                const vencDate = new Date(vencimento);
+                const mes = MESES[vencDate.getMonth()];
+                const ano = vencDate.getFullYear().toString().slice(-2);
+                setVal(`${col}6`, `${mes}/${ano}`);
             }
         });
         
         if (order.fat_inicio) setVal('AA5', new Date(order.fat_inicio));
         if (order.fat_fim) setVal('AH5', new Date(order.fat_fim));
 
-        // ✅ CORREÇÃO 2: LOJAS VINCULADAS POR SUB-PEDIDO
-        // Cada sub-pedido (1 a 5) ocupa uma linha (23 a 27)
-        // Cada loja do sub-pedido ocupa uma coluna a partir da D (coluna 4)
+        // ✅ CORREÇÃO 2: LOJAS VINCULADAS POR SUB-PEDIDO (com fallback para gerente)
         const subOrders = order.buy_order_sub_orders || [];
 
-        subOrders.forEach((subOrder: any, subIdx: number) => {
-            // Linha do sub-pedido: 23 para pedido 1, 24 para pedido 2, etc.
-            const rowNum = 23 + subIdx;
-            
-            // Máximo de 5 sub-pedidos (linhas 23-27)
-            if (subIdx >= 5) return;
-            
-            // lojas_numeros é um array com os números das lojas
-            const lojasArray = subOrder.lojas_numeros || [];
-            
-            if (Array.isArray(lojasArray)) {
-                lojasArray.forEach((lojaNum: any, lojaIdx: number) => {
-                    // Coluna D = 4, E = 5, F = 6, etc.
-                    const colNum = 4 + lojaIdx;
-                    
-                    // Preencher número da loja
-                    sheet.row(rowNum).cell(colNum).value(Number(lojaNum));
-                });
+        if (subOrders && subOrders.length > 0) {
+            // Pedido de ADMIN com múltiplas lojas
+            subOrders.forEach((subOrder: any, subIdx: number) => {
+                const rowNum = 23 + subIdx;
+                
+                if (subIdx >= 5) return;
+                
+                const lojasArray = subOrder.lojas_numeros || [];
+                
+                if (Array.isArray(lojasArray)) {
+                    lojasArray.forEach((lojaNum: any, lojaIdx: number) => {
+                        const colNum = 4 + lojaIdx;
+                        sheet.row(rowNum).cell(colNum).value(Number(lojaNum));
+                    });
+                }
+            });
+        } else {
+            // ✅ Pedido de GERENTE - preencher apenas D23
+            const lojaId = order.loja_id || order.store_id;
+            if (lojaId) {
+                const { data: loja } = await supabase
+                    .from('stores')
+                    .select('store_number')
+                    .eq('id', lojaId)
+                    .single();
+                
+                if (loja && loja.store_number) {
+                    setVal('D23', Number(loja.store_number));
+                }
             }
-        });
+        }
 
         // Números
         sheet.cell('Z6').value(Number(order.desconto || 0) / 100);
         sheet.cell('AF6').value(Number(order.markup || 0));
 
-        // 5. PREENCHER ITENS (A partir da linha 36)
-        console.log('[Export] Preenchendo itens...');
+        // 5. ✅ PREENCHER TABELA DE GRADES
+        console.log('[Export] Preenchendo tabela de grades...');
+
+        const GRADE_MAP: Record<string, number> = { 
+            A: 14, B: 15, C: 16, D: 17, E: 18, F: 19, G: 20, H: 21
+        };
+
+        // Mapeamento completo: tamanho → índice de coluna no xlsx-populate
+        const COL_MAP: Record<string, number> = {
+            // ACESSÓRIOS (D-H)
+            'UN': 4, 'P': 5, 'M': 6, 'G': 7, 'GG': 8,
+            
+            // CALÇADOS NUMÉRICOS (I-AO: tamanhos 16-48)
+            '16': 9,  '17': 10, '18': 11, '19': 12, '20': 13,
+            '21': 14, '22': 15, '23': 16, '24': 17, '25': 18,
+            '26': 19, '27': 20, '28': 21, '29': 22, '30': 23,
+            '31': 24, '32': 25, '33': 26, '34': 27, '35': 28,
+            '36': 29, '37': 30, '38': 31, '39': 32, '40': 33,
+            '41': 34, '42': 35, '43': 36, '44': 37, '45': 38,
+            '46': 39, '47': 40, '48': 41
+        };
+
+        // Consolidar quantidades de todos os itens do pedido
         const items = order.buy_order_items || [];
+        const gradesUnicas: Record<string, Record<string, number>> = {};
+
+        items.forEach((item: any) => {
+            const gradesArray = item.grades || [];
+            if (!Array.isArray(gradesArray)) return;
+
+            gradesArray.forEach((gradeObj: any) => {
+                const letra = gradeObj.letra;
+                const tamanhos = gradeObj.tamanhos || {};
+                
+                if (!letra || !GRADE_MAP[letra]) return;
+                
+                // ✅ SÓ ADICIONA SE ESSA GRADE AINDA NÃO EXISTE
+                if (!gradesUnicas[letra]) {
+                    gradesUnicas[letra] = {};
+                    
+                    Object.entries(tamanhos).forEach(([tamanho, qtd]: any) => {
+                        const qtdNum = Number(qtd) || 0;
+                        if (qtdNum > 0) {
+                            gradesUnicas[letra][tamanho] = qtdNum; // SEM SOMAR!
+                        }
+                    });
+                }
+                // Se já existe, ignora (não adiciona/soma novamente)
+            });
+        });
+
+        // Preencher quantidades no Excel (SEM modificar layout)
+        Object.entries(gradesUnicas).forEach(([letra, tamanhos]) => {
+            const rowNum = GRADE_MAP[letra];
+            if (!rowNum) return;
+            
+            Object.entries(tamanhos).forEach(([tamanho, qtd]: any) => {
+                const colNum = COL_MAP[tamanho];
+                const qtdNum = Number(qtd) || 0;
+                
+                if (colNum && qtdNum > 0) {
+                    sheet.row(rowNum).cell(colNum).value(qtdNum);
+                }
+            });
+        });
+
+        console.log('[Export] Tabela de grades finalizada.');
+
+        // 6. PREENCHER ITENS (A partir da linha 36)
+        console.log('[Export] Preenchendo itens...');
         const START_ROW = 36;
 
         items.forEach((item: any, idx: number) => {
             const row = START_ROW + idx;
-            // Limite de segurança do template (exemplo: 500 linhas)
             if (row > 500) return;
 
             sheet.cell(`C${row}`).value((item.referencia || '').toUpperCase());
@@ -163,43 +238,6 @@ export async function exportBuyOrderToExcel(orderId: string) {
             if (Array.isArray(grades) && grades.length > 0) {
                 sheet.cell(`X${row}`).value(grades[0].letra || '');
             }
-        });
-
-        // 6. PREENCHER TABELA DE GRADES (Linhas 14-20)
-        console.log('[Export] Preenchendo tabela de grades...');
-        const GRADE_MAP: Record<string, number> = { 
-            A: 14, B: 15, C: 16, D: 17, E: 18, F: 19, G: 20 
-        };
-        
-        const COL_MAP: Record<string, number> = {
-            '20': 12, '21': 13, '22': 14, '23': 15, '24': 16, '25': 17, 
-            '26': 18, '27': 19, '28': 20, '29': 21, '30': 22, '31': 23, 
-            '32': 24, '33': 25, '34': 26, '35': 27, '36': 28, '37': 29, 
-            '38': 30, '39': 31, '40': 32, '41': 33, '42': 34, '43': 35, '44': 36
-        };
-
-        // Consolidação ou individuais? 
-        // A lógica do usuário pede para preencher a tabela de grades baseada nos itens.
-        // Geralmente cada letra representa uma grade fixa.
-        items.forEach((item: any) => {
-            const gradesArray = item.grades || [];
-            if (!Array.isArray(gradesArray)) return;
-
-            gradesArray.forEach((gradeObj: any) => {
-                const letra = gradeObj.letra;
-                const tamanhos = gradeObj.tamanhos || {};
-                
-                const rowNum = GRADE_MAP[letra];
-                if (!rowNum) return;
-
-                Object.entries(tamanhos).forEach(([tamanho, qtd]: any) => {
-                    const colNum = COL_MAP[tamanho];
-                    if (!colNum) return;
-
-                    // xlsx-populate usa row, col (1-based) ou endereço A1
-                    sheet.row(rowNum).cell(colNum).value(Number(qtd));
-                });
-            });
         });
 
         // 7. ATUALIZAR TIMESTAMP DE EXPORTAÇÃO NO BANCO

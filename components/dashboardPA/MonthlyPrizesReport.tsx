@@ -1,582 +1,528 @@
 import React, { useState, useEffect } from 'react';
+import { X, Calendar, TrendingUp, Users, Award, Download, ChevronLeft, ChevronRight, Building2 } from 'lucide-react';
 import { supabase } from '../../services/supabaseClient';
-import { X, Download, TrendingUp, Calendar, Printer, Trophy, Medal, Award } from 'lucide-react';
-
-interface PrizeReportRow {
-  semana_numero: number;
-  data_inicio: string;
-  data_fim: string;
-  store_id: string;
-  store_name: string;
-  total_premiacoes: number;
-}
-
-interface StoreMonthlyData {
-  store_name: string;
-  total_vendas: number;
-  pa_medio: number;
-  ticket_medio: number;
-  qtde_premiados: number;
-  total_premiacoes: number;
-}
+import { format } from 'date-fns';
+import { ptBR } from 'date-fns/locale';
 
 interface MonthlyPrizesReportProps {
   isOpen: boolean;
   onClose: () => void;
 }
 
+interface MonthlyStoreData {
+  store_number: string;
+  store_name: string;
+  year_ref: number;
+  month_ref: number;
+  total_vendedores: number;
+  total_semanas: number;
+  vendedores_atingiram_pa: number;
+  pa_medio: number;
+  total_premio_mes: number;
+  total_vendas_mes: number;
+}
+
+interface MonthlyVendedorData {
+  nome_vendedor: string;
+  store_number: string;
+  store_name: string;
+  pa_medio_mes: number;
+  premio_total_mes: number;
+  total_semanas_trabalhadas: number;
+  semanas_atingiu_pa: number;
+  ranking_premio_loja: number;
+}
+
 export const MonthlyPrizesReport: React.FC<MonthlyPrizesReportProps> = ({ isOpen, onClose }) => {
-  const currentDate = new Date();
-  const [selectedMonth, setSelectedMonth] = useState(currentDate.getMonth() + 1);
-  const [selectedYear, setSelectedYear] = useState(currentDate.getFullYear());
-  const [reportData, setReportData] = useState<PrizeReportRow[]>([]);
-  const [storesData, setStoresData] = useState<StoreMonthlyData[]>([]);
+  const [selectedMonth, setSelectedMonth] = useState(new Date().getMonth() + 1);
+  const [selectedYear, setSelectedYear] = useState(new Date().getFullYear());
+  const [selectedStoreId, setSelectedStoreId] = useState<string>('all');
+  const [activeTab, setActiveTab] = useState<'lojas' | 'vendedores' | 'executivo'>('lojas');
+  const [storesData, setStoresData] = useState<MonthlyStoreData[]>([]);
+  const [vendedoresData, setVendedoresData] = useState<MonthlyVendedorData[]>([]);
+  const [executiveData, setExecutiveData] = useState<any>(null);
   const [loading, setLoading] = useState(false);
-  const [error, setError] = useState<string | null>(null);
+  const [stores, setStores] = useState<any[]>([]);
 
-  // Estilos de impressão para A4 horizontal
   useEffect(() => {
-    const style = document.createElement('style');
-    style.id = 'print-styles-monthly-report';
-    style.innerHTML = `
-      @media print {
-        @page {
-          size: A4 landscape;
-          margin: 15mm 10mm;
-        }
-        body * {
-          visibility: hidden;
-        }
-        #monthly-report-print, #monthly-report-print * {
-          visibility: visible;
-        }
-        #monthly-report-print {
-          position: absolute;
-          left: 0;
-          top: 0;
-          width: 100%;
-        }
-        .no-print {
-          display: none !important;
-        }
-        #monthly-report-print table {
-          font-size: 9px !important;
-          width: 100%;
-        }
-        #monthly-report-print th,
-        #monthly-report-print td {
-          padding: 3px 5px !important;
-        }
-      }
-    `;
-    document.head.appendChild(style);
+    if (isOpen) {
+      loadStores();
+      loadData();
+    }
+  }, [isOpen, selectedMonth, selectedYear, selectedStoreId]);
+
+  const loadStores = async () => {
+    const { data } = await supabase
+      .from('stores')
+      .select('id, number, name');
     
-    return () => {
-      const existingStyle = document.getElementById('print-styles-monthly-report');
-      if (existingStyle) {
-        existingStyle.remove();
-      }
-    };
-  }, []);
+    if (data) {
+      // Ordenar numericamente (05, 08, 09, 26... 109)
+      const sortedStores = data.sort((a, b) => {
+        const numA = parseInt(a.number);
+        const numB = parseInt(b.number);
+        return numA - numB;
+      });
+      setStores(sortedStores);
+    }
+  };
 
-  const months = [
-    { value: 1, label: 'Janeiro' },
-    { value: 2, label: 'Fevereiro' },
-    { value: 3, label: 'Março' },
-    { value: 4, label: 'Abril' },
-    { value: 5, label: 'Maio' },
-    { value: 6, label: 'Junho' },
-    { value: 7, label: 'Julho' },
-    { value: 8, label: 'Agosto' },
-    { value: 9, label: 'Setembro' },
-    { value: 10, label: 'Outubro' },
-    { value: 11, label: 'Novembro' },
-    { value: 12, label: 'Dezembro' },
-  ];
-
-  const years = Array.from({ length: 5 }, (_, i) => currentDate.getFullYear() - i);
-
-  const fetchReport = async () => {
+  const loadData = async () => {
     setLoading(true);
-    setError(null);
-
     try {
-      // 1. Buscar premiações por semana usando a função existente
-      const { data: premiacoesData, error: rpcError } = await supabase.rpc('get_monthly_prizes_report', {
-        p_month: selectedMonth,
-        p_year: selectedYear,
-      });
+      // Carregar dados por loja
+      let storeQuery = supabase
+        .from('vw_monthly_summary_by_store')
+        .select('*')
+        .eq('year_ref', selectedYear)
+        .eq('month_ref', selectedMonth)
+        .order('total_premio_mes', { ascending: false });
 
-      if (rpcError) throw rpcError;
-      setReportData(premiacoesData || []);
-
-      // 2. Buscar semanas do mês para obter week_ids
-      const { data: semanasData } = await supabase
-        .from('Dashboard_PA_Semanas')
-        .select('id, store_id')
-        .eq('mes_ref', selectedMonth)
-        .eq('ano_ref', selectedYear);
-
-      if (!semanasData || semanasData.length === 0) {
-        setStoresData([]);
-        return;
+      if (selectedStoreId !== 'all') {
+        storeQuery = storeQuery.eq('store_id', selectedStoreId);
       }
 
-      const weekIds = semanasData.map(w => w.id);
+      const { data: storeData } = await storeQuery;
+      if (storeData) setStoresData(storeData);
 
-      // 3. Buscar vendas do mês
-      const { data: vendasData } = await supabase
-        .from('Dashboard_PA_Vendas')
-        .select('store_id, pa, total_vendas, qtde_vendas')
-        .in('semana_id', weekIds);
+      // Carregar dados por vendedor
+      let vendedorQuery = supabase
+        .from('vw_monthly_summary_by_vendedor')
+        .select('*')
+        .eq('year_ref', selectedYear)
+        .eq('month_ref', selectedMonth)
+        .order('premio_total_mes', { ascending: false })
+        .limit(50);
 
-      // 4. Buscar premiações detalhadas do mês
-      const { data: premiosDetailData } = await supabase
-        .from('Dashboard_PA_Premiacoes')
-        .select('store_id, atingiu_meta')
-        .in('semana_id', weekIds);
+      if (selectedStoreId !== 'all') {
+        vendedorQuery = vendedorQuery.eq('store_id', selectedStoreId);
+      }
 
-      // 5. Buscar lojas ativas
-      const { data: storesInfo } = await supabase
-        .from('stores')
-        .select('id, name')
-        .eq('status', 'active');
+      const { data: vendedorData } = await vendedorQuery;
+      if (vendedorData) setVendedoresData(vendedorData);
 
-      // 6. Agrupar dados por loja
-      const storesMap = new Map<string, StoreMonthlyData>();
+      // Carregar dashboard executivo
+      const { data: execData } = await supabase
+        .from('vw_monthly_executive_dashboard')
+        .select('*')
+        .eq('year_ref', selectedYear)
+        .eq('month_ref', selectedMonth)
+        .single();
 
-      storesInfo?.forEach(store => {
-        const storeVendas = vendasData?.filter(v => v.store_id === store.id) || [];
-        const storePremios = premiosDetailData?.filter(p => p.store_id === store.id) || [];
-        const storePremiacoes = premiacoesData?.filter((p: PrizeReportRow) => p.store_id === store.id) || [];
+      if (execData) setExecutiveData(execData);
 
-        const totalVendas = storeVendas.reduce((sum, v) => sum + (v.total_vendas || 0), 0);
-        const totalQtdeVendas = storeVendas.reduce((sum, v) => sum + (v.qtde_vendas || 0), 0);
-        
-        // PA médio = média aritmética dos PAs de todos os vendedores
-        const paMedio = storeVendas.length > 0 
-          ? storeVendas.reduce((sum, v) => sum + (v.pa || 0), 0) / storeVendas.length 
-          : 0;
-        
-        // Ticket médio = total vendas / total qtde vendas
-        const ticketMedio = totalQtdeVendas > 0 ? totalVendas / totalQtdeVendas : 0;
-        
-        // Quantidade de vendedores que atingiram a meta
-        const qtdePremiados = storePremios.filter(p => p.atingiu_meta).length;
-        
-        // Total de premiações pagas (soma das semanas)
-        const totalPremiacoes = storePremiacoes.reduce((sum, p) => sum + p.total_premiacoes, 0);
-
-        storesMap.set(store.id, {
-          store_name: store.name,
-          total_vendas: totalVendas,
-          pa_medio: paMedio,
-          ticket_medio: ticketMedio,
-          qtde_premiados: qtdePremiados,
-          total_premiacoes: totalPremiacoes,
-        });
-      });
-
-      const storesArray = Array.from(storesMap.values());
-      setStoresData(storesArray);
-
-    } catch (err: any) {
-      console.error('Erro ao buscar relatório:', err);
-      setError(err.message || 'Erro ao carregar relatório');
+    } catch (error) {
+      console.error('Erro ao carregar dados:', error);
     } finally {
       setLoading(false);
     }
   };
 
-  useEffect(() => {
-    if (isOpen) {
-      fetchReport();
+  const changeMonth = (delta: number) => {
+    let newMonth = selectedMonth + delta;
+    let newYear = selectedYear;
+
+    if (newMonth > 12) {
+      newMonth = 1;
+      newYear++;
+    } else if (newMonth < 1) {
+      newMonth = 12;
+      newYear--;
     }
-  }, [isOpen, selectedMonth, selectedYear]);
+
+    setSelectedMonth(newMonth);
+    setSelectedYear(newYear);
+  };
+
+  const monthName = format(new Date(selectedYear, selectedMonth - 1), 'MMMM yyyy', { locale: ptBR });
 
   if (!isOpen) return null;
 
-  // Rankings
-  const rankByPA = [...storesData].sort((a, b) => b.pa_medio - a.pa_medio);
-  const rankByVendas = [...storesData].sort((a, b) => b.total_vendas - a.total_vendas);
-  const rankByTicket = [...storesData].sort((a, b) => b.ticket_medio - a.ticket_medio);
-  const rankByPremiados = [...storesData].sort((a, b) => b.qtde_premiados - a.qtde_premiados);
-  const rankByTotal = [...storesData].sort((a, b) => b.total_premiacoes - a.total_premiacoes);
-
-  const getRankPosition = (storeName: string, ranking: StoreMonthlyData[]) => {
-    return ranking.findIndex(s => s.store_name === storeName) + 1;
-  };
-
-  const getMedalIcon = (position: number) => {
-    if (position === 1) return <Trophy className="w-4 h-4 text-yellow-500 inline" />;
-    if (position === 2) return <Medal className="w-4 h-4 text-gray-400 inline" />;
-    if (position === 3) return <Award className="w-4 h-4 text-orange-600 inline" />;
-    return null;
-  };
-
-  const formatCurrency = (value: number) => {
-    return new Intl.NumberFormat('pt-BR', {
-      style: 'currency',
-      currency: 'BRL',
-      minimumFractionDigits: 0,
-      maximumFractionDigits: 0,
-    }).format(value);
-  };
-
-  const formatNumber = (value: number, decimals: number = 2) => {
-    return value.toFixed(decimals);
-  };
-
-  const exportToCSV = () => {
-    const headers = ['Ranking', 'Loja', 'P.A', 'Rank PA', 'Vendas (R$)', 'Rank Vendas', 'Ticket (R$)', 'Rank Ticket', 'Premiados', 'Rank Premiados', 'Total Pago', 'Rank Total'];
-    
-    const rows = rankByTotal.map((store, index) => {
-      const rankPA = getRankPosition(store.store_name, rankByPA);
-      const rankVendas = getRankPosition(store.store_name, rankByVendas);
-      const rankTicket = getRankPosition(store.store_name, rankByTicket);
-      const rankPremiados = getRankPosition(store.store_name, rankByPremiados);
-      
-      return [
-        index + 1,
-        store.store_name,
-        store.pa_medio.toFixed(2),
-        rankPA,
-        store.total_vendas.toFixed(2),
-        rankVendas,
-        store.ticket_medio.toFixed(2),
-        rankTicket,
-        store.qtde_premiados,
-        rankPremiados,
-        store.total_premiacoes.toFixed(2),
-        index + 1
-      ];
-    });
-
-    const csvContent = [
-      headers.join(','),
-      ...rows.map(row => row.join(','))
-    ].join('\n');
-
-    const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
-    const link = document.createElement('a');
-    link.href = URL.createObjectURL(blob);
-    link.download = `ranking_premiacoes_${months.find(m => m.value === selectedMonth)?.label}_${selectedYear}.csv`;
-    link.click();
-  };
-
-  const handlePrint = () => {
-    const printContent = document.getElementById('monthly-report-print');
-    if (!printContent) {
-      alert('Não foi possível encontrar o conteúdo para impressão.');
-      return;
-    }
-
-    const printWindow = window.open('', '_blank');
-    if (!printWindow) {
-      alert('Pop-ups bloqueados! Por favor, permita pop-ups para este site e tente novamente.');
-      return;
-    }
-
-    const monthLabel = months.find(m => m.value === selectedMonth)?.label;
-
-    printWindow.document.write(`
-      <!DOCTYPE html>
-      <html lang="pt-BR">
-        <head>
-          <meta charset="UTF-8" />
-          <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-          <title>Ranking Mensal - ${monthLabel}/${selectedYear}</title>
-          <script src="https://cdn.tailwindcss.com"></script>
-          <style>
-            @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;700;900&display=swap');
-            
-            * {
-              -webkit-print-color-adjust: exact !important;
-              print-color-adjust: exact !important;
-              color-adjust: exact !important;
-              font-family: 'Inter', sans-serif;
-            }
-
-            @page {
-              size: A4 landscape;
-              margin: 10mm;
-            }
-
-            body {
-              background: white;
-              margin: 0;
-              padding: 0;
-            }
-
-            table {
-              width: 100%;
-              border-collapse: collapse;
-              font-size: 10px !important;
-            }
-
-            th, td {
-              border: 1px solid #e2e8f0 !important;
-              padding: 4px 6px !important;
-            }
-
-            .bg-orange-50 { background-color: #fffaf0 !important; }
-            .bg-orange-100 { background-color: #ffedd5 !important; }
-            .bg-red-100 { background-color: #fee2e2 !important; }
-            .text-orange-600 { color: #ea580c !important; }
-            .text-orange-800 { color: #9a3412 !important; }
-            .text-blue-700 { color: #1d4ed8 !important; }
-            .text-green-700 { color: #15803d !important; }
-            .text-purple-700 { color: #7e22ce !important; }
-            .text-amber-700 { color: #b45309 !important; }
-            
-            .font-black { font-weight: 900 !important; }
-            .font-bold { font-weight: 700 !important; }
-            
-            .hidden.print\\:block { display: block !important; }
-            .no-print { display: none !important; }
-          </style>
-        </head>
-        <body class="bg-white p-4">
-          <div class="w-full">
-            ${printContent.innerHTML}
-          </div>
-          <script>
-            window.onload = () => {
-              setTimeout(() => {
-                window.focus();
-                window.print();
-                window.onafterprint = () => window.close();
-              }, 1000);
-            };
-          </script>
-        </body>
-      </html>
-    `);
-
-    printWindow.document.close();
-  };
-
   return (
-    <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4 no-print">
-      <div className="bg-white rounded-lg shadow-2xl max-w-7xl w-full max-h-[95vh] overflow-hidden flex flex-col">
+    <div className="fixed inset-0 z-[200] flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-sm">
+      <div className="bg-white dark:bg-slate-900 rounded-3xl shadow-2xl border border-slate-200 dark:border-slate-800 w-full max-w-7xl max-h-[90vh] flex flex-col overflow-hidden">
+        
         {/* Header */}
-        <div className="bg-gradient-to-r from-orange-600 to-red-600 text-white p-4 flex items-center justify-between no-print">
-          <div className="flex items-center gap-2">
-            <TrendingUp className="w-6 h-6" />
+        <div className="flex items-center justify-between p-6 border-b border-slate-200 dark:border-slate-800">
+          <div className="flex items-center gap-3">
+            <div className="p-2.5 bg-gradient-to-r from-blue-600 to-indigo-600 rounded-xl">
+              <Award size={20} className="text-white" />
+            </div>
             <div>
-              <h2 className="text-lg font-bold uppercase italic">Ranking Mensal de Premiações</h2>
-              <p className="text-orange-100 text-xs font-bold">Dashboard PA - Classificação por Desempenho</p>
+              <h2 className="text-lg font-black text-slate-900 dark:text-white uppercase italic">
+                Relatório Mensal de Premiações
+              </h2>
+              <p className="text-xs font-bold text-slate-400 uppercase tracking-widest">
+                Sistema de Rateio Proporcional
+              </p>
             </div>
           </div>
           <button
             onClick={onClose}
-            className="hover:bg-white/20 p-2 rounded-lg transition-colors"
+            className="p-2 rounded-xl text-slate-400 hover:text-slate-900 dark:hover:text-white hover:bg-slate-100 dark:hover:bg-slate-800 transition-all"
           >
-            <X className="w-5 h-5" />
+            <X size={20} />
           </button>
         </div>
 
         {/* Filtros */}
-        <div className="p-3 border-b bg-gray-50 flex gap-3 items-center flex-wrap no-print">
-          <div className="flex items-center gap-2">
-            <Calendar className="w-4 h-4 text-gray-600" />
-            <span className="font-bold text-gray-700 text-sm uppercase">Período:</span>
+        <div className="p-6 border-b border-slate-200 dark:border-slate-800 space-y-4">
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+            {/* Navegação de Mês */}
+            <div>
+              <label className="text-xs font-black text-slate-500 dark:text-slate-400 uppercase tracking-widest mb-2 block">
+                <Calendar className="inline mr-1" size={12} /> Período
+              </label>
+              <div className="flex items-center gap-2">
+                <button
+                  onClick={() => changeMonth(-1)}
+                  className="p-2.5 bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 dark:hover:bg-slate-700 rounded-xl transition-all"
+                >
+                  <ChevronLeft size={16} className="text-slate-600 dark:text-slate-400" />
+                </button>
+                <div className="flex-1 bg-gradient-to-r from-blue-50 to-indigo-50 dark:from-blue-900/20 dark:to-indigo-900/20 border-2 border-blue-200 dark:border-blue-800 rounded-xl px-4 py-2.5 text-center">
+                  <p className="text-sm font-black text-blue-600 dark:text-blue-400 uppercase italic">
+                    {monthName}
+                  </p>
+                </div>
+                <button
+                  onClick={() => changeMonth(1)}
+                  className="p-2.5 bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 dark:hover:bg-slate-700 rounded-xl transition-all"
+                >
+                  <ChevronRight size={16} className="text-slate-600 dark:text-slate-400" />
+                </button>
+              </div>
+            </div>
+
+            {/* Filtro de Loja */}
+            <div>
+              <label className="text-xs font-black text-slate-500 dark:text-slate-400 uppercase tracking-widest mb-2 block">
+                <Building2 className="inline mr-1" size={12} /> Loja
+              </label>
+              <select
+                value={selectedStoreId}
+                onChange={(e) => setSelectedStoreId(e.target.value)}
+                className="w-full bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl px-4 py-3 text-sm font-bold text-slate-900 dark:text-white"
+              >
+                <option value="all">🏪 Todas as Lojas</option>
+                {stores.map(s => (
+                  <option key={s.id} value={s.id}>Loja {s.number} - {s.name}</option>
+                ))}
+              </select>
+            </div>
+
+            {/* Botão Exportar */}
+            <div className="flex items-end">
+              <button
+                onClick={() => alert('Funcionalidade de exportação em desenvolvimento')}
+                className="w-full flex items-center justify-center gap-2 px-4 py-3 bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl font-black uppercase text-xs shadow-lg border-b-4 border-emerald-800 transition-all active:scale-95"
+              >
+                <Download size={16} />
+                Exportar PDF
+              </button>
+            </div>
           </div>
+        </div>
 
-          <select
-            value={selectedMonth}
-            onChange={(e) => setSelectedMonth(Number(e.target.value))}
-            className="px-3 py-1.5 text-sm font-bold border border-gray-300 rounded-lg focus:ring-2 focus:ring-orange-500"
-          >
-            {months.map((month) => (
-              <option key={month.value} value={month.value}>
-                {month.label}
-              </option>
-            ))}
-          </select>
-
-          <select
-            value={selectedYear}
-            onChange={(e) => setSelectedYear(Number(e.target.value))}
-            className="px-3 py-1.5 text-sm font-bold border border-gray-300 rounded-lg focus:ring-2 focus:ring-orange-500"
-          >
-            {years.map((year) => (
-              <option key={year} value={year}>
-                {year}
-              </option>
-            ))}
-          </select>
-
-          <div className="ml-auto flex gap-2">
+        {/* Tabs */}
+        <div className="px-6 pt-4 border-b border-slate-200 dark:border-slate-800">
+          <div className="flex gap-2 overflow-x-auto">
             <button
-              onClick={handlePrint}
-              disabled={loading || storesData.length === 0}
-              className="px-3 py-1.5 bg-blue-600 text-white text-sm font-bold rounded-lg hover:bg-blue-700 disabled:bg-gray-400 disabled:cursor-not-allowed flex items-center gap-2 transition-colors uppercase"
+              onClick={() => setActiveTab('lojas')}
+              className={`flex items-center gap-2 px-6 py-3 rounded-t-xl font-black uppercase text-xs transition-all whitespace-nowrap ${
+                activeTab === 'lojas'
+                  ? 'bg-white dark:bg-slate-900 text-blue-600 border-t-4 border-blue-600'
+                  : 'bg-slate-50 dark:bg-slate-800 text-slate-600 dark:text-slate-400 hover:bg-slate-100 dark:hover:bg-slate-700'
+              }`}
             >
-              <Printer className="w-4 h-4" />
-              Imprimir
+              <Building2 size={16} />
+              Por Loja
             </button>
             <button
-              onClick={exportToCSV}
-              disabled={loading || storesData.length === 0}
-              className="px-3 py-1.5 bg-green-600 text-white text-sm font-bold rounded-lg hover:bg-green-700 disabled:bg-gray-400 disabled:cursor-not-allowed flex items-center gap-2 transition-colors uppercase"
+              onClick={() => setActiveTab('vendedores')}
+              className={`flex items-center gap-2 px-6 py-3 rounded-t-xl font-black uppercase text-xs transition-all whitespace-nowrap ${
+                activeTab === 'vendedores'
+                  ? 'bg-white dark:bg-slate-900 text-emerald-600 border-t-4 border-emerald-600'
+                  : 'bg-slate-50 dark:bg-slate-800 text-slate-600 dark:text-slate-400 hover:bg-slate-100 dark:hover:bg-slate-700'
+              }`}
             >
-              <Download className="w-4 h-4" />
-              CSV
+              <Users size={16} />
+              Por Vendedor
+            </button>
+            <button
+              onClick={() => setActiveTab('executivo')}
+              className={`flex items-center gap-2 px-6 py-3 rounded-t-xl font-black uppercase text-xs transition-all whitespace-nowrap ${
+                activeTab === 'executivo'
+                  ? 'bg-white dark:bg-slate-900 text-purple-600 border-t-4 border-purple-600'
+                  : 'bg-slate-50 dark:bg-slate-800 text-slate-600 dark:text-slate-400 hover:bg-slate-100 dark:hover:bg-slate-700'
+              }`}
+            >
+              <TrendingUp size={16} />
+              Dashboard Executivo
             </button>
           </div>
         </div>
 
         {/* Conteúdo */}
-        <div className="flex-1 overflow-auto p-4" id="monthly-report-print">
-          {/* Cabeçalho para impressão */}
-          <div className="hidden print:block mb-4">
-            <h1 className="text-center font-black text-xl uppercase italic">RANKING MENSAL DE PREMIAÇÕES - DASHBOARD PA</h1>
-            <p className="text-center text-sm font-bold uppercase">
-              {months.find(m => m.value === selectedMonth)?.label} / {selectedYear}
-            </p>
-            <p className="text-center text-xs text-gray-600 mb-2">
-              Gerado em: {new Date().toLocaleString('pt-BR')}
-            </p>
-          </div>
-
-          {loading && (
-            <div className="text-center py-12">
-              <div className="inline-block animate-spin rounded-full h-12 w-12 border-4 border-orange-600 border-t-transparent"></div>
-              <p className="mt-4 text-gray-600 font-bold">Carregando relatório...</p>
+        <div className="flex-1 overflow-y-auto p-6">
+          {loading ? (
+            <div className="flex items-center justify-center py-20">
+              <div className="animate-spin w-12 h-12 border-4 border-blue-500 border-t-transparent rounded-full" />
             </div>
-          )}
+          ) : (
+            <>
+              {/* Tab: Por Loja */}
+              {activeTab === 'lojas' && (
+                <div className="space-y-4">
+                  {storesData.length === 0 ? (
+                    <div className="text-center py-12">
+                      <Building2 className="mx-auto mb-4 text-slate-300" size={48} />
+                      <p className="text-sm font-black text-slate-400 uppercase italic">
+                        Nenhum dado encontrado para este período
+                      </p>
+                    </div>
+                  ) : (
+                    storesData.map((store, index) => (
+                      <div
+                        key={index}
+                        className="bg-gradient-to-br from-slate-50 to-white dark:from-slate-800 dark:to-slate-900 rounded-2xl p-6 border border-slate-200 dark:border-slate-700 hover:shadow-lg transition-all"
+                      >
+                        <div className="flex items-center justify-between mb-4">
+                          <div className="flex items-center gap-3">
+                            <div className="w-12 h-12 rounded-xl bg-blue-100 dark:bg-blue-900/30 flex items-center justify-center">
+                              <span className="text-lg font-black text-blue-600 dark:text-blue-400">
+                                {store.store_number}
+                              </span>
+                            </div>
+                            <div>
+                              <h3 className="text-base font-black text-slate-900 dark:text-white uppercase italic">
+                                {store.store_name}
+                              </h3>
+                              <p className="text-xs font-bold text-slate-400">
+                                Loja {store.store_number}
+                              </p>
+                            </div>
+                          </div>
+                          <div className="text-right">
+                            <p className="text-2xl font-black text-emerald-600">
+                              R$ {store.total_premio_mes.toFixed(2)}
+                            </p>
+                            <p className="text-xs font-bold text-slate-400 uppercase">
+                              Total Prêmios (Rateado)
+                            </p>
+                          </div>
+                        </div>
 
-          {error && (
-            <div className="bg-red-50 border border-red-200 text-red-800 px-4 py-3 rounded-lg">
-              <strong>Erro:</strong> {error}
-            </div>
-          )}
+                        <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+                          <div className="bg-white dark:bg-slate-800 rounded-xl p-3 border border-slate-200 dark:border-slate-700">
+                            <p className="text-xs font-black text-slate-400 uppercase mb-1">Vendedores</p>
+                            <p className="text-lg font-black text-slate-900 dark:text-white">
+                              {store.total_vendedores}
+                            </p>
+                          </div>
+                          <div className="bg-white dark:bg-slate-800 rounded-xl p-3 border border-slate-200 dark:border-slate-700">
+                            <p className="text-xs font-black text-slate-400 uppercase mb-1">P.A Médio</p>
+                            <p className="text-lg font-black text-blue-600">
+                              {store.pa_medio?.toFixed(2) || '0.00'}
+                            </p>
+                          </div>
+                          <div className="bg-white dark:bg-slate-800 rounded-xl p-3 border border-slate-200 dark:border-slate-700">
+                            <p className="text-xs font-black text-slate-400 uppercase mb-1">Metas Atingidas</p>
+                            <p className="text-lg font-black text-amber-600">
+                              {store.vendedores_atingiram_pa}/{store.total_vendedores}
+                            </p>
+                          </div>
+                          <div className="bg-white dark:bg-slate-800 rounded-xl p-3 border border-slate-200 dark:border-slate-700">
+                            <p className="text-xs font-black text-slate-400 uppercase mb-1">Vendas</p>
+                            <p className="text-lg font-black text-purple-600">
+                              R$ {(store.total_vendas_mes / 1000).toFixed(0)}k
+                            </p>
+                          </div>
+                        </div>
+                      </div>
+                    ))
+                  )}
+                </div>
+              )}
 
-          {!loading && !error && storesData.length === 0 && (
-            <div className="text-center py-12 text-gray-500">
-              <Calendar className="w-16 h-16 mx-auto mb-4 text-gray-300" />
-              <p className="text-lg font-bold">Nenhum dado encontrado para este período</p>
-            </div>
-          )}
+              {/* Tab: Por Vendedor */}
+              {activeTab === 'vendedores' && (
+                <div className="space-y-3">
+                  {vendedoresData.length === 0 ? (
+                    <div className="text-center py-12">
+                      <Users className="mx-auto mb-4 text-slate-300" size={48} />
+                      <p className="text-sm font-black text-slate-400 uppercase italic">
+                        Nenhum vendedor encontrado para este período
+                      </p>
+                    </div>
+                  ) : (
+                    vendedoresData.map((vendedor, index) => (
+                      <div
+                        key={index}
+                        className="flex items-center justify-between p-4 bg-white dark:bg-slate-800 rounded-xl border border-slate-200 dark:border-slate-700 hover:shadow-md transition-all"
+                      >
+                        <div className="flex items-center gap-3">
+                          <div className={`w-10 h-10 rounded-lg flex items-center justify-center font-black text-sm ${
+                            index === 0 ? 'bg-gradient-to-r from-cyan-500 to-blue-500 text-white' :
+                            index === 1 ? 'bg-gradient-to-r from-emerald-500 to-green-500 text-white' :
+                            index === 2 ? 'bg-gradient-to-r from-amber-500 to-orange-500 text-white' :
+                            'bg-slate-100 dark:bg-slate-700 text-slate-600 dark:text-slate-400'
+                          }`}>
+                            #{index + 1}
+                          </div>
+                          <div>
+                            <p className="text-sm font-black text-slate-900 dark:text-white">
+                              {vendedor.nome_vendedor}
+                            </p>
+                            <p className="text-xs font-bold text-slate-400">
+                              Loja {vendedor.store_number} • {vendedor.store_name}
+                            </p>
+                          </div>
+                        </div>
 
-          {!loading && !error && storesData.length > 0 && (
-            <div className="overflow-x-auto">
-              <table className="w-full border-collapse text-xs">
-                <thead>
-                  <tr className="bg-gradient-to-r from-orange-100 to-red-100">
-                    <th className="border-2 border-orange-300 px-3 py-2 text-center font-black text-gray-800 uppercase">
-                      Rank
-                    </th>
-                    <th className="border-2 border-orange-300 px-3 py-2 text-left font-black text-gray-800 uppercase">
-                      Loja
-                    </th>
-                    <th className="border-2 border-orange-300 px-3 py-2 text-center font-black text-gray-800 uppercase">
-                      P.A
-                    </th>
-                    <th className="border-2 border-orange-300 px-3 py-2 text-center font-black text-gray-800 uppercase text-[10px]">
-                      Rank<br/>P.A
-                    </th>
-                    <th className="border-2 border-orange-300 px-3 py-2 text-right font-black text-gray-800 uppercase">
-                      Vendas
-                    </th>
-                    <th className="border-2 border-orange-300 px-3 py-2 text-center font-black text-gray-800 uppercase text-[10px]">
-                      Rank<br/>Vendas
-                    </th>
-                    <th className="border-2 border-orange-300 px-3 py-2 text-right font-black text-gray-800 uppercase">
-                      Ticket
-                    </th>
-                    <th className="border-2 border-orange-300 px-3 py-2 text-center font-black text-gray-800 uppercase text-[10px]">
-                      Rank<br/>Ticket
-                    </th>
-                    <th className="border-2 border-orange-300 px-3 py-2 text-center font-black text-gray-800 uppercase text-[10px]">
-                      Qtd<br/>Premiados
-                    </th>
-                    <th className="border-2 border-orange-300 px-3 py-2 text-center font-black text-gray-800 uppercase text-[10px]">
-                      Rank<br/>Premiados
-                    </th>
-                    <th className="border-2 border-orange-300 px-3 py-2 text-right font-black text-orange-800 uppercase bg-orange-50">
-                      Total Pago
-                    </th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {rankByTotal.map((store, index) => {
-                    const rankPA = getRankPosition(store.store_name, rankByPA);
-                    const rankVendas = getRankPosition(store.store_name, rankByVendas);
-                    const rankTicket = getRankPosition(store.store_name, rankByTicket);
-                    const rankPremiados = getRankPosition(store.store_name, rankByPremiados);
-                    const position = index + 1;
-                    const rowBg = position <= 3 ? 'bg-gradient-to-r from-orange-50 to-red-50' : 'hover:bg-gray-50';
+                        <div className="flex items-center gap-4">
+                          <div className="text-right">
+                            <p className="text-xs font-black text-slate-400 uppercase">P.A Médio</p>
+                            <p className="text-base font-black text-blue-600">
+                              {vendedor.pa_medio_mes?.toFixed(2) || '0.00'}
+                            </p>
+                          </div>
+                          <div className="text-right">
+                            <p className="text-xs font-black text-slate-400 uppercase">Metas</p>
+                            <p className="text-base font-black text-amber-600">
+                              {vendedor.semanas_atingiu_pa}/{vendedor.total_semanas_trabalhadas}
+                            </p>
+                          </div>
+                          <div className="text-right">
+                            <p className="text-xs font-black text-slate-400 uppercase">Prêmio Total</p>
+                            <p className="text-lg font-black text-emerald-600">
+                              R$ {vendedor.premio_total_mes?.toFixed(2) || '0.00'}
+                            </p>
+                          </div>
+                        </div>
+                      </div>
+                    ))
+                  )}
+                </div>
+              )}
 
-                    return (
-                      <tr key={store.store_name} className={rowBg}>
-                        <td className="border border-gray-300 px-3 py-2 text-center font-black text-lg">
-                          <div className="flex items-center justify-center gap-1">
-                            {getMedalIcon(position)}
-                            <span className={position <= 3 ? 'text-orange-600' : 'text-gray-600'}>
-                              {position}º
-                            </span>
+              {/* Tab: Dashboard Executivo */}
+              {activeTab === 'executivo' && (
+                <div className="space-y-6">
+                  {!executiveData ? (
+                    <div className="text-center py-12">
+                      <TrendingUp className="mx-auto mb-4 text-slate-300" size={48} />
+                      <p className="text-sm font-black text-slate-400 uppercase italic">
+                        Nenhum dado executivo disponível
+                      </p>
+                    </div>
+                  ) : (
+                    <>
+                      {/* KPIs Principais */}
+                      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
+                        <div className="bg-gradient-to-br from-blue-50 to-blue-100 dark:from-blue-900/20 dark:to-blue-800/20 rounded-2xl p-6 border-2 border-blue-200 dark:border-blue-800">
+                          <p className="text-xs font-black text-blue-600 dark:text-blue-400 uppercase mb-2">
+                            Total Lojas
+                          </p>
+                          <p className="text-3xl font-black text-blue-700 dark:text-blue-300">
+                            {executiveData.total_lojas}
+                          </p>
+                        </div>
+
+                        <div className="bg-gradient-to-br from-purple-50 to-purple-100 dark:from-purple-900/20 dark:to-purple-800/20 rounded-2xl p-6 border-2 border-purple-200 dark:border-purple-800">
+                          <p className="text-xs font-black text-purple-600 dark:text-purple-400 uppercase mb-2">
+                            Vendedores Rede
+                          </p>
+                          <p className="text-3xl font-black text-purple-700 dark:text-purple-300">
+                            {executiveData.total_vendedores_rede}
+                          </p>
+                        </div>
+
+                        <div className="bg-gradient-to-br from-amber-50 to-amber-100 dark:from-amber-900/20 dark:to-amber-800/20 rounded-2xl p-6 border-2 border-amber-200 dark:border-amber-800">
+                          <p className="text-xs font-black text-amber-600 dark:text-amber-400 uppercase mb-2">
+                            P.A Médio Rede
+                          </p>
+                          <p className="text-3xl font-black text-amber-700 dark:text-amber-300">
+                            {executiveData.pa_medio_rede?.toFixed(2) || '0.00'}
+                          </p>
+                        </div>
+
+                        <div className="bg-gradient-to-br from-emerald-50 to-emerald-100 dark:from-emerald-900/20 dark:to-emerald-800/20 rounded-2xl p-6 border-2 border-emerald-200 dark:border-emerald-800">
+                          <p className="text-xs font-black text-emerald-600 dark:text-emerald-400 uppercase mb-2">
+                            Total Prêmios
+                          </p>
+                          <p className="text-3xl font-black text-emerald-700 dark:text-emerald-300">
+                            R$ {(executiveData.premio_total_rede / 1000).toFixed(1)}k
+                          </p>
+                        </div>
+                      </div>
+
+                      {/* Faturamento e Taxa de Sucesso */}
+                      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                        <div className="bg-white dark:bg-slate-800 rounded-2xl p-6 border border-slate-200 dark:border-slate-700">
+                          <p className="text-xs font-black text-slate-400 uppercase mb-3">
+                            Faturamento Total da Rede
+                          </p>
+                          <p className="text-4xl font-black text-blue-600 mb-2">
+                            R$ {(executiveData.faturamento_total_rede / 1000).toFixed(0)}k
+                          </p>
+                          <p className="text-sm font-bold text-slate-500">
+                            Média por vendedor: R$ {executiveData.faturamento_por_vendedor?.toFixed(2) || '0.00'}
+                          </p>
+                        </div>
+
+                        <div className="bg-white dark:bg-slate-800 rounded-2xl p-6 border border-slate-200 dark:border-slate-700">
+                          <p className="text-xs font-black text-slate-400 uppercase mb-3">
+                            Taxa de Sucesso P.A
+                          </p>
+                          <p className="text-4xl font-black text-emerald-600 mb-2">
+                            {executiveData.taxa_sucesso_pa_rede?.toFixed(1) || '0.0'}%
+                          </p>
+                          <p className="text-sm font-bold text-slate-500">
+                            {executiveData.total_atingiram_pa} vendedores atingiram a meta
+                          </p>
+                        </div>
+                      </div>
+
+                      {/* Destaques */}
+                      <div className="bg-gradient-to-br from-orange-50 to-red-50 dark:from-orange-900/20 dark:to-red-900/20 rounded-2xl p-6 border-2 border-orange-200 dark:border-orange-800">
+                        <p className="text-xs font-black text-orange-600 dark:text-orange-400 uppercase mb-4">
+                          🏆 Destaques do Mês
+                        </p>
+                        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                          <div>
+                            <p className="text-sm font-black text-slate-600 dark:text-slate-300 mb-1">
+                              Melhor Loja em Premiação
+                            </p>
+                            <p className="text-lg font-black text-orange-600 dark:text-orange-400">
+                              {executiveData.melhor_loja_premio || 'N/A'}
+                            </p>
                           </div>
-                        </td>
-                        <td className="border border-gray-300 px-3 py-2 font-bold text-gray-900">
-                          {store.store_name}
-                        </td>
-                        <td className="border border-gray-300 px-3 py-2 text-center font-bold text-blue-700">
-                          {formatNumber(store.pa_medio)}
-                        </td>
-                        <td className="border border-gray-300 px-3 py-2 text-center">
-                          <div className="flex items-center justify-center gap-1">
-                            {getMedalIcon(rankPA)}
-                            <span className="font-bold text-gray-600 text-[11px]">{rankPA}º</span>
+                          <div>
+                            <p className="text-sm font-black text-slate-600 dark:text-slate-300 mb-1">
+                              Melhor Loja em P.A
+                            </p>
+                            <p className="text-lg font-black text-orange-600 dark:text-orange-400">
+                              {executiveData.melhor_loja_pa || 'N/A'}
+                            </p>
                           </div>
-                        </td>
-                        <td className="border border-gray-300 px-3 py-2 text-right font-bold text-green-700">
-                          {formatCurrency(store.total_vendas)}
-                        </td>
-                        <td className="border border-gray-300 px-3 py-2 text-center">
-                          <div className="flex items-center justify-center gap-1">
-                            {getMedalIcon(rankVendas)}
-                            <span className="font-bold text-gray-600 text-[11px]">{rankVendas}º</span>
-                          </div>
-                        </td>
-                        <td className="border border-gray-300 px-3 py-2 text-right font-bold text-purple-700">
-                          {formatCurrency(store.ticket_medio)}
-                        </td>
-                        <td className="border border-gray-300 px-3 py-2 text-center">
-                          <div className="flex items-center justify-center gap-1">
-                            {getMedalIcon(rankTicket)}
-                            <span className="font-bold text-gray-600 text-[11px]">{rankTicket}º</span>
-                          </div>
-                        </td>
-                        <td className="border border-gray-300 px-3 py-2 text-center font-bold text-amber-700">
-                          {store.qtde_premiados}
-                        </td>
-                        <td className="border border-gray-300 px-3 py-2 text-center">
-                          <div className="flex items-center justify-center gap-1">
-                            {getMedalIcon(rankPremiados)}
-                            <span className="font-bold text-gray-600 text-[11px]">{rankPremiados}º</span>
-                          </div>
-                        </td>
-                        <td className="border-2 border-orange-300 px-3 py-2 text-right font-black text-orange-800 bg-orange-50">
-                          {formatCurrency(store.total_premiacoes)}
-                        </td>
-                      </tr>
-                    );
-                  })}
-                </tbody>
-              </table>
-            </div>
+                        </div>
+                      </div>
+                    </>
+                  )}
+                </div>
+              )}
+            </>
           )}
         </div>
 
-        {!loading && !error && storesData.length > 0 && (
-          <div className="border-t p-3 bg-gradient-to-r from-orange-50 to-red-50 text-xs no-print">
-            <p className="font-bold text-gray-700 text-center uppercase">
-              🏆 = 1º Lugar • 🥈 = 2º Lugar • 🥉 = 3º Lugar | Ranking Total ordenado por "Total Pago"
-            </p>
-          </div>
-        )}
+        {/* Footer com Legenda */}
+        <div className="p-4 border-t border-slate-200 dark:border-slate-800 bg-slate-50 dark:bg-slate-800/50">
+          <p className="text-xs font-bold text-slate-500 dark:text-slate-400 text-center">
+            ℹ️ Valores rateados proporcionalmente para semanas que cruzam meses • 
+            Vendedores recebem valores integrais no pagamento
+          </p>
+        </div>
       </div>
     </div>
   );

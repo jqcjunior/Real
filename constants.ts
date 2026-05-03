@@ -1,5 +1,5 @@
 
-import { MonthlyPerformance, Store, User, ProductPerformance, Cota, AgendaItem, DownloadItem, CashError } from './types';
+import { MonthlyPerformance, Store, User, AgendaItem, DownloadItem, CashError } from './types';
 
 export const APP_NAME = "REAL ADMIN";
 
@@ -19,8 +19,6 @@ export const LOGO_URL = BRAND_LOGO;
 export const MOCK_USERS: User[] = [];
 export const MOCK_STORES: Store[] = [];
 export const MOCK_PERFORMANCE: MonthlyPerformance[] = [];
-export const MOCK_PRODUCT_PERFORMANCE: ProductPerformance[] = [];
-export const MOCK_COTAS: Cota[] = [];
 export const MOCK_AGENDA: AgendaItem[] = [];
 export const MOCK_DOWNLOADS: DownloadItem[] = [];
 export const MOCK_CASH_ERRORS: CashError[] = [];

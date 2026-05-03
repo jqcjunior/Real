@@ -17,6 +17,7 @@ import {
   Package
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
+import { toast } from 'sonner';
 import { User, UserRole } from '../types';
 
 // ──────────────────────────────────────────────────────────────────────────────
@@ -62,18 +63,19 @@ export default function BuyOrderQuotaView({ user }: { user: User }) {
   const [quotas, setQuotas] = useState<QuotaData[]>([]);
   const [selectedStore, setSelectedStore] = useState<number | null>(null);
   const [stores, setStores] = useState<StoreItem[]>([]);
-  const [roleMode, setRoleMode] = useState<'COMPRADOR' | 'GERENTE'>(
-    (user.role === UserRole.MANAGER) ? 'GERENTE' : 'COMPRADOR'
-  );
+  const [roleMode, setRoleMode] = useState<'COMPRADOR' | 'GERENTE'>(() => {
+    const role = String(user?.role || '').toUpperCase();
+    return (role === 'GERENTE' || role === 'MANAGER') ? 'GERENTE' : 'COMPRADOR'
+  });
   const [expandedMonth, setExpandedMonth] = useState<string | null>(null);
   const [details, setDetails] = useState<Record<string, TransactionDetail[]>>({});
   const [loadingDetails, setLoadingDetails] = useState<string | null>(null);
 
-  const isAdmin = user.role === UserRole.ADMIN;
+  const isAdmin = String(user?.role || '').toUpperCase() === 'ADMIN';
 
   useEffect(() => {
     async function fetchUserStoreNumber() {
-      if (user && user.role !== UserRole.ADMIN && user.storeId) {
+      if (user && !isAdmin && user.storeId) {
         const { data } = await supabase
           .from('stores')
           .select('number')
@@ -103,7 +105,14 @@ export default function BuyOrderQuotaView({ user }: { user: User }) {
         .order('store_number');
       
       if (data) {
-        setStores(data.map(s => ({ number: s.store_number, name: `Loja ${s.store_number}` })));
+        const sortedStores = data
+          .map(s => ({ number: s.store_number, name: `Loja ${s.store_number}` }))
+          .sort((a, b) => {
+            const numA = typeof a.number === 'number' ? a.number : parseInt(a.number.toString().replace(/\D/g, ''));
+            const numB = typeof b.number === 'number' ? b.number : parseInt(b.number.toString().replace(/\D/g, ''));
+            return numA - numB;
+          });
+        setStores(sortedStores);
       }
     }
     fetchStores();
@@ -114,10 +123,6 @@ export default function BuyOrderQuotaView({ user }: { user: User }) {
     if (selectedStore === null) return;
     setLoading(true);
     try {
-      const now = new Date();
-      const currentYear = now.getFullYear();
-      const currentMonth = now.getMonth() + 1;
-
       const { data, error } = await supabase.rpc('get_buy_order_quotas_future', {
         p_store_number: String(selectedStore),
         p_tipo_comprador: roleMode
@@ -126,25 +131,37 @@ export default function BuyOrderQuotaView({ user }: { user: User }) {
       if (error) throw error;
       
       if (data) {
-        const mapped = data.map((row: any) => ({
-          ...row,
-          comprador_inicial: roleMode === 'COMPRADOR' ? row.cota_inicial : 0,
-          comprador_comprometido: roleMode === 'COMPRADOR' ? row.cota_comprometida : 0,
-          comprador_disponivel: roleMode === 'COMPRADOR' ? row.cota_disponivel : 0,
-          gerente_inicial: roleMode === 'GERENTE' ? row.cota_inicial : 0,
-          gerente_comprometido: roleMode === 'GERENTE' ? row.cota_comprometida : 0,
-          gerente_disponivel: roleMode === 'GERENTE' ? row.cota_disponivel : 0
-        }));
-        setQuotas(mapped);
+        setQuotas(data);
       } else {
         setQuotas([]);
       }
-    } catch (err) {
+    } catch (err: any) {
       console.error('Erro ao buscar cotas:', err);
+      toast.error('Erro ao carregar cotas: ' + (err.message || err));
     } finally {
       setLoading(false);
     }
-  }, [selectedStore]);
+  }, [selectedStore, roleMode]);
+
+  const handleSyncQuotas = async () => {
+    if (selectedStore === null) return;
+    setLoading(true);
+    try {
+      const year = new Date().getFullYear();
+      const toastId = toast.loading('Sincronizando cotas para os próximos 12 meses...');
+      
+      // Inicializar ano atual e o próximo para garantir 12 meses
+      await supabase.rpc('inicializar_cotas_ano', { p_year: year });
+      await supabase.rpc('inicializar_cotas_ano', { p_year: year + 1 });
+
+      toast.success('Cotas sincronizadas!', { id: toastId });
+      fetchQuotas();
+    } catch (err: any) {
+      toast.error('Erro ao sincronizar: ' + err.message);
+    } finally {
+      setLoading(false);
+    }
+  };
 
   useEffect(() => {
     fetchQuotas();
@@ -185,8 +202,8 @@ export default function BuyOrderQuotaView({ user }: { user: User }) {
   // HELPERS VISUAIS
   // ────────────────────────────────────────────────────────────────────────────
 
-  const formatarMoeda = (valor: number) => 
-    valor.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' });
+  const formatarMoeda = (valor: number | undefined | null) => 
+    (valor ?? 0).toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' });
 
   const getMonthName = (m: number) => {
     const names = ['JAN', 'FEV', 'MAR', 'ABR', 'MAI', 'JUN', 'JUL', 'AGO', 'SET', 'OUT', 'NOV', 'DEZ'];
@@ -234,22 +251,34 @@ export default function BuyOrderQuotaView({ user }: { user: User }) {
             </div>
 
             <div className="flex flex-col gap-3">
-              {isAdmin && (
-                <div className="flex items-center gap-2 bg-slate-50 dark:bg-slate-800/50 p-1 rounded-xl border border-slate-200 dark:border-slate-700">
-                  <Filter size={14} className="ml-2 text-slate-400" />
-                  <select 
-                    value={selectedStore}
-                    onChange={(e) => setSelectedStore(Number(e.target.value))}
-                    className="bg-transparent border-none outline-none text-xs font-black uppercase text-slate-700 dark:text-slate-200 py-1.5 px-2"
-                  >
-                    {stores.length > 0 ? (
-                      stores.map(s => <option key={s.number} value={s.number}>{s.name}</option>)
-                    ) : (
-                      <option value={selectedStore}>Loja {selectedStore}</option>
-                    )}
-                  </select>
-                </div>
-              )}
+              <div className="flex gap-2">
+                {isAdmin && (
+                  <div className="flex-1 md:flex-none flex items-center gap-2 bg-slate-50 dark:bg-slate-800/50 p-1 rounded-xl border border-slate-200 dark:border-slate-700">
+                    <Filter size={14} className="ml-2 text-slate-400" />
+                    <select 
+                      value={selectedStore ?? ''}
+                      onChange={(e) => setSelectedStore(e.target.value ? Number(e.target.value) : null)}
+                      className="bg-transparent border-none outline-none text-xs font-black uppercase text-slate-700 dark:text-slate-200 py-1.5 px-2 w-full md:w-32"
+                    >
+                      {stores.length > 0 ? (
+                        stores.map(s => <option key={s.number} value={s.number}>{s.name}</option>)
+                      ) : (
+                        <option value="">{selectedStore ? `Loja ${selectedStore}` : 'Selecionar Loja'}</option>
+                      )}
+                    </select>
+                  </div>
+                )}
+                
+                <button
+                  onClick={handleSyncQuotas}
+                  disabled={loading || !selectedStore}
+                  className="px-4 py-2 bg-blue-100 hover:bg-blue-200 text-blue-700 dark:bg-blue-900/30 dark:hover:bg-blue-900/50 dark:text-blue-400 rounded-xl flex items-center gap-2 transition-all disabled:opacity-50"
+                  title="Sincronizar Parâmetros com Cotas"
+                >
+                  <History size={16} className={loading ? 'animate-spin' : ''} />
+                  <span className="text-[10px] font-black uppercase whitespace-nowrap">Sincronizar</span>
+                </button>
+              </div>
               
               <div className="flex gap-2">
                 {(['COMPRADOR', 'GERENTE'] as const).map(role => (
@@ -280,11 +309,10 @@ export default function BuyOrderQuotaView({ user }: { user: User }) {
         ) : (
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
             <AnimatePresence mode="popLayout">
-              {quotas.map((quota, idx) => {
-                const isComprador = roleMode === 'COMPRADOR';
-                const inicial = isComprador ? quota.comprador_inicial : quota.gerente_inicial;
-                const comprometido = isComprador ? quota.comprador_comprometido : quota.gerente_comprometido;
-                const disponivel = isComprador ? quota.comprador_disponivel : quota.gerente_disponivel;
+              {quotas.map((quota: any, idx) => {
+                const inicial = quota.cota_inicial ?? 0;
+                const comprometido = quota.cota_comprometida ?? 0;
+                const disponivel = quota.cota_disponivel ?? 0;
                 const percentual = inicial > 0 ? (disponivel / inicial) * 100 : 0;
                 
                 const status = getStatusConfig(percentual);

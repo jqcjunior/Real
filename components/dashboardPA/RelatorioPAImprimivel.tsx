@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { supabase } from '../../services/supabaseClient';
-import { Printer, Trophy, Medal, Star, Award, TrendingUp } from 'lucide-react';
+import { Printer, Trophy, Medal, Star, Award, TrendingUp, CheckCircle2, X } from 'lucide-react';
 import { format } from 'date-fns';
 import { ptBR } from 'date-fns/locale';
 
@@ -14,6 +14,12 @@ interface VendedorPremio {
   ticket_medio: number;
   qtde_vendas: number;
   qtde_itens: number;
+  valor_premio_pa: number;
+  valor_premio_vendas: number;
+  valor_premio_ticket: number;
+  valor_premio_total: number;
+  atingiu_meta_vendas: boolean;
+  atingiu_meta_ticket: boolean;
 }
 
 interface RelatorioProps {
@@ -119,6 +125,12 @@ const RelatorioPAImprimivel: React.FC<RelatorioProps> = ({ storeId, storeName, s
           ticket_medio:        Number(p.venda?.ticket_medio || 0),
           qtde_vendas:         Number(p.venda?.qtde_vendas || 0),
           qtde_itens:          Number(p.venda?.qtde_itens || 0),
+          valor_premio_pa:     Number(p.valor_premio_pa || 0),
+          valor_premio_vendas: Number(p.valor_premio_vendas || 0),
+          valor_premio_ticket: Number(p.valor_premio_ticket || 0),
+          valor_premio_total:  Number(p.valor_premio_total || p.valor_premio || 0),
+          atingiu_meta_vendas: !!p.atingiu_meta_vendas,
+          atingiu_meta_ticket: !!p.atingiu_meta_ticket
         }));
 
         const calcScore = (s: VendedorPremio, allSales: VendedorPremio[]) => {
@@ -403,37 +415,60 @@ const RelatorioPAImprimivel: React.FC<RelatorioProps> = ({ storeId, storeName, s
                     )}
                   </div>
 
-                  {/* Métricas */}
-                  <div className="flex gap-2 flex-shrink-0">
-                    {/* Vendas */}
-                    <div className="bg-white rounded-lg p-2 border-2 border-blue-200 text-center w-24 flex flex-col justify-center">
-                      <p className="text-[9px] font-black text-blue-400 uppercase leading-none mb-1">Vendas</p>
-                      <p className="text-xs font-black text-blue-700 leading-none">
-                        R$ {v.total_vendas.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}
-                      </p>
-                      <p className="text-[9px] font-bold text-slate-400 mt-1">{v.qtde_vendas} atend.</p>
+                  {/* Métricas e Detalhamento de Prêmios */}
+                  <div className="flex gap-4 items-center">
+                    {/* Detalhes de Metas e Prêmios Individuais */}
+                    <div className="grid grid-cols-1 gap-1 min-w-[200px]">
+                      {/* P.A */}
+                      <div className="flex items-center justify-between gap-4 py-1 border-b border-slate-100 italic">
+                        <div className="flex items-center gap-1.5 min-w-0">
+                          <CheckCircle2 size={12} className="text-emerald-500 flex-shrink-0" />
+                          <span className="text-[10px] font-black text-slate-700 uppercase truncate">P.A: {v.pa_atingido.toFixed(2)}</span>
+                          <span className="text-[8px] font-bold text-slate-400">({v.pa_meta.toFixed(2)})</span>
+                        </div>
+                        <span className="text-[10px] font-black text-emerald-600 whitespace-nowrap">R$ {v.valor_premio_pa.toFixed(2)}</span>
+                      </div>
+
+                      {/* Vendas */}
+                      <div className="flex items-center justify-between gap-4 py-1 border-b border-slate-100 italic">
+                        <div className="flex items-center gap-1.5 min-w-0">
+                          {v.atingiu_meta_vendas ? (
+                            <CheckCircle2 size={12} className="text-emerald-500 flex-shrink-0" />
+                          ) : (
+                            <X size={12} className="text-red-500 flex-shrink-0" />
+                          )}
+                          <span className="text-[10px] font-black text-slate-700 uppercase truncate">Vendas: R$ {v.total_vendas.toLocaleString('pt-BR', { maximumFractionDigits: 0 })}</span>
+                          <span className="text-[8px] font-bold text-slate-400">({(parametros?.vendas_minimo || 0).toLocaleString('pt-BR', { maximumFractionDigits: 0 })})</span>
+                        </div>
+                        <span className={`text-[10px] font-black whitespace-nowrap ${v.atingiu_meta_vendas ? 'text-emerald-600' : 'text-slate-300'}`}>R$ {v.valor_premio_vendas.toFixed(2)}</span>
+                      </div>
+
+                      {/* Ticket */}
+                      <div className="flex items-center justify-between gap-4 py-1 italic">
+                        <div className="flex items-center gap-1.5 min-w-0">
+                          {v.atingiu_meta_ticket ? (
+                            <CheckCircle2 size={12} className="text-emerald-500 flex-shrink-0" />
+                          ) : (
+                            <X size={12} className="text-red-500 flex-shrink-0" />
+                          )}
+                          <span className="text-[10px] font-black text-slate-700 uppercase truncate">Ticket: R$ {v.ticket_medio.toFixed(0)}</span>
+                          <span className="text-[8px] font-bold text-slate-400">({(parametros?.ticket_minimo || 0).toFixed(0)})</span>
+                        </div>
+                        <span className={`text-[10px] font-black whitespace-nowrap ${v.atingiu_meta_ticket ? 'text-emerald-600' : 'text-slate-300'}`}>R$ {v.valor_premio_ticket.toFixed(2)}</span>
+                      </div>
                     </div>
 
-                    {/* Ticket Médio */}
-                    <div className="bg-white rounded-lg p-2 border-2 border-amber-200 text-center w-24 flex flex-col justify-center">
-                      <p className="text-[9px] font-black text-amber-500 uppercase leading-none mb-1">Ticket Médio</p>
-                      <p className="text-sm font-black text-amber-700 leading-none">
-                        R$ {v.ticket_medio.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}
-                      </p>
-                    </div>
-
-                    {/* P.A */}
-                    <div className="bg-white rounded-lg p-2 border-2 border-green-200 text-center w-20 flex flex-col justify-center">
-                      <p className="text-[9px] font-black text-green-500 uppercase leading-none mb-1">P.A. Ating.</p>
-                      <p className="text-base font-black text-green-700 leading-none">{v.pa_atingido.toFixed(2)}</p>
-                      <p className="text-[9px] font-bold text-slate-400 mt-1">meta {v.pa_meta.toFixed(2)}</p>
-                    </div>
-
-                    {/* Itens */}
-                    <div className="bg-white rounded-lg p-2 border-2 border-purple-200 text-center w-16 flex flex-col justify-center">
-                      <p className="text-[9px] font-black text-purple-400 uppercase leading-none mb-1">Itens</p>
-                      <p className="text-xl font-black text-purple-600 leading-none">{v.qtde_itens}</p>
-                      <p className="text-[9px] font-bold text-slate-400 mt-1">peças</p>
+                    <div className="flex gap-2 flex-shrink-0">
+                      {/* Total */}
+                      <div className="bg-gradient-to-br from-emerald-500 to-teal-600 rounded-xl p-3 border-2 border-emerald-300 text-center w-28 flex flex-col justify-center text-white shadow-md">
+                        <p className="text-[10px] font-black uppercase leading-none mb-1 opacity-80">Total Prêmio</p>
+                        <p className="text-lg font-black leading-none tracking-tighter">
+                          R$ {v.valor_premio_total.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}
+                        </p>
+                        <div className="mt-1.5 pt-1.5 border-t border-white/20">
+                          <p className="text-[9px] font-bold opacity-90">{v.qtde_itens} peças</p>
+                        </div>
+                      </div>
                     </div>
                   </div>
                 </div>

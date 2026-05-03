@@ -97,8 +97,9 @@ const DashboardPAGerente: React.FC<DashboardPAGerenteProps> = ({ user, store }) 
   const [sales, setSales] = useState<PASale[]>([]);
   const [params, setParams] = useState<PAParameters | null>(null);
   const [monthlyGoal, setMonthlyGoal] = useState<{ revenue_target: number; business_days: number } | null>(null);
-  const [weeksSalesCache, setWeeksSalesCache] = useState<Record<string, { total: number; pa: number; count: number }>>({});
+  const [weeksSalesCache, setWeeksSalesCache] = useState<Record<string, { total: number; pa: number; count: number; tickets?: number }>>({});
   const [loading, setLoading] = useState(true);
+  const [loadingSales, setLoadingSales] = useState(false);
   const [importing, setImporting] = useState(false);
   const [showImportModal, setShowImportModal] = useState(false);
   const [toast, setToast] = useState<{ message: string; type: 'success' | 'error' } | null>(null);
@@ -151,13 +152,21 @@ const DashboardPAGerente: React.FC<DashboardPAGerenteProps> = ({ user, store }) 
  
       setMonthlyGoal(goalData);
  
-      const cache: Record<string, { total: number; pa: number; count: number }> = {};
+      const cache: Record<string, { total: number; pa: number; count: number; tickets?: number }> = {};
       await Promise.all(weeksData.map(async (w) => {
         const weekSales = await dashboardPAService.getStoreSales(w.id, store.id);
         if (weekSales.length > 0) {
           const total = weekSales.reduce((acc, s) => acc + s.total_vendas, 0);
           const paSum = weekSales.reduce((acc, s) => acc + s.pa, 0);
-          cache[w.id] = { total, pa: paSum / weekSales.length, count: weekSales.length };
+          const totalQty = weekSales.reduce((acc, s) => acc + (s.qtde_vendas || 0), 0);
+          const avgTicket = totalQty > 0 ? total / totalQty : 0;
+          
+          cache[w.id] = { 
+            total, 
+            pa: paSum / weekSales.length, 
+            count: weekSales.length,
+            tickets: avgTicket
+          };
         }
       }));
       setWeeksSalesCache(cache);
@@ -258,10 +267,13 @@ const DashboardPAGerente: React.FC<DashboardPAGerenteProps> = ({ user, store }) 
  
   const loadSales = async (weekId: string) => {
     try {
+      setLoadingSales(true);
       const salesData = await dashboardPAService.getStoreSales(weekId, store.id);
       setSales(salesData);
     } catch (error) {
       console.error('Error loading sales:', error);
+    } finally {
+      setLoadingSales(false);
     }
   };
  
@@ -368,7 +380,7 @@ const DashboardPAGerente: React.FC<DashboardPAGerenteProps> = ({ user, store }) 
       }
 
       await dashboardPAService.importSales(selectedWeek, store.id, mappedData, user.email || user.name);
-      await loadSales(selectedWeek);
+      await loadInitialData();
       setShowImportModal(false);
       showToast('Importação concluída com sucesso!', 'success');
 
@@ -424,108 +436,208 @@ const DashboardPAGerente: React.FC<DashboardPAGerenteProps> = ({ user, store }) 
           <style>
             @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;700;900&display=swap');
             body { font-family: 'Inter', sans-serif; margin: 0; padding: 0; background: #fff; }
-            .pagina { width: 210mm; height: 297mm; padding: 10mm; box-sizing: border-box; page-break-after: always; }
+            .pagina { 
+              width: 210mm; 
+              height: 297mm; 
+              padding: 10mm; 
+              box-sizing: border-box; 
+              page-break-after: always;
+              display: flex;
+              flex-direction: column;
+              gap: 8mm;
+            }
             .recibo { 
               width: 100%; 
-              height: 85mm; 
+              height: 88mm;
               border: 2px solid #000; 
-              margin-bottom: 5mm; 
-              padding: 8mm; 
+              padding: 12mm; 
               box-sizing: border-box;
               display: flex;
               flex-direction: column;
               position: relative;
+              background: #fff;
+              border-radius: 4px;
             }
-            .header { display: flex; justify-between; align-items: flex-start; border-bottom: 2px solid #000; padding-bottom: 4mm; margin-bottom: 4mm; }
-            .titulo { font-size: 24px; font-weight: 900; font-style: italic; text-transform: uppercase; letter-spacing: -1px; }
-            .valor { font-size: 28px; font-weight: 900; font-style: italic; }
-            .corpo { flex: 1; font-size: 14px; line-height: 1.4; }
-            .linha { display: flex; gap: 20px; margin-bottom: 2mm; }
-            .campo { display: flex; flex-direction: column; }
-            .campo span { font-size: 10px; font-weight: 900; text-transform: uppercase; color: #666; font-style: italic; }
-            .campo b { font-size: 16px; font-weight: 900; font-style: italic; text-transform: uppercase; }
-            .declaracao {
+            .header { 
+              display: flex; 
+              justify-content: space-between; 
+              align-items: flex-start; 
+              border-bottom: 3px solid #000; 
+              padding-bottom: 8px; 
+              margin-bottom: 12px; 
+            }
+            .titulo-container { display: flex; flex-direction: column; }
+            .titulo { font-size: 20px; font-weight: 900; text-transform: uppercase; letter-spacing: -0.5px; line-height: 1; }
+            .subtitulo { font-size: 10px; font-weight: 700; text-transform: uppercase; color: #444; margin-top: 4px; }
+            
+            .valor-box {
+              background: #000;
+              color: #fff;
+              padding: 6px 15px;
+              border-radius: 4px;
+              text-align: right;
+            }
+            .valor-label { font-size: 8px; font-weight: 700; text-transform: uppercase; display: block; margin-bottom: 2px; color: #ccc; }
+            .valor-grande { font-size: 24px; font-weight: 900; line-height: 1; }
+            
+            .info-grid { 
+              display: grid; 
+              grid-template-cols: 1fr 120px; 
+              gap: 20px;
+              margin-bottom: 15px; 
+            }
+            .info-item { display: flex; flex-direction: column; border-bottom: 1px solid #ddd; padding-bottom: 4px; }
+            .info-label { font-size: 9px; color: #666; text-transform: uppercase; font-weight: 800; margin-bottom: 2px; }
+            .info-value { font-size: 14px; font-weight: 700; text-transform: uppercase; color: #000; }
+
+            .metrics-table {
+              width: 100%;
+              border-collapse: collapse;
+              margin-bottom: 15px;
+            }
+            .metrics-table th {
+              text-align: left;
               font-size: 9px;
-              color: #555;
-              font-style: italic;
-              text-align: center;
-              margin-bottom: 8mm;
-            }
-            .assinaturas {
-              display: flex;
-              gap: 10mm;
-              width: 100%;
-            }
-            .ass {
-              flex: 1;
-              text-align: center;
-              display: flex;
-              flex-direction: column;
-              align-items: center;
-              gap: 3px;
-            }
-            .linha-ass {
-              width: 100%;
-              border-top: 1.5px solid #000;
-              margin-bottom: 4px;
-            }
-            .ass span {
-              font-size: 10px;
-              font-weight: bold;
-            }
-            .ass small {
-              font-size: 8px;
-              color: #666;
               text-transform: uppercase;
-              letter-spacing: 0.5px;
+              color: #666;
+              padding: 4px 8px;
+              border-bottom: 1px solid #000;
             }
-            @media print { body { background: none; } .pagina { margin: 0; border: none; } }
+            .metrics-table td {
+              padding: 8px;
+              border-bottom: 1px solid #eee;
+              font-size: 11px;
+            }
+            .metric-name { font-weight: 800; }
+            .metric-status { font-weight: 900; }
+            .metric-value { text-align: right; font-weight: 900; font-size: 12px; }
+
+            .total-row { display: none; } 
+
+            .declaracao { 
+              font-size: 10px; 
+              color: #000; 
+              margin-bottom: 15px; 
+              text-align: justify; 
+              line-height: 1.4;
+              padding: 10px;
+              background: #f9f9f9;
+              border-left: 4px solid #000;
+            }
+            
+            .data-container {
+              display: flex;
+              justify-content: space-between;
+              align-items: flex-end;
+              margin-bottom: 20px;
+            }
+            .data-text { font-size: 11px; font-weight: 700; }
+            .unidade-text { font-size: 9px; font-weight: 800; text-transform: uppercase; color: #666; }
+
+            .assinaturas { 
+              display: flex; 
+              justify-content: space-between; 
+              gap: 40px;
+            }
+            .ass-box { flex: 1; text-align: center; }
+            .ass-line { border-top: 1.5px solid #000; margin-bottom: 6px; }
+            .ass-name { font-size: 11px; font-weight: 800; display: block; text-transform: uppercase; }
+            .ass-cargo { font-size: 9px; color: #444; text-transform: uppercase; font-weight: 600; }
+
+            @media print { 
+              .pagina { margin: 0; padding: 10mm; } 
+              .recibo { page-break-inside: avoid; }
+            }
           </style>
         </head>
         <body>
           ${paginas.map(pagina => `
             <div class="pagina">
-              ${pagina.map(vendedor => `
+              ${pagina.map(vendedor => {
+                const totalVendasMeta = params?.vendas_minimo || 0;
+                const ticketMeta = params?.ticket_minimo || 0;
+                const paMeta = vendedor.pa_meta || 0;
+                
+                return `
                 <div class="recibo">
-                  <div class="header" style="display: flex; justify-content: space-between; align-items: center;">
-                    <div class="titulo">Recibo de Premiação P.A.</div>
-                    <div class="valor">R$ ${vendedor.valor_premio?.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}</div>
+                  <div class="header">
+                    <div class="titulo-container">
+                      <div class="titulo">Recibo de Premiação Semanal</div>
+                      <div class="subtitulo">Programa de Resultados · ${store.name}</div>
+                    </div>
+                    <div class="valor-box">
+                      <span class="valor-label">Total a Receber</span>
+                      <div class="valor-grande">R$ ${vendedor.valor_premio?.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}</div>
+                    </div>
                   </div>
                   
-                  <div class="corpo">
-                    <div class="linha">
-                      <div class="campo"><span>Vendedor</span><b>${vendedor.nome_vendedor}</b></div>
-                      <div class="campo"><span>Loja</span><b>${store.name}</b></div>
+                  <div class="info-grid">
+                    <div class="info-item">
+                      <span class="info-label">Colaborador(a)</span>
+                      <span class="info-value">${vendedor.nome_vendedor}</span>
                     </div>
-                    <div class="linha">
-                      <div class="campo"><span>Período de Vendas</span><b>${format(parseLocalDate(week.data_inicio), 'dd/MM/yyyy')} a ${format(parseLocalDate(week.data_fim), 'dd/MM/yyyy')}</b></div>
-                      <div class="campo"><span>Data de Pagamento</span><b>${format(dataPagamento, 'dd/MM/yyyy')}</b></div>
+                    <div class="info-item">
+                      <span class="info-label">Matrícula</span>
+                      <span class="info-value">${vendedor.cod_vendedor}</span>
                     </div>
-                    <div class="linha">
-                      <div class="campo"><span>P.A. Atingido</span><b>${vendedor.pa.toFixed(2)}</b></div>
-                      <div class="campo"><span>Meta Base</span><b>${vendedor.pa_meta?.toFixed(2)}</b></div>
-                    </div>
+                  </div>
+
+                  <table class="metrics-table">
+                    <thead>
+                      <tr>
+                        <th>Métrica Analisada</th>
+                        <th>Resultado Atingido</th>
+                        <th>Meta Pactuada</th>
+                        <th style="text-align: right">Valor Prêmio</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      <tr>
+                        <td class="metric-name">Índice P.A (Peças por Atendimento)</td>
+                        <td class="metric-status">${vendedor.pa.toFixed(2)}</td>
+                        <td>${paMeta.toFixed(2)}</td>
+                        <td class="metric-value">R$ ${vendedor.valor_premio_pa?.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}</td>
+                      </tr>
+                      <tr>
+                        <td class="metric-name">Volume de Vendas Líquidas</td>
+                        <td class="metric-status">R$ ${vendedor.total_vendas.toLocaleString('pt-BR', { maximumFractionDigits: 0 })}</td>
+                        <td>R$ ${totalVendasMeta.toLocaleString('pt-BR', { maximumFractionDigits: 0 })}</td>
+                        <td class="metric-value">R$ ${vendedor.valor_premio_vendas?.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}</td>
+                      </tr>
+                      <tr>
+                        <td class="metric-name">Ticket Médio por Venda</td>
+                        <td class="metric-status">R$ ${vendedor.ticket_medio?.toFixed(0)}</td>
+                        <td>R$ ${ticketMeta.toFixed(0)}</td>
+                        <td class="metric-value">R$ ${vendedor.valor_premio_ticket?.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}</td>
+                      </tr>
+                    </tbody>
+                  </table>
+
+                  <div style="margin-top: auto">
                     <div class="declaracao">
-                      Declaro que recebi o valor acima referente à premiação por P.A. atingido no período indicado.
-                      <br>
-                      ${format(dataPagamento, "dd 'de' MMMM 'de' yyyy", { locale: ptBR })}
+                      Declaro para os devidos fins que recebi a importância acima discriminada, referente à premiação por desempenho semanal, estando plenamente de acordo com as métricas e resultados apurados conforme política interna da empresa.
                     </div>
- 
+
+                    <div class="data-container">
+                      <div class="unidade-text">Unidade: ${store.number} - ${store.city}</div>
+                      <div class="data-text">${format(dataPagamento, "dd 'de' MMMM 'de' yyyy", { locale: ptBR })}</div>
+                    </div>
+
                     <div class="assinaturas">
-                      <div class="ass">
-                        <div class="linha-ass"></div>
-                        <span>${vendedor.nome_vendedor}</span>
-                        <small>Vendedor(a)</small>
+                      <div class="ass-box">
+                        <div class="ass-line"></div>
+                        <span class="ass-name">${vendedor.nome_vendedor}</span>
+                        <span class="ass-cargo">Assinatura do Colaborador</span>
                       </div>
-                      <div class="ass">
-                        <div class="linha-ass"></div>
-                        <span>${store.manager_name || 'Gerente'}</span>
-                        <small>Gerente</small>
+                      <div class="ass-box">
+                        <div class="ass-line"></div>
+                        <span class="ass-name">${store.manager_name || 'Gerência'}</span>
+                        <span class="ass-cargo">Assinatura Responsável</span>
                       </div>
                     </div>
                   </div>
                 </div>
-              `).join('')}
+              `}).join('')}
             </div>
           `).join('')}
         </body>
@@ -533,9 +645,12 @@ const DashboardPAGerente: React.FC<DashboardPAGerenteProps> = ({ user, store }) 
     `;
   };
  
-  const totalStoreSales = sales.reduce((acc, curr) => acc + curr.total_vendas, 0);
+  const totalStoreSales = sales.reduce((acc, curr) => acc + (curr.total_vendas || 0), 0);
   const totalAwards = sales.reduce((acc, curr) => acc + (curr.valor_premio || 0), 0);
-  const avgPA = sales.length > 0 ? sales.reduce((acc, curr) => acc + curr.pa, 0) / sales.length : 0;
+  const avgPA = sales.length > 0 ? sales.reduce((acc, curr) => acc + (curr.pa || 0), 0) / sales.length : 0;
+  
+  const totalQtyVendasWeek = sales.reduce((acc, curr) => acc + (curr.qtde_vendas || 0), 0);
+  const avgTicketWeek = totalQtyVendasWeek > 0 ? totalStoreSales / totalQtyVendasWeek : 0;
  
   if (loading) {
     return (
@@ -626,14 +741,16 @@ const DashboardPAGerente: React.FC<DashboardPAGerenteProps> = ({ user, store }) 
             const week = weeks.find(w => w.id === selectedWeek);
             const premiados = sales.filter(s => s.atingiu_meta);
 
-            if (week && premiados.length > 0) {
+            // O botão de impressão NUNCA deve desaparecer se a semana tiver dados ou já tiver sido impressa
+            if (week && (premiados.length > 0 || week.status === 'recibos_impressos' || sales.length > 0)) {
               return (
                 <button
                   onClick={imprimirRecibos}
-                  className="flex items-center gap-2 px-6 py-3 bg-emerald-500 text-white rounded-[20px] font-black italic uppercase tracking-tighter text-xs shadow-lg shadow-emerald-500/20 hover:bg-emerald-600 transition-all"
+                  disabled={premiados.length === 0}
+                  className="flex items-center gap-2 px-6 py-3 bg-emerald-500 text-white rounded-[20px] font-black italic uppercase tracking-tighter text-xs shadow-lg shadow-emerald-500/20 hover:bg-emerald-600 transition-all disabled:opacity-50 disabled:grayscale"
                 >
                   <Printer className="w-4 h-4" />
-                  <span>Imprimir Recibos ({premiados.length})</span>
+                  <span>{week.status === 'recibos_impressos' ? 'Reimprimir' : 'Imprimir'} Recibos ({premiados.length})</span>
                 </button>
               );
             }
@@ -737,7 +854,16 @@ const DashboardPAGerente: React.FC<DashboardPAGerenteProps> = ({ user, store }) 
           )}
  
           {/* Stats Grid */}
-          <div className="grid grid-cols-1 md:grid-cols-4 gap-6">
+          <div className="grid grid-cols-1 md:grid-cols-4 gap-6 relative">
+            {loadingSales && (
+              <div className="absolute inset-0 z-10 bg-slate-50/50 dark:bg-slate-950/50 backdrop-blur-[1px] flex items-center justify-center rounded-[40px]">
+                <motion.div 
+                  animate={{ rotate: 360 }}
+                  transition={{ duration: 1, repeat: Infinity, ease: "linear" }}
+                  className="w-10 h-10 border-4 border-orange-500 border-t-transparent rounded-full"
+                />
+              </div>
+            )}
             {(() => {
               const currentWeek = weeks.find(w => w.id === selectedWeek);
               const metaVendasSemana = currentWeek ? metaSemanaPorDias(currentWeek, monthlyGoal) : 0;
@@ -757,11 +883,9 @@ const DashboardPAGerente: React.FC<DashboardPAGerenteProps> = ({ user, store }) 
                 },
                 { 
                   label: 'Ticket Médio', 
-                  value: (() => {
-                    const tickets = sales.filter(s => s.ticket_medio && Number(s.ticket_medio) > 0).map(s => Number(s.ticket_medio));
-                    const avgTicket = tickets.length > 0 ? tickets.reduce((a, b) => a + b, 0) / tickets.length : 0;
-                    return avgTicket > 0 ? `R$ ${avgTicket.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}` : '—';
-                  })(),
+                  value: avgTicketWeek > 0 ? `R$ ${avgTicketWeek.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}` : '—',
+                  target: params?.ticket_minimo ? `Meta: R$ ${params.ticket_minimo.toFixed(0)}` : 'Sem meta definida',
+                  percent: params?.ticket_minimo ? Math.min((avgTicketWeek / params.ticket_minimo) * 100, 150) : 0,
                   icon: DollarSign, 
                   color: 'amber' 
                 },
@@ -827,14 +951,19 @@ const DashboardPAGerente: React.FC<DashboardPAGerenteProps> = ({ user, store }) 
             <h2 className="text-2xl font-black italic uppercase tracking-tighter text-slate-900 dark:text-white">
               Resumo das <span className="text-orange-500">Semanas</span> — <span className="text-black dark:text-white">Vendas · Ticket · P.A.</span>
             </h2>
-            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-5 gap-3">
               {weeks.map((w, i) => {
-                const cache = weeksSalesCache[w.id];
-                const metaVendas = metaSemanaPorDias(w, monthlyGoal);
-                const percentVendas = metaVendas > 0 ? Math.min(((cache?.total || 0) / metaVendas) * 100, 150) : 0;
-                const metaPA = params?.pa_inicial || 0;
-                const percentPA = metaPA > 0 ? Math.min(((cache?.pa || 0) / metaPA) * 100, 150) : 0;
                 const isSelected = selectedWeek === w.id;
+                const cache = weeksSalesCache[w.id];
+                
+                const weekTotal = cache?.total || (isSelected ? totalStoreSales : 0);
+                const weekPA = cache?.pa || (isSelected ? avgPA : 0);
+                const weekTicket = cache?.tickets || (isSelected ? avgTicketWeek : 0);
+
+                const metaVendas = metaSemanaPorDias(w, monthlyGoal);
+                const percentVendas = metaVendas > 0 ? Math.min((weekTotal / metaVendas) * 100, 150) : 0;
+                const metaPA = params?.pa_inicial || 0;
+                const percentPA = metaPA > 0 ? Math.min((weekPA / metaPA) * 100, 150) : 0;
  
                 return (
                   <motion.button
@@ -843,67 +972,64 @@ const DashboardPAGerente: React.FC<DashboardPAGerenteProps> = ({ user, store }) 
                     animate={{ opacity: 1, scale: 1 }}
                     transition={{ delay: i * 0.05 }}
                     onClick={() => setSelectedWeek(w.id)}
-                    className={`p-6 rounded-[32px] border text-left transition-all ${
+                    className={`p-3.5 rounded-[16px] border text-left transition-all group overflow-hidden ${
                       isSelected 
-                        ? 'bg-orange-500 border-orange-500 text-white shadow-lg shadow-orange-500/20' 
-                        : 'bg-white dark:bg-slate-900 border-slate-100 dark:border-slate-800 hover:border-orange-200 dark:hover:border-orange-900/30'
+                        ? 'bg-orange-500 border-orange-400 shadow-xl shadow-orange-500/20' 
+                        : 'bg-white dark:bg-slate-900 border-slate-100 dark:border-slate-800 hover:border-orange-200 dark:hover:border-orange-900/30 shadow-sm'
                     }`}
                   >
-                    <div className="flex justify-between items-start mb-4">
-                      <div className={`p-2 rounded-xl ${isSelected ? 'bg-white/20' : 'bg-slate-100 dark:bg-slate-800'}`}>
-                        <Calendar className={`w-4 h-4 ${isSelected ? 'text-white' : 'text-slate-400'}`} />
+                    <div className="flex justify-between items-start mb-2">
+                      <div className={`p-1.5 rounded-lg ${isSelected ? 'bg-white/20' : 'bg-orange-50 dark:bg-orange-900/20'}`}>
+                        <Calendar className={`w-3.5 h-3.5 ${isSelected ? 'text-white' : 'text-orange-500'}`} />
                       </div>
-                      <div className={`w-2 h-2 rounded-full ${
-                        w.status === 'aberta' ? 'bg-emerald-400 animate-pulse' : 
-                        w.status === 'recibos_impressos' ? 'bg-blue-400' :
-                        'bg-slate-300'
-                      }`} />
+                      <div className="flex flex-col items-end text-right">
+                        <div className={`w-1 h-1 rounded-full mb-1 ${
+                          w.status === 'aberta' ? 'bg-emerald-400 animate-pulse' : 
+                          w.status === 'recibos_impressos' ? 'bg-blue-400' :
+                          'bg-slate-300'
+                        }`} />
+                        <p className={`text-[8px] font-black italic uppercase tracking-tighter ${isSelected ? 'text-orange-100' : 'text-slate-400'}`}>
+                          {format(parseLocalDate(w.data_inicio), 'dd/MM')} a {format(parseLocalDate(w.data_fim), 'dd/MM')}
+                        </p>
+                      </div>
                     </div>
                     
-                    <p className={`text-[10px] font-black italic uppercase tracking-tighter mb-1 ${isSelected ? 'text-orange-100' : 'text-slate-400'}`}>
-                      {format(parseLocalDate(w.data_inicio), 'dd/MM')} a {format(parseLocalDate(w.data_fim), 'dd/MM')}
-                    </p>
-                    
-                    <div className="space-y-3">
+                    <div className="space-y-2.5">
+                      {/* Vendas */}
                       <div>
-                        <div className="flex justify-between text-[10px] font-black italic uppercase tracking-tighter mb-1">
-                          <span className={isSelected ? 'text-orange-100' : 'text-black dark:text-white'}>Vendas R$</span>
-                          <span className={isSelected ? 'text-white' : 'text-black dark:text-white'}>
-                            {cache?.total ? `R$ ${cache.total.toLocaleString('pt-BR', { maximumFractionDigits: 0 })}` : 'R$ 0'}
-                            {' '}<span className="opacity-60">{percentVendas.toFixed(0)}%</span>
-                          </span>
-                        </div>
-                        <div className={`h-1 w-full rounded-full overflow-hidden ${isSelected ? 'bg-white/20' : 'bg-slate-100 dark:bg-slate-800'}`}>
-                          <div className={`h-full rounded-full ${isSelected ? 'bg-white' : 'bg-orange-500'}`} style={{ width: `${Math.min(percentVendas, 100)}%` }} />
+                        <p className={`text-[8px] font-black italic uppercase tracking-tighter mb-0.5 ${isSelected ? 'text-orange-100' : 'text-slate-400'}`}>VENDAS R$</p>
+                        <p className={`text-[19px] leading-tight font-black italic uppercase tracking-tighter mb-1.5 ${isSelected ? 'text-white' : 'text-slate-900 dark:text-white'}`}>
+                          {weekTotal ? `R$ ${(weekTotal/1000).toFixed(0)}k` : 'R$ 0'}
+                        </p>
+                        <div className={`h-[20px] w-full rounded-[6px] overflow-hidden relative ${isSelected ? 'bg-white/15' : 'bg-slate-100 dark:bg-slate-800'}`}>
+                          <div 
+                            className={`h-full rounded-[6px] flex items-center justify-end pr-1.5 transition-all duration-500 ${
+                              isSelected ? 'bg-white' : 
+                              percentVendas < 80 ? 'bg-red-500' : 
+                              percentVendas < 100 ? 'bg-amber-500' : 'bg-emerald-500'
+                            }`}
+                            style={{ width: `${Math.min(percentVendas, 100)}%` }}
+                          >
+                            <span className={`text-[10px] font-black ${isSelected ? 'text-orange-600' : 'text-white'}`}>
+                              {percentVendas.toFixed(0)}%
+                            </span>
+                          </div>
                         </div>
                       </div>
 
-                      <div>
-                        <div className="flex justify-between text-[10px] font-black italic uppercase tracking-tighter mb-1">
-                          <span className={isSelected ? 'text-orange-100' : 'text-black dark:text-white'}>Ticket</span>
-                          <span className={isSelected ? 'text-white' : 'text-black dark:text-white'}>
-                            {(() => {
-                              const weekSales = sales.filter ? [] : [];
-                              const tickets = (weeksSalesCache[w.id] as any)?.tickets;
-                              return tickets ? `R$ ${Number(tickets).toLocaleString('pt-BR', { maximumFractionDigits: 0 })}` : 'R$';
-                            })()}
-                          </span>
+                      {/* Ticket e PA compactos */}
+                      <div className="grid grid-cols-2 gap-2">
+                        <div>
+                          <p className={`text-[8px] font-black italic uppercase tracking-tighter mb-0.5 ${isSelected ? 'text-orange-100' : 'text-slate-400'}`}>TICKET</p>
+                          <p className={`text-xs font-black italic uppercase tracking-tighter ${isSelected ? 'text-white' : 'text-slate-900 dark:text-white'}`}>
+                            R$ {weekTicket.toFixed(0)}
+                          </p>
                         </div>
-                        <div className={`h-1 w-full rounded-full overflow-hidden ${isSelected ? 'bg-white/20' : 'bg-slate-100 dark:bg-slate-800'}`}>
-                          <div className={`h-full rounded-full ${isSelected ? 'bg-white' : 'bg-amber-500'}`} style={{ width: '100%' }} />
-                        </div>
-                      </div>
-
-                      <div>
-                        <div className="flex justify-between text-[10px] font-black italic uppercase tracking-tighter mb-1">
-                          <span className={isSelected ? 'text-orange-100' : 'text-black dark:text-white'}>P.A.</span>
-                          <span className={isSelected ? 'text-white' : 'text-black dark:text-white'}>
-                            {cache?.pa ? cache.pa.toFixed(2) : '0.00'}
-                            {' '}<span className="opacity-60">{percentPA.toFixed(0)}%</span>
-                          </span>
-                        </div>
-                        <div className={`h-1 w-full rounded-full overflow-hidden ${isSelected ? 'bg-white/20' : 'bg-slate-100 dark:bg-slate-800'}`}>
-                          <div className={`h-full rounded-full ${isSelected ? 'bg-white' : 'bg-blue-500'}`} style={{ width: `${Math.min(percentPA, 100)}%` }} />
+                        <div className="text-right">
+                          <p className={`text-[8px] font-black italic uppercase tracking-tighter mb-0.5 ${isSelected ? 'text-orange-100' : 'text-slate-400'}`}>P.A.</p>
+                          <p className={`text-xs font-black italic uppercase tracking-tighter ${isSelected ? 'text-white' : 'text-slate-900 dark:text-white'}`}>
+                            {weekPA.toFixed(2)}
+                          </p>
                         </div>
                       </div>
                     </div>
@@ -922,46 +1048,62 @@ const DashboardPAGerente: React.FC<DashboardPAGerenteProps> = ({ user, store }) 
             <div className="bg-white dark:bg-slate-900 rounded-[48px] border border-slate-100 dark:border-slate-800 shadow-sm overflow-hidden">
               {/* Mobile: cards */}
               <div className="md:hidden space-y-3 p-4">
-                {sales.map((row, i) => (
-                  <motion.div 
-                    initial={{ opacity: 0, y: 10 }}
-                    animate={{ opacity: 1, y: 0 }}
-                    transition={{ delay: i * 0.05 }}
-                    key={row.id}
-                    className="bg-slate-50 dark:bg-slate-800/50 rounded-[24px] p-4 space-y-2"
-                  >
-                    <div className="flex justify-between items-center border-b border-slate-100 dark:border-slate-700 pb-2">
-                      <span className="font-black italic uppercase tracking-tighter text-slate-900 dark:text-white">{row.nome_vendedor}</span>
-                      <span className="px-3 py-1 rounded-full bg-orange-500/10 text-orange-500 font-black italic uppercase tracking-tighter text-[10px]">
-                        PA: {row.pa.toFixed(2)}
-                      </span>
-                    </div>
-                    <div className="grid grid-cols-2 gap-2 text-[10px]">
-                      <div>
-                        <p className="text-slate-400 font-black italic uppercase tracking-tighter">Total Vendas</p>
-                        <p className="text-slate-900 dark:text-white font-black italic uppercase tracking-tighter">R$ {row.total_vendas.toLocaleString()}</p>
+                {loadingSales ? (
+                  <div className="flex flex-col items-center justify-center py-12 gap-4">
+                    <motion.div 
+                      animate={{ rotate: 360 }}
+                      transition={{ duration: 1, repeat: Infinity, ease: "linear" }}
+                      className="w-8 h-8 border-4 border-orange-500 border-t-transparent rounded-full"
+                    />
+                    <p className="text-xs font-black italic uppercase tracking-tighter text-slate-400">Carregando vendedores...</p>
+                  </div>
+                ) : sales.length === 0 ? (
+                  <div className="flex flex-col items-center justify-center py-12 gap-4 opacity-30 text-center">
+                    <FileSpreadsheet className="w-12 h-12" />
+                    <p className="text-xs font-black italic uppercase tracking-tighter max-w-[200px]">Nenhum dado importado para esta semana ainda.</p>
+                  </div>
+                ) : (
+                  sales.map((row, i) => (
+                    <motion.div 
+                      initial={{ opacity: 0, y: 10 }}
+                      animate={{ opacity: 1, y: 0 }}
+                      transition={{ delay: i * 0.05 }}
+                      key={row.id}
+                      className="bg-slate-50 dark:bg-slate-800/50 rounded-[24px] p-4 space-y-2"
+                    >
+                      <div className="flex justify-between items-center border-b border-slate-100 dark:border-slate-700 pb-2">
+                        <span className="font-black italic uppercase tracking-tighter text-slate-900 dark:text-white">{row.nome_vendedor}</span>
+                        <span className="px-3 py-1 rounded-full bg-orange-500/10 text-orange-500 font-black italic uppercase tracking-tighter text-[10px]">
+                          PA: {row.pa.toFixed(2)}
+                        </span>
                       </div>
-                      <div>
-                        <p className="text-slate-400 font-black italic uppercase tracking-tighter">Ticket Médio</p>
-                        <p className="text-slate-900 dark:text-white font-black italic uppercase tracking-tighter">{row.ticket_medio ? `R$ ${Number(row.ticket_medio).toFixed(0)}` : '—'}</p>
+                      <div className="grid grid-cols-2 gap-2 text-[10px]">
+                        <div>
+                          <p className="text-slate-400 font-black italic uppercase tracking-tighter">Total Vendas</p>
+                          <p className="text-slate-900 dark:text-white font-black italic uppercase tracking-tighter">R$ {row.total_vendas.toLocaleString()}</p>
+                        </div>
+                        <div>
+                          <p className="text-slate-400 font-black italic uppercase tracking-tighter">Ticket Médio</p>
+                          <p className="text-slate-900 dark:text-white font-black italic uppercase tracking-tighter">{row.ticket_medio ? `R$ ${Number(row.ticket_medio).toFixed(0)}` : '—'}</p>
+                        </div>
+                        <div>
+                          <p className="text-slate-400 font-black italic uppercase tracking-tighter">P.A.</p>
+                          <p className="text-slate-900 dark:text-white font-black italic uppercase tracking-tighter">{row.pa.toFixed(2)}</p>
+                        </div>
+                        <div>
+                          <p className="text-slate-400 font-black italic uppercase tracking-tighter">Itens</p>
+                          <p className="text-slate-900 dark:text-white font-black italic uppercase tracking-tighter">{row.qtde_itens}</p>
+                        </div>
+                        <div>
+                          <p className="text-slate-400 font-black italic uppercase tracking-tighter">Status</p>
+                          <p className={`${row.atingiu_meta ? 'text-emerald-500' : 'text-red-500'} font-black italic uppercase tracking-tighter`}>
+                            {row.atingiu_meta ? 'Premiado' : 'Não Atingiu'}
+                          </p>
+                        </div>
                       </div>
-                      <div>
-                        <p className="text-slate-400 font-black italic uppercase tracking-tighter">P.A.</p>
-                        <p className="text-slate-900 dark:text-white font-black italic uppercase tracking-tighter">{row.pa.toFixed(2)}</p>
-                      </div>
-                      <div>
-                        <p className="text-slate-400 font-black italic uppercase tracking-tighter">Itens</p>
-                        <p className="text-slate-900 dark:text-white font-black italic uppercase tracking-tighter">{row.qtde_itens}</p>
-                      </div>
-                      <div>
-                        <p className="text-slate-400 font-black italic uppercase tracking-tighter">Status</p>
-                        <p className={`${row.atingiu_meta ? 'text-emerald-500' : 'text-red-500'} font-black italic uppercase tracking-tighter`}>
-                          {row.atingiu_meta ? 'Premiado' : 'Não Atingiu'}
-                        </p>
-                      </div>
-                    </div>
-                  </motion.div>
-                ))}
+                    </motion.div>
+                  ))
+                )}
               </div>
  
               {/* Desktop: table */}
@@ -978,72 +1120,86 @@ const DashboardPAGerente: React.FC<DashboardPAGerenteProps> = ({ user, store }) 
                     </tr>
                   </thead>
                   <tbody>
-                    {sales.map((row, i) => (
-                      <motion.tr 
-                        initial={{ opacity: 0, x: -20 }}
-                        animate={{ opacity: 1, x: 0 }}
-                        transition={{ delay: i * 0.05 }}
-                        key={row.id} 
-                        className="group hover:bg-slate-50 dark:hover:bg-slate-800/50 transition-all"
-                      >
-                        <td className="p-6">
-                          <div className="flex items-center gap-3">
-                            <div className="w-10 h-10 rounded-[16px] bg-slate-100 dark:bg-slate-800 flex items-center justify-center text-slate-400 font-black italic uppercase tracking-tighter text-xs">
-                              {row.nome_vendedor.substring(0, 2)}
-                            </div>
-                            <div className="flex flex-col">
-                              <span className="font-black italic uppercase tracking-tighter text-slate-900 dark:text-white leading-none">{row.nome_vendedor}</span>
-                              <span className="text-[10px] text-slate-400 font-bold uppercase italic tracking-tighter">COD: {row.cod_vendedor}</span>
-                            </div>
+                    {loadingSales ? (
+                      <tr>
+                        <td colSpan={6} className="p-20 text-center">
+                          <div className="flex flex-col items-center gap-4">
+                            <motion.div 
+                              animate={{ rotate: 360 }}
+                              transition={{ duration: 1, repeat: Infinity, ease: "linear" }}
+                              className="w-12 h-12 border-4 border-orange-500 border-t-transparent rounded-full"
+                            />
+                            <p className="font-black italic uppercase tracking-tighter text-slate-400">Carregando vendedores...</p>
                           </div>
                         </td>
-                        <td className="p-6 font-black italic uppercase tracking-tighter text-slate-900 dark:text-white">
-                          R$ {row.total_vendas.toLocaleString()}
-                        </td>
-                        <td className="p-6 text-center font-black italic uppercase tracking-tighter text-slate-900 dark:text-white">
-                          {row.ticket_medio ? `R$ ${Number(row.ticket_medio).toFixed(0)}` : '—'}
-                        </td>
-                        <td className="p-6 text-center">
-                          <span className={`px-4 py-1 rounded-full font-black italic uppercase tracking-tighter text-xs ${
-                            row.pa >= (params?.pa_inicial || 0)
-                              ? 'bg-emerald-500/10 text-emerald-500'
-                              : 'bg-slate-100 dark:bg-slate-800 text-slate-400'
-                          }`}>
-                            {row.pa.toFixed(2)}
-                          </span>
-                        </td>
-                        <td className="p-6 text-center font-black italic uppercase tracking-tighter text-slate-900 dark:text-white">
-                          {row.qtde_itens}
-                        </td>
-                        <td className="p-6 text-center">
-                          {row.atingiu_meta ? (
-                            <div className="flex flex-col items-center justify-center text-emerald-500">
-                              <div className="flex items-center gap-2">
-                                <CheckCircle2 className="w-4 h-4" />
-                                <span className="font-black italic uppercase tracking-tighter text-[10px]">PREMIADO</span>
-                              </div>
-                              {row.faixas_acima && row.faixas_acima > 0 ? (
-                                <span className="text-[8px] font-bold uppercase italic tracking-tighter">+{row.faixas_acima} faixas</span>
-                              ) : null}
-                            </div>
-                          ) : (
-                            <div className="flex items-center justify-center gap-2 text-slate-400">
-                              <AlertCircle className="w-4 h-4" />
-                              <span className="font-black italic uppercase tracking-tighter text-[10px]">NÃO ATINGIU</span>
-                            </div>
-                          )}
-                        </td>
-                      </motion.tr>
-                    ))}
-                    {sales.length === 0 && (
+                      </tr>
+                    ) : sales.length === 0 ? (
                       <tr>
                         <td colSpan={6} className="p-20 text-center">
                           <div className="flex flex-col items-center gap-4 opacity-20">
                             <FileSpreadsheet className="w-16 h-16" />
-                            <p className="font-black italic uppercase tracking-tighter">Nenhum dado importado para esta semana.</p>
+                            <p className="font-black italic uppercase tracking-tighter">Nenhum dado importado para esta semana ainda.</p>
                           </div>
                         </td>
                       </tr>
+                    ) : (
+                      sales.map((row, i) => (
+                        <motion.tr 
+                          initial={{ opacity: 0, x: -20 }}
+                          animate={{ opacity: 1, x: 0 }}
+                          transition={{ delay: i * 0.05 }}
+                          key={row.id} 
+                          className="group hover:bg-slate-50 dark:hover:bg-slate-800/50 transition-all"
+                        >
+                          <td className="p-6">
+                            <div className="flex items-center gap-3">
+                              <div className="w-10 h-10 rounded-[16px] bg-slate-100 dark:bg-slate-800 flex items-center justify-center text-slate-400 font-black italic uppercase tracking-tighter text-xs">
+                                {row.nome_vendedor.substring(0, 2)}
+                              </div>
+                              <div className="flex flex-col">
+                                <span className="font-black italic uppercase tracking-tighter text-slate-900 dark:text-white leading-none">{row.nome_vendedor}</span>
+                                <span className="text-[10px] text-slate-400 font-bold uppercase italic tracking-tighter">COD: {row.cod_vendedor}</span>
+                              </div>
+                            </div>
+                          </td>
+                          <td className="p-6 font-black italic uppercase tracking-tighter text-slate-900 dark:text-white">
+                            R$ {row.total_vendas.toLocaleString()}
+                          </td>
+                          <td className="p-6 text-center font-black italic uppercase tracking-tighter text-slate-900 dark:text-white">
+                            {row.ticket_medio ? `R$ ${Number(row.ticket_medio).toFixed(0)}` : '—'}
+                          </td>
+                          <td className="p-6 text-center">
+                            <span className={`px-4 py-1 rounded-full font-black italic uppercase tracking-tighter text-xs ${
+                              row.pa >= (params?.pa_inicial || 0)
+                                ? 'bg-emerald-500/10 text-emerald-500'
+                                : 'bg-slate-100 dark:bg-slate-800 text-slate-400'
+                            }`}>
+                              {row.pa.toFixed(2)}
+                            </span>
+                          </td>
+                          <td className="p-6 text-center font-black italic uppercase tracking-tighter text-slate-900 dark:text-white">
+                            {row.qtde_itens}
+                          </td>
+                          <td className="p-6 text-center">
+                            {row.atingiu_meta ? (
+                              <div className="flex flex-col items-center justify-center text-emerald-500">
+                                <div className="flex items-center gap-2">
+                                  <CheckCircle2 className="w-4 h-4" />
+                                  <span className="font-black italic uppercase tracking-tighter text-[10px]">PREMIADO</span>
+                                </div>
+                                {row.faixas_acima && row.faixas_acima > 0 ? (
+                                  <span className="text-[8px] font-bold uppercase italic tracking-tighter">+{row.faixas_acima} faixas</span>
+                                ) : null}
+                              </div>
+                            ) : (
+                              <div className="flex items-center justify-center gap-2 text-slate-400">
+                                <AlertCircle className="w-4 h-4" />
+                                <span className="font-black italic uppercase tracking-tighter text-[10px]">NÃO ATINGIU</span>
+                              </div>
+                            )}
+                          </td>
+                        </motion.tr>
+                      ))
                     )}
                   </tbody>
                 </table>

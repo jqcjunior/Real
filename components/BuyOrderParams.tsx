@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { supabase } from '../services/supabaseClient';
 import { Settings, Check, Loader2, ChevronRight, Search, Calendar, Plus, Trash2, Edit2, X } from 'lucide-react';
+import { toast } from 'sonner';
 
 // ═══════════════════════════════════════════════════════════════════════════
 // COMPONENTES DE ADMINISTRAÇÃO DE ALERTAS
@@ -661,6 +662,15 @@ export default function BuyOrderParams({ user }: { user: any }) {
   const [cotaGerentePctAnual, setCotaGerentePctAnual] = useState(80);
   const [cotaCompradorPctAnual, setCotaCompradorPctAnual] = useState(20);
 
+  // Recalcular valores baseados no percentual anual quando ele mudar
+  useEffect(() => {
+    setMonthlyData(prev => prev.map(m => ({
+      ...m,
+      cota_gerente_valor: (m.cotaTotal * cotaGerentePctAnual) / 100,
+      cota_comprador_valor: (m.cotaTotal * cotaCompradorPctAnual) / 100
+    })));
+  }, [cotaGerentePctAnual, cotaCompradorPctAnual]);
+
   if (!isAdmin) {
     return (
       <div style={{ padding: '2rem', textAlign: 'center' }}>
@@ -804,7 +814,15 @@ export default function BuyOrderParams({ user }: { user: any }) {
   const handleUpdateMonth = (monthIndex: number, field: keyof MonthlyData, value: number) => {
     setMonthlyData(prev => {
       const newArray = [...prev];
-      newArray[monthIndex] = { ...newArray[monthIndex], [field]: value };
+      const updatedItem = { ...newArray[monthIndex], [field]: value };
+      
+      // Recalcular valores de cota se mudou cotaTotal
+      if (field === 'cotaTotal') {
+        updatedItem.cota_gerente_valor = (value * cotaGerentePctAnual) / 100;
+        updatedItem.cota_comprador_valor = (value * cotaCompradorPctAnual) / 100;
+      }
+      
+      newArray[monthIndex] = updatedItem;
       return newArray;
     });
   };
@@ -849,6 +867,13 @@ export default function BuyOrderParams({ user }: { user: any }) {
         });
 
       if (error) throw error;
+
+      // Sincronizar cotas para o ano atual e o próximo após salvar parâmetros
+      try {
+        await supabase.rpc('inicializar_cotas_ano', { p_year: selectedYear });
+      } catch (syncErr) {
+        console.error('Erro na sincronização automática das cotas:', syncErr);
+      }
 
       alert(`✅ Parâmetros salvos para o ano ${selectedYear}!`);
       loadStores();
@@ -897,13 +922,9 @@ export default function BuyOrderParams({ user }: { user: any }) {
     s.store_number.includes(searchTerm) ||
     s.city.toLowerCase().includes(searchTerm.toLowerCase())
   ).sort((a, b) => {
-    // Try to sort numerically if the store_number is numeric
-    const aNum = parseInt(a.store_number);
-    const bNum = parseInt(b.store_number);
-    if (!isNaN(aNum) && !isNaN(bNum)) {
-      return aNum - bNum;
-    }
-    return a.store_number.localeCompare(b.store_number);
+    const numA = typeof a.store_number === 'number' ? a.store_number : parseInt(a.store_number.toString().replace(/\D/g, ''));
+    const numB = typeof b.store_number === 'number' ? b.store_number : parseInt(b.store_number.toString().replace(/\D/g, ''));
+    return (numA || 0) - (numB || 0);
   });
 
   // ═══════════════════════════════════════════════════════════════════════════

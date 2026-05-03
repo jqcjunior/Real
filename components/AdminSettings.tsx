@@ -22,12 +22,10 @@ const AdminSettings: React.FC<AdminSettingsProps> = ({ stores, onAddStore, onUpd
         try {
             const tables = [
                 'admin_users', 'stores', 'monthly_goals', 'monthly_performance_actual',
-                'cotas', 'cota_settings', 'cota_debts', 'product_performance',
                 'ice_cream_items', 'ice_cream_daily_sales', 'ice_cream_finances',
                 'ice_cream_stock', 'ice_cream_promissory_notes', 'cash_register_closures',
                 'financial_receipts', 'cash_errors', 'agenda_tasks', 'downloads',
-                'page_permissions', 'quota_product_categories', 'quota_mix_parameters',
-                'financial_card_brands', 'financial_card_sales'
+                'page_permissions', 'financial_card_brands', 'financial_card_sales'
             ];
 
             const backupData: any = {

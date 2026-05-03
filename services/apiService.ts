@@ -48,9 +48,10 @@ class ApiService {
         };
  
         // 3. Persistência Limpa
-        // Usamos localStorage para suportar auto-login e consistência com ensureSession
-        localStorage.setItem('realcalcados_user', JSON.stringify(mappedUser));
-        localStorage.setItem('auth_token', 'session_' + user.user_id);
+        // Usamos sessionStorage para garantir que a sessão termine ao fechar o navegador,
+        // evitando logins automáticos indesejados.
+        sessionStorage.setItem('realcalcados_v3_user', JSON.stringify(mappedUser));
+        sessionStorage.setItem('auth_token', 'session_' + user.user_id);
  
         return { success: true, user: mappedUser };
     } catch (error: any) {
@@ -60,14 +61,13 @@ class ApiService {
   }
  
   async logout() {
-    localStorage.clear();
     sessionStorage.clear();
     window.location.reload(); 
   }
  
   getUser() {
     try {
-      const userStr = localStorage.getItem('realcalcados_user');
+      const userStr = sessionStorage.getItem('realcalcados_v3_user');
       return userStr ? JSON.parse(userStr) : null;
     } catch (error) {
       return null;
@@ -75,11 +75,11 @@ class ApiService {
   }
  
   getToken() {
-    return localStorage.getItem('auth_token');
+    return sessionStorage.getItem('auth_token');
   }
  
   isAuthenticated(): boolean {
-    return !!localStorage.getItem('realcalcados_user');
+    return !!sessionStorage.getItem('realcalcados_v3_user');
   }
  
   /**
