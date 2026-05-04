@@ -3,6 +3,7 @@ import { Pencil, X, Download, RefreshCw } from 'lucide-react';
 import { toast } from 'sonner';
 import { supabase } from '../services/supabaseClient';
 import { useBrandAutocomplete } from '../hooks/useBrandAutocomplete';
+import { usePermissions } from '../hooks/usePermissions';
 import { User, UserRole } from '../types';
 import { 
   insertBuyOrderItems, 
@@ -349,17 +350,14 @@ export default function BuyOrderModule({ user }: { user?: User }) {
     (new Date(cab.fat_inicio + 'T00:00:00').getFullYear() === new Date(cab.fat_fim + 'T00:00:00').getFullYear())
   );
 
+  const { isAdmin, isManager, canEditOrder, canConfirmOrder, canCancelOrder } = usePermissions(user);
+
   const fetchRecentOrders = useCallback(async () => {
     try {
       // ✅ 1. BUSCAR NÚMERO DA LOJA DO USUÁRIO
       let userStoreNumber: number | null = null;
       
-      const roleUpper = (user?.role || '').toUpperCase();
-      const isGerente = roleUpper === 'MANAGER' || roleUpper === 'GERENTE';
-      const isComprador = roleUpper === 'COMPRADOR';
-      const isAdmin = roleUpper === 'ADMIN';
-      
-      if (user && user.storeId && (isGerente || (!isAdmin && !isComprador))) {
+      if (user && user.storeId && (isManager || !isAdmin)) {
         const { data: storeData } = await supabase
           .from('stores')
           .select('number')
@@ -381,49 +379,43 @@ export default function BuyOrderModule({ user }: { user?: User }) {
       }
       
       // ✅ FILTRO CORRETO
-      // ADMIN/COMPRADOR: vê todos os pedidos
-      // GERENTE: vê apenas pedidos que incluem sua loja
-      if (isGerente && userStoreNumber) {
-        // Buscar TODOS os pedidos
-        const { data: allOrders, error: fetchError } = await query.limit(500);
-        
-        if (fetchError) throw fetchError;
-        
-        // Filtrar no frontend os pedidos que incluem a loja do gerente
-        const filtered = (allOrders || []).filter((order: any) => {
+      if (isManager) {
+        // Gerente vê apenas seus próprios pedidos
+        query = query.eq('user_id', user?.id || 'NO_USER_ID');
+      }
+
+      // Buscar pedidos
+      const { data: allOrders, error: fetchError, count } = await query.limit(500);
+      
+      if (fetchError) throw fetchError;
+      
+      let finalData = allOrders || [];
+
+      if (isManager && userStoreNumber) {
+        // Filtrar no frontend os pedidos que incluem a loja do gerente (se precisar, embora o insert só crie com as lojas corretas)
+        finalData = finalData.filter((order: any) => {
           const subOrders = order.buy_order_sub_orders || [];
           const todasLojas = subOrders.flatMap((sub: any) => sub.lojas_numeros || []);
-          return todasLojas.includes(userStoreNumber);
+          return todasLojas.includes(userStoreNumber!);
         });
-        
-        setRecentOrders(filtered.slice(0, limitPedidos));
-        setTotalPedidos(filtered.length);
-      } else {
-        // ADMIN/COMPRADOR vê todos
-        const { data, count, error } = await query.limit(limitPedidos);
-        
-        if (error) throw error;
-        
-        let finalData = data || [];
-        
+      } else if (isAdmin && selectedLoja) {
         // Se Admin tiver um filtro de loja selecionado na interface
-        if (isAdmin && selectedLoja) {
-          finalData = finalData.filter(order => {
-             const subOrders = order.buy_order_sub_orders || [];
-             const todasLojas = subOrders.flatMap((sub: any) => sub.lojas_numeros || []);
-             return todasLojas.includes(selectedLoja);
-          });
-        }
-        
-        setRecentOrders(finalData);
-        setTotalPedidos(count || 0);
+        finalData = finalData.filter(order => {
+           const subOrders = order.buy_order_sub_orders || [];
+           const todasLojas = subOrders.flatMap((sub: any) => sub.lojas_numeros || []);
+           return todasLojas.includes(selectedLoja);
+        });
       }
+      
+      setRecentOrders(finalData.slice(0, limitPedidos));
+      setTotalPedidos(finalData.length);
       
     } catch (error: any) {
       console.error('Erro ao buscar pedidos:', error);
       toast.error(`❌ ${error.message || 'Erro ao carregar pedidos'}`);
     }
-  }, [searchTerm, selectedLoja, limitPedidos, user]);
+  }, [searchTerm, selectedLoja, limitPedidos, user, isManager, isAdmin]);
+
  
   useEffect(() => {
     fetchRecentOrders();
@@ -1172,7 +1164,7 @@ export default function BuyOrderModule({ user }: { user?: User }) {
                         )}
 
                         {/* Botão Editar */}
-                        {(o.status === 'rascunho' || o.status === 'stand_by' || !o.status) && (
+                        {canEditOrder(o) && (o.status === 'rascunho' || o.status === 'stand_by' || !o.status) && (
                           <button 
                             onClick={() => handleEditOrder(o.id)}
                             title="Editar"
@@ -1196,26 +1188,28 @@ export default function BuyOrderModule({ user }: { user?: User }) {
                         )}
 
                         {/* Botão Excluir */}
-                        <button 
-                          onClick={() => setDeletingOrder(o)}
-                          title="Excluir"
-                          style={{ 
-                            width: 28,
-                            height: 28,
-                            padding: 0,
-                            display: 'flex',
-                            alignItems: 'center',
-                            justifyContent: 'center',
-                            background: '#fff',
-                            color: '#dc2626',
-                            border: '1px solid #fca5a5',
-                            borderRadius: 6,
-                            cursor: 'pointer',
-                            transition: 'all 0.2s'
-                          }}
-                        >
-                          <X size={14} />
-                        </button>
+                        {canCancelOrder(o) && (
+                          <button 
+                            onClick={() => setDeletingOrder(o)}
+                            title="Excluir"
+                            style={{ 
+                              width: 28,
+                              height: 28,
+                              padding: 0,
+                              display: 'flex',
+                              alignItems: 'center',
+                              justifyContent: 'center',
+                              background: '#fff',
+                              color: '#dc2626',
+                              border: '1px solid #fca5a5',
+                              borderRadius: 6,
+                              cursor: 'pointer',
+                              transition: 'all 0.2s'
+                            }}
+                          >
+                            <X size={14} />
+                          </button>
+                        )}
                       </div>
                     </td>
                   </tr>
