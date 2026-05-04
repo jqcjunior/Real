@@ -12,8 +12,10 @@ import {
   BuyOrderItemInput 
 } from '../utils/buyOrderItems.utils';
 import StepPedidos, { GradeItem, ItemComGrades, OrderItem, SubOrder, Cabecalho } from './BuyOrderStepPedidos';
-// ... existing imports ...
 import { BuyOrderModuleModal } from './BuyOrderModuleModal';
+import { StandByModal } from './StandByModal';
+import { QuotaInsufficientModal } from './QuotaInsufficientModal';
+import StandByDashboard from './StandByDashboard';
 
 // ... AlertasCardSticky component ...
 interface Alerta {
@@ -442,17 +444,16 @@ export default function BuyOrderModule({ user }: { user?: User }) {
       setError('Adicione ao menos um item antes de continuar.');
       return;
     }
-    if (step === STEPS.length - 1) {
-      handleSave();
-      return;
-    }
     setError('');
     setStep(s => s + 1);
   }
  
   // ─── Salvar no Supabase ──────────────────────────────────────────────────────
  
-  async function handleSave() {
+  const [showStandByModalForOrderId, setShowStandByModalForOrderId] = useState<string | null>(null);
+  const [quotaModalData, setQuotaModalData] = useState<any | null>(null);
+
+  async function handleSave(targetAction: 'rascunho' | 'rascunho_then_standby' | 'confirmado') {
     setSaving(true);
     setError('');
     try {
@@ -462,7 +463,7 @@ export default function BuyOrderModule({ user }: { user?: User }) {
         await supabase.rpc('set_user_session', { user_id: userId });
       }
  
-      // 1. Upsert brand em buy_brands (Preferencialmente via RPC para evitar problemas de RLS)
+      // 1. Upsert brand em buy_brands
       let brandId = cab.brand_id;
       if (!brandId) {
         const { data: bId, error: bErr } = await supabase.rpc('upsert_buy_brand', {
@@ -474,7 +475,6 @@ export default function BuyOrderModule({ user }: { user?: User }) {
         });
 
         if (bErr) {
-          console.warn('RPC upsert_buy_brand falhou, tentando upsert direto (requer RLS configurado):', bErr);
           const { data: bData, error: bErr2 } = await supabase
             .from('buy_brands')
             .upsert({
@@ -500,7 +500,7 @@ export default function BuyOrderModule({ user }: { user?: User }) {
         return d.toISOString().split('T')[0];
       });
  
-      // 3. Insert buy_orders
+      // 3. Insert buy_orders - INICIALMENTE COMO RASCUNHO
       const { data: order, error: oErr } = await supabase
         .from('buy_orders')
         .insert({
@@ -519,7 +519,7 @@ export default function BuyOrderModule({ user }: { user?: User }) {
           vencimentos,
           desconto: cab.desconto,
           markup: cab.markup,
-          status: 'confirmado',
+          status: 'rascunho', // Sempre salva inicialmente como rascunho
         })
         .select('id, numero_pedido')
         .single();
@@ -537,7 +537,7 @@ export default function BuyOrderModule({ user }: { user?: User }) {
             const icg = ped.itensComGrades.find(x => x.itemIdx === idx);
             if (icg) {
               icg.grades.forEach(g => {
-                // Mapeia a letra da grade para suas quantidades (normalizeGrades cuidará do resto)
+                // Mapeia a letra da grade para suas quantidades
                 itemGradesObj[g.letter] = g.qtds;
                 totalParesItem += totPares(g.qtds) * ped.lojas.length;
               });
@@ -563,13 +563,12 @@ export default function BuyOrderModule({ user }: { user?: User }) {
 
         const result = await insertBuyOrderItems(itemInputs);
         if (!result.success) {
-          const firstErr = result.errors?.[0];
-          throw new Error(firstErr ? `Erro no item ${firstErr.referencia}: ${firstErr.message}` : 'Erro ao salvar itens. Verifique os dados.');
+          throw new Error('Erro ao salvar itens. Verifique os dados.');
         }
         
         const insertedItems = result.data!;
 
-        // ✅ Salvar qual grade o item usa em cada sub-pedido
+        // Salvar qual grade o item usa em cada sub-pedido
         const gradesSubPedidos: any[] = [];
         
         pedidos.forEach(ped => {
@@ -580,8 +579,8 @@ export default function BuyOrderModule({ user }: { user?: User }) {
             icg.grades.forEach(g => {
               gradesSubPedidos.push({
                 item_id: insertedItem.id,
-                sub_order_num: ped.num, // 1 a 5
-                grade_letra: g.letter   // 'A', 'B', etc.
+                sub_order_num: ped.num,
+                grade_letra: g.letter
               });
             });
           });
@@ -589,14 +588,11 @@ export default function BuyOrderModule({ user }: { user?: User }) {
 
         if (gradesSubPedidos.length > 0) {
           const { error: gsErr } = await supabase.from('buy_order_item_suborder_grades').insert(gradesSubPedidos);
-          if (gsErr) {
-            console.error('Erro ao salvar grade do sub-pedido:', gsErr);
-            throw gsErr;
-          }
+          if (gsErr) throw gsErr;
         }
       }
  
-      // 5. Insert buy_order_sub_orders (um por pedido)
+      // 5. Insert buy_order_sub_orders
       if (pedidos.length > 0) {
         const subRows = pedidos.map(ped => ({
           order_id: orderId,
@@ -608,30 +604,11 @@ export default function BuyOrderModule({ user }: { user?: User }) {
         if (sErr) throw sErr;
       }
 
-      // 6. Atualizar totais do pedido principal (buy_orders) e processar cotas
+      // 6. Atualizar totais do pedido principal
       let totalParesGeral = 0;
       let totalValorBrutoGeral = 0;
       
-      const transactionsToInsert: any[] = [];
-      const fatFimDate = cab.fat_fim ? new Date(cab.fat_fim + 'T00:00:00') : new Date();
-      const quotaMonth = fatFimDate.getMonth() + 1;
-      const quotaYear = fatFimDate.getFullYear();
-
-      // Identificar tipo de comprador baseado no role
-      const roleUpper = (user?.role || 'COMPRADOR').toUpperCase();
-      const tipoComprador: 'GERENTE' | 'COMPRADOR' = (roleUpper === 'GERENTE' || roleUpper === 'MANAGER') ? 'GERENTE' : 'COMPRADOR';
-
-      // 6.1 Buscar IDs de controle de cota para as lojas envolvidas
-      const allStoreNums = Array.from(new Set(pedidos.flatMap(p => p.lojas)));
-      const { data: qcData } = await supabase
-        .from('buyorder_quota_control')
-        .select('id, store_number')
-        .eq('year', quotaYear)
-        .eq('month', quotaMonth)
-        .in('store_number', allStoreNums);
-
       pedidos.forEach(ped => {
-        let valorBrutoPedido = 0;
         ped.itensComGrades.forEach(icg => {
           const item = items[icg.itemIdx];
           icg.grades.forEach(g => {
@@ -639,55 +616,12 @@ export default function BuyOrderModule({ user }: { user?: User }) {
             const pairsTotal = pairsForItems * ped.lojas.length;
             totalParesGeral += pairsTotal;
             totalValorBrutoGeral += pairsTotal * item.custo;
-            valorBrutoPedido += pairsForItems * item.custo;
           });
-        });
-
-        const valorLiquidoSub = valorBrutoPedido * (1 - (cab.desconto || 0) / 100);
-        
-        // Calcular valor abatido por parcela
-        const parcelasCount = vencimentos.length > 0 ? vencimentos.length : 1;
-        const valorPorParcela = valorLiquidoSub / parcelasCount;
-
-        // Registrar transação de cota para cada loja deste sub-pedido (dividido pelos vencimentos)
-        ped.lojas.forEach(storeNum => {
-          const qc = qcData?.find(q => q.store_number === String(storeNum));
-          
-          if (vencimentos.length > 0) {
-            vencimentos.forEach((vencData, idx) => {
-              transactionsToInsert.push({
-                quota_control_id: qc?.id || null, // Se não tiver QC para esse mês, ainda registramos com store_number
-                store_number: String(storeNum),
-                order_id: orderId,
-                valor_abatido: valorPorParcela,
-                tipo_comprador: tipoComprador,
-                vencimento_data: vencData,
-                aplicado: false,
-                descricao: `Pedido ${cab.marca} - Sub ${ped.num} (Parc. ${idx + 1}/${parcelasCount})`
-              });
-            });
-          } else {
-            transactionsToInsert.push({
-              quota_control_id: qc?.id || null,
-              store_number: String(storeNum),
-              order_id: orderId,
-              valor_abatido: valorPorParcela,
-              tipo_comprador: tipoComprador,
-              vencimento_data: new Date().toISOString().split('T')[0],
-              aplicado: false,
-              descricao: `Pedido ${cab.marca} - Sub ${ped.num}`
-            });
-          }
-          
-          if (!qc) {
-            console.warn(`Controle de cota (Snapshot) não encontrado para loja ${storeNum} no mês do faturamento. O abatimento será computado via store_number.`);
-          }
         });
       });
 
       const totalValorLiquidoGeral = totalValorBrutoGeral * (1 - (cab.desconto || 0) / 100);
 
-      // Atualizar totais no pedido
       await supabase.from('buy_orders')
         .update({
           total_pares: totalParesGeral,
@@ -695,28 +629,62 @@ export default function BuyOrderModule({ user }: { user?: User }) {
           total_valor_liquido: totalValorLiquidoGeral
         })
         .eq('id', orderId);
+
+      // Agora lidar com o fluxo de acordo com a AÇÃO escolhida
       
-      // 7. Inserir transações de cota
-      if (transactionsToInsert.length > 0) {
-        const { error: transErr } = await supabase.from('buyorder_quota_transactions').insert(transactionsToInsert);
-        if (transErr) {
-          console.error("Erro ao registrar transações de cota:", transErr);
+      if (targetAction === 'rascunho') {
+        toast.success(`Rascunho salvo com sucesso! Nº será gerado em breve.`);
+        resetStateAndFetch();
+      } 
+      else if (targetAction === 'confirmado') {
+        // Tentar confirmar imediatamente chamando a RPC. 
+        // Ela faz o cálculo da cota, atualiza o status para 'confirmado' ou falha com erro de cota.
+        const { data: cData, error: cErr } = await supabase.rpc('confirm_order_from_stand_by', {
+          p_order_id: orderId,
+          p_user_id: userId
+        });
+
+        if (cErr) throw cErr;
+
+        if (!cData.success) {
+          if (cData.error === 'Cota insuficiente') {
+            setQuotaModalData({
+              available: cData.cota_disponivel,
+              required: cData.valor_pedido,
+              deficit: cData.deficit,
+              buyerType: cData.tipo_comprador
+            });
+            // O pedido já está salvo como rascunho. O usuário terá que ir ver na lista depois.
+            resetStateAndFetch();
+            toast.error('O pedido foi salvo como Rascunho devido a falta de cota.');
+            return;
+          } else {
+            throw new Error(cData.error);
+          }
         }
+        
+        toast.success(`Pedido Confirmado! Cota consumida.`);
+        resetStateAndFetch();
       }
- 
-      alert(`Pedido salvo com sucesso! Nº será gerado automaticamente.`);
-      // Reset
-      setStep(0);
-      setCab({ role: 'comprador', brand_id: null, marca: '', fornecedor: '', representante: '', telefone: '', email: '', fat_inicio: '', fat_fim: '', prazos: [], markup: 2.60, desconto: 0 });
-      setItems([]);
-      setPedidos([]);
-      setPrazosRaw('');
-      fetchRecentOrders();
+      else if (targetAction === 'rascunho_then_standby') {
+        // Mostrar o Modal de Stand By para setar o motivo
+        setShowStandByModalForOrderId(orderId);
+      }
+
     } catch (e: any) {
       setError('Erro ao salvar: ' + (e?.message ?? JSON.stringify(e)));
     } finally {
       setSaving(false);
     }
+  }
+
+  function resetStateAndFetch() {
+    setStep(0);
+    setCab({ role: 'comprador', brand_id: null, marca: '', fornecedor: '', representante: '', telefone: '', email: '', fat_inicio: '', fat_fim: '', prazos: [], markup: 2.60, desconto: 0 });
+    setItems([]);
+    setPedidos([]);
+    setPrazosRaw('');
+    fetchRecentOrders();
   }
  
   async function getCurrentAppUserId(): Promise<string> {
@@ -842,26 +810,67 @@ export default function BuyOrderModule({ user }: { user?: User }) {
 
   const handleDeleteOrder = async (orderId: string) => {
     try {
-      const { error } = await supabase
-        .from('buy_orders')
-        .delete()
-        .eq('id', orderId);
+      // ✅ GARANTIR SESSÃO NO POSTGRES PARA RLS
+      const userId = user?.id || (await getCurrentAppUserId());
+      
+      const { data, error } = await supabase.rpc('return_quota_on_cancel', {
+        p_order_id: orderId,
+        p_user_id: userId
+      });
   
       if (error) throw error;
+
+      if (data && !data.success) {
+        throw new Error(data.message || 'Erro ao cancelar pedido');
+      }
   
-      toast.success('✅ Pedido excluído com sucesso!');
+      toast.success(data?.message || '✅ Pedido cancelado (e cota devolvida se aplicável)!');
       fetchRecentOrders();
       setDeletingOrder(null);
     } catch (err: any) {
-      console.error('Erro ao excluir:', err);
+      console.error('Erro ao excluir/cancelar:', err);
       toast.error(`❌ ${err.message}`);
     }
   };
  
   // ─── Render ──────────────────────────────────────────────────────────────────
  
+  const [activeTab, setActiveTab] = useState<'create' | 'stand_by'>('create');
+
+  if (activeTab === 'stand_by') {
+    return (
+      <div className="flex flex-col h-full bg-slate-50">
+        <div className="max-w-7xl mx-auto px-4 md:px-6 py-4 w-full flex gap-2 border-b border-slate-200">
+           <button 
+             onClick={() => setActiveTab('create')}
+             className="px-4 py-2 text-sm font-semibold text-slate-500 hover:text-slate-700 bg-white hover:bg-slate-50 rounded-lg border border-slate-200 transition-colors"
+           >
+             ← Voltar para Pedidos
+           </button>
+        </div>
+        <StandByDashboard user={user} onEditOrder={(id: string) => { setActiveTab('create'); handleEditOrder(id); }} />
+      </div>
+    );
+  }
+
   return (
     <div className="max-w-5xl mx-auto p-4 md:p-6">
+      {/* TABS */}
+      <div className="flex gap-2 mb-4">
+        <button 
+          onClick={() => setActiveTab('create')}
+          className="px-4 py-2 text-sm font-semibold rounded-lg transition-colors border bg-[#185FA5] text-white border-transparent"
+        >
+          Criar / Recentes
+        </button>
+        <button 
+          onClick={() => setActiveTab('stand_by')}
+          className="px-4 py-2 text-sm font-semibold rounded-lg transition-colors border flex items-center gap-2 bg-white text-amber-700 border-amber-200 hover:bg-amber-50"
+        >
+          ⏱️ Painel Stand By
+        </button>
+      </div>
+
       {/* Header */}
       <div style={{ background: '#fff', border: '0.5px solid #e5e7eb', borderRadius: 10, overflow: 'hidden' }}>
  
@@ -911,19 +920,47 @@ export default function BuyOrderModule({ user }: { user?: User }) {
         {error && (
           <div style={{ padding: '8px 18px', background: '#FCEBEB', borderTop: '0.5px solid #F09595', fontSize: 12, color: '#A32D2D' }}>{error}</div>
         )}
-        <div className="p-4 md:p-6 border-t flex justify-between items-center">
+        <div className="p-4 md:p-6 border-t flex flex-col md:flex-row justify-between items-center gap-4">
           <button onClick={() => { setError(''); setStep(s => Math.max(0, s - 1)); }}
-            style={{ visibility: step === 0 ? 'hidden' : 'visible', height: 30, padding: '0 14px', borderRadius: 5, fontSize: 12, cursor: 'pointer', border: '0.5px solid #d1d5db', background: 'transparent' }}>
+            style={{ visibility: step === 0 ? 'hidden' : 'visible', height: 32, padding: '0 14px', borderRadius: 6, fontSize: 13, cursor: 'pointer', border: '1px solid #d1d5db', background: 'transparent', fontWeight: 500 }}>
             ← Voltar
           </button>
-          <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-            <span style={{ fontSize: 11, color: '#6b7280' }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 12, flexWrap: 'wrap', justifyContent: 'center' }}>
+            <span style={{ fontSize: 12, color: '#6b7280', fontWeight: 500, display: 'none', '@media (min-width: 768px)': { display: 'block' } } as any}>
               {cab.marca && `${cab.marca} · `}{items.length > 0 && `${items.length} itens`}
             </span>
-            <button onClick={navNext} disabled={saving || !isHeaderValid}
-              style={{ height: 30, padding: '0 18px', borderRadius: 5, fontSize: 12, fontWeight: 500, cursor: 'pointer', border: 'none', background: step === STEPS.length - 1 ? '#27500A' : '#185FA5', color: '#fff', opacity: (saving || !isHeaderValid) ? 0.7 : 1 }}>
-              {saving ? 'Salvando...' : step === STEPS.length - 1 ? 'Salvar pedido' : 'Próximo →'}
-            </button>
+            
+            {step === STEPS.length - 1 ? (
+              <>
+                <button 
+                  onClick={() => handleSave('rascunho')} 
+                  disabled={saving || !isHeaderValid}
+                  style={{ height: 32, padding: '0 16px', borderRadius: 6, fontSize: 13, fontWeight: 600, cursor: 'pointer', border: '1px solid #94a3b8', background: '#f8fafc', color: '#475569', opacity: (saving || !isHeaderValid) ? 0.7 : 1 }}>
+                  Salvar Rascunho
+                </button>
+                <button 
+                  onClick={() => {
+                    // Open Stand By modal early, so it doesn't save to DB directly until the modal is filled. 
+                    // Actually, we must save first to get an ID. So we save as rascunho, then show modal!
+                    handleSave('rascunho_then_standby');
+                  }} 
+                  disabled={saving || !isHeaderValid}
+                  style={{ height: 32, padding: '0 16px', borderRadius: 6, fontSize: 13, fontWeight: 600, cursor: 'pointer', border: '1px solid #d97706', background: '#fffbeb', color: '#b45309', opacity: (saving || !isHeaderValid) ? 0.7 : 1 }}>
+                  Salvar em Stand By
+                </button>
+                <button 
+                  onClick={() => handleSave('confirmado')} 
+                  disabled={saving || !isHeaderValid}
+                  style={{ height: 32, padding: '0 16px', borderRadius: 6, fontSize: 13, fontWeight: 600, cursor: 'pointer', border: 'transparent', background: '#16a34a', color: '#fff', opacity: (saving || !isHeaderValid) ? 0.7 : 1 }}>
+                  {saving ? 'Aguarde...' : 'Confirmar Pedido'}
+                </button>
+              </>
+            ) : (
+              <button onClick={navNext} disabled={saving || !isHeaderValid}
+                style={{ height: 32, padding: '0 20px', borderRadius: 6, fontSize: 13, fontWeight: 600, cursor: 'pointer', border: 'none', background: '#185FA5', color: '#fff', opacity: (saving || !isHeaderValid) ? 0.7 : 1 }}>
+                Próximo →
+              </button>
+            )}
           </div>
         </div>
       </div>
@@ -1096,60 +1133,67 @@ export default function BuyOrderModule({ user }: { user?: User }) {
 
                     {/* Status */}
                     <td style={{ padding: '10px 12px' }}>
-                      {o.exported_at ? (
-                        <span style={{ fontSize: 9, color: '#27500A', background: '#EAF3DE', padding: '2px 6px', borderRadius: 10, border: '0.5px solid #C0DD97' }}>Exportado</span>
-                      ) : (
-                        <span style={{ fontSize: 9, color: '#b45309', background: '#fffbeb', padding: '2px 6px', borderRadius: 10, border: '0.5px solid #fde68a' }}>Pendente</span>
-                      )}
+                      {(() => {
+                        const status = o.status || (o.exported_at ? 'exportado' : 'confirmado');
+                        if (status === 'cancelado') return <span style={{ fontSize: 9, color: '#991b1b', background: '#fef2f2', padding: '2px 6px', borderRadius: 10, border: '0.5px solid #fecaca', fontWeight: 600 }}>Cancelado</span>;
+                        if (status === 'exportado' || o.exported_at) return <span style={{ fontSize: 9, color: '#27500A', background: '#EAF3DE', padding: '2px 6px', borderRadius: 10, border: '0.5px solid #C0DD97', fontWeight: 600 }}>Exportado</span>;
+                        if (status === 'confirmado') return <span style={{ fontSize: 9, color: '#16a34a', background: '#dcfce7', padding: '2px 6px', borderRadius: 10, border: '0.5px solid #bbf7d0', fontWeight: 600 }}>Confirmado</span>;
+                        if (status === 'stand_by') return <span style={{ fontSize: 9, color: '#b45309', background: '#fffbeb', padding: '2px 6px', borderRadius: 10, border: '0.5px solid #fde68a', fontWeight: 600 }}>Stand By</span>;
+                        return <span style={{ fontSize: 9, color: '#475569', background: '#f1f5f9', padding: '2px 6px', borderRadius: 10, border: '0.5px solid #cbd5e1', fontWeight: 600 }}>Rascunho</span>;
+                      })()}
                     </td>
 
                     {/* ✅ AÇÕES: 3 botões (Exportar, Editar, Excluir) */}
                     <td style={{ padding: '10px 12px', textAlign: 'right' }}>
                       <div style={{ display: 'flex', gap: 6, justifyContent: 'flex-end', alignItems: 'center' }}>
                         {/* Botão Exportar */}
-                        <button 
-                          onClick={() => handleExportExcel(o.id)}
-                          disabled={exportando === o.id}
-                          title="Exportar Excel"
-                          style={{ 
-                            width: 28,
-                            height: 28,
-                            padding: 0,
-                            display: 'flex',
-                            alignItems: 'center',
-                            justifyContent: 'center',
-                            background: exportando === o.id ? '#94a3b8' : '#185FA5', 
-                            color: '#fff', 
-                            border: 'none', 
-                            borderRadius: 6, 
-                            cursor: exportando === o.id ? 'not-allowed' : 'pointer',
-                            transition: 'all 0.2s'
-                          }}
-                        >
-                          <Download size={14} />
-                        </button>
+                        {(o.status === 'confirmado' || o.status === 'exportado' || (!o.status && o.exported_at)) && (
+                          <button 
+                            onClick={() => handleExportExcel(o.id)}
+                            disabled={exportando === o.id}
+                            title="Exportar Excel"
+                            style={{ 
+                              width: 28,
+                              height: 28,
+                              padding: 0,
+                              display: 'flex',
+                              alignItems: 'center',
+                              justifyContent: 'center',
+                              background: exportando === o.id ? '#94a3b8' : '#185FA5', 
+                              color: '#fff', 
+                              border: 'none', 
+                              borderRadius: 6, 
+                              cursor: exportando === o.id ? 'not-allowed' : 'pointer',
+                              transition: 'all 0.2s'
+                            }}
+                          >
+                            <Download size={14} />
+                          </button>
+                        )}
 
                         {/* Botão Editar */}
-                        <button 
-                          onClick={() => handleEditOrder(o.id)}
-                          title="Editar"
-                          style={{ 
-                            width: 28,
-                            height: 28,
-                            padding: 0,
-                            display: 'flex',
-                            alignItems: 'center',
-                            justifyContent: 'center',
-                            background: '#fff',
-                            color: '#6b7280',
-                            border: '1px solid #d1d5db',
-                            borderRadius: 6,
-                            cursor: 'pointer',
-                            transition: 'all 0.2s'
-                          }}
-                        >
-                          <Pencil size={14} />
-                        </button>
+                        {(o.status === 'rascunho' || o.status === 'stand_by' || !o.status) && (
+                          <button 
+                            onClick={() => handleEditOrder(o.id)}
+                            title="Editar"
+                            style={{ 
+                              width: 28,
+                              height: 28,
+                              padding: 0,
+                              display: 'flex',
+                              alignItems: 'center',
+                              justifyContent: 'center',
+                              background: '#fff',
+                              color: '#6b7280',
+                              border: '1px solid #d1d5db',
+                              borderRadius: 6,
+                              cursor: 'pointer',
+                              transition: 'all 0.2s'
+                            }}
+                          >
+                            <Pencil size={14} />
+                          </button>
+                        )}
 
                         {/* Botão Excluir */}
                         <button 
@@ -1237,6 +1281,30 @@ export default function BuyOrderModule({ user }: { user?: User }) {
             </div>
           </div>
         </div>
+      )}
+
+      {/* Stand By Modal */}
+      {showStandByModalForOrderId && (
+         <StandByModal 
+           orderId={showStandByModalForOrderId}
+           userId={user?.id || ''}
+           onClose={() => setShowStandByModalForOrderId(null)}
+           onSuccess={() => {
+             setShowStandByModalForOrderId(null);
+             resetStateAndFetch();
+           }}
+         />
+      )}
+
+      {/* Quota Insufficient Modal */}
+      {quotaModalData && (
+        <QuotaInsufficientModal
+          available={quotaModalData.available}
+          required={quotaModalData.required}
+          deficit={quotaModalData.deficit}
+          buyerType={quotaModalData.buyerType}
+          onClose={() => setQuotaModalData(null)}
+        />
       )}
 
     </div>
