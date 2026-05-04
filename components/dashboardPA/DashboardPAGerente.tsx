@@ -11,6 +11,7 @@ import { PAWeek, PASale, PAParameters } from '../../types/pa';
 import { format } from 'date-fns';
 import { ptBR } from 'date-fns/locale';
 import RelatorioPAImprimivel from './RelatorioPAImprimivel';
+import WeeklyGoalsCard from './WeeklyGoalsCard';
  
 interface DashboardPAGerenteProps {
   user: any;
@@ -812,6 +813,12 @@ const DashboardPAGerente: React.FC<DashboardPAGerenteProps> = ({ user, store }) 
       {/* Conteúdo das abas */}
       {activeTab === 'dashboard' && (
         <div className="space-y-8">
+          <WeeklyGoalsCard 
+            storeId={store.id}
+            storeName={store.name}
+            storeNumber={store.number}
+          />
+          
           {/* Active Week Info */}
           {selectedWeek && weeks.find(w => w.id === selectedWeek) && (
             <motion.div 

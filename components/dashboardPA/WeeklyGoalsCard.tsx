@@ -1,0 +1,396 @@
+import React, { useState, useEffect } from 'react';
+import { TrendingUp, DollarSign, Trophy, Target, Zap, Award } from 'lucide-react';
+import { motion } from 'framer-motion';
+import { supabase } from '../../services/supabaseClient';
+
+interface WeeklyGoalsCardProps {
+  storeId: string;
+  storeName: string;
+  storeNumber: string;
+}
+
+interface GoalParameters {
+  // Vendas
+  vendas_minimo: number | null;
+  vendas_valor_base: number | null;
+  vendas_incremento: number | null;
+  vendas_inc_valor: number | null;
+  
+  // Ticket
+  ticket_minimo: number | null;
+  ticket_valor_base: number | null;
+  ticket_incremento: number | null;
+  ticket_inc_valor: number | null;
+  
+  // P.A
+  pa_inicial: number;
+  valor_base: number;
+  incremento_pa: number;
+  incremento_valor: number;
+}
+
+const WeeklyGoalsCard: React.FC<WeeklyGoalsCardProps> = ({ storeId, storeName, storeNumber }) => {
+  const [params, setParams] = useState<GoalParameters | null>(null);
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    fetchParameters();
+  }, [storeId]);
+
+  const fetchParameters = async () => {
+    try {
+      const { data, error } = await supabase
+        .from('Dashboard_PA_Parametros')
+        .select('*')
+        .eq('store_id', storeId)
+        .maybeSingle();
+
+      if (error) throw error;
+
+      if (data) {
+        setParams({
+          vendas_minimo: data.vendas_minimo,
+          vendas_valor_base: data.vendas_valor_base,
+          vendas_incremento: data.vendas_incremento,
+          vendas_inc_valor: data.vendas_inc_valor,
+          ticket_minimo: data.ticket_minimo,
+          ticket_valor_base: data.ticket_valor_base,
+          ticket_incremento: data.ticket_incremento,
+          ticket_inc_valor: data.ticket_inc_valor,
+          pa_inicial: Number(data.pa_inicial),
+          valor_base: Number(data.valor_base),
+          incremento_pa: Number(data.incremento_pa),
+          incremento_valor: Number(data.incremento_valor),
+        });
+      }
+    } catch (err) {
+      console.error('Erro ao carregar parâmetros:', err);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  // Função para calcular premiação em cada faixa
+  const calcularFaixas = (
+    meta: number,
+    valorBase: number,
+    incremento: number,
+    incrementoValor: number,
+    maxFaixas: number = 3
+  ) => {
+    const faixas = [];
+    for (let i = 0; i <= maxFaixas; i++) {
+      const nivel = meta + (incremento * i);
+      const premio = valorBase + (incrementoValor * i);
+      faixas.push({ nivel, premio });
+    }
+    return faixas;
+  };
+
+  if (loading) {
+    return (
+      <div className="bg-white dark:bg-slate-900 rounded-[32px] p-8 border border-slate-100 dark:border-slate-800 shadow-sm">
+        <div className="flex items-center justify-center h-48">
+          <motion.div
+            animate={{ rotate: 360 }}
+            transition={{ duration: 1, repeat: Infinity, ease: 'linear' }}
+            className="w-10 h-10 border-4 border-orange-500 border-t-transparent rounded-full"
+          />
+        </div>
+      </div>
+    );
+  }
+
+  if (!params) {
+    return (
+      <div className="bg-white dark:bg-slate-900 rounded-[32px] p-8 border border-slate-100 dark:border-slate-800 shadow-sm">
+        <div className="flex flex-col items-center justify-center h-48 text-center gap-4 opacity-30">
+          <Target className="w-12 h-12" />
+          <p className="text-xs font-black italic uppercase tracking-tighter">
+            Nenhuma meta configurada para esta loja
+          </p>
+        </div>
+      </div>
+    );
+  }
+
+  const faixasVendas = params.vendas_minimo && params.vendas_incremento
+    ? calcularFaixas(params.vendas_minimo, params.vendas_valor_base || 0, params.vendas_incremento, params.vendas_inc_valor || 0)
+    : null;
+
+  const faixasTicket = params.ticket_minimo && params.ticket_incremento
+    ? calcularFaixas(params.ticket_minimo, params.ticket_valor_base || 0, params.ticket_incremento, params.ticket_inc_valor || 0)
+    : null;
+
+  const faixasPA = calcularFaixas(params.pa_inicial, params.valor_base, params.incremento_pa, params.incremento_valor);
+
+  return (
+    <div className="bg-gradient-to-br from-slate-50 to-white dark:from-slate-900 dark:to-slate-800 rounded-[40px] border border-slate-100 dark:border-slate-800 shadow-xl overflow-hidden mb-8">
+      {/* Header */}
+      <div className="bg-gradient-to-r from-orange-500 to-red-500 p-6">
+        <div className="flex items-center justify-between">
+          <div>
+            <div className="flex items-center gap-3">
+              <div className="p-3 bg-white/20 rounded-2xl backdrop-blur-sm">
+                <Trophy className="w-6 h-6 text-white" />
+              </div>
+              <div>
+                <h3 className="text-2xl font-black italic uppercase tracking-tighter text-white leading-none">
+                  Metas Semanais
+                </h3>
+                <p className="text-orange-100 font-black italic uppercase tracking-tighter text-[10px] mt-1">
+                  Loja {storeNumber} — Sistema de Premiação
+                </p>
+              </div>
+            </div>
+          </div>
+          <div className="hidden md:block px-4 py-2 bg-white/20 rounded-full backdrop-blur-sm">
+            <span className="text-white font-black italic uppercase tracking-tighter text-xs">
+              {storeName}
+            </span>
+          </div>
+        </div>
+      </div>
+
+      {/* Content */}
+      <div className="p-6 space-y-6">
+        {/* 1. META DE VENDAS */}
+        {faixasVendas && (
+          <motion.div
+            initial={{ opacity: 0, y: 20 }}
+            animate={{ opacity: 1, y: 0 }}
+            className="space-y-4"
+          >
+            <div className="flex items-center gap-3">
+              <div className="p-2 bg-emerald-100 dark:bg-emerald-900/20 rounded-xl">
+                <TrendingUp className="w-5 h-5 text-emerald-600 dark:text-emerald-400" />
+              </div>
+              <div>
+                <h4 className="text-sm font-black italic uppercase tracking-tighter text-slate-900 dark:text-white">
+                  Meta de Vendas
+                </h4>
+                <p className="text-[9px] font-bold text-slate-400 uppercase">
+                  Premiação escalonada por faixas
+                </p>
+              </div>
+            </div>
+
+            <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+              {faixasVendas.map((faixa, idx) => (
+                <div
+                  key={idx}
+                  className={`relative p-4 rounded-2xl border-2 transition-all ${
+                    idx === 0
+                      ? 'bg-emerald-50 dark:bg-emerald-900/10 border-emerald-200 dark:border-emerald-800'
+                      : 'bg-slate-50 dark:bg-slate-800/50 border-slate-200 dark:border-slate-700 hover:border-emerald-300 dark:hover:border-emerald-700'
+                  }`}
+                >
+                  {idx > 0 && (
+                    <div className="absolute -top-2 -right-2 px-2 py-0.5 bg-emerald-500 text-white rounded-full text-[8px] font-black uppercase">
+                      +{idx}
+                    </div>
+                  )}
+                  <div className="space-y-2">
+                    <p className="text-[9px] font-black text-slate-400 uppercase">
+                      {idx === 0 ? 'Meta Base' : `Faixa +${idx}`}
+                    </p>
+                    <p className="text-lg font-black text-emerald-600 dark:text-emerald-400 tabular-nums">
+                      R$ {(faixa.nivel / 1000).toFixed(0)}k
+                    </p>
+                    <div className="pt-2 border-t border-slate-200 dark:border-slate-700">
+                      <p className="text-[8px] font-bold text-slate-400 uppercase">Prêmio</p>
+                      <p className="text-sm font-black text-slate-900 dark:text-white tabular-nums">
+                        R$ {faixa.premio.toFixed(2)}
+                      </p>
+                    </div>
+                  </div>
+                </div>
+              ))}
+            </div>
+
+            {/* Barra de Escala Visual */}
+            <div className="relative h-12 bg-slate-100 dark:bg-slate-800 rounded-xl overflow-hidden">
+              {faixasVendas.map((faixa, idx) => (
+                <div
+                  key={idx}
+                  className="absolute inset-y-0 flex items-center justify-center text-white font-black text-[10px]"
+                  style={{
+                    left: `${(idx / faixasVendas.length) * 100}%`,
+                    width: `${100 / faixasVendas.length}%`,
+                    background: `linear-gradient(to right, rgb(${16 + idx * 40}, ${185 - idx * 20}, ${129 + idx * 20}), rgb(${5 + idx * 35}, ${150 - idx * 15}, ${105 + idx * 15}))`
+                  }}
+                >
+                  {idx === 0 ? 'BASE' : `+${idx}`}
+                </div>
+              ))}
+            </div>
+          </motion.div>
+        )}
+
+        {/* 2. META DE TICKET */}
+        {faixasTicket && (
+          <motion.div
+            initial={{ opacity: 0, y: 20 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ delay: 0.1 }}
+            className="space-y-4"
+          >
+            <div className="flex items-center gap-3">
+              <div className="p-2 bg-blue-100 dark:bg-blue-900/20 rounded-xl">
+                <DollarSign className="w-5 h-5 text-blue-600 dark:text-blue-400" />
+              </div>
+              <div>
+                <h4 className="text-sm font-black italic uppercase tracking-tighter text-slate-900 dark:text-white">
+                  Meta de Ticket Médio
+                </h4>
+                <p className="text-[9px] font-bold text-slate-400 uppercase">
+                  Premiação escalonada por faixas
+                </p>
+              </div>
+            </div>
+
+            <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+              {faixasTicket.map((faixa, idx) => (
+                <div
+                  key={idx}
+                  className={`relative p-4 rounded-2xl border-2 transition-all ${
+                    idx === 0
+                      ? 'bg-blue-50 dark:bg-blue-900/10 border-blue-200 dark:border-blue-800'
+                      : 'bg-slate-50 dark:bg-slate-800/50 border-slate-200 dark:border-slate-700 hover:border-blue-300 dark:hover:border-blue-700'
+                  }`}
+                >
+                  {idx > 0 && (
+                    <div className="absolute -top-2 -right-2 px-2 py-0.5 bg-blue-500 text-white rounded-full text-[8px] font-black uppercase">
+                      +{idx}
+                    </div>
+                  )}
+                  <div className="space-y-2">
+                    <p className="text-[9px] font-black text-slate-400 uppercase">
+                      {idx === 0 ? 'Meta Base' : `Faixa +${idx}`}
+                    </p>
+                    <p className="text-lg font-black text-blue-600 dark:text-blue-400 tabular-nums">
+                      R$ {faixa.nivel.toFixed(0)}
+                    </p>
+                    <div className="pt-2 border-t border-slate-200 dark:border-slate-700">
+                      <p className="text-[8px] font-bold text-slate-400 uppercase">Prêmio</p>
+                      <p className="text-sm font-black text-slate-900 dark:text-white tabular-nums">
+                        R$ {faixa.premio.toFixed(2)}
+                      </p>
+                    </div>
+                  </div>
+                </div>
+              ))}
+            </div>
+
+            <div className="relative h-12 bg-slate-100 dark:bg-slate-800 rounded-xl overflow-hidden">
+              {faixasTicket.map((faixa, idx) => (
+                <div
+                  key={idx}
+                  className="absolute inset-y-0 flex items-center justify-center text-white font-black text-[10px]"
+                  style={{
+                    left: `${(idx / faixasTicket.length) * 100}%`,
+                    width: `${100 / faixasTicket.length}%`,
+                    background: `linear-gradient(to right, rgb(${59 + idx * 30}, ${130 - idx * 15}, ${246 - idx * 30}), rgb(${37 + idx * 25}, ${99 - idx * 12}, ${235 - idx * 25}))`
+                  }}
+                >
+                  {idx === 0 ? 'BASE' : `+${idx}`}
+                </div>
+              ))}
+            </div>
+          </motion.div>
+        )}
+
+        {/* 3. META DE P.A */}
+        <motion.div
+          initial={{ opacity: 0, y: 20 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ delay: 0.2 }}
+          className="space-y-4"
+        >
+          <div className="flex items-center gap-3">
+            <div className="p-2 bg-orange-100 dark:bg-orange-900/20 rounded-xl">
+              <Trophy className="w-5 h-5 text-orange-600 dark:text-orange-400" />
+            </div>
+            <div>
+              <h4 className="text-sm font-black italic uppercase tracking-tighter text-slate-900 dark:text-white">
+                Meta de P.A (Peças por Atendimento)
+              </h4>
+              <p className="text-[9px] font-bold text-slate-400 uppercase">
+                Premiação escalonada por faixas
+              </p>
+            </div>
+          </div>
+
+          <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+            {faixasPA.map((faixa, idx) => (
+              <div
+                key={idx}
+                className={`relative p-4 rounded-2xl border-2 transition-all ${
+                  idx === 0
+                    ? 'bg-orange-50 dark:bg-orange-900/10 border-orange-200 dark:border-orange-800'
+                    : 'bg-slate-50 dark:bg-slate-800/50 border-slate-200 dark:border-slate-700 hover:border-orange-300 dark:hover:border-orange-700'
+                }`}
+              >
+                {idx > 0 && (
+                  <div className="absolute -top-2 -right-2 px-2 py-0.5 bg-orange-500 text-white rounded-full text-[8px] font-black uppercase">
+                    +{idx}
+                  </div>
+                )}
+                <div className="space-y-2">
+                  <p className="text-[9px] font-black text-slate-400 uppercase">
+                    {idx === 0 ? 'Meta Base' : `Faixa +${idx}`}
+                  </p>
+                  <p className="text-lg font-black text-orange-600 dark:text-orange-400 tabular-nums">
+                    {faixa.nivel.toFixed(2)}
+                  </p>
+                  <div className="pt-2 border-t border-slate-200 dark:border-slate-700">
+                    <p className="text-[8px] font-bold text-slate-400 uppercase">Prêmio</p>
+                    <p className="text-sm font-black text-slate-900 dark:text-white tabular-nums">
+                      R$ {faixa.premio.toFixed(2)}
+                    </p>
+                  </div>
+                </div>
+              </div>
+            ))}
+          </div>
+
+          <div className="relative h-12 bg-slate-100 dark:bg-slate-800 rounded-xl overflow-hidden">
+            {faixasPA.map((faixa, idx) => (
+              <div
+                key={idx}
+                className="absolute inset-y-0 flex items-center justify-center text-white font-black text-[10px]"
+                style={{
+                  left: `${(idx / faixasPA.length) * 100}%`,
+                  width: `${100 / faixasPA.length}%`,
+                  background: `linear-gradient(to right, rgb(${249 - idx * 30}, ${115 - idx * 15}, ${22 + idx * 20}), rgb(${239 - idx * 30}, ${68 - idx * 12}, ${68 + idx * 15}))`
+                }}
+              >
+                {idx === 0 ? 'BASE' : `+${idx}`}
+              </div>
+            ))}
+          </div>
+        </motion.div>
+
+        {/* Footer com Resumo */}
+        <div className="pt-6 border-t-2 border-slate-200 dark:border-slate-800">
+          <div className="flex items-center justify-between">
+            <div className="flex items-center gap-2">
+              <Award className="w-5 h-5 text-orange-500" />
+              <span className="text-xs font-black italic uppercase tracking-tighter text-slate-400">
+                Sistema de Premiação Ativo
+              </span>
+            </div>
+            <div className="flex items-center gap-2 px-4 py-2 bg-slate-100 dark:bg-slate-800 rounded-full">
+              <Zap className="w-4 h-4 text-amber-500" />
+              <span className="text-[10px] font-black italic uppercase tracking-tighter text-slate-600 dark:text-slate-300">
+                Atualizado em Tempo Real
+              </span>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+};
+
+export default WeeklyGoalsCard;
