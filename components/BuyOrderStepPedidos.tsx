@@ -1,4 +1,6 @@
 import React, { useState, useEffect, useRef, Dispatch, SetStateAction } from 'react';
+import { RefreshCw, Trash2 } from 'lucide-react';
+import { toast } from 'sonner'; // assume toast is available, but wait, usually it's imported or globally available. Actually, checking if there is toast.
 import { supabase } from '../services/supabaseClient';
 import { User } from '../types';
 
@@ -340,6 +342,47 @@ export default function StepPedidos({ items, pedidos, setPedidos, user, brandId,
       }));
     }
   }
+
+  const handleLimparGrade = (letter: string) => {
+    setStep2State((prev: any) => ({
+      ...prev,
+      gradesGlobais: {
+        ...prev.gradesGlobais,
+        [letter]: {
+          ...prev.gradesGlobais[letter],
+          qtds: {} // Limpa todas as quantidades
+        }
+      }
+    }));
+    toast.info(`🧹 Grade ${letter} limpa! Digite novamente as quantidades.`);
+  };
+
+  const handleExcluirGrade = (letter: string) => {
+    if (!window.confirm(`Tem certeza que deseja EXCLUIR a Grade ${letter}?`)) {
+      return;
+    }
+    
+    setStep2State((prev: any) => {
+      const { [letter]: _, ...resto } = prev.gradesGlobais;
+      return {
+        ...prev,
+        gradesGlobais: resto
+      };
+    });
+    
+    toast.success(`🗑️ Grade ${letter} excluída com sucesso!`);
+  };
+
+  const handleLimparTodasGrades = () => {
+    if (!window.confirm('Tem certeza que deseja LIMPAR todas as grades?')) {
+      return;
+    }
+    setStep2State((prev: any) => ({
+      ...prev,
+      gradesGlobais: {}
+    }));
+    toast.info('🧹 Todas as grades foram limpas!');
+  };
  
   function vincularAoPedido(gradeLetter: string) {
     if (selectedItems.size === 0 || !gradeLetter || !gradesGlobais[gradeLetter]) {
@@ -622,13 +665,23 @@ export default function StepPedidos({ items, pedidos, setPedidos, user, brandId,
           <div className="flex items-center gap-2 mb-3">
             <span className="bg-blue-600 text-white w-6 h-6 rounded-full flex items-center justify-center text-xs font-bold">2</span>
             <h4 className="text-xs font-bold text-slate-700 uppercase flex-1">Grades</h4>
-            {Object.keys(gradesGlobais).length < 8 && (
-              <button
-                onClick={adicionarGrade}
-                className="px-2 py-1 text-[9px] font-bold bg-green-600 text-white rounded hover:bg-green-700">
-                + Grade
-              </button>
-            )}
+            <div className="flex gap-2">
+              {Object.keys(gradesGlobais).length > 0 && (
+                <button
+                  onClick={handleLimparTodasGrades}
+                  className="px-2 py-1 text-[9px] font-bold bg-red-50 hover:bg-red-100 text-red-600 border border-red-200 rounded transition"
+                  title="Limpar todas as grades">
+                  Limpar Tudo
+                </button>
+              )}
+              {Object.keys(gradesGlobais).length < 8 && (
+                <button
+                  onClick={adicionarGrade}
+                  className="px-2 py-1 text-[9px] font-bold bg-green-600 text-white rounded hover:bg-green-700">
+                  + Grade
+                </button>
+              )}
+            </div>
           </div>
 
           {Object.keys(gradesGlobais).length === 0 ? (
@@ -647,22 +700,42 @@ export default function StepPedidos({ items, pedidos, setPedidos, user, brandId,
                 return (
                   <div 
                     key={letter}
-                    className="border rounded-lg p-2 bg-white">
+                    className="border rounded-lg p-2 bg-white group">
                     
                     {/* Header da Grade (sempre visível) */}
-                    <div 
-                      className="flex items-center gap-2 cursor-pointer pb-2"
-                      onClick={() => setStep2State((prev: any) => ({ ...prev, gradeExpandida: isExpanded ? null : letter }))}>
-                      <div className="w-6 h-6 bg-blue-600 text-white rounded font-bold flex items-center justify-center text-xs">
-                        {letter}
+                    <div className="flex items-center gap-2 pb-2">
+                      <div 
+                        className="flex-1 flex items-center gap-2 cursor-pointer"
+                        onClick={() => setStep2State((prev: any) => ({ ...prev, gradeExpandida: isExpanded ? null : letter }))}>
+                        <div className="w-6 h-6 bg-blue-600 text-white rounded font-bold flex items-center justify-center text-xs">
+                          {letter}
+                        </div>
+                        <div className="flex-1 font-semibold text-[10px] text-slate-600">
+                          {totalPares > 0 ? "Pares" : "Grade Vazia"}
+                        </div>
+                        <span className="bg-green-100 text-green-700 px-2 py-0.5 rounded text-[10px] font-bold">
+                          {totalPares}p
+                        </span>
+                        <span className="text-slate-400 text-[10px] mr-2">{isExpanded ? '▼' : '▶'}</span>
                       </div>
-                      <div className="flex-1 font-semibold text-[10px] text-slate-600">
-                        {totalPares > 0 ? "Pares" : "Grade Vazia"}
+                      
+                      {/* NOVOS BOTÕES */}
+                      <div className="flex gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
+                        <button
+                          onClick={(e) => { e.stopPropagation(); handleLimparGrade(letter); }}
+                          className="p-1 bg-amber-50 hover:bg-amber-100 border border-amber-200 rounded transition"
+                          title="Limpar quantidades desta grade"
+                        >
+                          <RefreshCw size={12} className="text-amber-600" />
+                        </button>
+                        <button
+                          onClick={(e) => { e.stopPropagation(); handleExcluirGrade(letter); }}
+                          className="p-1 bg-red-50 hover:bg-red-100 border border-red-200 rounded transition"
+                          title="Excluir esta grade"
+                        >
+                          <Trash2 size={12} className="text-red-600" />
+                        </button>
                       </div>
-                      <span className="bg-green-100 text-green-700 px-2 py-0.5 rounded text-[10px] font-bold">
-                        {totalPares}p
-                      </span>
-                      <span className="text-slate-400 text-[10px]">{isExpanded ? '▼' : '▶'}</span>
                     </div>
                     
                     {/* Resumo da Grade (sempre visível se houver pares e não estiver expandido, ou sempre acima do botão) */}

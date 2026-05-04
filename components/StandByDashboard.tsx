@@ -13,6 +13,7 @@ interface StandByOrder {
   fornecedor: string;
   representante: string;
   store_id?: string;
+  store_number?: string;
   user_id?: string;
   motivo: string;
   data_stand_by: string;
@@ -181,9 +182,9 @@ export default function StandByDashboard({
                  #{order.numero_pedido}
                </span>
             )}
-            {showStoreInfo && isAdmin && order.store_id && (
+            {showStoreInfo && isAdmin && order.store_number && (
                <span className="bg-blue-100 text-blue-800 text-[10px] font-bold px-2 py-1 rounded-sm ml-2">
-                 Loja {order.store_id}
+                 Loja {order.store_number}
                </span>
             )}
           </div>
@@ -291,7 +292,7 @@ export default function StandByDashboard({
   // Group orders by store if Admin
   const ordersByStore = isAdmin 
     ? orders.reduce((acc, order) => {
-        const storeId = order.store_id || 'Desconhecida';
+        const storeId = order.store_number || 'Desconhecida';
         if (!acc[storeId]) acc[storeId] = [];
         acc[storeId].push(order);
         return acc;

@@ -492,32 +492,63 @@ export default function BuyOrderModule({ user }: { user?: User }) {
         return d.toISOString().split('T')[0];
       });
  
-      // 3. Insert buy_orders - INICIALMENTE COMO RASCUNHO
-      const { data: order, error: oErr } = await supabase
-        .from('buy_orders')
-        .insert({
-          user_id: userId,
-          user_name: user?.name || user?.email || 'sistema',
-          user_role: cab.role,
-          brand_id: brandId,
-          marca: cab.marca,
-          fornecedor: cab.fornecedor,
-          representante: cab.representante,
-          telefone: cab.telefone || null,
-          email: cab.email || null,
-          fat_inicio: cab.fat_inicio || null,
-          fat_fim: cab.fat_fim,
-          prazos: cab.prazos,
-          vencimentos,
-          desconto: cab.desconto,
-          markup: cab.markup,
-          status: 'rascunho', // Sempre salva inicialmente como rascunho
-        })
-        .select('id, numero_pedido')
-        .single();
-      if (oErr) throw oErr;
-      const orderId = order.id;
-      setNumeroPedidoSalvo(order.numero_pedido);
+      // 3. Insert ou Update buy_orders - INICIALMENTE COMO RASCUNHO
+      let orderId = editingOrderId;
+
+      if (editingOrderId) {
+        const { error: oErr } = await supabase
+          .from('buy_orders')
+          .update({
+            user_name: user?.name || user?.email || 'sistema',
+            user_role: cab.role,
+            brand_id: brandId,
+            marca: cab.marca,
+            fornecedor: cab.fornecedor,
+            representante: cab.representante,
+            telefone: cab.telefone || null,
+            email: cab.email || null,
+            fat_inicio: cab.fat_inicio || null,
+            fat_fim: cab.fat_fim,
+            prazos: cab.prazos,
+            vencimentos,
+            desconto: cab.desconto,
+            markup: cab.markup,
+            status: 'rascunho', // Volta para rascunho se foi alterado
+          })
+          .eq('id', orderId);
+        if (oErr) throw oErr;
+        
+        // Excluir os velhos relacionamentos para recriar
+        await supabase.from('buy_order_items').delete().eq('order_id', orderId);
+        await supabase.from('buy_order_sub_orders').delete().eq('order_id', orderId);
+
+      } else {
+        const { data: order, error: oErr } = await supabase
+          .from('buy_orders')
+          .insert({
+            user_id: userId,
+            user_name: user?.name || user?.email || 'sistema',
+            user_role: cab.role,
+            brand_id: brandId,
+            marca: cab.marca,
+            fornecedor: cab.fornecedor,
+            representante: cab.representante,
+            telefone: cab.telefone || null,
+            email: cab.email || null,
+            fat_inicio: cab.fat_inicio || null,
+            fat_fim: cab.fat_fim,
+            prazos: cab.prazos,
+            vencimentos,
+            desconto: cab.desconto,
+            markup: cab.markup,
+            status: 'rascunho', // Sempre salva inicialmente como rascunho
+          })
+          .select('id, numero_pedido')
+          .single();
+        if (oErr) throw oErr;
+        orderId = order.id;
+        setNumeroPedidoSalvo(order.numero_pedido);
+      }
  
       // 4. Insert buy_order_items
       if (items.length > 0) {
@@ -732,72 +763,80 @@ export default function BuyOrderModule({ user }: { user?: User }) {
     }
   }
 
+  const [editingOrderId, setEditingOrderId] = useState<string | null>(null);
+
   const handleEditOrder = async (orderId: string) => {
     setLoadingOrderDetails(true);
     try {
-      // Query completa e explícita
       const { data, error } = await supabase
         .from('buy_orders')
         .select(`
-          id,
-          numero_pedido,
-          marca,
-          fornecedor,
-          representante,
-          telefone,
-          email,
-          fat_inicio,
-          fat_fim,
-          prazos,
-          desconto,
-          markup,
-          user_name,
-          user_role,
-          created_at,
-          exported_at,
-          buy_order_items (
-            id,
-            referencia,
-            tipo,
-            total_pares,
-            custo,
-            preco_venda,
-            grades
-          ),
-          buy_order_sub_orders (
-            id,
-            lojas_numeros
-          )
+          id, numero_pedido, marca, fornecedor, representante, telefone, email,
+          fat_inicio, fat_fim, prazos, desconto, markup, user_name, user_role,
+          created_at, exported_at,
+          buy_order_items (id, referencia, tipo, total_pares, custo, preco_venda, grades),
+          buy_order_sub_orders (id, sub_order_num, lojas_numeros)
         `)
         .eq('id', orderId)
         .single();
-  
+
       if (error) throw error;
-  
-      // Logs para debug
-      console.log('📦 Pedido completo buscado:', data);
-      console.log('📋 Itens retornados:', data?.buy_order_items);
-      console.log('🔢 Quantidade de itens:', data?.buy_order_items?.length || 0);
-      console.log('🏪 Sub-pedidos:', data?.buy_order_sub_orders);
-  
-      // Validações
-      if (!data) {
-        throw new Error('Pedido não encontrado');
+
+      // ✅ ROTEAMENTO SIMPLES
+      if (data.user_role === 'gerente') {
+        // Modal compacto (atual)
+        setEditingOrder(data);
+      } else {
+        // Carregar no fluxo de 3 etapas
+        loadOrderIntoSteps(data);
       }
-  
-      if (!data.buy_order_items || data.buy_order_items.length === 0) {
-        console.error('⚠️ NENHUM ITEM RETORNADO DA QUERY!');
-        toast.error('⚠️ Este pedido não possui itens cadastrados');
-      }
-  
-      setEditingOrder(data);
-  
+
     } catch (err: any) {
       console.error('❌ Erro ao buscar pedido:', err);
       toast.error(`❌ Erro: ${err.message}`);
     } finally {
       setLoadingOrderDetails(false);
     }
+  };
+
+  const loadOrderIntoSteps = (order: any) => {
+    // 1. Preencher Cabeçalho
+    setCab({
+      role: order.user_role,
+      brand_id: null,
+      marca: order.marca,
+      fornecedor: order.fornecedor,
+      representante: order.representante,
+      telefone: order.telefone || '',
+      email: order.email || '',
+      fat_inicio: order.fat_inicio || '',
+      fat_fim: order.fat_fim || '',
+      prazos: order.prazos || [],
+      markup: order.markup || 2.6,
+      desconto: order.desconto || 0
+    });
+
+    setPrazosRaw(order.prazos ? order.prazos.join('/') : '');
+
+    // 2. Preencher Itens
+    const loadedItems = (order.buy_order_items || []).map((item: any) => ({
+      ref: item.referencia,
+      tipo: item.tipo,
+      cor1: '', // Não temos cores salvas ainda
+      cor2: '',
+      cor3: '',
+      modelo: 'FEM', // Inferir do tipo se possível
+      custo: item.custo,
+      preco_venda: item.preco_venda
+    }));
+    setItems(loadedItems);
+
+    // 3. Preencher Pedidos (sub-orders)
+    // TODO: Transformar buy_order_sub_orders no formato de StepPedidos
+
+    // 4. Ir para etapa 1
+    setStep(0);
+    toast.info('📝 Pedido carregado para edição');
   };
 
   const handleDeleteOrder = async (orderId: string) => {

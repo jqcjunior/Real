@@ -153,13 +153,13 @@ const WeeklyGoalsCard: React.FC<WeeklyGoalsCardProps> = ({ storeId, storeName, s
       </div>
 
       {/* Content */}
-      <div className="p-6 space-y-6">
+      <div className="p-4 space-y-4">
         {/* 1. META DE VENDAS */}
         {faixasVendas && (
           <motion.div
             initial={{ opacity: 0, y: 20 }}
             animate={{ opacity: 1, y: 0 }}
-            className="space-y-4"
+            className="space-y-3"
           >
             <div className="flex items-center gap-3">
               <div className="p-2 bg-emerald-100 dark:bg-emerald-900/20 rounded-xl">
@@ -167,63 +167,42 @@ const WeeklyGoalsCard: React.FC<WeeklyGoalsCardProps> = ({ storeId, storeName, s
               </div>
               <div>
                 <h4 className="text-sm font-black italic uppercase tracking-tighter text-slate-900 dark:text-white">
-                  Meta de Vendas
+                  💰 VENDAS
                 </h4>
-                <p className="text-[9px] font-bold text-slate-400 uppercase">
-                  Premiação escalonada por faixas
-                </p>
               </div>
             </div>
 
-            <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+            <div className="grid grid-cols-2 md:grid-cols-4 gap-2">
               {faixasVendas.map((faixa, idx) => (
                 <div
                   key={idx}
-                  className={`relative p-4 rounded-2xl border-2 transition-all ${
+                  className={`relative p-3 rounded-xl border-2 flex flex-col justify-between transition-all ${
                     idx === 0
                       ? 'bg-emerald-50 dark:bg-emerald-900/10 border-emerald-200 dark:border-emerald-800'
                       : 'bg-slate-50 dark:bg-slate-800/50 border-slate-200 dark:border-slate-700 hover:border-emerald-300 dark:hover:border-emerald-700'
                   }`}
                 >
                   {idx > 0 && (
-                    <div className="absolute -top-2 -right-2 px-2 py-0.5 bg-emerald-500 text-white rounded-full text-[8px] font-black uppercase">
+                    <div className="absolute -top-1.5 -right-1.5 px-1.5 py-0.5 bg-emerald-500 text-white rounded-full text-[8px] font-black uppercase">
                       +{idx}
                     </div>
                   )}
-                  <div className="space-y-2">
-                    <p className="text-[9px] font-black text-slate-400 uppercase">
-                      {idx === 0 ? 'Meta Base' : `Faixa +${idx}`}
-                    </p>
-                    <p className="text-lg font-black text-emerald-600 dark:text-emerald-400 tabular-nums">
+                  <p className="text-[9px] font-black text-slate-400 uppercase mb-1">
+                    {idx === 0 ? 'BASE' : `BÔNUS +${idx}`}
+                  </p>
+                  <div className="flex items-center gap-1 font-black text-sm tabular-nums">
+                    <span className="text-emerald-700 dark:text-emerald-400">
                       R$ {(faixa.nivel / 1000).toFixed(0)}k
-                    </p>
-                    <div className="pt-2 border-t border-slate-200 dark:border-slate-700">
-                      <p className="text-[8px] font-bold text-slate-400 uppercase">Prêmio</p>
-                      <p className="text-sm font-black text-slate-900 dark:text-white tabular-nums">
-                        R$ {faixa.premio.toFixed(2)}
-                      </p>
-                    </div>
+                    </span>
+                    <span className="text-slate-300">→</span>
+                    <span className="text-emerald-600 dark:text-emerald-300">
+                      💵 {faixa.premio.toFixed(0)}
+                    </span>
                   </div>
                 </div>
               ))}
             </div>
 
-            {/* Barra de Escala Visual */}
-            <div className="relative h-12 bg-slate-100 dark:bg-slate-800 rounded-xl overflow-hidden">
-              {faixasVendas.map((faixa, idx) => (
-                <div
-                  key={idx}
-                  className="absolute inset-y-0 flex items-center justify-center text-white font-black text-[10px]"
-                  style={{
-                    left: `${(idx / faixasVendas.length) * 100}%`,
-                    width: `${100 / faixasVendas.length}%`,
-                    background: `linear-gradient(to right, rgb(${16 + idx * 40}, ${185 - idx * 20}, ${129 + idx * 20}), rgb(${5 + idx * 35}, ${150 - idx * 15}, ${105 + idx * 15}))`
-                  }}
-                >
-                  {idx === 0 ? 'BASE' : `+${idx}`}
-                </div>
-              ))}
-            </div>
           </motion.div>
         )}
 
@@ -233,7 +212,7 @@ const WeeklyGoalsCard: React.FC<WeeklyGoalsCardProps> = ({ storeId, storeName, s
             initial={{ opacity: 0, y: 20 }}
             animate={{ opacity: 1, y: 0 }}
             transition={{ delay: 0.1 }}
-            className="space-y-4"
+            className="space-y-3"
           >
             <div className="flex items-center gap-3">
               <div className="p-2 bg-blue-100 dark:bg-blue-900/20 rounded-xl">
@@ -241,62 +220,42 @@ const WeeklyGoalsCard: React.FC<WeeklyGoalsCardProps> = ({ storeId, storeName, s
               </div>
               <div>
                 <h4 className="text-sm font-black italic uppercase tracking-tighter text-slate-900 dark:text-white">
-                  Meta de Ticket Médio
+                  🎫 TICKET MÉDIO
                 </h4>
-                <p className="text-[9px] font-bold text-slate-400 uppercase">
-                  Premiação escalonada por faixas
-                </p>
               </div>
             </div>
 
-            <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+            <div className="grid grid-cols-2 md:grid-cols-4 gap-2">
               {faixasTicket.map((faixa, idx) => (
                 <div
                   key={idx}
-                  className={`relative p-4 rounded-2xl border-2 transition-all ${
+                  className={`relative p-3 rounded-xl border-2 flex flex-col justify-between transition-all ${
                     idx === 0
                       ? 'bg-blue-50 dark:bg-blue-900/10 border-blue-200 dark:border-blue-800'
                       : 'bg-slate-50 dark:bg-slate-800/50 border-slate-200 dark:border-slate-700 hover:border-blue-300 dark:hover:border-blue-700'
                   }`}
                 >
                   {idx > 0 && (
-                    <div className="absolute -top-2 -right-2 px-2 py-0.5 bg-blue-500 text-white rounded-full text-[8px] font-black uppercase">
+                    <div className="absolute -top-1.5 -right-1.5 px-1.5 py-0.5 bg-blue-500 text-white rounded-full text-[8px] font-black uppercase">
                       +{idx}
                     </div>
                   )}
-                  <div className="space-y-2">
-                    <p className="text-[9px] font-black text-slate-400 uppercase">
-                      {idx === 0 ? 'Meta Base' : `Faixa +${idx}`}
-                    </p>
-                    <p className="text-lg font-black text-blue-600 dark:text-blue-400 tabular-nums">
+                  <p className="text-[9px] font-black text-slate-400 uppercase mb-1">
+                    {idx === 0 ? 'BASE' : `BÔNUS +${idx}`}
+                  </p>
+                  <div className="flex items-center gap-1 font-black text-sm tabular-nums">
+                    <span className="text-blue-700 dark:text-blue-400">
                       R$ {faixa.nivel.toFixed(0)}
-                    </p>
-                    <div className="pt-2 border-t border-slate-200 dark:border-slate-700">
-                      <p className="text-[8px] font-bold text-slate-400 uppercase">Prêmio</p>
-                      <p className="text-sm font-black text-slate-900 dark:text-white tabular-nums">
-                        R$ {faixa.premio.toFixed(2)}
-                      </p>
-                    </div>
+                    </span>
+                    <span className="text-slate-300">→</span>
+                    <span className="text-blue-600 dark:text-blue-300">
+                      💵 {faixa.premio.toFixed(0)}
+                    </span>
                   </div>
                 </div>
               ))}
             </div>
 
-            <div className="relative h-12 bg-slate-100 dark:bg-slate-800 rounded-xl overflow-hidden">
-              {faixasTicket.map((faixa, idx) => (
-                <div
-                  key={idx}
-                  className="absolute inset-y-0 flex items-center justify-center text-white font-black text-[10px]"
-                  style={{
-                    left: `${(idx / faixasTicket.length) * 100}%`,
-                    width: `${100 / faixasTicket.length}%`,
-                    background: `linear-gradient(to right, rgb(${59 + idx * 30}, ${130 - idx * 15}, ${246 - idx * 30}), rgb(${37 + idx * 25}, ${99 - idx * 12}, ${235 - idx * 25}))`
-                  }}
-                >
-                  {idx === 0 ? 'BASE' : `+${idx}`}
-                </div>
-              ))}
-            </div>
           </motion.div>
         )}
 
@@ -305,7 +264,7 @@ const WeeklyGoalsCard: React.FC<WeeklyGoalsCardProps> = ({ storeId, storeName, s
           initial={{ opacity: 0, y: 20 }}
           animate={{ opacity: 1, y: 0 }}
           transition={{ delay: 0.2 }}
-          className="space-y-4"
+          className="space-y-3"
         >
           <div className="flex items-center gap-3">
             <div className="p-2 bg-orange-100 dark:bg-orange-900/20 rounded-xl">
@@ -313,80 +272,49 @@ const WeeklyGoalsCard: React.FC<WeeklyGoalsCardProps> = ({ storeId, storeName, s
             </div>
             <div>
               <h4 className="text-sm font-black italic uppercase tracking-tighter text-slate-900 dark:text-white">
-                Meta de P.A (Peças por Atendimento)
+                📊 P.A
               </h4>
-              <p className="text-[9px] font-bold text-slate-400 uppercase">
-                Premiação escalonada por faixas
-              </p>
             </div>
           </div>
 
-          <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+          <div className="grid grid-cols-2 md:grid-cols-4 gap-2">
             {faixasPA.map((faixa, idx) => (
               <div
                 key={idx}
-                className={`relative p-4 rounded-2xl border-2 transition-all ${
+                className={`relative p-3 rounded-xl border-2 flex flex-col justify-between transition-all ${
                   idx === 0
                     ? 'bg-orange-50 dark:bg-orange-900/10 border-orange-200 dark:border-orange-800'
                     : 'bg-slate-50 dark:bg-slate-800/50 border-slate-200 dark:border-slate-700 hover:border-orange-300 dark:hover:border-orange-700'
                 }`}
               >
                 {idx > 0 && (
-                  <div className="absolute -top-2 -right-2 px-2 py-0.5 bg-orange-500 text-white rounded-full text-[8px] font-black uppercase">
+                  <div className="absolute -top-1.5 -right-1.5 px-1.5 py-0.5 bg-orange-500 text-white rounded-full text-[8px] font-black uppercase">
                     +{idx}
                   </div>
                 )}
-                <div className="space-y-2">
-                  <p className="text-[9px] font-black text-slate-400 uppercase">
-                    {idx === 0 ? 'Meta Base' : `Faixa +${idx}`}
-                  </p>
-                  <p className="text-lg font-black text-orange-600 dark:text-orange-400 tabular-nums">
+                <p className="text-[9px] font-black text-slate-400 uppercase mb-1">
+                  {idx === 0 ? 'BASE' : `BÔNUS +${idx}`}
+                </p>
+                <div className="flex items-center gap-1 font-black text-sm tabular-nums">
+                  <span className="text-orange-700 dark:text-orange-400">
                     {faixa.nivel.toFixed(2)}
-                  </p>
-                  <div className="pt-2 border-t border-slate-200 dark:border-slate-700">
-                    <p className="text-[8px] font-bold text-slate-400 uppercase">Prêmio</p>
-                    <p className="text-sm font-black text-slate-900 dark:text-white tabular-nums">
-                      R$ {faixa.premio.toFixed(2)}
-                    </p>
-                  </div>
+                  </span>
+                  <span className="text-slate-300">→</span>
+                  <span className="text-orange-600 dark:text-orange-300">
+                    💵 {faixa.premio.toFixed(0)}
+                  </span>
                 </div>
               </div>
             ))}
           </div>
 
-          <div className="relative h-12 bg-slate-100 dark:bg-slate-800 rounded-xl overflow-hidden">
-            {faixasPA.map((faixa, idx) => (
-              <div
-                key={idx}
-                className="absolute inset-y-0 flex items-center justify-center text-white font-black text-[10px]"
-                style={{
-                  left: `${(idx / faixasPA.length) * 100}%`,
-                  width: `${100 / faixasPA.length}%`,
-                  background: `linear-gradient(to right, rgb(${249 - idx * 30}, ${115 - idx * 15}, ${22 + idx * 20}), rgb(${239 - idx * 30}, ${68 - idx * 12}, ${68 + idx * 15}))`
-                }}
-              >
-                {idx === 0 ? 'BASE' : `+${idx}`}
-              </div>
-            ))}
-          </div>
         </motion.div>
 
         {/* Footer com Resumo */}
-        <div className="pt-6 border-t-2 border-slate-200 dark:border-slate-800">
-          <div className="flex items-center justify-between">
-            <div className="flex items-center gap-2">
-              <Award className="w-5 h-5 text-orange-500" />
-              <span className="text-xs font-black italic uppercase tracking-tighter text-slate-400">
-                Sistema de Premiação Ativo
-              </span>
-            </div>
-            <div className="flex items-center gap-2 px-4 py-2 bg-slate-100 dark:bg-slate-800 rounded-full">
-              <Zap className="w-4 h-4 text-amber-500" />
-              <span className="text-[10px] font-black italic uppercase tracking-tighter text-slate-600 dark:text-slate-300">
-                Atualizado em Tempo Real
-              </span>
-            </div>
-          </div>
+        <div className="pt-4 border-t-2 border-slate-200 dark:border-slate-800 flex items-center justify-center">
+          <span className="text-[10px] font-black italic uppercase tracking-tighter text-slate-400">
+            ⚡ Sistema de premiação semanal ativo
+          </span>
         </div>
       </div>
     </div>
