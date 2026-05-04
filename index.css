@@ -83,6 +83,20 @@ select:focus {
     -webkit-overflow-scrolling: touch;
 }
 
+.custom-scrollbar::-webkit-scrollbar {
+  width: 6px;
+}
+.custom-scrollbar::-webkit-scrollbar-track {
+  background: transparent;
+}
+.custom-scrollbar::-webkit-scrollbar-thumb {
+  background: rgba(59, 130, 246, 0.3);
+  border-radius: 3px;
+}
+.custom-scrollbar::-webkit-scrollbar-thumb:hover {
+  background: rgba(59, 130, 246, 0.5);
+}
+
 /* Prevenir zoom em inputs no iOS */
 input[type="text"],
 input[type="search"],

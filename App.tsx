@@ -186,6 +186,12 @@ const App: React.FC = () => {
             setIsLoading(true);
             try {
                 const user = JSON.parse(storedUser);
+                
+                // Validação de sanidade simples: garantir que tem ID e email
+                if (!user.id || !user.email) {
+                  throw new Error("Dados de sessão corrompidos");
+                }
+
                 await supabase.rpc('set_user_session', {
                     user_id: user.id
                 });
@@ -195,9 +201,9 @@ const App: React.FC = () => {
                 await bootstrapPermissions();
                 await bootstrapParameters();
             } catch (err) {
-                console.error('Erro ao restaurar sessão:', err);
-                sessionStorage.clear();
-                setUser(null); // Vai para login
+                console.error('Erro ao restaurar sessão (limpando cache):', err);
+                sessionStorage.clear(); // Limpeza agressiva
+                setUser(null);
             } finally {
                 setIsLoading(false);
             }

@@ -2,6 +2,7 @@ import React, { useState, useEffect, useRef, useCallback, Dispatch, SetStateActi
 import { Pencil, X, Download, RefreshCw } from 'lucide-react';
 import { toast } from 'sonner';
 import { supabase } from '../services/supabaseClient';
+import { useBrandAutocomplete } from '../hooks/useBrandAutocomplete';
 import { User, UserRole } from '../types';
 import { 
   insertBuyOrderItems, 
@@ -11,7 +12,187 @@ import {
   BuyOrderItemInput 
 } from '../utils/buyOrderItems.utils';
 import StepPedidos, { GradeItem, ItemComGrades, OrderItem, SubOrder, Cabecalho } from './BuyOrderStepPedidos';
+// ... existing imports ...
 import { BuyOrderModuleModal } from './BuyOrderModuleModal';
+
+// ... AlertasCardSticky component ...
+interface Alerta {
+  tipo: 'marca' | 'produto';
+  nivel: 'warning' | 'error' | 'info';
+  icone: string;
+  titulo: string;
+  mensagem: string;
+}
+
+const AlertasCardSticky = ({ 
+  marca, 
+  lojasSelecionadas,
+  itens 
+}: { 
+  marca: string;
+  lojasSelecionadas: number[];
+  itens: any[]
+}) => {
+  const [alertas, setAlertas] = useState<Alerta[]>([]);
+  const [loading, setLoading] = useState(false);
+
+  useEffect(() => {
+    verificarRestricoesCompletas();
+  }, [marca, JSON.stringify(lojasSelecionadas), itens]);
+
+  const verificarRestricoesCompletas = async () => {
+    setLoading(true);
+    const novosAlertas: Alerta[] = [];
+
+    // 1. Verificar restrições de MARCA
+    if (marca && lojasSelecionadas.length > 0) {
+      const { data: restricaoMarca } = await supabase
+        .from('buy_brand_store_restrictions')
+        .select('*')
+        .ilike('marca', marca)
+        .eq('ativo', true)
+        .maybeSingle();
+
+      if (restricaoMarca && restricaoMarca.lojas_proibidas) {
+        const lojasConflito = lojasSelecionadas.filter(loja =>
+          restricaoMarca.lojas_proibidas.includes(loja)
+        );
+
+        if (lojasConflito.length > 0) {
+          novosAlertas.push({
+            tipo: 'marca',
+            nivel: 'error',
+            icone: '⛔',
+            titulo: marca,
+            mensagem: `Lojas ${lojasConflito.join(', ')} não podem comprar esta marca`
+          });
+        }
+      }
+    }
+
+    // 2. Verificar restrições de PRODUTOS
+    for (const item of itens) {
+      if (!item.tipo) continue;
+      
+      const { data: restricaoProduto } = await supabase
+        .from('buy_product_store_restrictions')
+        .select('*')
+        .ilike('tipo_produto', item.tipo)
+        .eq('ativo', true)
+        .maybeSingle();
+
+      if (restricaoProduto && restricaoProduto.lojas_proibidas) {
+        const lojasConflito = lojasSelecionadas.filter(loja =>
+          restricaoProduto.lojas_proibidas.includes(loja)
+        );
+
+        if (lojasConflito.length > 0) {
+          novosAlertas.push({
+            tipo: 'produto',
+            nivel: 'warning',
+            icone: '⚠️',
+            titulo: item.tipo,
+            mensagem: `Lojas ${lojasConflito.join(', ')} não vendem este produto`
+          });
+        }
+      }
+    }
+
+    setAlertas(novosAlertas);
+    setLoading(false);
+  };
+
+  const alertasErro = alertas.filter(a => a.nivel === 'error');
+  const alertasAviso = alertas.filter(a => a.nivel === 'warning');
+  const temProblemas = alertasErro.length > 0 || alertasAviso.length > 0;
+
+  if (alertas.length === 0) {
+    return (
+      <div className="sticky bottom-0 bg-white border-t border-gray-200 py-2">
+        <div className="max-w-md mx-auto text-center">
+          <p className="text-sm text-gray-400">
+            {loading ? 'Verificando restrições...' : 'Nenhum alerta'}
+          </p>
+        </div>
+      </div>
+    );
+  }
+
+  return (
+    <div className="sticky bottom-0 bg-white border-t-2 border-gray-300 shadow-lg py-3 z-50">
+      <div className="max-w-3xl mx-auto px-4">
+        <div 
+          className={`
+            relative rounded-lg shadow-inner border-2 transition-all duration-300
+            ${temProblemas 
+              ? 'bg-gradient-to-r from-yellow-50 via-orange-50 to-red-50 border-red-300' 
+              : 'bg-gradient-to-r from-green-50 to-emerald-50 border-green-300'
+            }
+          `}
+        >
+          <div className={`
+            px-3 py-2 border-b flex items-center justify-between
+            ${temProblemas ? 'border-red-300 bg-red-100/50' : 'border-green-300 bg-green-100/50'}
+          `}>
+            <div className="flex items-center gap-2">
+              <span className="text-lg">{temProblemas ? '⚠️' : '✅'}</span>
+              <h4 className="font-semibold text-sm text-gray-800">
+                ALERTAS E RESTRIÇÕES
+              </h4>
+            </div>
+            
+            {temProblemas && (
+              <div className="bg-red-500 text-white text-xs font-bold px-2 py-1 rounded-full">
+                {alertasErro.length + alertasAviso.length}
+              </div>
+            )}
+            
+            {loading && (
+              <div className="animate-spin h-4 w-4 border-2 border-gray-400 rounded-full border-t-transparent" />
+            )}
+          </div>
+
+          <div className="px-3 py-2 flex gap-2 overflow-x-auto">
+            {alertasErro.map((alerta, idx) => (
+              <div 
+                key={`erro-${idx}`}
+                className="flex-shrink-0 w-64 flex items-start gap-2 bg-red-50 border border-red-300 rounded p-2"
+              >
+                <span className="text-lg flex-shrink-0">{alerta.icone}</span>
+                <div className="flex-1 min-w-0">
+                  <p className="font-medium text-red-900 text-xs truncate">
+                    {alerta.titulo}
+                  </p>
+                  <p className="text-red-700 text-xs">
+                    {alerta.mensagem}
+                  </p>
+                </div>
+              </div>
+            ))}
+
+            {alertasAviso.map((alerta, idx) => (
+              <div 
+                key={`aviso-${idx}`}
+                className="flex-shrink-0 w-64 flex items-start gap-2 bg-yellow-50 border border-yellow-300 rounded p-2"
+              >
+                <span className="text-lg flex-shrink-0">{alerta.icone}</span>
+                <div className="flex-1 min-w-0">
+                  <p className="font-medium text-yellow-900 text-xs truncate">
+                    {alerta.titulo}
+                  </p>
+                  <p className="text-yellow-700 text-xs">
+                    {alerta.mensagem}
+                  </p>
+                </div>
+              </div>
+            ))}
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+};
+
 
 // ─── Tipos ────────────────────────────────────────────────────────────────────
  
@@ -723,7 +904,7 @@ export default function BuyOrderModule({ user }: { user?: User }) {
  
         {/* Corpo da etapa */}
         {step === 0 && <StepCabecalho cab={cab} setCab={setCab} prazosRaw={prazosRaw} setPrazosRaw={setPrazosRaw} numeroPedidoSalvo={numeroPedidoSalvo} setNumeroPedidoSalvo={setNumeroPedidoSalvo} roundBase={roundBase} />}
-        {step === 1 && <StepItens items={items} setItems={setItems} cab={cab} roundBase={roundBase} />}
+        {step === 1 && <StepItens items={items} setItems={setItems} cab={cab} roundBase={roundBase} selectedLojas={step2State.selectedLojas} />}
         {step === 2 && <StepPedidos items={items} pedidos={pedidos} setPedidos={setPedidos} user={user} cab={cab} step2State={step2State} setStep2State={setStep2State} />}
  
         {/* Footer navegação */}
@@ -1071,6 +1252,7 @@ function StepCabecalho({ cab, setCab, prazosRaw, setPrazosRaw, numeroPedidoSalvo
   setNumeroPedidoSalvo: (n: number | null) => void;
   roundBase: number;
 }) {
+  const { fetchAndFillBrand, isLoading } = useBrandAutocomplete();
   const [brands, setBrands] = useState<Brand[]>([]);
   const [showDrop, setShowDrop] = useState(false);
   const [searching, setSearching] = useState(false);
@@ -1108,7 +1290,13 @@ function StepCabecalho({ cab, setCab, prazosRaw, setPrazosRaw, numeroPedidoSalvo
     
     if (field === 'marca' && numeroPedidoSalvo) setNumeroPedidoSalvo(null);
     
-    if (['marca', 'fornecedor', 'representante'].includes(field as string)) {
+    // ✅ Autocomplete otimizado para marca
+    if (field === 'marca') {
+      fetchAndFillBrand(uppercaseVal, setCab);
+      return;
+    }
+    
+    if (['fornecedor', 'representante'].includes(field as string)) {
       if (uppercaseVal.length < 3) { setBrands([]); setShowDrop(false); return; }
       
       clearTimeout(searchTimer.current!);
@@ -1326,7 +1514,7 @@ function StepCabecalho({ cab, setCab, prazosRaw, setPrazosRaw, numeroPedidoSalvo
  
 // ─── Step 1: Itens ────────────────────────────────────────────────────────────
  
-function StepItens({ items, setItems, cab, roundBase }: { items: OrderItem[]; setItems: Dispatch<SetStateAction<OrderItem[]>>; cab: Cabecalho; roundBase: number }) {
+function StepItens({ items, setItems, cab, roundBase, selectedLojas }: { items: OrderItem[]; setItems: Dispatch<SetStateAction<OrderItem[]>>; cab: Cabecalho; roundBase: number; selectedLojas: number[] }) {
   const [showPopup, setShowPopup] = useState(false);
   const [editIdx, setEditIdx] = useState(-1);
   const [form, setForm] = useState({ ref: '', tipo: '', cor1: '', cor2: '', cor3: '', modelo: 'FEM', custo: '' });
@@ -1473,13 +1661,13 @@ function StepItens({ items, setItems, cab, roundBase }: { items: OrderItem[]; se
   const estVenda = calcularPrecoVenda(parseFloat(form.custo) || 0, cab.desconto, cab.markup);
  
   return (
-    <div>
+    <div className="flex flex-col h-full">
       <div style={{ padding: '6px 18px', background: '#f9fafb', borderBottom: '0.5px solid #e5e7eb', fontSize: 10, fontWeight: 500, color: '#6b7280', textTransform: 'uppercase', letterSpacing: '0.05em', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
         <span>Itens do pedido</span>
         <button onClick={openNew} style={{ height: 22, padding: '0 10px', borderRadius: 4, fontSize: 11, fontWeight: 500, cursor: 'pointer', border: 'none', background: '#185FA5', color: '#fff' }}>+ Item</button>
       </div>
  
-      <div className="overflow-x-auto">
+      <div className="overflow-auto flex-1">
         <table className="w-full border-collapse table-fixed">
           <thead>
             <tr style={{ background: '#f9fafb' }}>
@@ -1523,6 +1711,12 @@ function StepItens({ items, setItems, cab, roundBase }: { items: OrderItem[]; se
           </tbody>
         </table>
       </div>
+ 
+      <AlertasCardSticky 
+        marca={cab.marca}
+        lojasSelecionadas={selectedLojas}
+        itens={items}
+      />
  
       {/* Popup item */}
       {showPopup && (
