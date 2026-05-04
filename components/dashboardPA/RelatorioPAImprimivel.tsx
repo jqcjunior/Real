@@ -420,41 +420,43 @@ const RelatorioPAImprimivel: React.FC<RelatorioProps> = ({ storeId, storeName, s
                     {/* Detalhes de Metas e Prêmios Individuais */}
                     <div className="grid grid-cols-1 gap-1 min-w-[200px]">
                       {/* P.A */}
-                      <div className="flex items-center justify-between gap-4 py-1 border-b border-slate-100 italic">
-                        <div className="flex items-center gap-1.5 min-w-0">
-                          <CheckCircle2 size={12} className="text-emerald-500 flex-shrink-0" />
-                          <span className="text-[10px] font-black text-slate-700 uppercase truncate">P.A: {v.pa_atingido.toFixed(2)}</span>
-                          <span className="text-[8px] font-bold text-slate-400">({v.pa_meta.toFixed(2)})</span>
-                        </div>
-                        <span className="text-[10px] font-black text-emerald-600 whitespace-nowrap">R$ {v.valor_premio_pa.toFixed(2)}</span>
+                      <div className="flex items-center gap-1.5 min-w-0 py-1 border-b border-slate-100 italic">
+                        <CheckCircle2 size={12} className="text-emerald-500 flex-shrink-0" />
+                        <span className="text-[10px] font-black text-slate-700 uppercase">P.A:</span>
+                        <span className="text-[10px] font-black text-emerald-600 px-1">{v.pa_atingido.toFixed(2)}</span>
+                        <span className="text-[9px] font-bold text-slate-400">Meta: {v.pa_meta.toFixed(2)}</span>
                       </div>
 
                       {/* Vendas */}
-                      <div className="flex items-center justify-between gap-4 py-1 border-b border-slate-100 italic">
-                        <div className="flex items-center gap-1.5 min-w-0">
-                          {v.atingiu_meta_vendas ? (
-                            <CheckCircle2 size={12} className="text-emerald-500 flex-shrink-0" />
-                          ) : (
-                            <X size={12} className="text-red-500 flex-shrink-0" />
-                          )}
-                          <span className="text-[10px] font-black text-slate-700 uppercase truncate">Vendas: R$ {v.total_vendas.toLocaleString('pt-BR', { maximumFractionDigits: 0 })}</span>
-                          <span className="text-[8px] font-bold text-slate-400">({(parametros?.vendas_minimo || 0).toLocaleString('pt-BR', { maximumFractionDigits: 0 })})</span>
-                        </div>
-                        <span className={`text-[10px] font-black whitespace-nowrap ${v.atingiu_meta_vendas ? 'text-emerald-600' : 'text-slate-300'}`}>R$ {v.valor_premio_vendas.toFixed(2)}</span>
+                      <div className="flex items-center gap-1.5 min-w-0 py-1 border-b border-slate-100 italic">
+                        {v.atingiu_meta_vendas ? (
+                          <CheckCircle2 size={12} className="text-emerald-500 flex-shrink-0" />
+                        ) : (
+                          <X size={12} className="text-red-500 flex-shrink-0" />
+                        )}
+                        <span className="text-[10px] font-black text-slate-700 uppercase">VENDAS:</span>
+                        <span className={`text-[10px] font-black px-1 ${v.atingiu_meta_vendas ? 'text-emerald-600' : 'text-red-500'}`}>
+                          R$ {v.total_vendas.toLocaleString('pt-BR', { maximumFractionDigits: 0 })}
+                        </span>
+                        <span className="text-[9px] font-bold text-slate-400">
+                          Meta: R$ {(parametros?.vendas_minimo || 0).toLocaleString('pt-BR', { maximumFractionDigits: 0 })}
+                        </span>
                       </div>
 
                       {/* Ticket */}
-                      <div className="flex items-center justify-between gap-4 py-1 italic">
-                        <div className="flex items-center gap-1.5 min-w-0">
-                          {v.atingiu_meta_ticket ? (
-                            <CheckCircle2 size={12} className="text-emerald-500 flex-shrink-0" />
-                          ) : (
-                            <X size={12} className="text-red-500 flex-shrink-0" />
-                          )}
-                          <span className="text-[10px] font-black text-slate-700 uppercase truncate">Ticket: R$ {v.ticket_medio.toFixed(0)}</span>
-                          <span className="text-[8px] font-bold text-slate-400">({(parametros?.ticket_minimo || 0).toFixed(0)})</span>
-                        </div>
-                        <span className={`text-[10px] font-black whitespace-nowrap ${v.atingiu_meta_ticket ? 'text-emerald-600' : 'text-slate-300'}`}>R$ {v.valor_premio_ticket.toFixed(2)}</span>
+                      <div className="flex items-center gap-1.5 min-w-0 py-1 italic">
+                        {v.atingiu_meta_ticket ? (
+                          <CheckCircle2 size={12} className="text-emerald-500 flex-shrink-0" />
+                        ) : (
+                          <X size={12} className="text-red-500 flex-shrink-0" />
+                        )}
+                        <span className="text-[10px] font-black text-slate-700 uppercase">TICKET:</span>
+                        <span className={`text-[10px] font-black px-1 ${v.atingiu_meta_ticket ? 'text-emerald-600' : 'text-red-500'}`}>
+                          R$ {v.ticket_medio.toFixed(0)}
+                        </span>
+                        <span className="text-[9px] font-bold text-slate-400">
+                          Meta: R$ {(parametros?.ticket_minimo || 0).toFixed(0)}
+                        </span>
                       </div>
                     </div>
 

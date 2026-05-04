@@ -435,7 +435,7 @@ const DashboardPAGerente: React.FC<DashboardPAGerenteProps> = ({ user, store }) 
       <html>
         <head>
           <style>
-            @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;700;900&display=swap');
+            @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700;900&display=swap');
             body { font-family: 'Inter', sans-serif; margin: 0; padding: 0; background: #fff; }
             .pagina { 
               width: 210mm; 
@@ -445,108 +445,124 @@ const DashboardPAGerente: React.FC<DashboardPAGerenteProps> = ({ user, store }) 
               page-break-after: always;
               display: flex;
               flex-direction: column;
-              gap: 8mm;
+              gap: 5mm;
             }
             .recibo { 
               width: 100%; 
-              height: 88mm;
-              border: 2px solid #000; 
-              padding: 12mm; 
+              height: 89mm;
+              border: 2px solid #1e293b; 
+              padding: 6mm 8mm; 
               box-sizing: border-box;
               display: flex;
               flex-direction: column;
-              position: relative;
               background: #fff;
-              border-radius: 4px;
+              border-radius: 8px;
+              overflow: hidden;
             }
             .header { 
               display: flex; 
               justify-content: space-between; 
-              align-items: flex-start; 
-              border-bottom: 3px solid #000; 
-              padding-bottom: 8px; 
-              margin-bottom: 12px; 
+              align-items: center; 
+              border-bottom: 2px solid #e2e8f0; 
+              padding-bottom: 6px; 
+              margin-bottom: 8px; 
+            }
+            .header-left {
+              display: flex;
+              align-items: center;
+              gap: 15px;
+            }
+            .logo {
+              width: 1.5cm;
+              height: 1.5cm;
+              object-fit: contain;
             }
             .titulo-container { display: flex; flex-direction: column; }
-            .titulo { font-size: 20px; font-weight: 900; text-transform: uppercase; letter-spacing: -0.5px; line-height: 1; }
-            .subtitulo { font-size: 10px; font-weight: 700; text-transform: uppercase; color: #444; margin-top: 4px; }
+            .titulo { font-size: 16px; font-weight: 900; text-transform: uppercase; letter-spacing: -0.5px; color: #0f172a; line-height: 1.2; }
+            .subtitulo { font-size: 9px; font-weight: 700; text-transform: uppercase; color: #64748b; margin-top: 2px; }
             
             .valor-box {
-              background: #000;
-              color: #fff;
-              padding: 6px 15px;
-              border-radius: 4px;
+              background: #f8fafc;
+              border: 1px solid #e2e8f0;
+              padding: 6px 12px;
+              border-radius: 6px;
               text-align: right;
             }
-            .valor-label { font-size: 8px; font-weight: 700; text-transform: uppercase; display: block; margin-bottom: 2px; color: #ccc; }
-            .valor-grande { font-size: 24px; font-weight: 900; line-height: 1; }
+            .valor-label { font-size: 7px; font-weight: 800; text-transform: uppercase; display: block; margin-bottom: 2px; color: #64748b; }
+            .valor-grande { font-size: 18px; font-weight: 900; line-height: 1; color: #0f172a; }
             
-            .info-grid { 
-              display: grid; 
-              grid-template-cols: 1fr 120px; 
-              gap: 20px;
-              margin-bottom: 15px; 
+            .info-bar { 
+              background: #f1f5f9;
+              padding: 6px 10px;
+              border-radius: 4px;
+              margin-bottom: 10px;
+              display: flex;
+              align-items: center;
             }
-            .info-item { display: flex; flex-direction: column; border-bottom: 1px solid #ddd; padding-bottom: 4px; }
-            .info-label { font-size: 9px; color: #666; text-transform: uppercase; font-weight: 800; margin-bottom: 2px; }
-            .info-value { font-size: 14px; font-weight: 700; text-transform: uppercase; color: #000; }
+            .info-label { font-size: 8px; color: #64748b; text-transform: uppercase; font-weight: 800; margin-right: 8px; }
+            .info-value { font-size: 12px; font-weight: 800; text-transform: uppercase; color: #0f172a; }
 
             .metrics-table {
               width: 100%;
               border-collapse: collapse;
-              margin-bottom: 15px;
+              margin-bottom: 10px;
             }
             .metrics-table th {
               text-align: left;
-              font-size: 9px;
+              font-size: 8px;
               text-transform: uppercase;
-              color: #666;
-              padding: 4px 8px;
-              border-bottom: 1px solid #000;
+              color: #64748b;
+              padding: 4px 6px;
+              border-bottom: 1.5px solid #cbd5e1;
             }
             .metrics-table td {
-              padding: 8px;
-              border-bottom: 1px solid #eee;
-              font-size: 11px;
+              padding: 4px 6px;
+              border-bottom: 1px solid #f1f5f9;
+              font-size: 10px;
+              color: #334155;
             }
-            .metric-name { font-weight: 800; }
-            .metric-status { font-weight: 900; }
-            .metric-value { text-align: right; font-weight: 900; font-size: 12px; }
-
-            .total-row { display: none; } 
+            .metric-name { font-weight: 700; }
+            .metric-status { font-weight: 800; color: #0f172a; }
+            .metric-target { color: #64748b; }
+            .metric-value { text-align: right; font-weight: 800; font-size: 10px; color: #0f172a; }
 
             .declaracao { 
-              font-size: 10px; 
-              color: #000; 
-              margin-bottom: 15px; 
+              font-size: 9px; 
+              color: #475569; 
+              margin-bottom: 10px; 
               text-align: justify; 
-              line-height: 1.4;
-              padding: 10px;
-              background: #f9f9f9;
-              border-left: 4px solid #000;
+              line-height: 1.3;
+              padding: 6px 10px;
+              background: #f8fafc;
+              border-left: 3px solid #cbd5e1;
+              border-radius: 0 4px 4px 0;
             }
             
-            .data-container {
+            .footer-area {
               display: flex;
               justify-content: space-between;
               align-items: flex-end;
-              margin-bottom: 20px;
+              margin-top: auto;
             }
-            .data-text { font-size: 11px; font-weight: 700; }
-            .unidade-text { font-size: 9px; font-weight: 800; text-transform: uppercase; color: #666; }
+
+            .data-box {
+              display: flex;
+              flex-direction: column;
+            }
+            .unidade-text { font-size: 8px; font-weight: 800; text-transform: uppercase; color: #64748b; margin-bottom: 2px; }
+            .data-text { font-size: 10px; font-weight: 700; color: #0f172a; }
 
             .assinaturas { 
               display: flex; 
-              justify-content: space-between; 
-              gap: 40px;
+              gap: 30px;
             }
-            .ass-box { flex: 1; text-align: center; }
-            .ass-line { border-top: 1.5px solid #000; margin-bottom: 6px; }
-            .ass-name { font-size: 11px; font-weight: 800; display: block; text-transform: uppercase; }
-            .ass-cargo { font-size: 9px; color: #444; text-transform: uppercase; font-weight: 600; }
+            .ass-box { width: 140px; text-align: center; }
+            .ass-line { border-top: 1px solid #0f172a; margin-bottom: 4px; }
+            .ass-name { font-size: 9px; font-weight: 800; display: block; text-transform: uppercase; color: #0f172a; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+            .ass-cargo { font-size: 7px; color: #64748b; text-transform: uppercase; font-weight: 700; }
 
             @media print { 
-              .pagina { margin: 0; padding: 10mm; } 
+              .pagina { margin: 0; padding: 10mm; gap: 5mm; } 
               .recibo { page-break-inside: avoid; }
             }
           </style>
@@ -562,9 +578,13 @@ const DashboardPAGerente: React.FC<DashboardPAGerenteProps> = ({ user, store }) 
                 return `
                 <div class="recibo">
                   <div class="header">
-                    <div class="titulo-container">
-                      <div class="titulo">Recibo de Premiação Semanal</div>
-                      <div class="subtitulo">Programa de Resultados · ${store.name}</div>
+                    <div class="header-left">
+                      <!-- Usa-se a logo da empresa. Redimensionado para 1.5cm -->
+                      <img src="/logo.png" alt="Logo" class="logo" onerror="this.style.display='none'" />
+                      <div class="titulo-container">
+                        <div class="titulo">Recibo de Premiação Semanal</div>
+                        <div class="subtitulo">Programa de Resultados · ${store.name}</div>
+                      </div>
                     </div>
                     <div class="valor-box">
                       <span class="valor-label">Total a Receber</span>
@@ -572,54 +592,48 @@ const DashboardPAGerente: React.FC<DashboardPAGerenteProps> = ({ user, store }) 
                     </div>
                   </div>
                   
-                  <div class="info-grid">
-                    <div class="info-item">
-                      <span class="info-label">Colaborador(a)</span>
-                      <span class="info-value">${vendedor.nome_vendedor}</span>
-                    </div>
-                    <div class="info-item">
-                      <span class="info-label">Matrícula</span>
-                      <span class="info-value">${vendedor.cod_vendedor}</span>
-                    </div>
+                  <div class="info-bar">
+                    <span class="info-label">Colaborador(a):</span>
+                    <span class="info-value">${vendedor.cod_vendedor ? vendedor.cod_vendedor + ' - ' : ''}${vendedor.nome_vendedor}</span>
                   </div>
 
                   <table class="metrics-table">
                     <thead>
                       <tr>
                         <th>Métrica Analisada</th>
-                        <th>Resultado Atingido</th>
-                        <th>Meta Pactuada</th>
-                        <th style="text-align: right">Valor Prêmio</th>
+                        <th>Atingido</th>
+                        <th>Meta</th>
+                        <th style="text-align: right">Prêmio</th>
                       </tr>
                     </thead>
                     <tbody>
                       <tr>
                         <td class="metric-name">Índice P.A (Peças por Atendimento)</td>
                         <td class="metric-status">${vendedor.pa.toFixed(2)}</td>
-                        <td>${paMeta.toFixed(2)}</td>
+                        <td class="metric-target">${paMeta.toFixed(2)}</td>
                         <td class="metric-value">R$ ${vendedor.valor_premio_pa?.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}</td>
                       </tr>
                       <tr>
                         <td class="metric-name">Volume de Vendas Líquidas</td>
                         <td class="metric-status">R$ ${vendedor.total_vendas.toLocaleString('pt-BR', { maximumFractionDigits: 0 })}</td>
-                        <td>R$ ${totalVendasMeta.toLocaleString('pt-BR', { maximumFractionDigits: 0 })}</td>
+                        <td class="metric-target">R$ ${totalVendasMeta.toLocaleString('pt-BR', { maximumFractionDigits: 0 })}</td>
                         <td class="metric-value">R$ ${vendedor.valor_premio_vendas?.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}</td>
                       </tr>
                       <tr>
                         <td class="metric-name">Ticket Médio por Venda</td>
                         <td class="metric-status">R$ ${vendedor.ticket_medio?.toFixed(0)}</td>
-                        <td>R$ ${ticketMeta.toFixed(0)}</td>
+                        <td class="metric-target">R$ ${ticketMeta.toFixed(0)}</td>
                         <td class="metric-value">R$ ${vendedor.valor_premio_ticket?.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}</td>
                       </tr>
                     </tbody>
                   </table>
 
-                  <div style="margin-top: auto">
-                    <div class="declaracao">
-                      Declaro para os devidos fins que recebi a importância acima discriminada, referente à premiação por desempenho semanal, estando plenamente de acordo com as métricas e resultados apurados conforme política interna da empresa.
-                    </div>
+                  <div class="declaracao">
+                    Declaro para os devidos fins que recebi a importância acima discriminada, referente à premiação por desempenho semanal, estando plenamente de acordo com as métricas e resultados apurados conforme política interna da empresa.
+                  </div>
 
-                    <div class="data-container">
+                  <div class="footer-area">
+                    <div class="data-box">
                       <div class="unidade-text">Unidade: ${store.number} - ${store.city}</div>
                       <div class="data-text">${format(dataPagamento, "dd 'de' MMMM 'de' yyyy", { locale: ptBR })}</div>
                     </div>
@@ -628,12 +642,12 @@ const DashboardPAGerente: React.FC<DashboardPAGerenteProps> = ({ user, store }) 
                       <div class="ass-box">
                         <div class="ass-line"></div>
                         <span class="ass-name">${vendedor.nome_vendedor}</span>
-                        <span class="ass-cargo">Assinatura do Colaborador</span>
+                        <span class="ass-cargo">Colaborador(a)</span>
                       </div>
                       <div class="ass-box">
                         <div class="ass-line"></div>
                         <span class="ass-name">${store.manager_name || 'Gerência'}</span>
-                        <span class="ass-cargo">Assinatura Responsável</span>
+                        <span class="ass-cargo">Responsável</span>
                       </div>
                     </div>
                   </div>
