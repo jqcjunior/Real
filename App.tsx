@@ -465,7 +465,7 @@ const App: React.FC = () => {
         }
     };
 
-    const fetchData = async () => {
+    const fetchData = async (overrideUser?: { role: string; storeId?: string }) => {
         try {
             await ensureSession();
             const [
@@ -530,8 +530,8 @@ const App: React.FC = () => {
             const currentYear = now.getFullYear();
             const isEarlyMonth = now.getDate() <= 10;
             
-            const userRole = user?.role?.toUpperCase() || '';
-            const userStoreId = user?.storeId || '';
+            const userRole = (overrideUser?.role || user?.role)?.toUpperCase() || '';
+            const userStoreId = overrideUser?.storeId || user?.storeId || '';
             
             // 🔒 CONSTRUIR FILTROS COM ISOLAMENTO POR LOJA
             let salesQuery = supabase.from('ice_cream_daily_sales').select('*');
@@ -913,7 +913,7 @@ const App: React.FC = () => {
             // NÃO use "await fetchData()" aqui seguido de setCurrentView('welcome'),
             // pois isso resetaria a tela mesmo que o usuário já tivesse navegado
             // para outro módulo durante o carregamento dos dados.
-            fetchData(); // sem await — deixa rodar em background
+            fetchData({ role: mappedRole, storeId: loggedUser.storeId }); // passa usuário explicitamente
 
             return { success: true, user: loggedUser };
         } catch (err: any) {
