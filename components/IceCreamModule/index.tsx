@@ -118,6 +118,116 @@ const IceCreamModule: React.FC<IceCreamModuleProps> = ({
     const [selectedMonth, setSelectedMonth] = useState(new Date().getMonth() + 1);
     const [selectedYear, setSelectedYear] = useState(new Date().getFullYear());
 
+    // ─── FETCH SOB DEMANDA — DRE DIÁRIO ─────────────────────────────────────────
+    // Dados extras buscados quando o usuário navega para uma data fora do mês atual
+    const [extraSales, setExtraSales] = useState<any[]>([]);
+    const [extraHeaders, setExtraHeaders] = useState<any[]>([]);
+    const [extraPayments, setExtraPayments] = useState<any[]>([]);
+    const [extraSangrias, setExtraSangrias] = useState<any[]>([]);
+    const [isDRELoading, setIsDRELoading] = useState(false);
+    
+    // Mês base carregado pelo App.tsx (mês corrente em que o sistema iniciou)
+    const loadedMonthStart = useMemo(() => {
+        const now = new Date();
+        return new Date(now.getFullYear(), now.getMonth(), 1).getTime();
+    }, []);
+    
+    // Detecta mudança de data e busca dados extras se necessário
+    useEffect(() => {
+        if (!displayDate || !effectiveStoreId) return;
+    
+        const selected = new Date(displayDate + 'T00:00:00');
+        const selectedMonthStart = new Date(selected.getFullYear(), selected.getMonth(), 1).getTime();
+    
+        // Data está no mês já carregado → limpa extras e usa dados normais
+        if (selectedMonthStart === loadedMonthStart) {
+            setExtraSales([]);
+            setExtraHeaders([]);
+            setExtraPayments([]);
+            setExtraSangrias([]);
+            return;
+        }
+    
+        // Data fora do mês carregado → busca só aquele dia no Supabase
+        const fetchDayData = async () => {
+            setIsDRELoading(true);
+            try {
+                const dayStart = `${displayDate}T00:00:00`;
+                const dayEnd   = `${displayDate}T23:59:59`;
+    
+                const [{ data: hdrs }, { data: sngs }] = await Promise.all([
+                    supabase
+                        .from('ice_cream_sales')
+                        .select('*')
+                        .eq('store_id', effectiveStoreId)
+                        .gte('created_at', dayStart)
+                        .lte('created_at', dayEnd),
+                    supabase
+                        .from('ice_cream_sangria')
+                        .select('*')
+                        .eq('store_id', effectiveStoreId)
+                        .gte('transaction_date', displayDate)
+                        .lte('transaction_date', displayDate)
+                ]);
+    
+                const saleIds = (hdrs || []).map((h: any) => h.id);
+    
+                const [{ data: itms }, { data: pays }] = await Promise.all([
+                    saleIds.length > 0
+                        ? supabase
+                            .from('ice_cream_daily_sales')
+                            .select('*')
+                            .in('sale_id', saleIds)
+                        : Promise.resolve({ data: [] }),
+                    saleIds.length > 0
+                        ? supabase
+                            .from('ice_cream_daily_sales_payments')
+                            .select('*')
+                            .in('sale_id', saleIds)
+                        : Promise.resolve({ data: [] })
+                ]);
+    
+                setExtraHeaders(hdrs || []);
+                setExtraSales(
+                    (itms || []).map((x: any) => ({
+                        id: x.id,
+                        storeId: x.store_id,
+                        itemId: x.item_id,
+                        productName: x.product_name,
+                        category: x.category,
+                        flavor: x.flavor,
+                        unitsSold: Number(x.units_sold || 0),
+                        unitPrice: Number(x.unit_price || 0),
+                        totalValue: Number(x.total_value || 0),
+                        paymentMethod: x.payment_method,
+                        saleCode: x.sale_code,
+                        buyer_name: x.buyer_name,
+                        createdAt: x.created_at,
+                        status: x.status,
+                        cancel_reason: x.cancel_reason,
+                        canceled_by: x.canceled_by
+                    }))
+                );
+                setExtraPayments(
+                    (pays || []).map((x: any) => ({ ...x, amount: Number(x.amount || 0) }))
+                );
+                setExtraSangrias(sngs || []);
+            } catch (e) {
+                console.error('[DRE] Erro ao buscar dados do dia:', e);
+            } finally {
+                setIsDRELoading(false);
+            }
+        };
+    
+        fetchDayData();
+    }, [displayDate, effectiveStoreId]);
+    
+    // Fonte de dados ativa: extras (dia específico) ou normais (mês atual)
+    const activeSales    = extraSales.length > 0    ? extraSales    : sales;
+    const activeHeaders  = extraHeaders.length > 0  ? extraHeaders  : salesHeaders;
+    const activePayments = extraPayments.length > 0 ? extraPayments : salePayments;
+    const activeSangrias = extraSangrias.length > 0 ? extraSangrias : sangrias;
+
     // Modals Visibility
     const [showNewInsumoModal, setShowNewInsumoModal] = useState(false);
     const [showPurchaseModal, setShowPurchaseModal] = useState(false);
@@ -154,10 +264,10 @@ const IceCreamModule: React.FC<IceCreamModuleProps> = ({
     // DRE Stats Hook
     const dreStats = useDREStats({
         user,
-        sales,
-        salePayments,
-        salesHeaders: salesHeaders || [],
-        sangrias,
+        sales: activeSales,
+        salePayments: activePayments,
+        salesHeaders: activeHeaders,
+        sangrias: activeSangrias,
         stockMovements,
         futureDebts,
         sangriaCategories,
@@ -1010,6 +1120,7 @@ const IceCreamModule: React.FC<IceCreamModuleProps> = ({
                                 onChange={e => setEffectiveStoreId(e.target.value)}
                                 className="bg-slate-100 border-none rounded-xl px-4 py-2.5 text-[10px] font-black uppercase text-slate-600 outline-none cursor-pointer hover:bg-slate-200 transition-all"
                             >
+                                <option value="all">TODAS AS LOJAS</option>
                                 {stores.map(s => <option key={s.id} value={s.id}>{s.name}</option>)}
                             </select>
                         ) : (
@@ -1038,21 +1149,31 @@ const IceCreamModule: React.FC<IceCreamModuleProps> = ({
                 )}
 
                 {activeTab === 'dre' && (
-                    <DREDiarioTab 
-                        displayDate={displayDate}
-                        setDisplayDate={setDisplayDate}
-                        dreStats={dreStats}
-                        effectiveStoreId={effectiveStoreId}
-                        handlePrintDRE={handlePrintDRE}
-                        sangriaCategories={sangriaCategories}
-                        onAddSangria={onAddSangria}
-                        onUpdateStock={handleUpdateStock}
-                        filteredStock={stock.filter(s => s.store_id === effectiveStoreId)}
-                        fetchData={fetchData}
-                        onAddSangriaCategory={handleAddSangriaCategory}
-                        onShowSangriaDetail={() => setShowSangriaDetailModal('day')}
-                        user={user}
-                    />
+                    <>
+                        {isDRELoading && (
+                            <div className="flex items-center justify-center gap-3 py-3 text-blue-600 animate-pulse">
+                                <Loader2 className="animate-spin" size={18}/>
+                                <span className="text-[10px] font-black uppercase tracking-widest">
+                                    Buscando dados do dia...
+                                </span>
+                            </div>
+                        )}
+                        <DREDiarioTab 
+                            displayDate={displayDate}
+                            setDisplayDate={setDisplayDate}
+                            dreStats={dreStats}
+                            effectiveStoreId={effectiveStoreId}
+                            handlePrintDRE={handlePrintDRE}
+                            sangriaCategories={sangriaCategories}
+                            onAddSangria={onAddSangria}
+                            onUpdateStock={handleUpdateStock}
+                            filteredStock={stock.filter(s => s.store_id === effectiveStoreId)}
+                            fetchData={fetchData}
+                            onAddSangriaCategory={handleAddSangriaCategory}
+                            onShowSangriaDetail={() => setShowSangriaDetailModal('day')}
+                            user={user}
+                        />
+                    </>
                 )}
 
                 {activeTab === 'dre_mensal' && (

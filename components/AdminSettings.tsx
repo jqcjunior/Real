@@ -80,7 +80,7 @@ const AdminSettings: React.FC<AdminSettingsProps> = ({ stores, onAddStore, onUpd
         setLoadingStoreId(store.id);
         const newStatus = store.status === 'active' ? 'inactive' : 'active';
         try {
-            await onUpdateStore({ ...store, status: newStatus });
+            await onUpdateStore({ id: store.id, status: newStatus });
         } catch (err) {
             alert("Erro ao alterar status da loja.");
         } finally {
@@ -92,7 +92,7 @@ const AdminSettings: React.FC<AdminSettingsProps> = ({ stores, onAddStore, onUpd
         setLoadingStoreId(store.id);
         const newValue = !store.has_gelateria;
         try {
-            await onUpdateStore({ ...store, has_gelateria: newValue });
+            await onUpdateStore({ id: store.id, has_gelateria: newValue });
         } catch (err) {
             alert("Erro ao atualizar status da Gelateria");
         } finally {

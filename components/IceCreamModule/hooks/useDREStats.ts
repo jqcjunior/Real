@@ -69,17 +69,16 @@ export const useDREStats = ({
             fiado: { count: 0, total: 0 } 
         };
 
+        // ── BLOCO 1: DRE MENSAL ─────────────────────────────────────────────────────
+        // Filtra pelo selectedMonth/selectedYear (seletor do DRE Mensal)
         const monthSalesHeaders = (salesHeaders ?? []).filter(s => {
             if (!s.created_at) return false;
             const d = new Date(s.created_at);
-            const matchesStore = s.store_id === effectiveStoreId;
+            const matchesStore = effectiveStoreId === 'all' || s.store_id === effectiveStoreId;
             return d >= monthStart && d < monthEnd && matchesStore;
         });
 
         monthSalesHeaders.forEach(sale => {
-            const d = new Date(sale.created_at);
-            const isDaySale = d >= dayStart && d < dayEnd;
-
             if (sale.status === 'canceled') {
                 const val = Number(sale.total_value || 0);
                 monthCanceledTotal += val;
@@ -91,116 +90,75 @@ export const useDREStats = ({
                     canceledBy: sale.canceled_by_name || 'N/A',
                     cancelReason: sale.cancel_reason || 'N/A'
                 });
-                
-                if (isDaySale) {
-                    dayCanceledTotal += val;
-                    dayCanceledDetails.push({
-                        id: sale.id,
-                        saleCode: sale.sale_code,
-                        createdAt: sale.created_at,
-                        totalValue: val,
-                        canceledBy: sale.canceled_by_name || 'N/A',
-                        cancelReason: sale.cancel_reason || 'N/A'
-                    });
-                }
                 return;
             }
 
             if (sale.status !== 'completed') return;
 
+            const val = Number(sale.total_value || 0);
+            monthIn += val;
+
             const payments = (salePayments ?? []).filter(p => p.sale_id === sale.id);
-            
-            if (payments.length > 0) {
-                payments.forEach(p => {
-                    const val = Number(p.amount || 0);
-                    monthIn += val;
-                    if (isDaySale) dayIn += val;
-
-                    const method = p.payment_method?.toLowerCase();
-                    if (method === 'pix') {
-                        monthMethods.pix += val;
-                        monthMethodsCount.pix++;
-                        if (isDaySale) {
-                            dayMethods.pix.total += val;
-                            dayMethods.pix.count++;
-                        }
-                    } else if (method === 'dinheiro') {
-                        monthMethods.money += val;
-                        monthMethodsCount.money++;
-                        if (isDaySale) {
-                            dayMethods.money.total += val;
-                            dayMethods.money.count++;
-                        }
-                    } else if (method === 'cartão') {
-                        monthMethods.card += val;
-                        monthMethodsCount.card++;
-                        if (isDaySale) {
-                            dayMethods.card.total += val;
-                            dayMethods.card.count++;
-                        }
-                    } else if (method === 'fiado') {
-                        monthMethods.fiado += val;
-                        monthMethodsCount.fiado++;
-                        if (isDaySale) {
-                            dayMethods.fiado.total += val;
-                            dayMethods.fiado.count++;
-                        }
-                        monthFiadoDetails.push({
-                            buyer_name: sale.buyer_name || 'NÃO INFORMADO',
-                            totalValue: p.amount,
-                            saleCode: sale.sale_code || '---',
-                            createdAt: p.created_at,
-                            productName: 'Venda Diversa'
-                        });
-                    }
-                });
-            } else {
-                const items = (sales ?? []).filter(i => i.saleCode === sale.sale_code && i.status === 'completed');
-                items.forEach(i => {
-                    const val = Number(i.totalValue || 0);
-                    monthIn += val;
-                    if (isDaySale) dayIn += val;
-
-                    const method = i.paymentMethod?.toLowerCase();
-                    if (method === 'pix') {
-                        monthMethods.pix += val;
-                        monthMethodsCount.pix++;
-                        if (isDaySale) {
-                            dayMethods.pix.total += val;
-                            dayMethods.pix.count++;
-                        }
-                    } else if (method === 'dinheiro') {
-                        monthMethods.money += val;
-                        monthMethodsCount.money++;
-                        if (isDaySale) {
-                            dayMethods.money.total += val;
-                            dayMethods.money.count++;
-                        }
-                    } else if (method === 'cartão') {
-                        monthMethods.card += val;
-                        monthMethodsCount.card++;
-                        if (isDaySale) {
-                            dayMethods.card.total += val;
-                            dayMethods.card.count++;
-                        }
-                    } else if (method === 'fiado') {
-                        monthMethods.fiado += val;
-                        monthMethodsCount.fiado++;
-                        if (isDaySale) {
-                            dayMethods.fiado.total += val;
-                            dayMethods.fiado.count++;
-                        }
-                        monthFiadoDetails.push({
-                            buyer_name: i.buyer_name || 'NÃO INFORMADO',
-                            totalValue: i.totalValue,
-                            saleCode: i.saleCode || '---',
-                            createdAt: i.createdAt,
-                            productName: i.productName || 'Venda Diversa'
-                        });
-                    }
-                });
-            }
+            payments.forEach(p => {
+                const valP = Number(p.amount || 0);
+                const method = p.payment_method?.toLowerCase();
+                if (method === 'pix') { monthMethods.pix += valP; monthMethodsCount.pix++; }
+                else if (method === 'dinheiro') { monthMethods.money += valP; monthMethodsCount.money++; }
+                else if (method === 'cartão') { monthMethods.card += valP; monthMethodsCount.card++; }
+                else if (method === 'fiado') {
+                    monthMethods.fiado += valP;
+                    monthMethodsCount.fiado++;
+                    monthFiadoDetails.push({
+                        buyer_name: sale.buyer_name || 'NÃO INFORMADO',
+                        totalValue: p.amount,
+                        saleCode: sale.sale_code || '---',
+                        createdAt: p.created_at,
+                        productName: 'Venda Diversa'
+                    });
+                }
+            });
         });
+
+        // ── BLOCO 2: DRE DIÁRIO ──────────────────────────────────────────────────────
+        // Filtra pelo displayDate (calendário do DRE Diário) — independente do selectedMonth
+        const daySalesHeaders = (salesHeaders ?? []).filter(s => {
+            if (!s.created_at) return false;
+            const d = new Date(s.created_at);
+            const matchesStore = effectiveStoreId === 'all' || s.store_id === effectiveStoreId;
+            return d >= dayStart && d < dayEnd && matchesStore;
+        });
+
+        daySalesHeaders.forEach(sale => {
+            if (sale.status === 'canceled') {
+                const val = Number(sale.total_value || 0);
+                dayCanceledTotal += val;
+                dayCanceledDetails.push({
+                    id: sale.id,
+                    saleCode: sale.sale_code,
+                    createdAt: sale.created_at,
+                    totalValue: val,
+                    canceledBy: sale.canceled_by_name || 'N/A',
+                    cancelReason: sale.cancel_reason || 'N/A'
+                });
+                return;
+            }
+
+            if (sale.status !== 'completed') return;
+
+            const val = Number(sale.total_value || 0);
+            dayIn += val;
+
+            const payments = (salePayments ?? []).filter(p => p.sale_id === sale.id);
+            payments.forEach(p => {
+                const valP = Number(p.amount || 0);
+                const method = p.payment_method?.toLowerCase();
+                if (method === 'pix') { dayMethods.pix.total += valP; dayMethods.pix.count++; }
+                else if (method === 'dinheiro') { dayMethods.money.total += valP; dayMethods.money.count++; }
+                else if (method === 'cartão') { dayMethods.card.total += valP; dayMethods.card.count++; }
+                else if (method === 'fiado') { dayMethods.fiado.total += valP; dayMethods.fiado.count++; }
+            });
+        });
+        // ─────────────────────────────────────────────────────────────────────────────
 
         const monthSalesDetail: SaleDetailItem[] = [];
         const salesByProduct: Record<string, { quantity: number; totalValue: number }> = {};
@@ -208,7 +166,7 @@ export const useDREStats = ({
         const monthSalesItems = (sales ?? []).filter(s => {
             if (!s.createdAt) return false;
             const d = new Date(s.createdAt);
-            const matchesStore = s.storeId === effectiveStoreId;
+            const matchesStore = effectiveStoreId === 'all' || s.storeId === effectiveStoreId;
             return d >= monthStart && d < monthEnd && s.status === 'completed' && matchesStore;
         });
 
@@ -227,7 +185,7 @@ export const useDREStats = ({
         const monthFutureDebts = (futureDebts ?? []).filter(d => {
             if (!d.due_date) return false;
             const date = new Date(d.due_date + 'T12:00:00');
-            const matchesStore = d.store_id === effectiveStoreId;
+            const matchesStore = effectiveStoreId === 'all' || d.store_id === effectiveStoreId;
             return date >= monthStart && date < monthEnd && matchesStore && d.status !== 'paid';
         }).reduce((acc, d) => acc + Number(d.installment_amount || 0), 0);
 
@@ -235,7 +193,7 @@ export const useDREStats = ({
             if (!s.transaction_date && !s.created_at) return false;
             const dateToUse = s.transaction_date || s.created_at;
             const d = new Date(dateToUse + 'T00:00:00');
-            const matchesStore = s.store_id === effectiveStoreId;
+            const matchesStore = effectiveStoreId === 'all' || s.store_id === effectiveStoreId;
             return d >= monthStart && d < monthEnd && matchesStore;
         });
         const monthSangriaTotal = monthSangrias.reduce((acc, s) => acc + Number(s.amount || 0), 0);
@@ -244,7 +202,7 @@ export const useDREStats = ({
             if (!s.transaction_date && !s.created_at) return false;
             const dateToUse = s.transaction_date || s.created_at;
             const d = new Date(dateToUse + 'T00:00:00');
-            const matchesStore = s.store_id === effectiveStoreId;
+            const matchesStore = effectiveStoreId === 'all' || s.store_id === effectiveStoreId;
             return d >= dayStart && d < dayEnd && matchesStore;
         });
         const daySangriaTotal = daySangrias.reduce((acc, s) => acc + Number(s.amount || 0), 0);
@@ -252,7 +210,7 @@ export const useDREStats = ({
         const monthWastage = (stockMovements ?? []).filter(m => {
             if (!m.created_at) return false;
             const d = new Date(m.created_at);
-            const matchesStore = m.store_id === effectiveStoreId;
+            const matchesStore = effectiveStoreId === 'all' || m.store_id === effectiveStoreId;
             return d >= monthStart && d < monthEnd && matchesStore && m.movement_type === 'AVARIA';
         });
         const monthWastageTotal = monthWastage.reduce((acc, m) => acc + Math.abs(Number(m.quantity || 0)), 0);
@@ -260,7 +218,7 @@ export const useDREStats = ({
         const dayWastage = (stockMovements ?? []).filter(m => {
             if (!m.created_at) return false;
             const d = new Date(m.created_at);
-            const matchesStore = m.store_id === effectiveStoreId;
+            const matchesStore = effectiveStoreId === 'all' || m.store_id === effectiveStoreId;
             return d >= dayStart && d < dayEnd && matchesStore && m.movement_type === 'AVARIA';
         });
         const dayWastageTotal = dayWastage.reduce((acc, m) => acc + Math.abs(Number(m.quantity || 0)), 0);
@@ -268,7 +226,7 @@ export const useDREStats = ({
         const daySales = (sales ?? []).filter(s => {
             if (!s.createdAt) return false;
             const d = new Date(s.createdAt);
-            const matchesStore = s.storeId === effectiveStoreId;
+            const matchesStore = effectiveStoreId === 'all' || s.storeId === effectiveStoreId;
             return d >= dayStart && d < dayEnd && s.status === 'completed' && matchesStore;
         });
 

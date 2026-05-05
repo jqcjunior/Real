@@ -615,20 +615,23 @@ const App: React.FC = () => {
                     .gte('created_at', cancelStart);
                     
             } else {
-                // ADMIN: 90 DIAS vendas, 6 MESES cancelamentos (TODAS as lojas)
-                const ninetyDaysAgo = new Date(now.getTime() - 90 * 24 * 60 * 60 * 1000).toISOString();
-                const sixMonthsAgo = new Date(now);
-                sixMonthsAgo.setMonth(sixMonthsAgo.getMonth() - 6);
-                const cancelStart = sixMonthsAgo.toISOString();
-                
+                // ADMIN: últimos 3 meses (evita limite de 1000 linhas do Supabase)
+                const threeMonthsAgo = new Date(now);
+                threeMonthsAgo.setMonth(threeMonthsAgo.getMonth() - 3);
+                const adminStart = threeMonthsAgo.toISOString();
+
                 salesQuery = salesQuery
-                    .or(`and(created_at.gte.${ninetyDaysAgo},status.neq.canceled),and(created_at.gte.${cancelStart},status.eq.canceled)`);
-                
-                salesHeadersQuery = salesHeadersQuery.gte('created_at', ninetyDaysAgo);
-                cardSalesQuery = cardSalesQuery.gte('created_at', ninetyDaysAgo);
-                pixSalesQuery = pixSalesQuery.gte('created_at', ninetyDaysAgo);
-                movementsQuery = movementsQuery.gte('created_at', cancelStart);
-                wastageQuery = wastageQuery.gte('created_at', cancelStart);
+                    .gte('created_at', adminStart);
+
+                salesHeadersQuery = salesHeadersQuery
+                    .gte('created_at', adminStart);
+
+                movementsQuery = movementsQuery
+                    .gte('created_at', adminStart);
+
+                wastageQuery = wastageQuery
+                    .gte('created_at', adminStart);
+                // cardSales e pixSales continuam sem filtro (menos volume)
             }
  
             const [
@@ -650,9 +653,9 @@ const App: React.FC = () => {
                 cardSalesQuery.order('created_at', { ascending: false }),
                 pixSalesQuery.order('created_at', { ascending: false }),
                 salesHeadersQuery.order('created_at', { ascending: false }),
-                supabase.from('ice_cream_daily_sales_payments').select('*').order('created_at', { ascending: false }).limit(2000),
+                supabase.from('ice_cream_daily_sales_payments').select('*').order('created_at', { ascending: false }),
                 supabase.from('ice_cream_sangria_categoria').select('*'),
-                supabase.from('ice_cream_sangria').select('*').order('created_at', { ascending: false }).limit(500),
+                supabase.from('ice_cream_sangria').select('*').order('created_at', { ascending: false }),
                 movementsQuery.order('created_at', { ascending: false }),
                 supabase.from('store_profit_distribution').select('*'),
                 supabase.from('admin_users').select('*'),
@@ -662,6 +665,10 @@ const App: React.FC = () => {
  
             if(wst) setIcWastage(wst);
             if(fd) setFutureDebts(fd);
+            console.log('--- DEBUG FETCH DATA ---');
+            console.log('sls (salesHeaders) length:', sls?.length);
+            console.log('ics (iceCreamSales) length:', ics?.length);
+            console.log('------------------------');
             if(sls) setSales(sls);
             if(slsp) setSalePayments(slsp.map(x => ({ ...x, amount: Number(x.amount || 0) })));
             if(ici) setIceCreamItems(ici.map(x => ({ id: x.id, storeId: x.store_id, name: x.name, category: x.category, price: Number(x.price || 0), flavor: x.flavor, active: x.active, consumption_per_sale: x.consumption_per_sale || 0, recipe: typeof x.recipe === 'string' ? JSON.parse(x.recipe) : (x.recipe || []), image_url: x.image_url })));
@@ -1503,7 +1510,7 @@ const App: React.FC = () => {
                         if (currentView === 'my_surveys') return <MySurveysComponent user={user!} />;
                         if (currentView === 'access' && can('MODULE_ACCESS_CONTROL')) return <AccessControlManagement />;
                         if (currentView === 'audit' && can('MODULE_AUDIT')) return <SystemAudit currentUser={user!} logs={logs} receipts={receipts} cashErrors={cashErrors} iceCreamSales={iceCreamSales} icPromissories={icPromissories} cardSales={cardSales} pixSales={pixSales} closures={closures} stores={isAdmin ? stores : stores.filter(s => s.id === user?.storeId)} can={can} />;
-                        if (currentView === 'settings' && can('MODULE_SETTINGS')) return <AdminSettings stores={stores} onAddStore={async (s) => { await supabase.from('stores').insert([s]); fetchData(); }} onUpdateStore={async (s) => { await supabase.from('stores').update(s).eq('id', s.id); fetchData(); }} onDeleteStore={async (id) => { await supabase.from('stores').delete().eq('id', id); fetchData(); }} />;
+                        if (currentView === 'settings' && can('MODULE_SETTINGS')) return <AdminSettings stores={stores} onAddStore={async (s) => { await supabase.from('stores').insert([s]); fetchData(); }} onUpdateStore={async (s) => { const { id, ...updates } = s; await supabase.from('stores').update(updates).eq('id', id); fetchData(); }} onDeleteStore={async (id) => { await supabase.from('stores').delete().eq('id', id); fetchData(); }} />;
                         if (currentView === 'os_demandas' && can('MODULE_DEMANDS')) return (
                             <DemandsSystemV2 
                                 user={user!} 
