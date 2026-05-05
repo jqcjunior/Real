@@ -674,6 +674,17 @@ const App: React.FC = () => {
                 supabase.from('ice_cream_future_debts').select('*').order('due_date', { ascending: true }),
                 wastageQuery.order('created_at', { ascending: false })
             ]);
+
+            console.log('=== DIAGNÓSTICO PAYMENTS ===');
+            console.log('slsp (payments) length:', slsp?.length);
+            console.log('slsp first item date:', slsp?.[0]?.created_at);
+            console.log('slsp last item date:', slsp?.[slsp.length-1]?.created_at);
+            console.log('sls (salesHeaders) length:', sls?.length);
+            console.log('sls first item date:', sls?.[0]?.created_at);
+            console.log('sls last item date:', sls?.[sls.length-1]?.created_at);
+            console.log('userRole usado:', (overrideUser?.role || user?.role));
+            console.log('adminStart calculado:', (() => { const d = new Date(); d.setMonth(d.getMonth()-3); return d.toISOString(); })());
+            console.log('============================');
  
             if(wst) setIcWastage(wst);
             if(fd) setFutureDebts(fd);

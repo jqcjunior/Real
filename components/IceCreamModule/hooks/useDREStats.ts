@@ -78,6 +78,14 @@ export const useDREStats = ({
             return d >= monthStart && d < monthEnd && matchesStore;
         });
 
+        console.log('=== useDREStats ===');
+        console.log('salesHeaders recebidos:', salesHeaders?.length);
+        console.log('salePayments recebidos:', salePayments?.length);
+        console.log('selectedMonth:', selectedMonth, 'selectedYear:', selectedYear);
+        console.log('monthStart:', monthStart, 'monthEnd:', monthEnd);
+        console.log('monthSalesHeaders após filtro:', monthSalesHeaders?.length);
+        console.log('===================');
+
         monthSalesHeaders.forEach(sale => {
             if (sale.status === 'canceled') {
                 const val = Number(sale.total_value || 0);
