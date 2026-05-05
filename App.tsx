@@ -540,6 +540,7 @@ const App: React.FC = () => {
             let pixSalesQuery = supabase.from('financial_pix_sales').select('*');
             let movementsQuery = supabase.from('ice_cream_stock_movements').select('*');
             let wastageQuery = supabase.from('ice_cream_wastage').select('*');
+            let paymentsQuery = supabase.from('ice_cream_daily_sales_payments').select('*');
             
             if (userRole === 'ICE_CREAM' || userRole === 'SORVETE') {
                 // SORVETE: HOJE + MÊS ATUAL (cancelamentos/avarias)
@@ -566,6 +567,10 @@ const App: React.FC = () => {
                     .gte('created_at', monthStart);
 
                 wastageQuery = wastageQuery
+                    .eq('store_id', userStoreId)
+                    .gte('created_at', monthStart);
+
+                paymentsQuery = paymentsQuery
                     .eq('store_id', userStoreId)
                     .gte('created_at', monthStart);
                     
@@ -613,6 +618,10 @@ const App: React.FC = () => {
                 wastageQuery = wastageQuery
                     .eq('store_id', userStoreId)
                     .gte('created_at', cancelStart);
+                
+                paymentsQuery = paymentsQuery
+                    .eq('store_id', userStoreId)
+                    .gte('created_at', salesStart);
                     
             } else {
                 // ADMIN: últimos 3 meses (evita limite de 1000 linhas do Supabase)
@@ -630,6 +639,9 @@ const App: React.FC = () => {
                     .gte('created_at', adminStart);
 
                 wastageQuery = wastageQuery
+                    .gte('created_at', adminStart);
+                
+                paymentsQuery = paymentsQuery
                     .gte('created_at', adminStart);
                 // cardSales e pixSales continuam sem filtro (menos volume)
             }
@@ -653,7 +665,7 @@ const App: React.FC = () => {
                 cardSalesQuery.order('created_at', { ascending: false }),
                 pixSalesQuery.order('created_at', { ascending: false }),
                 salesHeadersQuery.order('created_at', { ascending: false }),
-                supabase.from('ice_cream_daily_sales_payments').select('*').order('created_at', { ascending: false }),
+                paymentsQuery.order('created_at', { ascending: false }),
                 supabase.from('ice_cream_sangria_categoria').select('*'),
                 supabase.from('ice_cream_sangria').select('*').order('created_at', { ascending: false }),
                 movementsQuery.order('created_at', { ascending: false }),
