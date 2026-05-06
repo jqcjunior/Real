@@ -187,7 +187,6 @@ const App: React.FC = () => {
             try {
                 const user = JSON.parse(storedUser);
                 
-                // Validação de sanidade simples: garantir que tem ID e email
                 if (!user.id || !user.email) {
                   throw new Error("Dados de sessão corrompidos");
                 }

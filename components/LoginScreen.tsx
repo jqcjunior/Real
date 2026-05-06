@@ -1,8 +1,9 @@
 
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { User, Store, UserRole } from '../types';
 import { Store as StoreIcon, MapPin, Mail, Phone, Lock, X, CheckCircle2, Loader2, ChevronDown } from 'lucide-react';
 import { BRAND_LOGO } from '../constants';
+import apiService from '../services/apiService';
 
 interface LoginScreenProps {
   onLoginAttempt: (email: string, password: string, rememberMe: boolean) => Promise<{ success: boolean; user?: User; error?: string }>;
@@ -13,6 +14,8 @@ interface LoginScreenProps {
 const BRAZIL_STATES = ['AC', 'AL', 'AP', 'AM', 'BA', 'CE', 'DF', 'ES', 'GO', 'MA', 'MT', 'MS', 'MG', 'PA', 'PB', 'PR', 'PE', 'PI', 'RJ', 'RN', 'RS', 'RO', 'RR', 'SC', 'SP', 'SE', 'TO'];
 
 const LoginScreen: React.FC<LoginScreenProps> = ({ onLoginAttempt, onRegisterRequest }) => {
+  // Removido useEffect limpar sessão aqui pois causava problemas de UX.
+
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [rememberMe, setRememberMe] = useState(false);

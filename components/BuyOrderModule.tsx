@@ -630,6 +630,7 @@ export default function BuyOrderModule({ user }: { user?: User }) {
           .single();
         if (oErr) throw oErr;
         orderId = order.id;
+        setEditingOrderId(order.id);
         setNumeroPedidoSalvo(order.numero_pedido);
       }
 
@@ -795,6 +796,8 @@ export default function BuyOrderModule({ user }: { user?: User }) {
   }
 
   function resetStateAndFetch() {
+    setEditingOrderId(null);
+    setNumeroPedidoSalvo(null);
     setStep(0);
     setCab({
       role: "comprador",
@@ -942,6 +945,8 @@ export default function BuyOrderModule({ user }: { user?: User }) {
 
     // 4. Ir para etapa 1
     setStep(0);
+    setEditingOrderId(order.id);
+    setNumeroPedidoSalvo(order.numero_pedido);
     toast.info("📝 Pedido carregado para edição");
   };
 
@@ -950,20 +955,47 @@ export default function BuyOrderModule({ user }: { user?: User }) {
       // ✅ GARANTIR SESSÃO NO POSTGRES PARA RLS
       const userId = user?.id || (await getCurrentAppUserId());
 
-      const { data, error } = await supabase.rpc("return_quota_on_cancel", {
-        p_order_id: orderId,
-        p_user_id: userId,
-      });
+      // 1. Verificar status do pedido
+      const { data: orderData, error: selErr } = await supabase
+        .from("buy_orders")
+        .select("status")
+        .eq("id", orderId)
+        .single();
 
-      if (error) throw error;
+      if (selErr) throw selErr;
 
-      if (data && !data.success) {
-        throw new Error(data.message || "Erro ao cancelar pedido");
+      // 2. Se for rascunho, não tem transação de cota. Podemos excluir diretamente.
+      if (orderData.status === "rascunho") {
+        // As items and sub_orders are deleted via database cascade triggers (if set up) or we should delete them explicitly.
+        // It's safer to explicitly delete children first to avoid foreign key constraints errors just in case.
+        await supabase.from("buy_order_items").delete().eq("order_id", orderId);
+        await supabase.from("buy_order_sub_orders").delete().eq("order_id", orderId);
+
+        const { error: delErr } = await supabase
+          .from("buy_orders")
+          .delete()
+          .eq("id", orderId);
+
+        if (delErr) throw delErr;
+        toast.success("✅ Rascunho excluído definitivamente!");
+      } else {
+        // 3. Se não for rascunho (tem cota consumida/stand by), usar a RPC para devolução
+        const { data, error } = await supabase.rpc("return_quota_on_cancel", {
+          p_order_id: orderId,
+          p_user_id: userId,
+        });
+
+        if (error) throw error;
+
+        if (data && !data.success) {
+          throw new Error(data.message || "Erro ao cancelar pedido");
+        }
+
+        toast.success(
+          data?.message || "✅ Pedido cancelado (e cota devolvida se aplicável)!",
+        );
       }
 
-      toast.success(
-        data?.message || "✅ Pedido cancelado (e cota devolvida se aplicável)!",
-      );
       fetchRecentOrders();
       setDeletingOrder(null);
     } catch (err: any) {
@@ -1240,17 +1272,7 @@ export default function BuyOrderModule({ user }: { user?: User }) {
               justifyContent: "center",
             }}
           >
-            <span
-              style={
-                {
-                  fontSize: 12,
-                  color: "#6b7280",
-                  fontWeight: 500,
-                  display: "none",
-                  "@media (min-width: 768px)": { display: "block" },
-                } as any
-              }
-            >
+            <span className="hidden md:block text-xs text-slate-500 font-medium">
               {cab.marca && `${cab.marca} · `}
               {items.length > 0 && `${items.length} itens`}
             </span>
