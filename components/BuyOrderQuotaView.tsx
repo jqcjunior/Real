@@ -29,7 +29,7 @@ interface Loja {
 // COMPONENTE PRINCIPAL
 // ═══════════════════════════════════════════════════════════════════════════
 
-export default function CotasCompraModule({ user }: { user: User }) {
+export default function BuyOrderQuotaView({ user }: { user: User }) {
   const [lojas, setLojas] = useState<Loja[]>([]);
   const [selectedStore, setSelectedStore] = useState('');
   const [selectedYear, setSelectedYear] = useState(new Date().getFullYear());
@@ -51,7 +51,7 @@ export default function CotasCompraModule({ user }: { user: User }) {
   ];
 
   // ═══════════════════════════════════════════════════════════════════════════
-  // CARREGAR LOJAS
+  // CARREGAR LOJAS COM CONTROLE DE PERMISSÕES
   // ═══════════════════════════════════════════════════════════════════════════
 
   useEffect(() => {
@@ -60,15 +60,53 @@ export default function CotasCompraModule({ user }: { user: User }) {
 
   const carregarLojas = async () => {
     try {
-      const { data, error } = await supabase
-        .from('stores')
-        .select('number, name, city')
-        .eq('status', 'active');
+      // 1. Buscar permissões do usuário para esta página
+      const { data: permissions, error: permError } = await supabase
+        .from('user_store_permissions')
+        .select('can_view_all_stores, allowed_store_ids')
+        .eq('user_id', user.id)
+        .eq('page_id', 'cotas_compra')
+        .single();
 
-      if (error) throw error;
+      if (permError) {
+        console.error('Erro ao buscar permissões:', permError);
+        toast.error('Erro ao verificar permissões de acesso');
+        return;
+      }
 
-      // Ordenar numericamente em JavaScript
-      const lojasOrdenadas = (data || []).sort((a, b) => {
+      let lojasData = [];
+
+      // 2. Carregar lojas baseado nas permissões
+      if (permissions?.can_view_all_stores) {
+        // ADMIN/COMPRADOR: Todas as lojas
+        const { data, error } = await supabase
+          .from('stores')
+          .select('number, name, city')
+          .eq('status', 'active');
+
+        if (error) throw error;
+        lojasData = data || [];
+
+      } else if (permissions?.allowed_store_ids && permissions.allowed_store_ids.length > 0) {
+        // GERENTE: Apenas lojas permitidas
+        const { data, error } = await supabase
+          .from('stores')
+          .select('number, name, city')
+          .in('id', permissions.allowed_store_ids)
+          .eq('status', 'active');
+
+        if (error) throw error;
+        lojasData = data || [];
+
+      } else {
+        // SEM PERMISSÃO
+        toast.error('Você não tem permissão para acessar este módulo');
+        setLojas([]);
+        return;
+      }
+
+      // 3. Ordenar lojas numericamente
+      const lojasOrdenadas = lojasData.sort((a, b) => {
         const numA = parseInt(a.number) || 0;
         const numB = parseInt(b.number) || 0;
         return numA - numB;
@@ -76,12 +114,11 @@ export default function CotasCompraModule({ user }: { user: User }) {
 
       setLojas(lojasOrdenadas);
       
-      // Selecionar primeira loja ou loja do usuário
+      // 4. Selecionar primeira loja disponível
       if (lojasOrdenadas.length > 0) {
-        // @ts-ignore
-        const lojaUsuario = lojasOrdenadas.find(l => l.number === user?.store_id);
-        setSelectedStore(lojaUsuario?.number || lojasOrdenadas[0].number);
+        setSelectedStore(lojasOrdenadas[0].number);
       }
+
     } catch (err) {
       console.error('Erro ao carregar lojas:', err);
       toast.error('Erro ao carregar lojas');
