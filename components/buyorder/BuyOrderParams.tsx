@@ -722,21 +722,6 @@ export default function BuyOrderParams({ user }: { user: any }) {
     })),
   );
 
-  // Percentuais ANUAIS (não mensais - aplicados a todos os meses)
-  const [cotaGerentePctAnual, setCotaGerentePctAnual] = useState(20);
-  const [cotaCompradorPctAnual, setCotaCompradorPctAnual] = useState(80);
-
-  // Recalcular valores baseados no percentual anual quando ele mudar
-  useEffect(() => {
-    setMonthlyData((prev) =>
-      prev.map((m) => ({
-        ...m,
-        cota_gerente_valor: (m.cotaTotal * cotaGerentePctAnual) / 100,
-        cota_comprador_valor: (m.cotaTotal * cotaCompradorPctAnual) / 100,
-      })),
-    );
-  }, [cotaGerentePctAnual, cotaCompradorPctAnual]);
-
   const toNumber = (v: any): number => {
     if (v === null || v === undefined || v === "") return 0;
     const n = typeof v === "string" ? parseFloat(v) : v;
@@ -861,8 +846,6 @@ export default function BuyOrderParams({ user }: { user: any }) {
         setInfMenino(paramData[0].infantil_menino_pct || 10);
         setMasculino(paramData[0].masculino_pct || 20);
         setAcessorio(paramData[0].acessorio_pct || 20);
-        setCotaGerentePctAnual(paramData[0].cota_gerente_pct || 20);
-        setCotaCompradorPctAnual(paramData[0].cota_comprador_pct || 80);
       } else {
         // Fallback para globais se não houver customizados
         const { data: globalData } = await supabase
@@ -876,8 +859,6 @@ export default function BuyOrderParams({ user }: { user: any }) {
           setInfMenino(globalData[0].infantil_menino_pct || 10);
           setMasculino(globalData[0].masculino_pct || 20);
           setAcessorio(globalData[0].acessorio_pct || 20);
-          setCotaGerentePctAnual(globalData[0].cota_gerente_pct || 20);
-          setCotaCompradorPctAnual(globalData[0].cota_comprador_pct || 80);
         }
       }
 
@@ -895,7 +876,7 @@ export default function BuyOrderParams({ user }: { user: any }) {
             cota_gerente_valor: q ? Number(q.cota_gerente_valor || 0) : 0,
             cota_comprador_valor: q ? Number(q.cota_comprador_valor || 0) : 0,
             usar_cota_fixa: q ? !!q.usar_cota_fixa : false,
-            cota_gerente_fixa: p ? p.cota_gerente_fixa : null,
+            cota_gerente_fixa: p ? (p.cota_gerente_fixa || null) : null,
           };
         });
         setMonthlyData(newMonthly);
@@ -918,20 +899,13 @@ export default function BuyOrderParams({ user }: { user: any }) {
       const newArray = [...prev];
       const updatedItem = { ...newArray[monthIndex], [field]: value };
 
-      // Se mudou cota_gerente_fixa, atualizar usar_cota_fixa
-      if (field === "cota_gerente_fixa") {
-        updatedItem.usar_cota_fixa = (value !== null && value !== 0);
-      }
-
-      // Recalcular valores de cota se necessário (para visualização imediata)
-      const cotaDisponivel = updatedItem.cotaTotal - updatedItem.despesas;
-      if (updatedItem.usar_cota_fixa && updatedItem.cota_gerente_fixa !== null) {
-        updatedItem.cota_gerente_valor = updatedItem.cota_gerente_fixa;
-        updatedItem.cota_comprador_valor = cotaDisponivel - updatedItem.cota_gerente_fixa;
-      } else {
-        updatedItem.cota_gerente_valor = (cotaDisponivel * cotaGerentePctAnual) / 100;
-        updatedItem.cota_comprador_valor = (cotaDisponivel * cotaCompradorPctAnual) / 100;
-      }
+      // Recalcular comprador sempre que mudar cota total, despesas ou valor gerente
+      const cotaLimpa = toNumber(updatedItem.cotaTotal) - toNumber(updatedItem.despesas);
+      const valorGerente = toNumber(updatedItem.cota_gerente_fixa);
+      
+      updatedItem.cota_gerente_valor = valorGerente;
+      updatedItem.cota_comprador_valor = cotaLimpa - valorGerente;
+      updatedItem.usar_cota_fixa = (valorGerente > 0);
 
       newArray[monthIndex] = updatedItem;
       return newArray;
@@ -966,8 +940,6 @@ export default function BuyOrderParams({ user }: { user: any }) {
         acessorio_pct: acessorio,
         cota_valor: m.cotaTotal,
         despesas_comprometidas: m.despesas,
-        cota_gerente_pct: cotaGerentePctAnual,
-        cota_comprador_pct: cotaCompradorPctAnual,
         usa_parametros_customizados: true,
         usar_cota_fixa: m.usar_cota_fixa,
         cota_gerente_fixa: m.cota_gerente_fixa,
@@ -1291,55 +1263,6 @@ export default function BuyOrderParams({ user }: { user: any }) {
 
               {/* Estrutura Cota Mensal e Divisão */}
               <div className="bg-white dark:bg-slate-800 rounded-2xl p-5 border border-slate-200 dark:border-slate-700 shadow-sm space-y-4">
-                <h4 className="text-xs font-black text-slate-900 dark:text-white uppercase tracking-widest flex items-center gap-2">
-                  <span>💰</span> DIVISÃO ANUAL DE COMPRAS
-                </h4>
-
-                <div className="grid grid-cols-3 gap-4 bg-slate-50 dark:bg-slate-900/50 p-4 rounded-xl border border-slate-100 dark:border-slate-800">
-                  <div>
-                    <label className="text-[10px] font-black text-slate-500 uppercase tracking-widest mb-1.5 block">
-                      👨‍💼 % Gerente (Anual)
-                    </label>
-                    <input
-                      type="number"
-                      step="1"
-                      min="0"
-                      max="100"
-                      value={cotaGerentePctAnual}
-                      onChange={(e) =>
-                        setCotaGerentePctAnual(Number(e.target.value))
-                      }
-                      className="w-full bg-white dark:bg-slate-900 border-2 border-slate-200 dark:border-slate-700 focus:border-blue-400 rounded-xl px-4 py-2 text-sm font-black text-slate-900 dark:text-white outline-none transition-all"
-                    />
-                  </div>
-                  <div>
-                    <label className="text-[10px] font-black text-slate-500 uppercase tracking-widest mb-1.5 block">
-                      🛒 % Comprador (Anual)
-                    </label>
-                    <input
-                      type="number"
-                      step="1"
-                      min="0"
-                      max="100"
-                      value={cotaCompradorPctAnual}
-                      onChange={(e) =>
-                        setCotaCompradorPctAnual(Number(e.target.value))
-                      }
-                      className="w-full bg-white dark:bg-slate-900 border-2 border-slate-200 dark:border-slate-700 focus:border-blue-400 rounded-xl px-4 py-2 text-sm font-black text-slate-900 dark:text-white outline-none transition-all"
-                    />
-                  </div>
-                  <div>
-                    <label className="text-[10px] font-black text-slate-500 uppercase tracking-widest mb-1.5 block">
-                      Total
-                    </label>
-                    <div
-                      className={`w-full border-2 rounded-xl px-4 py-2 text-sm font-black flex items-center h-[38px] ${cotaGerentePctAnual + cotaCompradorPctAnual === 100 ? "bg-emerald-50 border-emerald-200 text-emerald-700" : "bg-red-50 border-red-200 text-red-700"}`}
-                    >
-                      {cotaGerentePctAnual + cotaCompradorPctAnual}%
-                    </div>
-                  </div>
-                </div>
-
                 <div className="pt-4">
                   {/* Visual swipe indicator for mobile */}
                   <div className="flex items-center justify-between mb-2 md:hidden">
@@ -1368,7 +1291,7 @@ export default function BuyOrderParams({ user }: { user: any }) {
                           Cota Limpa
                         </th>
                         <th className="text-[10px] font-black text-slate-500 uppercase tracking-widest p-2 border-b border-slate-200 dark:border-slate-700 w-32 text-right">
-                          Cota Gerente (Fixo)
+                          Cota Gerente (R$)
                         </th>
                         <th className="text-[10px] font-black text-slate-500 uppercase tracking-widest p-2 border-b border-slate-200 dark:border-slate-700 w-32 text-right">
                           Cota Comprador
@@ -1428,7 +1351,7 @@ export default function BuyOrderParams({ user }: { user: any }) {
                               <input
                                 type="number"
                                 inputMode="decimal"
-                                placeholder="Fixar Valor"
+                                placeholder="Ex: 5000"
                                 value={data.cota_gerente_fixa || ""}
                                 onChange={(e) =>
                                   handleUpdateMonth(

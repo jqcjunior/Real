@@ -121,39 +121,36 @@ export default function StandByDashboard({
     }
   };
 
-  const handleCancelOrder = async (order: StandByOrder) => {
-    if (!canCancelOrder({ ...order })) {
-      toast.error('Você não tem permissão para cancelar este pedido.');
+  const handleDeleteOrder = async (order: StandByOrder) => {
+    if (!isAdmin && user?.id !== order.user_id) {
+      toast.error('Você não tem permissão para excluir este pedido.');
       return;
     }
 
-    if (!window.confirm('Tem certeza que deseja CANCELAR este pedido? Ele será marcado como cancelado.')) {
+    if (!window.confirm('TEM CERTEZA? Esta ação excluirá o pedido DEFINITIVAMENTE de todas as tabelas e não poderá ser desfeita.')) {
       return;
     }
 
     setCancelingOrder(order.id);
 
     try {
-      const { data, error } = await supabase.rpc('return_quota_on_cancel', {
-        p_order_id: order.id,
-        p_user_id: user?.id
+      const { data, error } = await supabase.rpc('delete_buy_order', {
+        p_order_id: order.id
       });
 
       if (error) throw error;
 
       if (!data.success) {
-        toast.error(data.message || 'Erro ao cancelar pedido');
+        toast.error(data.message || 'Erro ao excluir pedido');
         return;
       }
 
-      await supabase.rpc('release_quota_extra_on_cancel', { p_order_id: order.id });
-
-      toast.success(data.message || 'Pedido cancelado.');
+      toast.success(data.message || 'Pedido excluído com sucesso.');
       fetchOrders();
 
     } catch (err: any) {
-      console.error('Erro ao cancelar pedido:', err);
-      toast.error(err.message || 'Erro ao cancelar pedido');
+      console.error('Erro ao excluir pedido:', err);
+      toast.error(err.message || 'Erro ao excluir pedido');
     } finally {
       setCancelingOrder(null);
     }
@@ -163,106 +160,110 @@ export default function StandByDashboard({
   const renderOrderCard = (order: StandByOrder, showStoreInfo: boolean = false) => {
     const canEdit = canEditOrder({ ...order, status: 'stand_by' });
     const canConfirm = canConfirmOrder({ ...order, status: 'stand_by' });
-    const canCancel = canCancelOrder({ ...order });
+    // Para excluir, permitimos se for admin ou dono do pedido
+    const canDelete = isAdmin || user?.id === order.user_id;
 
     return (
       <div 
         key={order.id} 
         className={`bg-white rounded-xl shadow-sm border transition-all hover:shadow-md overflow-hidden flex flex-col ${
-          order.atrasado ? 'border-red-300' : 'border-slate-200'
+          order.atrasado ? 'border-red-200' : 'border-slate-200'
         }`}
       >
-        <div className={`px-5 py-3 border-b flex justify-between items-center ${
-          order.atrasado ? 'bg-red-50 border-red-200' : 'bg-slate-50 border-slate-200'
+        <div className={`px-4 py-2 border-b flex justify-between items-center ${
+          order.atrasado ? 'bg-red-50/50 border-red-100' : 'bg-slate-50 border-slate-100'
         }`}>
-          <div className="flex items-center gap-3">
-            <span className="font-black text-slate-800 uppercase print:text-[10px]">
+          <div className="flex items-center gap-2 overflow-hidden">
+            <span className="font-black text-slate-800 uppercase text-xs truncate">
               {order.marca}
             </span>
             {order.numero_pedido && (
-               <span className="text-xs font-medium text-slate-500 hidden sm:inline-block">
+               <span className="text-[10px] font-medium text-slate-400">
                  #{order.numero_pedido}
-               </span>
-            )}
-            {showStoreInfo && isAdmin && order.store_number && (
-               <span className="bg-blue-100 text-blue-800 text-[10px] font-bold px-2 py-1 rounded-sm ml-2">
-                 Loja {order.store_number}
                </span>
             )}
           </div>
           
           {order.atrasado ? (
-            <span className="bg-red-100 text-red-700 text-[10px] font-bold px-2 py-1 rounded-full flex items-center gap-1 uppercase tracking-wider">
-              <AlertTriangle size={12} />
+            <span className="bg-red-100 text-red-700 text-[9px] font-black px-1.5 py-0.5 rounded flex items-center gap-1 uppercase tracking-tighter shrink-0">
+              <AlertTriangle size={10} />
               Atrasado
             </span>
           ) : (
-            <span className="bg-slate-200 text-slate-600 text-[10px] font-bold px-2 py-1 rounded-full uppercase tracking-wider">
-              {order.dias_em_standby} {order.dias_em_standby === 1 ? 'dia' : 'dias'}
+            <span className="bg-slate-200 text-slate-600 text-[9px] font-black px-1.5 py-0.5 rounded uppercase tracking-tighter shrink-0">
+              {order.dias_em_standby} {order.dias_em_standby === 1 ? 'd' : 'ds'}
             </span>
           )}
         </div>
 
-        <div className="p-5 flex-1 flex flex-col">
-          <div className="grid grid-cols-2 gap-4 mb-4">
+        <div className="p-3 flex-1 flex flex-col">
+          {showStoreInfo && isAdmin && order.store_number && (
+             <div className="mb-2">
+               <span className="bg-blue-50 text-blue-700 text-[9px] font-black px-2 py-0.5 rounded border border-blue-100 uppercase">
+                 🏪 Loja {order.store_number}
+               </span>
+             </div>
+          )}
+
+          <div className="grid grid-cols-2 gap-2 mb-3">
             <div>
-              <p className="text-[10px] font-bold text-slate-400 uppercase mb-0.5">Fornecedor</p>
-              <p className="text-xs font-medium text-slate-700 truncate">{order.fornecedor}</p>
+              <p className="text-[9px] font-bold text-slate-400 uppercase tracking-tighter">Fornecedor</p>
+              <p className="text-[10px] font-bold text-slate-700 truncate leading-tight">{order.fornecedor}</p>
             </div>
             <div>
-              <p className="text-[10px] font-bold text-slate-400 uppercase mb-0.5">Criado em</p>
-              <p className="text-xs font-medium text-slate-700">
+              <p className="text-[9px] font-bold text-slate-400 uppercase tracking-tighter">Criado</p>
+              <p className="text-[10px] font-bold text-slate-700 leading-tight">
                 {new Date(order.created_at).toLocaleDateString('pt-BR')}
               </p>
             </div>
           </div>
 
-          <div className="bg-amber-50/50 border border-amber-100 rounded-lg p-3 mb-4 flex-1">
-            <p className="text-[10px] font-bold text-amber-800 uppercase mb-1 flex items-center gap-1">
-              <Clock size={12} /> Motivo do Stand By
+          <div className="bg-amber-50/30 border border-amber-100/50 rounded-lg p-2 mb-3 flex-1">
+            <p className="text-[9px] font-black text-amber-800/60 uppercase mb-1 flex items-center gap-1">
+              <Clock size={10} /> Motivo
             </p>
-            <p className="text-xs text-amber-900 leading-relaxed italic">
+            <p className="text-[10px] text-amber-900 leading-tight italic line-clamp-2">
               "{order.motivo}"
             </p>
             
-            <div className="mt-3 flex items-center justify-between pt-3 border-t border-amber-200/50">
+            <div className="mt-2 flex items-center justify-between pt-2 border-t border-amber-200/30">
                {order.resposta_esperada ? (
-                 <div className="flex items-center gap-1.5">
-                   <span className="w-1.5 h-1.5 rounded-full bg-amber-500"></span>
-                   <span className="text-[10px] font-medium text-amber-800">
-                     Esperado para: <strong className={order.atrasado ? 'text-red-600' : ''}>{new Date(order.resposta_esperada).toLocaleDateString('pt-BR')}</strong>
+                 <div className="flex items-center gap-1">
+                   <span className="text-[9px] font-bold text-amber-800 uppercase tracking-tighter">
+                     Aguardar: <span className={order.atrasado ? 'text-red-600' : ''}>{new Date(order.resposta_esperada).toLocaleDateString('pt-BR')}</span>
                    </span>
                  </div>
                ) : (
-                 <span className="text-[10px] font-medium text-amber-600 opacity-70">Sem data definida</span>
+                 <span className="text-[9px] font-medium text-amber-600/50">Sem data</span>
                )}
                
-               <span className="text-[9px] text-amber-700/70 font-medium">
-                 Por: {order.colocado_em_standby_por}
+               <span className="text-[8px] text-amber-700/50 font-black uppercase">
+                 {order.colocado_em_standby_por.split(' ')[0]}
                </span>
             </div>
           </div>
 
-          <div className="flex gap-2 mt-auto pt-2">
+          <div className="flex gap-1.5 mt-auto">
             {canEdit && (
               <button
                 onClick={() => onEditOrder(order.id)}
-                className="flex-1 flex justify-center items-center gap-1.5 py-2 px-3 border border-slate-300 rounded-lg text-slate-600 hover:bg-slate-50 transition-colors text-xs font-bold"
+                className="flex justify-center items-center p-2 border border-slate-200 rounded-lg text-slate-500 hover:bg-slate-50 transition-colors"
+                title="Editar Pedido"
               >
-                <Edit2 size={14} /> Editar
+                <Edit2 size={14} />
               </button>
             )}
-            {canCancel && (
+            {canDelete && (
               <button
-                onClick={() => handleCancelOrder(order)}
+                onClick={() => handleDeleteOrder(order)}
                 disabled={cancelingOrder === order.id}
-                className="flex justify-center items-center gap-1 py-2 px-3 border border-red-200 text-red-600 bg-red-50 hover:bg-red-100 rounded-lg transition-colors text-xs font-bold disabled:opacity-50"
-                title="Cancelar Pedido"
+                className="flex justify-center items-center p-2 border border-red-100 text-red-500 bg-red-50/50 hover:bg-red-100 rounded-lg transition-colors disabled:opacity-50"
+                title="Excluir Pedido"
               >
                 {cancelingOrder === order.id ? (
                   <div className="w-3.5 h-3.5 border-2 border-red-500 border-t-transparent rounded-full animate-spin" />
                 ) : (
-                  <XCircle size={14} /> 
+                  <XCircle size={16} /> 
                 )}
               </button>
             )}
@@ -270,7 +271,7 @@ export default function StandByDashboard({
               <button
                 onClick={() => handleConfirmOrder(order)}
                 disabled={confirmingOrder === order.id}
-                className="flex-[2] flex justify-center items-center gap-1.5 py-2 px-3 bg-green-600 text-white hover:bg-green-700 rounded-lg transition-colors text-xs font-bold shadow-sm disabled:opacity-50"
+                className="flex-1 flex justify-center items-center gap-1.5 py-1.5 px-3 bg-emerald-600 text-white hover:bg-emerald-700 rounded-lg transition-colors text-[10px] font-black uppercase shadow-sm disabled:opacity-50"
               >
                 {confirmingOrder === order.id ? (
                   <div className="w-3.5 h-3.5 border-2 border-white/50 border-t-white rounded-full animate-spin" />
@@ -279,11 +280,6 @@ export default function StandByDashboard({
                 )}
                 Confirmar
               </button>
-            )}
-            {!canEdit && !canConfirm && !canCancel && (
-               <button className="flex-1 py-2 px-3 bg-slate-100 text-slate-400 rounded-lg text-xs font-bold cursor-not-allowed border border-slate-200">
-                 🔒 Sem permissão
-               </button>
             )}
           </div>
         </div>
@@ -371,14 +367,14 @@ export default function StandByDashboard({
                     <h3 className="text-lg font-bold text-slate-800 m-0">🏪 Loja {storeId}</h3>
                     <span className="bg-blue-500 text-white px-3 py-1 text-xs font-bold rounded-full">{storeOrders.length} pedidos</span>
                   </div>
-                  <div className="p-6 grid grid-cols-1 lg:grid-cols-2 gap-4 bg-slate-50">
+                  <div className="p-6 grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4 bg-slate-50">
                     {storeOrders.map(order => renderOrderCard(order, false))}
                   </div>
                 </div>
               ))}
             </div>
           ) : (
-            <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
+            <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4">
               {orders.map((order) => renderOrderCard(order, true))}
             </div>
           )
