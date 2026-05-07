@@ -357,9 +357,7 @@ export default function BuyOrderModule({ user }: { user?: User }) {
   const [limitPedidos, setLimitPedidos] = useState(5);
   const [totalPedidos, setTotalPedidos] = useState(0);
   const [roundBase, setRoundBase] = useState(15.5);
-  const [editingOrder, setEditingOrder] = useState<any | null>(null);
-  const [loadingOrderDetails, setLoadingOrderDetails] =
-    useState<boolean>(false);
+  const [loading, setLoading] = useState(false);
   const [deletingOrder, setDeletingOrder] = useState<any | null>(null);
 
   const [step2State, setStep2State] = useState({
@@ -984,7 +982,7 @@ export default function BuyOrderModule({ user }: { user?: User }) {
   const [editingOrderId, setEditingOrderId] = useState<string | null>(null);
 
   const handleEditOrder = async (orderId: string) => {
-    setLoadingOrderDetails(true);
+    setLoading(true); // Usa o loading geral
     try {
       const { data, error } = await supabase
         .from("buy_orders")
@@ -993,8 +991,12 @@ export default function BuyOrderModule({ user }: { user?: User }) {
           id, numero_pedido, marca, fornecedor, representante, telefone, email,
           fat_inicio, fat_fim, prazos, desconto, markup, user_name, user_role,
           created_at, exported_at,
-          buy_order_items (id, referencia, tipo, total_pares, custo, preco_venda, grades),
-          buy_order_sub_orders (id, sub_order_num, lojas_numeros)
+          buy_order_items (
+            id, item_order, referencia, tipo, cor1, cor2, cor3, modelo, 
+            total_pares, custo, preco_venda, grades
+          ),
+          buy_order_sub_orders (id, sub_order_num, pedido_numero, lojas_numeros),
+          buy_order_item_suborder_grades (item_id, sub_order_num, grade_letra)
         `,
         )
         .eq("id", orderId)
@@ -1002,23 +1004,20 @@ export default function BuyOrderModule({ user }: { user?: User }) {
 
       if (error) throw error;
 
-      // ✅ ROTEAMENTO SIMPLES
-      if (data.user_role === "gerente") {
-        // Modal compacto (atual)
-        setEditingOrder(data);
-      } else {
-        // Carregar no fluxo de 3 etapas
-        loadOrderIntoSteps(data);
-      }
+      // ✅ SEMPRE carregar no fluxo de 3 etapas (COM cores e grades)
+      loadOrderIntoSteps(data);
+      
     } catch (err: any) {
       console.error("❌ Erro ao buscar pedido:", err);
       toast.error(`❌ Erro: ${err.message}`);
     } finally {
-      setLoadingOrderDetails(false);
+      setLoading(false);
     }
   };
 
   const loadOrderIntoSteps = (order: any) => {
+    console.log("📦 Carregando pedido para edição:", order);
+
     // 1. Preencher Cabeçalho
     setCab({
       role: order.user_role,
@@ -1037,65 +1036,122 @@ export default function BuyOrderModule({ user }: { user?: User }) {
 
     setPrazosRaw(order.prazos ? order.prazos.join("/") : "");
 
-    // 2. Preencher Itens
-    const loadedItems = (order.buy_order_items || []).map((item: any) => ({
-      ref: item.referencia,
-      tipo: item.tipo,
-      cor1: "", // Não temos cores salvas ainda
-      cor2: "",
-      cor3: "",
-      modelo: "FEM", // Inferir do tipo se possível
-      custo: item.custo,
-      preco_venda: item.preco_venda,
-    }));
+    // ✅ 2. Preencher Itens COM CORES
+    const loadedItems = (order.buy_order_items || [])
+      .sort((a: any, b: any) => (a.item_order || 0) - (b.item_order || 0))
+      .map((item: any) => ({
+        ref: item.referencia || "",
+        tipo: item.tipo || "",
+        cor1: item.cor1 || "",  // ✅ CORES CARREGADAS
+        cor2: item.cor2 || "",
+        cor3: item.cor3 || "",
+        modelo: item.modelo || "FEM",
+        custo: item.custo || 0,
+        preco_venda: item.preco_venda || 0,
+      }));
+    
     setItems(loadedItems);
+    console.log("✅ Itens carregados:", loadedItems);
 
-    // 3. Preencher Pedidos (sub-orders)
-    // TODO: Transformar buy_order_sub_orders no formato de StepPedidos
+    // ✅ 3. Preencher Pedidos com grades
+    const gradeRelations = order.buy_order_item_suborder_grades || [];
+    
+    const loadedPedidos: SubOrder[] = (order.buy_order_sub_orders || [])
+      .sort((a: any, b: any) => a.sub_order_num - b.sub_order_num)
+      .map((sub: any) => {
+        const itensComGrades: ItemComGrades[] = [];
 
-    // 4. Ir para etapa 1
+        // Agrupar grades por item
+        const gradesPorItem = new Map<string, Set<string>>();
+        
+        gradeRelations
+          .filter((rel: any) => rel.sub_order_num === sub.sub_order_num)
+          .forEach((rel: any) => {
+            if (!gradesPorItem.has(rel.item_id)) {
+              gradesPorItem.set(rel.item_id, new Set());
+            }
+            gradesPorItem.get(rel.item_id)!.add(rel.grade_letra);
+          });
+
+        // Para cada item que tem grade neste sub-order
+        gradesPorItem.forEach((letras, itemId) => {
+          const item = order.buy_order_items.find((i: any) => i.id === itemId);
+          if (!item) return;
+
+          const itemIdx = loadedItems.findIndex((i: any) => i.ref === item.referencia);
+          if (itemIdx === -1) return;
+
+          const grades: GradeItem[] = [];
+          
+          letras.forEach((letra) => {
+            const qtds = item.grades?.[letra] || {};
+            grades.push({
+              letter: letra,
+              cat: item.modelo || "FEM",
+              qtds: qtds
+            });
+          });
+
+          itensComGrades.push({ itemIdx, grades });
+        });
+
+        return {
+          num: sub.sub_order_num,
+          pedido_numero: sub.pedido_numero || null,
+          lojas: sub.lojas_numeros || [],
+          itensComGrades
+        };
+      });
+
+    setPedidos(loadedPedidos);
+    console.log("✅ Pedidos carregados:", loadedPedidos);
+
+    // 4. Ir para etapa 0 (Cabeçalho)
     setStep(0);
     setEditingOrderId(order.id);
     setNumeroPedidoSalvo(order.numero_pedido);
-    toast.info("📝 Pedido carregado para edição");
+    
+    toast.info("📝 Pedido carregado - Revise cada etapa e salve");
   };
 
   const handleDeleteOrder = async (orderId: string) => {
     try {
-      const { data, error } = await supabase
-        .rpc('delete_buy_order', {
-          p_order_id: orderId
-        });
+      // ✅ SETAR SESSÃO ANTES DE EXCLUIR
+      const userId = user?.id;
+      if (!userId) {
+        toast.error('❌ Usuário não identificado. Faça login novamente.');
+        return;
+      }
+
+      await supabase.rpc("set_user_session", { p_user_id: userId });
+      
+      const { data, error } = await supabase.rpc('delete_buy_order', {
+        p_order_id: orderId
+      });
       
       if (error) {
         console.error('Erro ao chamar RPC:', error);
-        toast.error('Erro ao excluir pedido. Tente novamente.');
+        toast.error('❌ Erro ao excluir pedido.');
         return;
       }
       
-      // Verificar resposta da função
       if (data?.success) {
-        toast.success(data.message || 'Pedido excluído com sucesso!');
-        // Atualizar lista de pedidos
+        toast.success(data.message || '✅ Pedido excluído!');
         await fetchRecentOrders();
         setDeletingOrder(null);
       } else {
-        // Tratar erros específicos
-        const errorMessage = data?.error || 'Erro desconhecido';
         const errorCode = data?.code;
         
         if (errorCode === 'UNAUTHENTICATED') {
-          toast.error('Sessão expirada. Faça login novamente.');
+          toast.error('❌ Sessão expirada. Faça login novamente.');
         } else if (errorCode === 'UNAUTHORIZED') {
-          toast.error('Você não tem permissão para excluir pedidos.');
-        } else if (errorCode === 'INVALID_STATUS') {
-          toast.error(`Não é possível excluir: ${errorMessage}`);
+          toast.error('❌ Sem permissão para excluir.');
         } else {
-          toast.error(errorMessage);
+          toast.error(`❌ ${data?.error || 'Erro desconhecido'}`);
         }
       }
     } catch (err: any) {
-      console.error("Erro ao excluir/cancelar:", err);
+      console.error("❌ Erro:", err);
       toast.error(`❌ ${err.message}`);
     }
   };
@@ -1991,17 +2047,6 @@ export default function BuyOrderModule({ user }: { user?: User }) {
           </div>
         )}
       </div>
-
-      {/* Modal de Edição */}
-      {editingOrder && (
-        <BuyOrderModuleModal
-          order={editingOrder}
-          onClose={() => setEditingOrder(null)}
-          onSave={() => {
-            fetchRecentOrders();
-          }}
-        />
-      )}
 
       {/* Modal de Confirmação de Exclusão */}
       {deletingOrder && (

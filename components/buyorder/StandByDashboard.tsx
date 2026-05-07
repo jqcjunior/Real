@@ -123,17 +123,26 @@ export default function StandByDashboard({
 
   const handleDeleteOrder = async (order: StandByOrder) => {
     if (!isAdmin && user?.id !== order.user_id) {
-      toast.error('Você não tem permissão para excluir este pedido.');
+      toast.error('❌ Sem permissão para excluir este pedido.');
       return;
     }
 
-    if (!window.confirm('TEM CERTEZA? Esta ação excluirá o pedido DEFINITIVAMENTE de todas as tabelas e não poderá ser desfeita.')) {
+    if (!window.confirm('TEM CERTEZA? Esta ação é IRREVERSÍVEL.')) {
       return;
     }
 
     setCancelingOrder(order.id);
 
     try {
+      const userId = user?.id;
+      if (!userId) {
+        toast.error('❌ Usuário não identificado. Faça login novamente.');
+        return;
+      }
+
+      // ✅ Garantir sessão no Postgres
+      await supabase.rpc("set_user_session", { p_user_id: userId });
+
       const { data, error } = await supabase.rpc('delete_buy_order', {
         p_order_id: order.id
       });
@@ -141,16 +150,16 @@ export default function StandByDashboard({
       if (error) throw error;
 
       if (!data.success) {
-        toast.error(data.message || 'Erro ao excluir pedido');
+        toast.error(data.message || '❌ Erro ao excluir');
         return;
       }
 
-      toast.success(data.message || 'Pedido excluído com sucesso.');
+      toast.success(data.message || '✅ Pedido excluído!');
       fetchOrders();
 
     } catch (err: any) {
-      console.error('Erro ao excluir pedido:', err);
-      toast.error(err.message || 'Erro ao excluir pedido');
+      console.error('❌ Erro:', err);
+      toast.error(err.message || '❌ Erro ao excluir');
     } finally {
       setCancelingOrder(null);
     }
