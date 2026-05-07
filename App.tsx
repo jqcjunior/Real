@@ -271,7 +271,7 @@ const App: React.FC = () => {
             for (const p of perms) {
                 const { data: existing } = await supabase
                     .from('page_permissions')
-                    .select('id, allow_admin')
+                    .select('id, allow_admin, allow_manager')
                     .eq('page_key', p.key)
                     .maybeSingle();
 
@@ -281,15 +281,21 @@ const App: React.FC = () => {
                         label: p.label,
                         module_group: p.group,
                         allow_admin: true,
-                        allow_manager: p.key === 'MODULE_DEMANDS',
+                        allow_manager: p.key === 'MODULE_DEMANDS' || p.key === 'MODULE_DASHBOARD_ADMIN',
                         allow_cashier: p.key === 'MODULE_DEMANDS',
                         allow_sorvete: p.key === 'MODULE_ICECREAM' || p.key === 'MODULE_AGENDA' || p.key === 'MODULE_DASHBOARD_MANAGER' || p.key === 'MODULE_DEMANDS',
                         sort_order: 100
                     }]);
-                } else if (!existing.allow_admin) {
-                    await supabase.from('page_permissions')
-                        .update({ allow_admin: true })
-                        .eq('page_key', p.key);
+                } else {
+                    const updates: any = {};
+                    if (!existing.allow_admin) updates.allow_admin = true;
+                    if (p.key === 'MODULE_DASHBOARD_ADMIN' && !existing.allow_manager) updates.allow_manager = true;
+
+                    if (Object.keys(updates).length > 0) {
+                        await supabase.from('page_permissions')
+                            .update(updates)
+                            .eq('page_key', p.key);
+                    }
                 }
                 
                 // ✅ GARANTIR QUE TODOS VEJAM CHAMADOS
@@ -767,10 +773,10 @@ const App: React.FC = () => {
                 );
             } else if (userRole === UserRole.MANAGER) {
                 buttons.push(
-                    { key: 'dashboard_loja', label: 'Dashboard', icon: '📊', color: 'from-blue-500 to-blue-600' },
-                    { key: 'dashboard_pa_manager', label: 'Dashboard PA', icon: '📈', color: 'from-purple-500 to-purple-600' },
-                    { key: 'caixa', label: 'Caixa', icon: '💰', color: 'from-green-500 to-green-600' },
-                    { key: 'my_surveys', label: 'Pesquisas', icon: '📝', color: 'from-orange-500 to-orange-600' }
+                    { key: 'dashboard_loja', label: 'Dashboard Loja', icon: '📊', color: 'from-blue-500 to-blue-600' },
+                    { key: 'dashboard_pa_manager', label: 'Dashboard Semanal', icon: '📈', color: 'from-purple-500 to-purple-600' },
+                    { key: 'buy_order_dashboard', label: 'Dashboard Compras', icon: '💰', color: 'from-orange-500 to-orange-600' },
+                    { key: 'buy_orders', label: 'Pedido de Compra', icon: '🛒', color: 'from-green-500 to-green-600' }
                 );
             } else if (userRole === UserRole.CASHIER) {
                 buttons.push(
@@ -976,17 +982,17 @@ const App: React.FC = () => {
                     {[
                         { title: 'Inteligência', items: [
                             { id: 'dashboard_rede', label: 'Dashboard Rede', icon: LayoutDashboard, perm: 'MODULE_DASHBOARD_ADMIN', roles: ['admin'] },
-                            { id: 'dashboard_loja', label: 'Dashboard Loja', icon: LayoutDashboard, perm: 'MODULE_DASHBOARD_MANAGER', roles: ['manager'] },
+                            { id: 'dashboard_loja', label: 'Dashboard Loja', icon: LayoutDashboard, perm: 'MODULE_DASHBOARD_MANAGER', roles: ['manager', 'admin'] },
                             { id: 'dashboard_pa', label: 'Dashboard Semanal', icon: Trophy, perm: 'MODULE_DASHBOARD_PA', roles: ['admin'] },
                             { id: 'dashboard_pa_manager', label: 'Dashboard Semanal', icon: Trophy, perm: 'MODULE_DASHBOARD_PA_MANAGER', roles: ['manager'] },
                             { 
                                 id: 'gestao-compras', 
-                                label: 'GESTÃO DE COMPRAS', 
+                                label: 'Gestão de Compras', 
                                 icon: ShoppingCart, 
                                 isGroup: true, 
                                 subItems: [
-                                    { id: 'buy_order_dashboard', label: 'DASHBOARD COMPRAS', icon: BarChart3, perm: 'MODULE_BUY_ORDERS', roles: ['admin', 'manager'] },
-                                    { id: 'buy_orders', label: 'PEDIDO DE COMPRA', icon: ShoppingBag, perm: 'MODULE_BUY_ORDERS', roles: ['admin', 'manager'] },
+                                    { id: 'buy_order_dashboard', label: 'Dashboard Compras', icon: BarChart3, perm: 'MODULE_BUY_ORDERS', roles: ['admin', 'manager'] },
+                                    { id: 'buy_orders', label: 'Pedido de Compra', icon: ShoppingBag, perm: 'MODULE_BUY_ORDERS', roles: ['admin', 'manager'] },
                                     { id: 'buy_order_quota', label: 'COTA DE COMPRA', icon: DollarSign, perm: 'MODULE_BUY_ORDERS', roles: ['admin', 'manager'] },
                                     { id: 'admin_quota_extra', label: 'APROVAÇÃO COTA EXTRA', icon: CheckCircle, perm: 'MODULE_BUY_ORDERS', roles: ['admin'] },
                                     { id: 'purchase_params', label: 'PARÂMETROS DE COMPRA', icon: Settings, perm: 'MODULE_PURCHASES', roles: ['admin'] },
