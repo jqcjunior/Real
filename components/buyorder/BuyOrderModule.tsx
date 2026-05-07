@@ -993,10 +993,10 @@ export default function BuyOrderModule({ user }: { user?: User }) {
           created_at, exported_at,
           buy_order_items (
             id, item_order, referencia, tipo, cor1, cor2, cor3, modelo, 
-            total_pares, custo, preco_venda, grades
+            total_pares, custo, preco_venda, grades,
+            buy_order_item_suborder_grades (item_id, sub_order_num, grade_letra)
           ),
-          buy_order_sub_orders (id, sub_order_num, pedido_numero, lojas_numeros),
-          buy_order_item_suborder_grades (item_id, sub_order_num, grade_letra)
+          buy_order_sub_orders (id, sub_order_num, pedido_numero, lojas_numeros)
         `,
         )
         .eq("id", orderId)
@@ -1054,7 +1054,13 @@ export default function BuyOrderModule({ user }: { user?: User }) {
     console.log("✅ Itens carregados:", loadedItems);
 
     // ✅ 3. Preencher Pedidos com grades
-    const gradeRelations = order.buy_order_item_suborder_grades || [];
+    // Buscar grades de dentro de cada item (relacionamento correto)
+    const gradeRelations: any[] = [];
+    (order.buy_order_items || []).forEach((item: any) => {
+      if (item.buy_order_item_suborder_grades) {
+        gradeRelations.push(...item.buy_order_item_suborder_grades);
+      }
+    });
     
     const loadedPedidos: SubOrder[] = (order.buy_order_sub_orders || [])
       .sort((a: any, b: any) => a.sub_order_num - b.sub_order_num)
