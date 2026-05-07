@@ -5,6 +5,7 @@ import { formatCurrency } from '../../../constants';
 import PDVMobileView from '../../PDVMobileView';
 import { ProductGrid } from '../../ProductGrid';
 import { PRODUCT_CATEGORIES } from '../constants';
+import { useCustomerAutocomplete } from '../../../hooks/useCustomerAutocomplete';
 
 interface PDVTabProps {
     user: any;
@@ -36,6 +37,8 @@ const PDVTab: React.FC<PDVTabProps> = ({
     const [buyerName, setBuyerName] = useState('');
     const [amountReceived, setAmountReceived] = useState('');
     const [isSubmitting, setIsSubmitting] = useState(false);
+    const [showSuggestions, setShowSuggestions] = useState(false);
+    const { suggestions } = useCustomerAutocomplete(buyerName);
 
     const filteredItems = useMemo(() => {
         // Usar ranking se disponível
@@ -213,7 +216,68 @@ const PDVTab: React.FC<PDVTabProps> = ({
                                 {['Pix', 'Dinheiro', 'Cartão', 'Fiado'].map(m => <div key={m} className="flex justify-between items-center bg-white px-3 py-2 rounded-lg border border-blue-50"><label className="text-[10px] font-black text-gray-500 uppercase">{m}</label><input value={mistoValues[m]} onChange={e => setMistoValues({...mistoValues, [m]: e.target.value})} placeholder="0,00" className="w-20 text-right font-black text-blue-900 text-xs outline-none bg-transparent" /></div>)}
                             </div>
                         )}
-                        {(paymentMethod === 'Fiado' || (paymentMethod === 'Misto' && mistoValues['Fiado'])) && <input value={buyerName} onChange={e => setBuyerName(e.target.value.toUpperCase())} className="w-full p-4 bg-red-50 border-2 border-red-100 rounded-2xl font-black uppercase text-sm outline-none" placeholder="NOME DO FUNCIONÁRIO..." />}
+                        {(paymentMethod === 'Fiado' || (paymentMethod === 'Misto' && mistoValues['Fiado'])) && (
+                            <div className="relative">
+                                <input 
+                                    value={buyerName} 
+                                    onChange={e => setBuyerName(e.target.value.toUpperCase())} 
+                                    onFocus={() => setShowSuggestions(true)}
+                                    onBlur={() => setTimeout(() => setShowSuggestions(false), 200)}
+                                    className="w-full p-4 bg-red-50 border-2 border-red-100 rounded-2xl font-black uppercase text-sm outline-none" 
+                                    placeholder="NOME DO FUNCIONÁRIO..." 
+                                />
+
+                                {showSuggestions && suggestions.length > 0 && (
+                                    <div 
+                                        style={{
+                                            position: 'absolute',
+                                            bottom: '100%',
+                                            left: 0,
+                                            right: 0,
+                                            marginBottom: '8px',
+                                            background: '#fff',
+                                            border: '1px solid #e5e7eb',
+                                            borderRadius: '16px',
+                                            boxShadow: '0 10px 25px rgba(0,0,0,0.1)',
+                                            zIndex: 1000,
+                                            maxHeight: '200px',
+                                            overflowY: 'auto'
+                                        }}
+                                        className="no-scrollbar"
+                                    >
+                                        {suggestions.map((name, idx) => (
+                                            <div
+                                                key={idx}
+                                                onMouseDown={() => {
+                                                    setBuyerName(name);
+                                                    setShowSuggestions(false);
+                                                }}
+                                                style={{
+                                                    padding: '12px 16px',
+                                                    cursor: 'pointer',
+                                                    fontSize: '11px',
+                                                    fontWeight: 900,
+                                                    color: '#1e3a8a',
+                                                    borderBottom: idx < suggestions.length - 1 ? '1px solid #f3f4f6' : 'none',
+                                                    transition: 'all 0.2s',
+                                                    textTransform: 'uppercase'
+                                                }}
+                                                onMouseEnter={(e) => {
+                                                    e.currentTarget.style.background = '#eff6ff';
+                                                    e.currentTarget.style.paddingLeft = '20px';
+                                                }}
+                                                onMouseLeave={(e) => {
+                                                    e.currentTarget.style.background = '#fff';
+                                                    e.currentTarget.style.paddingLeft = '16px';
+                                                }}
+                                            >
+                                                {name}
+                                            </div>
+                                        ))}
+                                    </div>
+                                )}
+                            </div>
+                        )}
                         <button 
                             onClick={finalizeSale} 
                             disabled={isSubmitting || cart.length === 0 || !paymentMethod} 

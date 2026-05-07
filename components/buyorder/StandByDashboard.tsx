@@ -35,9 +35,31 @@ export default function StandByDashboard({
   const [orders, setOrders] = useState<StandByOrder[]>([]);
   const [loading, setLoading] = useState(true);
   const [searchTerm, setSearchTerm] = useState('');
+  const [storeNumber, setStoreNumber] = useState<string | null>(null);
   
   // Permissions
   const { isAdmin, isManager, canEditOrder, canConfirmOrder, canCancelOrder, applyPermissionFilter } = usePermissions(user);
+
+  useEffect(() => {
+    async function fetchStoreNumber() {
+      if (isManager && user?.storeId) {
+        try {
+          const { data } = await supabase
+            .from('stores')
+            .select('number')
+            .eq('id', user.storeId)
+            .maybeSingle();
+          
+          if (data) {
+            setStoreNumber(data.number);
+          }
+        } catch (err) {
+          console.error("Erro ao buscar número da loja:", err);
+        }
+      }
+    }
+    fetchStoreNumber();
+  }, [isManager, user?.storeId]);
 
   // Modals state
   const [showStandByModal, setShowStandByModal] = useState<string | null>(null);
@@ -326,7 +348,7 @@ export default function StandByDashboard({
               )}
               {isManager && (
                 <p className="text-sm font-semibold text-blue-600 flex items-center gap-1">
-                  <span>👤 Loja {user?.storeId} - Seus pedidos aguardando confirmação</span>
+                  <span>👤 Loja {storeNumber || user?.storeId} - Seus pedidos aguardando confirmação</span>
                 </p>
               )}
             </div>
