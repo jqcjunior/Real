@@ -1340,9 +1340,20 @@ export default function BuyOrderParams({ user }: { user: any }) {
                   </div>
                 </div>
 
-                <div className="pt-4 overflow-x-auto">
-                  <table className="w-full text-left border-collapse min-w-[500px]">
-                    <thead>
+                <div className="pt-4">
+                  {/* Visual swipe indicator for mobile */}
+                  <div className="flex items-center justify-between mb-2 md:hidden">
+                    <span className="text-[10px] font-bold text-slate-400 uppercase tracking-widest animate-pulse">
+                      ← Deslize para ver colunas →
+                    </span>
+                    <span className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">
+                      {monthlyData.length} Meses
+                    </span>
+                  </div>
+
+                  <div className="overflow-x-auto -mx-5 px-5 md:mx-0 md:px-0">
+                    <table className="w-full text-left border-collapse min-w-[800px]">
+                      <thead>
                       <tr>
                         <th className="text-[10px] font-black text-slate-500 uppercase tracking-widest p-2 border-b border-slate-200 dark:border-slate-700">
                           Mês
@@ -1379,6 +1390,7 @@ export default function BuyOrderParams({ user }: { user: any }) {
                             <td className="p-2">
                               <input
                                 type="number"
+                                inputMode="decimal"
                                 step="1000"
                                 min="0"
                                 value={data.cotaTotal}
@@ -1389,12 +1401,13 @@ export default function BuyOrderParams({ user }: { user: any }) {
                                     Number(e.target.value),
                                   )
                                 }
-                                className="w-full bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-lg px-2 py-1.5 text-xs font-black outline-none focus:border-orange-400 transition-all text-slate-900 dark:text-white"
+                                className="w-full bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-lg px-2 py-1.5 text-xs font-black outline-none focus:border-orange-400 transition-all text-slate-900 dark:text-white touch-manipulation"
                               />
                             </td>
                             <td className="p-2">
                               <input
                                 type="number"
+                                inputMode="decimal"
                                 step="1000"
                                 min="0"
                                 value={data.despesas}
@@ -1405,7 +1418,7 @@ export default function BuyOrderParams({ user }: { user: any }) {
                                     Number(e.target.value),
                                   )
                                 }
-                                className="w-full bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-lg px-2 py-1.5 text-xs font-black outline-none focus:border-orange-400 transition-all text-slate-900 dark:text-white"
+                                className="w-full bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-lg px-2 py-1.5 text-xs font-black outline-none focus:border-orange-400 transition-all text-slate-900 dark:text-white touch-manipulation"
                               />
                             </td>
                             <td className="p-2 text-xs font-black text-slate-400 text-right">
@@ -1414,6 +1427,7 @@ export default function BuyOrderParams({ user }: { user: any }) {
                             <td className="p-2">
                               <input
                                 type="number"
+                                inputMode="decimal"
                                 placeholder="Fixar Valor"
                                 value={data.cota_gerente_fixa || ""}
                                 onChange={(e) =>
@@ -1423,7 +1437,7 @@ export default function BuyOrderParams({ user }: { user: any }) {
                                     e.target.value ? Number(e.target.value) : null,
                                   )
                                 }
-                                className="w-full bg-blue-50/30 dark:bg-blue-900/10 border border-blue-200 dark:border-blue-800 rounded-lg px-2 py-1.5 text-xs font-black outline-none focus:border-blue-400 text-right text-blue-700 dark:text-blue-300"
+                                className="w-full bg-blue-50/30 dark:bg-blue-900/10 border border-blue-200 dark:border-blue-800 rounded-lg px-2 py-1.5 text-xs font-black outline-none focus:border-blue-400 text-right text-blue-700 dark:text-blue-300 touch-manipulation"
                               />
                             </td>
                             <td className="p-2 text-right">
@@ -1441,8 +1455,9 @@ export default function BuyOrderParams({ user }: { user: any }) {
                   </table>
                 </div>
               </div>
+            </div>
 
-              {/* Administração de Alertas */}
+            {/* Administração de Alertas */}
               <div className="bg-white dark:bg-slate-800 rounded-2xl p-5 border border-slate-200 dark:border-slate-700 shadow-sm space-y-4">
                 <h4 className="text-xs font-black text-slate-900 dark:text-white uppercase tracking-widest flex items-center gap-2 border-b border-slate-100 dark:border-slate-700 pb-3">
                   <span>🔔</span> ADMINISTRAÇÃO DE ALERTAS

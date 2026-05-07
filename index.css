@@ -100,8 +100,15 @@ select:focus {
 /* Prevenir zoom em inputs no iOS */
 input[type="text"],
 input[type="search"],
+input[type="number"],
+input[type="email"],
+input[type="password"],
 textarea {
     font-size: 16px !important;
+}
+
+.touch-manipulation {
+    touch-action: manipulation;
 }
 
 /* Ajuste para teclado virtual */

@@ -57,16 +57,16 @@ const ResumoAnoFiscal: React.FC<Props> = ({ quotas, onVerPedidos }) => {
   };
 
   return (
-    <div className="bg-white dark:bg-slate-900 rounded-3xl p-6 border border-slate-200 dark:border-slate-800 shadow-lg">
+    <div className="bg-white dark:bg-slate-900 rounded-3xl p-4 md:p-6 border border-slate-200 dark:border-slate-800 shadow-lg">
       
       {/* Header */}
-      <div className="flex items-center justify-between mb-6">
+      <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 mb-6">
         <div className="flex items-center gap-3">
-          <div className="p-3 bg-gradient-to-br from-blue-500 to-indigo-600 rounded-xl shadow-lg">
-            <TrendingUp className="text-white" size={24} />
+          <div className="p-2 md:p-3 bg-gradient-to-br from-blue-500 to-indigo-600 rounded-xl shadow-lg">
+            <TrendingUp className="text-white" size={20} />
           </div>
           <div>
-            <h3 className="text-xl font-black text-slate-900 dark:text-white uppercase italic">
+            <h3 className="text-lg md:text-xl font-black text-slate-900 dark:text-white uppercase italic">
               📊 Resumo Ano Fiscal
             </h3>
             <p className="text-[9px] font-bold text-slate-400 uppercase tracking-widest">
@@ -75,16 +75,16 @@ const ResumoAnoFiscal: React.FC<Props> = ({ quotas, onVerPedidos }) => {
           </div>
         </div>
         
-        <div className="flex items-center gap-2 px-3 py-1.5 bg-blue-50 dark:bg-blue-900/20 rounded-full">
+        <div className="flex items-center self-start md:self-auto gap-2 px-3 py-1.5 bg-blue-50 dark:bg-blue-900/20 rounded-full">
           <Calendar size={14} className="text-blue-600" />
-          <span className="text-xs font-black text-blue-600 uppercase">
+          <span className="text-[10px] md:text-xs font-black text-blue-600 uppercase">
             Rolling 12M
           </span>
         </div>
       </div>
 
       {/* Grid de Cards Mensais */}
-      <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-6">
+      <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4 md:gap-6">
         {quotas.map((quota) => {
           // Proteção contra NaN usando toNumber
           const cotaBruta = toNumber(quota.cota_mensal || quota.cota_inicial);
@@ -106,12 +106,12 @@ const ResumoAnoFiscal: React.FC<Props> = ({ quotas, onVerPedidos }) => {
           return (
             <div
               key={`${quota.ano}-${quota.mes}`}
-              className={`bg-slate-50/50 dark:bg-slate-800/20 rounded-3xl border-2 p-6 flex flex-col transition-all hover:shadow-xl ${corBorda}`}
+              className={`bg-slate-50/50 dark:bg-slate-800/20 rounded-3xl border-2 p-4 md:p-6 flex flex-col transition-all hover:shadow-xl ${corBorda}`}
             >
               {/* HEADER DO CARD */}
-              <div className="flex items-center justify-between mb-6">
+              <div className="flex items-center justify-between mb-4 md:mb-6">
                 <div>
-                  <h4 className="text-2xl font-black text-slate-900 dark:text-white uppercase italic tracking-tight">
+                  <h4 className="text-xl md:text-2xl font-black text-slate-900 dark:text-white uppercase italic tracking-tight">
                     {mesNome} <span className="text-blue-600 dark:text-blue-400">{quota.ano}</span>
                   </h4>
                 </div>
@@ -120,11 +120,11 @@ const ResumoAnoFiscal: React.FC<Props> = ({ quotas, onVerPedidos }) => {
                 {temPedidos && (
                   <button
                     onClick={() => onVerPedidos(quota.mes, quota.ano)}
-                    className="flex items-center gap-2 px-4 py-2 bg-slate-900 text-white rounded-xl hover:bg-black transition-all active:scale-95 shadow-lg"
+                    className="flex items-center gap-2 px-3 py-1.5 md:px-4 md:py-2 bg-slate-900 text-white rounded-xl hover:bg-black transition-all active:scale-95 shadow-lg flex-shrink-0"
                   >
-                    <ShoppingCart size={16} />
-                    <span className="text-xs font-black uppercase">
-                      {quota.qtd_pedidos} Pedidos
+                    <ShoppingCart size={14} />
+                    <span className="text-[10px] md:text-xs font-black uppercase">
+                      {quota.qtd_pedidos}
                     </span>
                   </button>
                 )}
