@@ -33,7 +33,7 @@ BEGIN
        FROM buy_order_items boi
        WHERE boi.order_id = bo.id), 
       0
-    ) / NULLIF(jsonb_array_length(bo.vencimentos), 0) as valor_mes,
+    ) / NULLIF(jsonb_array_length(COALESCE(bo.vencimentos, '[]'::jsonb)), 0) as valor_mes,
     bo.vencimentos
   FROM buy_orders bo
   INNER JOIN buy_order_sub_orders boso ON boso.order_id = bo.id
@@ -42,9 +42,10 @@ BEGIN
   AND p_store_number = ANY(boso.lojas_numeros)
   AND EXISTS (
     SELECT 1 
-    FROM jsonb_array_elements(bo.vencimentos) venc
-    WHERE (venc->>'mes')::INTEGER = p_month
-    AND (venc->>'ano')::INTEGER = p_year
+    FROM jsonb_array_elements(COALESCE(bo.vencimentos, '[]'::jsonb)) venc
+    WHERE 
+      (CASE WHEN (venc->>'mes') ~ '^[0-9]+$' THEN (venc->>'mes')::INTEGER ELSE NULL END) = p_month
+      AND (CASE WHEN (venc->>'ano') ~ '^[0-9]+$' THEN (venc->>'ano')::INTEGER ELSE NULL END) = p_year
   );
 END;
 $$ LANGUAGE plpgsql;

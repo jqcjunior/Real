@@ -139,7 +139,104 @@ class ApiService {
       throw error;
     }
   }
+
+  /**
+   * ✅ FUNÇÃO SEGURA: Atualizar pedido com validação
+   */
+  async updateBuyOrder(orderId: string, updateData: {
+    user_name?: string;
+    user_role?: string;
+    brand_id?: string;
+    marca?: string;
+    fornecedor?: string;
+    representante?: string;
+    telefone?: string | null;
+    email?: string | null;
+    fat_inicio?: string | null;
+    fat_fim?: string;
+    prazos?: number[];
+    vencimentos?: string[];
+    desconto?: number;
+    markup?: number;
+    status?: string;
+    total_pares?: number;
+    total_valor_bruto?: number;
+    total_valor_liquido?: number;
+  }) {
+    try {
+      await this.ensureRLS();
+
+      // ✅ VALIDAÇÃO: Remover campos undefined obratórios
+      const cleanData = Object.entries(updateData).reduce((acc, [key, value]) => {
+        if (value !== undefined) {
+          acc[key as keyof typeof acc] = value;
+        }
+        return acc;
+      }, {} as any);
+
+      // ✅ VALIDAÇÃO: Arrays não podem estar vazios
+      if (cleanData.prazos && cleanData.prazos.length === 0) {
+        throw new Error('Prazos não podem estar vazios');
+      }
+
+      const { data, error } = await supabase
+        .from('buy_orders')
+        .update(cleanData)
+        .eq('id', orderId)
+        .single();
+
+      if (error) throw error;
+      return data;
+    } catch (error: any) {
+      console.error('❌ Erro ao atualizar pedido:', error);
+      throw error;
+    }
+  }
+
+  /**
+   * ✅ VALIDAÇÃO: Verificar se há cota disponível para o pedido
+   */
+  async validarCotaDisponivel(
+    store_number: string,
+    valor_pedido: number,
+    role: string,
+    mes: number,
+    ano: number
+  ) {
+    try {
+      // Usar a RPC que já traz os cálculos do banco
+      const { data, error } = await supabase.rpc('get_cotas_ano_fiscal', {
+        p_store_number: store_number,
+        p_start_year: ano,
+        p_start_month: mes
+      });
+
+      if (error) throw error;
+      
+      const quota = data?.find((q: any) => q.mes === mes && q.ano === ano);
+      
+      if (!quota) {
+        return { permitido: true, mensagem: '', excede_em: 0 };
+      }
+
+      const isGerente = role.toUpperCase() === 'GERENTE' || role.toUpperCase() === 'MANAGER';
+      const cotaDisponivel = isGerente ? Number(quota.cota_gerente_valor || 0) : Number(quota.cota_comprador_valor || 0);
+      
+      if (valor_pedido > cotaDisponivel) {
+        return {
+          permitido: false,
+          mensagem: `Cota insuficiente para ${isGerente ? 'GERENTE' : 'COMPRADOR'}. Disponível: R$ ${cotaDisponivel.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}`,
+          excede_em: valor_pedido - cotaDisponivel
+        };
+      }
+
+      return { permitido: true, mensagem: '', excede_em: 0 };
+    } catch (error) {
+      console.error('Erro na validação de cota:', error);
+      return { permitido: true, mensagem: '', excede_em: 0 }; 
+    }
+  }
 }
- 
+
 export const apiService = new ApiService();
 export default apiService;

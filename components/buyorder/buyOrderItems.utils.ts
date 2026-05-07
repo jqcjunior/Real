@@ -11,7 +11,7 @@
  *  - item_order < 1
  */
  
-import { supabase } from '../services/supabaseClient';
+import { supabase } from '../../services/supabaseClient';
  
 // ─────────────────────────────────────────────
 // TIPOS

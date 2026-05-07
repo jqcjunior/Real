@@ -729,58 +729,6 @@ const DemandsSystemV2: React.FC<DemandsSystemV2Props> = ({ user, stores, onUnrea
                 </div>
             </div>
 
-            {/* 🚨 ALERTAS SLA */}
-            {slaAlerts.length > 0 && (
-                <div className="bg-gradient-to-r from-red-50 to-orange-50 dark:from-red-950/20 dark:to-orange-950/20 border-b border-red-200 dark:border-red-900/30 p-4 overflow-y-auto no-scrollbar max-h-48">
-                    <div className="flex items-center justify-between mb-3">
-                        <div className="flex items-center gap-2">
-                            <AlertCircle className="text-red-600 animate-pulse" size={20} />
-                            <h3 className="text-xs font-black uppercase text-red-900 dark:text-red-100 tracking-widest">
-                                Alertas SLA ({slaAlerts.length})
-                            </h3>
-                        </div>
-                    </div>
-                    <div className="space-y-2">
-                        {slaAlerts.map(alert => (
-                            <button
-                                key={alert.id}
-                                onClick={() => {
-                                    setSelectedDemand(alert);
-                                    if (window.innerWidth < 1024) setMobileView('chat');
-                                }}
-                                className={`
-                                    w-full p-3 rounded-xl border-2 transition-all text-left
-                                    ${alert.slaStatus === 'critical' 
-                                        ? 'bg-red-100 dark:bg-red-900/20 border-red-500 hover:bg-red-200' 
-                                        : 'bg-amber-100 dark:bg-amber-900/20 border-amber-500 hover:bg-amber-200'
-                                    }
-                                `}
-                            >
-                                <div className="flex items-center justify-between">
-                                    <div className="flex items-center gap-3 flex-1">
-                                        <Clock 
-                                            size={18} 
-                                            className={alert.slaStatus === 'critical' ? 'text-red-600' : 'text-amber-600'}
-                                        />
-                                        <div className="flex-1 min-w-0">
-                                            <p className="text-xs font-black text-slate-900 dark:text-white uppercase truncate">
-                                                {alert.ticket_number} - {alert.title}
-                                            </p>
-                                            <p className={`text-[10px] font-black uppercase ${
-                                                alert.slaStatus === 'critical' ? 'text-red-600' : 'text-amber-600'
-                                            }`}>
-                                                {alert.slaMessage}
-                                            </p>
-                                        </div>
-                                    </div>
-                                    {getPriorityBadge(alert.priority)}
-                                </div>
-                            </button>
-                        ))}
-                    </div>
-                </div>
-            )}
-
             {/* Mobile Layout */}
             <div className="flex-1 flex lg:hidden flex-col overflow-hidden">
                 {/* Mobile: Lista de Chamados */}
@@ -1356,66 +1304,186 @@ const DemandsSystemV2: React.FC<DemandsSystemV2Props> = ({ user, stores, onUnrea
                     </div>
                 )}
 
-                {/* Coluna 5: Stats e Info (15%) */}
+                {/* Coluna 5: Stats e Alertas EXPANDIDO (15%) */}
                 <div className="w-[15%] bg-slate-50 dark:bg-slate-950 p-4 overflow-y-auto no-scrollbar hidden lg:block border-l border-slate-200 dark:border-slate-800">
-                    <div className="space-y-6">
-                        {/* Stats Summary */}
+                    <div className="space-y-4">
+                        
+                        {/* 🚨 SEÇÃO 1: ALERTAS CRÍTICOS (NOVO - movido do topo) */}
+                        {slaAlerts.length > 0 && (
+                            <div className="bg-gradient-to-br from-red-50 to-orange-50 dark:from-red-950/30 dark:to-orange-950/30 rounded-2xl p-3 border-2 border-red-200 dark:border-red-900/40">
+                                <div className="flex items-center gap-2 mb-3">
+                                    <div className="p-1.5 bg-red-600 rounded-lg">
+                                        <AlertCircle className="text-white animate-pulse" size={14} />
+                                    </div>
+                                    <div className="flex-1">
+                                        <h4 className="text-[9px] font-black text-red-900 dark:text-red-100 uppercase tracking-widest">
+                                            Críticos SD
+                                        </h4>
+                                        <p className="text-[7px] font-bold text-red-600 dark:text-red-400">
+                                            Sem Resposta
+                                        </p>
+                                    </div>
+                                    <span className="bg-red-600 text-white text-xs font-black px-2 py-0.5 rounded-full">
+                                        {slaAlerts.length}
+                                    </span>
+                                </div>
+                                
+                                <div className="space-y-2 max-h-48 overflow-y-auto">
+                                    {slaAlerts.map(alert => (
+                                        <button
+                                            key={alert.id}
+                                            onClick={() => {
+                                                setSelectedDemand(alert);
+                                                if (window.innerWidth < 1024) setMobileView('chat');
+                                            }}
+                                            className={`
+                                                w-full p-2 rounded-xl border transition-all text-left
+                                                ${alert.slaStatus === 'critical' 
+                                                    ? 'bg-red-100 dark:bg-red-900/20 border-red-300 hover:bg-red-200' 
+                                                    : 'bg-amber-100 dark:bg-amber-900/20 border-amber-300 hover:bg-amber-200'
+                                                }
+                                            `}
+                                        >
+                                            <div className="flex items-center justify-between mb-1">
+                                                <span className="text-[8px] font-black text-slate-900 dark:text-white font-mono">
+                                                    {alert.ticket_number}
+                                                </span>
+                                                {getPriorityBadge(alert.priority)}
+                                            </div>
+                                            <p className="text-[9px] font-bold text-slate-700 dark:text-slate-300 line-clamp-1 mb-1">
+                                                {alert.title}
+                                            </p>
+                                            <div className="flex items-center gap-1">
+                                                <Clock size={10} className={alert.slaStatus === 'critical' ? 'text-red-600' : 'text-amber-600'} />
+                                                <p className={`text-[8px] font-black uppercase ${
+                                                    alert.slaStatus === 'critical' ? 'text-red-600' : 'text-amber-600'
+                                                }`}>
+                                                    {alert.hoursElapsed ? Math.floor(alert.hoursElapsed) : 0}h sem resposta
+                                                </p>
+                                            </div>
+                                        </button>
+                                    ))}
+                                </div>
+                            </div>
+                        )}
+                
+                        {/* 📊 SEÇÃO 2: ESTATÍSTICAS EXPANDIDAS */}
                         <div>
-                            <div className="flex items-center gap-2 mb-4">
+                            <div className="flex items-center gap-2 mb-3">
                                 <BarChart3 className="text-blue-600" size={16} />
-                                <h4 className="text-[9px] font-black text-slate-900 dark:text-white uppercase tracking-widest">Estatísticas</h4>
+                                <h4 className="text-[9px] font-black text-slate-900 dark:text-white uppercase tracking-widest">
+                                    Estatísticas
+                                </h4>
                             </div>
-                            <div className="grid grid-cols-1 gap-3">
-                                <div className="bg-white dark:bg-slate-900 p-3 rounded-xl border border-slate-100 dark:border-slate-800 shadow-sm">
-                                    <p className="text-[7px] font-black text-slate-400 uppercase tracking-widest mb-1">Resolvidas</p>
-                                    <h5 className="text-xl font-black text-emerald-600 italic">{stats.resolved}</h5>
-                                </div>
-                                <div className="bg-white dark:bg-slate-900 p-3 rounded-xl border border-slate-100 dark:border-slate-800 shadow-sm">
-                                    <p className="text-[7px] font-black text-slate-400 uppercase tracking-widest mb-1">Pausadas</p>
-                                    <h5 className="text-xl font-black text-amber-600 italic">{stats.paused}</h5>
-                                </div>
-                                <div className="bg-white dark:bg-slate-900 p-3 rounded-xl border border-slate-100 dark:border-slate-800 shadow-sm">
-                                    <p className="text-[7px] font-black text-slate-400 uppercase tracking-widest mb-1">Tempo Médio</p>
-                                    <h5 className="text-xl font-black text-blue-600 italic">{stats.avgTime}</h5>
-                                </div>
-                            </div>
-                        </div>
-
-                        {/* SLA Alerts */}
-                        <div>
-                            <div className="flex items-center gap-2 mb-4">
-                                <AlertCircle className="text-red-500" size={16} />
-                                <h4 className="text-[9px] font-black text-slate-900 dark:text-white uppercase tracking-widest">Alertas SLA</h4>
-                            </div>
+                            
                             <div className="space-y-2">
-                                {slaAlerts.length > 0 ? slaAlerts.map(alert => {
-                                    const isExpired = new Date(alert.sla_deadline!) < new Date();
-                                    const timeLeft = formatDistanceToNow(new Date(alert.sla_deadline!), { locale: ptBR });
-                                    
-                                    return (
-                                        <div key={alert.id} className={`p-2 rounded-lg border ${isExpired ? 'bg-red-50 dark:bg-red-900/10 border-red-100 dark:border-red-900/30' : 'bg-amber-50 dark:bg-amber-900/10 border-amber-100 dark:border-amber-900/30'}`}>
-                                            <div className="flex justify-between items-center mb-1">
-                                                <span className={`text-[8px] font-black uppercase ${isExpired ? 'text-red-600' : 'text-amber-600'}`}>{alert.ticket_number}</span>
-                                                <span className={`text-[7px] font-bold ${isExpired ? 'text-red-400' : 'text-amber-400'}`}>
-                                                    {isExpired ? 'EXPIRADO' : timeLeft}
+                                {/* Card: Resolvidas */}
+                                <div className="bg-gradient-to-br from-emerald-50 to-green-50 dark:from-emerald-950/20 dark:to-green-950/20 p-3 rounded-xl border border-emerald-200 dark:border-emerald-900/30">
+                                    <div className="flex items-center justify-between">
+                                        <div>
+                                            <p className="text-[7px] font-black text-emerald-700 dark:text-emerald-400 uppercase tracking-widest mb-0.5">
+                                                ✅ Resolvidas
+                                            </p>
+                                            <p className="text-2xl font-black text-emerald-600 dark:text-emerald-500 italic leading-none">
+                                                {stats.resolved}
+                                            </p>
+                                        </div>
+                                        <div className="p-2 bg-emerald-100 dark:bg-emerald-900/30 rounded-lg">
+                                            <CheckCircle2 size={16} className="text-emerald-600" />
+                                        </div>
+                                    </div>
+                                </div>
+                
+                                {/* Card: Pausadas */}
+                                <div className="bg-gradient-to-br from-amber-50 to-yellow-50 dark:from-amber-950/20 dark:to-yellow-950/20 p-3 rounded-xl border border-amber-200 dark:border-amber-900/30">
+                                    <div className="flex items-center justify-between">
+                                        <div>
+                                            <p className="text-[7px] font-black text-amber-700 dark:text-amber-400 uppercase tracking-widest mb-0.5">
+                                                ⏸️ Pausadas
+                                            </p>
+                                            <p className="text-2xl font-black text-amber-600 dark:text-amber-500 italic leading-none">
+                                                {stats.paused}
+                                            </p>
+                                        </div>
+                                        <div className="p-2 bg-amber-100 dark:bg-amber-900/30 rounded-lg">
+                                            <Pause size={16} className="text-amber-600" />
+                                        </div>
+                                    </div>
+                                </div>
+                
+                                {/* Card: Tempo Médio */}
+                                <div className="bg-gradient-to-br from-blue-50 to-indigo-50 dark:from-blue-950/20 dark:to-indigo-950/20 p-3 rounded-xl border border-blue-200 dark:border-blue-900/30">
+                                    <div className="flex items-center justify-between">
+                                        <div>
+                                            <p className="text-[7px] font-black text-blue-700 dark:text-blue-400 uppercase tracking-widest mb-0.5">
+                                                ⏱️ Tempo Médio
+                                            </p>
+                                            <p className="text-2xl font-black text-blue-600 dark:text-blue-500 italic leading-none">
+                                                {stats.avgTime}
+                                            </p>
+                                        </div>
+                                        <div className="p-2 bg-blue-100 dark:bg-blue-900/30 rounded-lg">
+                                            <Clock size={16} className="text-blue-600" />
+                                        </div>
+                                    </div>
+                                </div>
+                
+                                {/* NOVO: Card Abertas por Prioridade */}
+                                <div className="bg-white dark:bg-slate-900 p-3 rounded-xl border border-slate-200 dark:border-slate-800">
+                                    <p className="text-[7px] font-black text-slate-700 dark:text-slate-300 uppercase tracking-widest mb-2">
+                                        📋 Abertas por Prioridade
+                                    </p>
+                                    <div className="space-y-2">
+                                        {/* Alta */}
+                                        <div className="flex items-center justify-between">
+                                            <div className="flex items-center gap-1.5">
+                                                <div className="w-2 h-2 bg-red-500 rounded-full"></div>
+                                                <span className="text-[8px] font-bold text-slate-600 dark:text-slate-400 uppercase">
+                                                    Alta
                                                 </span>
                                             </div>
-                                            <p className="text-[9px] font-bold text-slate-600 dark:text-slate-400 truncate">{alert.title}</p>
+                                            <span className="text-sm font-black text-red-600">
+                                                {demands.filter(d => d.priority === 'alta' && d.status !== 'resolvida').length}
+                                            </span>
                                         </div>
-                                    );
-                                }) : (
-                                    <div className="p-3 bg-slate-50 dark:bg-slate-800/50 rounded-xl text-center border border-dashed border-slate-200 dark:border-slate-700">
-                                        <p className="text-[8px] font-black text-slate-400 uppercase">Nenhum alerta</p>
+                                        
+                                        {/* Média */}
+                                        <div className="flex items-center justify-between">
+                                            <div className="flex items-center gap-1.5">
+                                                <div className="w-2 h-2 bg-blue-500 rounded-full"></div>
+                                                <span className="text-[8px] font-bold text-slate-600 dark:text-slate-400 uppercase">
+                                                    Média
+                                                </span>
+                                            </div>
+                                            <span className="text-sm font-black text-blue-600">
+                                                {demands.filter(d => d.priority === 'media' && d.status !== 'resolvida').length}
+                                            </span>
+                                        </div>
+                                        
+                                        {/* Baixa */}
+                                        <div className="flex items-center justify-between">
+                                            <div className="flex items-center gap-1.5">
+                                                <div className="w-2 h-2 bg-slate-400 rounded-full"></div>
+                                                <span className="text-[8px] font-bold text-slate-600 dark:text-slate-400 uppercase">
+                                                    Baixa
+                                                </span>
+                                            </div>
+                                            <span className="text-sm font-black text-slate-500">
+                                                {demands.filter(d => d.priority === 'baixa' && d.status !== 'resolvida').length}
+                                            </span>
+                                        </div>
                                     </div>
-                                )}
+                                </div>
                             </div>
                         </div>
-
-                        {/* Privacy Info */}
-                        <div className="p-3 bg-blue-600 rounded-2xl text-white shadow-xl shadow-blue-900/20">
-                            <Lock className="mb-2" size={20} />
-                            <h5 className="text-[10px] font-black uppercase italic mb-1">Privacidade</h5>
-                            <p className="text-[8px] font-medium leading-relaxed opacity-80">
+                
+                        {/* 🔒 SEÇÃO 3: Info de Privacidade (mantida) */}
+                        <div className="p-3 bg-gradient-to-br from-blue-600 to-indigo-600 rounded-2xl text-white shadow-xl">
+                            <div className="flex items-center gap-2 mb-2">
+                                <Lock size={18} />
+                                <h5 className="text-[9px] font-black uppercase italic">Privacidade</h5>
+                            </div>
+                            <p className="text-[8px] font-medium leading-relaxed opacity-90">
                                 Sistema com controle hierárquico de visibilidade de mensagens
                             </p>
                         </div>

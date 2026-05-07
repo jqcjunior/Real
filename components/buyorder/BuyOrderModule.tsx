@@ -8,18 +8,19 @@ import React, {
 } from "react";
 import { Pencil, X, Download, RefreshCw } from "lucide-react";
 import { toast } from "sonner";
-import { supabase } from "../services/supabaseClient";
-import { useBrandAutocomplete } from "../hooks/useBrandAutocomplete";
-import { usePermissions } from "../hooks/usePermissions";
-import { useUserStorePermissions } from "../hooks/useUserStorePermissions";
-import { User, UserRole } from "../types";
+import { supabase } from "../../services/supabaseClient";
+import apiService from '../../services/apiService';
+import { useBrandAutocomplete } from "../../hooks/useBrandAutocomplete";
+import { usePermissions } from "../../hooks/usePermissions";
+import { useUserStorePermissions } from "../../hooks/useUserStorePermissions";
+import { User, UserRole } from "../../types";
 import {
   insertBuyOrderItems,
   fetchPreviousPrice,
   tipoParaModelo,
   normalizeGrades,
   BuyOrderItemInput,
-} from "../utils/buyOrderItems.utils";
+} from "./buyOrderItems.utils";
 import StepPedidos, {
   GradeItem,
   ItemComGrades,
@@ -29,8 +30,9 @@ import StepPedidos, {
 } from "./BuyOrderStepPedidos";
 import { BuyOrderModuleModal } from "./BuyOrderModuleModal";
 import { StandByModal } from "./StandByModal";
-import { QuotaInsufficientModal } from "./QuotaInsufficientModal";
+import { QuotaInsufficientModal } from "../QuotaInsufficientModal";
 import StandByDashboard from "./StandByDashboard";
+import SolicitarCotaExtraModal from "../SolicitarCotaExtraModal";
 
 // ... AlertasCardSticky component ...
 interface Alerta {
@@ -325,6 +327,8 @@ export default function BuyOrderModule({ user }: { user?: User }) {
   const [items, setItems] = useState<OrderItem[]>([]);
   const [pedidos, setPedidos] = useState<SubOrder[]>([]);
   const [saving, setSaving] = useState(false);
+  const [showSolicitarCotaExtra, setShowSolicitarCotaExtra] = useState(false);
+  const [validationError, setValidationError] = useState<any>(null);
   const [error, setError] = useState("");
   const [userStoreNumber, setUserStoreNumber] = useState<string | null>(null);
 
@@ -524,10 +528,107 @@ export default function BuyOrderModule({ user }: { user?: User }) {
     setSaving(true);
     setError("");
     try {
+      // ✅ VALIDAÇÃO 1: Verificar se há ITENS
+      if (items.length === 0) {
+        throw new Error('Adicione ao menos um item antes de salvar');
+      }
+
+      // ✅ VALIDAÇÃO 2: Verificar se há PEDIDOS (sub-orders com itens vinculados)
+      if (pedidos.length === 0 || pedidos.every(p => p.itensComGrades.length === 0)) {
+        throw new Error('Vincule ao menos um item com grade e crie um pedido antes de salvar');
+      }
+
+      // ✅ VALIDAÇÃO 3: Verificar LOJAS (para comprador)
+      const hasLojas = pedidos.some(p => p.lojas.length > 0);
+      if (!hasLojas && canViewAllStores) {
+        throw new Error('Selecione ao menos uma loja para cada pedido');
+      }
+
       // ✅ GARANTIR SESSÃO NO POSTGRES PARA RLS
       const userId = user?.id || (await getCurrentAppUserId());
       if (userId && userId !== "00000000-0000-0000-0000-000000000000") {
         await supabase.rpc("set_user_session", { user_id: userId });
+      }
+
+      // 0. Pré-calcular totais e vencimentos para validação
+      let preTotalParesGeral = 0;
+      let preTotalValorBrutoGeral = 0;
+      pedidos.forEach((ped) => {
+        ped.itensComGrades.forEach((icg) => {
+          const item = items[icg.itemIdx];
+          icg.grades.forEach((g) => {
+            const pairsForItems = totPares(g.qtds);
+            const pairsTotal = pairsForItems * ped.lojas.length;
+            preTotalParesGeral += pairsTotal;
+            preTotalValorBrutoGeral += pairsTotal * item.custo;
+          });
+        });
+      });
+      const preTotalValorLiquidoGeral = preTotalValorBrutoGeral * (1 - (cab.desconto || 0) / 100);
+
+      const preVencimentos = cab.prazos.map((p) => {
+        const d = new Date(cab.fat_fim + "T00:00:00");
+        d.setDate(d.getDate() + p);
+        return d;
+      });
+
+      // ✅ VALIDAÇÃO DE COTA (APENAS PARA CONFIRMAÇÃO DIRETA)
+      if (targetAction === "confirmado") {
+        const primeiroPedido = pedidos[0];
+        const storeNumber = primeiroPedido?.lojas[0];
+        const deliveryDate = new Date(cab.fat_fim + "T00:00:00");
+        const month = deliveryDate.getMonth() + 1;
+        const year = deliveryDate.getFullYear();
+
+        const validation = await apiService.validarCotaDisponivel(
+          storeNumber?.toString() || "",
+          preTotalValorLiquidoGeral,
+          cab.role,
+          month,
+          year
+        );
+
+        if (!validation.permitido) {
+          const isAdmin = user?.role === UserRole.ADMIN || user?.role === UserRole.SUPER_ADMIN;
+          
+          if (!isAdmin) {
+             toast.error(`❌ Bloqueado: ${validation.mensagem}`, { duration: 6000 });
+             setSaving(false);
+             return;
+          } else {
+             const confirmarAdmin = confirm(
+               `Atenção: A cota atual foi excedida em R$ ${validation.excede_em.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}.\n\n` +
+               `Como ADMINISTRADOR, você deseja autorizar este pedido mesmo assim?`
+             );
+             if (!confirmarAdmin) {
+               setSaving(false);
+               return;
+             }
+          }
+        }
+
+        // Mantém validação de capacidade de entrega se já existir
+        const { data: valData, error: valErr } = await supabase.rpc('validate_order_capacity_v2', {
+          p_store_number: storeNumber?.toString() || '', 
+          p_delivery_month: month,
+          p_delivery_year: year,
+          p_payment_months: preVencimentos.map(v => v.getMonth() + 1),
+          p_payment_year: preVencimentos.length > 0 ? preVencimentos[0].getFullYear() : year,
+          p_order_value: preTotalValorLiquidoGeral,
+          p_user_role: cab.role,
+          p_exclude_order_id: editingOrderId
+        });
+
+        if (valErr) throw valErr;
+
+        if (valData && !valData.success) {
+          if (valData.error === 'CAPACIDADE_ENTREGA_INSUFICIENTE') {
+            setValidationError(valData);
+            setShowSolicitarCotaExtra(true);
+            setSaving(false);
+            return;
+          }
+        }
       }
 
       // 1. Upsert brand em buy_brands
@@ -577,29 +678,34 @@ export default function BuyOrderModule({ user }: { user?: User }) {
       let orderId = editingOrderId;
 
       if (editingOrderId) {
-        const { error: oErr } = await supabase
-          .from("buy_orders")
-          .update({
-            user_name: user?.name || user?.email || "sistema",
-            user_role: cab.role,
-            brand_id: brandId,
-            marca: cab.marca,
-            fornecedor: cab.fornecedor,
-            representante: cab.representante,
-            telefone: cab.telefone || null,
-            email: cab.email || null,
-            fat_inicio: cab.fat_inicio || null,
-            fat_fim: cab.fat_fim,
-            prazos: cab.prazos,
-            vencimentos,
-            desconto: cab.desconto,
-            markup: cab.markup,
-            status: "rascunho", // Volta para rascunho se foi alterado
-          })
-          .eq("id", orderId);
-        if (oErr) throw oErr;
+        // ✅ USAR FUNÇÃO SEGURA DO APISERVICE
+        await apiService.updateBuyOrder(orderId, {
+          user_name: user?.name || user?.email || "sistema",
+          user_role: cab.role,
+          brand_id: brandId,
+          marca: cab.marca,
+          fornecedor: cab.fornecedor,
+          representante: cab.representante,
+          telefone: cab.telefone || null,
+          email: cab.email || null,
+          fat_inicio: cab.fat_inicio || null,
+          fat_fim: cab.fat_fim,
+          prazos: cab.prazos,
+          vencimentos,
+          desconto: cab.desconto,
+          markup: cab.markup,
+          status: "rascunho", // Volta para rascunho se foi alterado
+        });
 
         // Excluir os velhos relacionamentos para recriar
+        
+        // 1. Buscar os items_ids do pedido para deletar os vinculos das grades primeiro
+        const { data: items_data } = await supabase.from("buy_order_items").select("id").eq("order_id", orderId);
+        if (items_data && items_data.length > 0) {
+          const itemIds = items_data.map(i => i.id);
+          await supabase.from("buy_order_item_suborder_grades").delete().in("item_id", itemIds);
+        }
+
         await supabase.from("buy_order_items").delete().eq("order_id", orderId);
         await supabase
           .from("buy_order_sub_orders")
@@ -610,6 +716,7 @@ export default function BuyOrderModule({ user }: { user?: User }) {
           .from("buy_orders")
           .insert({
             user_id: userId,
+            store_id: user?.storeId, // ✅ Adicionado store_id
             user_name: user?.name || user?.email || "sistema",
             user_role: cab.role,
             brand_id: brandId,
@@ -782,6 +889,9 @@ export default function BuyOrderModule({ user }: { user?: User }) {
           }
         }
 
+        // Marcar qualquer cota extra aprovada para este pedido como "usada"
+        await supabase.rpc('mark_quota_extra_as_used', { p_order_id: orderId });
+
         toast.success(`Pedido Confirmado! Cota consumida.`);
         resetStateAndFetch();
       } else if (targetAction === "rascunho_then_standby") {
@@ -952,52 +1062,38 @@ export default function BuyOrderModule({ user }: { user?: User }) {
 
   const handleDeleteOrder = async (orderId: string) => {
     try {
-      // ✅ GARANTIR SESSÃO NO POSTGRES PARA RLS
-      const userId = user?.id || (await getCurrentAppUserId());
-
-      // 1. Verificar status do pedido
-      const { data: orderData, error: selErr } = await supabase
-        .from("buy_orders")
-        .select("status")
-        .eq("id", orderId)
-        .single();
-
-      if (selErr) throw selErr;
-
-      // 2. Se for rascunho, não tem transação de cota. Podemos excluir diretamente.
-      if (orderData.status === "rascunho") {
-        // As items and sub_orders are deleted via database cascade triggers (if set up) or we should delete them explicitly.
-        // It's safer to explicitly delete children first to avoid foreign key constraints errors just in case.
-        await supabase.from("buy_order_items").delete().eq("order_id", orderId);
-        await supabase.from("buy_order_sub_orders").delete().eq("order_id", orderId);
-
-        const { error: delErr } = await supabase
-          .from("buy_orders")
-          .delete()
-          .eq("id", orderId);
-
-        if (delErr) throw delErr;
-        toast.success("✅ Rascunho excluído definitivamente!");
-      } else {
-        // 3. Se não for rascunho (tem cota consumida/stand by), usar a RPC para devolução
-        const { data, error } = await supabase.rpc("return_quota_on_cancel", {
-          p_order_id: orderId,
-          p_user_id: userId,
+      const { data, error } = await supabase
+        .rpc('delete_buy_order', {
+          p_order_id: orderId
         });
-
-        if (error) throw error;
-
-        if (data && !data.success) {
-          throw new Error(data.message || "Erro ao cancelar pedido");
-        }
-
-        toast.success(
-          data?.message || "✅ Pedido cancelado (e cota devolvida se aplicável)!",
-        );
+      
+      if (error) {
+        console.error('Erro ao chamar RPC:', error);
+        toast.error('Erro ao excluir pedido. Tente novamente.');
+        return;
       }
-
-      fetchRecentOrders();
-      setDeletingOrder(null);
+      
+      // Verificar resposta da função
+      if (data?.success) {
+        toast.success(data.message || 'Pedido excluído com sucesso!');
+        // Atualizar lista de pedidos
+        await fetchRecentOrders();
+        setDeletingOrder(null);
+      } else {
+        // Tratar erros específicos
+        const errorMessage = data?.error || 'Erro desconhecido';
+        const errorCode = data?.code;
+        
+        if (errorCode === 'UNAUTHENTICATED') {
+          toast.error('Sessão expirada. Faça login novamente.');
+        } else if (errorCode === 'UNAUTHORIZED') {
+          toast.error('Você não tem permissão para excluir pedidos.');
+        } else if (errorCode === 'INVALID_STATUS') {
+          toast.error(`Não é possível excluir: ${errorMessage}`);
+        } else {
+          toast.error(errorMessage);
+        }
+      }
     } catch (err: any) {
       console.error("Erro ao excluir/cancelar:", err);
       toast.error(`❌ ${err.message}`);
@@ -1277,11 +1373,17 @@ export default function BuyOrderModule({ user }: { user?: User }) {
               {items.length > 0 && `${items.length} itens`}
             </span>
 
+            {step === STEPS.length - 1 && (pedidos.length === 0 || pedidos.every(p => p.itensComGrades.length === 0)) ? (
+              <div className="text-xs text-amber-600 bg-amber-50 border border-amber-300 rounded-lg px-3 py-1 flex items-center h-8">
+                ⚠️ Crie ao menos um pedido
+              </div>
+            ) : null}
+
             {step === STEPS.length - 1 ? (
               <>
                 <button
                   onClick={() => handleSave("rascunho")}
-                  disabled={saving || !isHeaderValid}
+                  disabled={saving || !isHeaderValid || items.length === 0 || pedidos.length === 0 || pedidos.every(p => p.itensComGrades.length === 0)}
                   style={{
                     height: 32,
                     padding: "0 16px",
@@ -1292,18 +1394,16 @@ export default function BuyOrderModule({ user }: { user?: User }) {
                     border: "1px solid #94a3b8",
                     background: "#f8fafc",
                     color: "#475569",
-                    opacity: saving || !isHeaderValid ? 0.7 : 1,
+                    opacity: (saving || !isHeaderValid || items.length === 0 || pedidos.length === 0 || pedidos.every(p => p.itensComGrades.length === 0)) ? 0.7 : 1,
                   }}
                 >
                   Salvar Rascunho
                 </button>
                 <button
                   onClick={() => {
-                    // Open Stand By modal early, so it doesn't save to DB directly until the modal is filled.
-                    // Actually, we must save first to get an ID. So we save as rascunho, then show modal!
                     handleSave("rascunho_then_standby");
                   }}
-                  disabled={saving || !isHeaderValid}
+                  disabled={saving || !isHeaderValid || items.length === 0 || pedidos.length === 0 || pedidos.every(p => p.itensComGrades.length === 0)}
                   style={{
                     height: 32,
                     padding: "0 16px",
@@ -1314,14 +1414,14 @@ export default function BuyOrderModule({ user }: { user?: User }) {
                     border: "1px solid #d97706",
                     background: "#fffbeb",
                     color: "#b45309",
-                    opacity: saving || !isHeaderValid ? 0.7 : 1,
+                    opacity: (saving || !isHeaderValid || items.length === 0 || pedidos.length === 0 || pedidos.every(p => p.itensComGrades.length === 0)) ? 0.7 : 1,
                   }}
                 >
                   Salvar em Stand By
                 </button>
                 <button
                   onClick={() => handleSave("confirmado")}
-                  disabled={saving || !isHeaderValid}
+                  disabled={saving || !isHeaderValid || items.length === 0 || pedidos.length === 0 || pedidos.every(p => p.itensComGrades.length === 0)}
                   style={{
                     height: 32,
                     padding: "0 16px",
@@ -1332,7 +1432,7 @@ export default function BuyOrderModule({ user }: { user?: User }) {
                     border: "transparent",
                     background: "#16a34a",
                     color: "#fff",
-                    opacity: saving || !isHeaderValid ? 0.7 : 1,
+                    opacity: (saving || !isHeaderValid || items.length === 0 || pedidos.length === 0 || pedidos.every(p => p.itensComGrades.length === 0)) ? 0.7 : 1,
                   }}
                 >
                   {saving ? "Aguarde..." : "Confirmar Pedido"}
@@ -2053,6 +2153,25 @@ export default function BuyOrderModule({ user }: { user?: User }) {
           onClose={() => setQuotaModalData(null)}
         />
       )}
+
+      {/* Cota Extra Solicitation Modal */}
+      <SolicitarCotaExtraModal
+        isOpen={showSolicitarCotaExtra}
+        onClose={() => {
+          setShowSolicitarCotaExtra(false);
+          setValidationError(null);
+        }}
+        deficit={validationError?.deficit || 0}
+        mesEntrega={validationError?.mes_entrega || 0}
+        anoEntrega={validationError?.ano_entrega || 0}
+        storeNumber={String(pedidos[0]?.lojas?.[0] || "")}
+        userRole={cab.role}
+        orderId={null}
+        userId={user?.id || ""}
+        onSuccess={() => {
+          toast.success("Solicitação enviada! Salve como RASCUNHO e aguarde.");
+        }}
+      />
     </div>
   );
 }

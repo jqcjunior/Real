@@ -1,10 +1,10 @@
 import React, { useState, useEffect } from 'react';
-import { supabase } from '../services/supabaseClient';
+import { supabase } from '../../services/supabaseClient';
 import { toast } from 'sonner';
 import { Clock, AlertTriangle, CheckCircle, XCircle, Search, Edit2 } from 'lucide-react';
 import { StandByModal } from './StandByModal';
-import { QuotaInsufficientModal } from './QuotaInsufficientModal';
-import { usePermissions } from '../hooks/usePermissions';
+import { QuotaInsufficientModal } from '../QuotaInsufficientModal';
+import { usePermissions } from '../../hooks/usePermissions';
 
 interface StandByOrder {
   id: string;
@@ -145,6 +145,8 @@ export default function StandByDashboard({
         toast.error(data.message || 'Erro ao cancelar pedido');
         return;
       }
+
+      await supabase.rpc('release_quota_extra_on_cancel', { p_order_id: order.id });
 
       toast.success(data.message || 'Pedido cancelado.');
       fetchOrders();

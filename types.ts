@@ -4,6 +4,7 @@
 ========================= */
 export enum UserRole {
   ADMIN = 'ADMIN',
+  SUPER_ADMIN = 'SUPER_ADMIN',
   MANAGER = 'MANAGER',
   CASHIER = 'CASHIER',
   ICE_CREAM = 'ICE_CREAM'

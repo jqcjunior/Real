@@ -1,23 +1,13 @@
 import React, { useState, useEffect } from 'react';
-import { supabase } from '../services/supabaseClient';
-import { Loader2, RefreshCw, TrendingUp, TrendingDown, AlertCircle, X } from 'lucide-react';
+import { supabase } from '../../services/supabaseClient';
+import { Loader2, RefreshCw, AlertCircle, X } from 'lucide-react';
 import { toast } from 'sonner';
-import { User } from '../types';
+import { User } from '../../types';
+import ResumoAnoFiscal, { QuotaMes, gerarMesesRolling } from './ResumoAnoFiscal';
 
 // ═══════════════════════════════════════════════════════════════════════════
 // TIPOS
 // ═══════════════════════════════════════════════════════════════════════════
-
-interface CotaMes {
-  mes: number;
-  mes_nome: string;
-  ano: number;
-  cota_inicial: number;
-  despesas_comprometidas: number;
-  cota_limpa: number;
-  pedidos_mes: number;
-  disponivel_real: number;
-}
 
 interface Loja {
   number: string;
@@ -32,10 +22,9 @@ interface Loja {
 export default function BuyOrderQuotaView({ user }: { user: User }) {
   const [lojas, setLojas] = useState<Loja[]>([]);
   const [selectedStore, setSelectedStore] = useState('');
-  const [selectedYear, setSelectedYear] = useState(new Date().getFullYear());
-  const [modoComprador, setModoComprador] = useState<'GERENTE' | 'COMPRADOR'>('COMPRADOR');
-  const [cotasMeses, setCotasMeses] = useState<CotaMes[]>([]);
-  const [resumoAnual, setResumoAnual] = useState<any[]>([]);
+  
+  // Rolling 12 months data
+  const [cotasMeses, setCotasMeses] = useState<QuotaMes[]>([]);
   const [modalDetalhes, setModalDetalhes] = useState<{
     aberto: boolean;
     mes: number;
@@ -132,68 +121,80 @@ export default function BuyOrderQuotaView({ user }: { user: User }) {
   useEffect(() => {
     if (selectedStore) {
       carregarCotasMeses();
-      carregarResumoAnual();
     }
-  }, [selectedStore, selectedYear, modoComprador]);
+  }, [selectedStore]);
 
   const carregarCotasMeses = async () => {
     if (!selectedStore) return;
 
     setLoading(true);
     try {
-      // Primeiro, verificar quais meses estão cadastrados para esta loja
-      const { data: mesesCadastrados, error: errorMeses } = await supabase
-        .from('buyorder_parameters_store')
-        .select('month')
-        .eq('store_number', selectedStore)
-        .eq('year', selectedYear)
-        .order('month');
+      const dataBase = new Date();
+      const ptMonth = dataBase.getMonth() + 1;
+      const ptYear = dataBase.getFullYear();
+      
+      console.log('DEBUG RPC PARAMS', {
+        selectedStore,
+        ptMonth,
+        ptYear,
+        types: {
+          selectedStore: typeof selectedStore,
+          ptMonth: typeof ptMonth,
+          ptYear: typeof ptYear
+        }
+      });
 
-      if (errorMeses) throw errorMeses;
-
-      if (!mesesCadastrados || mesesCadastrados.length === 0) {
-        setCotasMeses([]);
-        toast.warning(`Nenhum mês cadastrado para loja ${selectedStore} em ${selectedYear}`);
+      if (!selectedStore || !ptMonth || !ptYear) {
+        console.error('Parâmetros inválidos RPC', {
+          selectedStore,
+          ptMonth,
+          ptYear
+        });
+        setLoading(false);
         return;
       }
+      
+      const { data, error } = await supabase.rpc('get_cotas_ano_fiscal', {
+        p_start_month: ptMonth,
+        p_start_year: ptYear,
+        p_store_number: selectedStore
+      });
 
-      // Buscar cotas de cada mês cadastrado
-      const cotasTemp: CotaMes[] = [];
-
-      for (const mesObj of mesesCadastrados) {
-        const mes = mesObj.month;
-
-        const { data, error } = await supabase
-          .rpc('get_cota_disponivel_mes', {
-            p_store_number: selectedStore,
-            p_year: selectedYear,
-            p_month: mes,
-            p_tipo_comprador: modoComprador.toLowerCase()
-          });
-
-        if (error) {
-          console.error(`Erro ao buscar mês ${mes}:`, error);
-          continue;
-        }
-
-        if (data && data.length > 0) {
-          const d = data[0];
-          cotasTemp.push({
-            mes: mes,
-            mes_nome: monthNames[mes - 1],
-            ano: selectedYear,
-            cota_inicial: Number(d.cota_inicial || 0),
-            despesas_comprometidas: Number(d.despesas_comprometidas || 0),
-            cota_limpa: Number(d.cota_limpa || 0),
-            pedidos_mes: Number(d.pedidos_mes || 0),
-            disponivel_real: Number(d.disponivel_real || 0)
-          });
-        }
+      if (error) {
+        console.error('RPC ERROR:', error);
+        throw error;
       }
 
-      setCotasMeses(cotasTemp);
-    } catch (err) {
-      console.error('Erro ao carregar cotas:', err);
+      if (data) {
+        setCotasMeses(data.map((d: any) => {
+          const toNumber = (v: any) => {
+            if (v === null || v === undefined || v === '') return 0;
+            const n = typeof v === 'string' ? parseFloat(v) : v;
+            return isNaN(n) ? 0 : n;
+          };
+
+          return {
+            mes: d.mes,
+            ano: d.ano,
+            cota_mensal: toNumber(d.cota_mensal),
+            cota_utilizada: toNumber(d.cota_utilizada),
+            cota_disponivel: toNumber(d.cota_disponivel),
+            cota_gerente_valor: toNumber(d.cota_gerente_valor),
+            cota_comprador_valor: toNumber(d.cota_comprador_valor),
+            despesas_comprometidas: toNumber(d.despesas_comprometidas),
+            pedidos_confirmados: toNumber(d.pedidos_confirmados),
+            qtd_pedidos: toNumber(d.qtd_pedidos)
+          };
+        }));
+      }
+    } catch (err: any) {
+      console.error('Erro ao carregar cotas:', {
+        message: err?.message,
+        details: err?.details,
+        hint: err?.hint,
+        code: err?.code,
+        full: err
+      });
       toast.error('Erro ao carregar cotas dos meses');
     } finally {
       setLoading(false);
@@ -207,54 +208,47 @@ export default function BuyOrderQuotaView({ user }: { user: User }) {
   const handleSincronizar = async () => {
     setSyncing(true);
     await carregarCotasMeses();
-    await carregarResumoAnual();
     toast.success('Cotas sincronizadas!');
     setSyncing(false);
   };
 
-  const carregarResumoAnual = async () => {
-    try {
-      const { data, error } = await supabase
-        .rpc('get_capacidade_compra_anual', {
-          p_store_number: selectedStore,
-          p_year: selectedYear,
-          p_tipo_comprador: modoComprador.toLowerCase(),
-          p_qtd_parcelas: 3
-        });
-
-      if (error) throw error;
-      setResumoAnual(data || []);
-    } catch (err: any) {
-      console.error('Erro ao buscar resumo:', err);
-    }
-  };
-
   const buscarPedidosMes = async (mes: number, ano: number) => {
     try {
-      const { data, error } = await supabase
+      // Find orders for BOTH gerente and comprador
+      const { data: dataComp, error: errComp } = await supabase
         .rpc('get_pedidos_mes_detalhado', {
           p_store_number: selectedStore,
           p_year: ano,
           p_month: mes,
-          p_tipo_comprador: modoComprador.toLowerCase()
+          p_tipo_comprador: 'comprador'
         });
 
-    if (error) {
-      console.error('Erro RPC:', error);
-      throw error;
-    }
+      const { data: dataGer, error: errGer } = await supabase
+        .rpc('get_pedidos_mes_detalhado', {
+          p_store_number: selectedStore,
+          p_year: ano,
+          p_month: mes,
+          p_tipo_comprador: 'gerente'
+        });
 
-    setModalDetalhes({
-      aberto: true,
-      mes,
-      ano,
-      pedidos: data || []
-    });
-  } catch (err: any) {
-    console.error('Erro ao buscar pedidos:', err);
-    toast.error('Erro: ' + (err.message || 'Desconhecido'));
-  }
-};
+      if (errComp || errGer) {
+        console.error('Erro RPC:', errComp || errGer);
+        throw errComp || errGer;
+      }
+
+      const allPedidos = [...(dataComp || []), ...(dataGer || [])];
+
+      setModalDetalhes({
+        aberto: true,
+        mes,
+        ano,
+        pedidos: allPedidos
+      });
+    } catch (err: any) {
+      console.error('Erro ao buscar pedidos:', err);
+      toast.error('Erro: ' + (err.message || 'Desconhecido'));
+    }
+  };
 
   // ═══════════════════════════════════════════════════════════════════════════
   // UTILITÁRIOS
@@ -311,42 +305,6 @@ export default function BuyOrderQuotaView({ user }: { user: User }) {
               ))}
             </select>
 
-            {/* Seletor de Ano */}
-            <select
-              value={selectedYear}
-              onChange={(e) => setSelectedYear(Number(e.target.value))}
-              className="px-4 py-2 bg-slate-50 dark:bg-slate-900 border-2 border-slate-200 dark:border-slate-700 rounded-xl font-bold text-sm text-slate-900 dark:text-white outline-none focus:border-blue-500 transition-all"
-            >
-              <option value="2025">2025</option>
-              <option value="2026">2026</option>
-              <option value="2027">2027</option>
-              <option value="2028">2028</option>
-            </select>
-
-            {/* Modo Comprador/Gerente */}
-            <div className="flex gap-2 bg-slate-100 dark:bg-slate-900 p-1 rounded-xl">
-              <button
-                onClick={() => setModoComprador('COMPRADOR')}
-                className={`px-5 py-2 rounded-lg font-black text-xs uppercase transition-all ${
-                  modoComprador === 'COMPRADOR'
-                    ? 'bg-blue-600 text-white shadow-lg'
-                    : 'bg-transparent text-slate-600 dark:text-slate-400 hover:bg-slate-200 dark:hover:bg-slate-800'
-                }`}
-              >
-                🛒 COMPRADOR
-              </button>
-              <button
-                onClick={() => setModoComprador('GERENTE')}
-                className={`px-5 py-2 rounded-lg font-black text-xs uppercase transition-all ${
-                  modoComprador === 'GERENTE'
-                    ? 'bg-green-600 text-white shadow-lg'
-                    : 'bg-transparent text-slate-600 dark:text-slate-400 hover:bg-slate-200 dark:hover:bg-slate-800'
-                }`}
-              >
-                👨💼 GERENTE
-              </button>
-            </div>
-
             {/* Botão Sincronizar */}
             <button
               onClick={handleSincronizar}
@@ -379,183 +337,7 @@ export default function BuyOrderQuotaView({ user }: { user: User }) {
           </p>
         </div>
       ) : (
-        <div className="flex flex-col xl:flex-row gap-4">
-          
-          {/* CARD RESUMO - Mesma altura que grid de cards */}
-          <div className="w-full xl:w-80 xl:flex-shrink-0">
-            <div className="bg-gradient-to-br from-blue-50 to-indigo-100 dark:from-slate-800 dark:to-slate-900 rounded-xl p-5 border-2 border-blue-300 dark:border-blue-700 shadow-lg flex flex-col h-full">
-              
-              <h3 className="text-base font-black text-blue-900 dark:text-blue-300 uppercase mb-4 flex items-center gap-2">
-                📊 RESUMO ANO FISCAL
-              </h3>
-              
-              {/* Lista de meses - ocupa espaço disponível */}
-              <div className="flex-1 overflow-y-auto pr-2 custom-scrollbar">
-                <div className="space-y-1.5">
-                  {resumoAnual.map((item, idx) => (
-                    <div
-                      key={idx}
-                      className="flex items-center justify-between py-2 px-3 rounded-lg hover:bg-white/60 dark:hover:bg-slate-700/50 transition-all"
-                    >
-                      <span className="text-xs font-black text-slate-700 dark:text-slate-300 w-24">
-                        {item.mes_nome}/{selectedYear}
-                      </span>
-                      <span className={`text-sm font-black ${
-                        parseFloat(item.disponivel) > 10000 ? 'text-green-600' :
-                        parseFloat(item.disponivel) > 5000 ? 'text-yellow-600' :
-                        'text-red-600'
-                      }`}>
-                        {formatarMoeda(parseFloat(item.disponivel))}
-                      </span>
-                    </div>
-                  ))}
-                </div>
-              </div>
-
-              {/* Capacidade de Compra - fixo no rodapé */}
-              {resumoAnual.length > 0 && (
-                <div className="mt-5 pt-4 border-t-2 border-blue-200 dark:border-blue-800">
-                  <p className="text-xs font-black text-blue-700 dark:text-blue-400 uppercase mb-1">
-                    🎯 CAPACIDADE COMPRA
-                  </p>
-                  <p className="text-[10px] text-slate-600 dark:text-slate-400 mb-2">
-                    (Próximos 3 meses)
-                  </p>
-                  <p className="text-3xl font-black text-blue-900 dark:text-blue-200">
-                    {formatarMoeda(
-                      parseFloat(
-                        resumoAnual.find(r => r.mes === new Date().getMonth() + 1)?.capacidade_compra || 0
-                      )
-                    )}
-                  </p>
-                </div>
-              )}
-            </div>
-          </div>
-
-          {/* GRID 12 CARDS - 2 linhas x 6 colunas */}
-          <div className="flex-1">
-            <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-6 gap-3 content-start">
-              {cotasMeses.map((cota, idx) => {
-                const percentualDisp = calcularPercentualDisponivel(parseFloat(cota.disponivel_real.toString()), parseFloat(cota.cota_limpa.toString()));
-                const isAlerta = percentualDisp < 30;
-                const isAviso = percentualDisp >= 30 && percentualDisp < 60;
-
-                return (
-                  <div 
-                    key={`${cota.ano}-${cota.mes}`}
-                    className={`bg-white dark:bg-slate-800 rounded-xl p-3 border-2 shadow-sm transition-all hover:shadow-lg ${
-                      isAlerta ? 'border-red-300 dark:border-red-700' :
-                      isAviso ? 'border-yellow-300 dark:border-yellow-700' :
-                      'border-green-300 dark:border-green-700'
-                    }`}
-                  >
-                    {/* Header */}
-                    <div className="flex items-center justify-between mb-2">
-                      <div>
-                        <p className="text-[9px] font-black text-slate-500 uppercase">
-                          {cota.ano}
-                        </p>
-                        <h3 className="text-base font-black text-slate-900 dark:text-white">
-                          {cota.mes_nome}
-                        </h3>
-                      </div>
-                      <div className={`px-2 py-1 rounded-full text-[9px] font-black ${
-                        isAlerta ? 'bg-red-100 text-red-700' :
-                        isAviso ? 'bg-yellow-100 text-yellow-700' :
-                        'bg-green-100 text-green-700'
-                      }`}>
-                        {percentualDisp}%
-                      </div>
-                    </div>
-
-                    {/* Valores */}
-                    <div className="space-y-1.5">
-                      
-                      {/* Cota Limpa */}
-                      <div className="bg-slate-50 dark:bg-slate-900/50 rounded-lg p-2">
-                        <p className="text-[9px] font-black text-slate-500 uppercase mb-0.5">
-                          Cota Limpa
-                        </p>
-                        <p className="text-xs font-black text-slate-900 dark:text-white">
-                          {formatarMoeda(parseFloat(cota.cota_limpa.toString()))}
-                        </p>
-                      </div>
-
-                      {/* Despesas */}
-                      {parseFloat(cota.despesas_comprometidas.toString()) > 0 && (
-                        <div className="bg-red-50 dark:bg-red-900/20 rounded-lg p-1.5 border border-red-200 dark:border-red-700">
-                          <div className="flex items-center justify-between">
-                            <span className="text-[8px] font-black text-red-600 dark:text-red-400 uppercase">
-                              Desp
-                            </span>
-                            <span className="text-[10px] font-black text-red-600">
-                              -{formatarMoeda(parseFloat(cota.despesas_comprometidas.toString()))}
-                            </span>
-                          </div>
-                        </div>
-                      )}
-
-                      {/* Pedidos */}
-                      {parseFloat(cota.pedidos_mes.toString()) > 0 && (
-                        <div className="bg-orange-50 dark:bg-orange-900/20 rounded-lg p-1.5 border border-orange-200 dark:border-orange-700">
-                          <div className="flex items-center justify-between">
-                            <span className="text-[8px] font-black text-orange-600 dark:text-orange-400 uppercase">
-                              Ped
-                            </span>
-                            <span className="text-[10px] font-black text-orange-600">
-                              -{formatarMoeda(parseFloat(cota.pedidos_mes.toString()))}
-                            </span>
-                          </div>
-                        </div>
-                      )}
-
-                      {/* Disponível */}
-                      <div className="pt-1.5 mt-1.5 border-t border-slate-100 dark:border-slate-700">
-                        <div className="flex items-center justify-between mb-0.5">
-                          <span className="text-[8px] font-black text-slate-500 uppercase">
-                            Disp
-                          </span>
-                          {parseFloat(cota.disponivel_real.toString()) > 0 ? (
-                            <TrendingUp size={11} className="text-green-500" />
-                          ) : (
-                            <TrendingDown size={11} className="text-red-500" />
-                          )}
-                        </div>
-                        <p className={`text-base font-black ${
-                          parseFloat(cota.disponivel_real.toString()) > 0 ? 'text-green-600' : 'text-red-600'
-                        }`}>
-                          {formatarMoeda(parseFloat(cota.disponivel_real.toString()))}
-                        </p>
-                      </div>
-                    </div>
-
-                    {/* Botões compactos */}
-                    <div className="grid grid-cols-2 gap-1.5 mt-2">
-                      <button
-                        className="py-1 bg-blue-50 hover:bg-blue-100 dark:bg-blue-900/20 dark:hover:bg-blue-900/30 text-blue-600 dark:text-blue-400 rounded text-[9px] font-bold transition-all"
-                        onClick={() => buscarPedidosMes(cota.mes, cota.ano)}
-                        title="Ver Detalhes"
-                      >
-                        📋
-                      </button>
-                      <button
-                        className="py-1 bg-green-50 hover:bg-green-100 dark:bg-green-900/20 dark:hover:bg-green-900/30 text-green-600 dark:text-green-400 rounded text-[9px] font-bold transition-all"
-                        onClick={() => {
-                          // ... handle simulação ...
-                        }}
-                        title="Simular Compra"
-                      >
-                        🧮
-                      </button>
-                    </div>
-                  </div>
-                );
-              })}
-            </div>
-          </div>
-        </div>
-
+        <ResumoAnoFiscal quotas={cotasMeses} onVerPedidos={buscarPedidosMes} />
       )}
 
       {modalDetalhes?.aberto && (

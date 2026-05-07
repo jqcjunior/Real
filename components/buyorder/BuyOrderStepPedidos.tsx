@@ -7,8 +7,8 @@ import React, {
 } from "react";
 import { RefreshCw, Trash2 } from "lucide-react";
 import { toast } from "sonner"; // assume toast is available, but wait, usually it's imported or globally available. Actually, checking if there is toast.
-import { supabase } from "../services/supabaseClient";
-import { User } from "../types";
+import { supabase } from "../../services/supabaseClient";
+import { User } from "../../types";
 
 // ─── Tipos ────────────────────────────────────────────────────────────────────
 

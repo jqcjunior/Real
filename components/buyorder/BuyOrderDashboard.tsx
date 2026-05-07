@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { supabase } from '../services/supabaseClient';
+import { supabase } from '../../services/supabaseClient';
 import { Package, Store as StoreIcon, Activity, BarChart3, Tag, ChevronDown, ChevronRight, DollarSign } from 'lucide-react';
 
 interface DashboardSummary {
@@ -309,12 +309,18 @@ export default function BuyOrderDashboard({ user }: { user: any }) {
     }
   };
 
+  const toNumber = (v: any): number => {
+    if (v === null || v === undefined || v === '') return 0;
+    const n = typeof v === 'string' ? parseFloat(v) : v;
+    return isNaN(n) ? 0 : n;
+  };
+
   const formatBRLValue = (val: number) => {
-    return val.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' });
+    return toNumber(val).toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' });
   };
 
   const formatNum = (val: number) => {
-    return val.toLocaleString('pt-BR');
+    return toNumber(val).toLocaleString('pt-BR');
   };
 
   const getTypeStyles = (tipo: string) => {

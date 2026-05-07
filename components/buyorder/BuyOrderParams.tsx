@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from "react";
-import { supabase } from "../services/supabaseClient";
+import { supabase } from "../../services/supabaseClient";
 import {
   Settings,
   Check,
@@ -706,7 +706,8 @@ export default function BuyOrderParams({ user }: { user: any }) {
     despesas: number;
     cota_gerente_valor?: number;
     cota_comprador_valor?: number;
-    // Removido cotaGerentePct e cotaCompradorPct (agora são anuais)
+    usar_cota_fixa: boolean;
+    cota_gerente_fixa: number | null;
   }
 
   const [monthlyData, setMonthlyData] = useState<MonthlyData[]>(
@@ -716,12 +717,14 @@ export default function BuyOrderParams({ user }: { user: any }) {
       despesas: 0,
       cota_gerente_valor: 0,
       cota_comprador_valor: 0,
+      usar_cota_fixa: false,
+      cota_gerente_fixa: null,
     })),
   );
 
   // Percentuais ANUAIS (não mensais - aplicados a todos os meses)
-  const [cotaGerentePctAnual, setCotaGerentePctAnual] = useState(80);
-  const [cotaCompradorPctAnual, setCotaCompradorPctAnual] = useState(20);
+  const [cotaGerentePctAnual, setCotaGerentePctAnual] = useState(20);
+  const [cotaCompradorPctAnual, setCotaCompradorPctAnual] = useState(80);
 
   // Recalcular valores baseados no percentual anual quando ele mudar
   useEffect(() => {
@@ -733,6 +736,18 @@ export default function BuyOrderParams({ user }: { user: any }) {
       })),
     );
   }, [cotaGerentePctAnual, cotaCompradorPctAnual]);
+
+  const toNumber = (v: any): number => {
+    if (v === null || v === undefined || v === "") return 0;
+    const n = typeof v === "string" ? parseFloat(v) : v;
+    return isNaN(n) ? 0 : n;
+  };
+
+  const formatarMoeda = (valor: any) =>
+    toNumber(valor).toLocaleString("pt-BR", {
+      style: "currency",
+      currency: "BRL",
+    });
 
   if (!isAdmin) {
     return (
@@ -823,100 +838,70 @@ export default function BuyOrderParams({ user }: { user: any }) {
   const handleOpenStore = async (store: Store) => {
     setSelectedStore(store);
 
-    // Se tem parâmetros customizados, carregar
-    if (store.tem_parametros_customizados) {
-      try {
-        const { data, error } = await supabase
-          .from("buyorder_parameters_store")
-          .select("*")
-          .eq("store_number", store.store_number)
-          .eq("year", selectedYear);
+    // Se tem parâmetros customizados ou não, carregamos as cotas calculadas do banco
+    try {
+      const { data: quotaData, error: quotaError } = await supabase.rpc("get_cotas_ano_fiscal", {
+        p_store_number: store.store_number,
+        p_start_year: selectedYear,
+        p_start_month: 1
+      });
 
-        if (error) throw error;
+      if (quotaError) throw quotaError;
 
-        if (data && data.length > 0) {
-          setFeminino(data[0].feminino_pct || 40);
-          setInfMenina(data[0].infantil_menina_pct || 10);
-          setInfMenino(data[0].infantil_menino_pct || 10);
-          setMasculino(data[0].masculino_pct || 20);
-          setAcessorio(data[0].acessorio_pct || 20);
+      // Carregar também os parâmetros brutos para pegar porcentagens anuais e outras flags
+      const { data: paramData } = await supabase
+        .from("buyorder_parameters_store")
+        .select("*")
+        .eq("store_number", store.store_number)
+        .eq("year", selectedYear);
 
-          const newMonthly = Array.from({ length: 12 }).map((_, i) => {
-            const m = i + 1;
-            const p = data.find((x) => x.month === m);
-            return {
-              month: m,
-              cotaTotal: p ? p.cota_valor || 0 : 0,
-              despesas: p ? p.despesas_comprometidas || 0 : 0,
-              cota_gerente_valor: p ? Number(p.cota_gerente_valor || 0) : 0,
-              cota_comprador_valor: p ? Number(p.cota_comprador_valor || 0) : 0,
-            };
-          });
-          setMonthlyData(newMonthly);
-
-          // Carregar valores anuais (pegar do primeiro mês)
-          if (data && data.length > 0) {
-            setCotaGerentePctAnual(data[0].cota_gerente_pct || 80);
-            setCotaCompradorPctAnual(data[0].cota_comprador_pct || 20);
-          }
-        }
-      } catch (err) {
-        console.error("Erro ao carregar parâmetros:", err);
-      }
-    } else {
-      // Usar valores globais/padrão
-      try {
-        const { data, error } = await supabase
+      if (paramData && paramData.length > 0) {
+        setFeminino(paramData[0].feminino_pct || 40);
+        setInfMenina(paramData[0].infantil_menina_pct || 10);
+        setInfMenino(paramData[0].infantil_menino_pct || 10);
+        setMasculino(paramData[0].masculino_pct || 20);
+        setAcessorio(paramData[0].acessorio_pct || 20);
+        setCotaGerentePctAnual(paramData[0].cota_gerente_pct || 20);
+        setCotaCompradorPctAnual(paramData[0].cota_comprador_pct || 80);
+      } else {
+        // Fallback para globais se não houver customizados
+        const { data: globalData } = await supabase
           .from("buyorder_parameters_global")
           .select("*")
           .eq("year", selectedYear);
-
-        if (data && data.length > 0) {
-          setFeminino(data[0].feminino_pct || 40);
-          setInfMenina(data[0].infantil_menina_pct || 10);
-          setInfMenino(data[0].infantil_menino_pct || 10);
-          setMasculino(data[0].masculino_pct || 20);
-          setAcessorio(data[0].acessorio_pct || 20);
-
-          const newMonthly = Array.from({ length: 12 }).map((_, i) => {
-            const m = i + 1;
-            const p = data.find((x) => x.month === m);
-            return {
-              month: m,
-              cotaTotal: p ? p.cota_valor || 0 : 0,
-              despesas: p ? p.despesas_comprometidas || 0 : 0,
-              cota_gerente_valor: p ? Number(p.cota_gerente_valor || 0) : 0,
-              cota_comprador_valor: p ? Number(p.cota_comprador_valor || 0) : 0,
-            };
-          });
-          setMonthlyData(newMonthly);
-        } else {
-          setFeminino(40);
-          setInfMenina(10);
-          setInfMenino(10);
-          setMasculino(20);
-          setAcessorio(20);
-          setMonthlyData(
-            Array.from({ length: 12 }).map((_, i) => ({
-              month: i + 1,
-              cotaTotal: 0,
-              despesas: 0,
-              cota_gerente_valor: 0,
-              cota_comprador_valor: 0,
-            })),
-          );
+          
+        if (globalData && globalData.length > 0) {
+          setFeminino(globalData[0].feminino_pct || 40);
+          setInfMenina(globalData[0].infantil_menina_pct || 10);
+          setInfMenino(globalData[0].infantil_menino_pct || 10);
+          setMasculino(globalData[0].masculino_pct || 20);
+          setAcessorio(globalData[0].acessorio_pct || 20);
+          setCotaGerentePctAnual(globalData[0].cota_gerente_pct || 20);
+          setCotaCompradorPctAnual(globalData[0].cota_comprador_pct || 80);
         }
-      } catch (err) {
-        setMonthlyData(
-          Array.from({ length: 12 }).map((_, i) => ({
-            month: i + 1,
-            cotaTotal: 0,
-            despesas: 0,
-            cota_gerente_valor: 0,
-            cota_comprador_valor: 0,
-          })),
-        );
       }
+
+      if (quotaData && quotaData.length > 0) {
+        const newMonthly = Array.from({ length: 12 }).map((_, i) => {
+          const m = i + 1;
+          const q = quotaData.find((x: any) => x.mes === m);
+          // O parâmetro bruto pode ter cota_gerente_fixa
+          const p = paramData?.find((x: any) => x.month === m);
+          
+          return {
+            month: m,
+            cotaTotal: q ? Number(q.cota_mensal || 0) : 0,
+            despesas: q ? Number(q.despesas_comprometidas || 0) : 0,
+            cota_gerente_valor: q ? Number(q.cota_gerente_valor || 0) : 0,
+            cota_comprador_valor: q ? Number(q.cota_comprador_valor || 0) : 0,
+            usar_cota_fixa: q ? !!q.usar_cota_fixa : false,
+            cota_gerente_fixa: p ? p.cota_gerente_fixa : null,
+          };
+        });
+        setMonthlyData(newMonthly);
+      }
+    } catch (err) {
+      console.error("Erro ao carregar cotas/parâmetros:", err);
     }
   };
 
@@ -927,17 +912,25 @@ export default function BuyOrderParams({ user }: { user: any }) {
   const handleUpdateMonth = (
     monthIndex: number,
     field: keyof MonthlyData,
-    value: number,
+    value: any,
   ) => {
     setMonthlyData((prev) => {
       const newArray = [...prev];
       const updatedItem = { ...newArray[monthIndex], [field]: value };
 
-      // Recalcular valores de cota se mudou cotaTotal
-      if (field === "cotaTotal") {
-        updatedItem.cota_gerente_valor = (value * cotaGerentePctAnual) / 100;
-        updatedItem.cota_comprador_valor =
-          (value * cotaCompradorPctAnual) / 100;
+      // Se mudou cota_gerente_fixa, atualizar usar_cota_fixa
+      if (field === "cota_gerente_fixa") {
+        updatedItem.usar_cota_fixa = (value !== null && value !== 0);
+      }
+
+      // Recalcular valores de cota se necessário (para visualização imediata)
+      const cotaDisponivel = updatedItem.cotaTotal - updatedItem.despesas;
+      if (updatedItem.usar_cota_fixa && updatedItem.cota_gerente_fixa !== null) {
+        updatedItem.cota_gerente_valor = updatedItem.cota_gerente_fixa;
+        updatedItem.cota_comprador_valor = cotaDisponivel - updatedItem.cota_gerente_fixa;
+      } else {
+        updatedItem.cota_gerente_valor = (cotaDisponivel * cotaGerentePctAnual) / 100;
+        updatedItem.cota_comprador_valor = (cotaDisponivel * cotaCompradorPctAnual) / 100;
       }
 
       newArray[monthIndex] = updatedItem;
@@ -976,6 +969,8 @@ export default function BuyOrderParams({ user }: { user: any }) {
         cota_gerente_pct: cotaGerentePctAnual,
         cota_comprador_pct: cotaCompradorPctAnual,
         usa_parametros_customizados: true,
+        usar_cota_fixa: m.usar_cota_fixa,
+        cota_gerente_fixa: m.cota_gerente_fixa,
       }));
 
       const { error } = await supabase
@@ -1362,7 +1357,7 @@ export default function BuyOrderParams({ user }: { user: any }) {
                           Cota Limpa
                         </th>
                         <th className="text-[10px] font-black text-slate-500 uppercase tracking-widest p-2 border-b border-slate-200 dark:border-slate-700 w-32 text-right">
-                          Cota Gerente
+                          Cota Gerente (Fixo)
                         </th>
                         <th className="text-[10px] font-black text-slate-500 uppercase tracking-widest p-2 border-b border-slate-200 dark:border-slate-700 w-32 text-right">
                           Cota Comprador
@@ -1371,15 +1366,7 @@ export default function BuyOrderParams({ user }: { user: any }) {
                     </thead>
                     <tbody>
                       {monthlyData.map((data, index) => {
-                        const cotaLimpa = Math.max(
-                          0,
-                          data.cotaTotal - data.despesas,
-                        );
-                        const formatarMoeda = (valor: number) =>
-                          valor.toLocaleString("pt-BR", {
-                            style: "currency",
-                            currency: "BRL",
-                          });
+                        const cotaLimpa = toNumber(data.cotaTotal) - toNumber(data.despesas);
 
                         return (
                           <tr
@@ -1424,11 +1411,28 @@ export default function BuyOrderParams({ user }: { user: any }) {
                             <td className="p-2 text-xs font-black text-slate-400 text-right">
                               {formatarMoeda(cotaLimpa)}
                             </td>
-                            <td className="p-2 text-xs font-black text-blue-600 dark:text-blue-400 text-right bg-blue-50/10">
-                              {formatarMoeda(data.cota_gerente_valor || 0)}
+                            <td className="p-2">
+                              <input
+                                type="number"
+                                placeholder="Fixar Valor"
+                                value={data.cota_gerente_fixa || ""}
+                                onChange={(e) =>
+                                  handleUpdateMonth(
+                                    index,
+                                    "cota_gerente_fixa",
+                                    e.target.value ? Number(e.target.value) : null,
+                                  )
+                                }
+                                className="w-full bg-blue-50/30 dark:bg-blue-900/10 border border-blue-200 dark:border-blue-800 rounded-lg px-2 py-1.5 text-xs font-black outline-none focus:border-blue-400 text-right text-blue-700 dark:text-blue-300"
+                              />
                             </td>
-                            <td className="p-2 text-xs font-black text-emerald-600 dark:text-emerald-400 text-right bg-emerald-50/10">
-                              {formatarMoeda(data.cota_comprador_valor || 0)}
+                            <td className="p-2 text-right">
+                              <div className={`px-2 py-1.5 rounded-lg text-xs font-bold ${data.cota_comprador_valor < 0 ? "bg-red-100 text-red-700" : "bg-emerald-50 text-emerald-700"}`}>
+                                {formatarMoeda(data.cota_comprador_valor || 0)}
+                                {data.cota_comprador_valor < 0 && (
+                                  <span className="block text-[9px] font-black uppercase mt-0.5">⚠️ Admin Necessário</span>
+                                )}
+                              </div>
                             </td>
                           </tr>
                         );

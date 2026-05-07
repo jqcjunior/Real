@@ -39,17 +39,18 @@ const OSDemandsModule = lazy(() => import('./components/OSDemandsModule'));
 const DemandsSystemV2 = lazy(() => import('./components/DemandsSystemV2'));
 const DashboardPAModule = lazy(() => import('./components/dashboardPA/DashboardPAModule'));
 const DashboardPAGerente = lazy(() => import('./components/dashboardPA/DashboardPAGerente'));
-const BuyOrderModule = lazy(() => import('./components/BuyOrderModule'));
-const BuyOrderParams = lazy(() => import('./components/BuyOrderParams'));
-const BuyOrderDashboard = lazy(() => import('./components/BuyOrderDashboard'));
+const BuyOrderModule = lazy(() => import('./components/buyorder/BuyOrderModule'));
+const BuyOrderParams = lazy(() => import('./components/buyorder/BuyOrderParams'));
+const BuyOrderDashboard = lazy(() => import('./components/buyorder/BuyOrderDashboard'));
 const StockForecastDashboard = lazy(() => import('./components/StockForecastDashboard'));
-const BuyOrderQuotaView = lazy(() => import('./components/BuyOrderQuotaView'));
+const BuyOrderQuotaView = lazy(() => import('./components/buyorder/BuyOrderQuotaView'));
 const ReportsPage = lazy(() => import('./components/ReportsPage'));
+const AdminQuotaExtraApprovals = lazy(() => import('./components/buyorder/AdminQuotaExtraApprovals'));
 const AdminSurveyManagement = lazy(() => import('./components/AdminSurveyManagement_v3'));
 const MySurveysComponent = lazy(() => import('./components/MySurveysComponent'));
 const SurveyResultsViewer = lazy(() => import('./components/SurveyResultsViewer'));
 // DRE Analytics imports removed as requested for cleanup
-const DREAccounts = lazy(() => import('./modules/dre/components/DREAccountsResponsive'));
+const DREAccounts = lazy(() => import('./components/dre/components/DREAccountsResponsive'));
 
 import LoginScreen from './components/LoginScreen';
 import NotificationHeader from './components/NotificationHeader';
@@ -60,7 +61,7 @@ import ErrorBoundary from './components/ErrorBoundary';
 import {
     LayoutDashboard, Target, ShoppingBag, Calculator, IceCream as IceCreamIcon,
     DollarSign, AlertCircle, Calendar, LogOut, Loader2, Menu, X, ClipboardList, Shield, UserCog, Users, ShieldAlert, Settings, FileSignature, FileText, Download, Lock,
-    Sun, Moon, Trophy, BarChart3, ArrowRight, TrendingUp, ShoppingCart
+    Sun, Moon, Trophy, BarChart3, ArrowRight, TrendingUp, ShoppingCart, CheckCircle
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 import { Toaster } from 'sonner';
@@ -174,41 +175,18 @@ const App: React.FC = () => {
             setIsSidebarOpen(true);
         }
 
-        const storedUser = sessionStorage.getItem('realcalcados_v3_user');
-
-        if (!storedUser) {
-            setUser(null); // Vai para /login
-            setIsLoading(false);
-            return;
-        }
-
-        const init = async () => {
-            setIsLoading(true);
+        // Tenta recuperar a sessão do usuário
+        const savedUser = sessionStorage.getItem('realcalcados_v3_user');
+        if (savedUser) {
             try {
-                const user = JSON.parse(storedUser);
-                
-                if (!user.id || !user.email) {
-                  throw new Error("Dados de sessão corrompidos");
-                }
-
-                await supabase.rpc('set_user_session', {
-                    user_id: user.id
-                });
-                setUser(user);
-
-                await ensureSession();
-                await bootstrapPermissions();
-                await bootstrapParameters();
-            } catch (err) {
-                console.error('Erro ao restaurar sessão (limpando cache):', err);
-                sessionStorage.clear(); // Limpeza agressiva
-                setUser(null);
-            } finally {
-                setIsLoading(false);
+                setUser(JSON.parse(savedUser));
+            } catch (e) {
+                console.error("Erro ao fazer parse do usuário salvo");
+                sessionStorage.removeItem('realcalcados_v3_user');
             }
-        };
-
-        init();
+        }
+        
+        setIsLoading(false);
     }, []);
 
     // ─── SEGURANÇA: Auto-logout após 1 hora + aviso 5 min antes ──────────────
@@ -1010,6 +988,7 @@ const App: React.FC = () => {
                                     { id: 'buy_order_dashboard', label: 'DASHBOARD COMPRAS', icon: BarChart3, perm: 'MODULE_BUY_ORDERS', roles: ['admin', 'manager'] },
                                     { id: 'buy_orders', label: 'PEDIDO DE COMPRA', icon: ShoppingBag, perm: 'MODULE_BUY_ORDERS', roles: ['admin', 'manager'] },
                                     { id: 'buy_order_quota', label: 'COTA DE COMPRA', icon: DollarSign, perm: 'MODULE_BUY_ORDERS', roles: ['admin', 'manager'] },
+                                    { id: 'admin_quota_extra', label: 'APROVAÇÃO COTA EXTRA', icon: CheckCircle, perm: 'MODULE_BUY_ORDERS', roles: ['admin'] },
                                     { id: 'purchase_params', label: 'PARÂMETROS DE COMPRA', icon: Settings, perm: 'MODULE_PURCHASES', roles: ['admin'] },
                                     { id: 'reports_dashboard', label: 'RELATÓRIOS EXECUTIVOS', icon: FileText, perm: 'MODULE_BUY_ORDERS', roles: ['admin'] },
                                     { id: 'stock_forecast', label: 'PREVISÃO DE ESTOQUE', icon: TrendingUp, perm: 'MODULE_BUY_ORDERS', roles: ['admin', 'manager'] }
@@ -1278,6 +1257,7 @@ const App: React.FC = () => {
                         if (currentView === 'stock_forecast' && can('MODULE_BUY_ORDERS')) return <StockForecastDashboard user={user!} stores={isAdmin ? stores : stores.filter(s => s.id === user?.storeId)} />;
                         if (currentView === 'buy_order_dashboard' && can('MODULE_BUY_ORDERS')) return <BuyOrderDashboard user={user!} />;
                         if (currentView === 'buy_order_quota' && can('MODULE_BUY_ORDERS')) return <BuyOrderQuotaView user={user!} />;
+                        if (currentView === 'admin_quota_extra' && can('MODULE_BUY_ORDERS')) return <AdminQuotaExtraApprovals userId={user!.id} />;
                         if (currentView === 'purchase_params') return <BuyOrderParams user={user!} />;
                         if (currentView === 'reports_dashboard') return <ReportsPage user={user!} />;
                         if (currentView === 'pdv_sorveteria' && can('MODULE_ICECREAM')) return <IceCreamModule
