@@ -141,7 +141,7 @@ export default function StandByDashboard({
       }
 
       // ✅ Garantir sessão no Postgres
-      await supabase.rpc("set_user_session", { p_user_id: userId });
+      await supabase.rpc("set_user_session", { user_id: userId });
 
       const { data, error } = await supabase.rpc('delete_buy_order', {
         p_order_id: order.id
