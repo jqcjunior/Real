@@ -822,31 +822,25 @@ export default function BuyOrderModule({ user }: { user?: User }) {
         if (sErr) throw sErr;
       }
 
-      // 6. Atualizar totais do pedido principal
-      let totalParesGeral = 0;
-      let totalValorBrutoGeral = 0;
-
-      pedidos.forEach((ped) => {
-        ped.itensComGrades.forEach((icg) => {
+      // 6. Recalcular totais antes de finalizar
+      let totalBruto = 0;
+      pedidos.forEach(p => {
+        p.itensComGrades.forEach(icg => {
           const item = items[icg.itemIdx];
-          icg.grades.forEach((g) => {
-            const pairsForItems = totPares(g.qtds);
-            const pairsTotal = pairsForItems * ped.lojas.length;
-            totalParesGeral += pairsTotal;
-            totalValorBrutoGeral += pairsTotal * item.custo;
+          icg.grades.forEach(g => {
+            totalBruto += totPares(g.qtds) * p.lojas.length * item.custo;
           });
         });
       });
 
-      const totalValorLiquidoGeral =
-        totalValorBrutoGeral * (1 - (cab.desconto || 0) / 100);
+      const totalLiquido = totalBruto * (1 - (cab.desconto || 0) / 100);
 
       await supabase
         .from("buy_orders")
-        .update({
-          total_pares: totalParesGeral,
-          total_valor_bruto: totalValorBrutoGeral,
-          total_valor_liquido: totalValorLiquidoGeral,
+        .update({ 
+          total_valor_bruto: totalBruto,
+          total_valor_liquido: totalLiquido,
+          total_pares: pedidos.reduce((acc, p) => acc + (p.itensComGrades.reduce((sum, i) => sum + i.grades.reduce((s, g) => s + totPares(g.qtds), 0), 0) * p.lojas.length), 0)
         })
         .eq("id", orderId);
 
@@ -1053,64 +1047,58 @@ export default function BuyOrderModule({ user }: { user?: User }) {
     setItems(loadedItems);
     console.log("✅ Itens carregados:", loadedItems);
 
-    // ✅ 3. Preencher Pedidos com grades
-    // Buscar grades de dentro de cada item (relacionamento correto)
-    const gradeRelations: any[] = [];
-    (order.buy_order_items || []).forEach((item: any) => {
-      if (item.buy_order_item_suborder_grades) {
-        gradeRelations.push(...item.buy_order_item_suborder_grades);
+    // 1. Criar um mapa de grades globais para a Coluna 2
+    const gradesMap: Record<string, { cat: string; qtds: Record<string, number> }> = {};
+    
+    order.buy_order_items.forEach((item: any) => {
+      if (item.grades) {
+        Object.keys(item.grades).forEach(letra => {
+          if (!gradesMap[letra]) {
+            gradesMap[letra] = {
+              cat: item.modelo,
+              qtds: item.grades[letra]
+            };
+          }
+        });
       }
     });
-    
-    const loadedPedidos: SubOrder[] = (order.buy_order_sub_orders || [])
-      .sort((a: any, b: any) => a.sub_order_num - b.sub_order_num)
-      .map((sub: any) => {
-        const itensComGrades: ItemComGrades[] = [];
 
-        // Agrupar grades por item
-        const gradesPorItem = new Map<string, Set<string>>();
-        
-        gradeRelations
-          .filter((rel: any) => rel.sub_order_num === sub.sub_order_num)
-          .forEach((rel: any) => {
-            if (!gradesPorItem.has(rel.item_id)) {
-              gradesPorItem.set(rel.item_id, new Set());
-            }
-            gradesPorItem.get(rel.item_id)!.add(rel.grade_letra);
-          });
+    // 2. Atualizar o estado do Step 2 para que a UI reflita os dados
+    setStep2State({
+      selectedItems: new Set<number>(), // Começa limpo para nova seleção
+      tempPedidoItens: [], // Limpo pois os itens já estão nas SubOrders
+      gradesGlobais: gradesMap, // Carrega as definições de grade A, B, C...
+      gradeExpandida: null,
+      selectedLojas: [], 
+      lojaMode: "all"
+    });
 
-        // Para cada item que tem grade neste sub-order
-        gradesPorItem.forEach((letras, itemId) => {
-          const item = order.buy_order_items.find((i: any) => i.id === itemId);
-          if (!item) return;
-
+    // 3. Mapear as SubOrders para a Coluna 4
+    const loadedSubOrders = (order.buy_order_sub_orders || []).map((sub: any) => ({
+      num: sub.sub_order_num,
+      pedido_numero: sub.pedido_numero,
+      lojas: sub.lojas_numeros || [],
+      itensComGrades: (order.buy_order_items || [])
+        .filter((item: any) => 
+          item.buy_order_item_suborder_grades?.some((g: any) => g.sub_order_num === sub.sub_order_num)
+        )
+        .map((item: any) => {
           const itemIdx = loadedItems.findIndex((i: any) => i.ref === item.referencia);
-          if (itemIdx === -1) return;
+          return {
+            itemIdx,
+            grades: item.buy_order_item_suborder_grades
+              .filter((g: any) => g.sub_order_num === sub.sub_order_num)
+              .map((g: any) => ({
+                letter: g.grade_letra,
+                cat: item.modelo,
+                qtds: item.grades[g.grade_letra] || {}
+              }))
+          };
+        })
+    }));
 
-          const grades: GradeItem[] = [];
-          
-          letras.forEach((letra) => {
-            const qtds = item.grades?.[letra] || {};
-            grades.push({
-              letter: letra,
-              cat: item.modelo || "FEM",
-              qtds: qtds
-            });
-          });
-
-          itensComGrades.push({ itemIdx, grades });
-        });
-
-        return {
-          num: sub.sub_order_num,
-          pedido_numero: sub.pedido_numero || null,
-          lojas: sub.lojas_numeros || [],
-          itensComGrades
-        };
-      });
-
-    setPedidos(loadedPedidos);
-    console.log("✅ Pedidos carregados:", loadedPedidos);
+    setPedidos(loadedSubOrders);
+    console.log("✅ Pedidos carregados:", loadedSubOrders);
 
     // 4. Ir para etapa 0 (Cabeçalho)
     setStep(0);
@@ -1209,6 +1197,7 @@ export default function BuyOrderModule({ user }: { user?: User }) {
         <StandByDashboard
           user={user}
           onEditOrder={(id: string) => {
+            setStep(0); // Garante que começa no cabeçalho
             setActiveTab("create");
             handleEditOrder(id);
           }}
