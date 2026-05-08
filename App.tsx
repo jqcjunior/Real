@@ -174,17 +174,11 @@ const App: React.FC = () => {
         if (window.innerWidth >= 1024) {
             setIsSidebarOpen(true);
         }
-
-        // Tenta recuperar a sessão do usuário
-        const savedUser = sessionStorage.getItem('realcalcados_v3_user');
-        if (savedUser) {
-            try {
-                setUser(JSON.parse(savedUser));
-            } catch (e) {
-                console.error("Erro ao fazer parse do usuário salvo");
-                sessionStorage.removeItem('realcalcados_v3_user');
-            }
-        }
+        
+        // Sempre exigir login ao carregar/recarregar a página
+        // conforme solicitado pelo usuário para evitar "logon automático" indesejado
+        sessionStorage.clear();
+        setUser(null);
         
         setIsLoading(false);
     }, []);

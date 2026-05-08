@@ -1264,36 +1264,30 @@ export default function BuyOrderParams({ user }: { user: any }) {
               {/* Estrutura Cota Mensal e Divisão */}
               <div className="bg-white dark:bg-slate-800 rounded-2xl p-5 border border-slate-200 dark:border-slate-700 shadow-sm space-y-4">
                 <div className="pt-4">
-                  {/* Visual swipe indicator for mobile */}
-                  <div className="flex items-center justify-between mb-2 md:hidden">
-                    <span className="text-[10px] font-bold text-slate-400 uppercase tracking-widest animate-pulse">
-                      ← Deslize para ver colunas →
-                    </span>
-                    <span className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">
-                      {monthlyData.length} Meses
-                    </span>
-                  </div>
-
-                  <div className="overflow-x-auto -mx-5 px-5 md:mx-0 md:px-0">
-                    <table className="w-full text-left border-collapse min-w-[800px]">
+                  {/* ✅ REMOVIDO: indicador de swipe mobile (não precisa mais) */}
+                  
+                  {/* ✅ NOVA ESTRUTURA: SEM overflow-x-auto, SEM min-w */}
+                  <div className="overflow-visible">
+                    <table className="w-full border-collapse table-fixed">
                       <thead>
-                      <tr>
-                        <th className="text-[10px] font-black text-slate-500 uppercase tracking-widest p-2 border-b border-slate-200 dark:border-slate-700">
+                      <tr className="border-b-2 border-slate-200 dark:border-slate-700">
+                        {/* ✅ TODOS OS HEADERS CENTRALIZADOS */}
+                        <th className="text-[10px] font-black text-slate-500 uppercase tracking-widest p-2 text-center w-[10%]">
                           Mês
                         </th>
-                        <th className="text-[10px] font-black text-slate-500 uppercase tracking-widest p-2 border-b border-slate-200 dark:border-slate-700 w-32">
+                        <th className="text-[10px] font-black text-slate-500 uppercase tracking-widest p-2 text-center w-[18%]">
                           Cota Total (R$)
                         </th>
-                        <th className="text-[10px] font-black text-slate-500 uppercase tracking-widest p-2 border-b border-slate-200 dark:border-slate-700 w-32">
+                        <th className="text-[10px] font-black text-slate-500 uppercase tracking-widest p-2 text-center w-[18%]">
                           Despesas (R$)
                         </th>
-                        <th className="text-[10px] font-black text-slate-500 uppercase tracking-widest p-2 border-b border-slate-200 dark:border-slate-700 w-32 text-right">
+                        <th className="text-[10px] font-black text-slate-500 uppercase tracking-widest p-2 text-center w-[18%]">
                           Cota Limpa
                         </th>
-                        <th className="text-[10px] font-black text-slate-500 uppercase tracking-widest p-2 border-b border-slate-200 dark:border-slate-700 w-32 text-right">
-                          Cota Gerente (R$)
+                        <th className="text-[10px] font-black text-slate-500 uppercase tracking-widest p-2 text-center w-[18%]">
+                          Cota Gerente
                         </th>
-                        <th className="text-[10px] font-black text-slate-500 uppercase tracking-widest p-2 border-b border-slate-200 dark:border-slate-700 w-32 text-right">
+                        <th className="text-[10px] font-black text-slate-500 uppercase tracking-widest p-2 text-center w-[18%]">
                           Cota Comprador
                         </th>
                       </tr>
@@ -1307,9 +1301,14 @@ export default function BuyOrderParams({ user }: { user: any }) {
                             key={index}
                             className="border-b border-slate-100 dark:border-slate-800/50 hover:bg-slate-50 dark:hover:bg-slate-800/50 transition-colors"
                           >
-                            <td className="p-2 text-xs font-bold text-slate-700 dark:text-slate-300 uppercase">
-                              {monthNames[data.month - 1]}
+                            {/* ✅ COLUNA MÊS: CENTRALIZADA */}
+                            <td className="p-2 text-center">
+                              <span className="text-xs font-bold text-slate-700 dark:text-slate-300 uppercase">
+                                {monthNames[data.month - 1]}
+                              </span>
                             </td>
+                            
+                            {/* ✅ COTA TOTAL: INPUT CENTRALIZADO */}
                             <td className="p-2">
                               <input
                                 type="number"
@@ -1324,9 +1323,11 @@ export default function BuyOrderParams({ user }: { user: any }) {
                                     Number(e.target.value),
                                   )
                                 }
-                                className="w-full bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-lg px-2 py-1.5 text-xs font-black outline-none focus:border-orange-400 transition-all text-slate-900 dark:text-white touch-manipulation"
+                                className="w-full bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-lg px-2 py-1.5 text-xs font-black outline-none focus:border-orange-400 transition-all text-slate-900 dark:text-white text-center"
                               />
                             </td>
+                            
+                            {/* ✅ DESPESAS: INPUT CENTRALIZADO */}
                             <td className="p-2">
                               <input
                                 type="number"
@@ -1341,12 +1342,18 @@ export default function BuyOrderParams({ user }: { user: any }) {
                                     Number(e.target.value),
                                   )
                                 }
-                                className="w-full bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-lg px-2 py-1.5 text-xs font-black outline-none focus:border-orange-400 transition-all text-slate-900 dark:text-white touch-manipulation"
+                                className="w-full bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-lg px-2 py-1.5 text-xs font-black outline-none focus:border-orange-400 transition-all text-slate-900 dark:text-white text-center"
                               />
                             </td>
-                            <td className="p-2 text-xs font-black text-slate-400 text-right">
-                              {formatarMoeda(cotaLimpa)}
+                            
+                            {/* ✅ COTA LIMPA: READONLY CENTRALIZADO */}
+                            <td className="p-2">
+                              <div className="w-full bg-blue-50/30 dark:bg-blue-900/10 border border-blue-200 dark:border-blue-800 rounded-lg px-2 py-1.5 text-xs font-black text-blue-700 dark:text-blue-300 text-center">
+                                {formatarMoeda(cotaLimpa)}
+                              </div>
                             </td>
+                            
+                            {/* ✅ COTA GERENTE: INPUT CENTRALIZADO COM PLACEHOLDER MENOR */}
                             <td className="p-2">
                               <input
                                 type="number"
@@ -1360,14 +1367,16 @@ export default function BuyOrderParams({ user }: { user: any }) {
                                     e.target.value ? Number(e.target.value) : null,
                                   )
                                 }
-                                className="w-full bg-blue-50/30 dark:bg-blue-900/10 border border-blue-200 dark:border-blue-800 rounded-lg px-2 py-1.5 text-xs font-black outline-none focus:border-blue-400 text-right text-blue-700 dark:text-blue-300 touch-manipulation"
+                                className="w-full bg-emerald-50/30 dark:bg-emerald-900/10 border border-emerald-200 dark:border-emerald-800 rounded-lg px-2 py-1.5 text-xs font-black outline-none focus:border-emerald-400 text-emerald-700 dark:text-emerald-300 text-center placeholder:text-[9px] placeholder:text-emerald-400/60"
                               />
                             </td>
-                            <td className="p-2 text-right">
-                              <div className={`px-2 py-1.5 rounded-lg text-xs font-bold ${data.cota_comprador_valor < 0 ? "bg-red-100 text-red-700" : "bg-emerald-50 text-emerald-700"}`}>
+                            
+                            {/* ✅ COTA COMPRADOR: READONLY CENTRALIZADO */}
+                            <td className="p-2">
+                              <div className={`w-full rounded-lg px-2 py-1.5 text-xs font-bold text-center ${data.cota_comprador_valor < 0 ? "bg-red-100 text-red-700" : "bg-slate-100 text-slate-700 dark:bg-slate-700 dark:text-slate-300"}`}>
                                 {formatarMoeda(data.cota_comprador_valor || 0)}
                                 {data.cota_comprador_valor < 0 && (
-                                  <span className="block text-[9px] font-black uppercase mt-0.5">⚠️ Admin Necessário</span>
+                                  <span className="block text-[8px] font-black uppercase mt-0.5 text-red-600">⚠️ Negativo</span>
                                 )}
                               </div>
                             </td>

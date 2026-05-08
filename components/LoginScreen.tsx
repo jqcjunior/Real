@@ -78,10 +78,10 @@ const LoginScreen: React.FC<LoginScreenProps> = ({ onLoginAttempt, onRegisterReq
 
   return (
     <div className="min-h-screen flex items-center justify-center bg-gray-100 font-sans p-4">
-      <div className="w-full max-w-md bg-white rounded-[40px] shadow-2xl overflow-hidden p-8 md:p-12 border border-gray-100 relative">
+      <div className="w-full max-w-sm bg-white rounded-[32px] shadow-2xl overflow-hidden p-6 md:p-8 border border-gray-100 relative">
         
-        <div className="flex justify-center mb-10">
-          <div className="w-full h-24 flex items-center justify-center overflow-hidden">
+        <div className="flex justify-center mb-8">
+          <div className="w-full h-16 md:h-20 flex items-center justify-center overflow-hidden">
             <img 
               src={BRAND_LOGO} 
               alt="Real Admin Logo"
@@ -92,28 +92,28 @@ const LoginScreen: React.FC<LoginScreenProps> = ({ onLoginAttempt, onRegisterReq
           </div>
         </div>
 
-        <div className="text-center mb-10">
-            <h1 className="text-3xl font-black text-blue-950 uppercase italic tracking-tighter leading-none">ACESSO <span className="text-red-600">RESTRITO</span></h1>
+        <div className="text-center mb-8">
+            <h1 className="text-2xl md:text-3xl font-black text-blue-950 uppercase italic tracking-tighter leading-none">ACESSO <span className="text-red-600">RESTRITO</span></h1>
             <p className="text-[9px] text-blue-400 uppercase tracking-[0.5em] font-black mt-2 opacity-80">Real Calçados</p>
         </div>
 
-        <form onSubmit={handleSubmit} className="space-y-6">
+        <form onSubmit={handleSubmit} className="space-y-5">
             {error && <div className="bg-red-50 text-red-600 text-[11px] p-4 rounded-2xl text-center border border-red-100 font-black uppercase">{error}</div>}
-            <div className="space-y-2">
+            <div className="space-y-1.5">
                 <label className="block text-[10px] font-black text-gray-700 uppercase tracking-widest ml-1">E-mail Corporativo</label>
-                <input type="email" required value={email} onChange={(e) => setEmail(e.target.value)} className="w-full px-5 py-4 bg-gray-50 border border-gray-200 rounded-[24px] focus:bg-white focus:border-blue-500 outline-none transition-all text-gray-900 font-bold text-sm shadow-inner placeholder-gray-400" placeholder="usuario@realcalcados.com.br" />
+                <input type="email" required value={email} onChange={(e) => setEmail(e.target.value)} className="w-full px-4 py-3 md:py-3.5 bg-gray-50 border border-gray-200 rounded-2xl focus:bg-white focus:border-blue-500 outline-none transition-all text-gray-900 font-bold text-sm shadow-inner placeholder-gray-400" placeholder="usuario@realcalcados.com.br" />
             </div>
-            <div className="space-y-2">
+            <div className="space-y-1.5">
                 <label className="block text-[10px] font-black text-gray-700 uppercase tracking-widest ml-1">Senha de Acesso</label>
-                <input type="password" required value={password} onChange={(e) => setPassword(e.target.value)} autoComplete="off" className="w-full px-5 py-4 bg-gray-50 border border-gray-200 rounded-[24px] focus:bg-white focus:border-blue-500 outline-none transition-all text-gray-900 font-bold text-sm shadow-inner placeholder-gray-400" placeholder="••••••••" />
+                <input type="password" required value={password} onChange={(e) => setPassword(e.target.value)} autoComplete="off" className="w-full px-4 py-3 md:py-3.5 bg-gray-50 border border-gray-200 rounded-2xl focus:bg-white focus:border-blue-500 outline-none transition-all text-gray-900 font-bold text-sm shadow-inner placeholder-gray-400" placeholder="••••••••" />
             </div>
-            <button type="submit" disabled={isLoading} className="w-full bg-blue-950 hover:bg-black text-white font-black uppercase text-xs tracking-[0.2em] py-5 rounded-[24px] shadow-2xl transition-all border-b-4 border-red-700 disabled:opacity-50">
-                {isLoading ? <Loader2 className="animate-spin" size={18}/> : 'Validar Credenciais'}
+            <button type="submit" disabled={isLoading} className="w-full bg-blue-950 hover:bg-black text-white font-black uppercase text-xs tracking-[0.2em] py-4 rounded-2xl shadow-2xl transition-all border-b-4 border-red-700 disabled:opacity-50 mt-2">
+                {isLoading ? <Loader2 className="animate-spin mx-auto" size={18}/> : 'Validar Credenciais'}
             </button>
         </form>
 
-        <div className="mt-10 text-center">
-            <button type="button" onClick={() => setShowRegisterModal(true)} className="text-blue-900 font-black uppercase text-[10px] tracking-widest hover:bg-blue-50 px-6 py-3 rounded-xl transition-all">Solicitar Acesso</button>
+        <div className="mt-8 text-center">
+            <button type="button" onClick={() => setShowRegisterModal(true)} className="text-blue-900 font-black uppercase text-[10px] tracking-widest hover:bg-blue-50 px-6 py-2.5 rounded-xl transition-all">Solicitar Acesso</button>
         </div>
       </div>
 

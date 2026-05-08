@@ -62,6 +62,8 @@ class ApiService {
  
   async logout() {
     sessionStorage.clear();
+    localStorage.removeItem('auth_token'); // Limpar qualquer token residual
+    localStorage.removeItem('realcalcados_v3_user'); // Caso tenha vazado para localStorage
     window.location.reload(); 
   }
  

@@ -1,7 +1,7 @@
 import React, { useState, useMemo } from 'react';
 import { User, Store, MonthlyGoal, MonthlyPerformance, IceCreamSangria, IceCreamStockMovement, IceCreamStock, DetailedAdvice, MotivationalPhrase } from '../types';
 import { formatCurrency, formatDecimal } from '../constants';
-import { ShoppingBag, DollarSign, Package, Hash, AlertCircle, Trophy, BarChart3, TrendingUp, Target, Clock, BrainCircuit, Sparkles, Loader2, Zap, X, TrendingDown, Percent, Activity, Users, Medal, Gem, Minus, Quote } from 'lucide-react';
+import { ShoppingBag, DollarSign, Package, Hash, AlertCircle, Trophy, BarChart3, TrendingUp, Target, Clock, BrainCircuit, Sparkles, Loader2, Zap, X, TrendingDown, Percent, Activity, Users, Medal, Gem, Minus, Quote, Shield, ArrowUp, ArrowDown, Equal, Lightbulb, Crown } from 'lucide-react';
 import { supabase } from '../services/supabaseClient';
 
 interface DashboardManagerProps {
@@ -129,7 +129,6 @@ const DashboardManager: React.FC<DashboardManagerProps> = ({ user, stores, perfo
         averageTicket: 0, ticketTarget: 0
       });
 
-      // Fallback para metas se não houver no performanceData
       const finalRevenueTarget = aggregated.revenueTarget || Number(storeMonthGoal?.revenueTarget || 0);
       const finalItemsTarget = aggregated.itemsTarget || Number(storeMonthGoal?.itemsTarget || 0);
       const finalPATarget = (aggregated.paTarget / (storeMonthData.length || 1)) || Number(storeMonthGoal?.paTarget || 0);
@@ -244,6 +243,99 @@ const DashboardManager: React.FC<DashboardManagerProps> = ({ user, stores, perfo
       return ranked.sort((a, b) => b.score - a.score);
   }, [performanceData, goalsData, selectedMonth, stores, weightRevenue, weightPA]);
 
+  // 🆕 NOVO: Calcular médias da rede (sem expor valores absolutos)
+  const networkAverages = useMemo(() => {
+      if (weightedRanking.length === 0) return null;
+      
+      const storesWithTargets = weightedRanking.filter(s => s.revenueTarget > 0);
+      if (storesWithTargets.length === 0) return null;
+
+      const avgRevAttainment = storesWithTargets.reduce((sum, s) => sum + ((s.revenueActual / s.revenueTarget) * 100), 0) / storesWithTargets.length;
+      const avgPAAttainment = storesWithTargets.reduce((sum, s) => sum + ((s.paActual / s.paTarget) * 100), 0) / storesWithTargets.length;
+      const avgTicketAttainment = storesWithTargets.reduce((sum, s) => sum + ((s.ticketActual / s.ticketTarget) * 100), 0) / storesWithTargets.length;
+
+      return {
+          revAttainment: avgRevAttainment,
+          paAttainment: avgPAAttainment,
+          ticketAttainment: avgTicketAttainment
+      };
+  }, [weightedRanking]);
+
+  // 🆕 NOVO: Calcular posição relativa em cada métrica
+  const myRelativePosition = useMemo(() => {
+      if (!myStore || !myPerformance || !networkAverages) return null;
+
+      const myRevAttainment = (myPerformance.revAct / myPerformance.revTgt) * 100;
+      const myPAAttainment = (myPerformance.paAct / myPerformance.paTgt) * 100;
+      const myTicketAttainment = (myPerformance.tktAct / myPerformance.tktTgt) * 100;
+
+      return {
+          revenue: myRevAttainment >= networkAverages.revAttainment ? 'above' : 'below',
+          pa: myPAAttainment >= networkAverages.paAttainment ? 'above' : 'below',
+          ticket: myTicketAttainment >= networkAverages.ticketAttainment ? 'above' : 'below',
+          revDiff: myRevAttainment - networkAverages.revAttainment,
+          paDiff: myPAAttainment - networkAverages.paAttainment,
+          ticketDiff: myTicketAttainment - networkAverages.ticketAttainment
+      };
+  }, [myStore, myPerformance, networkAverages]);
+
+  // 🆕 NOVO: Calcular oportunidades inteligentes
+  const smartOpportunities = useMemo(() => {
+      if (!myStore || weightedRanking.length === 0) return [];
+      
+      const myIdx = weightedRanking.findIndex(r => String(r.storeId) === String(myStore.id));
+      if (myIdx === -1) return [];
+      
+      const curr = weightedRanking[myIdx];
+      const opportunities: Array<{ action: string; impact: string; priority: number }> = [];
+
+      // Oportunidade 1: P.A abaixo da meta
+      if (curr.paActual < curr.paTarget) {
+          const paDiff = curr.paTarget - curr.paActual;
+          const potentialPositions = weightedRanking.filter(s => s.score < curr.score + 5 && s.paActual < curr.paActual + paDiff).length;
+          opportunities.push({
+              action: `Aumentar P.A em ${paDiff.toFixed(2)} pontos`,
+              impact: potentialPositions > 0 ? `Pode ultrapassar ${potentialPositions} loja(s)` : 'Consolida sua posição',
+              priority: 1
+          });
+      }
+
+      // Oportunidade 2: Ticket abaixo da meta
+      if (curr.ticketActual < curr.ticketTarget) {
+          opportunities.push({
+              action: 'Melhorar Ticket Médio para atingir meta',
+              impact: 'Compensa P.A baixo no score global',
+              priority: 2
+          });
+      }
+
+      // Oportunidade 3: Meta de faturamento não batida
+      if (curr.revenueActual < curr.revenueTarget) {
+          const remaining = getRemainingWorkDays(selectedMonth, curr.storeId);
+          const dailyNeeded = (curr.revenueTarget - curr.revenueActual) / remaining;
+          opportunities.push({
+              action: `Manter ritmo de R$ ${dailyNeeded.toLocaleString('pt-BR', { maximumFractionDigits: 0 })}/dia`,
+              impact: 'Garante 100% da meta de faturamento',
+              priority: curr.revenueActual < curr.revenueTarget * 0.7 ? 1 : 3
+          });
+      }
+
+      // Oportunidade 4: Defesa de posição
+      if (myIdx < weightedRanking.length - 1) {
+          const below = weightedRanking[myIdx + 1];
+          const margin = curr.score - below.score;
+          if (margin < 3) {
+              opportunities.push({
+                  action: 'Manter performance atual',
+                  impact: `Loja ${below.storeNumber} está a apenas ${margin.toFixed(1)}% de te ultrapassar`,
+                  priority: 1
+              });
+          }
+      }
+
+      return opportunities.sort((a, b) => a.priority - b.priority).slice(0, 3);
+  }, [myStore, weightedRanking, selectedMonth]);
+
   const handleGenerateInsight = async () => {
     if (!myStore) return;
     setIsLoadingAi(true);
@@ -278,7 +370,7 @@ const DashboardManager: React.FC<DashboardManagerProps> = ({ user, stores, perfo
     setIsLoadingAi(false);
   };
 
-  const getRemainingWorkDays = (monthStr: string, storeId?: string) => {
+  function getRemainingWorkDays(monthStr: string, storeId?: string) {
     const [year, month] = monthStr.split('-').map(Number);
     const now = new Date();
     const lastDay = new Date(year, month, 0).getDate();
@@ -317,9 +409,9 @@ const DashboardManager: React.FC<DashboardManagerProps> = ({ user, stores, perfo
     }
 
     return Math.max(remainingCount, 1);
-  };
+  }
 
-  const getDetailedAdvice = (curr: any, next: any, idx: number): DetailedAdvice => {
+  function getDetailedAdvice(curr: any, next: any, idx: number): DetailedAdvice {
     const remainingDays = getRemainingWorkDays(selectedMonth, curr.storeId);
     const revDiff = Math.max(curr.revenueTarget - curr.revenueActual, 0);
     const dailyRev = revDiff / remainingDays;
@@ -372,9 +464,9 @@ const DashboardManager: React.FC<DashboardManagerProps> = ({ user, stores, perfo
     }
 
     return { prioridade, meta, indicadores, ranking, acoes: finalAcoes };
-  };
+  }
 
-  const getRevenueToPass = (curr: any, target: any) => {
+  function getRevenueToPass(curr: any, target: any) {
     if (!curr.revenueTarget || curr.revenueTarget <= 0) return null;
 
     const safeRatio = (act: number, tgt: number, mode: 'higher' | 'lower') => {
@@ -396,7 +488,8 @@ const DashboardManager: React.FC<DashboardManagerProps> = ({ user, stores, perfo
     const diff = neededTotalRev - curr.revenueActual;
     
     return diff > 0 ? diff : null;
-  };
+  }
+
 
   return (
     <div className="p-3 sm:p-4 md:p-6 space-y-4 sm:space-y-6 pb-16 min-h-full bg-slate-50 dark:bg-slate-950 transition-colors duration-300 animate-in fade-in duration-500">
@@ -621,84 +714,258 @@ const DashboardManager: React.FC<DashboardManagerProps> = ({ user, stores, perfo
                         </div>
                     </div>
 
-                    {/* Action Plan Sidebar */}
+                    {/* 🆕 NOVO: Action Plan Sidebar MELHORADO */}
                     <div className="lg:col-span-1 space-y-4 sm:space-y-6 order-1 lg:order-2">
                         {(() => {
                             const myIdx = weightedRanking.findIndex(item => myStore && item.storeNumber === myStore.number);
-                            if (myIdx > 0) {
-                                const curr = weightedRanking[myIdx];
-                                const nextStore = weightedRanking[myIdx - 1];
-                                const diff = nextStore.score - curr.score;
-                                const advice = getDetailedAdvice(curr, nextStore, myIdx);
-                                const storesAbove = weightedRanking.slice(Math.max(0, myIdx - 3), myIdx).reverse();
-
+                            const curr = weightedRanking[myIdx];
+                            
+                            // 🆕 CASO 1: LOJA #1 - DEFESA DE LIDERANÇA
+                            if (myIdx === 0) {
+                                const secondPlace = weightedRanking[1];
+                                const margin = secondPlace ? curr.score - secondPlace.score : 0;
+                                
                                 return (
-                                    <div className="bg-blue-950 text-white p-5 sm:p-6 md:p-8 rounded-3xl sm:rounded-[48px] shadow-xl flex flex-col gap-4 sm:gap-6 border border-blue-800/50 animate-in slide-in-from-right duration-700">
+                                    <div className="bg-gradient-to-br from-amber-500 to-orange-600 text-white p-5 sm:p-6 md:p-8 rounded-3xl sm:rounded-[48px] shadow-2xl flex flex-col gap-4 sm:gap-6 border-2 border-amber-400/50 animate-in slide-in-from-right duration-700">
                                         <div className="flex items-center gap-3 sm:gap-4">
-                                            <div className="p-2 sm:p-3 bg-blue-900 rounded-xl sm:rounded-2xl shadow-inner">
-                                                <TrendingUp size={20} className="text-blue-300 sm:hidden" />
-                                                <TrendingUp size={24} className="text-blue-300 hidden sm:block" />
+                                            <div className="p-3 sm:p-4 bg-white/20 rounded-2xl sm:rounded-3xl shadow-lg backdrop-blur-sm">
+                                                <Crown size={24} className="text-yellow-300 sm:hidden" />
+                                                <Crown size={28} className="text-yellow-300 hidden sm:block" />
                                             </div>
                                             <div>
-                                                <p className="text-[9px] sm:text-[10px] font-black uppercase tracking-widest text-blue-400">Plano de Ação</p>
-                                                <h4 className="text-xs sm:text-sm font-black italic uppercase">Próximo Nível</h4>
+                                                <p className="text-[9px] sm:text-[10px] font-black uppercase tracking-widest text-amber-100">Liderança Absoluta</p>
+                                                <h4 className="text-sm sm:text-base font-black italic uppercase leading-tight">Você é o #01 da Rede!</h4>
                                             </div>
                                         </div>
                                         
-                                        <div className="space-y-4 sm:space-y-6">
-                                            <div className="space-y-2">
-                                                <p className="text-[11px] sm:text-xs font-bold leading-relaxed">
-                                                    Para passar a <span className="italic text-blue-200 font-black">Loja {nextStore.storeNumber}</span>, melhore seu score em <span className="text-blue-300 font-black">{diff.toFixed(1)}%</span>.
-                                                </p>
-                                                
-                                                <div className="bg-blue-900/40 p-4 sm:p-5 rounded-2xl sm:rounded-3xl border border-blue-800/30 space-y-2 sm:space-y-3">
-                                                    {advice.acoes.map((line, i) => (
-                                                        <p key={i} className="text-[9px] sm:text-[10px] text-blue-100 font-medium leading-tight flex items-start gap-2">
-                                                            <Zap size={10} className="text-amber-400 mt-0.5 shrink-0" /> 
-                                                            <span className="flex-1">{line}</span>
+                                        {secondPlace && (
+                                            <div className="space-y-4 sm:space-y-6">
+                                                <div className="space-y-2">
+                                                    <div className="flex items-center gap-2">
+                                                        <Shield size={16} className="text-amber-200" />
+                                                        <p className="text-[10px] sm:text-xs font-black uppercase tracking-widest text-amber-100">Defesa da Posição</p>
+                                                    </div>
+                                                    <div className="bg-white/10 backdrop-blur-sm p-4 sm:p-5 rounded-2xl sm:rounded-3xl border border-white/20">
+                                                        <p className="text-xs sm:text-sm font-bold leading-relaxed mb-2">
+                                                            Sua margem sobre a <span className="text-amber-200 font-black">Loja {secondPlace.storeNumber}</span> é de <span className="text-amber-200 font-black">{margin.toFixed(1)}%</span>
                                                         </p>
-                                                    ))}
+                                                        {margin < 5 && (
+                                                            <p className="text-[9px] sm:text-[10px] font-bold text-amber-100 flex items-start gap-2">
+                                                                <AlertCircle size={12} className="shrink-0 mt-0.5" />
+                                                                <span>Atenção: margem pequena! Mantenha o foco.</span>
+                                                            </p>
+                                                        )}
+                                                    </div>
+                                                </div>
+
+                                                <div className="space-y-2">
+                                                    <div className="flex items-center gap-2">
+                                                        <Target size={16} className="text-amber-200" />
+                                                        <p className="text-[10px] sm:text-xs font-black uppercase tracking-widest text-amber-100">Para Manter a Liderança</p>
+                                                    </div>
+                                                    <div className="space-y-2">
+                                                        {curr.revenueActual >= curr.revenueTarget ? (
+                                                            <div className="flex items-start gap-2 bg-white/10 backdrop-blur-sm p-3 rounded-xl border border-white/20">
+                                                                <Zap size={12} className="text-amber-300 shrink-0 mt-0.5" />
+                                                                <p className="text-[9px] sm:text-[10px] font-medium text-white flex-1">✓ Meta de faturamento batida!</p>
+                                                            </div>
+                                                        ) : (
+                                                            <div className="flex items-start gap-2 bg-white/10 backdrop-blur-sm p-3 rounded-xl border border-white/20">
+                                                                <Zap size={12} className="text-amber-300 shrink-0 mt-0.5" />
+                                                                <p className="text-[9px] sm:text-[10px] font-medium text-white flex-1">Mantenha faturamento acima de {((curr.revenueActual / curr.revenueTarget) * 100).toFixed(0)}%</p>
+                                                            </div>
+                                                        )}
+                                                        
+                                                        {curr.paActual >= curr.paTarget ? (
+                                                            <div className="flex items-start gap-2 bg-white/10 backdrop-blur-sm p-3 rounded-xl border border-white/20">
+                                                                <Zap size={12} className="text-amber-300 shrink-0 mt-0.5" />
+                                                                <p className="text-[9px] sm:text-[10px] font-medium text-white flex-1">✓ P.A acima da meta!</p>
+                                                            </div>
+                                                        ) : (
+                                                            <div className="flex items-start gap-2 bg-white/10 backdrop-blur-sm p-3 rounded-xl border border-white/20">
+                                                                <Zap size={12} className="text-amber-300 shrink-0 mt-0.5" />
+                                                                <p className="text-[9px] sm:text-[10px] font-medium text-white flex-1">Manter P.A acima de {curr.paActual.toFixed(2)}</p>
+                                                            </div>
+                                                        )}
+                                                    </div>
                                                 </div>
                                             </div>
+                                        )}
+                                    </div>
+                                );
+                            }
+                            
+                            // 🆕 CASO 2: LOJAS NÃO-#1 - PLANO DE AÇÃO COMPLETO
+                            if (myIdx > 0) {
+                                const nextStore = weightedRanking[myIdx - 1];
+                                const diff = nextStore.score - curr.score;
+                                const storesAbove = weightedRanking.slice(Math.max(0, myIdx - 3), myIdx).reverse();
 
-                                            <div className="pt-3 sm:pt-4 border-t border-blue-800/50 space-y-2 sm:space-y-3">
-                                                <p className="text-[8px] sm:text-[9px] font-black uppercase tracking-widest text-blue-400 mb-2">Metas de Ultrapassagem</p>
-                                                {storesAbove.map((s, i) => {
-                                                    const neededRev = getRevenueToPass(curr, s);
-                                                    if (neededRev === null) {
+                                return (
+                                    <div className="space-y-4 sm:space-y-6">
+                                        {/* Card Principal - Próximo Nível */}
+                                        <div className="bg-blue-950 text-white p-5 sm:p-6 md:p-8 rounded-3xl sm:rounded-[48px] shadow-xl flex flex-col gap-4 sm:gap-6 border border-blue-800/50 animate-in slide-in-from-right duration-700">
+                                            <div className="flex items-center gap-3 sm:gap-4">
+                                                <div className="p-2 sm:p-3 bg-blue-900 rounded-xl sm:rounded-2xl shadow-inner">
+                                                    <TrendingUp size={20} className="text-blue-300 sm:hidden" />
+                                                    <TrendingUp size={24} className="text-blue-300 hidden sm:block" />
+                                                </div>
+                                                <div>
+                                                    <p className="text-[9px] sm:text-[10px] font-black uppercase tracking-widest text-blue-400">Plano de Ação</p>
+                                                    <h4 className="text-xs sm:text-sm font-black italic uppercase">Próximo Nível</h4>
+                                                </div>
+                                            </div>
+                                            
+                                            <div className="space-y-4 sm:space-y-6">
+                                                <div className="space-y-2">
+                                                    <p className="text-[11px] sm:text-xs font-bold leading-relaxed">
+                                                        Para passar a <span className="italic text-blue-200 font-black">Loja {nextStore.storeNumber}</span>, melhore seu score em <span className="text-blue-300 font-black">{diff.toFixed(1)}%</span>.
+                                                    </p>
+                                                    
+                                                    <div className="bg-blue-900/40 p-4 sm:p-5 rounded-2xl sm:rounded-3xl border border-blue-800/30 space-y-2 sm:space-y-3">
+                                                        {smartOpportunities.slice(0, 2).map((opp, i) => (
+                                                            <p key={i} className="text-[9px] sm:text-[10px] text-blue-100 font-medium leading-tight flex items-start gap-2">
+                                                                <Zap size={10} className="text-amber-400 mt-0.5 shrink-0" /> 
+                                                                <span className="flex-1">{opp.action}</span>
+                                                            </p>
+                                                        ))}
+                                                    </div>
+                                                </div>
+
+                                                <div className="pt-3 sm:pt-4 border-t border-blue-800/50 space-y-2 sm:space-y-3">
+                                                    <p className="text-[8px] sm:text-[9px] font-black uppercase tracking-widest text-blue-400 mb-2">Metas de Ultrapassagem</p>
+                                                    {storesAbove.map((s, i) => {
+                                                        const neededRev = getRevenueToPass(curr, s);
+                                                        if (neededRev === null) {
+                                                            return (
+                                                                <div key={i} className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-2 bg-blue-900/20 p-2.5 sm:p-3 rounded-xl sm:rounded-2xl border border-blue-800/20">
+                                                                    <p className="text-[9px] sm:text-[10px] font-bold text-blue-100">Melhorar <span className="text-amber-400">P.A / P.U</span></p>
+                                                                    <p className="text-[7px] sm:text-[8px] font-black uppercase text-blue-400">Passar Loja {s.storeNumber}</p>
+                                                                </div>
+                                                            );
+                                                        }
                                                         return (
                                                             <div key={i} className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-2 bg-blue-900/20 p-2.5 sm:p-3 rounded-xl sm:rounded-2xl border border-blue-800/20">
-                                                                <p className="text-[9px] sm:text-[10px] font-bold text-blue-100">Melhorar <span className="text-amber-400">P.A / P.U</span></p>
+                                                                <p className="text-[9px] sm:text-[10px] font-bold text-blue-100">Vender <span className="text-emerald-400">{formatCurrency(neededRev)}</span></p>
                                                                 <p className="text-[7px] sm:text-[8px] font-black uppercase text-blue-400">Passar Loja {s.storeNumber}</p>
                                                             </div>
                                                         );
-                                                    }
-                                                    return (
-                                                        <div key={i} className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-2 bg-blue-900/20 p-2.5 sm:p-3 rounded-xl sm:rounded-2xl border border-blue-800/20">
-                                                            <p className="text-[9px] sm:text-[10px] font-bold text-blue-100">Vender <span className="text-emerald-400">{formatCurrency(neededRev)}</span></p>
-                                                            <p className="text-[7px] sm:text-[8px] font-black uppercase text-blue-400">Passar Loja {s.storeNumber}</p>
-                                                        </div>
-                                                    );
-                                                })}
+                                                    })}
+                                                </div>
                                             </div>
                                         </div>
+
+                                        {/* 🆕 NOVO: Card Comparativo com a Rede */}
+                                        {myRelativePosition && (
+                                            <div className="bg-gradient-to-br from-slate-50 to-white dark:from-slate-900 dark:to-slate-800 p-5 sm:p-6 rounded-3xl sm:rounded-[40px] shadow-lg border border-slate-100 dark:border-slate-800 animate-in slide-in-from-right duration-700 delay-100">
+                                                <div className="flex items-center gap-3 mb-4">
+                                                    <div className="p-2 bg-slate-200 dark:bg-slate-700 rounded-xl">
+                                                        <BarChart3 size={18} className="text-slate-700 dark:text-slate-300" />
+                                                    </div>
+                                                    <div>
+                                                        <p className="text-[9px] sm:text-[10px] font-black uppercase tracking-widest text-slate-400 dark:text-slate-500">Sua Performance</p>
+                                                        <h5 className="text-xs sm:text-sm font-black italic uppercase text-slate-900 dark:text-white">vs Média da Rede</h5>
+                                                    </div>
+                                                </div>
+
+                                                <div className="space-y-3">
+                                                    <div className="flex items-center justify-between p-3 bg-slate-50 dark:bg-slate-800/50 rounded-xl">
+                                                        <div className="flex items-center gap-2">
+                                                            <DollarSign size={14} className="text-slate-600 dark:text-slate-400" />
+                                                            <span className="text-[10px] font-bold text-slate-700 dark:text-slate-300">Faturamento</span>
+                                                        </div>
+                                                        <div className="flex items-center gap-2">
+                                                            {myRelativePosition.revenue === 'above' ? (
+                                                                <>
+                                                                    <ArrowUp size={14} className="text-emerald-500" />
+                                                                    <span className="text-[9px] font-black text-emerald-600 dark:text-emerald-400">Acima da média</span>
+                                                                </>
+                                                            ) : (
+                                                                <>
+                                                                    <ArrowDown size={14} className="text-rose-500" />
+                                                                    <span className="text-[9px] font-black text-rose-600 dark:text-rose-400">Abaixo da média</span>
+                                                                </>
+                                                            )}
+                                                        </div>
+                                                    </div>
+
+                                                    <div className="flex items-center justify-between p-3 bg-slate-50 dark:bg-slate-800/50 rounded-xl">
+                                                        <div className="flex items-center gap-2">
+                                                            <ShoppingBag size={14} className="text-slate-600 dark:text-slate-400" />
+                                                            <span className="text-[10px] font-bold text-slate-700 dark:text-slate-300">P.A</span>
+                                                        </div>
+                                                        <div className="flex items-center gap-2">
+                                                            {myRelativePosition.pa === 'above' ? (
+                                                                <>
+                                                                    <ArrowUp size={14} className="text-emerald-500" />
+                                                                    <span className="text-[9px] font-black text-emerald-600 dark:text-emerald-400">Acima da média</span>
+                                                                </>
+                                                            ) : (
+                                                                <>
+                                                                    <ArrowDown size={14} className="text-rose-500" />
+                                                                    <span className="text-[9px] font-black text-rose-600 dark:text-rose-400">Oportunidade!</span>
+                                                                </>
+                                                            )}
+                                                        </div>
+                                                    </div>
+
+                                                    <div className="flex items-center justify-between p-3 bg-slate-50 dark:bg-slate-800/50 rounded-xl">
+                                                        <div className="flex items-center gap-2">
+                                                            <Users size={14} className="text-slate-600 dark:text-slate-400" />
+                                                            <span className="text-[10px] font-bold text-slate-700 dark:text-slate-300">Ticket</span>
+                                                        </div>
+                                                        <div className="flex items-center gap-2">
+                                                            {myRelativePosition.ticket === 'above' ? (
+                                                                <>
+                                                                    <ArrowUp size={14} className="text-emerald-500" />
+                                                                    <span className="text-[9px] font-black text-emerald-600 dark:text-emerald-400">Acima da média</span>
+                                                                </>
+                                                            ) : (
+                                                                <>
+                                                                    <Equal size={14} className="text-blue-500" />
+                                                                    <span className="text-[9px] font-black text-blue-600 dark:text-blue-400">Na média</span>
+                                                                </>
+                                                            )}
+                                                        </div>
+                                                    </div>
+                                                </div>
+                                            </div>
+                                        )}
+
+                                        {/* 🆕 NOVO: Card de Oportunidades Inteligentes */}
+                                        {smartOpportunities.length > 0 && (
+                                            <div className="bg-gradient-to-br from-indigo-50 to-purple-50 dark:from-indigo-900/20 dark:to-purple-900/20 p-5 sm:p-6 rounded-3xl sm:rounded-[40px] shadow-lg border border-indigo-100 dark:border-indigo-800/30 animate-in slide-in-from-right duration-700 delay-200">
+                                                <div className="flex items-center gap-3 mb-4">
+                                                    <div className="p-2 bg-indigo-200 dark:bg-indigo-800 rounded-xl">
+                                                        <Lightbulb size={18} className="text-indigo-700 dark:text-indigo-300" />
+                                                    </div>
+                                                    <div>
+                                                        <p className="text-[9px] sm:text-[10px] font-black uppercase tracking-widest text-indigo-400 dark:text-indigo-500">Análise Estratégica</p>
+                                                        <h5 className="text-xs sm:text-sm font-black italic uppercase text-indigo-900 dark:text-indigo-100">Oportunidades</h5>
+                                                    </div>
+                                                </div>
+
+                                                <div className="space-y-3">
+                                                    {smartOpportunities.map((opp, i) => (
+                                                        <div key={i} className="bg-white/60 dark:bg-slate-800/60 backdrop-blur-sm p-4 rounded-2xl border border-indigo-100 dark:border-indigo-800/30">
+                                                            <div className="flex items-start gap-2 mb-2">
+                                                                <div className="w-6 h-6 rounded-full bg-indigo-600 text-white flex items-center justify-center text-[10px] font-black shrink-0">
+                                                                    {i + 1}
+                                                                </div>
+                                                                <p className="text-[10px] sm:text-xs font-bold text-slate-900 dark:text-white flex-1">{opp.action}</p>
+                                                            </div>
+                                                            <p className="text-[9px] font-medium text-indigo-700 dark:text-indigo-300 ml-8">
+                                                                {opp.impact}
+                                                            </p>
+                                                        </div>
+                                                    ))}
+                                                </div>
+                                            </div>
+                                        )}
                                     </div>
                                 );
                             }
-                            if (myIdx === 0) {
-                                return (
-                                    <div className="bg-emerald-600 text-white p-5 sm:p-6 md:p-8 rounded-3xl sm:rounded-[48px] shadow-xl flex items-center gap-4 sm:gap-6 border border-emerald-500 animate-in slide-in-from-right duration-700">
-                                        <div className="p-3 sm:p-4 bg-emerald-500 rounded-2xl sm:rounded-3xl shadow-inner">
-                                            <Trophy size={28} className="text-yellow-300 sm:hidden" />
-                                            <Trophy size={32} className="text-yellow-300 hidden sm:block" />
-                                        </div>
-                                        <div>
-                                            <p className="text-[9px] sm:text-[10px] font-black uppercase tracking-widest text-emerald-200 mb-1">Liderança Absoluta</p>
-                                            <p className="text-xs sm:text-sm font-black italic uppercase">Você é o #01 da Rede!</p>
-                                        </div>
-                                    </div>
-                                );
-                            }
+                            
                             return null;
                         })()}
                     </div>
@@ -812,5 +1079,3 @@ const DashboardManager: React.FC<DashboardManagerProps> = ({ user, stores, perfo
 };
 
 export default DashboardManager;
-
-// ===== DASHBOARD ADMIN RESPONSIVO ABAIXO =====
