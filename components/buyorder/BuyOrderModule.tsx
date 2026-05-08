@@ -714,7 +714,6 @@ export default function BuyOrderModule({ user }: { user?: User }) {
           .from("buy_orders")
           .insert({
             user_id: userId,
-            store_id: user?.storeId, // ✅ Adicionado store_id
             user_name: user?.name || user?.email || "sistema",
             user_role: cab.role,
             brand_id: brandId,

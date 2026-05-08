@@ -45,7 +45,11 @@ BEGIN
         ), 0
       ) as total_pedidos_mes
     FROM buy_orders bo
-    WHERE bo.store_id = p_store_number
+    WHERE EXISTS (
+        SELECT 1 FROM buy_order_sub_orders so 
+        WHERE so.order_id = bo.id 
+          AND p_store_number::text IN (SELECT jsonb_array_elements_text(lojas_numeros))
+    )
     AND bo.tipo_comprador = p_tipo_comprador
     AND bo.status != 'CANCELADO'
     AND bo.titulos_pagamento IS NOT NULL

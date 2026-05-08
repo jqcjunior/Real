@@ -43,7 +43,11 @@ BEGIN
         COALESCE(SUM((SELECT SUM((parcela->>'valor')::NUMERIC) FROM jsonb_array_elements(bo.titulos_pagamento->'parcelas') parcela WHERE (parcela->>'mes')::INTEGER = v_month AND (parcela->>'ano')::INTEGER = v_year)), 0) as total_pedidos,
         COUNT(DISTINCT bo.id) as count_pedidos
       FROM buy_orders bo
-      WHERE bo.store_id = p_store_number
+      WHERE EXISTS (
+        SELECT 1 FROM buy_order_sub_orders so 
+        WHERE so.order_id = bo.id 
+          AND p_store_number::text IN (SELECT jsonb_array_elements_text(lojas_numeros))
+      )
         AND UPPER(bo.tipo_comprador) = 'COMPRADOR'
         AND bo.status != 'CANCELADO'
         AND bo.titulos_pagamento IS NOT NULL
@@ -59,7 +63,11 @@ BEGIN
         COALESCE(SUM((SELECT SUM((parcela->>'valor')::NUMERIC) FROM jsonb_array_elements(bo.titulos_pagamento->'parcelas') parcela WHERE (parcela->>'mes')::INTEGER = v_month AND (parcela->>'ano')::INTEGER = v_year)), 0) as total_pedidos,
         COUNT(DISTINCT bo.id) as count_pedidos
       FROM buy_orders bo
-      WHERE bo.store_id = p_store_number
+      WHERE EXISTS (
+        SELECT 1 FROM buy_order_sub_orders so 
+        WHERE so.order_id = bo.id 
+          AND p_store_number::text IN (SELECT jsonb_array_elements_text(lojas_numeros))
+      )
         AND UPPER(bo.tipo_comprador) = 'GERENTE'
         AND bo.status != 'CANCELADO'
         AND bo.titulos_pagamento IS NOT NULL

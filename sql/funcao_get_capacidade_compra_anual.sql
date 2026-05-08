@@ -32,7 +32,11 @@ BEGIN
       SUM((parcela->>'valor')::NUMERIC) as valor
     FROM buy_orders bo,
     jsonb_array_elements(bo.titulos_pagamento->'parcelas') parcela
-    WHERE bo.store_id = p_store_number
+    WHERE EXISTS (
+        SELECT 1 FROM buy_order_sub_orders so 
+        WHERE so.order_id = bo.id 
+          AND p_store_number::text IN (SELECT jsonb_array_elements_text(lojas_numeros))
+    )
     AND bo.tipo_comprador = p_tipo_comprador
     AND bo.status != 'CANCELADO'
     AND (parcela->>'ano')::INTEGER = p_year

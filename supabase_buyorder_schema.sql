@@ -938,13 +938,14 @@ $$ LANGUAGE plpgsql;
 CREATE OR REPLACE FUNCTION reparar_transacoes_cotas()
 RETURNS VOID AS $$
 BEGIN
-    -- Preenche store_number em transações que estão nulas, buscando do pedido original
+    -- Preenche store_number em transações que estão nulas, buscando da primeira sub-ordem correspondente
     UPDATE buyorder_quota_transactions qt
-    SET store_number = s.number
-    FROM buy_orders o
-    JOIN stores s ON s.id = o.store_id
-    WHERE qt.order_id = o.id 
-      AND (qt.store_number IS NULL OR qt.store_number::INTEGER != s.number::INTEGER);
+    SET store_number = (
+        SELECT jsonb_array_elements_text(so.lojas_numeros)->>0 
+        FROM buy_order_sub_orders so 
+        WHERE so.order_id = qt.order_id LIMIT 1
+    )
+    WHERE qt.store_number IS NULL;
 
     -- Tenta vincular quota_control_id se o registro já existir agora
     UPDATE buyorder_quota_transactions qt
