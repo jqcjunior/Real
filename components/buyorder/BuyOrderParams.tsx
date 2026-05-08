@@ -639,8 +639,6 @@ interface Store {
   cota_total: number;
   despesas_comprometidas: number;
   cota_compra_disponivel: number;
-  cota_gerente_pct: number;
-  cota_comprador_pct: number;
   cota_gerente_valor: number;
   cota_comprador_valor: number;
 }
@@ -654,8 +652,6 @@ interface StoreParams {
   masculino_pct: number;
   acessorio_pct: number;
   cota_valor: number;
-  cota_gerente_pct: number;
-  cota_comprador_pct: number;
   usa_parametros_customizados: boolean;
 }
 
@@ -721,6 +717,8 @@ export default function BuyOrderParams({ user }: { user: any }) {
       cota_gerente_fixa: null,
     })),
   );
+
+  const [cotasDisponiveis, setCotasDisponiveis] = useState<any[]>([]);
 
   const toNumber = (v: any): number => {
     if (v === null || v === undefined || v === "") return 0;
@@ -788,8 +786,6 @@ export default function BuyOrderParams({ user }: { user: any }) {
           cota_total: quotaInfo?.cota_total || 0,
           despesas_comprometidas: quotaInfo?.despesas_comprometidas || 0,
           cota_compra_disponivel: quotaInfo?.cota_compra_disponivel || 0,
-          cota_gerente_pct: quotaInfo?.cota_gerente_pct || 30, // Default 30
-          cota_comprador_pct: quotaInfo?.cota_comprador_pct || 70, // Default 70
           cota_gerente_valor: quotaInfo?.cota_gerente_valor || 0,
           cota_comprador_valor: quotaInfo?.cota_comprador_valor || 0,
         };
@@ -832,6 +828,20 @@ export default function BuyOrderParams({ user }: { user: any }) {
       });
 
       if (quotaError) throw quotaError;
+
+      // Buscar cotas disponíveis da VIEW (cálculo OTB correto)
+      const { data: cotasView, error: cotasError } = await supabase
+        .from('v_cota_disponivel_mes')
+        .select('*')
+        .eq('store_number', store.store_number)
+        .eq('year', selectedYear)
+        .order('month');
+      
+      if (cotasError) {
+        console.warn('Erro ao carregar cotas disponíveis:', cotasError);
+      }
+      
+      setCotasDisponiveis(cotasView || []);
 
       // Carregar também os parâmetros brutos para pegar porcentagens anuais e outras flags
       const { data: paramData } = await supabase
@@ -953,11 +963,25 @@ export default function BuyOrderParams({ user }: { user: any }) {
 
       if (error) throw error;
 
-      // Sincronizar cotas para o ano atual e o próximo após salvar parâmetros
+      // Sincronizar cotas para o ano fiscal rolling após salvar parâmetros
       try {
-        await supabase.rpc("inicializar_cotas_ano", { p_year: selectedYear });
-      } catch (syncErr) {
+        const { data: rpcData, error: rpcError } = await supabase.rpc("inicializar_cotas_ano", {
+          p_store_number: selectedStore.store_number,
+          p_cota_valor: monthlyData[0].cotaTotal,
+          p_despesas_comprometidas: monthlyData[0].despesas,
+          p_cota_gerente_valor: monthlyData[0].cota_gerente_fixa || 0
+        });
+
+        if (rpcError) throw rpcError;
+
+        if (rpcData && rpcData.success) {
+           toast.success(rpcData.message || `Cotas inicializadas: ${rpcData.rows_created} meses`);
+        } else if (rpcData) {
+           toast.error(rpcData.message || "Erro ao inicializar cotas");
+        }
+      } catch (syncErr: any) {
         console.error("Erro na sincronização automática das cotas:", syncErr);
+        toast.error("Erro na sincronização: " + syncErr.message);
       }
 
       alert(`✅ Parâmetros salvos para o ano ${selectedYear}!`);
@@ -1373,12 +1397,29 @@ export default function BuyOrderParams({ user }: { user: any }) {
                             
                             {/* ✅ COTA COMPRADOR: READONLY CENTRALIZADO */}
                             <td className="p-2">
-                              <div className={`w-full rounded-lg px-2 py-1.5 text-xs font-bold text-center ${data.cota_comprador_valor < 0 ? "bg-red-100 text-red-700" : "bg-slate-100 text-slate-700 dark:bg-slate-700 dark:text-slate-300"}`}>
-                                {formatarMoeda(data.cota_comprador_valor || 0)}
-                                {data.cota_comprador_valor < 0 && (
-                                  <span className="block text-[8px] font-black uppercase mt-0.5 text-red-600">⚠️ Negativo</span>
-                                )}
-                              </div>
+                              {(() => {
+                                // Buscar cota disponível da VIEW (cálculo OTB correto)
+                                const cotaOTB = cotasDisponiveis.find(
+                                  c => c.month === data.month
+                                )?.cota_comprador_total || 0;
+                                
+                                const isNegativo = cotaOTB < 0;
+                                
+                                return (
+                                  <div className={`w-full rounded-lg px-2 py-1.5 text-xs font-bold text-center ${
+                                    isNegativo
+                                      ? "bg-red-100 text-red-700" 
+                                      : "bg-emerald-100 text-emerald-700"
+                                  }`}>
+                                    {formatarMoeda(cotaOTB)}
+                                    {isNegativo && (
+                                      <span className="block text-[8px] font-black uppercase mt-0.5 text-red-600">
+                                        ⚠️ Negativo
+                                      </span>
+                                    )}
+                                  </div>
+                                );
+                              })()}
                             </td>
                           </tr>
                         );

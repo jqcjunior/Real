@@ -680,8 +680,6 @@ export interface PurchaseParameterGlobal {
     acessorio_pct: number;
     sub_metas: any;
     cota_default: number;
-    cota_gerente_pct: number;
-    cota_comprador_pct: number;
     created_at: string;
 }
 
@@ -697,8 +695,6 @@ export interface PurchaseParameterStore {
     acessorio_pct: number | null;
     sub_metas: any | null;
     cota_valor: number | null;
-    cota_gerente_pct: number | null;
-    cota_comprador_pct: number | null;
     created_at: string;
 }
 

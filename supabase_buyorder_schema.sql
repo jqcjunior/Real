@@ -1052,3 +1052,164 @@ BEGIN
   ORDER BY o.created_at DESC;
 END;
 $$ LANGUAGE plpgsql;
+
+-- =========================================================================
+-- 11. SISTEMA OTB (Open-To-Buy) - Lógica de Pagamento 90/120/150 dias
+-- =========================================================================
+
+-- Função para debitar cotas baseado em faturamento + 3/4/5 meses
+CREATE OR REPLACE FUNCTION debitar_cota_pedido(p_order_id UUID)
+RETURNS JSONB AS $$
+DECLARE
+    v_order RECORD;
+    v_order_items_total DECIMAL(12,2);
+    v_loja TEXT;
+    v_num_lojas INT;
+    v_valor_por_loja DECIMAL(12,2);
+    v_valor_parcela DECIMAL(12,2);
+    v_fat_date DATE;
+    v_count INT := 0;
+    v_qc_id UUID;
+    v_vencimento DATE;
+    v_i INT;
+    v_lojas_array JSONB;
+BEGIN
+    -- Busca dados básicos do pedido
+    SELECT * INTO v_order FROM buy_orders WHERE id = p_order_id;
+    IF NOT FOUND THEN RETURN jsonb_build_object('success', false, 'message', 'Pedido não encontrado'); END IF;
+
+    -- Busca lojas vinculadas (sub-pedidos)
+    SELECT lojas_numeros INTO v_lojas_array FROM buy_order_sub_orders WHERE order_id = p_order_id LIMIT 1;
+    v_num_lojas := COALESCE(jsonb_array_length(v_lojas_array), 1);
+
+    -- Calcula valor total do pedido (soma de itens)
+    SELECT SUM(total_custo) INTO v_order_items_total FROM buy_order_items WHERE order_id = p_order_id;
+    v_order_items_total := COALESCE(v_order_items_total, 0);
+
+    -- Se não houver valor, não há o que debitar
+    IF v_order_items_total <= 0 THEN RETURN jsonb_build_object('success', true, 'message', 'Valor zero, sem débitos'); END IF;
+
+    v_valor_por_loja := v_order_items_total / v_num_lojas;
+    v_valor_parcela := v_valor_por_loja / 3; -- Sempre 3 parcelas (90/120/150)
+
+    -- Data base de faturamento
+    v_fat_date := COALESCE(v_order.fat_inicio, v_order.created_at::DATE);
+
+    -- Para cada loja no array
+    FOR v_loja IN SELECT * FROM jsonb_array_elements_text(v_lojas_array) LOOP
+        
+        -- Criar as 3 parcelas futuras
+        FOR v_i IN 3..5 LOOP
+            v_vencimento := v_fat_date + (v_i * interval '1 month');
+            
+            -- Tentar encontrar ou inicializar o controle de cota para o mês/ano do vencimento
+            SELECT id INTO v_qc_id FROM buyorder_quota_control 
+            WHERE store_number = v_loja 
+              AND year = EXTRACT(YEAR FROM v_vencimento) 
+              AND month = EXTRACT(MONTH FROM v_vencimento);
+
+            IF v_qc_id IS NULL THEN
+                -- Se não existir cota para o mês futuro, inicializa o mês
+                PERFORM inicializar_cotas_mes(EXTRACT(YEAR FROM v_vencimento)::INT, EXTRACT(MONTH FROM v_vencimento)::INT);
+                
+                SELECT id INTO v_qc_id FROM buyorder_quota_control 
+                WHERE store_number = v_loja 
+                  AND year = EXTRACT(YEAR FROM v_vencimento) 
+                  AND month = EXTRACT(MONTH FROM v_vencimento);
+            END IF;
+
+            -- Registra a transação de cota
+            INSERT INTO buyorder_quota_transactions (
+                quota_control_id,
+                store_number,
+                order_id,
+                valor_abatido,
+                tipo_comprador,
+                vencimento_data,
+                aplicado,
+                descricao
+            ) VALUES (
+                v_qc_id,
+                v_loja,
+                p_order_id,
+                v_valor_parcela,
+                'COMPRADOR',
+                v_vencimento,
+                false, -- Pendente até o cron aplicar no mês real
+                'Pedido #' || COALESCE(v_order.numero_pedido::TEXT, p_order_id::TEXT) || ' (Parcela ' || (v_i-2) || '/3 - ' || v_i || ' meses)'
+            );
+            v_count := v_count + 1;
+        END LOOP;
+    END LOOP;
+
+    RETURN jsonb_build_object('success', true, 'transactions_created', v_count);
+END;
+$$ LANGUAGE plpgsql;
+
+-- Trigger para disparar débito quando o pedido é CONFIRMADO
+CREATE OR REPLACE FUNCTION trigger_process_quota_debit()
+RETURNS TRIGGER AS $$
+BEGIN
+    -- Se o status mudou para 'confirmado'
+    IF (NEW.status = 'confirmado' AND (OLD.status IS NULL OR OLD.status != 'confirmado')) THEN
+        PERFORM debitar_cota_pedido(NEW.id);
+    END IF;
+    
+    -- Se o status mudou de 'confirmado' para outro, removemos as transações pendentes
+    IF (OLD.status = 'confirmado' AND NEW.status != 'confirmado') THEN
+        DELETE FROM buyorder_quota_transactions WHERE order_id = NEW.id;
+    END IF;
+
+    RETURN NEW;
+END;
+$$ LANGUAGE plpgsql;
+
+DROP TRIGGER IF EXISTS trg_buyorder_status_quota ON buy_orders;
+CREATE TRIGGER trg_buyorder_status_quota
+AFTER UPDATE ON buy_orders
+FOR EACH ROW
+EXECUTE FUNCTION trigger_process_quota_debit();
+
+-- VIEW OTB: Soma das 3 cotas futuras vs Compromissos nessas 3 cotas
+CREATE OR REPLACE VIEW v_cota_disponivel_mes AS
+WITH meses_pagamento AS (
+  SELECT 
+    s.number as store_number,
+    gen_year as year,
+    gen_month as month,
+    -- Meses que pagarão se lançar NO MÊS REFERÊNCIA (+3, +4, +5)
+    (DATE_TRUNC('month', TO_DATE(gen_year || '-' || gen_month || '-01', 'YYYY-MM-DD')) + interval '3 month')::DATE as mes_p1,
+    (DATE_TRUNC('month', TO_DATE(gen_year || '-' || gen_month || '-01', 'YYYY-MM-DD')) + interval '4 month')::DATE as mes_p2,
+    (DATE_TRUNC('month', TO_DATE(gen_year || '-' || gen_month || '-01', 'YYYY-MM-DD')) + interval '5 month')::DATE as mes_p3
+  FROM stores s
+  CROSS JOIN (SELECT generate_series(2025, 2028) as gen_year) y
+  CROSS JOIN (SELECT generate_series(1, 12) as gen_month) m
+  WHERE s.is_active = true
+),
+quota_sums AS (
+  SELECT 
+    mp.store_number,
+    mp.year,
+    mp.month,
+    -- COTA LIMPA (Cota Total - Despesas) para os meses de pagamento
+    COALESCE((SELECT SUM(cota_comprador_inicial) FROM buyorder_quota_control 
+     WHERE store_number = mp.store_number 
+       AND ( (year = EXTRACT(YEAR FROM mp.mes_p1) AND month = EXTRACT(MONTH FROM mp.mes_p1))
+          OR (year = EXTRACT(YEAR FROM mp.mes_p2) AND month = EXTRACT(MONTH FROM mp.mes_p2))
+          OR (year = EXTRACT(YEAR FROM mp.mes_p3) AND month = EXTRACT(MONTH FROM mp.mes_p3)) )
+    ), 0) as total_quota_pago,
+    -- COMPROMISSOS JÁ LANÇADOS que vencem nesses meses
+    COALESCE((SELECT SUM(valor_abatido) FROM buyorder_quota_transactions 
+     WHERE store_number = mp.store_number 
+       AND vencimento_data >= mp.mes_p1 
+       AND vencimento_data < (mp.mes_p3 + interval '1 month')
+    ), 0) as total_comprometido_pago
+  FROM meses_pagamento mp
+)
+SELECT 
+  store_number,
+  year,
+  month,
+  (total_quota_pago - total_comprometido_pago) as cota_comprador_total
+FROM quota_sums;
+
