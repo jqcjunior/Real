@@ -41,8 +41,8 @@ const DashboardPAModule = lazy(() => import('./components/dashboardPA/DashboardP
 const DashboardPAGerente = lazy(() => import('./components/dashboardPA/DashboardPAGerente'));
 const BuyOrderModule = lazy(() => import('./components/buyorder/BuyOrderModule'));
 const BuyOrderParams = lazy(() => import('./components/buyorder/BuyOrderParams'));
-const BuyOrderDashboard = lazy(() => import('./components/buyorder/BuyOrderDashboard'));
-const StockForecastDashboard = lazy(() => import('./components/StockForecastDashboard'));
+import BuyOrderDashboard from './components/buyorder/BuyOrderDashboard';
+import StockForecastDashboard from './components/StockForecastDashboard';
 const BuyOrderQuotaView = lazy(() => import('./components/buyorder/BuyOrderQuotaView'));
 const ReportsPage = lazy(() => import('./components/ReportsPage'));
 const AdminQuotaExtraApprovals = lazy(() => import('./components/buyorder/AdminQuotaExtraApprovals'));
@@ -122,7 +122,15 @@ const styles = `
 `;
 
 const App: React.FC = () => {
-    const [user, setUser] = useState<User | null>(null);
+    const [user, setUser] = useState<User | null>(() => {
+        // Sempre exigir login ao carregar/recarregar a página
+        // conforme solicitado pelo usuário para evitar "logon automático" 
+        try {
+            sessionStorage.clear();
+            localStorage.removeItem('auth_token');
+        } catch (e) {}
+        return null;
+    });
     const isAdmin = user?.role === UserRole.ADMIN;
     const [currentView, setCurrentView] = useState<string>('welcome');
     const [gestaoComprasOpen, setGestaoComprasOpen] = useState(false);
@@ -174,12 +182,6 @@ const App: React.FC = () => {
         if (window.innerWidth >= 1024) {
             setIsSidebarOpen(true);
         }
-        
-        // Sempre exigir login ao carregar/recarregar a página
-        // conforme solicitado pelo usuário para evitar "logon automático" indesejado
-        sessionStorage.clear();
-        setUser(null);
-        
         setIsLoading(false);
     }, []);
 

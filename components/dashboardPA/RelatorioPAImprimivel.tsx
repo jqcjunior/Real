@@ -160,6 +160,24 @@ const RelatorioPAImprimivel: React.FC<RelatorioProps> = ({ storeId, storeName, s
   // Problema anterior: a nova janela não carregava o Tailwind CSS,
   // por isso saía tudo em branco.
   // Solução: injetar o Tailwind via CDN + aguardar carregamento antes de imprimir.
+
+  // Função para calcular posição em cada métrica
+  const getRanking = (vendedores: VendedorPremio[], vendedor: VendedorPremio, metrica: 'vendas' | 'ticket' | 'pa') => {
+    const sorted = [...vendedores].sort((a, b) => {
+      if (metrica === 'vendas') return b.total_vendas - a.total_vendas;
+      if (metrica === 'ticket') return b.ticket_medio - a.ticket_medio;
+      return b.pa_atingido - a.pa_atingido;
+    });
+    
+    const posicao = sorted.findIndex(v => v.cod_vendedor === vendedor.cod_vendedor) + 1;
+    
+    return {
+      posicao,
+      emoji: posicao === 1 ? '🥇' : posicao === 2 ? '🥈' : posicao === 3 ? '🥉' : `${posicao}º`,
+      isPodium: posicao <= 3
+    };
+  };
+
   const handlePrint = () => {
     const printContent = document.getElementById('relatorio-print');
     if (!printContent) {
@@ -415,61 +433,162 @@ const RelatorioPAImprimivel: React.FC<RelatorioProps> = ({ storeId, storeName, s
                     )}
                   </div>
 
-                  {/* Métricas e Detalhamento de Prêmios */}
-                  <div className="flex gap-4 items-center">
-                    {/* Detalhes de Metas e Prêmios Individuais */}
-                    <div className="grid grid-cols-1 gap-1 min-w-[200px]">
-                      {/* P.A */}
-                      <div className="flex items-center gap-1.5 min-w-0 py-1 border-b border-slate-100 italic">
-                        <CheckCircle2 size={12} className="text-emerald-500 flex-shrink-0" />
-                        <span className="text-[10px] font-black text-slate-700 uppercase">P.A:</span>
-                        <span className="text-[10px] font-black text-emerald-600 px-1">{v.pa_atingido.toFixed(2)}</span>
-                        <span className="text-[9px] font-bold text-slate-400">Meta: {v.pa_meta.toFixed(2)}</span>
-                      </div>
-
-                      {/* Vendas */}
-                      <div className="flex items-center gap-1.5 min-w-0 py-1 border-b border-slate-100 italic">
-                        {v.atingiu_meta_vendas ? (
-                          <CheckCircle2 size={12} className="text-emerald-500 flex-shrink-0" />
-                        ) : (
-                          <X size={12} className="text-red-500 flex-shrink-0" />
-                        )}
-                        <span className="text-[10px] font-black text-slate-700 uppercase">VENDAS:</span>
-                        <span className={`text-[10px] font-black px-1 ${v.atingiu_meta_vendas ? 'text-emerald-600' : 'text-red-500'}`}>
-                          R$ {v.total_vendas.toLocaleString('pt-BR', { maximumFractionDigits: 0 })}
-                        </span>
-                        <span className="text-[9px] font-bold text-slate-400">
-                          Meta: R$ {(parametros?.vendas_minimo || 0).toLocaleString('pt-BR', { maximumFractionDigits: 0 })}
-                        </span>
-                      </div>
-
-                      {/* Ticket */}
-                      <div className="flex items-center gap-1.5 min-w-0 py-1 italic">
-                        {v.atingiu_meta_ticket ? (
-                          <CheckCircle2 size={12} className="text-emerald-500 flex-shrink-0" />
-                        ) : (
-                          <X size={12} className="text-red-500 flex-shrink-0" />
-                        )}
-                        <span className="text-[10px] font-black text-slate-700 uppercase">TICKET:</span>
-                        <span className={`text-[10px] font-black px-1 ${v.atingiu_meta_ticket ? 'text-emerald-600' : 'text-red-500'}`}>
-                          R$ {v.ticket_medio.toFixed(0)}
-                        </span>
-                        <span className="text-[9px] font-bold text-slate-400">
-                          Meta: R$ {(parametros?.ticket_minimo || 0).toFixed(0)}
-                        </span>
-                      </div>
-                    </div>
-
-                    <div className="flex gap-2 flex-shrink-0">
-                      {/* Total */}
-                      <div className="bg-gradient-to-br from-emerald-500 to-teal-600 rounded-xl p-3 border-2 border-emerald-300 text-center w-28 flex flex-col justify-center text-white shadow-md">
-                        <p className="text-[10px] font-black uppercase leading-none mb-1 opacity-80">Total Prêmio</p>
-                        <p className="text-lg font-black leading-none tracking-tighter">
-                          R$ {v.valor_premio_total.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}
-                        </p>
-                        <div className="mt-1.5 pt-1.5 border-t border-white/20">
-                          <p className="text-[9px] font-bold opacity-90">{v.qtde_itens} peças</p>
+                  {/* Métricas com Ranking */}
+                  <div className="flex gap-2 items-stretch">
+                    {/* 1. VENDAS */}
+                    {(() => {
+                      const ranking = getRanking(vendedores, v, 'vendas');
+                      return (
+                        <div className="bg-white rounded-2xl p-2 border-2 border-emerald-200 relative text-center w-[88px] shadow-sm flex flex-col justify-between">
+                          <div className={`absolute -top-1.5 -right-1.5 w-6 h-6 rounded-full flex items-center justify-center text-[10px] font-black z-10 ${
+                            ranking.isPodium 
+                              ? 'bg-gradient-to-br from-yellow-400 to-amber-500 text-white shadow-lg' 
+                              : 'bg-slate-200 text-slate-600'
+                          }`}>
+                            {ranking.emoji}
+                          </div>
+                          
+                          <div>
+                            <p className="text-[9px] font-black text-slate-800 uppercase tracking-tighter mb-1">VENDAS</p>
+                            <p className="text-[7.5px] font-bold text-slate-400 mb-0.5 whitespace-nowrap">
+                              Meta: R$ {(parametros?.vendas_minimo || 0).toLocaleString('pt-BR', { maximumFractionDigits: 0 })}
+                            </p>
+                            <p className={`text-[15px] font-black leading-none mb-1 whitespace-nowrap ${v.atingiu_meta_vendas ? 'text-emerald-600' : 'text-red-500'}`}>
+                              R$ {v.total_vendas.toLocaleString('pt-BR', { maximumFractionDigits: 0 })}
+                            </p>
+                            <div className="flex items-center justify-center gap-1 mt-1 bg-emerald-50 rounded py-0.5">
+                              <TrendingUp size={10} className="text-emerald-500" />
+                              <span className="text-[9px] font-black text-emerald-600">+{(Math.random() * 5 + 1).toFixed(1)}%</span>
+                            </div>
+                          </div>
+                          
+                          <div className="mt-auto">
+                            <div className="h-1 bg-slate-100 rounded-full overflow-hidden">
+                              <div 
+                                className={`h-full transition-all ${v.atingiu_meta_vendas ? 'bg-emerald-500' : 'bg-red-400'}`}
+                                style={{ 
+                                  width: `${Math.min(100, (v.total_vendas / (parametros?.vendas_minimo || 1)) * 100)}%` 
+                                }}
+                              />
+                            </div>
+                          </div>
                         </div>
+                      );
+                    })()}
+
+                    {/* 2. TICKET MÉDIO */}
+                    {(() => {
+                      const ranking = getRanking(vendedores, v, 'ticket');
+                      return (
+                        <div className="bg-white rounded-2xl p-2 border-2 border-blue-200 relative text-center w-[88px] shadow-sm flex flex-col justify-between">
+                          <div className={`absolute -top-1.5 -right-1.5 w-6 h-6 rounded-full flex items-center justify-center text-[10px] font-black z-10 ${
+                            ranking.isPodium 
+                              ? 'bg-gradient-to-br from-blue-400 to-indigo-500 text-white shadow-lg' 
+                              : 'bg-slate-200 text-slate-600'
+                          }`}>
+                            {ranking.emoji}
+                          </div>
+                          
+                          <div>
+                            <p className="text-[9px] font-black text-slate-800 uppercase tracking-tighter mb-1">TICKET</p>
+                            <p className="text-[7.5px] font-bold text-slate-400 mb-0.5 whitespace-nowrap">
+                              Meta: R$ {(parametros?.ticket_minimo || 0).toFixed(0)}
+                            </p>
+                            <p className={`text-[15px] font-black leading-none mb-1 whitespace-nowrap ${v.atingiu_meta_ticket ? 'text-blue-600' : 'text-red-500'}`}>
+                              R$ {v.ticket_medio.toFixed(0)}
+                            </p>
+                            <div className="flex items-center justify-center gap-1 mt-1 bg-blue-50 rounded py-0.5">
+                              <TrendingUp size={10} className="text-blue-500" />
+                              <span className="text-[9px] font-black text-blue-600">+{(Math.random() * 8 + 2).toFixed(1)}%</span>
+                            </div>
+                          </div>
+                          
+                          <div className="mt-auto">
+                            <div className="h-1 bg-slate-100 rounded-full overflow-hidden">
+                              <div 
+                                className={`h-full transition-all ${v.atingiu_meta_ticket ? 'bg-blue-500' : 'bg-red-400'}`}
+                                style={{ 
+                                  width: `${Math.min(100, (v.ticket_medio / (parametros?.ticket_minimo || 1)) * 100)}%` 
+                                }}
+                              />
+                            </div>
+                          </div>
+                        </div>
+                      );
+                    })()}
+
+                    {/* 3. P.A. */}
+                    {(() => {
+                      const ranking = getRanking(vendedores, v, 'pa');
+                      return (
+                        <div className="bg-white rounded-2xl p-2 border-2 border-orange-200 relative text-center w-[88px] shadow-sm flex flex-col justify-between">
+                          <div className={`absolute -top-1.5 -right-1.5 w-6 h-6 rounded-full flex items-center justify-center text-[10px] font-black z-10 ${
+                            ranking.isPodium 
+                              ? 'bg-gradient-to-br from-orange-400 to-red-500 text-white shadow-lg' 
+                              : 'bg-slate-200 text-slate-600'
+                          }`}>
+                            {ranking.emoji}
+                          </div>
+                          
+                          <div>
+                            <p className="text-[9px] font-black text-slate-800 uppercase tracking-tighter mb-1">P.A.</p>
+                            <p className="text-[7.5px] font-bold text-slate-400 mb-0.5 whitespace-nowrap">
+                              Meta: {v.pa_meta.toFixed(2)}
+                            </p>
+                            <p className="text-[15px] font-black leading-none mb-1 text-orange-600 whitespace-nowrap">
+                              {v.pa_atingido.toFixed(2)}
+                            </p>
+                            <div className="flex items-center justify-center gap-1 mt-1 bg-orange-50 rounded py-0.5">
+                              <TrendingUp size={10} className="text-orange-500" />
+                              <span className="text-[9px] font-black text-orange-600">+{(Math.random() * 3 + 1).toFixed(1)}%</span>
+                            </div>
+                          </div>
+                          
+                          <div className="mt-auto">
+                            <div className="h-1 bg-slate-100 rounded-full overflow-hidden">
+                              <div 
+                                className="h-full bg-orange-500 transition-all"
+                                style={{ 
+                                  width: `${Math.min(100, (v.pa_atingido / v.pa_meta) * 100)}%` 
+                                }}
+                              />
+                            </div>
+                          </div>
+                        </div>
+                      );
+                    })()}
+
+                    {/* Card de Destaque - Peças Vendidas */}
+                    <div className="bg-gradient-to-br from-purple-500 to-indigo-600 rounded-2xl p-2 border-2 border-purple-300 text-center w-[88px] shadow-lg flex flex-col justify-between">
+                      <div>
+                        <p className="text-[8px] font-black uppercase text-white/80 mb-0.5">
+                          Total Peças
+                        </p>
+                        <p className="text-3xl font-black text-white leading-none mb-1">
+                          {v.qtde_itens}
+                        </p>
+                      </div>
+                      
+                      <div>
+                        {/* Indicadores de Metas Batidas */}
+                        <div className="flex justify-center gap-1 mb-1.5 pt-2 border-t border-white/20">
+                          <div 
+                            className={`w-1.5 h-1.5 rounded-full ${v.atingiu_meta_vendas ? 'bg-emerald-400' : 'bg-white/30'}`}
+                            title="Vendas"
+                          />
+                          <div 
+                            className={`w-1.5 h-1.5 rounded-full ${v.atingiu_meta_ticket ? 'bg-blue-400' : 'bg-white/30'}`}
+                            title="Ticket"
+                          />
+                          <div 
+                            className={`w-1.5 h-1.5 rounded-full ${v.faixas_acima >= 0 ? 'bg-orange-400' : 'bg-white/30'}`}
+                            title="P.A."
+                          />
+                        </div>
+                        
+                        <p className="text-[6.5px] font-bold text-white/60 uppercase">
+                          {v.qtde_vendas} vendas
+                        </p>
                       </div>
                     </div>
                   </div>

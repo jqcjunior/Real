@@ -1,82 +1,49 @@
-import React, { useState, useEffect } from 'react';
+import * as React from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import { supabase } from '../../services/supabaseClient';
-import { Package, Store as StoreIcon, Activity, BarChart3, Tag, ChevronDown, ChevronRight, DollarSign } from 'lucide-react';
+import { 
+  Package, 
+  Store as StoreIcon, 
+  TrendingUp, 
+  CheckCircle, 
+  ChevronDown,
+  ChevronUp,
+  DollarSign,
+  Loader2,
+  Tags
+} from 'lucide-react';
+import { motion, AnimatePresence } from 'framer-motion';
 
-interface DashboardSummary {
-  total_pares: number;
-  total_unidades: number; // ✅ NOVO
-  valor_total: number;
-}
+// --- Helper Functions (Defined outside to avoid hook issues) ---
+const formatValue = (val: number): string => {
+  return new Intl.NumberFormat('pt-BR', {
+    style: 'currency',
+    currency: 'BRL'
+  }).format(val);
+};
 
-interface TypeStat {
-  tipo: string;
-  pares: number;
-  valor: number;
-  percentual: number;
-  modelos: ModelStat[];
-}
+const getTypeIcons = (type: string) => {
+  const t = (type || '').toUpperCase();
+  switch(t) {
+    case 'FEMININO': return '👠';
+    case 'MASCULINO': return '👔';
+    case 'INFANTIL': return '👶';
+    case 'ACESSÓRIO': return '💼';
+    default: return '📦';
+  }
+};
 
-interface ModelStat {
-  subtipo?: string;
-  modelo: string;
-  pares: number;
-  valor: number;
-  percentual: number;
-  pares_por_loja?: Record<number, number>;
-}
-
-interface StoreStat {
-  loja: string;
-  cidade: string;
-  pares: number;
-  valor: number;
-  pedidos: number;
-}
-
-interface BrandStat {
-  marca: string;
-  pares: number;
-  valor: number;
-  percentual: number;
-}
-
+// --- Main Component ---
 export default function BuyOrderDashboard({ user }: { user: any }) {
   const [loading, setLoading] = useState(true);
   const [userStoreNumber, setUserStoreNumber] = useState<number | null>(null);
-  const [summary, setSummary] = useState<DashboardSummary | null>(null);
-  const [typeStats, setTypeStats] = useState<TypeStat[]>([]);
-  const [storeStats, setStoreStats] = useState<StoreStat[]>([]);
-  const [brandStats, setBrandStats] = useState<BrandStat[]>([]);
-  
+  const [summary, setSummary] = useState<any>(null);
+  const [typeStats, setTypeStats] = useState<any[]>([]);
+  const [storeStats, setStoreStats] = useState<any[]>([]);
+  const [brandStats, setBrandStats] = useState<any[]>([]);
   const [expandedType, setExpandedType] = useState<string | null>(null);
 
-  useEffect(() => {
-    async function fetchStoreNumber() {
-      if (!user?.storeId || user.role === 'ADMIN') {
-        setUserStoreNumber(null);
-        return;
-      }
-      
-      const { data } = await supabase
-        .from('stores')
-        .select('number')
-        .eq('id', user.storeId)
-        .single();
-      
-      if (data?.number) {
-        setUserStoreNumber(parseInt(data.number));
-        console.log('✅ Dashboard: Loja do gerente:', data.number);
-      }
-    }
-    
-    fetchStoreNumber();
-  }, [user]);
-
-  useEffect(() => {
-    fetchData();
-  }, [userStoreNumber]);
-
-  const fetchData = async () => {
+  const fetchData = useCallback(async () => {
     setLoading(true);
     try {
       const currentYear = new Date().getFullYear();
@@ -97,532 +64,203 @@ export default function BuyOrderDashboard({ user }: { user: any }) {
 
       if (oError) throw oError;
 
-      const { data: storesObj, error: sError } = await supabase.from('stores').select('number, city');
-      if (sError) throw sError;
-      const cityMap = new Map<string, string>();
-      storesObj?.forEach(s => cityMap.set(String(s.number), s.city));
+      const typeMap: Record<string, any> = {};
+      const storeMap: Record<number, any> = {};
+      const brandMap: Record<string, any> = {};
+      let totalValue = 0;
+      let totalPairs = 0;
 
-      let totalPares = 0;
-      let totalUnidades = 0; // ✅ NOVO: contador separado para acessórios
-      let valorTotal = 0;
+      orders?.forEach(order => {
+        const orderValue = order.buy_order_items?.reduce((acc: number, item: any) => acc + (item.total_pares * item.custo), 0) || 0;
+        const orderPairs = order.buy_order_items?.reduce((acc: number, item: any) => acc + item.total_pares, 0) || 0;
 
-      const storeAgg = new Map<string, { pares: number; valor: number; pedidos: Set<number> }>();
-      const brandAgg = new Map<string, { pares: number; valor: number }>();
-      
-      const typeAgg = new Map<string, { 
-        pares: number; 
-        valor: number; 
-        modelStats: Map<string, { 
-          pares: number; 
-          valor: number;
-          pares_por_loja: Map<number, number>;
-        }> 
-      }>();
+        const relevantStores = order.buy_order_sub_orders?.flatMap((so: any) => so.lojas_numeros) || [];
+        const isSelfOrder = userStoreNumber === null || relevantStores.includes(userStoreNumber);
 
-      for (const order of (orders || [])) {
-        const subOrders = order.buy_order_sub_orders || [];
-        
-        // ✅ CORREÇÃO: Verificar se o gerente está em ALGUM sub-pedido
-        if (user?.role !== 'ADMIN' && userStoreNumber) {
-          const incluiLoja = subOrders.some((sub: any) => 
-            sub.lojas_numeros?.includes(userStoreNumber)
-          );
-          
-          if (!incluiLoja) {
-            console.log('🔍 Pedido ignorado (não inclui loja', userStoreNumber, ')');
-            continue;
-          }
-        }
-        
-        const numLojas = subOrders.reduce((acc, sub) => acc + (sub.lojas_numeros?.length || 0), 0);
-        
-        if (numLojas === 0) continue;
-
-        let orderPares = 0;
-        let orderCusto = 0;
-
-        for (const item of (order.buy_order_items || [])) {
-          const p = Number(item.total_pares || 0);
-          const v = Number(item.custo || 0) * p;
-          
-          orderPares += p;
-          orderCusto += v;
-
-          let dept = (item.modelo || 'OUTROS').toUpperCase();
-          if (dept === 'FEM') dept = 'FEMININO';
-          if (dept === 'MASC') dept = 'MASCULINO';
-          if (dept === 'INF') dept = 'INFANTIL';
-          if (dept === 'ACES') dept = 'ACESSÓRIO';
-          
-          // ✅ CORREÇÃO: Somar acessórios em contador separado
-          if (dept === 'ACESSÓRIO') {
-            totalUnidades += p;
-          } else {
-            totalPares += p;
-          }
-          
-          let subCat = (item.tipo || 'OUTROS').toUpperCase();
-          
-          let mapKey = subCat;
-          if (dept === 'INFANTIL') {
-            if (subCat.includes('FEM') || subCat.includes('MENINA')) {
-              mapKey = 'FEMININO|' + subCat;
-            } else if (subCat.includes('MASC') || subCat.includes('MENINO')) {
-              mapKey = 'MASCULINO|' + subCat;
-            } else {
-              mapKey = 'UNISSEX|' + subCat;
+        if (isSelfOrder) {
+          totalValue += orderValue;
+          totalPairs += orderPairs;
+          brandMap[order.marca] = (brandMap[order.marca] || 0) + orderValue;
+          order.buy_order_items?.forEach((item: any) => {
+            const val = item.total_pares * item.custo;
+            if (!typeMap[item.tipo]) {
+              typeMap[item.tipo] = { total: 0, items: {} };
             }
-          }
-
-          const paresPorLoja = p / numLojas;
-
-          const tAgg = typeAgg.get(dept) || { pares: 0, valor: 0, modelStats: new Map() };
-          tAgg.pares += p;
-          tAgg.valor += v;
-          
-          const mAgg = tAgg.modelStats.get(mapKey) || { 
-            pares: 0, 
-            valor: 0,
-            pares_por_loja: new Map()
-          };
-          mAgg.pares += p;
-          mAgg.valor += v;
-          
-          subOrders.forEach((sub: any) => {
-            (sub.lojas_numeros || []).forEach((lojaNum: number) => {
-              const currentPares = mAgg.pares_por_loja.get(lojaNum) || 0;
-              mAgg.pares_por_loja.set(lojaNum, currentPares + paresPorLoja);
-            });
+            typeMap[item.tipo].total += val;
+            typeMap[item.tipo].items[item.modelo] = (typeMap[item.tipo].items[item.modelo] || 0) + val;
           });
-          
-          tAgg.modelStats.set(mapKey, mAgg);
-          typeAgg.set(dept, tAgg);
+          relevantStores.forEach((sNum: number) => {
+              if (userStoreNumber === null || sNum === userStoreNumber) {
+                  storeMap[sNum] = (storeMap[sNum] || 0) + (orderValue / Math.max(1, relevantStores.length));
+              }
+          });
         }
-
-        valorTotal += orderCusto;
-
-        const bAgg = brandAgg.get(order.marca) || { pares: 0, valor: 0 };
-        bAgg.pares += orderPares;
-        bAgg.valor += orderCusto;
-        brandAgg.set(order.marca, bAgg);
-
-        subOrders.forEach((sub: any) => {
-          (sub.lojas_numeros || []).forEach((lojaRaw: number) => {
-            const loja = String(lojaRaw);
-            const sAgg = storeAgg.get(loja) || { pares: 0, valor: 0, pedidos: new Set() };
-            sAgg.pares += orderPares / numLojas;
-            sAgg.valor += orderCusto / numLojas;
-            sAgg.pedidos.add(order.id);
-            storeAgg.set(loja, sAgg);
-          });
-        });
-      }
-
-      setSummary({ 
-        total_pares: totalPares, 
-        total_unidades: totalUnidades, // ✅ NOVO
-        valor_total: valorTotal 
       });
 
-      const stStats: StoreStat[] = Array.from(storeAgg.entries()).map(([loja, agg]) => ({
-        loja,
-        cidade: cityMap.get(loja) || 'Desconhecida',
-        pares: agg.pares,
-        valor: agg.valor,
-        pedidos: agg.pedidos.size
-      }))
-      .filter(s => {
-        if (user?.role !== 'ADMIN' && userStoreNumber) {
-          return parseInt(s.loja) === userStoreNumber;
-        }
-        return true;
-      })
-      .sort((a, b) => Number(a.loja) - Number(b.loja));
-      setStoreStats(stStats);
-
-      const brStats: BrandStat[] = Array.from(brandAgg.entries()).map(([marca, agg]) => ({
-        marca: marca || 'SEM MARCA',
-        pares: agg.pares,
-        valor: agg.valor,
-        percentual: (totalPares + totalUnidades) > 0 ? (agg.pares / (totalPares + totalUnidades)) * 100 : 0 // ✅ CORREÇÃO
-      })).sort((a, b) => b.pares - a.pares).slice(0, 18);
-      setBrandStats(brStats);
-
-      const builtTypes: TypeStat[] = Array.from(typeAgg.entries()).map(([tipo, agg]) => {
-        const typePares = agg.pares;
-        const typeModelos: ModelStat[] = Array.from(agg.modelStats.entries()).map(([key, mAgg]) => {
-          let subtipo = undefined;
-          let modelo = key;
-          if (tipo === 'INFANTIL' && key.includes('|')) {
-            const parts = key.split('|');
-            subtipo = parts[0];
-            modelo = parts[1];
-          }
-          
-          const paresPorLojaObj: Record<number, number> = {};
-          mAgg.pares_por_loja.forEach((pares, loja) => {
-            paresPorLojaObj[loja] = Math.round(pares);
-          });
-          
-          return {
-            subtipo,
-            modelo,
-            pares: mAgg.pares,
-            valor: mAgg.valor,
-            percentual: typePares > 0 ? (mAgg.pares / typePares) * 100 : 0,
-            pares_por_loja: paresPorLojaObj
-          };
-        }).sort((a, b) => b.pares - a.pares);
-
-        return {
-          tipo,
-          pares: agg.pares,
-          valor: agg.valor,
-          percentual: (totalPares + totalUnidades) > 0 ? (agg.pares / (totalPares + totalUnidades)) * 100 : 0, // ✅ CORREÇÃO
-          modelos: typeModelos
-        };
-      });
-      
-      const sortOrder = ['FEMININO', 'MASCULINO', 'INFANTIL', 'ACESSÓRIO'];
-      builtTypes.sort((a, b) => {
-        let idxA = sortOrder.indexOf(a.tipo);
-        let idxB = sortOrder.indexOf(b.tipo);
-        if (idxA === -1) idxA = 99;
-        if (idxB === -1) idxB = 99;
-        return idxA - idxB;
-      });
-
-      setTypeStats(builtTypes);
+      setSummary({ totalValue, totalPairs, orderCount: orders?.length || 0 });
+      setTypeStats(Object.keys(typeMap).map(k => ({ 
+          type: k, 
+          value: typeMap[k].total,
+          items: Object.keys(typeMap[k].items).map(i => ({ name: i, value: typeMap[k].items[i] }))
+      })));
+      setStoreStats(Object.keys(storeMap).map(k => ({ store: k, value: storeMap[k] })));
+      setBrandStats(Object.keys(brandMap).map(k => ({ brand: k, value: brandMap[k] })).sort((a,b) => b.value - a.value).slice(0, 10));
 
     } catch (err) {
-      console.error('Erro ao buscar dashboard:', err);
+      console.error('❌ Dashboard Error:', err);
     } finally {
       setLoading(false);
     }
-  };
+  }, [userStoreNumber]);
 
-  const handleTypeClick = (tipo: string) => {
-    if (expandedType === tipo) {
-      setExpandedType(null);
-    } else {
-      setExpandedType(tipo);
+  useEffect(() => {
+    async function fetchStoreNumber() {
+      if (!user?.storeId || user.role === 'ADMIN') {
+        setUserStoreNumber(null);
+        return;
+      }
+      const { data } = await supabase.from('stores').select('number').eq('id', user.storeId).single();
+      if (data?.number) {
+        setUserStoreNumber(parseInt(data.number));
+      }
     }
-  };
+    fetchStoreNumber();
+  }, [user]);
 
-  const toNumber = (v: any): number => {
-    if (v === null || v === undefined || v === '') return 0;
-    const n = typeof v === 'string' ? parseFloat(v) : v;
-    return isNaN(n) ? 0 : n;
-  };
-
-  const formatBRLValue = (val: number) => {
-    return toNumber(val).toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' });
-  };
-
-  const formatNum = (val: number) => {
-    return toNumber(val).toLocaleString('pt-BR');
-  };
-
-  const getTypeStyles = (tipo: string) => {
-    switch(tipo) {
-      case 'FEMININO': return 'bg-pink-50 border-pink-500 text-pink-700';
-      case 'MASCULINO': return 'bg-blue-50 border-blue-500 text-blue-700';
-      case 'INFANTIL': return 'bg-purple-50 border-purple-500 text-purple-700';
-      case 'ACESSÓRIO': return 'bg-amber-50 border-amber-500 text-amber-700';
-      default: return 'bg-slate-50 border-slate-500 text-slate-700';
-    }
-  };
-  
-  const getTypeIcons = (tipo: string) => {
-    switch(tipo) {
-      case 'FEMININO': return '👗';
-      case 'MASCULINO': return '👔';
-      case 'INFANTIL': return '👶';
-      case 'ACESSÓRIO': return '💼';
-      default: return '📦';
-    }
-  };
+  useEffect(() => {
+    fetchData();
+  }, [fetchData]);
 
   if (loading) {
     return (
-      <div className="flex h-screen items-center justify-center bg-slate-50 dark:bg-slate-900 border-l border-slate-200 dark:border-slate-800">
-        <Activity className="animate-spin text-blue-600 mb-4" size={32} />
+      <div className="flex flex-col items-center justify-center h-64 gap-4">
+        <Loader2 className="animate-spin text-blue-600" size={40} />
+        <p className="text-sm font-bold text-slate-500 uppercase tracking-widest">Carregando inteligência de pedidos...</p>
       </div>
     );
   }
 
-  const expandedStat = typeStats.find(t => t.tipo === expandedType);
-
   return (
-    <div className="flex-1 h-screen overflow-y-auto bg-slate-50 dark:bg-slate-900 border-l border-slate-200 dark:border-slate-800 text-slate-800 dark:text-slate-200">
-      <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8 space-y-6">
+    <div className="space-y-8 animate-fade-in pb-12">
+      {/* Header Summary */}
+      <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+        <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} className="bg-white dark:bg-slate-900 p-6 rounded-[24px] shadow-sm border border-slate-100 dark:border-slate-800">
+          <div className="flex items-center gap-4 mb-4">
+            <div className="p-3 bg-blue-50 dark:bg-blue-900/20 rounded-2xl text-blue-600 dark:text-blue-400">
+              <DollarSign size={24} />
+            </div>
+            <h3 className="text-[10px] font-black uppercase text-slate-400 tracking-widest">Total Comprado (Ano)</h3>
+          </div>
+          <p className="text-3xl font-black italic text-slate-900 dark:text-white">{formatValue(summary?.totalValue || 0)}</p>
+        </motion.div>
         
-        {/* Header */}
-        <div className="flex items-center gap-3 border-b border-slate-200 dark:border-slate-800 pb-4">
-          <BarChart3 className="text-blue-600 dark:text-blue-400" size={28} />
-          <div>
-            <h1 className="text-2xl font-black italic uppercase tracking-tight text-slate-900 dark:text-white">
-              Dashboard de Compras
-            </h1>
+        <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.1 }} className="bg-white dark:bg-slate-900 p-6 rounded-[24px] shadow-sm border border-slate-100 dark:border-slate-800">
+          <div className="flex items-center gap-4 mb-4">
+            <div className="p-3 bg-purple-50 dark:bg-purple-900/20 rounded-2xl text-purple-600 dark:text-purple-400">
+              <Package size={24} />
+            </div>
+            <h3 className="text-[10px] font-black uppercase text-slate-400 tracking-widest">Total de Pares</h3>
           </div>
-        </div>
+          <p className="text-3xl font-black italic text-slate-900 dark:text-white">{(summary?.totalPairs || 0).toLocaleString()} <span className="text-sm not-italic opacity-40">UN</span></p>
+        </motion.div>
 
-        {/* ✅ CARDS DE RESUMO - DIVIDIDOS EM 3 (PARES / UNIDADES / VALOR) */}
-        <div className="grid grid-cols-3 gap-4">
-          <div className="bg-white dark:bg-slate-800 rounded-xl shadow-sm border border-slate-200 dark:border-slate-700 p-5 flex flex-col justify-center">
-            <div className="text-xs font-bold uppercase tracking-wider text-slate-500 mb-1 flex items-center gap-2">
-              <Package size={16} /> Total de Pares
+        <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.2 }} className="bg-white dark:bg-slate-900 p-6 rounded-[24px] shadow-sm border border-slate-100 dark:border-slate-800">
+          <div className="flex items-center gap-4 mb-4">
+            <div className="p-3 bg-green-50 dark:bg-green-900/20 rounded-2xl text-green-600 dark:text-green-400">
+              <CheckCircle size={24} />
             </div>
-            <div className="text-2xl lg:text-3xl font-black text-slate-900 dark:text-white">
-              {formatNum(summary?.total_pares || 0)} <span className="text-lg font-medium text-slate-400">pares</span>
-            </div>
-            <div className="text-[10px] text-slate-400 mt-1">Calçados</div>
+            <h3 className="text-[10px] font-black uppercase text-slate-400 tracking-widest">Pedidos Confirmados</h3>
           </div>
-          
-          <div className="bg-white dark:bg-slate-800 rounded-xl shadow-sm border border-slate-200 dark:border-slate-700 p-5 flex flex-col justify-center">
-            <div className="text-xs font-bold uppercase tracking-wider text-slate-500 mb-1 flex items-center gap-2">
-              <Package size={16} /> Total de Unidades
-            </div>
-            <div className="text-2xl lg:text-3xl font-black text-slate-900 dark:text-white">
-              {formatNum(summary?.total_unidades || 0)} <span className="text-lg font-medium text-slate-400">unid.</span>
-            </div>
-            <div className="text-[10px] text-slate-400 mt-1">Acessórios</div>
+          <p className="text-3xl font-black italic text-slate-900 dark:text-white">{summary?.orderCount || 0}</p>
+        </motion.div>
+      </div>
+
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
+        <div className="bg-white dark:bg-slate-900 p-8 rounded-[32px] shadow-sm border border-slate-100 dark:border-slate-800 flex flex-col">
+          <div className="flex items-center justify-between mb-8">
+            <h2 className="text-xl font-black italic uppercase text-slate-900 dark:text-white flex items-center gap-3">
+              <Tags className="text-blue-600" size={24} />
+              Distribuição por Tipo
+            </h2>
           </div>
           
-          <div className="bg-white dark:bg-slate-800 rounded-xl shadow-sm border border-slate-200 dark:border-slate-700 p-5 flex flex-col justify-center">
-            <div className="text-xs font-bold uppercase tracking-wider text-slate-500 mb-1 flex items-center gap-2">
-              <DollarSign size={16} /> Total Compra
-            </div>
-            <div className="text-2xl lg:text-3xl font-black text-slate-900 dark:text-white">
-              {formatBRLValue(summary?.valor_total || 0)}
-            </div>
-          </div>
-        </div>
-
-        {/* CARDS POR TIPO */}
-        <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
-          {['FEMININO', 'MASCULINO', 'INFANTIL', 'ACESSÓRIO'].map((tipoBase) => {
-            const stat = typeStats.find(t => t.tipo === tipoBase) || { tipo: tipoBase, pares: 0, valor: 0, percentual: 0, modelos: [] };
-            const isExpanded = expandedType === stat.tipo;
-            const style = getTypeStyles(stat.tipo);
-            const icon = getTypeIcons(stat.tipo);
-
-            return (
-              <div 
-                key={stat.tipo}
-                onClick={() => handleTypeClick(stat.tipo)}
-                className={`rounded-xl border cursor-pointer transition-all duration-200 p-4 ${style} 
-                            ${isExpanded ? 'shadow-md scale-[1.02] border-b-4' : 'shadow-sm hover:shadow opacity-90 hover:opacity-100 dark:bg-slate-800/50 dark:border-slate-700 dark:text-slate-200'}`}
-              >
-                <div className="font-bold text-sm uppercase tracking-wider mb-3 flex items-center gap-2">
-                  <span>{icon}</span> {stat.tipo}
-                </div>
-                <div className="flex flex-col gap-1 mb-3">
-                  <div className="font-bold text-lg leading-none">{formatNum(stat.pares)} <span className="text-[10px] font-normal uppercase opacity-70">{stat.tipo === 'ACESSÓRIO' ? 'unid.' : 'pares'}</span></div>
-                  <div className="font-bold text-sm leading-none opacity-90">{formatBRLValue(stat.valor)}</div>
-                  <div className="font-bold text-lg leading-none opacity-70">{stat.percentual.toFixed(1)}%</div>
-                </div>
-                <div className="text-[10px] font-bold uppercase tracking-wider flex items-center gap-1 opacity-70">
-                  {isExpanded ? <><ChevronDown size={14} /> Fechar</> : <><ChevronRight size={14} /> Detalhes</>}
-                </div>
-              </div>
-            );
-          })}
-        </div>
-
-        {/* DETALHAMENTO EXPANDIDO */}
-        {expandedStat && (() => {
-          const storesInType = Array.from(new Set(
-            expandedStat.modelos.flatMap(m => Object.keys(m.pares_por_loja || {}).map(Number))
-          )).sort((a, b) => a - b);
-
-          return (
-            <div className="animate-in fade-in slide-in-from-top-4 duration-300">
-              <div className={`rounded-xl shadow-md border ${getTypeStyles(expandedStat.tipo)} p-0 overflow-hidden dark:bg-slate-800 dark:border-slate-700`}>
-                <div className="px-6 py-4 border-b border-opacity-20 flex items-center gap-2 font-bold uppercase tracking-wider text-sm dark:text-slate-200">
-                  {getTypeIcons(expandedStat.tipo)} {expandedStat.tipo} - Modelos Comprados
-                </div>
+          <div className="space-y-4 flex-1">
+            {typeStats.map((stat) => (
+              <div key={stat.type} className="group">
+                <button 
+                  onClick={() => setExpandedType(expandedType === stat.type ? null : stat.type)}
+                  className="w-full flex items-center justify-between p-4 bg-slate-50 dark:bg-slate-800/50 rounded-2xl transition-all hover:bg-white dark:hover:bg-slate-800 border border-transparent hover:border-slate-200 dark:hover:border-slate-700"
+                >
+                  <div className="flex items-center gap-4">
+                    <span className="text-xl">{getTypeIcons(stat.type)}</span>
+                    <div className="text-left">
+                      <p className="text-[10px] font-black uppercase tracking-widest text-slate-400">{stat.type}</p>
+                      <p className="text-sm font-black text-slate-900 dark:text-white uppercase">{formatValue(stat.value)}</p>
+                    </div>
+                  </div>
+                  <div className="text-right flex items-center gap-3">
+                    <div className="hidden md:block">
+                      <p className="text-[10px] font-black text-blue-600 uppercase tracking-tighter">
+                        {((stat.value / summary?.totalValue) * 100).toFixed(1)}%
+                      </p>
+                    </div>
+                    {expandedType === stat.type ? <ChevronUp size={16} /> : <ChevronDown size={16} />}
+                  </div>
+                </button>
                 
-                {expandedStat.tipo === 'INFANTIL' ? (
-                  <div className="bg-white dark:bg-slate-900 border-t border-opacity-20 overflow-auto">
-                    {['FEMININO', 'MASCULINO', 'UNISSEX'].map(subtipo => {
-                      const subModelos = expandedStat.modelos.filter(m => m.subtipo === subtipo);
-                      if (subModelos.length === 0) return null;
-                      return (
-                        <div key={subtipo} className="border-b last:border-0 border-slate-100 dark:border-slate-800">
-                          <div className="bg-slate-50 dark:bg-slate-800/50 px-6 py-2 font-black text-[11px] text-slate-500 dark:text-slate-400 uppercase tracking-widest sticky left-0">
-                            {getTypeIcons(subtipo)} {subtipo} INFANTIL
+                <AnimatePresence>
+                  {expandedType === stat.type && (
+                    <motion.div 
+                      initial={{ height: 0, opacity: 0 }}
+                      animate={{ height: 'auto', opacity: 1 }}
+                      exit={{ height: 0, opacity: 0 }}
+                      className="overflow-hidden bg-white dark:bg-slate-900 border-x border-b border-slate-100 dark:border-slate-800 rounded-b-2xl mx-2"
+                    >
+                      <div className="p-4 space-y-2">
+                        {stat.items.map((item: any) => (
+                          <div key={item.name} className="flex items-center justify-between py-2 border-b border-slate-50 dark:border-slate-800 last:border-0 px-2 hover:bg-slate-50 dark:hover:bg-slate-800 rounded-lg transition-colors">
+                            <span className="text-[11px] font-bold text-slate-600 dark:text-slate-400 uppercase">{item.name}</span>
+                            <span className="text-[11px] font-black text-slate-900 dark:text-white">{formatValue(item.value)}</span>
                           </div>
-                          <table className="w-full text-left text-sm whitespace-nowrap min-w-max">
-                            <thead className="bg-white dark:bg-slate-900 border-b border-slate-200 dark:border-slate-700">
-                              <tr>
-                                <th className="px-6 py-3 font-bold text-xs uppercase tracking-wider text-slate-400 dark:text-slate-500 sticky left-0 bg-white dark:bg-slate-900 z-10">Modelo</th>
-                                {storesInType.map(loja => (
-                                  <th key={loja} className="px-3 py-3 font-bold text-xs uppercase tracking-wider text-blue-600 dark:text-blue-400 text-center min-w-[60px]">L{loja.toString().padStart(2, '0')}</th>
-                                ))}
-                                <th className="px-6 py-3 font-bold text-xs uppercase tracking-wider text-slate-400 dark:text-slate-500 text-right">Total</th>
-                                <th className="px-6 py-3 font-bold text-xs uppercase tracking-wider text-slate-400 dark:text-slate-500 text-right">Valor</th>
-                                <th className="px-6 py-3 font-bold text-xs uppercase tracking-wider text-slate-400 dark:text-slate-500 text-right w-24">%</th>
-                              </tr>
-                            </thead>
-                            <tbody className="divide-y divide-slate-100 dark:divide-slate-800 bg-white dark:bg-slate-900">
-                              {subModelos.map(m => (
-                                <tr key={m.modelo} className="hover:bg-slate-50 dark:hover:bg-slate-800/50 transition-colors">
-                                  <td className="px-6 py-3 font-bold text-slate-900 dark:text-slate-200 bg-inherit sticky left-0">{m.modelo}</td>
-                                  {storesInType.map(loja => {
-                                    const pares = m.pares_por_loja?.[loja] || 0;
-                                    return (
-                                      <td key={loja} className={`px-3 py-3 text-center font-medium ${pares > 0 ? 'text-green-700 dark:text-green-400' : 'text-slate-300 dark:text-slate-600'}`}>
-                                        {pares > 0 ? formatNum(pares) : '—'}
-                                      </td>
-                                    );
-                                  })}
-                                  <td className="px-6 py-3 text-right font-bold text-slate-900 dark:text-slate-200">{formatNum(m.pares)}</td>
-                                  <td className="px-6 py-3 text-right font-medium text-emerald-600 dark:text-emerald-400">{formatBRLValue(m.valor)}</td>
-                                  <td className="px-6 py-3 text-right font-bold text-slate-500">{m.percentual.toFixed(1)}%</td>
-                                </tr>
-                              ))}
-                            </tbody>
-                          </table>
-                        </div>
-                      )
-                    })}
-                  </div>
-                ) : (
-                  <div className="bg-white dark:bg-slate-900 p-0 border-t border-opacity-20 overflow-auto max-h-[400px]">
-                    <table className="w-full text-left text-sm whitespace-nowrap min-w-max">
-                      <thead className="bg-slate-50 dark:bg-slate-900 sticky top-0 shadow-sm border-b border-slate-200 dark:border-slate-700 z-20">
-                        <tr>
-                          <th className="px-6 py-3 font-bold text-xs uppercase tracking-wider text-slate-400 dark:text-slate-500 sticky left-0 bg-slate-50 dark:bg-slate-900 z-10">Modelo</th>
-                          {storesInType.map(loja => (
-                            <th key={loja} className="px-3 py-3 font-bold text-xs uppercase tracking-wider text-blue-600 dark:text-blue-400 text-center min-w-[60px]">L{loja.toString().padStart(2, '0')}</th>
-                          ))}
-                          <th className="px-6 py-3 font-bold text-xs uppercase tracking-wider text-slate-400 dark:text-slate-500 text-right">Total</th>
-                          <th className="px-6 py-3 font-bold text-xs uppercase tracking-wider text-slate-400 dark:text-slate-500 text-right">Valor</th>
-                          <th className="px-6 py-3 font-bold text-xs uppercase tracking-wider text-slate-400 dark:text-slate-500 text-right w-24">%</th>
-                        </tr>
-                      </thead>
-                      <tbody className="divide-y divide-slate-100 dark:divide-slate-800">
-                        {expandedStat.modelos.map(m => (
-                          <tr key={m.modelo} className="hover:bg-slate-50 dark:hover:bg-slate-800/50 transition-colors">
-                            <td className="px-6 py-3 font-bold text-slate-900 dark:text-slate-200 bg-inherit sticky left-0">{m.modelo}</td>
-                            {storesInType.map(loja => {
-                              const pares = m.pares_por_loja?.[loja] || 0;
-                              return (
-                                <td key={loja} className={`px-3 py-3 text-center font-medium ${pares > 0 ? 'text-green-700 dark:text-green-400' : 'text-slate-300 dark:text-slate-600'}`}>
-                                  {pares > 0 ? formatNum(pares) : '—'}
-                                </td>
-                              );
-                            })}
-                            <td className="px-6 py-3 text-right font-bold text-slate-900 dark:text-slate-200">{formatNum(m.pares)}</td>
-                            <td className="px-6 py-3 text-right font-medium text-emerald-600 dark:text-emerald-400">{formatBRLValue(m.valor)}</td>
-                            <td className="px-6 py-3 text-right font-bold text-slate-500">{m.percentual.toFixed(1)}%</td>
-                          </tr>
                         ))}
-                        {expandedStat.modelos.length === 0 && (
-                          <tr><td colSpan={storesInType.length + 4} className="py-8 text-center text-slate-400 italic">Nenhum dado encontrado</td></tr>
-                        )}
-                      </tbody>
-                    </table>
-                  </div>
-                )}
+                      </div>
+                    </motion.div>
+                  )}
+                </AnimatePresence>
               </div>
-            </div>
-          );
-        })()}
+            ))}
+          </div>
+        </div>
 
-        {/* TABELAS */}
-        <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 pt-4">
-          
-          {/* Compras por Loja */}
-          <div className="bg-white dark:bg-slate-800 rounded-xl shadow-sm border border-slate-200 dark:border-slate-700 overflow-hidden flex flex-col max-h-[500px]">
-            <div className="bg-slate-50 dark:bg-slate-800/50 px-5 py-4 border-b border-slate-200 dark:border-slate-700 sticky top-0 z-10 flex justify-between items-center">
-              <h2 className="text-sm font-bold uppercase tracking-wider text-slate-600 dark:text-slate-400 flex items-center gap-2">
-                <StoreIcon size={18} /> Compras por Loja
-              </h2>
-              <span className="text-[10px] font-bold text-slate-400 dark:text-slate-500 bg-slate-200 dark:bg-slate-700 px-2 py-1 rounded">
-                {user?.role === 'ADMIN' ? '18 Lojas' : '1 Loja'}
-              </span>
-            </div>
-            <div className="overflow-auto flex-1 p-0">
-              <table className="w-full text-left text-sm whitespace-nowrap">
-                <thead className="bg-white dark:bg-slate-900 sticky top-0 shadow-[0_1px_0_0_#e2e8f0] dark:shadow-[0_1px_0_0_#1e293b]">
-                  <tr>
-                    <th className="px-5 py-3 font-bold text-[11px] uppercase tracking-wider text-slate-400 dark:text-slate-500">Loja</th>
-                    <th className="px-5 py-3 font-bold text-[11px] uppercase tracking-wider text-slate-400 dark:text-slate-500">Cidade</th>
-                    <th className="px-5 py-3 font-bold text-[11px] uppercase tracking-wider text-slate-400 dark:text-slate-500 text-right">Pares</th>
-                    <th className="px-5 py-3 font-bold text-[11px] uppercase tracking-wider text-slate-400 dark:text-slate-500 text-right">Valor</th>
-                    <th className="px-5 py-3 font-bold text-[11px] uppercase tracking-wider text-slate-400 dark:text-slate-500 text-center">Pedidos</th>
-                  </tr>
-                </thead>
-                <tbody className="divide-y divide-slate-50 dark:divide-slate-800/50">
-                  {storeStats.map((s) => (
-                    <tr key={s.loja} className="hover:bg-slate-50 dark:hover:bg-slate-800/50 transition-colors">
-                      <td className="px-5 py-2.5 font-black text-blue-600 dark:text-blue-400">{s.loja}</td>
-                      <td className="px-5 py-2.5 font-medium text-slate-700 dark:text-slate-300">{s.cidade}</td>
-                      <td className="px-5 py-2.5 text-right font-bold text-slate-900 dark:text-slate-200">{formatNum(s.pares)}</td>
-                      <td className="px-5 py-2.5 text-right text-emerald-600 dark:text-emerald-400 font-bold">{formatBRLValue(s.valor)}</td>
-                      <td className="px-5 py-2.5 text-center">
-                        <span className="inline-flex items-center justify-center bg-slate-100 dark:bg-slate-700 text-slate-600 dark:text-slate-300 font-bold text-[10px] px-2 py-0.5 rounded">
-                          {s.pedidos}
-                        </span>
-                      </td>
-                    </tr>
-                  ))}
-                  {storeStats.length === 0 && (
-                    <tr><td colSpan={5} className="py-8 text-center text-slate-400 italic">Nenhum dado encontrado</td></tr>
-                  )}
-                </tbody>
-              </table>
-            </div>
+        <div className="bg-slate-900 dark:bg-black p-8 rounded-[32px] shadow-2xl text-white flex flex-col">
+          <div className="flex items-center justify-between mb-8">
+            <h2 className="text-xl font-black italic uppercase text-white flex items-center gap-3">
+              <TrendingUp className="text-blue-400" size={24} />
+              Concentração de Marcas
+            </h2>
           </div>
 
-          {/* Compras por Marca */}
-          <div className="bg-white dark:bg-slate-800 rounded-xl shadow-sm border border-slate-200 dark:border-slate-700 overflow-hidden flex flex-col max-h-[500px]">
-            <div className="bg-slate-50 dark:bg-slate-800/50 px-5 py-4 border-b border-slate-200 dark:border-slate-700 sticky top-0 z-10 flex justify-between items-center">
-              <h2 className="text-sm font-bold uppercase tracking-wider text-slate-600 dark:text-slate-400 flex items-center gap-2">
-                <Tag size={18} /> Compras por Marca
-              </h2>
-              <span className="text-[10px] font-bold text-slate-400 dark:text-slate-500 bg-slate-200 dark:bg-slate-700 px-2 py-1 rounded">
-                Top 18
-              </span>
-            </div>
-            <div className="overflow-auto flex-1 p-0">
-              <table className="w-full text-left text-sm whitespace-nowrap">
-                <thead className="bg-white dark:bg-slate-900 sticky top-0 shadow-[0_1px_0_0_#e2e8f0] dark:shadow-[0_1px_0_0_#1e293b]">
-                  <tr>
-                    <th className="px-5 py-3 font-bold text-[11px] uppercase tracking-wider text-slate-400 dark:text-slate-500">Marca</th>
-                    <th className="px-5 py-3 font-bold text-[11px] uppercase tracking-wider text-slate-400 dark:text-slate-500 text-right">Pares</th>
-                    <th className="px-5 py-3 font-bold text-[11px] uppercase tracking-wider text-slate-400 dark:text-slate-500 text-right">Valor</th>
-                    <th className="px-5 py-3 font-bold text-[11px] uppercase tracking-wider text-slate-400 dark:text-slate-500 w-24">% Total</th>
-                    <th className="px-5 py-3 font-bold text-[11px] uppercase tracking-wider text-slate-400 dark:text-slate-500 w-24">Barra</th>
-                  </tr>
-                </thead>
-                <tbody className="divide-y divide-slate-50 dark:divide-slate-800/50">
-                  {brandStats.map((b) => (
-                    <tr key={b.marca} className="hover:bg-slate-50 dark:hover:bg-slate-800/50 transition-colors">
-                      <td className="px-5 py-2.5 font-bold text-slate-900 dark:text-white uppercase text-[11px]">{b.marca}</td>
-                      <td className="px-5 py-2.5 text-right font-bold text-slate-700 dark:text-slate-300">{formatNum(b.pares)}</td>
-                      <td className="px-5 py-2.5 text-right text-emerald-600 dark:text-emerald-400 font-bold">{formatBRLValue(b.valor)}</td>
-                      <td className="px-5 py-2.5 text-right font-black text-slate-600 dark:text-slate-400">{b.percentual.toFixed(0)}%</td>
-                      <td className="px-5 py-2.5">
-                        <div className="flex-1 h-2 bg-slate-100 dark:bg-slate-800 rounded-full overflow-hidden flex items-center justify-start">
-                          <div 
-                            className="h-full bg-blue-500 dark:bg-blue-400 rounded-full"
-                            style={{ width: `${Math.min(100, Math.max(0, b.percentual))}%` }}
-                          />
-                        </div>
-                      </td>
-                    </tr>
-                  ))}
-                  {brandStats.length === 0 && (
-                    <tr><td colSpan={5} className="py-8 text-center text-slate-400 italic">Nenhum dado encontrado</td></tr>
-                  )}
-                </tbody>
-              </table>
-            </div>
+          <div className="space-y-6 flex-1">
+            {brandStats.map((stat, idx) => (
+              <div key={stat.brand} className="space-y-2">
+                <div className="flex justify-between items-end">
+                  <div className="flex items-center gap-3">
+                    <span className="text-[10px] font-black text-slate-500 w-4 tracking-tighter">#{idx + 1}</span>
+                    <span className="text-xs font-black uppercase tracking-widest">{stat.brand}</span>
+                  </div>
+                  <span className="text-xs font-bold text-blue-400">{formatValue(stat.value)}</span>
+                </div>
+                <div className="h-1.5 w-full bg-white/5 rounded-full overflow-hidden">
+                  <motion.div 
+                    initial={{ width: 0 }}
+                    animate={{ width: brandStats[0]?.value ? `${(stat.value / brandStats[0].value) * 100}%` : '0%' }}
+                    transition={{ duration: 1, delay: idx * 0.1 }}
+                    className="h-full bg-gradient-to-r from-blue-600 to-blue-400"
+                  />
+                </div>
+              </div>
+            ))}
           </div>
-
         </div>
       </div>
     </div>
