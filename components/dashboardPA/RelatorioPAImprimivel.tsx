@@ -456,9 +456,9 @@ const RelatorioPAImprimivel: React.FC<RelatorioProps> = ({ storeId, storeName, s
                             <p className={`text-[15px] font-black leading-none mb-1 whitespace-nowrap ${v.atingiu_meta_vendas ? 'text-emerald-600' : 'text-red-500'}`}>
                               R$ {v.total_vendas.toLocaleString('pt-BR', { maximumFractionDigits: 0 })}
                             </p>
-                            <div className="flex items-center justify-center gap-1 mt-1 bg-emerald-50 rounded py-0.5">
-                              <TrendingUp size={10} className="text-emerald-500" />
-                              <span className="text-[9px] font-black text-emerald-600">+{(Math.random() * 5 + 1).toFixed(1)}%</span>
+                            <div className="flex items-center justify-center gap-1.5 mt-1.5 bg-emerald-100 rounded-lg py-1 px-2 border border-emerald-200">
+                              <TrendingUp size={14} className="text-emerald-600" />
+                              <span className="text-[11px] font-black text-emerald-700 tracking-tighter transition-all">+{(Math.random() * 5 + 1).toFixed(1)}%</span>
                             </div>
                           </div>
                           
@@ -497,9 +497,9 @@ const RelatorioPAImprimivel: React.FC<RelatorioProps> = ({ storeId, storeName, s
                             <p className={`text-[15px] font-black leading-none mb-1 whitespace-nowrap ${v.atingiu_meta_ticket ? 'text-blue-600' : 'text-red-500'}`}>
                               R$ {v.ticket_medio.toFixed(0)}
                             </p>
-                            <div className="flex items-center justify-center gap-1 mt-1 bg-blue-50 rounded py-0.5">
-                              <TrendingUp size={10} className="text-blue-500" />
-                              <span className="text-[9px] font-black text-blue-600">+{(Math.random() * 8 + 2).toFixed(1)}%</span>
+                            <div className="flex items-center justify-center gap-1.5 mt-1.5 bg-blue-100 rounded-lg py-1 px-2 border border-blue-200">
+                              <TrendingUp size={14} className="text-blue-600" />
+                              <span className="text-[11px] font-black text-blue-700 tracking-tighter transition-all">+{(Math.random() * 8 + 2).toFixed(1)}%</span>
                             </div>
                           </div>
                           
@@ -538,9 +538,9 @@ const RelatorioPAImprimivel: React.FC<RelatorioProps> = ({ storeId, storeName, s
                             <p className="text-[15px] font-black leading-none mb-1 text-orange-600 whitespace-nowrap">
                               {v.pa_atingido.toFixed(2)}
                             </p>
-                            <div className="flex items-center justify-center gap-1 mt-1 bg-orange-50 rounded py-0.5">
-                              <TrendingUp size={10} className="text-orange-500" />
-                              <span className="text-[9px] font-black text-orange-600">+{(Math.random() * 3 + 1).toFixed(1)}%</span>
+                            <div className="flex items-center justify-center gap-1.5 mt-1.5 bg-orange-100 rounded-lg py-1 px-2 border border-orange-200">
+                              <TrendingUp size={14} className="text-orange-600" />
+                              <span className="text-[11px] font-black text-orange-700 tracking-tighter transition-all">+{(Math.random() * 3 + 1).toFixed(1)}%</span>
                             </div>
                           </div>
                           
