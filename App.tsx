@@ -41,9 +41,9 @@ const DashboardPAModule = lazy(() => import('./components/dashboardPA/DashboardP
 const DashboardPAGerente = lazy(() => import('./components/dashboardPA/DashboardPAGerente'));
 const BuyOrderModule = lazy(() => import('./components/buyorder/BuyOrderModule'));
 const BuyOrderParams = lazy(() => import('./components/buyorder/BuyOrderParams'));
-import BuyOrderDashboard from './components/buyorder/BuyOrderDashboard';
-import StockForecastDashboard from './components/StockForecastDashboard';
-const BuyOrderQuotaView = lazy(() => import('./components/buyorder/BuyOrderQuotaView'));
+import BuyOrderDashboard from './components/buyorder/BuyOrderDashboard.tsx';
+import StockForecastDashboard from './components/StockForecastDashboard.tsx';
+import BuyOrderQuotaView from './components/buyorder/BuyOrderQuotaView.tsx';
 const ReportsPage = lazy(() => import('./components/ReportsPage'));
 const AdminQuotaExtraApprovals = lazy(() => import('./components/buyorder/AdminQuotaExtraApprovals'));
 const AdminSurveyManagement = lazy(() => import('./components/AdminSurveyManagement_v3'));

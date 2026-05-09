@@ -258,7 +258,7 @@ export default function ResumoAnoFiscal({ quotas, onVerPedidos }: ResumoAnoFisca
                       <div className="pt-2 border-t border-blue-200 dark:border-blue-800">
                         <div className="flex items-center justify-between">
                           <span className="text-xs font-bold text-emerald-700 dark:text-emerald-300 uppercase">
-                            💰 OTB Disponível
+                            💰 Cota Futuro Disponível
                           </span>
                           <span className="text-base font-black text-emerald-600">
                             {formatarMoeda(otbComprador)}
@@ -320,7 +320,7 @@ export default function ResumoAnoFiscal({ quotas, onVerPedidos }: ResumoAnoFisca
                       <div className="pt-2 border-t border-emerald-200 dark:border-emerald-800">
                         <div className="flex items-center justify-between">
                           <span className="text-xs font-bold text-blue-700 dark:text-blue-300 uppercase">
-                            💰 OTB Disponível
+                            💰 Cota Futuro Disponível
                           </span>
                           <span className="text-base font-black text-blue-600">
                             {formatarMoeda(otbGerente)}

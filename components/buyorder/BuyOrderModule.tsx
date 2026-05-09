@@ -1375,6 +1375,15 @@ export default function BuyOrderModule({ user }: { user?: User }) {
           />
         )}
 
+        {/* Alertas de Restrições - Aparece nos Steps 1 e 2 */}
+        {(step === 1 || step === 2) && (
+          <AlertasCardSticky
+            marca={cab.marca}
+            lojasSelecionadas={step === 2 ? step2State.selectedLojas : []}
+            itens={items}
+          />
+        )}
+
         {/* Footer navegação */}
         {error && (
           <div
@@ -3134,12 +3143,6 @@ function StepItens({
           </tbody>
         </table>
       </div>
-
-      <AlertasCardSticky
-        marca={cab.marca}
-        lojasSelecionadas={selectedLojas}
-        itens={items}
-      />
 
       {/* Popup item */}
       {showPopup && (

@@ -3,7 +3,7 @@ import { supabase } from '../../services/supabaseClient';
 import { Loader2, RefreshCw, AlertCircle, X } from 'lucide-react';
 import { toast } from 'sonner';
 import { User } from '../../types';
-import ResumoAnoFiscal, { QuotaMes, gerarMesesRolling } from './ResumoAnoFiscal';
+import ResumoAnoFiscal, { QuotaMes, gerarMesesRolling } from './ResumoAnoFiscal.tsx';
 
 // ═══════════════════════════════════════════════════════════════════════════
 // TIPOS
@@ -155,9 +155,9 @@ export default function BuyOrderQuotaView({ user }: { user: User }) {
       }
       
       const { data, error } = await supabase.rpc('get_cotas_ano_fiscal', {
-        p_start_month: ptMonth,
+        p_store_number: selectedStore,
         p_start_year: ptYear,
-        p_store_number: selectedStore
+        p_start_month: ptMonth
       });
 
       if (error) {
@@ -183,7 +183,16 @@ export default function BuyOrderQuotaView({ user }: { user: User }) {
             cota_comprador_valor: toNumber(d.cota_comprador_valor),
             despesas_comprometidas: toNumber(d.despesas_comprometidas),
             pedidos_confirmados: toNumber(d.pedidos_confirmados),
-            qtd_pedidos: toNumber(d.qtd_pedidos)
+            qtd_pedidos: toNumber(d.qtd_pedidos),
+            cota_futura_mes1: toNumber(d.cota_futura_mes1),
+            cota_futura_mes2: toNumber(d.cota_futura_mes2),
+            cota_futura_mes3: toNumber(d.cota_futura_mes3),
+            otb_maximo_compravel_comprador: toNumber(d.otb_maximo_compravel_comprador),
+            otb_maximo_compravel_gerente: toNumber(d.otb_maximo_compravel_gerente),
+            pedidos_futuros_comprador: toNumber(d.pedidos_futuros_comprador),
+            pedidos_futuros_gerente: toNumber(d.pedidos_futuros_gerente),
+            qtd_pedidos_comprador: toNumber(d.qtd_pedidos_comprador),
+            qtd_pedidos_gerente: toNumber(d.qtd_pedidos_gerente)
           };
         }));
       }
