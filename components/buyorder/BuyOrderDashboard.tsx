@@ -122,26 +122,34 @@ export default function BuyOrderDashboard({ user }: { user: any }) {
       for (const order of (orders || [])) {
         const subOrders = order.buy_order_sub_orders || [];
         
-        // ✅ CORREÇÃO: Verificar se o gerente está em ALGUM sub-pedido
+        // ✅ CORREÇÃO: Verificar se o gerente está em ALGUM sub-pedido (robusto com strings/números)
         if (user?.role !== 'ADMIN' && userStoreNumber) {
-          const incluiLoja = subOrders.some((sub: any) => 
-            sub.lojas_numeros?.includes(userStoreNumber)
-          );
+          const incluiLoja = subOrders.some((sub: any) => {
+            const lojas = sub.lojas_numeros || [];
+            return lojas.map(String).includes(String(userStoreNumber));
+          });
           
           if (!incluiLoja) {
-            console.log('🔍 Pedido ignorado (não inclui loja', userStoreNumber, ')');
             continue;
           }
         }
         
         const numLojas = subOrders.reduce((acc, sub) => acc + (sub.lojas_numeros?.length || 0), 0);
         
-        if (numLojas === 0) continue;
+        if (numLojas === 0) {
+          console.warn('⚠️ Pedido sem lojas vinculadas:', order.id);
+          continue;
+        }
 
         let orderPares = 0;
         let orderCusto = 0;
 
-        for (const item of (order.buy_order_items || [])) {
+        const items = order.buy_order_items || [];
+        if (items.length === 0) {
+           console.warn('⚠️ Pedido sem itens:', order.id);
+        }
+
+        for (const item of items) {
           const p = Number(item.total_pares || 0);
           const v = Number(item.custo || 0) * p;
           
@@ -154,7 +162,7 @@ export default function BuyOrderDashboard({ user }: { user: any }) {
           if (dept === 'INF') dept = 'INFANTIL';
           if (dept === 'ACES') dept = 'ACESSÓRIO';
           
-          // ✅ CORREÇÃO: Somar acessórios em contador separado
+          // ✅ Somar separadamente
           if (dept === 'ACESSÓRIO') {
             totalUnidades += p;
           } else {

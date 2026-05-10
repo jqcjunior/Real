@@ -222,12 +222,14 @@ class ApiService {
       }
 
       const isGerente = role.toUpperCase() === 'GERENTE' || role.toUpperCase() === 'MANAGER';
-      const cotaDisponivel = isGerente ? Number(quota.cota_gerente_valor || 0) : Number(quota.cota_comprador_valor || 0);
+      const cotaDisponivel = isGerente 
+        ? Number(quota.otb_maximo_compravel_gerente || 0) 
+        : Number(quota.otb_maximo_compravel_comprador || 0);
       
       if (valor_pedido > cotaDisponivel) {
         return {
           permitido: false,
-          mensagem: `Cota insuficiente para ${isGerente ? 'GERENTE' : 'COMPRADOR'}. Disponível: R$ ${cotaDisponivel.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}`,
+          mensagem: `Cota OTB (Open-To-Buy) insuficiente para ${isGerente ? 'GERENTE' : 'COMPRADOR'}. Disponível: R$ ${cotaDisponivel.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}. Verifique prazos e faturamento.`,
           excede_em: valor_pedido - cotaDisponivel
         };
       }

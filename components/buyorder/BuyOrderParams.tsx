@@ -696,6 +696,19 @@ export default function BuyOrderParams({ user }: { user: any }) {
   const [masculino, setMasculino] = useState(20);
   const [acessorio, setAcessorio] = useState(20);
 
+  // Calcular ano fiscal rolling (12 meses a partir do mês atual)
+  const currentMonth = new Date().getMonth() + 1; // 1-12
+
+  // Função helper para converter índice visual (0-11) em ano/mês real
+  const getFiscalYearMonth = (visualIndex: number): { year: number; month: number } => {
+    const realMonth = ((currentMonth - 1 + visualIndex) % 12) + 1;
+    const yearOffset = Math.floor((currentMonth - 1 + visualIndex) / 12);
+    return {
+      year: selectedYear + yearOffset,
+      month: realMonth
+    };
+  };
+
   interface MonthlyData {
     month: number;
     cotaTotal: number;
@@ -764,7 +777,7 @@ export default function BuyOrderParams({ user }: { user: any }) {
         .from("v_stores_quota_config")
         .select("*")
         .eq("year", selectedYear)
-        .eq("month", 1);
+        .eq("month", currentMonth);
 
       if (quotaError) {
         console.warn("Erro ao buscar cotas (ignorando):", quotaError);
@@ -824,7 +837,7 @@ export default function BuyOrderParams({ user }: { user: any }) {
       const { data: quotaData, error: quotaError } = await supabase.rpc("get_cotas_ano_fiscal", {
         p_store_number: store.store_number,
         p_start_year: selectedYear,
-        p_start_month: 1
+        p_start_month: currentMonth  // ✅ Usar mês atual como início do ano fiscal
       });
 
       if (quotaError) throw quotaError;
@@ -834,7 +847,9 @@ export default function BuyOrderParams({ user }: { user: any }) {
         .from('v_cota_disponivel_mes')
         .select('*')
         .eq('store_number', store.store_number)
-        .eq('year', selectedYear)
+        .gte('year', selectedYear)  // ✅ Buscar ano selecionado e próximo
+        .lte('year', selectedYear + 1)
+        .order('year')
         .order('month');
       
       if (cotasError) {
@@ -848,39 +863,44 @@ export default function BuyOrderParams({ user }: { user: any }) {
         .from("buyorder_parameters_store")
         .select("*")
         .eq("store_number", store.store_number)
-        .eq("year", selectedYear);
+        .gte("year", selectedYear);
 
       if (paramData && paramData.length > 0) {
-        setFeminino(paramData[0].feminino_pct || 40);
-        setInfMenina(paramData[0].infantil_menina_pct || 10);
-        setInfMenino(paramData[0].infantil_menino_pct || 10);
-        setMasculino(paramData[0].masculino_pct || 20);
-        setAcessorio(paramData[0].acessorio_pct || 20);
+        // Usar o registro do mês fiscal atual (ou o primeiro encontrado) para as porcentagens globais da loja
+        const currentParam = paramData.find(p => p.year === selectedYear && p.month === currentMonth) || paramData[0];
+        setFeminino(currentParam.feminino_pct || 40);
+        setInfMenina(currentParam.infantil_menina_pct || 10);
+        setInfMenino(currentParam.infantil_menino_pct || 10);
+        setMasculino(currentParam.masculino_pct || 20);
+        setAcessorio(currentParam.acessorio_pct || 20);
       } else {
         // Fallback para globais se não houver customizados
         const { data: globalData } = await supabase
           .from("buyorder_parameters_global")
           .select("*")
-          .eq("year", selectedYear);
+          .gte("year", selectedYear);
           
         if (globalData && globalData.length > 0) {
-          setFeminino(globalData[0].feminino_pct || 40);
-          setInfMenina(globalData[0].infantil_menina_pct || 10);
-          setInfMenino(globalData[0].infantil_menino_pct || 10);
-          setMasculino(globalData[0].masculino_pct || 20);
-          setAcessorio(globalData[0].acessorio_pct || 20);
+          const currentGlobal = globalData.find(g => g.year === selectedYear) || globalData[0];
+          setFeminino(currentGlobal.feminino_pct || 40);
+          setInfMenina(currentGlobal.infantil_menina_pct || 10);
+          setInfMenino(currentGlobal.infantil_menino_pct || 10);
+          setMasculino(currentGlobal.masculino_pct || 20);
+          setAcessorio(currentGlobal.acessorio_pct || 20);
         }
       }
 
       if (quotaData && quotaData.length > 0) {
-        const newMonthly = Array.from({ length: 12 }).map((_, i) => {
-          const m = i + 1;
-          const q = quotaData.find((x: any) => x.mes === m);
-          // O parâmetro bruto pode ter cota_gerente_fixa
-          const p = paramData?.find((x: any) => x.month === m);
+        const newMonthly = Array.from({ length: 12 }).map((_, visualIndex) => {
+          // Encontrar dados do mês correspondente no ano fiscal
+          const q = quotaData[visualIndex]; // quotaData já vem ordenado do RPC
+          const p = paramData?.find((x: any) => {
+            const fiscal = getFiscalYearMonth(visualIndex);
+            return x.year === fiscal.year && x.month === fiscal.month;
+          });
           
           return {
-            month: m,
+            month: visualIndex + 1, // Mês visual (1-12 na tabela)
             cotaTotal: q ? Number(q.cota_mensal || 0) : 0,
             despesas: q ? Number(q.despesas_comprometidas || 0) : 0,
             cota_gerente_valor: q ? Number(q.cota_gerente_valor || 0) : 0,
@@ -939,21 +959,25 @@ export default function BuyOrderParams({ user }: { user: any }) {
 
     setSaving(true);
     try {
-      const payloads = monthlyData.map((m) => ({
-        store_number: selectedStore.store_number,
-        year: selectedYear,
-        month: m.month,
-        feminino_pct: feminino,
-        infantil_menina_pct: infMenina,
-        infantil_menino_pct: infMenino,
-        masculino_pct: masculino,
-        acessorio_pct: acessorio,
-        cota_valor: m.cotaTotal,
-        despesas_comprometidas: m.despesas,
-        usa_parametros_customizados: true,
-        usar_cota_fixa: m.usar_cota_fixa,
-        cota_gerente_fixa: m.cota_gerente_fixa,
-      }));
+      const payloads = monthlyData.map((m, visualIndex) => {
+        const fiscal = getFiscalYearMonth(visualIndex);
+        
+        return {
+          store_number: selectedStore.store_number,
+          year: fiscal.year,      // ✅ Ano real (pode ser 2026 ou 2027)
+          month: fiscal.month,    // ✅ Mês real (1-12)
+          feminino_pct: feminino,
+          infantil_menina_pct: infMenina,
+          infantil_menino_pct: infMenino,
+          masculino_pct: masculino,
+          acessorio_pct: acessorio,
+          cota_valor: m.cotaTotal,
+          despesas_comprometidas: m.despesas,
+          usa_parametros_customizados: true,
+          usar_cota_fixa: m.usar_cota_fixa,
+          cota_gerente_fixa: m.cota_gerente_fixa,
+        };
+      });
 
       const { error } = await supabase
         .from("buyorder_parameters_store")
@@ -962,29 +986,9 @@ export default function BuyOrderParams({ user }: { user: any }) {
         });
 
       if (error) throw error;
-
-      // Sincronizar cotas para o ano fiscal rolling após salvar parâmetros
-      try {
-        const { data: rpcData, error: rpcError } = await supabase.rpc("inicializar_cotas_ano", {
-          p_store_number: selectedStore.store_number,
-          p_cota_valor: monthlyData[0].cotaTotal,
-          p_despesas_comprometidas: monthlyData[0].despesas,
-          p_cota_gerente_valor: monthlyData[0].cota_gerente_fixa || 0
-        });
-
-        if (rpcError) throw rpcError;
-
-        if (rpcData && rpcData.success) {
-           toast.success(rpcData.message || `Cotas inicializadas: ${rpcData.rows_created} meses`);
-        } else if (rpcData) {
-           toast.error(rpcData.message || "Erro ao inicializar cotas");
-        }
-      } catch (syncErr: any) {
-        console.error("Erro na sincronização automática das cotas:", syncErr);
-        toast.error("Erro na sincronização: " + syncErr.message);
-      }
-
-      alert(`✅ Parâmetros salvos para o ano ${selectedYear}!`);
+      
+      // ✅ TRIGGER AUTOMÁTICO sincroniza buyorder_quota_control
+      toast.success(`✅ Parâmetros salvos com sucesso!`);
       loadStores();
     } catch (err: any) {
       console.error("Erro ao salvar:", err);
@@ -1012,7 +1016,7 @@ export default function BuyOrderParams({ user }: { user: any }) {
     try {
       const { error } = await supabase.rpc("reset_store_to_global", {
         p_store_number: selectedStore.store_number,
-        p_year: currentYear,
+        p_year: selectedYear,
       });
 
       if (error) throw error;
@@ -1201,85 +1205,120 @@ export default function BuyOrderParams({ user }: { user: any }) {
                   <span>📊</span> METAS POR CATEGORIA (%)
                 </h4>
 
-                <div className="grid grid-cols-2 gap-4">
-                  <div>
-                    <label className="text-[10px] font-black text-slate-500 uppercase tracking-widest mb-1.5 block">
-                      Feminino
-                    </label>
-                    <input
-                      type="number"
-                      step="0.1"
-                      min="0"
-                      max="100"
-                      value={feminino}
-                      onChange={(e) => setFeminino(Number(e.target.value))}
-                      className="w-full bg-slate-50 dark:bg-slate-900 border-2 border-slate-200 dark:border-slate-700 focus:border-orange-400 rounded-xl px-4 py-2.5 text-sm font-black text-slate-900 dark:text-white outline-none transition-all"
-                    />
+                <div className="space-y-4">
+                  {/* Linha 1: FEMININO | MASCULINO */}
+                  <div className="grid grid-cols-2 gap-4">
+                    <div>
+                      <label className="text-[10px] font-black text-slate-500 uppercase tracking-widest mb-1.5 block">
+                        Feminino
+                      </label>
+                      <input
+                        type="number"
+                        step="0.1"
+                        min="0"
+                        max="100"
+                        value={feminino || ""}
+                        onChange={(e) =>
+                          setFeminino(
+                            e.target.value === "" ? 0 : Number(e.target.value),
+                          )
+                        }
+                        className="w-full bg-slate-50 dark:bg-slate-900 border-2 border-slate-200 dark:border-slate-700 focus:border-orange-400 rounded-xl px-4 py-2.5 text-sm font-black text-slate-900 dark:text-white outline-none transition-all"
+                      />
+                    </div>
+                    <div>
+                      <label className="text-[10px] font-black text-slate-500 uppercase tracking-widest mb-1.5 block">
+                        Masculino
+                      </label>
+                      <input
+                        type="number"
+                        step="0.1"
+                        min="0"
+                        max="100"
+                        value={masculino || ""}
+                        onChange={(e) =>
+                          setMasculino(
+                            e.target.value === "" ? 0 : Number(e.target.value),
+                          )
+                        }
+                        className="w-full bg-slate-50 dark:bg-slate-900 border-2 border-slate-200 dark:border-slate-700 focus:border-orange-400 rounded-xl px-4 py-2.5 text-sm font-black text-slate-900 dark:text-white outline-none transition-all"
+                      />
+                    </div>
                   </div>
-                  <div>
-                    <label className="text-[10px] font-black text-slate-500 uppercase tracking-widest mb-1.5 block">
-                      Inf. Menina
-                    </label>
-                    <input
-                      type="number"
-                      step="0.1"
-                      min="0"
-                      max="100"
-                      value={infMenina}
-                      onChange={(e) => setInfMenina(Number(e.target.value))}
-                      className="w-full bg-slate-50 dark:bg-slate-900 border-2 border-slate-200 dark:border-slate-700 focus:border-orange-400 rounded-xl px-4 py-2.5 text-sm font-black text-slate-900 dark:text-white outline-none transition-all"
-                    />
+
+                  {/* Linha 2: INF. MENINA | INF. MENINO */}
+                  <div className="grid grid-cols-2 gap-4">
+                    <div>
+                      <label className="text-[10px] font-black text-slate-500 uppercase tracking-widest mb-1.5 block">
+                        Inf. Menina
+                      </label>
+                      <input
+                        type="number"
+                        step="0.1"
+                        min="0"
+                        max="100"
+                        value={infMenina || ""}
+                        onChange={(e) =>
+                          setInfMenina(
+                            e.target.value === "" ? 0 : Number(e.target.value),
+                          )
+                        }
+                        className="w-full bg-slate-50 dark:bg-slate-900 border-2 border-slate-200 dark:border-slate-700 focus:border-orange-400 rounded-xl px-4 py-2.5 text-sm font-black text-slate-900 dark:text-white outline-none transition-all"
+                      />
+                    </div>
+                    <div>
+                      <label className="text-[10px] font-black text-slate-500 uppercase tracking-widest mb-1.5 block">
+                        Inf. Menino
+                      </label>
+                      <input
+                        type="number"
+                        step="0.1"
+                        min="0"
+                        max="100"
+                        value={infMenino || ""}
+                        onChange={(e) =>
+                          setInfMenino(
+                            e.target.value === "" ? 0 : Number(e.target.value),
+                          )
+                        }
+                        className="w-full bg-slate-50 dark:bg-slate-900 border-2 border-slate-200 dark:border-slate-700 focus:border-orange-400 rounded-xl px-4 py-2.5 text-sm font-black text-slate-900 dark:text-white outline-none transition-all"
+                      />
+                    </div>
                   </div>
-                  <div>
-                    <label className="text-[10px] font-black text-slate-500 uppercase tracking-widest mb-1.5 block">
-                      Inf. Menino
-                    </label>
-                    <input
-                      type="number"
-                      step="0.1"
-                      min="0"
-                      max="100"
-                      value={infMenino}
-                      onChange={(e) => setInfMenino(Number(e.target.value))}
-                      className="w-full bg-slate-50 dark:bg-slate-900 border-2 border-slate-200 dark:border-slate-700 focus:border-orange-400 rounded-xl px-4 py-2.5 text-sm font-black text-slate-900 dark:text-white outline-none transition-all"
-                    />
-                  </div>
-                  <div>
-                    <label className="text-[10px] font-black text-slate-500 uppercase tracking-widest mb-1.5 block">
-                      Masculino
-                    </label>
-                    <input
-                      type="number"
-                      step="0.1"
-                      min="0"
-                      max="100"
-                      value={masculino}
-                      onChange={(e) => setMasculino(Number(e.target.value))}
-                      className="w-full bg-slate-50 dark:bg-slate-900 border-2 border-slate-200 dark:border-slate-700 focus:border-orange-400 rounded-xl px-4 py-2.5 text-sm font-black text-slate-900 dark:text-white outline-none transition-all"
-                    />
-                  </div>
-                  <div>
-                    <label className="text-[10px] font-black text-slate-500 uppercase tracking-widest mb-1.5 block">
-                      Acessórios
-                    </label>
-                    <input
-                      type="number"
-                      step="0.1"
-                      min="0"
-                      max="100"
-                      value={acessorio}
-                      onChange={(e) => setAcessorio(Number(e.target.value))}
-                      className="w-full bg-slate-50 dark:bg-slate-900 border-2 border-slate-200 dark:border-slate-700 focus:border-orange-400 rounded-xl px-4 py-2.5 text-sm font-black text-slate-900 dark:text-white outline-none transition-all"
-                    />
-                  </div>
-                  <div>
-                    <label className="text-[10px] font-black text-slate-500 uppercase tracking-widest mb-1.5 block">
-                      Total
-                    </label>
-                    <div
-                      className={`w-full border-2 rounded-xl px-4 py-2.5 text-sm font-black flex items-center ${isMetasValid ? "bg-emerald-50 border-emerald-200 text-emerald-700" : "bg-red-50 border-red-200 text-red-700"}`}
-                    >
-                      {totalMetas.toFixed(1)}%
+
+                  {/* Linha 3: ACESSÓRIOS | TOTAL */}
+                  <div className="grid grid-cols-2 gap-4">
+                    <div>
+                      <label className="text-[10px] font-black text-slate-500 uppercase tracking-widest mb-1.5 block">
+                        Acessórios
+                      </label>
+                      <input
+                        type="number"
+                        step="0.1"
+                        min="0"
+                        max="100"
+                        value={acessorio || ""}
+                        onChange={(e) =>
+                          setAcessorio(
+                            e.target.value === "" ? 0 : Number(e.target.value),
+                          )
+                        }
+                        className="w-full bg-slate-50 dark:bg-slate-900 border-2 border-slate-200 dark:border-slate-700 focus:border-orange-400 rounded-xl px-4 py-2.5 text-sm font-black text-slate-900 dark:text-white outline-none transition-all"
+                      />
+                    </div>
+                    <div>
+                      <label className="text-[10px] font-black text-slate-500 uppercase tracking-widest mb-1.5 block">
+                        Total
+                      </label>
+                      <div
+                        className={`w-full border-2 rounded-xl px-4 py-2.5 text-sm font-black flex items-center justify-center ${
+                          isMetasValid
+                            ? "bg-emerald-50 border-emerald-200 text-emerald-700"
+                            : "bg-red-50 border-red-200 text-red-700"
+                        }`}
+                      >
+                        {totalMetas.toFixed(1)}%
+                      </div>
                     </div>
                   </div>
                 </div>
@@ -1291,144 +1330,148 @@ export default function BuyOrderParams({ user }: { user: any }) {
                   {/* ✅ REMOVIDO: indicador de swipe mobile (não precisa mais) */}
                   
                   {/* ✅ NOVA ESTRUTURA: SEM overflow-x-auto, SEM min-w */}
-                  <div className="overflow-visible">
-                    <table className="w-full border-collapse table-fixed">
-                      <thead>
-                      <tr className="border-b-2 border-slate-200 dark:border-slate-700">
-                        {/* ✅ TODOS OS HEADERS CENTRALIZADOS */}
-                        <th className="text-[10px] font-black text-slate-500 uppercase tracking-widest p-2 text-center w-[10%]">
-                          Mês
-                        </th>
-                        <th className="text-[10px] font-black text-slate-500 uppercase tracking-widest p-2 text-center w-[18%]">
-                          Cota Total (R$)
-                        </th>
-                        <th className="text-[10px] font-black text-slate-500 uppercase tracking-widest p-2 text-center w-[18%]">
-                          Despesas (R$)
-                        </th>
-                        <th className="text-[10px] font-black text-slate-500 uppercase tracking-widest p-2 text-center w-[18%]">
-                          Cota Limpa
-                        </th>
-                        <th className="text-[10px] font-black text-slate-500 uppercase tracking-widest p-2 text-center w-[18%]">
-                          Cota Gerente
-                        </th>
-                        <th className="text-[10px] font-black text-slate-500 uppercase tracking-widest p-2 text-center w-[18%]">
-                          Cota Comprador
-                        </th>
-                      </tr>
-                    </thead>
-                    <tbody>
-                      {monthlyData.map((data, index) => {
-                        const cotaLimpa = toNumber(data.cotaTotal) - toNumber(data.despesas);
-
-                        return (
-                          <tr
-                            key={index}
-                            className="border-b border-slate-100 dark:border-slate-800/50 hover:bg-slate-50 dark:hover:bg-slate-800/50 transition-colors"
-                          >
-                            {/* ✅ COLUNA MÊS: CENTRALIZADA */}
-                            <td className="p-2 text-center">
-                              <span className="text-xs font-bold text-slate-700 dark:text-slate-300 uppercase">
-                                {monthNames[data.month - 1]}
-                              </span>
-                            </td>
-                            
-                            {/* ✅ COTA TOTAL: INPUT CENTRALIZADO */}
-                            <td className="p-2">
-                              <input
-                                type="number"
-                                inputMode="decimal"
-                                step="1000"
-                                min="0"
-                                value={data.cotaTotal}
-                                onChange={(e) =>
-                                  handleUpdateMonth(
-                                    index,
-                                    "cotaTotal",
-                                    Number(e.target.value),
-                                  )
-                                }
-                                className="w-full bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-lg px-2 py-1.5 text-xs font-black outline-none focus:border-orange-400 transition-all text-slate-900 dark:text-white text-center"
-                              />
-                            </td>
-                            
-                            {/* ✅ DESPESAS: INPUT CENTRALIZADO */}
-                            <td className="p-2">
-                              <input
-                                type="number"
-                                inputMode="decimal"
-                                step="1000"
-                                min="0"
-                                value={data.despesas}
-                                onChange={(e) =>
-                                  handleUpdateMonth(
-                                    index,
-                                    "despesas",
-                                    Number(e.target.value),
-                                  )
-                                }
-                                className="w-full bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-lg px-2 py-1.5 text-xs font-black outline-none focus:border-orange-400 transition-all text-slate-900 dark:text-white text-center"
-                              />
-                            </td>
-                            
-                            {/* ✅ COTA LIMPA: READONLY CENTRALIZADO */}
-                            <td className="p-2">
-                              <div className="w-full bg-blue-50/30 dark:bg-blue-900/10 border border-blue-200 dark:border-blue-800 rounded-lg px-2 py-1.5 text-xs font-black text-blue-700 dark:text-blue-300 text-center">
-                                {formatarMoeda(cotaLimpa)}
-                              </div>
-                            </td>
-                            
-                            {/* ✅ COTA GERENTE: INPUT CENTRALIZADO COM PLACEHOLDER MENOR */}
-                            <td className="p-2">
-                              <input
-                                type="number"
-                                inputMode="decimal"
-                                placeholder="Ex: 5000"
-                                value={data.cota_gerente_fixa || ""}
-                                onChange={(e) =>
-                                  handleUpdateMonth(
-                                    index,
-                                    "cota_gerente_fixa",
-                                    e.target.value ? Number(e.target.value) : null,
-                                  )
-                                }
-                                className="w-full bg-emerald-50/30 dark:bg-emerald-900/10 border border-emerald-200 dark:border-emerald-800 rounded-lg px-2 py-1.5 text-xs font-black outline-none focus:border-emerald-400 text-emerald-700 dark:text-emerald-300 text-center placeholder:text-[9px] placeholder:text-emerald-400/60"
-                              />
-                            </td>
-                            
-                            {/* ✅ COTA COMPRADOR: READONLY CENTRALIZADO */}
-                            <td className="p-2">
-                              {(() => {
-                                // Buscar cota disponível da VIEW (cálculo OTB correto)
-                                const cotaOTB = cotasDisponiveis.find(
-                                  c => c.month === data.month
-                                )?.cota_comprador_total || 0;
-                                
-                                const isNegativo = cotaOTB < 0;
-                                
-                                return (
-                                  <div className={`w-full rounded-lg px-2 py-1.5 text-xs font-bold text-center ${
-                                    isNegativo
-                                      ? "bg-red-100 text-red-700" 
-                                      : "bg-emerald-100 text-emerald-700"
-                                  }`}>
-                                    {formatarMoeda(cotaOTB)}
-                                    {isNegativo && (
-                                      <span className="block text-[8px] font-black uppercase mt-0.5 text-red-600">
-                                        ⚠️ Negativo
-                                      </span>
-                                    )}
-                                  </div>
-                                );
-                              })()}
-                            </td>
-                          </tr>
-                        );
-                      })}
-                    </tbody>
-                  </table>
+                    <div className="overflow-visible">
+                      <table className="w-full border-collapse table-fixed">
+                        <thead>
+                        <tr className="border-b-2 border-slate-200 dark:border-slate-700">
+                          {/* ✅ HEADERS COM ALINHAMENTOS ESPECÍFICOS */}
+                          <th className="text-[9px] font-black text-slate-500 uppercase tracking-widest p-2 text-left w-[18%]">
+                            Mês
+                          </th>
+                          <th className="text-[10px] font-black text-slate-500 uppercase tracking-widest p-2 text-center w-[16%]">
+                            Cota Total (R$)
+                          </th>
+                          <th className="text-[10px] font-black text-slate-500 uppercase tracking-widest p-2 text-center w-[16%]">
+                            Despesas (R$)
+                          </th>
+                          <th className="text-[10px] font-black text-slate-500 uppercase tracking-widest p-2 text-center w-[17%]">
+                            Cota Limpa
+                          </th>
+                          <th className="text-[10px] font-black text-slate-500 uppercase tracking-widest p-2 text-center w-[16%]">
+                            Cota Gerente
+                          </th>
+                          <th className="text-[10px] font-black text-slate-500 uppercase tracking-widest p-2 text-center w-[17%]">
+                            Cota Comprador
+                          </th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {monthlyData.map((data, index) => {
+                          const cotaLimpa = toNumber(data.cotaTotal) - toNumber(data.despesas);
+  
+                          return (
+                            <tr
+                              key={index}
+                              className="border-b border-slate-100 dark:border-slate-800/50 hover:bg-slate-50/80 dark:hover:bg-slate-800/50 transition-colors"
+                            >
+                              {/* ✅ COLUNA MÊS: ALINHADA À ESQUERDA, NEGRITO, MENOR */}
+                              <td className="p-2 text-left bg-slate-50/30 dark:bg-slate-900/10">
+                                <span className="text-[10px] font-bold text-slate-700 dark:text-slate-300 uppercase whitespace-nowrap">
+                                  {(() => {
+                                    const fiscal = getFiscalYearMonth(index);
+                                    return `${monthNames[fiscal.month - 1]}/${fiscal.year}`;
+                                  })()}
+                                </span>
+                              </td>
+                              
+                              {/* ✅ COTA TOTAL: INPUT CENTRALIZADO */}
+                              <td className="p-2">
+                                <input
+                                  type="number"
+                                  inputMode="decimal"
+                                  step="1000"
+                                  min="0"
+                                  value={data.cotaTotal || ""}
+                                  onChange={(e) =>
+                                    handleUpdateMonth(
+                                      index,
+                                      "cotaTotal",
+                                      e.target.value === ""
+                                        ? 0
+                                        : Number(e.target.value),
+                                    )
+                                  }
+                                  className="w-full bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-lg px-2 py-1.5 text-[11px] font-black outline-none focus:border-orange-400 transition-all text-slate-900 dark:text-white text-center"
+                                />
+                              </td>
+                              
+                              {/* ✅ DESPESAS: INPUT CENTRALIZADO */}
+                              <td className="p-2">
+                                <input
+                                  type="number"
+                                  inputMode="decimal"
+                                  step="1000"
+                                  min="0"
+                                  value={data.despesas || ""}
+                                  onChange={(e) =>
+                                    handleUpdateMonth(
+                                      index,
+                                      "despesas",
+                                      e.target.value === ""
+                                        ? 0
+                                        : Number(e.target.value),
+                                    )
+                                  }
+                                  className="w-full bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-lg px-2 py-1.5 text-[11px] font-black outline-none focus:border-orange-400 transition-all text-slate-900 dark:text-white text-center"
+                                />
+                              </td>
+                              
+                              {/* ✅ COTA LIMPA: READONLY CENTRALIZADO COM FUNDO AZUL CLARO */}
+                              <td className="p-2 bg-blue-50/20 dark:bg-blue-900/5">
+                                <div className="w-full bg-white dark:bg-slate-900 border border-blue-200 dark:border-blue-800 rounded-lg px-1 py-1.5 text-[10px] font-black text-blue-700 dark:text-blue-300 text-center truncate">
+                                  {formatarMoeda(cotaLimpa)}
+                                </div>
+                              </td>
+                              
+                              {/* ✅ COTA GERENTE: INPUT CENTRALIZADO COM FUNDO VERDE CLARO */}
+                              <td className="p-2 bg-emerald-50/20 dark:bg-emerald-900/5">
+                                <input
+                                  type="number"
+                                  inputMode="decimal"
+                                  placeholder="0"
+                                  value={data.cota_gerente_fixa || ""}
+                                  onChange={(e) =>
+                                    handleUpdateMonth(
+                                      index,
+                                      "cota_gerente_fixa",
+                                      e.target.value === ""
+                                        ? 0
+                                        : Number(e.target.value),
+                                    )
+                                  }
+                                  className="w-full bg-white dark:bg-slate-900 border border-emerald-200 dark:border-emerald-800 rounded-lg px-1 py-1.5 text-[11px] font-black outline-none focus:border-emerald-400 text-emerald-700 dark:text-emerald-300 text-center"
+                                />
+                              </td>
+                              
+                              {/* ✅ COTA COMPRADOR: READONLY CENTRALIZADO COM FUNDO VERDE ÁGUA */}
+                              <td className="p-2 bg-green-50/20 dark:bg-green-900/5">
+                                {(() => {
+                                  // Buscar cota disponível da VIEW (cálculo OTB correto)
+                                  const fiscal = getFiscalYearMonth(index);
+                                  const cotaData = cotasDisponiveis.find(
+                                    (c) => c.mes === fiscal.month && c.ano === fiscal.year
+                                  );
+                                  const cotaOTB = cotaData?.otb_maximo_compravel_comprador || 0;
+                                  
+                                  return (
+                                    <div className={`w-full bg-white dark:bg-slate-900 border rounded-lg px-1 py-1.5 text-[10px] font-black text-center truncate ${
+                                      cotaOTB >= 0 
+                                        ? "border-green-200 dark:border-green-800 text-green-700 dark:text-green-300" 
+                                        : "border-red-200 dark:border-red-800 text-red-700 dark:text-red-300"
+                                    }`}>
+                                      {formatarMoeda(cotaOTB)}
+                                    </div>
+                                  );
+                                })()}
+                              </td>
+                            </tr>
+                          );
+                        })}
+                      </tbody>
+                    </table>
+                  </div>
                 </div>
               </div>
-            </div>
 
             {/* Administração de Alertas */}
               <div className="bg-white dark:bg-slate-800 rounded-2xl p-5 border border-slate-200 dark:border-slate-700 shadow-sm space-y-4">

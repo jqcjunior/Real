@@ -107,9 +107,6 @@ export const useDREStats = ({
             if (payments.length > 0) {
                 payments.forEach(p => {
                     const val = Number(p.amount || 0);
-                    monthIn += val;
-                    if (isDaySale) dayIn += val;
-
                     const method = p.payment_method?.toLowerCase();
                     if (method === 'pix') {
                         monthMethods.pix += val;
@@ -152,9 +149,6 @@ export const useDREStats = ({
                 const items = (sales ?? []).filter(i => i.saleCode === sale.sale_code && i.status === 'completed');
                 items.forEach(i => {
                     const val = Number(i.totalValue || 0);
-                    monthIn += val;
-                    if (isDaySale) dayIn += val;
-
                     const method = i.paymentMethod?.toLowerCase();
                     if (method === 'pix') {
                         monthMethods.pix += val;
@@ -214,6 +208,11 @@ export const useDREStats = ({
             salesByProduct[item.productName].totalValue += Number(item.totalValue || 0);
         });
 
+        // ✅ CALCULAR monthIn a partir dos ITENS:
+        monthIn = monthSalesItems.reduce((acc, item) => {
+            return acc + Number(item.totalValue || 0);
+        }, 0);
+
         Object.entries(salesByProduct).forEach(([productName, data]) => {
             monthSalesDetail.push({ productName, ...data });
         });
@@ -271,6 +270,11 @@ export const useDREStats = ({
             resumo[venda.productName].qtd += Number(venda.unitsSold || 0);
             resumo[venda.productName].total += Number(venda.totalValue || 0);
         });
+
+        // ✅ CALCULAR dayIn a partir dos ITENS:
+        dayIn = daySales.reduce((acc, item) => {
+            return acc + Number(item.totalValue || 0);
+        }, 0);
 
         const profit = monthIn - monthSangriaTotal - monthFutureDebts;
         const dayProfit = dayIn - daySangriaTotal;
