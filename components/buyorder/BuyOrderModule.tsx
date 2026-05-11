@@ -679,7 +679,6 @@ export default function BuyOrderModule({ user }: { user?: User }) {
         // ✅ USAR FUNÇÃO SEGURA DO APISERVICE
         await apiService.updateBuyOrder(orderId, {
           user_name: user?.name || user?.email || "sistema",
-          user_role: cab.role,
           brand_id: brandId,
           marca: cab.marca,
           fornecedor: cab.fornecedor,
@@ -693,6 +692,8 @@ export default function BuyOrderModule({ user }: { user?: User }) {
           desconto: cab.desconto,
           markup: cab.markup,
           status: "rascunho", // Volta para rascunho se foi alterado
+          edited_by: user?.id,
+          edited_at: new Date().toISOString(),
         });
 
         // Excluir os velhos relacionamentos para recriar
@@ -839,7 +840,8 @@ export default function BuyOrderModule({ user }: { user?: User }) {
         .update({ 
           total_valor_bruto: totalBruto,
           total_valor_liquido: totalLiquido,
-          total_pares: pedidos.reduce((acc, p) => acc + (p.itensComGrades.reduce((sum, i) => sum + i.grades.reduce((s, g) => s + totPares(g.qtds), 0), 0) * p.lojas.length), 0)
+          total_pares: pedidos.reduce((acc, p) => acc + (p.itensComGrades.reduce((sum, i) => sum + i.grades.reduce((s, g) => s + totPares(g.qtds), 0), 0) * p.lojas.length), 0),
+          updated_at: new Date().toISOString()
         })
         .eq("id", orderId);
 
@@ -2792,28 +2794,30 @@ function StepItens({
   }
 
   function selectTipo(tipo: string) {
-    setForm((f) => ({ ...f, tipo }));
+    const tu = tipo.toUpperCase();
+    setForm((f) => ({ ...f, tipo: tu }));
     setShowTipoDropdown(false);
-    supabase.rpc("increment_tipo_usage", { tipo_name: tipo });
+    supabase.rpc("increment_tipo_usage", { tipo_name: tu });
   }
 
   function selectCor(cor: string, field: "cor1" | "cor2" | "cor3") {
+    const cu = cor.toUpperCase();
     if (field === "cor1") {
       setForm((f) => ({
         ...f,
-        cor1: cor,
-        cor2: cor2Manual ? f.cor2 : cor,
-        cor3: cor3Manual ? f.cor3 : cor,
+        cor1: cu,
+        cor2: cor2Manual ? f.cor2 : cu,
+        cor3: cor3Manual ? f.cor3 : cu,
       }));
     } else if (field === "cor2") {
       setCor2Manual(true);
-      setForm((f) => ({ ...f, cor2: cor }));
+      setForm((f) => ({ ...f, cor2: cu }));
     } else {
       setCor3Manual(true);
-      setForm((f) => ({ ...f, cor3: cor }));
+      setForm((f) => ({ ...f, cor3: cu }));
     }
     setShowCorDropdown({ field: null });
-    supabase.rpc("increment_color_usage", { color_name: cor });
+    supabase.rpc("increment_color_usage", { color_name: cu });
   }
 
   function openNew() {

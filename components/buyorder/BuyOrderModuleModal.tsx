@@ -2,6 +2,8 @@ import { useState, useEffect } from "react";
 import { supabase } from "../../services/supabaseClient";
 import { toast } from "sonner";
 
+import { apiService } from "../../services/apiService";
+
 interface BuyOrderModuleModalProps {
   order: any;
   onClose: () => void;
@@ -136,9 +138,15 @@ export function BuyOrderModuleModal({
   const handleSave = async () => {
     setLoading(true);
     try {
+      const user = apiService.getUser();
       const { error: orderError } = await supabase
         .from("buy_orders")
-        .update(formData)
+        .update({
+          ...formData,
+          edited_by: user?.id,
+          edited_at: new Date().toISOString(),
+          updated_at: new Date().toISOString()
+        })
         .eq("id", order.id);
 
       if (orderError) throw orderError;
@@ -1214,6 +1222,14 @@ export function BuyOrderModuleModal({
               {order.user_role === "comprador" ? "COMPRADOR" : "GERENTE"}) em{" "}
               {new Date(order.created_at).toLocaleString("pt-BR")}
             </div>
+            {order.edited_at && (
+              <div style={{ marginTop: 4 }}>
+                ✏️ Última edição em:{" "}
+                <strong>
+                  {new Date(order.edited_at).toLocaleString("pt-BR")}
+                </strong>
+              </div>
+            )}
             {order.exported_at && (
               <div>
                 📤 Exportado em:{" "}

@@ -147,7 +147,6 @@ class ApiService {
    */
   async updateBuyOrder(orderId: string, updateData: {
     user_name?: string;
-    user_role?: string;
     brand_id?: string;
     marca?: string;
     fornecedor?: string;
@@ -164,6 +163,8 @@ class ApiService {
     total_pares?: number;
     total_valor_bruto?: number;
     total_valor_liquido?: number;
+    edited_by?: string;
+    edited_at?: string;
   }) {
     try {
       await this.ensureRLS();

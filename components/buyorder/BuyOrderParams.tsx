@@ -717,6 +717,8 @@ export default function BuyOrderParams({ user }: { user: any }) {
     cota_comprador_valor?: number;
     usar_cota_fixa: boolean;
     cota_gerente_fixa: number | null;
+    saldo_reserva_gerente?: number;
+    saldo_reserva_comprador?: number;
   }
 
   const [monthlyData, setMonthlyData] = useState<MonthlyData[]>(
@@ -834,28 +836,18 @@ export default function BuyOrderParams({ user }: { user: any }) {
 
     // Se tem parâmetros customizados ou não, carregamos as cotas calculadas do banco
     try {
-      const { data: quotaData, error: quotaError } = await supabase.rpc("get_cotas_ano_fiscal", {
-        p_store_number: store.store_number,
-        p_start_year: selectedYear,
-        p_start_month: currentMonth  // ✅ Usar mês atual como início do ano fiscal
-      });
-
-      if (quotaError) throw quotaError;
-
-      // Buscar cotas disponíveis da VIEW (cálculo OTB correto)
+      // Buscar cotas da VIEW correta
       const { data: cotasView, error: cotasError } = await supabase
-        .from('v_cota_disponivel_mes')
+        .from('v_cotas_mes_correto')
         .select('*')
         .eq('store_number', store.store_number)
-        .gte('year', selectedYear)  // ✅ Buscar ano selecionado e próximo
-        .lte('year', selectedYear + 1)
-        .order('year')
+        .eq('year', selectedYear)
         .order('month');
-      
+
       if (cotasError) {
-        console.warn('Erro ao carregar cotas disponíveis:', cotasError);
+        console.warn('Erro ao carregar cotas:', cotasError);
       }
-      
+
       setCotasDisponiveis(cotasView || []);
 
       // Carregar também os parâmetros brutos para pegar porcentagens anuais e outras flags
@@ -890,23 +882,36 @@ export default function BuyOrderParams({ user }: { user: any }) {
         }
       }
 
-      if (quotaData && quotaData.length > 0) {
-        const newMonthly = Array.from({ length: 12 }).map((_, visualIndex) => {
-          // Encontrar dados do mês correspondente no ano fiscal
-          const q = quotaData[visualIndex]; // quotaData já vem ordenado do RPC
-          const p = paramData?.find((x: any) => {
-            const fiscal = getFiscalYearMonth(visualIndex);
-            return x.year === fiscal.year && x.month === fiscal.month;
-          });
+      if (cotasView && cotasView.length > 0) {
+        const newMonthly = Array.from({ length: 12 }).map((_, i) => {
+          const m = i + 1;
+          const q = cotasView.find((x: any) => x.month === m);
+          
+          if (!q) {
+            return {
+              month: m,
+              cotaTotal: 0,
+              despesas: 0,
+              cota_gerente_valor: 0,
+              cota_comprador_valor: 0,
+              usar_cota_fixa: false,
+              cota_gerente_fixa: null
+            };
+          }
           
           return {
-            month: visualIndex + 1, // Mês visual (1-12 na tabela)
-            cotaTotal: q ? Number(q.cota_mensal || 0) : 0,
-            despesas: q ? Number(q.despesas_comprometidas || 0) : 0,
-            cota_gerente_valor: q ? Number(q.cota_gerente_valor || 0) : 0,
-            cota_comprador_valor: q ? Number(q.cota_comprador_valor || 0) : 0,
-            usar_cota_fixa: q ? !!q.usar_cota_fixa : false,
-            cota_gerente_fixa: p ? (p.cota_gerente_fixa || null) : null,
+            month: m,
+            cotaTotal: Number(q.cota_bruta || 0),
+            despesas: Number(q.despesas_comprometidas || 0),
+            
+            // Valores calculados pela VIEW
+            cota_gerente_valor: Number(q.cota_gerente || 0),
+            cota_comprador_valor: Number(q.cota_comprador || 0),
+            saldo_reserva_gerente: Number(q.saldo_reserva_gerente || 0),
+            saldo_reserva_comprador: Number(q.saldo_reserva_comprador || 0),
+            
+            usar_cota_fixa: true,
+            cota_gerente_fixa: Number(q.cota_gerente || 0)
           };
         });
         setMonthlyData(newMonthly);
@@ -1443,26 +1448,29 @@ export default function BuyOrderParams({ user }: { user: any }) {
                                 />
                               </td>
                               
-                              {/* ✅ COTA COMPRADOR: READONLY CENTRALIZADO COM FUNDO VERDE ÁGUA */}
-                              <td className="p-2 bg-green-50/20 dark:bg-green-900/5">
-                                {(() => {
-                                  // Buscar cota disponível da VIEW (cálculo OTB correto)
-                                  const fiscal = getFiscalYearMonth(index);
-                                  const cotaData = cotasDisponiveis.find(
-                                    (c) => c.mes === fiscal.month && c.ano === fiscal.year
-                                  );
-                                  const cotaOTB = cotaData?.otb_maximo_compravel_comprador || 0;
+                              <td className="p-2">
+                                <div className="space-y-1">
+                                  {/* SALDO RESERVA COMPRADOR */}
+                                  <div className={`w-full rounded-lg px-2 py-1.5 text-xs font-bold text-center ${
+                                    (data.saldo_reserva_comprador || 0) < 0
+                                      ? "bg-red-100 text-red-700" 
+                                      : "bg-blue-100 text-blue-700"
+                                  }`}>
+                                    {formatarMoeda(data.saldo_reserva_comprador || 0)}
+                                    {(data.saldo_reserva_comprador || 0) < 0 && (
+                                      <span className="block text-[8px] font-black uppercase mt-0.5 text-red-600">
+                                        ⚠️ Negativo
+                                      </span>
+                                    )}
+                                  </div>
                                   
-                                  return (
-                                    <div className={`w-full bg-white dark:bg-slate-900 border rounded-lg px-1 py-1.5 text-[10px] font-black text-center truncate ${
-                                      cotaOTB >= 0 
-                                        ? "border-green-200 dark:border-green-800 text-green-700 dark:text-green-300" 
-                                        : "border-red-200 dark:border-red-800 text-red-700 dark:text-red-300"
-                                    }`}>
-                                      {formatarMoeda(cotaOTB)}
+                                  {/* COTA TOTAL DISPONÍVEL (OTB) */}
+                                  {(data.cota_comprador_valor || 0) > 0 && (
+                                    <div className="w-full bg-emerald-50 rounded-lg px-2 py-1 text-[9px] font-bold text-emerald-700 text-center">
+                                      💰 Cota: {formatarMoeda(data.cota_comprador_valor)}
                                     </div>
-                                  );
-                                })()}
+                                  )}
+                                </div>
                               </td>
                             </tr>
                           );

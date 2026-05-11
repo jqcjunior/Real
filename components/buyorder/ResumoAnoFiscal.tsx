@@ -20,6 +20,10 @@ export interface QuotaMes {
   otb_maximo_compravel_comprador?: number;
   otb_maximo_compravel_gerente?: number;
   
+  // ✅ NOVOS CAMPOS: Saldo Reserva
+  saldo_reserva_gerente?: number;
+  saldo_reserva_comprador?: number;
+  
   // ✅ NOVOS CAMPOS: Pedidos emitidos no mês (por tipo)
   pedidos_futuros_comprador?: number;
   pedidos_futuros_gerente?: number;
@@ -124,8 +128,8 @@ export default function ResumoAnoFiscal({ quotas, onVerPedidos }: ResumoAnoFisca
           const cotaLimpa = toNumber(quota.cota_disponivel);
           const despesas = toNumber(quota.despesas_comprometidas);
           const cotaBruta = toNumber(quota.cota_mensal);
-          const cotaGerente = toNumber(quota.cota_gerente_valor);
-          const cotaComprador = toNumber(quota.cota_comprador_valor);
+          const cotaComprador = toNumber(quota.saldo_reserva_comprador);
+          const cotaGerente = toNumber(quota.saldo_reserva_gerente);
           
           // ✅ OTB: Valor máximo comprável
           const otbComprador = toNumber(quota.otb_maximo_compravel_comprador);

@@ -136,16 +136,19 @@ export function sanitizeItem(input: BuyOrderItemInput): BuyOrderItemRow {
   }
  
   // tipo (NOT NULL)
-  const tipo = String(input.tipo || '').trim();
+  const tipo = String(input.tipo || '').trim().toUpperCase();
   if (!tipo) {
     errors.push('tipo é obrigatório');
   }
  
   // cor1 (NOT NULL)
-  const cor1 = String(input.cor1 || '').trim();
+  const cor1 = String(input.cor1 || '').trim().toUpperCase();
   if (!cor1) {
     errors.push('cor1 é obrigatória');
   }
+
+  const cor2 = input.cor2 ? String(input.cor2).trim().toUpperCase() || null : null;
+  const cor3 = input.cor3 ? String(input.cor3).trim().toUpperCase() || null : null;
  
   // modelo (CHECK: MASC | FEM | INF | ACES)
   const modelo = String(input.modelo || '').trim().toUpperCase() as ModeloValido;
@@ -194,8 +197,8 @@ export function sanitizeItem(input: BuyOrderItemInput): BuyOrderItemRow {
     referencia,
     tipo,
     cor1,
-    cor2: input.cor2 ? String(input.cor2).trim() || null : null,
-    cor3: input.cor3 ? String(input.cor3).trim() || null : null,
+    cor2: cor2,
+    cor3: cor3,
     modelo,
     custo: Math.round(custo * 100) / 100,
     preco_venda: Math.round(preco_venda * 100) / 100,

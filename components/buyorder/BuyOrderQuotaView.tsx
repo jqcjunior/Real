@@ -154,14 +154,19 @@ export default function BuyOrderQuotaView({ user }: { user: User }) {
         return;
       }
       
-      const { data, error } = await supabase.rpc('get_cotas_ano_fiscal', {
-        p_store_number: selectedStore,
-        p_start_year: ptYear,
-        p_start_month: ptMonth
-      });
+      // Buscar dados da VIEW correta
+      const { data, error } = await supabase
+        .from('v_cotas_mes_correto')
+        .select('*')
+        .eq('store_number', selectedStore)
+        .eq('year', ptYear)
+        .gte('month', ptMonth)
+        .order('year', { ascending: true })
+        .order('month', { ascending: true })
+        .limit(12);
 
       if (error) {
-        console.error('RPC ERROR:', error);
+        console.error('VIEW ERROR:', error);
         throw error;
       }
 
@@ -174,25 +179,45 @@ export default function BuyOrderQuotaView({ user }: { user: User }) {
           };
 
           return {
-            mes: d.mes,
-            ano: d.ano,
-            cota_mensal: toNumber(d.cota_mensal),
-            cota_utilizada: toNumber(d.cota_utilizada),
-            cota_disponivel: toNumber(d.cota_disponivel),
-            cota_gerente_valor: toNumber(d.cota_gerente_valor),
-            cota_comprador_valor: toNumber(d.cota_comprador_valor),
+            mes: d.month,
+            ano: d.year,
+            
+            // Dados base
+            cota_mensal: toNumber(d.cota_bruta),
             despesas_comprometidas: toNumber(d.despesas_comprometidas),
-            pedidos_confirmados: toNumber(d.pedidos_confirmados),
-            qtd_pedidos: toNumber(d.qtd_pedidos),
-            cota_futura_mes1: toNumber(d.cota_futura_mes1),
-            cota_futura_mes2: toNumber(d.cota_futura_mes2),
-            cota_futura_mes3: toNumber(d.cota_futura_mes3),
-            otb_maximo_compravel_comprador: toNumber(d.otb_maximo_compravel_comprador),
-            otb_maximo_compravel_gerente: toNumber(d.otb_maximo_compravel_gerente),
-            pedidos_futuros_comprador: toNumber(d.pedidos_futuros_comprador),
-            pedidos_futuros_gerente: toNumber(d.pedidos_futuros_gerente),
-            qtd_pedidos_comprador: toNumber(d.qtd_pedidos_comprador),
-            qtd_pedidos_gerente: toNumber(d.qtd_pedidos_gerente)
+            cota_limpa_parametro: toNumber(d.cota_limpa_parametro),
+            
+            // Meses futuros (já descontados)
+            cota_futura_mes1: toNumber(d.futuro_ago),
+            cota_futura_mes2: toNumber(d.futuro_set),
+            cota_futura_mes3: toNumber(d.futuro_out),
+            
+            // Cotas calculadas
+            cota_livre_total: toNumber(d.cota_livre_total),
+            cota_disponivel: toNumber(d.cota_maio_livre),
+            
+            // Divisão Gerente/Comprador
+            cota_gerente_valor: toNumber(d.cota_gerente),
+            cota_comprador_valor: toNumber(d.cota_comprador),
+            
+            // Saldo Reserva (com pedidos descontados)
+            saldo_reserva_gerente: toNumber(d.saldo_reserva_gerente),
+            saldo_reserva_comprador: toNumber(d.saldo_reserva_comprador),
+            
+            // OTB (já calculado)
+            otb_maximo_compravel_comprador: toNumber(d.cota_comprador),
+            otb_maximo_compravel_gerente: toNumber(d.cota_gerente),
+            
+            // Pedidos do mês
+            pedidos_futuros_comprador: toNumber(d.pedidos_comprador_mes),
+            pedidos_futuros_gerente: toNumber(d.pedidos_gerente_mes),
+            qtd_pedidos_comprador: toNumber(d.pedidos_comprador_mes) > 0 ? 1 : 0,
+            qtd_pedidos_gerente: toNumber(d.pedidos_gerente_mes) > 0 ? 1 : 0,
+            
+            // Legados (manter compatibilidade)
+            cota_utilizada: toNumber(d.pedidos_gerente_mes) + toNumber(d.pedidos_comprador_mes),
+            pedidos_confirmados: toNumber(d.pedidos_gerente_mes) + toNumber(d.pedidos_comprador_mes),
+            qtd_pedidos: (toNumber(d.pedidos_gerente_mes) > 0 ? 1 : 0) + (toNumber(d.pedidos_comprador_mes) > 0 ? 1 : 0)
           };
         }));
       }
