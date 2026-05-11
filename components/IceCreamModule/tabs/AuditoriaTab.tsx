@@ -27,6 +27,7 @@ interface AuditoriaTabProps {
     items: any[];
     stock: any[];
     isSorvete: boolean;
+    isLoading?: boolean;
 }
  
 const AuditoriaTab: React.FC<AuditoriaTabProps> = ({
@@ -50,10 +51,17 @@ const AuditoriaTab: React.FC<AuditoriaTabProps> = ({
     onCancelSale,
     items,
     stock,
-    isSorvete
+    isSorvete,
+    isLoading
 }) => {
     return (
-        <div className="p-4 md:p-8 space-y-6 animate-in fade-in duration-300 max-w-6xl mx-auto pb-20">
+        <div className="p-4 md:p-8 space-y-6 animate-in fade-in duration-300 max-w-6xl mx-auto pb-20 relative">
+            {isLoading && (
+                <div className="absolute inset-0 bg-white/60 backdrop-blur-[2px] z-50 flex flex-col items-center justify-center rounded-[40px] shadow-sm border border-gray-100">
+                    <History className="animate-spin text-blue-600 mb-4" size={40} />
+                    <p className="text-[10px] font-black text-gray-400 uppercase tracking-widest">Buscando dados no banco...</p>
+                </div>
+            )}
             <div className="bg-white p-6 rounded-[40px] shadow-sm border border-gray-100 flex flex-col gap-6">
                 <div className="flex flex-col md:flex-row justify-between items-center gap-4">
                     <div>

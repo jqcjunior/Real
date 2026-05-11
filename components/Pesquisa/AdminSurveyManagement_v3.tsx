@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
-import { supabase } from '../services/supabaseClient';
-import { ensureSession } from '../services/authService';
+import { supabase } from '../../services/supabaseClient';
+import { ensureSession } from '../../services/authService';
 import { 
   Plus, 
   Search, 
@@ -36,7 +36,7 @@ import {
   Store,
   AdminUser,
   User
-} from '../types';
+} from '../../types';
 
 interface AdminSurveyManagementProps {
   currentUser: User;

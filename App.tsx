@@ -46,9 +46,9 @@ import StockForecastDashboard from './components/StockForecastDashboard.tsx';
 import BuyOrderQuotaView from './components/buyorder/BuyOrderQuotaView.tsx';
 const ReportsPage = lazy(() => import('./components/ReportsPage'));
 const AdminQuotaExtraApprovals = lazy(() => import('./components/buyorder/AdminQuotaExtraApprovals'));
-const AdminSurveyManagement = lazy(() => import('./components/AdminSurveyManagement_v3'));
-const MySurveysComponent = lazy(() => import('./components/MySurveysComponent'));
-const SurveyResultsViewer = lazy(() => import('./components/SurveyResultsViewer'));
+const AdminSurveyManagement = lazy(() => import('./components/Pesquisa/AdminSurveyManagement_v3'));
+const MySurveysComponent = lazy(() => import('./components/Pesquisa/MySurveysComponent'));
+const SurveyResultsViewer = lazy(() => import('./components/Pesquisa/SurveyResultsViewer'));
 // DRE Analytics imports removed as requested for cleanup
 const DREAccounts = lazy(() => import('./components/dre/components/DREAccountsResponsive'));
 
@@ -1587,7 +1587,7 @@ const App: React.FC = () => {
                     <div className="fixed inset-0 z-[210] overflow-y-auto bg-white dark:bg-slate-950">
                         <Suspense fallback={<PageLoader />}>
                             {(() => {
-                                const SurveyResponseForm = lazy(() => import('./components/SurveyResponseForm'));
+                                const SurveyResponseForm = lazy(() => import('./components/Pesquisa/SurveyResponseForm'));
                                 return (
                                     <SurveyResponseForm
                                         survey={selectedSurvey}

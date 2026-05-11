@@ -1,5 +1,7 @@
 import React, { useState } from 'react';
-import { TrendingUp, AlertCircle, Calendar } from 'lucide-react';
+import { TrendingUp, AlertCircle, Calendar, UserCheck, Package, Flame } from 'lucide-react';
+import { supabase } from '../../services/supabaseClient';
+import { toast } from 'sonner';
 
 export interface QuotaMes {
   mes: number;
@@ -24,15 +26,24 @@ export interface QuotaMes {
   saldo_reserva_gerente?: number;
   saldo_reserva_comprador?: number;
   
+  // ✅ NOVOS CAMPOS: Percentuais
+  percentual_comprador?: number;
+  percentual_gerente?: number;
+
   // ✅ NOVOS CAMPOS: Pedidos emitidos no mês (por tipo)
   pedidos_futuros_comprador?: number;
   pedidos_futuros_gerente?: number;
   qtd_pedidos_comprador?: number;
   qtd_pedidos_gerente?: number;
+
+  // ✅ NOVOS CAMPOS PARA CORREÇÃO
+  cota_do_mes?: number;
+  cota_futuro_total?: number;
 }
 
 interface ResumoAnoFiscalProps {
   quotas: QuotaMes[];
+  storeNumber: string;
   onVerPedidos?: (mes: number, ano: number) => void;
 }
 
@@ -60,8 +71,105 @@ export function gerarMesesRolling(startMonth: number, startYear: number): { mes:
   return resultado;
 }
 
-export default function ResumoAnoFiscal({ quotas, onVerPedidos }: ResumoAnoFiscalProps) {
+export default function ResumoAnoFiscal({ quotas, storeNumber, onVerPedidos }: ResumoAnoFiscalProps) {
   const [expandedMonth, setExpandedMonth] = useState<number | null>(null);
+  
+  // Estados para o modal de pedidos
+  const [showPedidosModal, setShowPedidosModal] = useState(false);
+  const [pedidosMes, setPedidosMes] = useState<any[]>([]);
+  const [mesSelecionado, setMesSelecionado] = useState({ mes: 0, ano: 0 });
+  const [loadingPedidos, setLoadingPedidos] = useState(false);
+
+  const getMesNome = (mes: number) => {
+    const meses = ['Janeiro', 'Fevereiro', 'Março', 'Abril', 'Maio', 'Junho', 'Julho', 'Agosto', 'Setembro', 'Outubro', 'Novembro', 'Dezembro'];
+    return meses[mes - 1] || '';
+  };
+
+  const handleVerPedidos = async (mes: number, ano: number) => {
+    setLoadingPedidos(true);
+    setMesSelecionado({ mes, ano });
+    setShowPedidosModal(true);
+    
+    try {
+      // Buscar pedidos do mês
+      const { data, error } = await supabase
+        .from('buy_orders')
+        .select(`
+          id,
+          numero_pedido,
+          marca,
+          fornecedor,
+          fat_inicio,
+          fat_fim,
+          prazos,
+          vencimentos,
+          user_name,
+          user_role,
+          buy_order_items (
+            total_pares,
+            custo
+          ),
+          buy_order_sub_orders (
+            id,
+            sub_order_num,
+            lojas_numeros
+          )
+        `)
+        .gte('fat_inicio', `${ano}-${String(mes).padStart(2, '0')}-01`)
+        .lt('fat_inicio', mes === 12 ? `${ano + 1}-01-01` : `${ano}-${String(mes + 1).padStart(2, '0')}-01`)
+        .eq('status', 'confirmado')
+        .order('numero_pedido', { ascending: true });
+
+      if (error) throw error;
+
+      // FILTRAR: Apenas pedidos que incluem a loja atual
+      const pedidosLoja = (data || []).filter(pedido => {
+        if (pedido.buy_order_sub_orders && pedido.buy_order_sub_orders.length > 0) {
+          return pedido.buy_order_sub_orders.some((sub: any) => 
+            sub.lojas_numeros?.includes(parseInt(storeNumber))
+          );
+        }
+        return false;
+      });
+      
+      // Calcular totais de cada pedido
+      const pedidosComTotais = pedidosLoja.map(pedido => {
+        const items = (pedido.buy_order_items as any[]) || [];
+        const totalPares = items.reduce((sum: number, item: any) => 
+          sum + (item.total_pares || 0), 0
+        );
+        const totalCusto = items.reduce((sum: number, item: any) => 
+          sum + (item.total_pares || 0) * (item.custo || 0), 0
+        );
+        
+        // Agrupar vencimentos por mês
+        const vencimentosPorMes: Record<string, number> = {};
+        const numParcelas = pedido.prazos?.length || 1;
+        const valorParcela = totalCusto / numParcelas;
+        
+        pedido.vencimentos?.forEach((venc: string) => {
+          const [vAno, vMes] = venc.split('-');
+          const mesesAbrev = ['JAN', 'FEV', 'MAR', 'ABR', 'MAI', 'JUN', 'JUL', 'AGO', 'SET', 'OUT', 'NOV', 'DEZ'];
+          const mesNome = mesesAbrev[parseInt(vMes) - 1];
+          vencimentosPorMes[mesNome] = (vencimentosPorMes[mesNome] || 0) + valorParcela;
+        });
+        
+        return {
+          ...pedido,
+          totalPares,
+          totalCusto,
+          vencimentosPorMes
+        };
+      });
+      
+      setPedidosMes(pedidosComTotais);
+    } catch (error) {
+      console.error('Erro ao buscar pedidos:', error);
+      toast.error('Erro ao carregar pedidos');
+    } finally {
+      setLoadingPedidos(false);
+    }
+  };
   
   const formatarMoeda = (valor: number) =>
     valor.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' });
@@ -76,6 +184,43 @@ export default function ResumoAnoFiscal({ quotas, onVerPedidos }: ResumoAnoFisca
     if (v === null || v === undefined || v === '') return 0;
     const n = typeof v === 'string' ? parseFloat(v) : v;
     return isNaN(n) ? 0 : n;
+  };
+
+  // Função para determinar status e cores
+  const getStatusCores = (saldoReserva: number, valorOriginal: number) => {
+    const percentual = valorOriginal > 0 ? (saldoReserva / valorOriginal) * 100 : 0;
+    
+    if (saldoReserva <= 0) {
+      // VERMELHO - Sem cota
+      return {
+        status: 'sem_cota',
+        gradiente: 'linear-gradient(135deg, #FEE2E2 0%, #FECACA 100%)',
+        borda: '#EF4444',
+        textoPrimario: '#991B1B',
+        textoSecundario: '#DC2626',
+        icone: '#FEE2E2'
+      };
+    } else if (percentual <= 30) {
+      // AMARELO - Cota acabando
+      return {
+        status: 'acabando',
+        gradiente: 'linear-gradient(135deg, #FEF3C7 0%, #FDE68A 100%)',
+        borda: '#F59E0B',
+        textoPrimario: '#92400E',
+        textoSecundario: '#B45309',
+        icone: '#FEF3C7'
+      };
+    } else {
+      // VERDE - Cota disponível
+      return {
+        status: 'disponivel',
+        gradiente: 'linear-gradient(135deg, #EAF3DE 0%, #C0DD97 100%)',
+        borda: '#97C459',
+        textoPrimario: '#3B6D11',
+        textoSecundario: '#639922',
+        icone: '#EAF3DE'
+      };
+    }
   };
 
   return (
@@ -159,12 +304,22 @@ export default function ResumoAnoFiscal({ quotas, onVerPedidos }: ResumoAnoFisca
                   <h3 className="text-2xl font-black text-slate-900 dark:text-white uppercase italic">
                     {mesInfo.nome} <span className="text-blue-600">{mesInfo.ano}</span>
                   </h3>
-                  <button
-                    onClick={() => setExpandedMonth(isExpanded ? null : quota.mes)}
-                    className="p-2 hover:bg-slate-100 dark:hover:bg-slate-700 rounded-lg transition-colors"
-                  >
-                    <Calendar size={18} className="text-slate-500" />
-                  </button>
+                  <div className="flex gap-2">
+                    <button 
+                      onClick={() => handleVerPedidos(quota.mes, quota.ano)}
+                      className="px-3 py-2 text-sm font-medium text-blue-600 hover:bg-blue-50 dark:hover:bg-blue-900/30 rounded-lg transition-colors flex items-center gap-1.5"
+                      title="Ver pedidos deste mês"
+                    >
+                      <Package className="w-4 h-4" />
+                      <span className="hidden sm:inline">Ver Pedidos</span>
+                    </button>
+                    <button
+                      onClick={() => setExpandedMonth(isExpanded ? null : quota.mes)}
+                      className="p-2 hover:bg-slate-100 dark:hover:bg-slate-700 rounded-lg transition-colors"
+                    >
+                      <Calendar size={18} className="text-slate-500" />
+                    </button>
+                  </div>
                 </div>
 
                 {/* Resumo Financeiro */}
@@ -184,10 +339,10 @@ export default function ResumoAnoFiscal({ quotas, onVerPedidos }: ResumoAnoFisca
                   <div className="pt-2 border-t-2 border-dashed border-slate-200 dark:border-slate-700">
                     <div className="flex items-center justify-between">
                       <span className="font-black text-slate-700 dark:text-slate-300 uppercase text-xs">
-                        = Cota Limpa (Disponível)
+                        = Cota do Mês
                       </span>
                       <span className="font-black text-xl text-blue-600">
-                        {formatarMoeda(cotaLimpa)}
+                        {formatarMoeda(toNumber(quota.cota_do_mes || quota.cota_disponivel))}
                       </span>
                     </div>
                   </div>
@@ -211,130 +366,101 @@ export default function ResumoAnoFiscal({ quotas, onVerPedidos }: ResumoAnoFisca
                 </div>
               </div>
 
-              {/* Divisão Comprador / Gerente */}
-              <div className="p-5 space-y-3">
-                
-                {/* 📊 COMPRADOR */}
-                <div className="bg-blue-50 dark:bg-blue-900/20 rounded-xl p-4 border border-blue-200 dark:border-blue-800">
-                  <div className="flex items-center gap-2 mb-3">
-                    <div className="w-8 h-8 bg-blue-500 rounded-lg flex items-center justify-center">
-                      <TrendingUp size={16} className="text-white" />
+              {/* CARD ÚNICO - COTA FUTURO */}
+              <div className="p-5">
+                <div 
+                  style={{
+                    background: 'linear-gradient(135deg, #EAF3DE 0%, #C0DD97 100%)',
+                    border: '1px solid #97C459',
+                    borderRadius: '12px',
+                    padding: '16px'
+                  }}
+                >
+                  {/* Cabeçalho */}
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '12px' }}>
+                    <div style={{
+                      width: '32px',
+                      height: '32px',
+                      borderRadius: '50%',
+                      background: '#639922',
+                      display: 'flex',
+                      alignItems: 'center',
+                      justifyContent: 'center'
+                    }}>
+                      <Flame style={{ width: '16px', height: '16px', color: '#EAF3DE' }} />
                     </div>
-                    <span className="font-black text-blue-900 dark:text-blue-100 uppercase text-sm">
-                      Comprador
-                    </span>
+                    <div>
+                      <div style={{ fontSize: '12px', fontWeight: 600, color: '#3B6D11', textTransform: 'uppercase', letterSpacing: '0.5px' }}>
+                        Cota Futuro
+                      </div>
+                      <div style={{ fontSize: '10px', color: '#639922' }}>
+                        Máx. comprável (mín. 3 meses × 3)
+                      </div>
+                    </div>
                   </div>
                   
-                  <div className="space-y-2">
-                    <div className="flex items-center justify-between">
-                      <span className="text-xs font-bold text-blue-700 dark:text-blue-300 uppercase">
-                        Saldo Reserva
-                      </span>
-                      <span className={`text-lg font-black ${cotaComprador < 0 ? 'text-red-600' : 'text-blue-600'}`}>
-                        {formatarMoeda(cotaComprador)}
-                      </span>
+                  {/* Total Disponível */}
+                  <div style={{
+                    background: 'rgba(255, 255, 255, 0.5)',
+                    border: '1px solid rgba(99, 153, 34, 0.2)',
+                    borderRadius: '8px',
+                    padding: '12px',
+                    textAlign: 'center',
+                    marginBottom: '12px'
+                  }}>
+                    <div style={{ fontSize: '11px', fontWeight: 500, color: '#639922', marginBottom: '4px' }}>
+                      TOTAL DISPONÍVEL
                     </div>
-
-                    {/* ✅ PEDIDOS EMITIDOS */}
-                    {qtdPedidosComprador > 0 && (
-                      <div className="pt-2 border-t border-blue-200 dark:border-blue-800">
-                        <div className="flex items-center justify-between">
-                          <span className="text-xs font-bold text-blue-700 dark:text-blue-300 uppercase">
-                            📋 Pedidos Emitidos
-                          </span>
-                          <button
-                            onClick={() => onVerPedidos?.(quota.mes, quota.ano)}
-                            className="text-xs font-black text-blue-600 hover:text-blue-800 underline"
-                          >
-                            {qtdPedidosComprador} {qtdPedidosComprador === 1 ? 'pedido' : 'pedidos'}
-                          </button>
-                        </div>
-                        <div className="text-right mt-1">
-                          <span className="text-sm font-bold text-blue-800 dark:text-blue-200">
-                            {formatarMoeda(pedidosComprador)}
-                          </span>
-                        </div>
-                      </div>
-                    )}
-
-                    {/* ✅ OTB DISPONÍVEL */}
-                    {otbComprador > 0 && (
-                      <div className="pt-2 border-t border-blue-200 dark:border-blue-800">
-                        <div className="flex items-center justify-between">
-                          <span className="text-xs font-bold text-emerald-700 dark:text-emerald-300 uppercase">
-                            💰 Cota Futuro Disponível
-                          </span>
-                          <span className="text-base font-black text-emerald-600">
-                            {formatarMoeda(otbComprador)}
-                          </span>
-                        </div>
-                        <p className="text-[9px] text-slate-500 mt-1 italic">
-                          Máx. comprável (mín. 3 meses futuros ÷ 3)
-                        </p>
-                      </div>
-                    )}
-                  </div>
-                </div>
-
-                {/* 🛒 GERENTE */}
-                <div className="bg-emerald-50 dark:bg-emerald-900/20 rounded-xl p-4 border border-emerald-200 dark:border-emerald-800">
-                  <div className="flex items-center gap-2 mb-3">
-                    <div className="w-8 h-8 bg-emerald-500 rounded-lg flex items-center justify-center">
-                      <TrendingUp size={16} className="text-white" />
+                    <div style={{ fontSize: '26px', fontWeight: 500, color: '#3B6D11' }}>
+                      {formatarMoeda(quota.cota_futuro_total || (toNumber(quota.cota_comprador_valor) + toNumber(quota.cota_gerente_valor)))}
                     </div>
-                    <span className="font-black text-emerald-900 dark:text-emerald-100 uppercase text-sm">
-                      Gerente
-                    </span>
                   </div>
                   
-                  <div className="space-y-2">
-                    <div className="flex items-center justify-between">
-                      <span className="text-xs font-bold text-emerald-700 dark:text-emerald-300 uppercase">
-                        Saldo Reserva
-                      </span>
-                      <span className="text-lg font-black text-emerald-600">
-                        {formatarMoeda(cotaGerente)}
-                      </span>
+                  {/* Grid Comprador/Gerente */}
+                  <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '8px' }}>
+                    
+                    {/* Comprador */}
+                    <div style={{
+                      background: 'rgba(255, 255, 255, 0.7)',
+                      border: '1px solid rgba(99, 153, 34, 0.3)',
+                      borderRadius: '8px',
+                      padding: '10px'
+                    }}>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: '6px', marginBottom: '6px' }}>
+                        <TrendingUp style={{ width: '16px', height: '16px', color: '#3B6D11' }} />
+                        <span style={{ fontSize: '11px', fontWeight: 500, color: '#639922', textTransform: 'uppercase' }}>
+                          Comprador
+                        </span>
+                      </div>
+                      <div style={{ fontSize: '18px', fontWeight: 500, color: '#3B6D11' }}>
+                        {formatarMoeda(toNumber(quota.cota_comprador_valor))}
+                      </div>
+                      <div style={{ fontSize: '9px', color: '#639922', marginTop: '2px' }}>
+                        {toNumber(quota.percentual_comprador).toFixed(1)}% do total
+                      </div>
                     </div>
-
-                    {/* ✅ PEDIDOS EMITIDOS */}
-                    {qtdPedidosGerente > 0 && (
-                      <div className="pt-2 border-t border-emerald-200 dark:border-emerald-800">
-                        <div className="flex items-center justify-between">
-                          <span className="text-xs font-bold text-emerald-700 dark:text-emerald-300 uppercase">
-                            📋 Pedidos Emitidos
-                          </span>
-                          <button
-                            onClick={() => onVerPedidos?.(quota.mes, quota.ano)}
-                            className="text-xs font-black text-emerald-600 hover:text-emerald-800 underline"
-                          >
-                            {qtdPedidosGerente} {qtdPedidosGerente === 1 ? 'pedido' : 'pedidos'}
-                          </button>
-                        </div>
-                        <div className="text-right mt-1">
-                          <span className="text-sm font-bold text-emerald-800 dark:text-emerald-200">
-                            {formatarMoeda(pedidosGerente)}
-                          </span>
-                        </div>
+                    
+                    {/* Gerente */}
+                    <div style={{
+                      background: 'rgba(255, 255, 255, 0.7)',
+                      border: '1px solid rgba(99, 153, 34, 0.3)',
+                      borderRadius: '8px',
+                      padding: '10px'
+                    }}>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: '6px', marginBottom: '6px' }}>
+                        <UserCheck style={{ width: '16px', height: '16px', color: '#3B6D11' }} />
+                        <span style={{ fontSize: '11px', fontWeight: 500, color: '#639922', textTransform: 'uppercase' }}>
+                          Gerente
+                        </span>
                       </div>
-                    )}
-
-                    {/* ✅ OTB DISPONÍVEL */}
-                    {otbGerente > 0 && (
-                      <div className="pt-2 border-t border-emerald-200 dark:border-emerald-800">
-                        <div className="flex items-center justify-between">
-                          <span className="text-xs font-bold text-blue-700 dark:text-blue-300 uppercase">
-                            💰 Cota Futuro Disponível
-                          </span>
-                          <span className="text-base font-black text-blue-600">
-                            {formatarMoeda(otbGerente)}
-                          </span>
-                        </div>
-                        <p className="text-[9px] text-slate-500 mt-1 italic">
-                          Máx. comprável (mín. 3 meses futuros ÷ 3)
-                        </p>
+                      <div style={{ fontSize: '18px', fontWeight: 500, color: '#3B6D11' }}>
+                        {formatarMoeda(toNumber(quota.cota_gerente_valor))}
                       </div>
-                    )}
+                      <div style={{ fontSize: '9px', color: '#639922', marginTop: '2px' }}>
+                        {toNumber(quota.percentual_gerente).toFixed(1)}% do total
+                      </div>
+                    </div>
+                    
                   </div>
                 </div>
               </div>
@@ -342,6 +468,200 @@ export default function ResumoAnoFiscal({ quotas, onVerPedidos }: ResumoAnoFisca
           );
         })}
       </div>
+
+      {/* MODAL DE PEDIDOS DO MÊS */}
+      {showPedidosModal && (
+        <div 
+          className="fixed inset-0 bg-black/60 flex items-center justify-center z-50 p-4 backdrop-blur-sm"
+          onClick={() => setShowPedidosModal(false)}
+        >
+          <div 
+            className="bg-white dark:bg-slate-900 rounded-2xl max-w-5xl w-full max-h-[90vh] overflow-hidden flex flex-col shadow-2xl animate-in zoom-in duration-200"
+            onClick={(e) => e.stopPropagation()}
+          >
+            {/* HEADER */}
+            <div className="px-6 py-4 border-b border-slate-200 dark:border-slate-700 bg-gradient-to-r from-blue-600 to-indigo-700">
+              <div className="flex items-center justify-between">
+                <div>
+                  <h3 className="text-xl font-black text-white uppercase italic">
+                    📦 Pedidos de {getMesNome(mesSelecionado.mes)} {mesSelecionado.ano}
+                  </h3>
+                  <p className="text-xs font-bold text-blue-100 mt-0.5 uppercase tracking-widest opacity-80">
+                    {pedidosMes.length} {pedidosMes.length === 1 ? 'pedido cadastrado' : 'pedidos cadastrados'}
+                  </p>
+                </div>
+                <button
+                  onClick={() => setShowPedidosModal(false)}
+                  className="w-10 h-10 flex items-center justify-center rounded-xl bg-white/20 hover:bg-white/30 transition-colors text-white"
+                >
+                  ✕
+                </button>
+              </div>
+            </div>
+
+            {/* BODY */}
+            <div className="flex-1 overflow-y-auto p-6 bg-slate-50 dark:bg-slate-800/50">
+              {loadingPedidos ? (
+                <div className="flex flex-col items-center justify-center py-20">
+                  <div className="w-12 h-12 border-4 border-blue-600 border-t-transparent rounded-full animate-spin mb-4" />
+                  <p className="text-sm font-black text-slate-500 uppercase tracking-widest">Buscando pedidos...</p>
+                </div>
+              ) : pedidosMes.length === 0 ? (
+                <div className="flex flex-col items-center justify-center py-20 text-slate-400">
+                  <Package className="w-20 h-20 mb-4 opacity-20" />
+                  <p className="text-xl font-black uppercase italic">Nenhum pedido</p>
+                  <p className="text-sm font-bold opacity-60">Não há pedidos confirmados para este mês</p>
+                </div>
+              ) : (
+                <div className="grid grid-cols-1 gap-4">
+                  {pedidosMes.map((pedido) => {
+                    // Verificar se tem múltiplas lojas
+                    const todasLojas = pedido.buy_order_sub_orders
+                      ?.flatMap((sub: any) => sub.lojas_numeros || []) || [];
+                    const temMultiplasLojas = todasLojas.length > 1;
+
+                    return (
+                      <div 
+                        key={pedido.id}
+                        className="bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-2xl overflow-hidden hover:shadow-lg transition-all duration-200"
+                      >
+                        {/* CABEÇALHO DO PEDIDO */}
+                        <div className="bg-slate-50 dark:bg-slate-900/50 px-5 py-4 border-b border-slate-200 dark:border-slate-700">
+                          <div className="flex items-center justify-between">
+                            <div className="flex items-center gap-4">
+                              <span className="text-2xl font-black text-blue-600 italic">
+                                #{pedido.numero_pedido}
+                              </span>
+                              <div>
+                                <div className="text-lg font-black text-slate-900 dark:text-white uppercase italic">
+                                  {pedido.marca}
+                                </div>
+                                <div className="text-xs font-bold text-slate-500 uppercase">
+                                  {pedido.fornecedor}
+                                </div>
+                              </div>
+                            </div>
+                            <div className="text-right">
+                              <div className="text-sm font-black text-slate-700 dark:text-slate-300 uppercase">
+                                {pedido.user_name}
+                              </div>
+                              <div className="text-[10px] font-bold text-slate-500 bg-slate-200 dark:bg-slate-700 px-2 py-0.5 rounded-full inline-block mt-1">
+                                {pedido.user_role === 'gerente' ? 'GERENTE' : 'COMPRADOR'}
+                              </div>
+                            </div>
+                          </div>
+                        </div>
+
+                        {/* SE TEM MÚLTIPLAS LOJAS: MOSTRAR SUB-PEDIDOS */}
+                        {temMultiplasLojas ? (
+                          <div className="p-4 bg-amber-50 dark:bg-amber-900/10 border-b border-amber-200 dark:border-amber-900/30">
+                            <div className="text-xs font-black text-amber-800 dark:text-amber-400 mb-3 flex items-center gap-2 uppercase tracking-widest">
+                              <Package className="w-4 h-4" />
+                              Pedido com múltiplas lojas:
+                            </div>
+                            
+                            <div className="space-y-2">
+                              {pedido.buy_order_sub_orders.map((sub: any) => (
+                                <div key={sub.id} className="bg-white dark:bg-slate-900 rounded-xl p-3 border border-slate-200 dark:border-slate-700 shadow-sm">
+                                  <div className="flex items-center justify-between">
+                                    <div className="font-black text-sm uppercase italic text-slate-700 dark:text-slate-300">
+                                      {sub.lojas_numeros?.map((n: number) => `Loja ${n}`).join(', ')}
+                                    </div>
+                                    <div className="text-[10px] font-bold text-slate-400 uppercase">
+                                      Sub-pedido #{sub.sub_order_num}
+                                    </div>
+                                  </div>
+                                </div>
+                              ))}
+                            </div>
+
+                            <div className="mt-3 pt-3 border-t border-amber-300 dark:border-amber-900/30">
+                              <div className="text-xs font-bold text-amber-700 dark:text-amber-500 uppercase tracking-tighter">
+                                Total do pedido principal: {pedido.totalPares} pares • {formatarMoeda(pedido.totalCusto)}
+                              </div>
+                            </div>
+                          </div>
+                        ) : (
+                          /* DETALHES DO PEDIDO SIMPLES */
+                          <div className="p-5 grid grid-cols-2 md:grid-cols-4 gap-6">
+                            <div>
+                              <div className="text-[10px] font-bold text-slate-500 uppercase mb-1">Emissão</div>
+                              <div className="font-black text-slate-900 dark:text-white">
+                                {new Date(pedido.fat_inicio + 'T00:00:00').toLocaleDateString('pt-BR')}
+                              </div>
+                            </div>
+
+                            <div>
+                              <div className="text-[10px] font-bold text-slate-500 uppercase mb-1">Entrega</div>
+                              <div className="font-black text-slate-900 dark:text-white">
+                                {new Date(pedido.fat_fim + 'T00:00:00').toLocaleDateString('pt-BR')}
+                              </div>
+                            </div>
+
+                            <div>
+                              <div className="text-[10px] font-bold text-slate-500 uppercase mb-1">Total Pares</div>
+                              <div className="font-black text-emerald-600 text-xl">
+                                {pedido.totalPares}
+                              </div>
+                            </div>
+
+                            <div>
+                              <div className="text-[10px] font-bold text-slate-500 uppercase mb-1">Investimento</div>
+                              <div className="font-black text-blue-600 text-xl">
+                                {formatarMoeda(pedido.totalCusto)}
+                              </div>
+                            </div>
+                          </div>
+                        )}
+
+                        {/* VENCIMENTOS */}
+                        <div className="px-5 pb-5">
+                          <div className="text-[10px] font-bold text-slate-500 uppercase mb-2">Vencimentos (Parcelas)</div>
+                          <div className="flex flex-wrap gap-2">
+                            {Object.entries(pedido.vencimentosPorMes).map(([mes, valor]) => (
+                              <div 
+                                key={mes}
+                                className="bg-blue-50 dark:bg-blue-900/20 border border-blue-100 dark:border-blue-800 rounded-xl px-4 py-2"
+                              >
+                                <span className="text-xs font-black text-blue-800 dark:text-blue-300 mr-2">{mes}</span>
+                                <span className="text-sm font-black text-blue-600">{formatarMoeda(valor as number)}</span>
+                              </div>
+                            ))}
+                          </div>
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+              )}
+            </div>
+
+            {/* FOOTER */}
+            <div className="px-6 py-4 border-t border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 flex justify-between items-center">
+              <div className="flex gap-6">
+                <div className="text-center">
+                   <div className="text-[10px] font-bold text-slate-400 uppercase">Total Pares</div>
+                   <div className="font-black text-slate-900 dark:text-white">
+                     {pedidosMes.reduce((sum, p) => sum + p.totalPares, 0)}
+                   </div>
+                </div>
+                <div className="text-center border-l border-slate-200 dark:border-slate-700 pl-6">
+                   <div className="text-[10px] font-bold text-slate-400 uppercase">Total Investimento</div>
+                   <div className="font-black text-blue-600">
+                     {formatarMoeda(pedidosMes.reduce((sum, p) => sum + p.totalCusto, 0))}
+                   </div>
+                </div>
+              </div>
+              <button
+                onClick={() => setShowPedidosModal(false)}
+                className="px-6 py-3 bg-slate-200 hover:bg-slate-300 dark:bg-slate-800 dark:hover:bg-slate-700 text-slate-700 dark:text-white rounded-xl font-black uppercase text-xs transition-colors"
+              >
+                Fechar
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

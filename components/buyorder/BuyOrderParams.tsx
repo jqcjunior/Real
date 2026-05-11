@@ -715,6 +715,7 @@ export default function BuyOrderParams({ user }: { user: any }) {
     despesas: number;
     cota_gerente_valor?: number;
     cota_comprador_valor?: number;
+    cota_disponivel?: number;
     usar_cota_fixa: boolean;
     cota_gerente_fixa: number | null;
     saldo_reserva_gerente?: number;
@@ -907,6 +908,7 @@ export default function BuyOrderParams({ user }: { user: any }) {
             // Valores calculados pela VIEW
             cota_gerente_valor: Number(q.cota_gerente || 0),
             cota_comprador_valor: Number(q.cota_comprador || 0),
+            cota_disponivel: Number(q.cota_maio_livre || 0),
             saldo_reserva_gerente: Number(q.saldo_reserva_gerente || 0),
             saldo_reserva_comprador: Number(q.saldo_reserva_comprador || 0),
             

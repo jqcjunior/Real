@@ -118,6 +118,21 @@ const IceCreamModule: React.FC<IceCreamModuleProps> = ({
     const [selectedMonth, setSelectedMonth] = useState(new Date().getMonth() + 1);
     const [selectedYear, setSelectedYear] = useState(new Date().getFullYear());
 
+    // Audit State
+    const [auditSubTab, setAuditSubTab] = useState<'vendas' | 'avarias' | 'cancelamentos'>('vendas');
+    const [showDaySummary, setShowDaySummary] = useState(false);
+    const [auditDay, setAuditDay] = useState(new Date().getDate().toString());
+    const [auditMonth, setAuditMonth] = useState((new Date().getMonth() + 1).toString());
+    const [auditYear, setAuditYear] = useState(new Date().getFullYear().toString());
+    const [auditSearch, setAuditSearch] = useState('');
+
+    const selectedAuditDate = useMemo(() => {
+        if (!auditDay || !auditMonth || !auditYear) return '';
+        const d = auditDay.padStart(2, '0');
+        const m = auditMonth.padStart(2, '0');
+        return `${auditYear}-${m}-${d}`;
+    }, [auditDay, auditMonth, auditYear]);
+
     // ─── FETCH SOB DEMANDA — DRE DIÁRIO ─────────────────────────────────────────
     // Dados extras buscados quando o usuário navega para uma data fora do mês atual
     const [extraSales, setExtraSales] = useState<any[]>([]);
@@ -136,11 +151,22 @@ const IceCreamModule: React.FC<IceCreamModuleProps> = ({
     useEffect(() => {
         if (!displayDate || !effectiveStoreId) return;
     
+        const now = new Date();
+        const todayStr = now.toISOString().split('T')[0];
         const selected = new Date(displayDate + 'T00:00:00');
         const selectedMonthStart = new Date(selected.getFullYear(), selected.getMonth(), 1).getTime();
     
-        // Data está no mês já carregado → limpa extras e usa dados normais
-        if (selectedMonthStart === loadedMonthStart) {
+        // Se for HOJE, usamos os dados do App.tsx (props) que já estão em tempo real
+        if (displayDate === todayStr) {
+            setExtraSales([]);
+            setExtraHeaders([]);
+            setExtraPayments([]);
+            setExtraSangrias([]);
+            return;
+        }
+
+        // Se for no mês atual e o usuário for ADMIN ou GERENTE, ele já tem os dados (App.tsx carrega o mês todo)
+        if (selectedMonthStart === loadedMonthStart && (isAdmin || canManage)) {
             setExtraSales([]);
             setExtraHeaders([]);
             setExtraPayments([]);
@@ -148,8 +174,9 @@ const IceCreamModule: React.FC<IceCreamModuleProps> = ({
             return;
         }
     
-        // Data fora do mês carregado → busca só aquele dia no Supabase
+        // Fora desses casos, buscamos o dia específico no Supabase
         const fetchDayData = async () => {
+
             setIsDRELoading(true);
             try {
                 const dayStart = `${displayDate}T00:00:00`;
@@ -221,6 +248,14 @@ const IceCreamModule: React.FC<IceCreamModuleProps> = ({
     
         fetchDayData();
     }, [displayDate, effectiveStoreId]);
+
+    // ✅ Sync displayDate with audit date when tab is audit
+    useEffect(() => {
+        if (activeTab === 'audit' && selectedAuditDate && displayDate !== selectedAuditDate) {
+            setDisplayDate(selectedAuditDate);
+        }
+    }, [selectedAuditDate, activeTab]);
+
     
     // Fonte de dados ativa: extras (dia específico) ou normais (mês atual)
     const activeSales    = extraSales.length > 0    ? extraSales    : sales;
@@ -239,14 +274,6 @@ const IceCreamModule: React.FC<IceCreamModuleProps> = ({
     const [showTicketModal, setShowTicketModal] = useState(false);
     const [showSangriaDetailModal, setShowSangriaDetailModal] = useState<'day' | 'month' | null>(null);
     const [showEditSangriaModal, setShowEditSangriaModal] = useState(false);
-
-    // Audit State
-    const [auditSubTab, setAuditSubTab] = useState<'vendas' | 'avarias' | 'cancelamentos'>('vendas');
-    const [showDaySummary, setShowDaySummary] = useState(false);
-    const [auditDay, setAuditDay] = useState(new Date().getDate().toString());
-    const [auditMonth, setAuditMonth] = useState((new Date().getMonth() + 1).toString());
-    const [auditYear, setAuditYear] = useState(new Date().getFullYear().toString());
-    const [auditSearch, setAuditSearch] = useState('');
 
     // Form States
     const [editingProduct, setEditingProduct] = useState<IceCreamItem | null>(null);
@@ -293,15 +320,8 @@ const IceCreamModule: React.FC<IceCreamModuleProps> = ({
         return Object.values(grouped).sort((a, b) => b.total - a.total);
     }, [dreStats.monthFiadoDetails]);
 
-    const selectedAuditDate = useMemo(() => {
-        if (!auditDay || !auditMonth || !auditYear) return '';
-        const d = auditDay.padStart(2, '0');
-        const m = auditMonth.padStart(2, '0');
-        return `${auditYear}-${m}-${d}`;
-    }, [auditDay, auditMonth, auditYear]);
-
     const auditSummary = useMemo(() => {
-        const filteredSales = sales.filter(s => {
+        const filteredSales = activeSales.filter(s => {
             if (!s.createdAt) return false;
             const d = new Date(s.createdAt);
             const dateStr = d.toISOString().split('T')[0];
@@ -332,7 +352,7 @@ const IceCreamModule: React.FC<IceCreamModuleProps> = ({
         const resumoPagamentos: Record<string, number> = { 'Pix': 0, 'Dinheiro': 0, 'Cartão': 0, 'Fiado': 0 };
         const resumoPagamentosQtd: Record<string, number> = { 'Pix': 0, 'Dinheiro': 0, 'Cartão': 0, 'Fiado': 0 };
 
-        const dayHeaders = (salesHeaders || []).filter(h => {
+        const dayHeaders = (activeHeaders || []).filter(h => {
             if (!h.created_at) return false;
             const d = new Date(h.created_at);
             const dateStr = d.toISOString().split('T')[0];
@@ -341,7 +361,7 @@ const IceCreamModule: React.FC<IceCreamModuleProps> = ({
         });
 
         dayHeaders.forEach(h => {
-            const payments = (salePayments || []).filter(p => p.sale_id === h.id);
+            const payments = (activePayments || []).filter(p => p.sale_id === h.id);
             payments.forEach(p => {
                 const method = p.payment_method;
                 if (resumoPagamentos[method] !== undefined) {
@@ -351,22 +371,23 @@ const IceCreamModule: React.FC<IceCreamModuleProps> = ({
             });
         });
 
-        // ✅ CORREÇÃO: Calcular total a partir da SOMA DOS PAGAMENTOS, não dos headers
-        const totalGeral = Object.values(resumoPagamentos).reduce((acc, val) => acc + val, 0);
+        // ✅ USAR SEMPRE OS HEADERS COMO FONTE DA VERDADE
+        const totalGeral = dayHeaders.reduce((sum, h) => sum + Number(h.total_value || 0), 0);
 
         return {
             resumoItens: Object.entries(resumoItens),
-            totalGeral,  // ← AGORA USA A SOMA DOS PAGAMENTOS
+            totalGeral,
             totalItens,
             resumoPagamentos,
             resumoPagamentosQtd,
             totalCanceledCount,
             totalCanceledValue
         };
-    }, [sales, selectedAuditDate, effectiveStoreId, salesHeaders, salePayments]);
+    }, [activeSales, selectedAuditDate, effectiveStoreId, activeHeaders, activePayments]);
+
 
     const groupedAuditSales = useMemo(() => {
-        const filteredSales = sales.filter(s => {
+        const filteredSales = activeSales.filter(s => {
             if (!s.createdAt) return false;
             const d = new Date(s.createdAt);
             const dateStr = d.toISOString().split('T')[0];
@@ -399,11 +420,11 @@ const IceCreamModule: React.FC<IceCreamModuleProps> = ({
             }
         });
 
-        // Refine payment methods from salesHeaders/salePayments for accuracy
+        // Refine payment methods from activeHeaders/activePayments for accuracy
         Object.values(grouped).forEach((group: any) => {
-            const header = (salesHeaders || []).find(h => h.sale_code === group.saleCode);
+            const header = (activeHeaders || []).find(h => h.sale_code === group.saleCode);
             if (header) {
-                const payments = (salePayments || []).filter(p => p.sale_id === header.id);
+                const payments = (activePayments || []).filter(p => p.sale_id === header.id);
                 if (payments.length > 0) {
                     group.paymentMethods = payments.map(p => p.payment_method);
                 }
@@ -411,7 +432,8 @@ const IceCreamModule: React.FC<IceCreamModuleProps> = ({
         });
 
         return Object.values(grouped).sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
-    }, [sales, selectedAuditDate, effectiveStoreId, auditSearch, salesHeaders, salePayments]);
+    }, [activeSales, selectedAuditDate, effectiveStoreId, auditSearch, activeHeaders, activePayments]);
+
 
     const filteredAuditWastage = useMemo(() => {
         // Combinar stockMovements (tipo AVARIA) com a nova tabela ice_cream_wastage
@@ -446,7 +468,7 @@ const IceCreamModule: React.FC<IceCreamModuleProps> = ({
         const month = parseInt(auditMonth);
         const year = parseInt(auditYear);
         
-        return sales.filter(s => {
+        return activeSales.filter(s => {
             if (s.status !== 'canceled' || !s.createdAt) return false;
             
             const d = new Date(s.createdAt);
@@ -463,7 +485,7 @@ const IceCreamModule: React.FC<IceCreamModuleProps> = ({
             
             return matchesMonth && matchesYear && matchesStore && matchesSearch;
         }).sort((a, b) => new Date(b.createdAt!).getTime() - new Date(a.createdAt!).getTime());
-    }, [sales, auditMonth, auditYear, effectiveStoreId, auditSearch]);
+    }, [activeSales, auditMonth, auditYear, effectiveStoreId, auditSearch]);
 
     // Handlers
     const handleOpenPrintPreview = (items: any[], saleCode: string, method: string, buyer?: string) => {
@@ -1273,6 +1295,7 @@ const IceCreamModule: React.FC<IceCreamModuleProps> = ({
                             items={items}
                             stock={stock}
                             isSorvete={isSorvete}
+                            isLoading={isDRELoading}
                         />
                     </Suspense>
                 )}

@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { supabase } from '../services/supabaseClient';
+import { supabase } from '../../services/supabaseClient';
 import { 
   BarChart3, 
   Users, 
@@ -23,7 +23,7 @@ import {
   Store,
   AdminUser,
   User
-} from '../types';
+} from '../../types';
 import { 
   BarChart, 
   Bar, 

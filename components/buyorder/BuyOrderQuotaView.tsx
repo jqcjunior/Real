@@ -178,27 +178,27 @@ export default function BuyOrderQuotaView({ user }: { user: User }) {
             return isNaN(n) ? 0 : n;
           };
 
+          const cotaMaioLivre = toNumber(d.cota_maio_livre);
+          const cotaComprador = toNumber(d.cota_comprador);
+          const cotaGerente = toNumber(d.cota_gerente);
+
           return {
             mes: d.month,
             ano: d.year,
             
-            // Dados base
+            // TOPO DO CARD - PARÂMETROS BASE
             cota_mensal: toNumber(d.cota_bruta),
             despesas_comprometidas: toNumber(d.despesas_comprometidas),
-            cota_limpa_parametro: toNumber(d.cota_limpa_parametro),
+            cota_do_mes: toNumber(d.cota_limpa_parametro),  // ✅ CORRETO! (14.957)
             
-            // Meses futuros (já descontados)
-            cota_futura_mes1: toNumber(d.futuro_ago),
-            cota_futura_mes2: toNumber(d.futuro_set),
-            cota_futura_mes3: toNumber(d.futuro_out),
+            // CARD COTA FUTURO - OTB
+            cota_futuro_total: cotaMaioLivre,  // ✅ Este é o OTB (35.226)
+            cota_comprador_valor: cotaComprador,
+            cota_gerente_valor: cotaGerente,
             
-            // Cotas calculadas
-            cota_livre_total: toNumber(d.cota_livre_total),
-            cota_disponivel: toNumber(d.cota_maio_livre),
-            
-            // Divisão Gerente/Comprador
-            cota_gerente_valor: toNumber(d.cota_gerente),
-            cota_comprador_valor: toNumber(d.cota_comprador),
+            // PORCENTAGENS
+            percentual_comprador: cotaMaioLivre > 0 ? (cotaComprador / cotaMaioLivre * 100) : 0,
+            percentual_gerente: cotaMaioLivre > 0 ? (cotaGerente / cotaMaioLivre * 100) : 0,
             
             // Saldo Reserva (com pedidos descontados)
             saldo_reserva_gerente: toNumber(d.saldo_reserva_gerente),
@@ -215,6 +215,8 @@ export default function BuyOrderQuotaView({ user }: { user: User }) {
             qtd_pedidos_gerente: toNumber(d.pedidos_gerente_mes) > 0 ? 1 : 0,
             
             // Legados (manter compatibilidade)
+            cota_disponivel: cotaMaioLivre,
+            cota_limpa_parametro: toNumber(d.cota_limpa_parametro),
             cota_utilizada: toNumber(d.pedidos_gerente_mes) + toNumber(d.pedidos_comprador_mes),
             pedidos_confirmados: toNumber(d.pedidos_gerente_mes) + toNumber(d.pedidos_comprador_mes),
             qtd_pedidos: (toNumber(d.pedidos_gerente_mes) > 0 ? 1 : 0) + (toNumber(d.pedidos_comprador_mes) > 0 ? 1 : 0)
@@ -371,7 +373,11 @@ export default function BuyOrderQuotaView({ user }: { user: User }) {
           </p>
         </div>
       ) : (
-        <ResumoAnoFiscal quotas={cotasMeses} onVerPedidos={buscarPedidosMes} />
+        <ResumoAnoFiscal 
+          quotas={cotasMeses} 
+          storeNumber={selectedStore} 
+          onVerPedidos={buscarPedidosMes} 
+        />
       )}
 
       {modalDetalhes?.aberto && (

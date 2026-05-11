@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { supabase } from '../services/supabaseClient';
+import { supabase } from '../../services/supabaseClient';
 import { 
   X, 
   ChevronLeft, 
@@ -12,7 +12,7 @@ import {
   Check
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
-import { Survey, SurveyQuestion, User } from '../types';
+import { Survey, SurveyQuestion, User } from '../../types';
 
 interface SurveyResponseFormProps {
   survey: Survey;
