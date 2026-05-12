@@ -46,6 +46,7 @@ import StockForecastDashboard from './components/StockForecastDashboard.tsx';
 import BuyOrderQuotaView from './components/buyorder/BuyOrderQuotaView.tsx';
 const ReportsPage = lazy(() => import('./components/ReportsPage'));
 const AdminQuotaExtraApprovals = lazy(() => import('./components/buyorder/AdminQuotaExtraApprovals'));
+const BuyOrderAnalytic = lazy(() => import('./components/buyorder/BuyOrderAnalytic'));
 const AdminSurveyManagement = lazy(() => import('./components/Pesquisa/AdminSurveyManagement_v3'));
 const MySurveysComponent = lazy(() => import('./components/Pesquisa/MySurveysComponent'));
 const SurveyResultsViewer = lazy(() => import('./components/Pesquisa/SurveyResultsViewer'));
@@ -988,6 +989,7 @@ const App: React.FC = () => {
                                 isGroup: true, 
                                 subItems: [
                                     { id: 'buy_order_dashboard', label: 'Dashboard Compras', icon: BarChart3, perm: 'MODULE_BUY_ORDERS', roles: ['admin', 'manager'] },
+                                    { id: 'buy_order_analytic', label: 'ANÁLISE FORNECEDORES', icon: BarChart3, perm: 'MODULE_BUY_ORDERS', roles: ['admin'] },
                                     { id: 'buy_orders', label: 'Pedido de Compra', icon: ShoppingBag, perm: 'MODULE_BUY_ORDERS', roles: ['admin', 'manager'] },
                                     { id: 'buy_order_quota', label: 'COTA DE COMPRA', icon: DollarSign, perm: 'MODULE_BUY_ORDERS', roles: ['admin', 'manager'] },
                                     { id: 'admin_quota_extra', label: 'APROVAÇÃO COTA EXTRA', icon: CheckCircle, perm: 'MODULE_BUY_ORDERS', roles: ['admin'] },
@@ -1258,6 +1260,7 @@ const App: React.FC = () => {
                         if (currentView === 'dre_accounts' && can('MODULE_DRE_ACCOUNTS')) return <DREAccounts />;
                         if (currentView === 'stock_forecast' && can('MODULE_BUY_ORDERS')) return <StockForecastDashboard user={user!} stores={isAdmin ? stores : stores.filter(s => s.id === user?.storeId)} />;
                         if (currentView === 'buy_order_dashboard' && can('MODULE_BUY_ORDERS')) return <BuyOrderDashboard user={user!} />;
+                        if (currentView === 'buy_order_analytic' && can('MODULE_BUY_ORDERS')) return <BuyOrderAnalytic />;
                         if (currentView === 'buy_order_quota' && can('MODULE_BUY_ORDERS')) return <BuyOrderQuotaView user={user!} />;
                         if (currentView === 'admin_quota_extra' && can('MODULE_BUY_ORDERS')) return <AdminQuotaExtraApprovals userId={user!.id} />;
                         if (currentView === 'purchase_params') return <BuyOrderParams user={user!} />;
