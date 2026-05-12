@@ -1,4 +1,5 @@
 import React, { useState, useMemo } from 'react';
+import * as XLSX from 'xlsx';
 import ExcelJS from 'exceljs';
 import { Upload, FileSpreadsheet, Download, Search, TrendingUp, TrendingDown, AlertCircle } from 'lucide-react';
 
@@ -48,35 +49,45 @@ const BuyOrderAnalytic: React.FC<BuyOrderAnalyticProps> = ({ user, stores }) => 
     setError(null);
 
     try {
-      // IMPORT DINÂMICO DO XLSX
-      const XLSXModule = await import('xlsx');
-      const XLSX = (XLSXModule as any).default || XLSXModule;
+      // Validação da biblioteca conforme solicitado
+      console.log('XLSX carregado com sucesso:', !!XLSX && !!XLSX.utils);
+      
+      if (!XLSX || !XLSX.utils) {
+        throw new Error('Biblioteca XLSX não carregada corretamente');
+      }
 
-      console.log('XLSX carregado:', XLSX);
-      console.log('XLSX.utils disponível:', typeof XLSX.utils);
-
-      // Ler arquivo como binary string
-      const data = await new Promise<string>((resolve, reject) => {
+      // Ler arquivo como ArrayBuffer
+      const data = await new Promise<ArrayBuffer>((resolve, reject) => {
         const reader = new FileReader();
-        reader.onload = (e) => resolve(e.target?.result as string);
+        reader.onload = (e) => resolve(e.target?.result as ArrayBuffer);
         reader.onerror = reject;
-        reader.readAsBinaryString(file);
+        reader.readAsArrayBuffer(file);
       });
 
-      console.log('Arquivo lido, tamanho:', data.length);
-
       // Parsear workbook
-      const workbook = XLSX.read(data, { type: 'binary' });
+      const workbook = XLSX.read(data, { type: 'array' });
+      console.log('Workbook carregado');
       
-      console.log('Workbook parseado, sheets:', workbook.SheetNames);
+      if (!workbook.SheetNames?.length) {
+        throw new Error('Nenhuma planilha encontrada');
+      }
 
-      let sheet = workbook.Sheets[workbook.SheetNames[0]];
+      let sheetName = workbook.SheetNames[0];
+      let sheet = workbook.Sheets[sheetName];
+      
+      if (!sheet) {
+        throw new Error('Worksheet inválida');
+      }
+
       let rawData: any[] = XLSX.utils.sheet_to_json(sheet, { header: 1, raw: false, defval: '' });
 
       // Se primeira sheet está vazia, tentar segunda
       if (rawData.length < 10 && workbook.SheetNames.length > 1) {
-        sheet = workbook.Sheets[workbook.SheetNames[1]];
-        rawData = XLSX.utils.sheet_to_json(sheet, { header: 1, raw: false, defval: '' });
+        sheetName = workbook.SheetNames[1];
+        sheet = workbook.Sheets[sheetName];
+        if (sheet) {
+          rawData = XLSX.utils.sheet_to_json(sheet, { header: 1, raw: false, defval: '' });
+        }
       }
 
       // USAR LINHA 5 COMO HEADER (índice 4)
@@ -89,17 +100,12 @@ const BuyOrderAnalytic: React.FC<BuyOrderAnalyticProps> = ({ user, stores }) => 
       const headers = rawData[headerRowIndex];
       const dataRows = rawData.slice(headerRowIndex + 1);
 
-      console.log('DEBUG - Colunas da linha 5:', headers);
-      console.log('DEBUG - Total de linhas de dados:', dataRows.length);
-
       // Mapear índices exatos das colunas
       const colMap: Record<string, number> = {};
       headers.forEach((header: any, index: number) => {
         const headerStr = String(header || '').trim();
         colMap[headerStr] = index;
       });
-
-      console.log('DEBUG - Mapeamento completo:', colMap);
 
       // Buscar colunas essenciais
       const getColIndex = (exactNames: string[]): number => {
@@ -120,8 +126,6 @@ const BuyOrderAnalytic: React.FC<BuyOrderAnalyticProps> = ({ user, stores }) => 
         ultimaCompra: getColIndex(['Última Compra']),
         diasEstoque: getColIndex(['Dias em Estoque'])
       };
-
-      console.log('DEBUG - Índices das colunas:', colIndices);
 
       // Validar colunas obrigatórias
       if (colIndices.loja === -1) {
@@ -181,7 +185,7 @@ const BuyOrderAnalytic: React.FC<BuyOrderAnalyticProps> = ({ user, stores }) => 
                 ultimaCompraDate = dateObj.toLocaleDateString('pt-BR');
               }
             } catch (e) {
-              console.warn('Erro ao parsear data:', ultimaCompraRaw);
+              console.warn('Erro ao parsear data');
             }
           }
 
@@ -220,8 +224,6 @@ const BuyOrderAnalytic: React.FC<BuyOrderAnalyticProps> = ({ user, stores }) => 
         })
         .filter((item): item is SupplierItem => item !== null && item.loja > 0);
 
-      console.log('DEBUG - Items processados:', items.length);
-
       if (items.length === 0) {
         throw new Error('Nenhum dado válido encontrado. Verifique o formato do arquivo.');
       }
@@ -233,15 +235,12 @@ const BuyOrderAnalytic: React.FC<BuyOrderAnalyticProps> = ({ user, stores }) => 
         .slice(0, 2) as number[];
       const marca = items.find(item => item.marca)?.marca || 'Fornecedor';
 
-      console.log('DEBUG - Processado com sucesso!');
-      console.log('DEBUG - Lojas:', lojas);
-      console.log('DEBUG - Anos:', anos);
-      console.log('DEBUG - Total items:', items.length);
+      console.log('Arquivo processado com sucesso');
 
       setProcessedData({ items, lojas, anos, marca });
 
     } catch (err) {
-      console.error('Erro completo:', err);
+      console.error('Erro ao processar arquivo');
       setError(err instanceof Error ? err.message : 'Erro desconhecido ao processar arquivo');
     } finally {
       setIsProcessing(false);
@@ -299,15 +298,14 @@ const BuyOrderAnalytic: React.FC<BuyOrderAnalyticProps> = ({ user, stores }) => 
         }
 
         let recorrentes: string[] = [];
-        if (Object.keys(topRefsPorAno).length === 3) {
+        if (Object.keys(topRefsPorAno).length === 2) {
           const setAno1 = new Set(topRefsPorAno[anos[0]] || []);
           const setAno2 = new Set(topRefsPorAno[anos[1]] || []);
-          const setAno3 = new Set(topRefsPorAno[anos[2]] || []);
-          recorrentes = Array.from(setAno1).filter(ref => setAno2.has(ref) && setAno3.has(ref));
+          recorrentes = Array.from(setAno1).filter(ref => setAno2.has(ref));
         }
 
         if (recorrentes.length > 0) {
-          const destaqueRow = worksheet.addRow([`⭐ DESTAQUE: ${recorrentes.length} itens TOP nos 3 anos consecutivos`]);
+          const destaqueRow = worksheet.addRow([`⭐ DESTAQUE: ${recorrentes.length} itens TOP nos 2 anos consecutivos`]);
           destaqueRow.getCell(1).font = starFont;
           destaqueRow.getCell(1).fill = starFill;
           worksheet.mergeCells(currentRow, 1, currentRow, 6);
@@ -450,7 +448,7 @@ const BuyOrderAnalytic: React.FC<BuyOrderAnalyticProps> = ({ user, stores }) => 
       window.URL.revokeObjectURL(url);
 
     } catch (err) {
-      console.error('Erro ao exportar:', err);
+      console.error('Erro ao exportar arquivo');
       setError('Erro ao exportar arquivo Excel');
     } finally {
       setIsExporting(false);
