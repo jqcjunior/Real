@@ -95,77 +95,87 @@ const BuyOrderAnalytic: React.FC<BuyOrderAnalyticProps> = ({ user, stores }) => 
 
       // 🔍 DETECÇÃO DE CABEÇALHO RESILIENTE
       let headerRowIndex = -1;
-      const keywords = ['loja', 'referência', 'estoque', 'venda', 'marca', 'compra'];
-      
-      for (let i = 0; i < Math.min(rawData.length, 25); i++) {
+      const keywords = ['loja', 'filial', 'unidade', 'referência', 'venda'];
+
+      for (let i = 0; i < Math.min(25, rawData.length); i++) {
         const row = rawData[i];
-        if (row && Array.isArray(row)) {
-          const matches = keywords.filter(kw => 
-            row.some(cell => {
-              const cellStr = String(cell || '').toLowerCase();
-              return cellStr.includes(kw.toLowerCase()) || kw.toLowerCase().includes(cellStr);
-            })
-          );
-          if (matches.length >= 2) { 
-            headerRowIndex = i;
-            break;
-          }
+        if (!Array.isArray(row)) continue;
+        
+        const rowText = row.map(cell => 
+          String(cell || '').toLowerCase().trim()
+        ).join(' ');
+        
+        // Se encontrar pelo menos 3 palavras-chave, é o header
+        const matchCount = keywords.filter(kw => rowText.includes(kw)).length;
+        if (matchCount >= 3) {
+          headerRowIndex = i;
+          console.log(`✅ Header encontrado na linha ${i + 1}`);
+          break;
         }
       }
 
-      // Se falhou detecção automática, usa o padrão histórico (linha 5)
       if (headerRowIndex === -1) {
-        headerRowIndex = 4;
-      }
-      
-      if (rawData.length <= headerRowIndex) {
-        throw new Error('O arquivo parece não conter os dados esperados ou está em formato incompatível.');
+        throw new Error(
+          'Não foi possível identificar o cabeçalho do relatório. ' +
+          'Verifique se o arquivo contém as colunas: Loja, Referência, Venda'
+        );
       }
 
       const headers = rawData[headerRowIndex];
       const dataRows = rawData.slice(headerRowIndex + 1);
 
-      // Mapear índices das colunas (Case-insensitive e partial match)
-      const colMap: Record<string, number> = {};
-      headers.forEach((header: any, index: number) => {
-        const headerStr = String(header || '').trim().toLowerCase();
-        if (headerStr) colMap[headerStr] = index;
-      });
-
-      // Função robusta de busca por apelidos
-      const getIndexByAliases = (aliases: string[]): number => {
-        // Busca exata primeiro
-        const exactMatch = aliases.find(a => colMap[a.toLowerCase()] !== undefined);
-        if (exactMatch) return colMap[exactMatch.toLowerCase()];
-
-        // Busca parcial se não achou exata
-        const keys = Object.keys(colMap);
-        for (const alias of aliases) {
-          const normalizedAlias = alias.toLowerCase();
-          const foundKey = keys.find(k => k.includes(normalizedAlias) || normalizedAlias.includes(k));
-          if (foundKey) return colMap[foundKey];
+      // ✅ Buscar colunas com apelidos (fuzzy match)
+      const getColIndex = (exactNames: string[], aliases: string[] = []): number => {
+        const allNames = [...exactNames, ...aliases];
+        
+        for (const name of allNames) {
+          const normalized = name.toLowerCase().trim();
+          
+          for (let i = 0; i < headers.length; i++) {
+            const header = String(headers[i] || '').toLowerCase().trim();
+            
+            // Match exato
+            if (header === normalized) return i;
+            
+            // Match parcial (contém)
+            if (header.includes(normalized) || normalized.includes(header)) {
+              if (header.length > 2) return i; // Evita matches muito curtos
+            }
+          }
         }
         return -1;
       };
 
       const colIndices = {
-        loja: getIndexByAliases(['loja', 'filial', 'unidade']),
-        marca: getIndexByAliases(['marca', 'fabricante', 'fornecedor']),
-        referencia: getIndexByAliases(['referência', 'ref', 'código', 'cod']),
-        estoqueQtde: getIndexByAliases(['estoque (qtde)', 'estoque atual', 'est. qtde']),
-        compraQtde: getIndexByAliases(['compra (qtde)', 'entrada qtde', 'compra qtde']),
-        vendaQtde: getIndexByAliases(['venda (qtde)', 'venda qtde', 'saída qtde']),
-        vendaValor: getIndexByAliases(['venda (r$)', 'venda valor', 'valor venda']),
-        ultimaCompra: getIndexByAliases(['última compra', 'dt. última compra', 'data compra']),
-        diasEstoque: getIndexByAliases(['dias em estoque', 'dias estoque', 'giro'])
+        loja: getColIndex(['Loja'], ['Filial', 'Unidade', 'Cod Loja', 'Código Loja']),
+        marca: getColIndex(['Marca'], ['Fabricante', 'Brand']),
+        referencia: getColIndex(['Referência'], ['Ref', 'Código', 'SKU']),
+        estoqueQtde: getColIndex(['Estoque (Qtde)'], ['Estoque Qtde', 'Qtd Estoque', 'Estoque']),
+        compraQtde: getColIndex(['Compra (Qtde)'], ['Compra Qtde', 'Qtd Compra', 'Compras']),
+        vendaQtde: getColIndex(['Venda (Qtde)'], ['Venda Qtde', 'Qtd Venda', 'Vendas']),
+        vendaValor: getColIndex(['Venda (R$)'], ['Venda R$', 'Valor Venda', 'R$ Venda']),
+        ultimaCompra: getColIndex(['Última Compra'], ['Data Compra', 'Dt Compra']),
+        diasEstoque: getColIndex(['Dias em Estoque'], ['Dias Estoque', 'Dias'])
       };
 
-      // Validar colunas críticas
+      console.log('DEBUG - Mapeamento de colunas:', colIndices);
+
+      // ✅ Validar apenas colunas REALMENTE obrigatórias
+      const colunasObrigatorias = [];
+
       if (colIndices.loja === -1) {
-        throw new Error('Coluna "Loja" (ou Filial/Unidade) não encontrada no relatório.');
+        colunasObrigatorias.push('Loja (ou Filial/Unidade)');
       }
       if (colIndices.referencia === -1) {
-        throw new Error('Coluna "Referência" (ou Código) não encontrada no relatório.');
+        colunasObrigatorias.push('Referência (ou Ref/Código)');
+      }
+
+      if (colunasObrigatorias.length > 0) {
+        throw new Error(
+          `Colunas obrigatórias não encontradas: ${colunasObrigatorias.join(', ')}. ` +
+          `Verifique se o relatório está no formato correto. ` +
+          `(Tente converter para .xlsx se estiver usando .xls)`
+        );
       }
 
       const items: SupplierItem[] = dataRows

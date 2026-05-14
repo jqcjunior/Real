@@ -144,16 +144,24 @@ const App: React.FC = () => {
 
     // ✅ useEffect para estabelecer sessão APÓS mount
     useEffect(() => {
-        if (user) {
-            const userId = user.user_id || user.id;
-            if (userId) {
-                supabase.rpc('set_user_session', { 
-                    user_id: String(userId) // ✅ user_id (NÃO p_user_id)
-                }).catch(err => {
-                    console.warn('⚠️ Falha ao restaurar sessão RLS:', err);
-                });
+        const restoreSession = async () => {
+            if (user) {
+                const userId = user.user_id || user.id;
+                if (userId) {
+                    try {
+                        const { error } = await supabase.rpc('set_user_session', { 
+                            user_id: String(userId) // ✅ user_id (NÃO p_user_id)
+                        });
+                        if (error) {
+                            console.warn('⚠️ Erro ao restaurar sessão RLS:', error);
+                        }
+                    } catch (err) {
+                        console.warn('⚠️ Falha ao disparar set_user_session:', err);
+                    }
+                }
             }
-        }
+        };
+        restoreSession();
     }, []); // Executa apenas uma vez
     const isAdmin = user?.role === UserRole.ADMIN;
     const [currentView, setCurrentView] = useState<string>('welcome');
