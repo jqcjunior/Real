@@ -15,8 +15,8 @@ interface SupplierItem {
   vendaValor: number;
   ultimaCompra: string;
   diasEstoque: number;
-  ano?: number;
-  percVenda?: number;
+  ano: number;
+  percVenda: number;
 }
 
 interface ProcessedData {
@@ -49,14 +49,17 @@ const BuyOrderAnalytic: React.FC<BuyOrderAnalyticProps> = ({ user, stores }) => 
     setError(null);
 
     try {
-      // Validação da biblioteca conforme solicitado
-      console.log('XLSX carregado com sucesso:', !!XLSX && !!XLSX.utils);
+      // Acesso robusto à biblioteca em diferentes ambientes (Sandbox/Vite)
+      const X = XLSX as any;
+      const API = (X && X.utils) ? X : (X?.default || X);
       
-      if (!XLSX || !XLSX.utils) {
-        throw new Error('Biblioteca XLSX não carregada corretamente');
+      if (!API || !API.utils) {
+        throw new Error('A biblioteca de planilhas (XLSX) não pôde ser inicializada. Recarregue a página e tente novamente.');
       }
 
-      // Ler arquivo como ArrayBuffer
+      console.log('XLSX carregado com sucesso');
+
+      // Ler arquivo como ArrayBuffer (mais estável em iFrames)
       const data = await new Promise<ArrayBuffer>((resolve, reject) => {
         const reader = new FileReader();
         reader.onload = (e) => resolve(e.target?.result as ArrayBuffer);
@@ -65,74 +68,104 @@ const BuyOrderAnalytic: React.FC<BuyOrderAnalyticProps> = ({ user, stores }) => 
       });
 
       // Parsear workbook
-      const workbook = XLSX.read(data, { type: 'array' });
-      console.log('Workbook carregado');
+      const workbook = API.read(data, { type: 'array' });
+      console.log('Workbook carregado com sucesso');
       
       if (!workbook.SheetNames?.length) {
-        throw new Error('Nenhuma planilha encontrada');
+        throw new Error('Nenhuma planilha encontrada no arquivo.');
       }
 
       let sheetName = workbook.SheetNames[0];
       let sheet = workbook.Sheets[sheetName];
       
       if (!sheet) {
-        throw new Error('Worksheet inválida');
+        throw new Error('Não foi possível ler a primeira página da planilha.');
       }
 
-      let rawData: any[] = XLSX.utils.sheet_to_json(sheet, { header: 1, raw: false, defval: '' });
+      let rawData: any[] = API.utils.sheet_to_json(sheet, { header: 1, raw: false, defval: '' });
 
       // Se primeira sheet está vazia, tentar segunda
       if (rawData.length < 10 && workbook.SheetNames.length > 1) {
         sheetName = workbook.SheetNames[1];
         sheet = workbook.Sheets[sheetName];
         if (sheet) {
-          rawData = XLSX.utils.sheet_to_json(sheet, { header: 1, raw: false, defval: '' });
+          rawData = API.utils.sheet_to_json(sheet, { header: 1, raw: false, defval: '' });
         }
       }
 
-      // USAR LINHA 5 COMO HEADER (índice 4)
-      const headerRowIndex = 4;
+      // 🔍 DETECÇÃO DE CABEÇALHO RESILIENTE
+      let headerRowIndex = -1;
+      const keywords = ['loja', 'referência', 'estoque', 'venda', 'marca', 'compra'];
+      
+      for (let i = 0; i < Math.min(rawData.length, 25); i++) {
+        const row = rawData[i];
+        if (row && Array.isArray(row)) {
+          const matches = keywords.filter(kw => 
+            row.some(cell => {
+              const cellStr = String(cell || '').toLowerCase();
+              return cellStr.includes(kw.toLowerCase()) || kw.toLowerCase().includes(cellStr);
+            })
+          );
+          if (matches.length >= 2) { 
+            headerRowIndex = i;
+            break;
+          }
+        }
+      }
+
+      // Se falhou detecção automática, usa o padrão histórico (linha 5)
+      if (headerRowIndex === -1) {
+        headerRowIndex = 4;
+      }
       
       if (rawData.length <= headerRowIndex) {
-        throw new Error('Arquivo muito pequeno ou formato incorreto');
+        throw new Error('O arquivo parece não conter os dados esperados ou está em formato incompatível.');
       }
 
       const headers = rawData[headerRowIndex];
       const dataRows = rawData.slice(headerRowIndex + 1);
 
-      // Mapear índices exatos das colunas
+      // Mapear índices das colunas (Case-insensitive e partial match)
       const colMap: Record<string, number> = {};
       headers.forEach((header: any, index: number) => {
-        const headerStr = String(header || '').trim();
-        colMap[headerStr] = index;
+        const headerStr = String(header || '').trim().toLowerCase();
+        if (headerStr) colMap[headerStr] = index;
       });
 
-      // Buscar colunas essenciais
-      const getColIndex = (exactNames: string[]): number => {
-        for (const name of exactNames) {
-          if (colMap[name] !== undefined) return colMap[name];
+      // Função robusta de busca por apelidos
+      const getIndexByAliases = (aliases: string[]): number => {
+        // Busca exata primeiro
+        const exactMatch = aliases.find(a => colMap[a.toLowerCase()] !== undefined);
+        if (exactMatch) return colMap[exactMatch.toLowerCase()];
+
+        // Busca parcial se não achou exata
+        const keys = Object.keys(colMap);
+        for (const alias of aliases) {
+          const normalizedAlias = alias.toLowerCase();
+          const foundKey = keys.find(k => k.includes(normalizedAlias) || normalizedAlias.includes(k));
+          if (foundKey) return colMap[foundKey];
         }
         return -1;
       };
 
       const colIndices = {
-        loja: getColIndex(['Loja']),
-        marca: getColIndex(['Marca']),
-        referencia: getColIndex(['Referência']),
-        estoqueQtde: getColIndex(['Estoque (Qtde)']),
-        compraQtde: getColIndex(['Compra (Qtde)']),
-        vendaQtde: getColIndex(['Venda (Qtde)']),
-        vendaValor: getColIndex(['Venda (R$)']),
-        ultimaCompra: getColIndex(['Última Compra']),
-        diasEstoque: getColIndex(['Dias em Estoque'])
+        loja: getIndexByAliases(['loja', 'filial', 'unidade']),
+        marca: getIndexByAliases(['marca', 'fabricante', 'fornecedor']),
+        referencia: getIndexByAliases(['referência', 'ref', 'código', 'cod']),
+        estoqueQtde: getIndexByAliases(['estoque (qtde)', 'estoque atual', 'est. qtde']),
+        compraQtde: getIndexByAliases(['compra (qtde)', 'entrada qtde', 'compra qtde']),
+        vendaQtde: getIndexByAliases(['venda (qtde)', 'venda qtde', 'saída qtde']),
+        vendaValor: getIndexByAliases(['venda (r$)', 'venda valor', 'valor venda']),
+        ultimaCompra: getIndexByAliases(['última compra', 'dt. última compra', 'data compra']),
+        diasEstoque: getIndexByAliases(['dias em estoque', 'dias estoque', 'giro'])
       };
 
-      // Validar colunas obrigatórias
+      // Validar colunas críticas
       if (colIndices.loja === -1) {
-        throw new Error('Coluna "Loja" não encontrada');
+        throw new Error('Coluna "Loja" (ou Filial/Unidade) não encontrada no relatório.');
       }
       if (colIndices.referencia === -1) {
-        throw new Error('Coluna "Referência" não encontrada');
+        throw new Error('Coluna "Referência" (ou Código) não encontrada no relatório.');
       }
 
       const items: SupplierItem[] = dataRows
@@ -163,7 +196,7 @@ const BuyOrderAnalytic: React.FC<BuyOrderAnalyticProps> = ({ user, stores }) => 
               let dateObj: Date | null = null;
               
               if (typeof ultimaCompraRaw === 'number') {
-                const parsed = XLSX.SSF.parse_date_code(ultimaCompraRaw);
+                const parsed = API.SSF.parse_date_code(ultimaCompraRaw);
                 dateObj = new Date(parsed.y, parsed.m - 1, parsed.d);
               } else if (typeof ultimaCompraRaw === 'string') {
                 // Formato DD/MM/YYYY
@@ -239,9 +272,10 @@ const BuyOrderAnalytic: React.FC<BuyOrderAnalyticProps> = ({ user, stores }) => 
 
       setProcessedData({ items, lojas, anos, marca });
 
-    } catch (err) {
-      console.error('Erro ao processar arquivo');
-      setError(err instanceof Error ? err.message : 'Erro desconhecido ao processar arquivo');
+    } catch (err: any) {
+      console.error('Erro detalhado ao processar arquivo:', err);
+      const errorMsg = err?.message || 'Erro desconhecido ao processar arquivo';
+      setError(`${errorMsg} (Tente converter para .xlsx se estiver usando .xls)`);
     } finally {
       setIsProcessing(false);
     }

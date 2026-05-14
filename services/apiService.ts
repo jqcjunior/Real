@@ -7,94 +7,113 @@ class ApiService {
   async login(email: string, password: string) {
     try {
       const { data, error } = await supabase.rpc('authenticate_user', {
-        p_email: email,
-        p_password: password
+        p_email: email.trim(),
+        p_password: password.trim()
       });
- 
-      if (error || !data || data.length === 0) {
-        throw new Error('Erro na autenticação');
+
+      if (error) {
+        console.error('❌ Supabase RPC Error:', error);
+        throw new Error(error.message || 'Erro na comunicação com o banco de dados.');
       }
- 
-      const user = data[0];
- 
+
+      if (!data || data.length === 0) {
+        throw new Error('Usuário não encontrado ou credenciais incorretas.');
+      }
+
+      const userData = data[0];
+
       // ✅ VERIFICAR STATUS
-      if (!user.is_valid) {
-        // Mostrar mensagem específica do erro
-        throw new Error(user.error_message || 'Acesso negado');
+      if (!userData.is_valid) {
+        throw new Error(userData.error_message || 'Acesso negado');
       }
- 
-      // DEBUG TEMPORÁRIO - ADICIONAR ESTAS LINHAS
-        console.log('=== DEBUG AUTHENTICATE_USER ===');
-        console.log('Dados retornados do banco:', user);
-        console.log('user.user_id:', user.user_id);
-        console.log('user.name:', user.name);
-        console.log('user.email:', user.email);
-        console.log('user.role_level:', user.role_level);
-        console.log('user.store_id:', user.store_id);
-        console.log('===============================');
-        
-        // 1. SETAR SESSÃO NO POSTGRES (Fundamental para o RLS funcionar)
-        await supabase.rpc('set_user_session', {
-          user_id: user.user_id
-        });
- 
-        // 2. Mapear para o formato que o seu App.tsx já usa
-        const mappedUser = {
-          id: user.user_id,
-          name: user.name,
-          email: user.email,
-          role: (user.role_level || user.role || 'CASHIER').toUpperCase(),
-          storeId: user.store_id
-        };
- 
-        // 3. Persistência Limpa
-        // Usamos sessionStorage para garantir que a sessão termine ao fechar o navegador,
-        // evitando logins automáticos indesejados.
-        sessionStorage.setItem('realcalcados_v3_user', JSON.stringify(mappedUser));
-        sessionStorage.setItem('auth_token', 'session_' + user.user_id);
- 
-        return { success: true, user: mappedUser };
+
+      // ✅ O BANCO RETORNA user_id (não id)
+      const userId = userData.user_id;
+
+      if (!userId) {
+        console.error('❌ ERRO: authenticate_user retornou sem user_id!');
+        console.error('Dados recebidos:', userData);
+        throw new Error('Erro interno: ID do usuário não encontrado');
+      }
+
+      // ✅ ESTABELECER SESSÃO RLS
+      const { error: sessionError } = await supabase.rpc('set_user_session', {
+        user_id: String(userId) // ✅ user_id (NÃO p_user_id)
+      });
+
+      if (sessionError) {
+        console.warn('⚠️ Erro RLS (não bloqueante):', sessionError);
+      }
+
+      // ✅ RETORNAR dados do banco (role_level virá como está)
+      return { 
+        success: true, 
+        user: userData  // Retorna exatamente o que o banco enviou
+      };
     } catch (error: any) {
-      console.error('Erro no login:', error);
+      console.error('❌ Erro no login:', error);
       throw error;
     }
   }
  
   async logout() {
-    sessionStorage.clear();
-    localStorage.removeItem('auth_token'); // Limpar qualquer token residual
-    localStorage.removeItem('realcalcados_v3_user'); // Caso tenha vazado para localStorage
+    console.log('👋 Logout: limpando dados locais');
+    localStorage.removeItem('realcalcados_user');
+    localStorage.removeItem('auth_token');
+    localStorage.clear();
     window.location.reload(); 
   }
- 
+
   getUser() {
     try {
-      const userStr = sessionStorage.getItem('realcalcados_v3_user');
+      const userStr = localStorage.getItem('realcalcados_user');
       return userStr ? JSON.parse(userStr) : null;
     } catch (error) {
+      console.error('Erro ao ler usuário do localStorage:', error);
       return null;
     }
   }
- 
+
   getToken() {
-    return sessionStorage.getItem('auth_token');
+    return localStorage.getItem('auth_token');
   }
- 
+
   isAuthenticated(): boolean {
-    return !!sessionStorage.getItem('realcalcados_v3_user');
+    return !!localStorage.getItem('realcalcados_user');
   }
- 
+
   /**
-   * Função para garantir que o RLS está ativo antes de qualquer chamada
+   * ✅ FUNÇÃO CORRIGIDA: Garantir que o RLS está ativo antes de qualquer chamada
    */
   async ensureRLS() {
     const user = this.getUser();
-    if (user?.id) {
-      await supabase.rpc('set_user_session', { user_id: user.id });
+    
+    if (!user) {
+      console.warn('⚠️ ensureRLS: sem usuário logado');
+      return;
+    }
+
+    const userId = user.id || user.user_id || user.userId;
+    
+    if (!userId) {
+      console.error('❌ ensureRLS: usuário sem ID válido');
+      return;
+    }
+
+    try {
+      const { error } = await supabase.rpc('set_user_session', { 
+        user_id: String(userId) // ✅ user_id (NÃO p_user_id)
+      });
+      
+      if (error) {
+        console.error('❌ Erro ao reestabelecer RLS:', error);
+      }
+    } catch (err) {
+      console.error('❌ Exceção em ensureRLS:', err);
     }
   }
  
-  // --- Módulos de Recibo (Ajustados para não depender de token fake se o RLS já resolve) ---
+  // --- Módulos de Recibo ---
   
   async createReceipt(receiptData: any) {
     await this.ensureRLS();
@@ -107,16 +126,12 @@ class ApiService {
       reference: receiptData.reference,
       receipt_date: receiptData.receipt_date,
       issuer_name: receiptData.issuer_name || this.getUser()?.name
-      // receipt_number e formatted_number são automáticos no banco
     }]).select().single();
  
     if (error) throw error;
     return data;
   }
  
-  /**
-   * ✅ CORRIGIDO: Listar recibos com filtro por loja
-   */
   async listReceipts(storeId?: string, limit: number = 50) {
     try {
       await this.ensureRLS();
@@ -127,7 +142,6 @@ class ApiService {
         .order('receipt_number', { ascending: false })
         .limit(limit);
  
-      // ✅ Se storeId foi passado, filtra por loja
       if (storeId) {
         query = query.eq('store_id', storeId);
       }
@@ -142,9 +156,6 @@ class ApiService {
     }
   }
 
-  /**
-   * ✅ FUNÇÃO SEGURA: Atualizar pedido com validação
-   */
   async updateBuyOrder(orderId: string, updateData: {
     user_name?: string;
     brand_id?: string;
@@ -169,7 +180,6 @@ class ApiService {
     try {
       await this.ensureRLS();
 
-      // ✅ VALIDAÇÃO: Remover campos undefined obratórios
       const cleanData = Object.entries(updateData).reduce((acc, [key, value]) => {
         if (value !== undefined) {
           acc[key as keyof typeof acc] = value;
@@ -177,7 +187,6 @@ class ApiService {
         return acc;
       }, {} as any);
 
-      // ✅ VALIDAÇÃO: Arrays não podem estar vazios
       if (cleanData.prazos && cleanData.prazos.length === 0) {
         throw new Error('Prazos não podem estar vazios');
       }
@@ -196,9 +205,6 @@ class ApiService {
     }
   }
 
-  /**
-   * ✅ VALIDAÇÃO: Verificar se há cota disponível para o pedido
-   */
   async validarCotaDisponivel(
     store_number: string,
     valor_pedido: number,
@@ -207,7 +213,6 @@ class ApiService {
     ano: number
   ) {
     try {
-      // Usar a RPC que já traz os cálculos do banco
       const { data, error } = await supabase.rpc('get_cotas_ano_fiscal', {
         p_store_number: store_number,
         p_start_year: ano,
@@ -230,7 +235,7 @@ class ApiService {
       if (valor_pedido > cotaDisponivel) {
         return {
           permitido: false,
-          mensagem: `Cota OTB (Open-To-Buy) insuficiente para ${isGerente ? 'GERENTE' : 'COMPRADOR'}. Disponível: R$ ${cotaDisponivel.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}. Verifique prazos e faturamento.`,
+          mensagem: `Cota OTB insuficiente para ${isGerente ? 'GERENTE' : 'COMPRADOR'}. Disponível: R$ ${cotaDisponivel.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}`,
           excede_em: valor_pedido - cotaDisponivel
         };
       }

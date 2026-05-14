@@ -18,6 +18,7 @@ const LoginScreen: React.FC<LoginScreenProps> = ({ onLoginAttempt, onRegisterReq
 
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
+  const [showPassword, setShowPassword] = useState(false);
   const [rememberMe, setRememberMe] = useState(false);
   const [error, setError] = useState('');
   const [isLoading, setIsLoading] = useState(false);
@@ -49,6 +50,7 @@ const LoginScreen: React.FC<LoginScreenProps> = ({ onLoginAttempt, onRegisterReq
             setIsLoading(false);
         }
     } catch (err) {
+        console.error('Login error details:', err);
         setError('Falha na comunicação com o servidor.');
         setPassword('');
         setIsLoading(false);
@@ -104,8 +106,31 @@ const LoginScreen: React.FC<LoginScreenProps> = ({ onLoginAttempt, onRegisterReq
                 <input type="email" required value={email} onChange={(e) => setEmail(e.target.value)} className="w-full px-4 py-3 md:py-3.5 bg-gray-50 border border-gray-200 rounded-2xl focus:bg-white focus:border-blue-500 outline-none transition-all text-gray-900 font-bold text-sm shadow-inner placeholder-gray-400" placeholder="usuario@realcalcados.com.br" />
             </div>
             <div className="space-y-1.5">
-                <label className="block text-[10px] font-black text-gray-700 uppercase tracking-widest ml-1">Senha de Acesso</label>
-                <input type="password" required value={password} onChange={(e) => setPassword(e.target.value)} autoComplete="off" className="w-full px-4 py-3 md:py-3.5 bg-gray-50 border border-gray-200 rounded-2xl focus:bg-white focus:border-blue-500 outline-none transition-all text-gray-900 font-bold text-sm shadow-inner placeholder-gray-400" placeholder="••••••••" />
+                <div className="flex justify-between items-center ml-1">
+                    <label className="block text-[10px] font-black text-gray-700 uppercase tracking-widest">Senha de Acesso</label>
+                    <button 
+                        type="button" 
+                        onClick={() => setShowPassword(!showPassword)}
+                        className="text-[9px] font-bold text-blue-600 uppercase tracking-tighter hover:underline"
+                    >
+                        {showPassword ? 'Ocultar' : 'Mostrar'}
+                    </button>
+                </div>
+                <div className="relative">
+                    <input 
+                        type={showPassword ? "text" : "password"} 
+                        required 
+                        value={password} 
+                        onChange={(e) => setPassword(e.target.value)} 
+                        autoComplete="off" 
+                        className="w-full px-4 py-3 md:py-3.5 bg-gray-50 border border-gray-200 rounded-2xl focus:bg-white focus:border-blue-500 outline-none transition-all text-gray-900 font-bold text-sm shadow-inner placeholder-gray-400 pr-12" 
+                        placeholder="••••••••" 
+                    />
+                    <div className="absolute right-4 top-1/2 -translate-y-1/2 text-gray-400 pointer-events-none">
+                        <Lock size={16} />
+                    </div>
+                </div>
+                <p className="text-[9px] text-gray-400 font-bold ml-1 italic">* Verifique se a tecla Caps Lock está ativa</p>
             </div>
             <button type="submit" disabled={isLoading} className="w-full bg-blue-950 hover:bg-black text-white font-black uppercase text-xs tracking-[0.2em] py-4 rounded-2xl shadow-2xl transition-all border-b-4 border-red-700 disabled:opacity-50 mt-2">
                 {isLoading ? <Loader2 className="animate-spin mx-auto" size={18}/> : 'Validar Credenciais'}

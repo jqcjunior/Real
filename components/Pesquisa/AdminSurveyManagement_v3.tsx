@@ -173,6 +173,7 @@ const AdminSurveyManagement: React.FC<AdminSurveyManagementProps> = ({ currentUs
       const surveyData = {
         title,
         description,
+        store_id: (currentUser as any).store_id || (currentUser as any).storeId || null,
         target_type: targetType,
         target_category: targetType === 'internal' ? targetCategory : null,
         target_store_ids: targetStoreIds.length > 0 ? targetStoreIds : null,

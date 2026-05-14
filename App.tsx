@@ -124,14 +124,37 @@ const styles = `
 
 const App: React.FC = () => {
     const [user, setUser] = useState<User | null>(() => {
-        // Sempre exigir login ao carregar/recarregar a página
-        // conforme solicitado pelo usuário para evitar "logon automático" 
         try {
-            sessionStorage.clear();
-            localStorage.removeItem('auth_token');
-        } catch (e) {}
+            const saved = localStorage.getItem('realcalcados_user');
+            if (saved) {
+                const parsed = JSON.parse(saved);
+                const userId = parsed.user_id || parsed.id;
+                
+                if (userId) {
+                    // ✅ Session será estabelecida por useEffect
+                    if (!parsed.id) parsed.id = userId;
+                    return parsed;
+                }
+            }
+        } catch (e) {
+            console.error("Erro ao restaurar usuário:", e);
+        }
         return null;
     });
+
+    // ✅ useEffect para estabelecer sessão APÓS mount
+    useEffect(() => {
+        if (user) {
+            const userId = user.user_id || user.id;
+            if (userId) {
+                supabase.rpc('set_user_session', { 
+                    user_id: String(userId) // ✅ user_id (NÃO p_user_id)
+                }).catch(err => {
+                    console.warn('⚠️ Falha ao restaurar sessão RLS:', err);
+                });
+            }
+        }
+    }, []); // Executa apenas uma vez
     const isAdmin = user?.role === UserRole.ADMIN;
     const [currentView, setCurrentView] = useState<string>('welcome');
     const [gestaoComprasOpen, setGestaoComprasOpen] = useState(false);
@@ -204,7 +227,7 @@ const App: React.FC = () => {
         // Logout automático ao completar 1 hora
         const timerLogout = setTimeout(async () => {
             setSessionWarning(false);
-            if (user) sessionStorage.removeItem(`realcalcados_lastView_${user.id}`);
+            if (user) localStorage.removeItem(`realcalcados_lastView_${user.id}`);
             await apiService.logout();
             setUser(null);
             setCurrentView('welcome');
@@ -871,43 +894,41 @@ const App: React.FC = () => {
                 throw new Error('Resposta de login inválida');
             }
 
-            // CRÍTICO: Definir sessão no banco
-            await supabase.rpc('set_user_session', {
-              user_id: result.user.id
-            });
-            const sessionOk = await setUserSession(result.user.id);
-            if (!sessionOk) {
-                throw new Error('Erro ao iniciar sessão. Tente novamente.');
+            // ✅ Aceitar múltiplos formatos de ID
+            const userId = result.user.user_id || result.user.id || result.user.userId;
+            
+            if (!userId) {
+                console.error('❌ Debug - result.user:', result.user);
+                throw new Error('ID do usuário não encontrado na resposta de login');
             }
 
-            const rawRole = (result.user.role || '').toUpperCase().trim();
+            // ✅ Mapear role (banco retorna role_level, mas pode vir como role também)
+            const rawRole = (result.user.role || result.user.role_level || '').toUpperCase().trim();
 
             let mappedRole: UserRole = UserRole.CASHIER;
-            if (rawRole === 'ADMIN') mappedRole = UserRole.ADMIN;
+            if (rawRole === 'ADMIN' || rawRole === 'ADMINISTRADOR') mappedRole = UserRole.ADMIN;
             else if (rawRole === 'MANAGER' || rawRole === 'GERENTE') mappedRole = UserRole.MANAGER;
             else if (rawRole === 'CAIXA' || rawRole === 'CASHIER') mappedRole = UserRole.CASHIER;
             else if (rawRole === 'SORVETE' || rawRole === 'SORVETERIA' || rawRole === 'ICE_CREAM') mappedRole = UserRole.ICE_CREAM;
-            else mappedRole = UserRole.CASHIER; // Default for unknown roles
 
             const loggedUser: User = {
-                id: result.user.id,
+                id: userId,
                 name: result.user.name,
                 role: mappedRole,
                 email: result.user.email,
-                storeId: result.user.storeId
+                storeId: result.user.storeId || result.user.store_id
             };
 
             setUser(loggedUser);
+            localStorage.setItem('realcalcados_user', JSON.stringify(loggedUser));
+            localStorage.setItem('auth_token', 'session_active');
+            
             await fetchPermissions(mappedRole, loggedUser.name);
-
-            // ✅ CORREÇÃO: fetchData() roda em background sem bloquear a navegação.
-            // NÃO use "await fetchData()" aqui seguido de setCurrentView('welcome'),
-            // pois isso resetaria a tela mesmo que o usuário já tivesse navegado
-            // para outro módulo durante o carregamento dos dados.
-            fetchData({ role: mappedRole, storeId: loggedUser.storeId }); // passa usuário explicitamente
+            fetchData({ role: mappedRole, storeId: loggedUser.storeId });
 
             return { success: true, user: loggedUser };
         } catch (err: any) {
+            console.error('❌ Erro no login:', err);
             return { success: false, error: err.message || 'Falha na conexão.' };
         }
     };
@@ -1018,9 +1039,17 @@ const App: React.FC = () => {
                         ] }
                     ].map(section => {
                         const visibleItems = section.items.filter(i => {
+                            // Submenu sempre visível
                             if ((i as any).isGroup) return true;
+                            
+                            // ✅ ADMIN vê TUDO
+                            if (user?.role === UserRole.ADMIN) return true;
+                            
+                            // Para outros usuários
                             const userRole = String(user?.role || '').toLowerCase();
-                            const hasRole = (i as any).roles ? (i as any).roles.includes(userRole) : true;
+                            const itemRoles = (i as any).roles || [];
+                            const hasRole = itemRoles.length === 0 || itemRoles.map((r: string) => r.toLowerCase()).includes(userRole);
+                            
                             return hasRole && can(i.perm);
                         });
                         if (visibleItems.length === 0) return null;
@@ -1030,8 +1059,14 @@ const App: React.FC = () => {
                                 {visibleItems.map((item: any) => {
                                     if (item.isGroup) {
                                         const visibleSubItems = item.subItems!.filter((sub: any) => {
-                                            const setRole = String(user?.role || '').toLowerCase();
-                                            const hasRole = sub.roles ? sub.roles.includes(setRole) : true;
+                                            // ✅ ADMIN vê TODOS os sub-itens
+                                            if (user?.role === UserRole.ADMIN) return true;
+                                            
+                                            // Para outros usuários
+                                            const userRole = String(user?.role || '').toLowerCase();
+                                            const subRoles = sub.roles || [];
+                                            const hasRole = subRoles.length === 0 || subRoles.map((r: string) => r.toLowerCase()).includes(userRole);
+                                            
                                             return hasRole && can(sub.perm);
                                         });
                                         if (visibleSubItems.length === 0) return null;
@@ -1260,7 +1295,7 @@ const App: React.FC = () => {
                         if (currentView === 'dre_accounts' && can('MODULE_DRE_ACCOUNTS')) return <DREAccounts />;
                         if (currentView === 'stock_forecast' && can('MODULE_BUY_ORDERS')) return <StockForecastDashboard user={user!} stores={isAdmin ? stores : stores.filter(s => s.id === user?.storeId)} />;
                         if (currentView === 'buy_order_dashboard' && can('MODULE_BUY_ORDERS')) return <BuyOrderDashboard user={user!} />;
-                        if (currentView === 'buy_order_analytic' && can('MODULE_BUY_ORDERS')) return <BuyOrderAnalytic />;
+                        if (currentView === 'buy_order_analytic' && can('MODULE_BUY_ORDERS')) return <BuyOrderAnalytic user={user!} stores={stores} />;
                         if (currentView === 'buy_order_quota' && can('MODULE_BUY_ORDERS')) return <BuyOrderQuotaView user={user!} />;
                         if (currentView === 'admin_quota_extra' && can('MODULE_BUY_ORDERS')) return <AdminQuotaExtraApprovals userId={user!.id} />;
                         if (currentView === 'purchase_params') return <BuyOrderParams user={user!} />;
