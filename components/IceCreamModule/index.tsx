@@ -78,6 +78,46 @@ const IceCreamModule: React.FC<IceCreamModuleProps> = ({
     fetchData
 }) => {
     const [activeTab, setActiveTab] = useState<'pdv' | 'dre' | 'dre_mensal' | 'stock' | 'audit' | 'produtos' | 'despesas'>('pdv');
+
+    // ═══════════════════════════════════════════════════════════════
+    // 🔄 AUTO-REFRESH SILENCIOSO - Atualiza dados a cada 30 segundos
+    // ═══════════════════════════════════════════════════════════════
+    useEffect(() => {
+        let isFetching = false;
+        
+        console.log('🔄 Auto-refresh iniciado (atualiza a cada 30s)');
+        
+        const interval = setInterval(async () => {
+            const needsRefresh = ['dre', 'audit', 'dre_mensal', 'despesas'].includes(activeTab);
+            
+            if (!needsRefresh) return;
+            if (isFetching) return;
+            
+            console.log('⏰ Auto-refresh silencioso às', new Date().toLocaleTimeString());
+            
+            isFetching = true;
+            try {
+                if (fetchData) await fetchData(true);
+            } catch (error) {
+                console.error('❌ Erro no auto-refresh:', error);
+            } finally {
+                isFetching = false;
+            }
+        }, 30000);
+        
+        const handleVisibilityChange = () => {
+            if (document.hidden) clearInterval(interval);
+        };
+        
+        document.addEventListener('visibilitychange', handleVisibilityChange);
+        
+        return () => {
+            console.log('🛑 Auto-refresh parado');
+            clearInterval(interval);
+            document.removeEventListener('visibilitychange', handleVisibilityChange);
+        };
+    }, [activeTab, fetchData]);
+    // ═══════════════════════════════════════════════════════════════
     const [effectiveStoreId, setEffectiveStoreId] = useState(user?.storeId || (stores.length > 0 ? stores[0].id : ''));
     const isAdmin = user?.role === UserRole.ADMIN;
     const canManage = can('MODULE_ICECREAM_MANAGE');

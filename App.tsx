@@ -476,8 +476,15 @@ const App: React.FC = () => {
         }
     };
 
-    const fetchData = async (overrideUser?: { role: string; storeId?: string }) => {
+    const fetchData = async (optionsOrUser?: { role: string; storeId?: string } | boolean) => {
+        const isSilent = optionsOrUser === true;
+        const overrideUser = typeof optionsOrUser === 'object' ? optionsOrUser : undefined;
+
         try {
+            if (!isSilent) {
+                // Se não for silencioso, podemos mostrar um loading se desejado
+                // Mas o sistema parece gerenciar isLoading de forma global
+            }
             await ensureSession();
             const [
                 {data: s}, {data: p}, {data: g}, {data: pap}, {data: grp}

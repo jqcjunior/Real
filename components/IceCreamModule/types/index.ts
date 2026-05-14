@@ -38,5 +38,5 @@ export interface IceCreamModuleProps {
   futureDebts: IceCreamFutureDebt[];
   onAddFutureDebt: (debt: Partial<IceCreamFutureDebt>) => Promise<void>;
   onPayFutureDebt: (debtId: string, paymentDate: string) => Promise<void>;
-  fetchData?: () => Promise<void>;
+  fetchData?: (silent?: boolean) => Promise<void>;
 }
