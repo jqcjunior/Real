@@ -250,9 +250,27 @@ export async function exportBuyOrderToExcel(orderId: string) {
         console.log('[Export] Gerando buffer de saída...');
         const buffer = await workbook.outputAsync();
 
+        // ✅ NOVO: Gerar nome de arquivo personalizado
+        const dataAtual = new Date();
+        const dia = String(dataAtual.getDate()).padStart(2, '0');
+        const mes = String(dataAtual.getMonth() + 1).padStart(2, '0');
+        const ano = String(dataAtual.getFullYear()).slice(-2);
+        const dataFormatada = `${dia}${mes}${ano}`;
+
+        const marcaNormalizada = (order.marca || 'MARCA')
+            .toUpperCase()
+            .normalize('NFD')
+            .replace(/[\u0300-\u036f]/g, '') // Remove acentos
+            .replace(/[^A-Z0-9]/g, '_')       // Substitui caracteres especiais por _
+            .replace(/_+/g, '_')               // Remove _ duplicados
+            .replace(/^_|_$/g, '');            // Remove _ do início/fim
+
+        const nomeArquivo = `pedido_${order.numero_pedido}_${marcaNormalizada}_${dataFormatada}.xlsx`;
+
         return {
             buffer,
-            numeroPedido: order.numero_pedido
+            numeroPedido: order.numero_pedido,
+            fileName: nomeArquivo
         };
 
     } catch (err) {

@@ -704,8 +704,8 @@ const DashboardPAGerente: React.FC<DashboardPAGerenteProps> = ({ user, store }) 
             <Trophy className="w-8 h-8" />
             <span className="font-black italic uppercase tracking-tighter text-xl">{store.name}</span>
           </div>
-          <h1 className="text-4xl md:text-6xl font-black italic uppercase tracking-tighter text-slate-900 dark:text-white leading-none">
-            Dashboard <span className="text-orange-500">Semanal</span>
+          <h1 className="text-3xl md:text-5xl font-black italic uppercase tracking-tighter text-slate-900 dark:text-white leading-none">
+            Meta <span className="text-orange-500">Semanal</span>
           </h1>
           <p className="text-slate-500 dark:text-slate-400 font-medium uppercase tracking-widest text-xs italic">
             Premiação por PA · Vendas · Ticket

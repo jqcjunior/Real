@@ -166,6 +166,7 @@ const App: React.FC = () => {
     const isAdmin = user?.role === UserRole.ADMIN;
     const [currentView, setCurrentView] = useState<string>('welcome');
     const [gestaoComprasOpen, setGestaoComprasOpen] = useState(false);
+    const [gestaoMetasOpen, setGestaoMetasOpen] = useState(false);
     const [isLoading, setIsLoading] = useState(true);
     const [permissionsLoaded, setPermissionsLoaded] = useState(false);
     const [isSidebarOpen, setIsSidebarOpen] = useState(false);
@@ -268,10 +269,10 @@ const App: React.FC = () => {
     const bootstrapPermissions = async () => {
         try {
             const perms = [
-                { key: 'MODULE_DASHBOARD_ADMIN', label: 'Dashboard Rede', group: 'Inteligência' },
-                { key: 'MODULE_DASHBOARD_MANAGER', label: 'Dashboard Loja', group: 'Inteligência' },
-                { key: 'MODULE_DASHBOARD_PA', label: 'Dashboard P.A.', group: 'Inteligência' },
-                { key: 'MODULE_DASHBOARD_PA_MANAGER', label: 'Dashboard P.A. (Gerente)', group: 'Inteligência' },
+                { key: 'MODULE_DASHBOARD_ADMIN', label: 'Meta da Rede', group: 'Inteligência' },
+                { key: 'MODULE_DASHBOARD_MANAGER', label: 'Meta da Loja', group: 'Inteligência' },
+                { key: 'MODULE_DASHBOARD_PA', label: 'Meta Semanal Admin', group: 'Inteligência' },
+                { key: 'MODULE_DASHBOARD_PA_MANAGER', label: 'Meta Semanal Gerente', group: 'Inteligência' },
                 { key: 'MODULE_BUY_ORDERS', label: 'Pedidos de Compra', group: 'Inteligência' },
                 { key: 'MODULE_METAS', label: 'Metas', group: 'Inteligência' },
                 { key: 'MODULE_COTAS', label: 'Cotas OTB', group: 'Inteligência' },
@@ -802,14 +803,14 @@ const App: React.FC = () => {
 
             if (userRole === UserRole.ADMIN) {
                 buttons.push(
-                    { key: 'dashboard_rede', label: 'Dashboard Rede', icon: '📊', color: 'from-blue-500 to-blue-600' },
+                    { key: 'dashboard_rede', label: 'Meta da Rede', icon: '📊', color: 'from-blue-500 to-blue-600' },
                     { key: 'users', label: 'Usuários', icon: '👥', color: 'from-purple-500 to-purple-600' },
                     { key: 'surveys', label: 'Pesquisas', icon: '📋', color: 'from-orange-500 to-orange-600' }
                 );
             } else if (userRole === UserRole.MANAGER) {
                 buttons.push(
-                    { key: 'dashboard_loja', label: 'Dashboard Loja', icon: '📊', color: 'from-blue-500 to-blue-600' },
-                    { key: 'dashboard_pa_manager', label: 'Dashboard Semanal', icon: '📈', color: 'from-purple-500 to-purple-600' },
+                    { key: 'dashboard_loja', label: 'Meta da Loja', icon: '📊', color: 'from-blue-500 to-blue-600' },
+                    { key: 'dashboard_pa_manager', label: 'Meta Semanal Gerente', icon: '📈', color: 'from-purple-500 to-purple-600' },
                     { key: 'buy_order_dashboard', label: 'Dashboard Compras', icon: '💰', color: 'from-orange-500 to-orange-600' },
                     { key: 'buy_orders', label: 'Pedido de Compra', icon: '🛒', color: 'from-green-500 to-green-600' }
                 );
@@ -1014,10 +1015,18 @@ const App: React.FC = () => {
                 <nav className="flex-1 space-y-6 overflow-y-auto no-scrollbar">
                     {[
                         { title: 'Inteligência', items: [
-                            { id: 'dashboard_rede', label: 'Dashboard Rede', icon: LayoutDashboard, perm: 'MODULE_DASHBOARD_ADMIN', roles: ['admin'] },
-                            { id: 'dashboard_loja', label: 'Dashboard Loja', icon: LayoutDashboard, perm: 'MODULE_DASHBOARD_MANAGER', roles: ['manager', 'admin'] },
-                            { id: 'dashboard_pa', label: 'Dashboard Semanal', icon: Trophy, perm: 'MODULE_DASHBOARD_PA', roles: ['admin'] },
-                            { id: 'dashboard_pa_manager', label: 'Dashboard Semanal', icon: Trophy, perm: 'MODULE_DASHBOARD_PA_MANAGER', roles: ['manager'] },
+                            {
+                                id: 'gestao-metas',
+                                label: 'Gestão de Metas',
+                                icon: Trophy,
+                                isGroup: true,
+                                subItems: [
+                                    { id: 'dashboard_rede', label: 'Meta da Rede', icon: LayoutDashboard, perm: 'MODULE_DASHBOARD_ADMIN', roles: ['admin'] },
+                                    { id: 'dashboard_loja', label: 'Meta da Loja', icon: LayoutDashboard, perm: 'MODULE_DASHBOARD_MANAGER', roles: ['manager', 'admin'] },
+                                    { id: 'dashboard_pa', label: 'Meta Semanal Admin', icon: Trophy, perm: 'MODULE_DASHBOARD_PA', roles: ['admin'] },
+                                    { id: 'dashboard_pa_manager', label: 'Meta Semanal Gerente', icon: Trophy, perm: 'MODULE_DASHBOARD_PA_MANAGER', roles: ['manager'] }
+                                ]
+                            },
                             { 
                                 id: 'gestao-compras', 
                                 label: 'Gestão de Compras', 
@@ -1090,8 +1099,14 @@ const App: React.FC = () => {
                                             <div key={item.id} className="space-y-1 mt-2">
                                                 <button
                                                     onClick={() => {
-                                                        setGestaoComprasOpen(!gestaoComprasOpen);
-                                                        setCurrentView('buy_order_dashboard');
+                                                        if (item.id === 'gestao-metas') {
+                                                            setGestaoMetasOpen(!gestaoMetasOpen);
+                                                            setGestaoComprasOpen(false);
+                                                        } else {
+                                                            setGestaoComprasOpen(!gestaoComprasOpen);
+                                                            setGestaoMetasOpen(false);
+                                                            setCurrentView('buy_order_dashboard');
+                                                        }
                                                         if (window.innerWidth < 768) setIsSidebarOpen(false);
                                                     }}
                                                     className={`w-full text-left py-2.5 px-4 rounded-xl font-black uppercase text-[10px] flex items-center gap-4 transition-all relative ${
@@ -1104,7 +1119,7 @@ const App: React.FC = () => {
                                                     <span>{item.label}</span>
                                                     <span className="ml-auto text-[8px]">{gestaoComprasOpen ? '▼' : '▶️'}</span>
                                                 </button>
-                                                {gestaoComprasOpen && (
+                                                {(item.id === 'gestao-metas' ? gestaoMetasOpen : gestaoComprasOpen) && (
                                                     <div className="pl-6 space-y-1 mt-1 border-l-2 border-slate-200 dark:border-slate-700 ml-6">
                                                         {visibleSubItems.map((subItem: any) => (
                                                             <button
