@@ -47,7 +47,7 @@ interface SurveyResultsViewerProps {
 const SurveyResultsViewer: React.FC<SurveyResultsViewerProps> = ({ survey, currentUser, stores, onBack }) => {
   const [questions, setQuestions] = useState<SurveyQuestion[]>([]);
   const [responses, setResponses] = useState<SurveyResponse[]>([]);
-  const [answers, setAnswers] = useState<SurveyAnswerDetail[]>([]);
+  const [answers, setAnswers] = useState<any[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [selectedStoreId, setSelectedStoreId] = useState<string>('all');
 
@@ -83,13 +83,18 @@ const SurveyResultsViewer: React.FC<SurveyResultsViewerProps> = ({ survey, curre
 
       // 3. Buscar detalhes das respostas
       if (rData && rData.length > 0) {
-        const responseIds = rData.map(r => r.id);
-        const { data: aData, error: aError } = await supabase
-          .from('survey_answer_details')
-          .select('*')
-          .in('response_id', responseIds);
-        if (aError) throw aError;
-        setAnswers(aData || []);
+        const parsedAnswers: any[] = [];
+        rData.forEach(r => {
+          const respObj = r.responses || {};
+          Object.entries(respObj).forEach(([qId, val]) => {
+            parsedAnswers.push({
+              response_id: r.id,
+              question_id: qId,
+              answer_text: val
+            });
+          });
+        });
+        setAnswers(parsedAnswers);
       } else {
         setAnswers([]);
       }
@@ -111,11 +116,21 @@ const SurveyResultsViewer: React.FC<SurveyResultsViewerProps> = ({ survey, curre
 
     if (question.question_type === 'multiple_choice' || question.question_type === 'boolean') {
       const counts: Record<string, number> = {};
+      const motivos: string[] = [];
       questionAnswers.forEach(a => {
-        const val = a.answer_text || 'Sem Resposta';
+        let val = a.answer_text || 'Sem Resposta';
+        if (typeof val === 'object' && val !== null) {
+          if (val.motivo) motivos.push(val.motivo);
+          val = val.value || 'Sem Resposta';
+        } else {
+          val = String(val);
+        }
         counts[val] = (counts[val] || 0) + 1;
       });
-      return Object.entries(counts).map(([name, value]) => ({ name, value }));
+      return {
+        stats: Object.entries(counts).map(([name, value]) => ({ name, value })),
+        motivos
+      };
     }
 
     return questionAnswers.map(a => a.answer_text).filter(Boolean);
@@ -224,41 +239,58 @@ const SurveyResultsViewer: React.FC<SurveyResultsViewerProps> = ({ survey, curre
                 )}
 
                 {(q.question_type === 'multiple_choice' || q.question_type === 'boolean') && (
-                  <div className="grid grid-cols-1 md:grid-cols-2 gap-8 items-center">
-                    <div className="h-64">
-                      <ResponsiveContainer width="100%" height="100%">
-                        <PieChart>
-                          <Pie
-                            data={stats as any[]}
-                            cx="50%"
-                            cy="50%"
-                            innerRadius={60}
-                            outerRadius={80}
-                            paddingAngle={5}
-                            dataKey="value"
-                          >
-                            {(stats as any[]).map((entry, index) => (
-                              <Cell key={`cell-${index}`} fill={COLORS[index % COLORS.length]} />
-                            ))}
-                          </Pie>
-                          <Tooltip />
-                        </PieChart>
-                      </ResponsiveContainer>
-                    </div>
-                    <div className="space-y-4">
-                      {(stats as any[]).map((item, i) => (
-                        <div key={i} className="flex items-center justify-between p-4 bg-slate-50 dark:bg-slate-800/50 rounded-2xl">
-                          <div className="flex items-center gap-3">
-                            <div className="w-3 h-3 rounded-full" style={{ backgroundColor: COLORS[i % COLORS.length] }} />
-                            <span className="text-[10px] font-black uppercase tracking-widest text-slate-700 dark:text-slate-300">{item.name}</span>
+                  <div className="space-y-6">
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-8 items-center">
+                      <div className="h-64">
+                        <ResponsiveContainer width="100%" height="100%">
+                          <PieChart>
+                            <Pie
+                              data={(stats as any).stats}
+                              cx="50%"
+                              cy="50%"
+                              innerRadius={60}
+                              outerRadius={80}
+                              paddingAngle={5}
+                              dataKey="value"
+                            >
+                              {((stats as any).stats as any[]).map((entry, index) => (
+                                <Cell key={`cell-${index}`} fill={COLORS[index % COLORS.length]} />
+                              ))}
+                            </Pie>
+                            <Tooltip />
+                          </PieChart>
+                        </ResponsiveContainer>
+                      </div>
+                      <div className="space-y-4">
+                        {((stats as any).stats as any[]).map((item, i) => (
+                          <div key={i} className="flex items-center justify-between p-4 bg-slate-50 dark:bg-slate-800/50 rounded-2xl">
+                            <div className="flex items-center gap-3">
+                              <div className="w-3 h-3 rounded-full" style={{ backgroundColor: COLORS[i % COLORS.length] }} />
+                              <span className="text-[10px] font-black uppercase tracking-widest text-slate-700 dark:text-slate-300">{item.name}</span>
+                            </div>
+                            <div className="flex items-center gap-4">
+                              <span className="text-sm font-black text-slate-900 dark:text-white">{item.value}</span>
+                              <span className="text-[10px] font-bold text-slate-400">{responses.length > 0 ? Math.round((item.value / responses.length) * 100) : 0}%</span>
+                            </div>
                           </div>
-                          <div className="flex items-center gap-4">
-                            <span className="text-sm font-black text-slate-900 dark:text-white">{item.value}</span>
-                            <span className="text-[10px] font-bold text-slate-400">{Math.round((item.value / responses.length) * 100)}%</span>
-                          </div>
-                        </div>
-                      ))}
+                        ))}
+                      </div>
                     </div>
+                    {q.question_type === 'boolean' && (stats as any).motivos?.length > 0 && (
+                      <div className="mt-8 space-y-4 max-h-96 overflow-y-auto pr-4 no-scrollbar">
+                        <h4 className="text-xs font-black uppercase text-slate-500 tracking-widest mb-4">Motivos do Não</h4>
+                        {((stats as any).motivos as string[]).map((text, i) => (
+                          <div key={i} className="p-6 bg-slate-50 dark:bg-slate-800/50 rounded-[24px] border border-slate-100 dark:border-slate-800 flex gap-4">
+                            <div className="p-2 bg-white dark:bg-slate-700 rounded-xl h-fit text-slate-400">
+                              <MessageSquare size={16} />
+                            </div>
+                            <p className="text-sm font-bold text-slate-700 dark:text-slate-300 italic leading-relaxed">
+                              "{text}"
+                            </p>
+                          </div>
+                        ))}
+                      </div>
+                    )}
                   </div>
                 )}
 

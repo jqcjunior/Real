@@ -195,9 +195,18 @@ const AdminSurveyManagement: React.FC<AdminSurveyManagementProps> = ({ currentUs
           throw error;
         }
       } else {
+        const slug = title
+          .toLowerCase()
+          .normalize('NFD')
+          .replace(/[\u0300-\u036f]/g, '')
+          .replace(/[^a-z0-9\s-]/g, '')
+          .trim()
+          .replace(/\s+/g, '-')
+          + '-' + Date.now();
+
         const { data, error } = await supabase
           .from('surveys')
-          .insert([surveyData])
+          .insert([{ ...surveyData, slug }])
           .select()
           .single();
         if (error) {

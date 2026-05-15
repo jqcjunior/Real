@@ -25,7 +25,9 @@ interface SurveyResponseFormProps {
 const SurveyResponseForm: React.FC<SurveyResponseFormProps> = ({ survey, user, invitationToken, onClose, onComplete }) => {
   const [questions, setQuestions] = useState<SurveyQuestion[]>([]);
   const [answers, setAnswers] = useState<Record<string, any>>({});
-  const [currentStep, setCurrentStep] = useState(0);
+  const [motivos, setMotivos] = useState<Record<string, string>>({});
+  const [respondentInfo, setRespondentInfo] = useState({ name: '', email: '', phone: '' });
+  const [currentStep, setCurrentStep] = useState(survey.target_type === 'external' ? -1 : 0);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [isCompleted, setIsCompleted] = useState(false);
   const [isLoading, setIsLoading] = useState(true);
@@ -53,6 +55,11 @@ const SurveyResponseForm: React.FC<SurveyResponseFormProps> = ({ survey, user, i
 
   const handleAnswerChange = (questionId: string, value: any) => {
     setAnswers({ ...answers, [questionId]: value });
+    if (value === 'SIM') {
+      const newMotivos = { ...motivos };
+      delete newMotivos[questionId];
+      setMotivos(newMotivos);
+    }
   };
 
   const handleSubmit = async () => {
@@ -65,31 +72,33 @@ const SurveyResponseForm: React.FC<SurveyResponseFormProps> = ({ survey, user, i
 
     setIsSubmitting(true);
     try {
-      // 1. Criar cabeçalho da resposta
-      const { data: response, error: rError } = await supabase
+      // Prepara o JSON das respostas
+      const finalResponses: Record<string, any> = {};
+      Object.entries(answers).forEach(([qId, val]) => {
+        if (val === 'NÃO' && motivos[qId]) {
+          finalResponses[qId] = { value: 'NÃO', motivo: motivos[qId] };
+        } else {
+          finalResponses[qId] = val;
+        }
+      });
+
+      // 1. Salvar resposta completa
+      const { error: rError } = await supabase
         .from('survey_responses')
         .insert([{
           survey_id: survey.id,
           user_id: user?.id || null,
-          invitation_id: invitationToken ? null : null, // Aqui precisaria buscar o ID do convite pelo token se for externo
-          store_id: user?.storeId || null
-        }])
-        .select()
-        .single();
+          invitation_id: invitationToken ? null : null,
+          store_id: user?.storeId || null,
+          responses: finalResponses,
+          respondent_name: survey.target_type === 'external' ? respondentInfo.name : null,
+          respondent_email: survey.target_type === 'external' ? respondentInfo.email : null,
+          respondent_phone: survey.target_type === 'external' ? respondentInfo.phone : null
+        }]);
       
       if (rError) throw rError;
 
-      // 2. Criar detalhes das respostas
-      const details = Object.entries(answers).map(([qId, val]) => ({
-        response_id: response.id,
-        question_id: qId,
-        answer_text: String(val)
-      }));
-
-      const { error: dError } = await supabase.from('survey_answer_details').insert(details);
-      if (dError) throw dError;
-
-      // 3. Se for externo, marcar convite como respondido (lógica futura)
+      // 2. Se for externo, marcar convite como respondido (lógica futura)
 
       setIsCompleted(true);
       setTimeout(() => {
@@ -133,8 +142,8 @@ const SurveyResponseForm: React.FC<SurveyResponseFormProps> = ({ survey, user, i
     );
   }
 
-  const currentQuestion = questions[currentStep];
-  const progress = ((currentStep + 1) / questions.length) * 100;
+  const currentQuestion = currentStep >= 0 ? questions[currentStep] : null;
+  const progress = currentStep >= 0 ? ((currentStep + 1) / questions.length) * 100 : 0;
 
   return (
     <div className="fixed inset-0 z-[1100] bg-slate-50 dark:bg-slate-950 flex flex-col overflow-hidden">
@@ -149,7 +158,9 @@ const SurveyResponseForm: React.FC<SurveyResponseFormProps> = ({ survey, user, i
           </button>
           <div>
             <h1 className="text-xl font-black uppercase italic tracking-tighter text-slate-900 dark:text-white leading-none">{survey.title}</h1>
-            <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest mt-1">Pergunta {currentStep + 1} de {questions.length}</p>
+            <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest mt-1">
+              {currentStep >= 0 ? `Pergunta ${currentStep + 1} de ${questions.length}` : 'Identificação'}
+            </p>
           </div>
         </div>
         <div className="hidden md:flex items-center gap-4">
@@ -174,19 +185,53 @@ const SurveyResponseForm: React.FC<SurveyResponseFormProps> = ({ survey, user, i
             exit={{ opacity: 0, x: -20 }}
             className="w-full max-w-2xl space-y-12"
           >
-            <div className="space-y-4">
-              <div className="flex items-center gap-3">
-                <span className="w-10 h-10 bg-blue-600 text-white rounded-2xl flex items-center justify-center font-black italic text-lg shadow-lg shadow-blue-200 dark:shadow-none">
-                  {currentStep + 1}
-                </span>
+            {currentStep === -1 ? (
+              <div className="space-y-6">
                 <h2 className="text-2xl md:text-3xl font-black uppercase italic tracking-tighter text-slate-900 dark:text-white leading-tight">
-                  {currentQuestion.question_text}
-                  {currentQuestion.is_required && <span className="text-red-500 ml-2">*</span>}
+                  Identificação
                 </h2>
+                <p className="font-bold text-slate-500 uppercase tracking-widest text-xs">
+                  Por favor, preencha seus dados para continuar:
+                </p>
+                <div className="space-y-4">
+                  <input 
+                    type="text" 
+                    placeholder="NOME COMPLETO"
+                    value={respondentInfo.name}
+                    onChange={e => setRespondentInfo({...respondentInfo, name: e.target.value})}
+                    className="w-full px-8 py-6 bg-white dark:bg-slate-900 border-2 border-transparent focus:border-blue-600 rounded-[32px] text-lg font-bold text-slate-900 dark:text-white outline-none shadow-xl shadow-slate-200/50 dark:shadow-none transition-all"
+                  />
+                  <input 
+                    type="email" 
+                    placeholder="E-MAIL"
+                    value={respondentInfo.email}
+                    onChange={e => setRespondentInfo({...respondentInfo, email: e.target.value})}
+                    className="w-full px-8 py-6 bg-white dark:bg-slate-900 border-2 border-transparent focus:border-blue-600 rounded-[32px] text-lg font-bold text-slate-900 dark:text-white outline-none shadow-xl shadow-slate-200/50 dark:shadow-none transition-all"
+                  />
+                  <input 
+                    type="tel" 
+                    placeholder="TELEFONE"
+                    value={respondentInfo.phone}
+                    onChange={e => setRespondentInfo({...respondentInfo, phone: e.target.value})}
+                    className="w-full px-8 py-6 bg-white dark:bg-slate-900 border-2 border-transparent focus:border-blue-600 rounded-[32px] text-lg font-bold text-slate-900 dark:text-white outline-none shadow-xl shadow-slate-200/50 dark:shadow-none transition-all"
+                  />
+                </div>
               </div>
-            </div>
+            ) : currentQuestion ? (
+              <>
+                <div className="space-y-4">
+                  <div className="flex items-center gap-3">
+                    <span className="w-10 h-10 bg-blue-600 text-white rounded-2xl flex items-center justify-center font-black italic text-lg shadow-lg shadow-blue-200 dark:shadow-none">
+                      {currentStep + 1}
+                    </span>
+                    <h2 className="text-2xl md:text-3xl font-black uppercase italic tracking-tighter text-slate-900 dark:text-white leading-tight">
+                      {currentQuestion.question_text}
+                      {currentQuestion.is_required && <span className="text-red-500 ml-2">*</span>}
+                    </h2>
+                  </div>
+                </div>
 
-            <div className="space-y-6">
+                <div className="space-y-6">
               {currentQuestion.question_type === 'text' && (
                 <textarea 
                   autoFocus
@@ -237,23 +282,46 @@ const SurveyResponseForm: React.FC<SurveyResponseFormProps> = ({ survey, user, i
               )}
 
               {currentQuestion.question_type === 'boolean' && (
-                <div className="grid grid-cols-2 gap-6">
-                  {['SIM', 'NÃO'].map(val => (
-                    <button
-                      key={val}
-                      onClick={() => handleAnswerChange(currentQuestion.id, val)}
-                      className={`w-full py-12 rounded-[32px] font-black uppercase tracking-widest text-xl transition-all border-2 ${
-                        answers[currentQuestion.id] === val
-                          ? 'bg-blue-600 border-blue-600 text-white shadow-xl shadow-blue-200 dark:shadow-none scale-105'
-                          : 'bg-white dark:bg-slate-900 border-slate-100 dark:border-slate-800 text-slate-400 hover:border-blue-200'
-                      }`}
-                    >
-                      {val}
-                    </button>
-                  ))}
+                <div className="space-y-4">
+                  <div className="grid grid-cols-2 gap-6">
+                    {['SIM', 'NÃO'].map(val => (
+                      <button
+                        key={val}
+                        onClick={() => handleAnswerChange(currentQuestion.id, val)}
+                        className={`w-full py-12 rounded-[32px] font-black uppercase tracking-widest text-xl transition-all border-2 ${
+                          answers[currentQuestion.id] === val
+                            ? 'bg-blue-600 border-blue-600 text-white shadow-xl shadow-blue-200 dark:shadow-none scale-105'
+                            : 'bg-white dark:bg-slate-900 border-slate-100 dark:border-slate-800 text-slate-400 hover:border-blue-200'
+                        }`}
+                      >
+                        {val}
+                      </button>
+                    ))}
+                  </div>
+                  <AnimatePresence>
+                    {answers[currentQuestion.id] === 'NÃO' && (
+                      <motion.div
+                        initial={{ opacity: 0, height: 0, y: -20 }}
+                        animate={{ opacity: 1, height: 'auto', y: 0 }}
+                        exit={{ opacity: 0, height: 0, y: -20 }}
+                        className="overflow-hidden"
+                      >
+                        <textarea
+                          autoFocus
+                          value={motivos[currentQuestion.id] || ''}
+                          onChange={(e) => setMotivos({ ...motivos, [currentQuestion.id]: e.target.value })}
+                          placeholder="Conte-nos o motivo... (opcional)"
+                          rows={3}
+                          className="w-full mt-4 px-8 py-6 bg-white dark:bg-slate-900 border-2 border-transparent focus:border-blue-600 rounded-[32px] text-lg font-bold text-slate-900 dark:text-white outline-none shadow-xl shadow-slate-200/50 dark:shadow-none transition-all resize-none"
+                        />
+                      </motion.div>
+                    )}
+                  </AnimatePresence>
                 </div>
               )}
-            </div>
+                </div>
+              </>
+            ) : null}
           </motion.div>
         </AnimatePresence>
       </main>
@@ -261,21 +329,21 @@ const SurveyResponseForm: React.FC<SurveyResponseFormProps> = ({ survey, user, i
       {/* Footer */}
       <footer className="bg-white dark:bg-slate-900 border-t border-slate-200 dark:border-slate-800 p-6 md:p-8 flex items-center justify-between shrink-0">
         <button 
-          disabled={currentStep === 0}
+          disabled={currentStep === (survey.target_type === 'external' ? -1 : 0)}
           onClick={() => setCurrentStep(currentStep - 1)}
           className={`px-8 py-4 rounded-2xl font-black uppercase text-xs tracking-widest transition-all flex items-center gap-2 ${
-            currentStep === 0 ? 'text-slate-300 cursor-not-allowed' : 'text-slate-500 hover:text-slate-900 dark:hover:text-white'
+            currentStep === (survey.target_type === 'external' ? -1 : 0) ? 'text-slate-300 cursor-not-allowed' : 'text-slate-500 hover:text-slate-900 dark:hover:text-white'
           }`}
         >
           <ChevronLeft size={20} /> Anterior
         </button>
 
-        {currentStep === questions.length - 1 ? (
+        {currentStep === questions.length - 1 && currentStep >= 0 ? (
           <button 
             onClick={handleSubmit}
-            disabled={isSubmitting || (currentQuestion.is_required && !answers[currentQuestion.id])}
+            disabled={isSubmitting || (currentQuestion?.is_required && !answers[currentQuestion.id])}
             className={`bg-green-600 hover:bg-green-700 text-white px-12 py-4 rounded-2xl font-black uppercase text-xs tracking-widest shadow-xl shadow-green-200 dark:shadow-none transition-all active:scale-95 flex items-center gap-2 ${
-              (isSubmitting || (currentQuestion.is_required && !answers[currentQuestion.id])) ? 'opacity-50 cursor-not-allowed' : ''
+              (isSubmitting || (currentQuestion?.is_required && !answers[currentQuestion.id])) ? 'opacity-50 cursor-not-allowed' : ''
             }`}
           >
             {isSubmitting ? <Loader2 className="animate-spin" size={20} /> : <Send size={20} />} Finalizar Resposta
@@ -283,9 +351,12 @@ const SurveyResponseForm: React.FC<SurveyResponseFormProps> = ({ survey, user, i
         ) : (
           <button 
             onClick={() => setCurrentStep(currentStep + 1)}
-            disabled={currentQuestion.is_required && !answers[currentQuestion.id]}
+            disabled={
+              (currentStep === -1 && (!respondentInfo.name || !respondentInfo.email || !respondentInfo.phone)) || 
+              (currentStep >= 0 && currentQuestion?.is_required && !answers[currentQuestion.id])
+            }
             className={`bg-blue-600 hover:bg-blue-700 text-white px-12 py-4 rounded-2xl font-black uppercase text-xs tracking-widest shadow-xl shadow-blue-200 dark:shadow-none transition-all active:scale-95 flex items-center gap-2 ${
-              (currentQuestion.is_required && !answers[currentQuestion.id]) ? 'opacity-50 cursor-not-allowed' : ''
+              ((currentStep === -1 && (!respondentInfo.name || !respondentInfo.email || !respondentInfo.phone)) || (currentStep >= 0 && currentQuestion?.is_required && !answers[currentQuestion.id])) ? 'opacity-50 cursor-not-allowed' : ''
             }`}
           >
             Próxima <ChevronRight size={20} />

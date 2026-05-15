@@ -442,6 +442,12 @@ const App: React.FC = () => {
         }
     };
 
+    useEffect(() => {
+        if (user && !permissionsLoaded) {
+            fetchPermissions(user.role, user.name);
+        }
+    }, [user, permissionsLoaded]);
+
     const fetchAllRows = async (table: string, orderBy: string) => {
         let allData: any[] = [];
         let from = 0;
