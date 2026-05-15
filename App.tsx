@@ -50,6 +50,7 @@ const BuyOrderAnalytic = lazy(() => import('./components/buyorder/BuyOrderAnalyt
 const AdminSurveyManagement = lazy(() => import('./components/Pesquisa/AdminSurveyManagement_v3'));
 const MySurveysComponent = lazy(() => import('./components/Pesquisa/MySurveysComponent'));
 const SurveyResultsViewer = lazy(() => import('./components/Pesquisa/SurveyResultsViewer'));
+import SurveyPublicPage from './components/Pesquisa/SurveyPublicPage';
 // DRE Analytics imports removed as requested for cleanup
 const DREAccounts = lazy(() => import('./components/dre/components/DREAccountsResponsive'));
 
@@ -121,6 +122,14 @@ const styles = `
     animation: spin-slow 3s linear infinite;
   }
 `;
+
+const AppRouter: React.FC = () => {
+  const pathParts = window.location.pathname.split('/');
+  if (pathParts[1] === 'pesquisa' && pathParts[2]) {
+    return <SurveyPublicPage token={pathParts[2]} />;
+  }
+  return <App />;
+};
 
 const App: React.FC = () => {
     const [user, setUser] = useState<User | null>(() => {
@@ -1583,7 +1592,7 @@ const App: React.FC = () => {
                             if (selectedSurveyForResults) {
                                 return <SurveyResultsViewer survey={selectedSurveyForResults} currentUser={user!} stores={stores} onBack={() => setSelectedSurveyForResults(null)} />;
                             }
-                            return <AdminSurveyManagement currentUser={user!} stores={stores} />;
+                            return <AdminSurveyManagement currentUser={user!} stores={stores} onShowResults={setSelectedSurveyForResults} />;
                         }
                         if (currentView === 'my_surveys') return <MySurveysComponent user={user!} />;
                         if (currentView === 'access' && can('MODULE_ACCESS_CONTROL')) return <AccessControlManagement />;
@@ -1688,4 +1697,4 @@ const App: React.FC = () => {
     );
 };
 
-export default App;
+export default AppRouter;

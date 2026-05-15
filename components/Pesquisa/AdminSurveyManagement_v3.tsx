@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { supabase } from '../../services/supabaseClient';
 import { ensureSession } from '../../services/authService';
+import { toast } from 'sonner';
 import { 
   Plus, 
   Search, 
@@ -13,6 +14,7 @@ import {
   ChevronRight, 
   CheckCircle2, 
   XCircle, 
+  Link,
   MoreVertical,
   BarChart3,
   Send,
@@ -41,9 +43,10 @@ import {
 interface AdminSurveyManagementProps {
   currentUser: User;
   stores: Store[];
+  onShowResults?: (survey: Survey) => void;
 }
 
-const AdminSurveyManagement: React.FC<AdminSurveyManagementProps> = ({ currentUser, stores }) => {
+const AdminSurveyManagement: React.FC<AdminSurveyManagementProps> = ({ currentUser, stores, onShowResults }) => {
   const [surveys, setSurveys] = useState<Survey[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [searchTerm, setSearchTerm] = useState('');
@@ -369,11 +372,7 @@ const AdminSurveyManagement: React.FC<AdminSurveyManagementProps> = ({ currentUs
                     <Users size={14} />
                     <span className="text-[9px] font-black uppercase tracking-widest">
                       {survey.target_category === 'all_managers' && 'Todos os Gerentes'}
-                      {survey.target_category === 'all_cashiers' && 'Todos os Caixas'}
-                      {survey.target_category === 'all_sellers' && 'Todos os Vendedores'}
-                      {survey.target_category === 'all_ice_cream' && 'Toda a Gelateria'}
-                      {survey.target_category === 'specific_stores' && 'Lojas Específicas'}
-                      {survey.target_category === 'specific_users' && 'Usuários Específicos'}
+                      {survey.target_category === 'all_employees' && 'Funcionários'}
                       {survey.target_type === 'external' && 'Clientes das Lojas'}
                     </span>
                   </div>
@@ -391,6 +390,18 @@ const AdminSurveyManagement: React.FC<AdminSurveyManagementProps> = ({ currentUs
               <div className="p-6 bg-slate-50 dark:bg-slate-800/50 border-t border-slate-100 dark:border-slate-800 flex items-center justify-between gap-2">
                 <div className="flex gap-2">
                   <button 
+                    onClick={() => {
+                        if (survey.public_token) {
+                            navigator.clipboard.writeText('https://www.realadmin.com.br/pesquisa/' + survey.public_token);
+                            toast.success('Link copiado!');
+                        }
+                    }}
+                    className="p-3 bg-white dark:bg-slate-800 text-green-600 rounded-2xl border border-slate-100 dark:border-slate-700 hover:bg-green-600 hover:text-white transition-all shadow-sm"
+                    title="Copiar Link"
+                  >
+                    <Link size={18} />
+                  </button>
+                  <button 
                     onClick={() => handleOpenModal(survey)}
                     className="p-3 bg-white dark:bg-slate-800 text-blue-600 rounded-2xl border border-slate-100 dark:border-slate-700 hover:bg-blue-600 hover:text-white transition-all shadow-sm"
                   >
@@ -403,7 +414,10 @@ const AdminSurveyManagement: React.FC<AdminSurveyManagementProps> = ({ currentUs
                     <Trash2 size={18} />
                   </button>
                 </div>
-                <button className="flex-1 bg-slate-900 dark:bg-white text-white dark:text-slate-900 py-3 rounded-2xl font-black uppercase text-[10px] tracking-widest hover:bg-blue-600 dark:hover:bg-blue-600 hover:text-white transition-all flex items-center justify-center gap-2">
+                <button 
+                  onClick={() => onShowResults && onShowResults(survey)}
+                  className="flex-1 bg-slate-900 dark:bg-white text-white dark:text-slate-900 py-3 rounded-2xl font-black uppercase text-[10px] tracking-widest hover:bg-blue-600 dark:hover:bg-blue-600 hover:text-white transition-all flex items-center justify-center gap-2"
+                >
                   <BarChart3 size={16} /> Resultados
                 </button>
               </div>
@@ -511,75 +525,39 @@ const AdminSurveyManagement: React.FC<AdminSurveyManagementProps> = ({ currentUs
                               onChange={(e) => setTargetCategory(e.target.value as SurveyTargetCategory)}
                               className="w-full px-6 py-4 bg-slate-50 dark:bg-slate-800 border-none rounded-2xl text-xs font-black uppercase tracking-widest text-slate-900 dark:text-white outline-none focus:ring-2 focus:ring-blue-500 transition-all appearance-none"
                             >
-                              <option value="all_managers">Todos os Gerentes</option>
-                              <option value="all_cashiers">Todos os Caixas</option>
-                              <option value="all_sellers">Todos os Vendedores</option>
-                              <option value="all_ice_cream">Toda a Gelateria</option>
-                              <option value="specific_stores">Funcionários de Lojas Específicas</option>
-                              <option value="specific_users">Usuários Específicos</option>
+                              <option value="all_employees">Funcionários</option>
+                              <option value="all_managers">Gerentes</option>
                             </select>
                           </div>
                         )}
 
-                        {targetCategory !== 'specific_users' && (
-                          <div>
-                            <label className="block text-[10px] font-black uppercase text-slate-400 tracking-widest mb-2 ml-1">
-                              Lojas Alvo {targetType === 'internal' && targetCategory !== 'specific_stores' && '(Vazio = Todas)'}
-                            </label>
-                            <div className="grid grid-cols-2 gap-2 max-h-40 overflow-y-auto p-2 bg-slate-50 dark:bg-slate-800 rounded-2xl no-scrollbar">
-                              {stores.map(store => (
-                                <button
-                                  key={store.id}
-                                  onClick={() => {
-                                    if (targetStoreIds.includes(store.id)) {
-                                      setTargetStoreIds(targetStoreIds.filter(id => id !== store.id));
-                                    } else {
-                                      setTargetStoreIds([...targetStoreIds, store.id]);
-                                    }
-                                  }}
-                                  className={`px-4 py-2 rounded-xl text-[9px] font-black uppercase tracking-widest border transition-all flex items-center justify-between ${
-                                    targetStoreIds.includes(store.id)
-                                      ? 'bg-blue-600 text-white border-blue-600'
-                                      : 'bg-white dark:bg-slate-700 text-slate-400 border-slate-100 dark:border-slate-600'
-                                  }`}
-                                >
-                                  LOJA {store.number} {targetStoreIds.includes(store.id) && <CheckCircle2 size={12} />}
-                                </button>
-                              ))}
-                            </div>
+                        <div>
+                          <label className="block text-[10px] font-black uppercase text-slate-400 tracking-widest mb-2 ml-1">
+                            Lojas Alvo {targetType === 'internal' && '(Vazio = Todas)'}
+                          </label>
+                          <div className="grid grid-cols-2 gap-2 max-h-40 overflow-y-auto p-2 bg-slate-50 dark:bg-slate-800 rounded-2xl no-scrollbar">
+                            {stores.map(store => (
+                              <button
+                                key={store.id}
+                                onClick={() => {
+                                  if (targetStoreIds.includes(store.id)) {
+                                    setTargetStoreIds(targetStoreIds.filter(id => id !== store.id));
+                                  } else {
+                                    setTargetStoreIds([...targetStoreIds, store.id]);
+                                  }
+                                }}
+                                className={`px-4 py-2 rounded-xl text-[9px] font-black uppercase tracking-widest border transition-all flex items-center justify-between ${
+                                  targetStoreIds.includes(store.id)
+                                    ? 'bg-blue-600 text-white border-blue-600'
+                                    : 'bg-white dark:bg-slate-700 text-slate-400 border-slate-100 dark:border-slate-600'
+                                }`}
+                              >
+                                LOJA {store.number} {targetStoreIds.includes(store.id) && <CheckCircle2 size={12} />}
+                              </button>
+                            ))}
                           </div>
-                        )}
+                        </div>
 
-                        {targetCategory === 'specific_users' && (
-                          <div>
-                            <label className="block text-[10px] font-black uppercase text-slate-400 tracking-widest mb-2 ml-1">Selecionar Usuários</label>
-                            <div className="space-y-2 max-h-40 overflow-y-auto p-2 bg-slate-50 dark:bg-slate-800 rounded-2xl no-scrollbar">
-                              {allUsers.map(user => (
-                                <button
-                                  key={user.id}
-                                  onClick={() => {
-                                    if (targetUserIds.includes(user.id)) {
-                                      setTargetUserIds(targetUserIds.filter(id => id !== user.id));
-                                    } else {
-                                      setTargetUserIds([...targetUserIds, user.id]);
-                                    }
-                                  }}
-                                  className={`w-full px-4 py-3 rounded-xl text-[9px] font-black uppercase tracking-widest border transition-all flex items-center justify-between ${
-                                    targetUserIds.includes(user.id)
-                                      ? 'bg-blue-600 text-white border-blue-600'
-                                      : 'bg-white dark:bg-slate-700 text-slate-400 border-slate-100 dark:border-slate-600'
-                                  }`}
-                                >
-                                  <div className="flex flex-col items-start">
-                                    <span>{user.name}</span>
-                                    <span className="text-[7px] opacity-60">{user.role_level}</span>
-                                  </div>
-                                  {targetUserIds.includes(user.id) && <CheckCircle2 size={14} />}
-                                </button>
-                              ))}
-                            </div>
-                          </div>
-                        )}
                       </div>
                     </section>
 
