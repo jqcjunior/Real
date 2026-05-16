@@ -7,7 +7,7 @@ export const APP_NAME = "REAL ADMIN";
  * BRANDING DEFINITIVO - LOGO REAL CALÇADOS
  * Link oficial do site da Real Calçados conforme solicitado.
  */
-export const BRAND_LOGO = "https://realcalcados.com.br/wp-content/uploads/2020/04/Logo-Real-Calcados-Confeccoes.png";
+export const BRAND_LOGO = "/logo-real.jpeg";
 
 export const BRANDING = {
   logo: BRAND_LOGO,

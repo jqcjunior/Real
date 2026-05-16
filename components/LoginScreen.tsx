@@ -83,7 +83,7 @@ const LoginScreen: React.FC<LoginScreenProps> = ({ onLoginAttempt, onRegisterReq
       <div className="w-full max-w-sm bg-white rounded-[32px] shadow-2xl overflow-hidden p-6 md:p-8 border border-gray-100 relative">
         
         <div className="flex justify-center mb-8">
-          <div className="w-full h-16 md:h-20 flex items-center justify-center overflow-hidden">
+          <div className="w-full h-[86px] md:h-[108px] flex items-center justify-center overflow-hidden">
             <img 
               src={BRAND_LOGO} 
               alt="Real Admin Logo"

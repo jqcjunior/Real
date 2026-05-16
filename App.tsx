@@ -51,7 +51,6 @@ const AdminSurveyManagement = lazy(() => import('./components/Pesquisa/AdminSurv
 const MySurveysComponent = lazy(() => import('./components/Pesquisa/MySurveysComponent'));
 const SurveyResultsViewer = lazy(() => import('./components/Pesquisa/SurveyResultsViewer'));
 import SurveyPublicPage from './components/Pesquisa/SurveyPublicPage';
-import StoreNfcPublicPage from './components/Pesquisa/StoreNfcPublicPage';
 // DRE Analytics imports removed as requested for cleanup
 const DREAccounts = lazy(() => import('./components/dre/components/DREAccountsResponsive'));
 
@@ -124,18 +123,12 @@ const styles = `
   }
 `;
 
-const AppRouter: React.FC = () => {
-  const pathParts = window.location.pathname.split('/');
-  if (pathParts[1] === 'pesquisa' && pathParts[2]) {
-    return <SurveyPublicPage token={pathParts[2]} />;
-  }
-  if (pathParts[1] === 'loja' && pathParts[2]) {
-    return <StoreNfcPublicPage storeNumber={pathParts[2]} />;
-  }
-  return <App />;
-};
-
 const App: React.FC = () => {
+    const pathParts = window.location.pathname.split('/');
+    if (pathParts[1] === 'pesquisa' && pathParts[2]) {
+        return <SurveyPublicPage token={pathParts[2]} />;
+    }
+
     const [user, setUser] = useState<User | null>(() => {
         try {
             const saved = localStorage.getItem('realcalcados_user');
@@ -1023,9 +1016,33 @@ const App: React.FC = () => {
                 ${isSidebarOpen ? 'translate-x-0' : '-translate-x-full'}
             `}>
                 <div className="flex items-center justify-between mb-8">
-                    <div className="flex items-center gap-4">
-                        <img src={BRAND_LOGO} alt="Logo" referrerPolicy="no-referrer" className="h-10 w-auto object-contain dark:brightness-125" />
-                        <h1 className="text-xl font-black italic uppercase text-slate-900 dark:text-white">ADMIN</h1>
+                    <div className="flex items-center gap-3">
+                        <div className="relative">
+                            <img src={BRAND_LOGO} alt="Logo" referrerPolicy="no-referrer" className="h-[52px] w-auto object-contain dark:brightness-125" />
+                        </div>
+                        <div className="flex flex-col justify-center">
+                            <h2 style={{ 
+                                fontWeight: 950, 
+                                fontSize: '18px', 
+                                color: '#1B2A6B', 
+                                margin: 0, 
+                                lineHeight: 1,
+                                letterSpacing: '-0.03em',
+                                textTransform: 'uppercase'
+                            }}>
+                                Administrativo
+                            </h2>
+                            <p style={{ 
+                                fontWeight: 700, 
+                                fontSize: '10px', 
+                                color: '#64748b', 
+                                margin: '3px 0 0 0',
+                                letterSpacing: '0.08em',
+                                textTransform: 'uppercase'
+                            }}>
+                                Grupo Real Calçados
+                            </p>
+                        </div>
                     </div>
                     <button onClick={() => setIsSidebarOpen(false)} className="p-2 text-slate-400 hover:text-slate-900 dark:hover:text-white">
                         <X size={24} />
@@ -1701,4 +1718,4 @@ const App: React.FC = () => {
     );
 };
 
-export default AppRouter;
+export default App;
