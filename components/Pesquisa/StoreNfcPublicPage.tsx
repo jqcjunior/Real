@@ -67,10 +67,6 @@ const StoreNfcPublicPage: React.FC<StoreNfcPublicPageProps> = ({ storeNumber }) 
   // ESTILOS
   const pageStyle: React.CSSProperties = { fontFamily: "'Inter', sans-serif", maxWidth: '390px', margin: '0 auto', background: '#F7F5F2', minHeight: '100vh' };
   const heroStyle: React.CSSProperties = { background: 'linear-gradient(160deg, #C8102E 0%, #8B0A1F 40%, #1B2A6B 100%)', padding: '48px 28px 40px' };
-  const badgeStyle: React.CSSProperties = { width: '72px', height: '72px', background: 'white', borderRadius: '20px', display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#C8102E', fontSize: '28px', fontWeight: 900, marginBottom: '24px' };
-  const eyebrowStyle: React.CSSProperties = { fontSize: '11px', letterSpacing: '2.5px', color: 'rgba(255,255,255,0.55)', textTransform: 'uppercase', fontWeight: 700, marginBottom: '4px' };
-  const storeNameStyle: React.CSSProperties = { fontSize: '28px', fontWeight: 900, color: 'white', letterSpacing: '-0.5px', lineHeight: 1.1, marginBottom: '8px' };
-  const cityStyle: React.CSSProperties = { fontSize: '14px', color: 'rgba(255,255,255,0.6)', fontWeight: 500 };
 
   const contentStyle: React.CSSProperties = { padding: '28px 20px 40px', display: 'flex', flexDirection: 'column', gap: '12px' };
   const sectionLabelStyle: React.CSSProperties = { fontSize: '10px', fontWeight: 700, letterSpacing: '2px', textTransform: 'uppercase', color: '#9B9189', marginTop: '16px', marginBottom: '4px', paddingLeft: '4px' };
@@ -99,7 +95,7 @@ const StoreNfcPublicPage: React.FC<StoreNfcPublicPageProps> = ({ storeNumber }) 
           src="https://rwwomakjhmglgoowbmsl.supabase.co/storage/v1/object/public/Fotos/logo-real.webp"
           alt="Real Calçados"
           style={{
-            width: '110px',
+            width: '165px',
             height: 'auto',
             objectFit: 'contain',
             filter: 'brightness(0) invert(1)',
@@ -107,9 +103,12 @@ const StoreNfcPublicPage: React.FC<StoreNfcPublicPageProps> = ({ storeNumber }) 
             display: 'block'
           }}
         />
-        <div style={eyebrowStyle}>Real Calçados</div>
-        <div style={storeNameStyle}>{store.name}</div>
-        <div style={cityStyle}>{store.city}{store.state ? ` - ${store.state}` : ''}</div>
+        <p style={{ fontSize: '18px', fontWeight: 900, color: 'white', margin: '0 0 4px', letterSpacing: '-0.3px' }}>
+          Real Calçados
+        </p>
+        <p style={{ fontSize: '14px', color: 'rgba(255,255,255,0.65)', margin: 0, fontWeight: 500 }}>
+          {store.city} - {store.state === 'BA' ? 'Bahia' : store.state === 'PE' ? 'Pernambuco' : store.state}
+        </p>
       </div>
 
       {/* Content */}
