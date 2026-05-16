@@ -6,6 +6,8 @@ interface StoreNfcPublicPageProps {
   storeNumber: string;
 }
 
+const BRAND_LOGO = "https://realca.com.br/wp-content/uploads/2021/04/logo-real-calcados.png";
+
 const StoreNfcPublicPage: React.FC<StoreNfcPublicPageProps> = ({ storeNumber }) => {
   const [data, setData] = useState<any | null>(null);
   const [isLoading, setIsLoading] = useState(true);
@@ -93,11 +95,14 @@ const StoreNfcPublicPage: React.FC<StoreNfcPublicPageProps> = ({ storeNumber }) 
       `}</style>
 
       {/* Hero */}
-      <div style={heroStyle}>
-        <div style={badgeStyle}>R</div>
-        <div style={eyebrowStyle}>Real Calçados</div>
-        <div style={storeNameStyle}>{store.name}</div>
-        <div style={cityStyle}>{store.city}{store.state ? ` - ${store.state}` : ''}</div>
+      <div style={{ background: 'linear-gradient(160deg, #C8102E 0%, #8B0A1F 40%, #1B2A6B 100%)', padding: '48px 28px 40px', position: 'relative', overflow: 'hidden' }}>
+        <img
+          src={BRAND_LOGO}
+          alt="Real Calçados"
+          style={{ width: '110px', height: 'auto', objectFit: 'contain', filter: 'brightness(0) invert(1)', marginBottom: '16px', display: 'block' }}
+        />
+        <p style={{ fontSize: '18px', fontWeight: 900, color: 'white', margin: '0 0 4px', letterSpacing: '-0.3px' }}>Real Calçados</p>
+        <p style={{ fontSize: '14px', color: 'rgba(255,255,255,0.65)', margin: 0, fontWeight: 500 }}>{store.city} - {store.state}</p>
       </div>
 
       {/* Content */}
