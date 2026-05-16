@@ -78,11 +78,32 @@ const SurveyPublicPage: React.FC<Props> = ({ token }) => {
     );
   }
 
+  const handleClose = () => {
+    // Tenta pegar o número da loja do query param ?loja=XX
+    const urlParams = new URLSearchParams(window.location.search);
+    const lojaNum = urlParams.get('loja');
+    
+    if (lojaNum) {
+      window.location.href = `/loja/${lojaNum}`;
+      return;
+    }
+
+    // Fallback: tentar extrair da URL atual se por acaso estiver nela
+    const lojaMatch = window.location.pathname.match(/\/loja\/(\d+)/);
+    if (lojaMatch) {
+      window.location.href = `/loja/${lojaMatch[1]}`;
+      return;
+    }
+
+    // Último fallback: voltar no histórico
+    window.history.back();
+  };
+
   return (
     <div className="min-h-screen bg-white overflow-x-hidden">
       <SurveyResponseForm 
         survey={survey} 
-        onClose={() => {}} 
+        onClose={handleClose} 
         onComplete={() => setIsCompleted(true)} 
       />
     </div>
