@@ -411,7 +411,7 @@ export interface AdminUser {
    🔹 SISTEMA DE PESQUISAS
 ========================= */
 export type SurveyTargetType = 'internal' | 'external';
-export type SurveyTargetCategory = 'all_managers' | 'all_cashiers' | 'all_sellers' | 'all_ice_cream' | 'specific_stores' | 'specific_users';
+export type SurveyTargetCategory = 'all_managers' | 'all_cashiers' | 'all_sellers' | 'all_ice_cream' | 'specific_stores' | 'specific_users' | 'all_employees';
 export type SurveyQuestionType = 'text' | 'rating' | 'multiple_choice' | 'boolean';
 export type SurveyResultVisibility = 'admin' | 'store_manager' | 'respondent';
 
@@ -428,6 +428,8 @@ export interface Survey {
   created_by: string;
   created_at: string;
   updated_at: string;
+  public_token?: string;
+  thank_you_message?: string;
 }
 
 export interface SurveyQuestion {

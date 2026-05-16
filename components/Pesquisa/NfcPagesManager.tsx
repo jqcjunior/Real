@@ -17,15 +17,24 @@ const NfcPagesManager: React.FC<NfcPagesManagerProps> = ({ stores, onBack }) => 
   const [isLoading, setIsLoading] = useState(true);
   const [editingPage, setEditingPage] = useState<any | null>(null);
 
-  // Form State
   const [storeId, setStoreId] = useState('');
-  const [surveyId, setSurveyId] = useState('');
-  const [coverImageUrl, setCoverImageUrl] = useState('');
-  const [instagram, setInstagram] = useState('');
-  const [whatsappStore, setWhatsappStore] = useState('');
-  const [whatsappManager, setWhatsappManager] = useState('');
-  const [whatsappCentral, setWhatsappCentral] = useState('75999999999');
-  const [isActive, setIsActive] = useState(true);
+  const [formData, setFormData] = useState({
+    survey_id: '',
+    cover_image_url: '',
+    instagram: '',
+    whatsapp_store: '',
+    whatsapp_manager: '',
+    whatsapp_central: '75999999999',
+    is_active: true,
+    pix_key: '',
+    pix_qrcode_url: '',
+    show_instagram: true,
+    show_pix: true,
+    show_survey: true,
+    show_whatsapp_store: true,
+    show_whatsapp_manager: true,
+    show_whatsapp_central: true
+  });
 
   useEffect(() => {
     fetchData();
@@ -59,22 +68,42 @@ const NfcPagesManager: React.FC<NfcPagesManagerProps> = ({ stores, onBack }) => 
     setStoreId(store.id);
     if (existingPage) {
       setEditingPage(existingPage);
-      setSurveyId(existingPage.survey_id || '');
-      setCoverImageUrl(existingPage.cover_image_url || '');
-      setInstagram(existingPage.instagram || '');
-      setWhatsappStore(existingPage.whatsapp_store || '');
-      setWhatsappManager(existingPage.whatsapp_manager || '');
-      setWhatsappCentral(existingPage.whatsapp_central || '75999999999');
-      setIsActive(existingPage.is_active);
+      setFormData({
+        survey_id: existingPage.survey_id || '',
+        cover_image_url: existingPage.cover_image_url || '',
+        instagram: existingPage.instagram || '',
+        whatsapp_store: existingPage.whatsapp_store || '',
+        whatsapp_manager: existingPage.whatsapp_manager || '',
+        whatsapp_central: existingPage.whatsapp_central || '75999999999',
+        is_active: existingPage.is_active ?? true,
+        pix_key: existingPage.pix_key || '',
+        pix_qrcode_url: existingPage.pix_qrcode_url || '',
+        show_instagram: existingPage.show_instagram ?? true,
+        show_pix: existingPage.show_pix ?? true,
+        show_survey: existingPage.show_survey ?? true,
+        show_whatsapp_store: existingPage.show_whatsapp_store ?? true,
+        show_whatsapp_manager: existingPage.show_whatsapp_manager ?? true,
+        show_whatsapp_central: existingPage.show_whatsapp_central ?? true
+      });
     } else {
       setEditingPage(null);
-      setSurveyId('');
-      setCoverImageUrl('');
-      setInstagram('');
-      setWhatsappStore('');
-      setWhatsappManager(store.manager_phone || '');
-      setWhatsappCentral('75999999999');
-      setIsActive(true);
+      setFormData({
+        survey_id: '',
+        cover_image_url: '',
+        instagram: '',
+        whatsapp_store: '',
+        whatsapp_manager: store.managerPhone || '',
+        whatsapp_central: '75999999999',
+        is_active: true,
+        pix_key: '',
+        pix_qrcode_url: '',
+        show_instagram: true,
+        show_pix: true,
+        show_survey: true,
+        show_whatsapp_store: true,
+        show_whatsapp_manager: true,
+        show_whatsapp_central: true
+      });
     }
   };
 
@@ -84,7 +113,7 @@ const NfcPagesManager: React.FC<NfcPagesManagerProps> = ({ stores, onBack }) => 
   };
 
   const handleSave = async () => {
-    if (!surveyId) {
+    if (!formData.survey_id) {
       toast.error('Selecione uma pesquisa.');
       return;
     }
@@ -93,13 +122,7 @@ const NfcPagesManager: React.FC<NfcPagesManagerProps> = ({ stores, onBack }) => 
       await ensureSession();
       const payload = {
         store_id: storeId,
-        survey_id: surveyId,
-        cover_image_url: coverImageUrl,
-        instagram: instagram,
-        whatsapp_store: whatsappStore,
-        whatsapp_manager: whatsappManager,
-        whatsapp_central: whatsappCentral,
-        is_active: isActive
+        ...formData
       };
 
       const { error } = await supabase
@@ -244,13 +267,98 @@ const NfcPagesManager: React.FC<NfcPagesManagerProps> = ({ stores, onBack }) => 
                 </div>
               </div>
 
-              <div className="p-8 overflow-y-auto space-y-6">
-                <div>
-                  <label className="block text-[10px] font-black uppercase text-slate-400 tracking-widest mb-2 ml-1">Pesquisa Vinculada</label>
+              <div className="p-8 overflow-y-auto bg-white dark:bg-slate-900">
+                
+                {/* Capa */}
+                <div style={{ background: '#F8F9FA', borderRadius: '16px', padding: '16px 20px', marginBottom: '12px' }}>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '10px' }}>
+                    <label style={{ fontSize: '11px', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '1.5px', color: '#6B7280' }}>
+                      URL DA FOTO DE CAPA
+                    </label>
+                  </div>
+                  <input
+                    type="url"
+                    placeholder="https://..."
+                    value={formData.cover_image_url}
+                    onChange={(e) => setFormData({...formData, cover_image_url: e.target.value})}
+                    className="w-full px-4 py-3 bg-white dark:bg-slate-800 rounded-xl text-sm font-bold text-slate-900 dark:text-white outline-none focus:ring-2 focus:ring-blue-500 border border-slate-200 dark:border-slate-700 placeholder:text-slate-400"
+                  />
+                </div>
+
+                {/* Instagram */}
+                <div style={{ background: '#F8F9FA', borderRadius: '16px', padding: '16px 20px', marginBottom: '12px' }}>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '10px' }}>
+                    <label style={{ fontSize: '11px', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '1.5px', color: '#6B7280' }}>
+                      INSTAGRAM (@)
+                    </label>
+                    <label className="relative cursor-pointer">
+                      <input type="checkbox" className="sr-only" checked={formData.show_instagram} onChange={(e) => setFormData({...formData, show_instagram: e.target.checked})} />
+                      <div className={`block w-12 h-6 rounded-full transition-colors ${formData.show_instagram ? 'bg-green-500' : 'bg-slate-300 dark:bg-slate-600'}`}></div>
+                      <div className={`absolute left-1 top-1 bg-white w-4 h-4 rounded-full transition-transform ${formData.show_instagram ? 'translate-x-6' : ''}`}></div>
+                    </label>
+                  </div>
+                  <input
+                    type="text"
+                    placeholder="realcalcadoscruzdasalmas"
+                    value={formData.instagram}
+                    onChange={(e) => setFormData({...formData, instagram: e.target.value.replace('@', '')})}
+                    className="w-full px-4 py-3 bg-white dark:bg-slate-800 rounded-xl text-sm font-bold text-slate-900 dark:text-white outline-none focus:ring-2 focus:ring-blue-500 border border-slate-200 dark:border-slate-700 placeholder:text-slate-400"
+                  />
+                </div>
+
+                {/* Chave Pix */}
+                <div style={{ background: '#F8F9FA', borderRadius: '16px', padding: '16px 20px', marginBottom: '12px' }}>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '10px' }}>
+                    <label style={{ fontSize: '11px', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '1.5px', color: '#6B7280' }}>
+                      CHAVE PIX
+                    </label>
+                    <label className="relative cursor-pointer">
+                      <input type="checkbox" className="sr-only" checked={formData.show_pix} onChange={(e) => setFormData({...formData, show_pix: e.target.checked})} />
+                      <div className={`block w-12 h-6 rounded-full transition-colors ${formData.show_pix ? 'bg-green-500' : 'bg-slate-300 dark:bg-slate-600'}`}></div>
+                      <div className={`absolute left-1 top-1 bg-white w-4 h-4 rounded-full transition-transform ${formData.show_pix ? 'translate-x-6' : ''}`}></div>
+                    </label>
+                  </div>
+                  <input
+                    type="text"
+                    placeholder="CNPJ, E-mail, Celular ou Aleatória"
+                    value={formData.pix_key}
+                    onChange={(e) => setFormData({...formData, pix_key: e.target.value})}
+                    className="w-full px-4 py-3 bg-white dark:bg-slate-800 rounded-xl text-sm font-bold text-slate-900 dark:text-white outline-none focus:ring-2 focus:ring-blue-500 border border-slate-200 dark:border-slate-700 placeholder:text-slate-400"
+                  />
+                </div>
+
+                {/* QR Code Pix */}
+                <div style={{ background: '#F8F9FA', borderRadius: '16px', padding: '16px 20px', marginBottom: '12px' }}>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '10px' }}>
+                    <label style={{ fontSize: '11px', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '1.5px', color: '#6B7280' }}>
+                      URL DO QR CODE PIX
+                    </label>
+                  </div>
+                  <input
+                    type="url"
+                    placeholder="https://..."
+                    value={formData.pix_qrcode_url}
+                    onChange={(e) => setFormData({...formData, pix_qrcode_url: e.target.value})}
+                    className="w-full px-4 py-3 bg-white dark:bg-slate-800 rounded-xl text-sm font-bold text-slate-900 dark:text-white outline-none focus:ring-2 focus:ring-blue-500 border border-slate-200 dark:border-slate-700 placeholder:text-slate-400"
+                  />
+                </div>
+
+                {/* Pesquisa Vinculada */}
+                <div style={{ background: '#F8F9FA', borderRadius: '16px', padding: '16px 20px', marginBottom: '12px' }}>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '10px' }}>
+                    <label style={{ fontSize: '11px', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '1.5px', color: '#6B7280' }}>
+                      PESQUISA DE SATISFAÇÃO
+                    </label>
+                    <label className="relative cursor-pointer">
+                      <input type="checkbox" className="sr-only" checked={formData.show_survey} onChange={(e) => setFormData({...formData, show_survey: e.target.checked})} />
+                      <div className={`block w-12 h-6 rounded-full transition-colors ${formData.show_survey ? 'bg-green-500' : 'bg-slate-300 dark:bg-slate-600'}`}></div>
+                      <div className={`absolute left-1 top-1 bg-white w-4 h-4 rounded-full transition-transform ${formData.show_survey ? 'translate-x-6' : ''}`}></div>
+                    </label>
+                  </div>
                   <select
-                    value={surveyId}
-                    onChange={(e) => setSurveyId(e.target.value)}
-                    className="w-full px-6 py-4 bg-slate-50 dark:bg-slate-800 rounded-2xl text-xs font-black text-slate-900 dark:text-white outline-none focus:ring-2 focus:ring-blue-500 appearance-none uppercase tracking-widest border-none"
+                    value={formData.survey_id}
+                    onChange={(e) => setFormData({...formData, survey_id: e.target.value})}
+                    className="w-full px-4 py-3 bg-white dark:bg-slate-800 rounded-xl text-xs font-black text-slate-900 dark:text-white outline-none focus:ring-2 focus:ring-blue-500 appearance-none uppercase tracking-widest border border-slate-200 dark:border-slate-700"
                   >
                     <option value="">SELECIONE UMA PESQUISA...</option>
                     {surveys.map(s => (
@@ -259,75 +367,84 @@ const NfcPagesManager: React.FC<NfcPagesManagerProps> = ({ stores, onBack }) => 
                   </select>
                 </div>
 
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                  <div>
-                    <label className="block text-[10px] font-black uppercase text-slate-400 tracking-widest mb-2 ml-1">WhatsApp da Loja</label>
-                    <input
-                      type="text"
-                      placeholder="Ex: 75999999999"
-                      value={whatsappStore}
-                      onChange={(e) => setWhatsappStore(e.target.value)}
-                      className="w-full px-6 py-4 bg-slate-50 dark:bg-slate-800 rounded-2xl text-sm font-bold text-slate-900 dark:text-white outline-none focus:ring-2 focus:ring-blue-500 border-none placeholder:text-slate-300"
-                    />
+                {/* WhatsApp da Loja */}
+                <div style={{ background: '#F8F9FA', borderRadius: '16px', padding: '16px 20px', marginBottom: '12px' }}>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '10px' }}>
+                    <label style={{ fontSize: '11px', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '1.5px', color: '#6B7280' }}>
+                      WHATSAPP DA LOJA
+                    </label>
+                    <label className="relative cursor-pointer">
+                      <input type="checkbox" className="sr-only" checked={formData.show_whatsapp_store} onChange={(e) => setFormData({...formData, show_whatsapp_store: e.target.checked})} />
+                      <div className={`block w-12 h-6 rounded-full transition-colors ${formData.show_whatsapp_store ? 'bg-green-500' : 'bg-slate-300 dark:bg-slate-600'}`}></div>
+                      <div className={`absolute left-1 top-1 bg-white w-4 h-4 rounded-full transition-transform ${formData.show_whatsapp_store ? 'translate-x-6' : ''}`}></div>
+                    </label>
                   </div>
-                  <div>
-                    <label className="block text-[10px] font-black uppercase text-slate-400 tracking-widest mb-2 ml-1">WhatsApp Gerente</label>
-                    <input
-                      type="text"
-                      placeholder="Ex: 75999999999"
-                      value={whatsappManager}
-                      onChange={(e) => setWhatsappManager(e.target.value)}
-                      className="w-full px-6 py-4 bg-slate-50 dark:bg-slate-800 rounded-2xl text-sm font-bold text-slate-900 dark:text-white outline-none focus:ring-2 focus:ring-blue-500 border-none placeholder:text-slate-300"
-                    />
-                  </div>
-                </div>
-
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                  <div>
-                    <label className="block text-[10px] font-black uppercase text-slate-400 tracking-widest mb-2 ml-1">WhatsApp Central</label>
-                    <input
-                      type="text"
-                      placeholder="Ex: 75999999999"
-                      value={whatsappCentral}
-                      onChange={(e) => setWhatsappCentral(e.target.value)}
-                      className="w-full px-6 py-4 bg-slate-50 dark:bg-slate-800 rounded-2xl text-sm font-bold text-slate-900 dark:text-white outline-none focus:ring-2 focus:ring-blue-500 border-none placeholder:text-slate-300"
-                    />
-                  </div>
-                  <div>
-                    <label className="block text-[10px] font-black uppercase text-slate-400 tracking-widest mb-2 ml-1">Instagram (@)</label>
-                    <input
-                      type="text"
-                      placeholder="Ex: realcalcados"
-                      value={instagram}
-                      onChange={(e) => setInstagram(e.target.value.replace('@', ''))}
-                      className="w-full px-6 py-4 bg-slate-50 dark:bg-slate-800 rounded-2xl text-sm font-bold text-slate-900 dark:text-white outline-none focus:ring-2 focus:ring-blue-500 border-none placeholder:text-slate-300"
-                    />
-                  </div>
-                </div>
-
-                <div>
-                  <label className="block text-[10px] font-black uppercase text-slate-400 tracking-widest mb-2 ml-1">URL da Foto de Capa (Opcional)</label>
                   <input
-                    type="url"
-                    placeholder="https://..."
-                    value={coverImageUrl}
-                    onChange={(e) => setCoverImageUrl(e.target.value)}
-                    className="w-full px-6 py-4 bg-slate-50 dark:bg-slate-800 rounded-2xl text-sm font-bold text-slate-900 dark:text-white outline-none focus:ring-2 focus:ring-blue-500 border-none placeholder:text-slate-300"
+                    type="text"
+                    placeholder="Ex: 75999999999"
+                    value={formData.whatsapp_store}
+                    onChange={(e) => setFormData({...formData, whatsapp_store: e.target.value})}
+                    className="w-full px-4 py-3 bg-white dark:bg-slate-800 rounded-xl text-sm font-bold text-slate-900 dark:text-white outline-none focus:ring-2 focus:ring-blue-500 border border-slate-200 dark:border-slate-700 placeholder:text-slate-400"
                   />
                 </div>
 
-                <div>
-                   <label className="flex items-center gap-3 cursor-pointer p-4 bg-slate-50 dark:bg-slate-800 rounded-2xl">
-                     <span className="text-xs font-black uppercase tracking-widest text-slate-700 dark:text-slate-300">Página Ativa</span>
+                {/* WhatsApp do Gerente */}
+                <div style={{ background: '#F8F9FA', borderRadius: '16px', padding: '16px 20px', marginBottom: '12px' }}>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '10px' }}>
+                    <label style={{ fontSize: '11px', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '1.5px', color: '#6B7280' }}>
+                      WHATSAPP DO GERENTE
+                    </label>
+                    <label className="relative cursor-pointer">
+                      <input type="checkbox" className="sr-only" checked={formData.show_whatsapp_manager} onChange={(e) => setFormData({...formData, show_whatsapp_manager: e.target.checked})} />
+                      <div className={`block w-12 h-6 rounded-full transition-colors ${formData.show_whatsapp_manager ? 'bg-green-500' : 'bg-slate-300 dark:bg-slate-600'}`}></div>
+                      <div className={`absolute left-1 top-1 bg-white w-4 h-4 rounded-full transition-transform ${formData.show_whatsapp_manager ? 'translate-x-6' : ''}`}></div>
+                    </label>
+                  </div>
+                  <input
+                    type="text"
+                    placeholder="Ex: 75999999999"
+                    value={formData.whatsapp_manager}
+                    onChange={(e) => setFormData({...formData, whatsapp_manager: e.target.value})}
+                    className="w-full px-4 py-3 bg-white dark:bg-slate-800 rounded-xl text-sm font-bold text-slate-900 dark:text-white outline-none focus:ring-2 focus:ring-blue-500 border border-slate-200 dark:border-slate-700 placeholder:text-slate-400"
+                  />
+                </div>
+
+                {/* WhatsApp Central */}
+                <div style={{ background: '#F8F9FA', borderRadius: '16px', padding: '16px 20px', marginBottom: '12px' }}>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '10px' }}>
+                    <label style={{ fontSize: '11px', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '1.5px', color: '#6B7280' }}>
+                      WHATSAPP CENTRAL
+                    </label>
+                    <label className="relative cursor-pointer">
+                      <input type="checkbox" className="sr-only" checked={formData.show_whatsapp_central} onChange={(e) => setFormData({...formData, show_whatsapp_central: e.target.checked})} />
+                      <div className={`block w-12 h-6 rounded-full transition-colors ${formData.show_whatsapp_central ? 'bg-green-500' : 'bg-slate-300 dark:bg-slate-600'}`}></div>
+                      <div className={`absolute left-1 top-1 bg-white w-4 h-4 rounded-full transition-transform ${formData.show_whatsapp_central ? 'translate-x-6' : ''}`}></div>
+                    </label>
+                  </div>
+                  <input
+                    type="text"
+                    placeholder="Ex: 75999999999"
+                    value={formData.whatsapp_central}
+                    onChange={(e) => setFormData({...formData, whatsapp_central: e.target.value})}
+                    className="w-full px-4 py-3 bg-white dark:bg-slate-800 rounded-xl text-sm font-bold text-slate-900 dark:text-white outline-none focus:ring-2 focus:ring-blue-500 border border-slate-200 dark:border-slate-700 placeholder:text-slate-400"
+                  />
+                </div>
+
+                {/* Página Ativa */}
+                <div style={{ background: '#F8F9FA', borderRadius: '16px', padding: '16px 20px' }}>
+                   <label className="flex items-center justify-between cursor-pointer">
+                     <span style={{ fontSize: '11px', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '1.5px', color: '#6B7280' }}>
+                       PÁGINA ATIVA
+                     </span>
                      <div className="relative">
                        <input 
                          type="checkbox" 
                          className="sr-only" 
-                         checked={isActive} 
-                         onChange={(e) => setIsActive(e.target.checked)} 
+                         checked={formData.is_active} 
+                         onChange={(e) => setFormData({...formData, is_active: e.target.checked})} 
                        />
-                       <div className={`block w-14 h-8 rounded-full transition-colors ${isActive ? 'bg-green-500' : 'bg-slate-300 dark:bg-slate-600'}`}></div>
-                       <div className={`absolute left-1 top-1 bg-white w-6 h-6 rounded-full transition-transform ${isActive ? 'translate-x-6' : ''}`}></div>
+                       <div className={`block w-12 h-6 rounded-full transition-colors ${formData.is_active ? 'bg-green-500' : 'bg-slate-300 dark:bg-slate-600'}`}></div>
+                       <div className={`absolute left-1 top-1 bg-white w-4 h-4 rounded-full transition-transform ${formData.is_active ? 'translate-x-6' : ''}`}></div>
                      </div>
                    </label>
                 </div>
