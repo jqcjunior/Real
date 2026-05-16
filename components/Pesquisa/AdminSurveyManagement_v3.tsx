@@ -26,8 +26,10 @@ import {
   PlusCircle,
   GripVertical,
   Trash,
-  ShieldAlert
+  ShieldAlert,
+  Smartphone
 } from 'lucide-react';
+import NfcPagesManager from './NfcPagesManager';
 import { motion, AnimatePresence } from 'motion/react';
 import { 
   Survey, 
@@ -51,6 +53,7 @@ const AdminSurveyManagement: React.FC<AdminSurveyManagementProps> = ({ currentUs
   const [isLoading, setIsLoading] = useState(true);
   const [searchTerm, setSearchTerm] = useState('');
   const [isModalOpen, setIsModalOpen] = useState(false);
+  const [showNfcPages, setShowNfcPages] = useState(false);
   const [editingSurvey, setEditingSurvey] = useState<Survey | null>(null);
   const [allUsers, setAllUsers] = useState<any[]>([]);
 
@@ -278,16 +281,28 @@ const AdminSurveyManagement: React.FC<AdminSurveyManagementProps> = ({ currentUs
             Crie e gerencie pesquisas direcionadas para funcionários e clientes
           </p>
         </div>
-        <button 
-          onClick={() => handleOpenModal()}
-          className="bg-blue-600 hover:bg-blue-700 text-white px-6 py-3 rounded-2xl font-black uppercase text-xs tracking-widest shadow-lg shadow-blue-200 dark:shadow-blue-900/20 transition-all active:scale-95 flex items-center justify-center gap-2"
-        >
-          <Plus size={18} /> Nova Pesquisa
-        </button>
+        <div className="flex gap-2">
+          <button 
+            onClick={() => setShowNfcPages(true)}
+            className="bg-slate-800 hover:bg-slate-700 text-white px-6 py-3 rounded-2xl font-black uppercase text-xs tracking-widest flex items-center justify-center gap-2 transition-all active:scale-95 shadow-lg"
+          >
+            <Smartphone size={18} /> Páginas NFC
+          </button>
+          <button 
+            onClick={() => handleOpenModal()}
+            className="bg-blue-600 hover:bg-blue-700 text-white px-6 py-3 rounded-2xl font-black uppercase text-xs tracking-widest shadow-lg shadow-blue-200 dark:shadow-blue-900/20 transition-all active:scale-95 flex items-center justify-center gap-2"
+          >
+            <Plus size={18} /> Nova Pesquisa
+          </button>
+        </div>
       </div>
 
-      {/* Stats/Filters */}
-      <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
+      {showNfcPages ? (
+        <NfcPagesManager stores={stores} onBack={() => setShowNfcPages(false)} />
+      ) : (
+        <>
+          {/* Stats/Filters */}
+          <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
         <div className="bg-white dark:bg-slate-900 p-6 rounded-[32px] border border-slate-100 dark:border-slate-800 shadow-sm">
           <div className="flex items-center gap-4">
             <div className="p-3 bg-blue-50 dark:bg-blue-900/20 rounded-2xl text-blue-600">
@@ -425,6 +440,8 @@ const AdminSurveyManagement: React.FC<AdminSurveyManagementProps> = ({ currentUs
           ))}
         </AnimatePresence>
       </div>
+      </>
+      )}
 
       {/* Modal Pesquisa */}
       <AnimatePresence>

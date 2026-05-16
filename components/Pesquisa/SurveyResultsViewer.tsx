@@ -138,6 +138,33 @@ const SurveyResultsViewer: React.FC<SurveyResultsViewerProps> = ({ survey, curre
 
   const COLORS = ['#3b82f6', '#10b981', '#f59e0b', '#ef4444', '#8b5cf6', '#ec4899'];
 
+  const handleExport = () => {
+    if (responses.length === 0) return;
+    const rows = responses.map(r => ({
+      Nome: (r as any).respondent_name || '',
+      Email: (r as any).respondent_email || '',
+      Telefone: (r as any).respondent_phone || '',
+      Data: new Date((r as any).created_at).toLocaleString('pt-BR'),
+      ...Object.fromEntries(questions.map(q => {
+        const v = (r as any).responses?.[q.id];
+        if (!v) return [q.question_text, ''];
+        if (typeof v === 'object') return [q.question_text, `${v.value}${v.motivo ? ' - ' + v.motivo : ''}`];
+        return [q.question_text, String(v)];
+      }))
+    }));
+    const csv = [
+      Object.keys(rows[0]).join(';'),
+      ...rows.map(r => Object.values(r).map(v => `"${String(v).replace(/"/g, '""')}"`).join(';'))
+    ].join('\n');
+    const blob = new Blob(['\ufeff' + csv], { type: 'text/csv;charset=utf-8;' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `resultados-${survey.title}-${new Date().toLocaleDateString('pt-BR')}.csv`;
+    a.click();
+    URL.revokeObjectURL(url);
+  };
+
   return (
     <div className="p-4 md:p-8 space-y-8 max-w-6xl mx-auto">
       {/* Header */}
@@ -173,7 +200,7 @@ const SurveyResultsViewer: React.FC<SurveyResultsViewerProps> = ({ survey, curre
               ))}
             </select>
           </div>
-          <button className="p-3 bg-slate-900 text-white rounded-2xl hover:bg-blue-600 transition-all shadow-lg">
+          <button onClick={handleExport} className="p-3 bg-slate-900 text-white rounded-2xl hover:bg-blue-600 transition-all shadow-lg">
             <Download size={20} />
           </button>
         </div>
