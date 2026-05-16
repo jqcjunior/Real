@@ -17,6 +17,8 @@ interface SupplierItem {
   diasEstoque: number;
   ano: number;
   percVenda: number;
+  velocidade: number;      // vendaQtde / max(diasEstoque, 1)
+  cobertura: number | null; // estoqueQtde / velocidade, null se zerado
 }
 
 interface ProcessedData {
@@ -82,14 +84,14 @@ const BuyOrderAnalytic: React.FC<BuyOrderAnalyticProps> = ({ user, stores }) => 
         throw new Error('Não foi possível ler a primeira página da planilha.');
       }
 
-      let rawData: any[] = API.utils.sheet_to_json(sheet, { header: 1, raw: false, defval: '' });
+      let rawData: any[] = API.utils.sheet_to_json(sheet, { header: 1, raw: true, defval: '' });
 
       // Se primeira sheet está vazia, tentar segunda
       if (rawData.length < 10 && workbook.SheetNames.length > 1) {
         sheetName = workbook.SheetNames[1];
         sheet = workbook.Sheets[sheetName];
         if (sheet) {
-          rawData = API.utils.sheet_to_json(sheet, { header: 1, raw: false, defval: '' });
+          rawData = API.utils.sheet_to_json(sheet, { header: 1, raw: true, defval: '' });
         }
       }
 
@@ -153,7 +155,7 @@ const BuyOrderAnalytic: React.FC<BuyOrderAnalyticProps> = ({ user, stores }) => 
         estoqueQtde: getColIndex(['Estoque (Qtde)'], ['Estoque Qtde', 'Qtd Estoque', 'Estoque']),
         compraQtde: getColIndex(['Compra (Qtde)'], ['Compra Qtde', 'Qtd Compra', 'Compras']),
         vendaQtde: getColIndex(['Venda (Qtde)'], ['Venda Qtde', 'Qtd Venda', 'Vendas']),
-        vendaValor: getColIndex(['Venda (R$)'], ['Venda R$', 'Valor Venda', 'R$ Venda']),
+        vendaValor: getColIndex(['Preço Venda'], ['Preco Venda', 'Preço de Venda', 'Venda (R$)', 'Valor Venda']),
         ultimaCompra: getColIndex(['Última Compra'], ['Data Compra', 'Dt Compra']),
         diasEstoque: getColIndex(['Dias em Estoque'], ['Dias Estoque', 'Dias'])
       };
@@ -204,31 +206,43 @@ const BuyOrderAnalytic: React.FC<BuyOrderAnalyticProps> = ({ user, stores }) => 
           if (ultimaCompraRaw && ultimaCompraRaw !== '') {
             try {
               let dateObj: Date | null = null;
-              
+
               if (typeof ultimaCompraRaw === 'number') {
-                const parsed = API.SSF.parse_date_code(ultimaCompraRaw);
-                dateObj = new Date(parsed.y, parsed.m - 1, parsed.d);
+                // Serial do Excel: dias desde 1899-12-30
+                const msPerDay = 86400000;
+                const epoch = new Date(1899, 11, 30).getTime();
+                dateObj = new Date(epoch + Math.floor(ultimaCompraRaw) * msPerDay);
               } else if (typeof ultimaCompraRaw === 'string') {
-                // Formato DD/MM/YYYY
-                if (ultimaCompraRaw.includes('/')) {
-                  const parts = ultimaCompraRaw.split('/');
+                const s = ultimaCompraRaw.trim();
+                if (s.includes('/')) {
+                  const parts = s.split('/');
                   if (parts.length === 3) {
-                    const day = parseInt(parts[0]);
-                    const month = parseInt(parts[1]) - 1;
-                    const year = parseInt(parts[2]);
-                    dateObj = new Date(year, month, day);
+                    const p0 = parseInt(parts[0]);
+                    const p1 = parseInt(parts[1]);
+                    let p2 = parseInt(parts[2]);
+                    if (p2 < 100) p2 += 2000; // "26" → 2026
+                    if (p0 > 12) {
+                      dateObj = new Date(p2, p1 - 1, p0); // DD/MM/YYYY
+                    } else {
+                      dateObj = new Date(p2, p0 - 1, p1); // MM/DD/YYYY
+                    }
                   }
-                } else {
-                  dateObj = new Date(ultimaCompraRaw);
+                } else if (s.includes('-')) {
+                  dateObj = new Date(s); // YYYY-MM-DD
                 }
+              } else if (ultimaCompraRaw instanceof Date) {
+                dateObj = ultimaCompraRaw;
               }
 
               if (dateObj && !isNaN(dateObj.getTime())) {
-                ano = dateObj.getFullYear();
-                ultimaCompraDate = dateObj.toLocaleDateString('pt-BR');
+                const y = dateObj.getFullYear();
+                if (y >= 2010 && y <= 2035) {
+                  ano = y;
+                  ultimaCompraDate = dateObj.toLocaleDateString('pt-BR');
+                }
               }
             } catch (e) {
-              console.warn('Erro ao parsear data');
+              console.warn('Erro ao parsear data:', e);
             }
           }
 
@@ -250,6 +264,12 @@ const BuyOrderAnalytic: React.FC<BuyOrderAnalyticProps> = ({ user, stores }) => 
           const totalDisponivel = estoqueInicial + compraQtde;
           const percVenda = totalDisponivel > 0 ? (vendaQtde / totalDisponivel) * 100 : 0;
 
+          const diasEst = parseNumber(getValue(colIndices.diasEstoque, 0));
+          const velocidade = vendaQtde / Math.max(diasEst, 1);
+          const cobertura = velocidade > 0 && estoqueQtde > 0
+            ? Math.round(estoqueQtde / velocidade)
+            : estoqueQtde <= 0 ? 0 : null;
+
           return {
             loja: parseNumber(lojaVal),
             marca: String(getValue(colIndices.marca, '')),
@@ -260,9 +280,11 @@ const BuyOrderAnalytic: React.FC<BuyOrderAnalyticProps> = ({ user, stores }) => 
             consumoPerc: 0,
             vendaValor: parseNumber(getValue(colIndices.vendaValor, 0)),
             ultimaCompra: ultimaCompraDate,
-            diasEstoque: parseNumber(getValue(colIndices.diasEstoque, 0)),
+            diasEstoque: diasEst,
             ano,
-            percVenda
+            percVenda,
+            velocidade,
+            cobertura
           };
         })
         .filter((item): item is SupplierItem => item !== null && item.loja > 0);
@@ -294,192 +316,246 @@ const BuyOrderAnalytic: React.FC<BuyOrderAnalyticProps> = ({ user, stores }) => 
   // ==================== EXPORTAR EXCEL ====================
   const handleExport = async () => {
     if (!processedData) return;
-
     setIsExporting(true);
     try {
       const workbook = new ExcelJS.Workbook();
 
-      const headerFill = { type: 'pattern' as const, pattern: 'solid' as const, fgColor: { argb: 'FF2C5F8D' } };
-      const headerFont = { name: 'Arial', size: 10, bold: true, color: { argb: 'FFFFFFFF' } };
-      const titleFont = { name: 'Arial', size: 13, bold: true, color: { argb: 'FF2C5F8D' } };
-      const yearFont = { name: 'Arial', size: 11, bold: true, color: { argb: 'FFFFFFFF' } };
-      const yearFill = { type: 'pattern' as const, pattern: 'solid' as const, fgColor: { argb: 'FF4472C4' } };
-      const goodFill = { type: 'pattern' as const, pattern: 'solid' as const, fgColor: { argb: 'FFC6EFCE' } };
-      const badFill = { type: 'pattern' as const, pattern: 'solid' as const, fgColor: { argb: 'FFFFC7CE' } };
-      const starFill = { type: 'pattern' as const, pattern: 'solid' as const, fgColor: { argb: 'FFFFD700' } };
-      const starFont = { name: 'Arial', size: 10, bold: true, color: { argb: 'FF8B4513' } };
-
-      const border = {
+      // ── Estilos reutilizáveis ──
+      const mkFill = (argb: string) => ({ type: 'pattern' as const, pattern: 'solid' as const, fgColor: { argb } });
+      const mkFont = (argb: string, size = 9, bold = false) => ({ name: 'Arial', size, bold, color: { argb } });
+      const thinBorder = {
         top: { style: 'thin' as const, color: { argb: 'FFCCCCCC' } },
         left: { style: 'thin' as const, color: { argb: 'FFCCCCCC' } },
         bottom: { style: 'thin' as const, color: { argb: 'FFCCCCCC' } },
-        right: { style: 'thin' as const, color: { argb: 'FFCCCCCC' } }
+        right: { style: 'thin' as const, color: { argb: 'FFCCCCCC' } },
+      };
+      const centerAlign = { horizontal: 'center' as const, vertical: 'middle' as const, wrapText: true };
+      const leftAlign = { horizontal: 'left' as const, vertical: 'middle' as const, wrapText: true };
+
+      const applyHeader = (row: ExcelJS.Row, fillArgb: string, fontArgb: string, cols: number) => {
+        for (let c = 1; c <= cols; c++) {
+          const cell = row.getCell(c);
+          cell.fill = mkFill(fillArgb);
+          cell.font = mkFont(fontArgb, 10, true);
+          cell.alignment = leftAlign;
+          if (c === 1) cell.alignment = leftAlign;
+        }
+        row.height = 22;
       };
 
-      const anos = processedData.anos;
+      const applyColHeader = (row: ExcelJS.Row, fillArgb: string, fontArgb: string) => {
+        row.eachCell(cell => {
+          cell.fill = mkFill(fillArgb);
+          cell.font = mkFont(fontArgb, 9, true);
+          cell.alignment = centerAlign;
+          cell.border = thinBorder;
+        });
+        row.height = 18;
+      };
+
+      const applyDataRow = (row: ExcelJS.Row, fillArgb: string, boldFirst = false) => {
+        row.eachCell((cell, col) => {
+          cell.fill = mkFill(fillArgb);
+          cell.font = mkFont('FF000000', 9, boldFirst && col === 1);
+          cell.alignment = col === 1 ? leftAlign : centerAlign;
+          cell.border = thinBorder;
+        });
+        row.height = 16;
+      };
+
+      const COLS = 9;
+      const hoje = new Date();
 
       for (const loja of processedData.lojas) {
-        const worksheet = workbook.addWorksheet(`Loja ${loja}`);
+        const ws = workbook.addWorksheet(`Loja ${loja}`);
+        ws.views = [{ showGridLines: false }];
 
-        const titleRow = worksheet.addRow([`LOJA ${loja} - ANÁLISE ${processedData.marca.toUpperCase()}`]);
-        titleRow.getCell(1).font = titleFont;
-        worksheet.mergeCells(1, 1, 1, 6);
-        
-        let currentRow = 3;
+        // Larguras das colunas
+        [14, 16, 14, 12, 12, 14, 12, 14, 14].forEach((w, i) => {
+          ws.getColumn(i + 1).width = w;
+        });
 
-        const topRefsPorAno: Record<number, string[]> = {};
-        
-        for (const ano of anos) {
-          const dadosAno = processedData.items.filter(item => item.loja === loja && item.ano === ano);
-          if (dadosAno.length > 0) {
-            const top20 = dadosAno
-              .filter(item => item.vendaQtde > 0)
-              .sort((a, b) => b.vendaQtde - a.vendaQtde)
-              .slice(0, 20)
-              .map(item => item.referencia);
-            topRefsPorAno[ano] = top20;
-          }
-        }
+        const items = processedData.items.filter(i => i.loja === loja);
 
-        let recorrentes: string[] = [];
-        if (Object.keys(topRefsPorAno).length === 2) {
-          const setAno1 = new Set(topRefsPorAno[anos[0]] || []);
-          const setAno2 = new Set(topRefsPorAno[anos[1]] || []);
-          recorrentes = Array.from(setAno1).filter(ref => setAno2.has(ref));
-        }
+        // ── TÍTULO DA LOJA ──
+        const titleRow = ws.addRow([
+          `📊 LOJA ${loja} — ANÁLISE ${processedData.marca.toUpperCase()} | Período: Jan–Mai ${hoje.getFullYear()} | Gerado em: ${hoje.toLocaleDateString('pt-BR')}`
+        ]);
+        ws.mergeCells(titleRow.number, 1, titleRow.number, COLS);
+        titleRow.getCell(1).fill = mkFill('FF1F4E79');
+        titleRow.getCell(1).font = mkFont('FFFFFFFF', 12, true);
+        titleRow.getCell(1).alignment = centerAlign;
+        titleRow.height = 28;
+        ws.addRow([]);
 
-        if (recorrentes.length > 0) {
-          const destaqueRow = worksheet.addRow([`⭐ DESTAQUE: ${recorrentes.length} itens TOP nos 2 anos consecutivos`]);
-          destaqueRow.getCell(1).font = starFont;
-          destaqueRow.getCell(1).fill = starFill;
-          worksheet.mergeCells(currentRow, 1, currentRow, 6);
-          currentRow++;
+        // ──────────────────────────────────────────────────────
+        // BLOCO 1: ALERTA DE RUPTURA
+        // ──────────────────────────────────────────────────────
+        const ruptura = items
+          .filter(i => i.compraQtde > 0 && i.percVenda >= 50)
+          .sort((a, b) => b.percVenda - a.percVenda);
 
-          for (const ref of recorrentes.sort()) {
-            const refRow = worksheet.addRow([`  • ${ref}`]);
-            refRow.getCell(1).font = starFont;
-            worksheet.mergeCells(currentRow, 1, currentRow, 6);
-            currentRow++;
-          }
-          currentRow++;
-        }
+        const rupturaTitle = ws.addRow([
+          `🚨 ALERTA DE RUPTURA — Chegaram e já venderam 50%+ do estoque (${ruptura.length} itens)`
+        ]);
+        ws.mergeCells(rupturaTitle.number, 1, rupturaTitle.number, COLS);
+        applyHeader(rupturaTitle, 'FFC0392B', 'FFFFFFFF', COLS);
 
-        for (const ano of anos) {
-          const dadosAno = processedData.items.filter(item => item.loja === loja && item.ano === ano);
-          
-          if (dadosAno.length === 0) continue;
+        if (ruptura.length > 0) {
+          const rh = ws.addRow(['Referência','Data Chegada','Dias em Loja','Comprou','Vendeu','Estoque Atual','% Vendido','Vel./Dia','⚠ Cobertura (dias)']);
+          applyColHeader(rh, 'FFFADBD8', 'FFC0392B');
 
-          const anoRow = worksheet.addRow([`ANO ${ano}`]);
-          anoRow.getCell(1).font = yearFont;
-          anoRow.getCell(1).fill = yearFill;
-          anoRow.getCell(1).alignment = { horizontal: 'center', vertical: 'middle' };
-          worksheet.mergeCells(currentRow, 1, currentRow, 6);
-          currentRow++;
-
-          const venderamBem = dadosAno
-            .filter(item => item.vendaQtde > 0)
-            .sort((a, b) => b.vendaQtde - a.vendaQtde)
-            .slice(0, 20);
-
-          const topTitleRow = worksheet.addRow(['✓ TOP 20 MAIS VENDIDOS']);
-          topTitleRow.getCell(1).font = { name: 'Arial', size: 10, bold: true, color: { argb: 'FF006100' } };
-          topTitleRow.getCell(1).fill = goodFill;
-          worksheet.mergeCells(currentRow, 1, currentRow, 6);
-          currentRow++;
-
-          const topHeaderRow = worksheet.addRow(['Referência', 'Estq Atual', 'Comprou', 'Vendeu', '% Venda', 'Status']);
-          topHeaderRow.eachCell((cell) => {
-            cell.font = headerFont;
-            cell.fill = headerFill;
-            cell.alignment = { horizontal: 'center', vertical: 'middle' };
-            cell.border = border;
-          });
-          currentRow++;
-
-          for (const item of venderamBem) {
-            const isRecorrente = recorrentes.includes(item.referencia);
-            const percVenda = item.percVenda || 0;
-            let status = 'REGULAR';
-            if (item.estoqueQtde === 0) status = 'ZEROU';
-            else if (percVenda >= 70) status = 'ÓTIMO';
-            else if (percVenda >= 50) status = 'BOM';
-
-            const dataRow = worksheet.addRow([
-              (isRecorrente ? '⭐ ' : '') + item.referencia,
-              item.estoqueQtde,
+          for (const item of ruptura) {
+            const coberturaVal = item.cobertura === 0 ? 'ZERADO' : item.cobertura === null ? '∞' : item.cobertura;
+            const fill = item.percVenda >= 80 ? 'FFFADBD8' : 'FFFEF9E7';
+            const dr = ws.addRow([
+              item.referencia,
+              item.ultimaCompra || 'N/D',
+              item.diasEstoque,
               item.compraQtde,
               item.vendaQtde,
-              `${percVenda.toFixed(1)}%`,
+              item.estoqueQtde,
+              `${item.percVenda.toFixed(0)}%`,
+              item.velocidade.toFixed(2),
+              coberturaVal
+            ]);
+            applyDataRow(dr, fill, true);
+          }
+        } else {
+          const nr = ws.addRow(['Nenhum item com risco de ruptura iminente neste período.']);
+          ws.mergeCells(nr.number, 1, nr.number, COLS);
+          nr.getCell(1).font = mkFont('FF666666', 9);
+        }
+        ws.addRow([]);
+
+        // ──────────────────────────────────────────────────────
+        // BLOCO 2: MERCADORIAS QUE CHEGARAM NO PERÍODO
+        // ──────────────────────────────────────────────────────
+        const recentes = items
+          .filter(i => i.compraQtde > 0)
+          .sort((a, b) => b.percVenda - a.percVenda);
+
+        const recentesTitle = ws.addRow([
+          `📦 MERCADORIAS QUE CHEGARAM NO PERÍODO (${recentes.length} itens com compra registrada)`
+        ]);
+        ws.mergeCells(recentesTitle.number, 1, recentesTitle.number, COLS);
+        applyHeader(recentesTitle, 'FF6C3483', 'FFFFFFFF', COLS);
+
+        if (recentes.length > 0) {
+          const rh2 = ws.addRow(['Referência','Data Chegada','Dias em Loja','Comprou','Vendeu','Estoque Atual','% Vendido','Vel./Dia','Status']);
+          applyColHeader(rh2, 'FFE8DAEF', 'FF6C3483');
+
+          for (const item of recentes) {
+            let status: string, fill: string;
+            if (item.percVenda >= 80)      { status = 'ÓTIMO';    fill = 'FFD4EDDA'; }
+            else if (item.percVenda >= 50) { status = 'BOM';      fill = 'FFD5F5E3'; }
+            else if (item.percVenda >= 25) { status = 'REGULAR';  fill = 'FFFEF9E7'; }
+            else                           { status = 'LENTO';    fill = 'FFFADBD8'; }
+
+            const dr = ws.addRow([
+              item.referencia,
+              item.ultimaCompra || 'N/D',
+              item.diasEstoque,
+              item.compraQtde,
+              item.vendaQtde,
+              item.estoqueQtde,
+              `${item.percVenda.toFixed(0)}%`,
+              item.velocidade.toFixed(2),
               status
             ]);
-
-            dataRow.eachCell((cell, colNumber) => {
-              cell.border = border;
-              if (colNumber === 1) {
-                cell.alignment = { horizontal: 'left' };
-                if (isRecorrente) cell.font = starFont;
-              } else {
-                cell.alignment = { horizontal: 'center' };
-              }
-            });
-            currentRow++;
+            applyDataRow(dr, fill, true);
           }
-
-          currentRow++;
-
-          const naoVenderam = dadosAno
-            .filter(item => item.vendaQtde === 0 && item.estoqueQtde > 0)
-            .sort((a, b) => b.estoqueQtde - a.estoqueQtde)
-            .slice(0, 15);
-
-          if (naoVenderam.length > 0) {
-            const flopTitleRow = worksheet.addRow([`✗ NÃO VENDERAM (${naoVenderam.length} itens com estoque parado)`]);
-            flopTitleRow.getCell(1).font = { name: 'Arial', size: 10, bold: true, color: { argb: 'FF9C0006' } };
-            flopTitleRow.getCell(1).fill = badFill;
-            worksheet.mergeCells(currentRow, 1, currentRow, 6);
-            currentRow++;
-
-            const flopHeaderRow = worksheet.addRow(['Referência', 'Estq Parado', 'Comprou', 'Última Compra', 'Dias Parado', 'Risco']);
-            flopHeaderRow.eachCell((cell) => {
-              cell.font = headerFont;
-              cell.fill = headerFill;
-              cell.alignment = { horizontal: 'center', vertical: 'middle' };
-              cell.border = border;
-            });
-            currentRow++;
-
-            for (const item of naoVenderam) {
-              const diasParado = item.diasEstoque || 0;
-              let risco = 'BAIXO';
-              if (diasParado > 180) risco = 'ALTO';
-              else if (diasParado > 90) risco = 'MÉDIO';
-
-              const dataRow = worksheet.addRow([
-                item.referencia,
-                item.estoqueQtde,
-                item.compraQtde,
-                item.ultimaCompra || '-',
-                diasParado,
-                risco
-              ]);
-
-              dataRow.eachCell((cell, colNumber) => {
-                cell.border = border;
-                cell.alignment = { horizontal: colNumber === 1 ? 'left' : 'center' };
-              });
-              currentRow++;
-            }
-          }
-
-          currentRow += 2;
+        } else {
+          const nr = ws.addRow(['Nenhuma compra registrada no período para esta loja.']);
+          ws.mergeCells(nr.number, 1, nr.number, COLS);
+          nr.getCell(1).font = mkFont('FF666666', 9);
         }
+        ws.addRow([]);
 
-        worksheet.getColumn(1).width = 28;
-        worksheet.getColumn(2).width = 12;
-        worksheet.getColumn(3).width = 12;
-        worksheet.getColumn(4).width = 12;
-        worksheet.getColumn(5).width = 12;
-        worksheet.getColumn(6).width = 12;
+        // ──────────────────────────────────────────────────────
+        // BLOCO 3: TOP 20 MAIS VENDIDOS
+        // ──────────────────────────────────────────────────────
+        const top20 = items
+          .filter(i => i.vendaQtde > 0)
+          .sort((a, b) => b.vendaQtde - a.vendaQtde)
+          .slice(0, 20);
+
+        const topTitle = ws.addRow([
+          `🏆 TOP 20 MAIS VENDIDOS NO PERÍODO (inclui estoque de períodos anteriores)`
+        ]);
+        ws.mergeCells(topTitle.number, 1, topTitle.number, COLS);
+        applyHeader(topTitle, 'FF1E6B3A', 'FFFFFFFF', COLS);
+
+        const th = ws.addRow(['Pos','Referência','Última Compra','Dias em Estoque','Comprou (per.)','Vendeu','Estoque Atual','Preço Venda','Status']);
+        applyColHeader(th, 'FF1E6B3A', 'FFFFFFFF');
+
+        top20.forEach((item, idx) => {
+          const pct = item.percVenda;
+          let status: string, fill: string;
+          if (item.estoqueQtde <= 0) { status = 'ZEROU ⚠'; fill = 'FFFADBD8'; }
+          else if (pct >= 80)        { status = 'ÓTIMO';   fill = 'FFD4EDDA'; }
+          else if (pct >= 50)        { status = 'BOM';     fill = 'FFD5F5E3'; }
+          else                       { status = 'REGULAR'; fill = 'FFFEF9E7'; }
+
+          const preco = item.vendaValor > 0 ? `R$ ${item.vendaValor.toFixed(2)}` : '-';
+          const dr = ws.addRow([
+            idx + 1,
+            item.referencia,
+            item.ultimaCompra || 'N/D',
+            item.diasEstoque,
+            item.compraQtde,
+            item.vendaQtde,
+            item.estoqueQtde,
+            preco,
+            status
+          ]);
+          applyDataRow(dr, fill, false);
+          dr.getCell(2).font = mkFont('FF000000', 9, true);
+        });
+        ws.addRow([]);
+
+        // ──────────────────────────────────────────────────────
+        // BLOCO 4: ESTOQUE PARADO
+        // ──────────────────────────────────────────────────────
+        const parados = items
+          .filter(i => i.estoqueQtde > 0 && i.vendaQtde === 0 && i.diasEstoque > 90)
+          .sort((a, b) => b.diasEstoque - a.diasEstoque);
+
+        const paradoTitle = ws.addRow([
+          `💀 ESTOQUE PARADO SEM VENDA (${parados.length} itens, +90 dias sem girar)`
+        ]);
+        ws.mergeCells(paradoTitle.number, 1, paradoTitle.number, COLS);
+        applyHeader(paradoTitle, 'FF7D3C98', 'FFFFFFFF', COLS);
+
+        if (parados.length > 0) {
+          const ph = ws.addRow(['Referência','Última Compra','Dias Parado','Estoque Qtde','Preço Venda','Preço Custo','Risco','','']);
+          applyColHeader(ph, 'FF9B59B6', 'FFFFFFFF');
+
+          for (const item of parados.slice(0, 20)) {
+            let risco: string, fill: string;
+            if (item.diasEstoque > 365)      { risco = 'CRÍTICO'; fill = 'FFFADBD8'; }
+            else if (item.diasEstoque > 180) { risco = 'ALTO';    fill = 'FFFEF9E7'; }
+            else                             { risco = 'MÉDIO';   fill = 'FFF2F2F2'; }
+
+            const preco = item.vendaValor > 0 ? `R$ ${item.vendaValor.toFixed(2)}` : '-';
+            const dr = ws.addRow([
+              item.referencia,
+              item.ultimaCompra || 'N/D',
+              item.diasEstoque,
+              item.estoqueQtde,
+              preco,
+              '-',
+              risco,
+              '',
+              ''
+            ]);
+            applyDataRow(dr, fill, true);
+          }
+        } else {
+          const nr = ws.addRow(['Nenhum item com estoque parado >90 dias sem venda.']);
+          ws.mergeCells(nr.number, 1, nr.number, COLS);
+          nr.getCell(1).font = mkFont('FF666666', 9);
+        }
       }
 
       const buffer = await workbook.xlsx.writeBuffer();
@@ -492,7 +568,7 @@ const BuyOrderAnalytic: React.FC<BuyOrderAnalyticProps> = ({ user, stores }) => 
       window.URL.revokeObjectURL(url);
 
     } catch (err) {
-      console.error('Erro ao exportar arquivo');
+      console.error('Erro ao exportar:', err);
       setError('Erro ao exportar arquivo Excel');
     } finally {
       setIsExporting(false);

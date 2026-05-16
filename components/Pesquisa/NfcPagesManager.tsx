@@ -25,6 +25,7 @@ const NfcPagesManager: React.FC<NfcPagesManagerProps> = ({ stores, onBack }) => 
     whatsapp_store: '',
     whatsapp_manager: '',
     whatsapp_central: '75999999999',
+    whatsapp_beneficios: '',
     is_active: true,
     pix_key: '',
     pix_qrcode_url: '',
@@ -33,7 +34,8 @@ const NfcPagesManager: React.FC<NfcPagesManagerProps> = ({ stores, onBack }) => 
     show_survey: true,
     show_whatsapp_store: true,
     show_whatsapp_manager: true,
-    show_whatsapp_central: true
+    show_whatsapp_central: true,
+    show_whatsapp_beneficios: false
   });
 
   useEffect(() => {
@@ -75,6 +77,7 @@ const NfcPagesManager: React.FC<NfcPagesManagerProps> = ({ stores, onBack }) => 
         whatsapp_store: existingPage.whatsapp_store || '',
         whatsapp_manager: existingPage.whatsapp_manager || '',
         whatsapp_central: existingPage.whatsapp_central || '75999999999',
+        whatsapp_beneficios: existingPage.whatsapp_beneficios || '',
         is_active: existingPage.is_active ?? true,
         pix_key: existingPage.pix_key || '',
         pix_qrcode_url: existingPage.pix_qrcode_url || '',
@@ -83,7 +86,8 @@ const NfcPagesManager: React.FC<NfcPagesManagerProps> = ({ stores, onBack }) => 
         show_survey: existingPage.show_survey ?? true,
         show_whatsapp_store: existingPage.show_whatsapp_store ?? true,
         show_whatsapp_manager: existingPage.show_whatsapp_manager ?? true,
-        show_whatsapp_central: existingPage.show_whatsapp_central ?? true
+        show_whatsapp_central: existingPage.show_whatsapp_central ?? true,
+        show_whatsapp_beneficios: existingPage.show_whatsapp_beneficios ?? false
       });
     } else {
       setEditingPage(null);
@@ -94,6 +98,7 @@ const NfcPagesManager: React.FC<NfcPagesManagerProps> = ({ stores, onBack }) => 
         whatsapp_store: '',
         whatsapp_manager: store.managerPhone || '',
         whatsapp_central: '75999999999',
+        whatsapp_beneficios: '',
         is_active: true,
         pix_key: '',
         pix_qrcode_url: '',
@@ -102,7 +107,8 @@ const NfcPagesManager: React.FC<NfcPagesManagerProps> = ({ stores, onBack }) => 
         show_survey: true,
         show_whatsapp_store: true,
         show_whatsapp_manager: true,
-        show_whatsapp_central: true
+        show_whatsapp_central: true,
+        show_whatsapp_beneficios: false
       });
     }
   };
@@ -426,6 +432,27 @@ const NfcPagesManager: React.FC<NfcPagesManagerProps> = ({ stores, onBack }) => 
                     placeholder="Ex: 75999999999"
                     value={formData.whatsapp_central}
                     onChange={(e) => setFormData({...formData, whatsapp_central: e.target.value})}
+                    className="w-full px-4 py-3 bg-white dark:bg-slate-800 rounded-xl text-sm font-bold text-slate-900 dark:text-white outline-none focus:ring-2 focus:ring-blue-500 border border-slate-200 dark:border-slate-700 placeholder:text-slate-400"
+                  />
+                </div>
+
+                {/* WhatsApp Real Benefícios */}
+                <div style={{ background: '#F8F9FA', borderRadius: '16px', padding: '16px 20px', marginBottom: '12px' }}>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '10px' }}>
+                    <label style={{ fontSize: '11px', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '1.5px', color: '#6B7280' }}>
+                      WHATSAPP REAL BENEFÍCIOS
+                    </label>
+                    <label className="relative cursor-pointer">
+                      <input type="checkbox" className="sr-only" checked={formData.show_whatsapp_beneficios} onChange={(e) => setFormData({...formData, show_whatsapp_beneficios: e.target.checked})} />
+                      <div className={`block w-12 h-6 rounded-full transition-colors ${formData.show_whatsapp_beneficios ? 'bg-green-500' : 'bg-slate-300 dark:bg-slate-600'}`}></div>
+                      <div className={`absolute left-1 top-1 bg-white w-4 h-4 rounded-full transition-transform ${formData.show_whatsapp_beneficios ? 'translate-x-6' : ''}`}></div>
+                    </label>
+                  </div>
+                  <input
+                    type="text"
+                    placeholder="Ex: 5575999999999"
+                    value={formData.whatsapp_beneficios}
+                    onChange={(e) => setFormData({...formData, whatsapp_beneficios: e.target.value})}
                     className="w-full px-4 py-3 bg-white dark:bg-slate-800 rounded-xl text-sm font-bold text-slate-900 dark:text-white outline-none focus:ring-2 focus:ring-blue-500 border border-slate-200 dark:border-slate-700 placeholder:text-slate-400"
                   />
                 </div>

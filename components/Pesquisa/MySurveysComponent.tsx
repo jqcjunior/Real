@@ -30,7 +30,7 @@ const MySurveysComponent: React.FC<MySurveysComponentProps> = ({ user }) => {
   const fetchSurveys = async () => {
     setIsLoading(true);
     try {
-      // 1. Buscar pesquisas visíveis para este usuário via RPC/Policy
+      // 1. Buscar todas as pesquisas ativas do banco
       const { data, error } = await supabase
         .from('surveys')
         .select('*')
@@ -39,7 +39,52 @@ const MySurveysComponent: React.FC<MySurveysComponentProps> = ({ user }) => {
       
       if (error) throw error;
 
-      // 2. Buscar IDs das pesquisas que o usuário já respondeu
+      // 2. Aplicar filtro de direcionamento (Targeting) localmente
+      let surveysVisiveis = data || [];
+      
+      if ((user as any).role_level !== 'admin') {
+        surveysVisiveis = surveysVisiveis.filter(survey => {
+          // Passo 1 — Bloquear pesquisas externas (clientes) no painel interno
+          if (survey.target_type === 'external') return false;
+
+          // Passo 2 — Verificar restrição de loja (target_store_ids)
+          // Se o array estiver vazio ou null, a pesquisa é para todas as lojas
+          const semRestricaoLoja = !survey.target_store_ids || survey.target_store_ids.length === 0;
+          const userStoreId = user.storeId || (user as any).store_id;
+          const lojaDoUsuario = survey.target_store_ids?.includes(userStoreId || '');
+          
+          if (!semRestricaoLoja && !lojaDoUsuario) return false;
+
+          // Passo 3 — Verificar categoria de público/role_level
+          if (survey.target_type === 'internal') {
+            const roleLevel = (user as any).role_level;
+            
+            // Filtro para Gerentes
+            if (survey.target_category === 'all_managers') {
+              if (roleLevel !== 'manager') return false;
+            }
+            
+            // Filtro para Caixas
+            if (survey.target_category === 'all_cashiers') {
+              if (roleLevel !== 'cashier') return false;
+            }
+
+            // Filtro para Vendedores (role_level 'vendedor' fallback if applicable, but user list only mentioned manager, cashier, comprador, sorvete)
+            if (survey.target_category === 'all_sellers') {
+              if (roleLevel !== 'seller' && roleLevel !== 'vendedor') return false;
+            }
+            
+            // Filtro para usuários específicos
+            if (survey.target_category === 'specific_users') {
+              if (!survey.target_user_ids?.includes(user.id)) return false;
+            }
+          }
+
+          return true;
+        });
+      }
+
+      // 3. Buscar IDs das pesquisas que o usuário já respondeu
       const { data: responses, error: rError } = await supabase
         .from('survey_responses')
         .select('survey_id')
@@ -47,7 +92,7 @@ const MySurveysComponent: React.FC<MySurveysComponentProps> = ({ user }) => {
       
       if (rError) throw rError;
 
-      setSurveys(data || []);
+      setSurveys(surveysVisiveis);
       setRespondedIds(responses?.map(r => r.survey_id) || []);
     } catch (err) {
       console.error('Erro ao buscar minhas pesquisas:', err);

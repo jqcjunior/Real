@@ -773,7 +773,35 @@ const App: React.FC = () => {
 
                 if (activeSurveys) {
                     const respondedIds = myResponses?.map(r => r.survey_id) || [];
-                    const pending = activeSurveys.filter(s => !respondedIds.includes(s.id));
+                    
+                    // Aplicar Filtro de Targeting
+                    let surveysVisiveis = activeSurveys;
+                    if ((user as any).role_level !== 'admin') {
+                        surveysVisiveis = activeSurveys.filter(survey => {
+                            if (survey.target_type === 'external') return false;
+
+                            const semRestricaoLoja = !survey.target_store_ids || survey.target_store_ids.length === 0;
+                            const userStoreId = user.storeId || (user as any).store_id;
+                            const lojaDoUsuario = survey.target_store_ids?.includes(userStoreId || '');
+                            if (!semRestricaoLoja && !lojaDoUsuario) return false;
+
+                            if (survey.target_type === 'internal') {
+                                const roleLevel = (user as any).role_level;
+                                if (survey.target_category === 'all_managers') {
+                                    if (roleLevel !== 'manager') return false;
+                                }
+                                if (survey.target_category === 'all_cashiers') {
+                                    if (roleLevel !== 'cashier') return false;
+                                }
+                                if (survey.target_category === 'specific_users') {
+                                    if (!survey.target_user_ids?.includes(user.id)) return false;
+                                }
+                            }
+                            return true;
+                        });
+                    }
+
+                    const pending = surveysVisiveis.filter(s => !respondedIds.includes(s.id));
                     setPendingSurveys(pending);
                 }
             }
