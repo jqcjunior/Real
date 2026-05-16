@@ -273,7 +273,7 @@ const StoreNfcPublicPage: React.FC<StoreNfcPublicPageProps> = ({ storeNumber }) 
             )}
 
             {nfcPage.show_whatsapp_beneficios && nfcPage.whatsapp_beneficios && (
-              <a href={`https://wa.me/${nfcPage.whatsapp_beneficios}`} target="_blank" rel="noopener noreferrer" style={actionCardStyle}>
+              <a href={`https://wa.me/55${nfcPage.whatsapp_beneficios}`} target="_blank" rel="noopener noreferrer" style={actionCardStyle}>
                 <div style={{ ...iconWrapStyle, background: '#DFF6E9' }}>
                   <MessageCircle size={20} color="#25D366" />
                 </div>

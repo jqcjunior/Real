@@ -475,6 +475,30 @@ export interface SurveyInvitation {
   created_at: string;
 }
 
+export interface NfcPage {
+  id: string;
+  store_id: string;
+  survey_id: string;
+  cover_image_url?: string;
+  instagram?: string;
+  whatsapp_store?: string;
+  whatsapp_manager?: string;
+  whatsapp_central?: string;
+  whatsapp_beneficios?: string;
+  is_active: boolean;
+  pix_key?: string;
+  pix_qrcode_url?: string;
+  show_instagram?: boolean;
+  show_pix?: boolean;
+  show_survey?: boolean;
+  show_whatsapp_store?: boolean;
+  show_whatsapp_manager?: boolean;
+  show_whatsapp_central?: boolean;
+  show_whatsapp_beneficios?: boolean;
+  created_at?: string;
+  updated_at?: string;
+}
+
 /* =========================
    🔹 DEMANDAS (OS)
 ========================= */
