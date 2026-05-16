@@ -51,6 +51,7 @@ const AdminSurveyManagement = lazy(() => import('./components/Pesquisa/AdminSurv
 const MySurveysComponent = lazy(() => import('./components/Pesquisa/MySurveysComponent'));
 const SurveyResultsViewer = lazy(() => import('./components/Pesquisa/SurveyResultsViewer'));
 import SurveyPublicPage from './components/Pesquisa/SurveyPublicPage';
+import StoreNfcPublicPage from './components/Pesquisa/StoreNfcPublicPage';
 // DRE Analytics imports removed as requested for cleanup
 const DREAccounts = lazy(() => import('./components/dre/components/DREAccountsResponsive'));
 
@@ -124,11 +125,6 @@ const styles = `
 `;
 
 const App: React.FC = () => {
-    const pathParts = window.location.pathname.split('/');
-    if (pathParts[1] === 'pesquisa' && pathParts[2]) {
-        return <SurveyPublicPage token={pathParts[2]} />;
-    }
-
     const [user, setUser] = useState<User | null>(() => {
         try {
             const saved = localStorage.getItem('realcalcados_user');
@@ -1718,4 +1714,15 @@ const App: React.FC = () => {
     );
 };
 
-export default App;
+const AppRouter: React.FC = () => {
+    const pathParts = window.location.pathname.split('/');
+    if (pathParts[1] === 'pesquisa' && pathParts[2]) {
+        return <SurveyPublicPage token={pathParts[2]} />;
+    }
+    if (pathParts[1] === 'loja' && pathParts[2]) {
+        return <StoreNfcPublicPage storeNumber={pathParts[2]} />;
+    }
+    return <App />;
+};
+
+export default AppRouter;
