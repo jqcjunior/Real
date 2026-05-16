@@ -1,7 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { supabase } from '../../services/supabaseClient';
-import { BRAND_LOGO } from '../../constants';
-import { MessageCircle, ExternalLink, MessageSquare, PhoneCall, Loader2 } from 'lucide-react';
+import { MessageCircle, ExternalLink, MessageSquare, PhoneCall, Loader2, QrCode } from 'lucide-react';
 
 interface StoreNfcPublicPageProps {
   storeNumber: string;
@@ -11,29 +10,23 @@ const StoreNfcPublicPage: React.FC<StoreNfcPublicPageProps> = ({ storeNumber }) 
   const [data, setData] = useState<any | null>(null);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState(false);
+  const [showPix, setShowPix] = useState(false);
+  const [copied, setCopied] = useState(false);
 
   useEffect(() => {
     const fetchStoreData = async () => {
       try {
-        const { data: storeData, error: storeError } = await supabase
-          .from('stores')
-          .select('id, name, city, number')
-          .eq('number', Number(storeNumber))
-          .single();
-
-        if (storeError) throw storeError;
-
         const { data: nfcPage, error: nfcError } = await supabase
           .from('store_nfc_pages')
-          .select('*, surveys(public_token)')
-          .eq('store_id', storeData.id)
+          .select('*, surveys(public_token), stores!inner(name, city, number, state)')
+          .eq('stores.number', Number(storeNumber))
           .eq('is_active', true)
           .single();
 
         if (nfcError) throw nfcError;
 
         setData({
-          store: storeData,
+          store: nfcPage.stores,
           nfcPage: nfcPage
         });
       } catch (err) {
@@ -49,7 +42,7 @@ const StoreNfcPublicPage: React.FC<StoreNfcPublicPageProps> = ({ storeNumber }) 
 
   if (isLoading) {
     return (
-      <div className="min-h-screen bg-slate-50 flex items-center justify-center">
+      <div style={{ minHeight: '100vh', background: '#F7F5F2', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
         <Loader2 className="w-8 h-8 text-blue-600 animate-spin" />
       </div>
     );
@@ -57,12 +50,12 @@ const StoreNfcPublicPage: React.FC<StoreNfcPublicPageProps> = ({ storeNumber }) 
 
   if (error || !data) {
     return (
-      <div className="min-h-screen bg-slate-50 flex flex-col items-center justify-center p-6 text-center">
-        <div className="w-16 h-16 bg-slate-200 rounded-full flex items-center justify-center mb-6">
-          <span className="text-2xl">⚠️</span>
+      <div style={{ minHeight: '100vh', background: '#F7F5F2', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', padding: '24px', textAlign: 'center' }}>
+        <div style={{ width: '64px', height: '64px', background: '#EAE6DF', borderRadius: '50%', display: 'flex', alignItems: 'center', justifyContent: 'center', marginBottom: '24px' }}>
+          <span style={{ fontSize: '24px' }}>⚠️</span>
         </div>
-        <h2 className="text-xl font-black text-slate-800 uppercase tracking-tighter mb-2">Ops!</h2>
-        <p className="text-slate-500 font-medium">Página não encontrada ou desativada.</p>
+        <h2 style={{ fontSize: '20px', fontWeight: 900, color: '#4A4540', textTransform: 'uppercase', marginBottom: '8px', fontFamily: "'Inter', sans-serif" }}>Ops!</h2>
+        <p style={{ color: '#9B9189', fontWeight: 500, fontFamily: "'Inter', sans-serif" }}>Página não encontrada ou desativada.</p>
       </div>
     );
   }
@@ -70,122 +63,209 @@ const StoreNfcPublicPage: React.FC<StoreNfcPublicPageProps> = ({ storeNumber }) 
   const { store, nfcPage } = data;
   const surveyUrl = nfcPage.surveys?.public_token ? `/pesquisa/${nfcPage.surveys.public_token}` : null;
 
+  // ESTILOS
+  const pageStyle: React.CSSProperties = { fontFamily: "'Inter', sans-serif", maxWidth: '390px', margin: '0 auto', background: '#F7F5F2', minHeight: '100vh' };
+  const heroStyle: React.CSSProperties = { background: 'linear-gradient(160deg, #C8102E 0%, #8B0A1F 40%, #1B2A6B 100%)', padding: '48px 28px 40px' };
+  const badgeStyle: React.CSSProperties = { width: '72px', height: '72px', background: 'white', borderRadius: '20px', display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#C8102E', fontSize: '28px', fontWeight: 900, marginBottom: '24px' };
+  const eyebrowStyle: React.CSSProperties = { fontSize: '11px', letterSpacing: '2.5px', color: 'rgba(255,255,255,0.55)', textTransform: 'uppercase', fontWeight: 700, marginBottom: '4px' };
+  const storeNameStyle: React.CSSProperties = { fontSize: '28px', fontWeight: 900, color: 'white', letterSpacing: '-0.5px', lineHeight: 1.1, marginBottom: '8px' };
+  const cityStyle: React.CSSProperties = { fontSize: '14px', color: 'rgba(255,255,255,0.6)', fontWeight: 500 };
+
+  const contentStyle: React.CSSProperties = { padding: '28px 20px 40px', display: 'flex', flexDirection: 'column', gap: '12px' };
+  const sectionLabelStyle: React.CSSProperties = { fontSize: '10px', fontWeight: 700, letterSpacing: '2px', textTransform: 'uppercase', color: '#9B9189', marginTop: '16px', marginBottom: '4px', paddingLeft: '4px' };
+  
+  const actionCardStyle: React.CSSProperties = { background: 'white', borderRadius: '18px', padding: '18px 20px', display: 'flex', alignItems: 'center', gap: '16px', border: '1px solid rgba(0,0,0,0.06)', width: '100%', cursor: 'pointer', textDecoration: 'none', color: 'inherit', outline: 'none' };
+  const iconWrapStyle: React.CSSProperties = { width: '48px', height: '48px', borderRadius: '14px', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 };
+  
+  const cardPixStyle: React.CSSProperties = { ...actionCardStyle, background: 'linear-gradient(135deg, #32BCAD, #1A8F83)', border: 'none', color: 'white' };
+  const cardPesquisaStyle: React.CSSProperties = { ...actionCardStyle, background: 'linear-gradient(135deg, #1B2A6B, #2E47B0)', border: 'none', color: 'white' };
+
+  const cardTitleStyle: React.CSSProperties = { fontSize: '15px', fontWeight: 800, marginBottom: '2px', color: '#1A1815' };
+  const cardDescStyle: React.CSSProperties = { fontSize: '12px', fontWeight: 500, color: '#9B9189' };
+
+  const footerStyle: React.CSSProperties = { padding: '32px 20px', display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '12px', marginTop: '24px' };
+
   return (
-    <div className="min-h-screen bg-slate-50">
-      <div className="max-w-md mx-auto min-h-screen flex flex-col bg-white shadow-xl shadow-slate-200/50">
-        
-        {/* Header Cover */}
-        <div className="relative h-64 flex-shrink-0">
-          <div 
-            className="absolute inset-0 bg-cover bg-center"
-            style={{ 
-              backgroundImage: `url(${nfcPage.cover_image_url || 'https://images.unsplash.com/photo-1441986300917-64674bd600d8?w=800&q=80'})`
-            }}
-          />
-          <div className="absolute inset-0 bg-gradient-to-t from-slate-900 via-slate-900/60 to-slate-900/40" />
-          
-          <div className="absolute inset-0 p-8 flex flex-col items-center justify-center text-center">
-             <img src={BRAND_LOGO} alt="Real Calçados" className="h-12 mb-6 drop-shadow-md z-10" />
-             <h1 className="text-3xl font-black italic uppercase tracking-tighter text-white leading-none z-10">
-               {store.name}
-             </h1>
-             <p className="text-xs font-bold uppercase tracking-widest text-slate-300 mt-2 z-10">
-               {store.city}
-             </p>
-          </div>
-        </div>
+    <div style={pageStyle}>
+      <style>{`
+        @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;700;800;900&display=swap');
+        * { box-sizing: border-box; }
+      `}</style>
 
-        {/* Links Section */}
-        <div className="flex-1 p-6 flex flex-col gap-4 -mt-6 z-20">
-          {nfcPage.instagram && (
-            <a 
-              href={`https://instagram.com/${nfcPage.instagram}`}
-              target="_blank"
-              rel="noopener noreferrer"
-              className="flex items-center gap-4 p-4 bg-gradient-to-r from-purple-600 to-pink-500 text-white rounded-3xl shadow-lg hover:scale-[1.02] active:scale-[0.98] transition-transform"
-            >
-              <div className="w-12 h-12 bg-white/20 rounded-2xl flex items-center justify-center backdrop-blur-sm">
-                <ExternalLink size={24} />
+      {/* Hero */}
+      <div style={heroStyle}>
+        <div style={badgeStyle}>R</div>
+        <div style={eyebrowStyle}>Real Calçados</div>
+        <div style={storeNameStyle}>{store.name}</div>
+        <div style={cityStyle}>{store.city}{store.state ? ` - ${store.state}` : ''}</div>
+      </div>
+
+      {/* Content */}
+      <div style={contentStyle}>
+
+        {/* Redes sociais */}
+        {nfcPage.instagram && (
+          <>
+            <div style={sectionLabelStyle}>Redes sociais</div>
+            <a href={`https://instagram.com/${nfcPage.instagram}`} target="_blank" rel="noopener noreferrer" style={actionCardStyle}>
+              <div style={{ ...iconWrapStyle, background: 'linear-gradient(135deg, #E1306C, #833AB4)' }}>
+                <ExternalLink size={20} color="white" />
               </div>
-              <div>
-                <h3 className="font-black uppercase tracking-widest text-sm leading-none">Instagram</h3>
-                <p className="text-[10px] font-bold text-white/80 uppercase tracking-widest mt-1">Conheça Nossas Novidades</p>
+              <div style={{ flex: 1 }}>
+                <div style={cardTitleStyle}>Instagram</div>
+                <div style={cardDescStyle}>Conheça nossas novidades</div>
               </div>
             </a>
-          )}
+          </>
+        )}
 
-          {surveyUrl && (
-            <a 
-              href={surveyUrl}
-              className="flex items-center gap-4 p-4 bg-blue-600 text-white rounded-3xl shadow-lg shadow-blue-600/30 hover:scale-[1.02] active:scale-[0.98] transition-transform"
-            >
-              <div className="w-12 h-12 bg-white/20 rounded-2xl flex items-center justify-center backdrop-blur-sm">
-                <MessageSquare size={24} />
+        {/* Pagamento Pix */}
+        {nfcPage.pix_key && (
+          <>
+            <div style={sectionLabelStyle}>Pagamento</div>
+            <button onClick={() => setShowPix(!showPix)} style={{ ...cardPixStyle, textAlign: 'left' }}>
+              <div style={{ ...iconWrapStyle, background: 'rgba(255,255,255,0.2)' }}>
+                <QrCode size={20} color="white" />
               </div>
-              <div>
-                <h3 className="font-black uppercase tracking-widest text-sm leading-none">Pesquisa de Satisfação</h3>
-                <p className="text-[10px] font-bold text-white/80 uppercase tracking-widest mt-1">Deixe Sua Opinião</p>
+              <div style={{ flex: 1 }}>
+                <div style={{ ...cardTitleStyle, color: 'white' }}>Pagar com Pix</div>
+                <div style={{ ...cardDescStyle, color: 'rgba(255,255,255,0.8)' }}>Rápido e seguro</div>
               </div>
-            </a>
-          )}
+            </button>
 
-          {nfcPage.whatsapp_store && (
-            <a 
-              href={`https://wa.me/55${nfcPage.whatsapp_store}`}
-              target="_blank"
-              rel="noopener noreferrer"
-              className="flex items-center gap-4 p-4 bg-[#25D366] text-white rounded-3xl shadow-lg shadow-[#25D366]/30 hover:scale-[1.02] active:scale-[0.98] transition-transform"
-            >
-              <div className="w-12 h-12 bg-white/20 rounded-2xl flex items-center justify-center backdrop-blur-sm">
-                <MessageCircle size={24} />
+            {showPix && (
+              <div style={{
+                background: 'white',
+                borderRadius: '18px',
+                padding: '24px 20px',
+                border: '1px solid rgba(0,0,0,0.06)',
+                display: 'flex',
+                flexDirection: 'column',
+                alignItems: 'center',
+                gap: '16px'
+              }}>
+                {nfcPage.pix_qrcode_url && (
+                  <img
+                    src={nfcPage.pix_qrcode_url}
+                    alt="QR Code Pix"
+                    style={{ width: '200px', height: '200px', borderRadius: '12px' }}
+                  />
+                )}
+                <div style={{
+                  background: '#F7F5F2',
+                  borderRadius: '12px',
+                  padding: '12px 16px',
+                  width: '100%',
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'space-between',
+                  gap: '8px'
+                }}>
+                  <span style={{
+                    fontSize: '12px',
+                    color: '#4A4540',
+                    fontWeight: 500,
+                    overflow: 'hidden',
+                    textOverflow: 'ellipsis',
+                    whiteSpace: 'nowrap',
+                    flex: 1
+                  }}>
+                    {nfcPage.pix_key}
+                  </span>
+                  <button
+                    onClick={() => {
+                      navigator.clipboard.writeText(nfcPage.pix_key);
+                      setCopied(true);
+                      setTimeout(() => setCopied(false), 2000);
+                    }}
+                    style={{
+                      background: copied ? '#32BCAD' : '#1B2A6B',
+                      color: 'white',
+                      border: 'none',
+                      borderRadius: '10px',
+                      padding: '8px 14px',
+                      fontSize: '12px',
+                      fontWeight: 700,
+                      cursor: 'pointer',
+                      flexShrink: 0,
+                      whiteSpace: 'nowrap'
+                    }}
+                  >
+                    {copied ? 'Copiado ✓' : 'Copiar chave'}
+                  </button>
+                </div>
+                <p style={{ fontSize: '11px', color: '#9B9189', textAlign: 'center', fontWeight: 500, margin: 0 }}>
+                  Abra seu banco, escaneie o QR Code ou cole a chave Pix
+                </p>
               </div>
-              <div>
-                <h3 className="font-black uppercase tracking-widest text-sm leading-none">WhatsApp da Loja</h3>
-                <p className="text-[10px] font-bold text-white/80 uppercase tracking-widest mt-1">Compre Sem Sair de Casa</p>
-              </div>
-            </a>
-          )}
+            )}
+          </>
+        )}
 
-          {nfcPage.whatsapp_manager && (
-            <a 
-              href={`https://wa.me/55${nfcPage.whatsapp_manager}`}
-              target="_blank"
-              rel="noopener noreferrer"
-              className="flex items-center gap-4 p-4 bg-emerald-500 text-white rounded-3xl hover:scale-[1.02] active:scale-[0.98] transition-transform"
-            >
-              <div className="w-12 h-12 bg-white/20 rounded-2xl flex items-center justify-center backdrop-blur-sm">
-                <PhoneCall size={24} />
+        {/* Sua experiência */}
+        {surveyUrl && (
+          <>
+            <div style={sectionLabelStyle}>Sua experiência</div>
+            <button onClick={() => { window.location.href = surveyUrl; }} style={{ ...cardPesquisaStyle, textAlign: 'left' }}>
+              <div style={{ ...iconWrapStyle, background: 'rgba(255,255,255,0.2)' }}>
+                <MessageSquare size={20} color="white" />
               </div>
-              <div>
-                <h3 className="font-black uppercase tracking-widest text-sm leading-none">Falar com o Gerente</h3>
-                <p className="text-[10px] font-bold text-white/80 uppercase tracking-widest mt-1">Sugestões e Parcerias</p>
+              <div style={{ flex: 1 }}>
+                <div style={{ ...cardTitleStyle, color: 'white' }}>Sua Experiência Real</div>
+                <div style={{ ...cardDescStyle, color: 'rgba(255,255,255,0.8)' }}>Deixe sua opinião sobre a loja</div>
               </div>
-            </a>
-          )}
+            </button>
+          </>
+        )}
 
-          {nfcPage.whatsapp_central && (
-            <a 
-              href={`https://wa.me/55${nfcPage.whatsapp_central}`}
-              target="_blank"
-              rel="noopener noreferrer"
-              className="flex items-center gap-4 p-4 bg-teal-700 text-white rounded-3xl hover:scale-[1.02] active:scale-[0.98] transition-transform mb-4"
-            >
-              <div className="w-12 h-12 bg-white/20 rounded-2xl flex items-center justify-center backdrop-blur-sm">
-                <MessageCircle size={24} />
-              </div>
-              <div>
-                <h3 className="font-black uppercase tracking-widest text-sm leading-none">WhatsApp Central</h3>
-                <p className="text-[10px] font-bold text-white/80 uppercase tracking-widest mt-1">Dúvidas Frequentes</p>
-              </div>
-            </a>
-          )}
-        </div>
+        {/* Fale com a gente */}
+        {(nfcPage.whatsapp_store || nfcPage.whatsapp_manager || nfcPage.whatsapp_central) && (
+          <div style={sectionLabelStyle}>Fale com a gente</div>
+        )}
+
+        {nfcPage.whatsapp_store && (
+          <a href={`https://wa.me/55${nfcPage.whatsapp_store}`} target="_blank" rel="noopener noreferrer" style={actionCardStyle}>
+            <div style={{ ...iconWrapStyle, background: '#DFF6E9' }}>
+              <MessageCircle size={20} color="#25D366" />
+            </div>
+            <div style={{ flex: 1 }}>
+              <div style={cardTitleStyle}>WhatsApp da Loja</div>
+              <div style={cardDescStyle}>Compre sem sair de casa</div>
+            </div>
+          </a>
+        )}
+
+        {nfcPage.whatsapp_manager && (
+          <a href={`https://wa.me/55${nfcPage.whatsapp_manager}`} target="_blank" rel="noopener noreferrer" style={actionCardStyle}>
+            <div style={{ ...iconWrapStyle, background: '#E6F4F1' }}>
+              <PhoneCall size={20} color="#0D9488" />
+            </div>
+            <div style={{ flex: 1 }}>
+              <div style={cardTitleStyle}>Falar com o Gerente</div>
+              <div style={cardDescStyle}>Sugestões e Parcerias</div>
+            </div>
+          </a>
+        )}
+
+        {nfcPage.whatsapp_central && (
+          <a href={`https://wa.me/55${nfcPage.whatsapp_central}`} target="_blank" rel="noopener noreferrer" style={actionCardStyle}>
+            <div style={{ ...iconWrapStyle, background: '#EAE6DF' }}>
+              <MessageCircle size={20} color="#4A4540" />
+            </div>
+            <div style={{ flex: 1 }}>
+              <div style={cardTitleStyle}>WhatsApp Central</div>
+              <div style={cardDescStyle}>Dúvidas Frequentes</div>
+            </div>
+          </a>
+        )}
 
         {/* Footer */}
-        <div className="p-6 text-center border-t border-slate-100 bg-slate-50 mt-auto">
-          <p className="text-[10px] font-black uppercase tracking-widest text-slate-400">
-            Real Calçados &copy; {new Date().getFullYear()}
-          </p>
+        <div style={footerStyle}>
+          <div style={{ width: '28px', height: '28px', background: '#C8102E', borderRadius: '8px', display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'white', fontWeight: 900, fontSize: '14px' }}>
+            R
+          </div>
+          <div style={{ fontSize: '12px', fontWeight: 800, color: '#1A1815' }}>Real Calçados</div>
+          <div style={{ fontSize: '10px', fontWeight: 500, color: '#9B9189' }}>© 2026 · Todos os direitos reservados</div>
         </div>
 
       </div>
