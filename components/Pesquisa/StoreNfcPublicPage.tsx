@@ -97,8 +97,9 @@ const StoreNfcPublicPage: React.FC<StoreNfcPublicPageProps> = ({ storeNumber }) 
       {/* Hero */}
       <div style={{ background: 'linear-gradient(160deg, #C8102E 0%, #8B0A1F 40%, #1B2A6B 100%)', padding: '48px 28px 40px', position: 'relative', overflow: 'hidden' }}>
         <img
-          src={BRAND_LOGO}
+          src="https://rwwomakjhmglgoowbmsl.supabase.co/storage/v1/object/public/Fotos/Logo.Real.png"
           alt="Real Calçados"
+          onError={(e) => { (e.target as HTMLImageElement).style.display = 'none'; }}
           style={{ width: '110px', height: 'auto', objectFit: 'contain', filter: 'brightness(0) invert(1)', marginBottom: '16px', display: 'block' }}
         />
         <p style={{ fontSize: '18px', fontWeight: 900, color: 'white', margin: '0 0 4px', letterSpacing: '-0.3px' }}>Real Calçados</p>
@@ -109,7 +110,7 @@ const StoreNfcPublicPage: React.FC<StoreNfcPublicPageProps> = ({ storeNumber }) 
       <div style={contentStyle}>
 
         {/* Redes sociais */}
-        {nfcPage.instagram && (
+        {nfcPage.show_instagram && nfcPage.instagram && (
           <>
             <div style={sectionLabelStyle}>Redes sociais</div>
             <a href={`https://instagram.com/${nfcPage.instagram}`} target="_blank" rel="noopener noreferrer" style={actionCardStyle}>
@@ -125,7 +126,7 @@ const StoreNfcPublicPage: React.FC<StoreNfcPublicPageProps> = ({ storeNumber }) 
         )}
 
         {/* Pagamento Pix */}
-        {nfcPage.pix_key && (
+        {nfcPage.show_pix && nfcPage.pix_key && (
           <>
             <div style={sectionLabelStyle}>Pagamento</div>
             <button onClick={() => setShowPix(!showPix)} style={{ ...cardPixStyle, textAlign: 'left' }}>
@@ -208,7 +209,7 @@ const StoreNfcPublicPage: React.FC<StoreNfcPublicPageProps> = ({ storeNumber }) 
         )}
 
         {/* Sua experiência */}
-        {surveyUrl && (
+        {nfcPage.show_survey && surveyUrl && (
           <>
             <div style={sectionLabelStyle}>Sua experiência</div>
             <button onClick={() => { window.location.href = surveyUrl; }} style={{ ...cardPesquisaStyle, textAlign: 'left' }}>
@@ -224,44 +225,48 @@ const StoreNfcPublicPage: React.FC<StoreNfcPublicPageProps> = ({ storeNumber }) 
         )}
 
         {/* Fale com a gente */}
-        {(nfcPage.whatsapp_store || nfcPage.whatsapp_manager || nfcPage.whatsapp_central) && (
-          <div style={sectionLabelStyle}>Fale com a gente</div>
-        )}
+        {(nfcPage.show_whatsapp_store || nfcPage.show_whatsapp_manager || nfcPage.show_whatsapp_central) && (
+          <>
+            {(nfcPage.whatsapp_store || nfcPage.whatsapp_manager || nfcPage.whatsapp_central) && (
+              <div style={sectionLabelStyle}>Fale com a gente</div>
+            )}
 
-        {nfcPage.whatsapp_store && (
-          <a href={`https://wa.me/55${nfcPage.whatsapp_store}`} target="_blank" rel="noopener noreferrer" style={actionCardStyle}>
-            <div style={{ ...iconWrapStyle, background: '#DFF6E9' }}>
-              <MessageCircle size={20} color="#25D366" />
-            </div>
-            <div style={{ flex: 1 }}>
-              <div style={cardTitleStyle}>WhatsApp da Loja</div>
-              <div style={cardDescStyle}>Compre sem sair de casa</div>
-            </div>
-          </a>
-        )}
+            {nfcPage.show_whatsapp_store && nfcPage.whatsapp_store && (
+              <a href={`https://wa.me/55${nfcPage.whatsapp_store}`} target="_blank" rel="noopener noreferrer" style={actionCardStyle}>
+                <div style={{ ...iconWrapStyle, background: '#DFF6E9' }}>
+                  <MessageCircle size={20} color="#25D366" />
+                </div>
+                <div style={{ flex: 1 }}>
+                  <div style={cardTitleStyle}>WhatsApp da Loja</div>
+                  <div style={cardDescStyle}>Compre sem sair de casa</div>
+                </div>
+              </a>
+            )}
 
-        {nfcPage.whatsapp_manager && (
-          <a href={`https://wa.me/55${nfcPage.whatsapp_manager}`} target="_blank" rel="noopener noreferrer" style={actionCardStyle}>
-            <div style={{ ...iconWrapStyle, background: '#E6F4F1' }}>
-              <PhoneCall size={20} color="#0D9488" />
-            </div>
-            <div style={{ flex: 1 }}>
-              <div style={cardTitleStyle}>Falar com o Gerente</div>
-              <div style={cardDescStyle}>Sugestões e Parcerias</div>
-            </div>
-          </a>
-        )}
+            {nfcPage.show_whatsapp_manager && nfcPage.whatsapp_manager && (
+              <a href={`https://wa.me/55${nfcPage.whatsapp_manager}`} target="_blank" rel="noopener noreferrer" style={actionCardStyle}>
+                <div style={{ ...iconWrapStyle, background: '#E6F4F1' }}>
+                  <PhoneCall size={20} color="#0D9488" />
+                </div>
+                <div style={{ flex: 1 }}>
+                  <div style={cardTitleStyle}>Falar com o Gerente</div>
+                  <div style={cardDescStyle}>Sugestões e Parcerias</div>
+                </div>
+              </a>
+            )}
 
-        {nfcPage.whatsapp_central && (
-          <a href={`https://wa.me/55${nfcPage.whatsapp_central}`} target="_blank" rel="noopener noreferrer" style={actionCardStyle}>
-            <div style={{ ...iconWrapStyle, background: '#EAE6DF' }}>
-              <MessageCircle size={20} color="#4A4540" />
-            </div>
-            <div style={{ flex: 1 }}>
-              <div style={cardTitleStyle}>WhatsApp Central</div>
-              <div style={cardDescStyle}>Dúvidas Frequentes</div>
-            </div>
-          </a>
+            {nfcPage.show_whatsapp_central && nfcPage.whatsapp_central && (
+              <a href={`https://wa.me/55${nfcPage.whatsapp_central}`} target="_blank" rel="noopener noreferrer" style={actionCardStyle}>
+                <div style={{ ...iconWrapStyle, background: '#EAE6DF' }}>
+                  <MessageCircle size={20} color="#4A4540" />
+                </div>
+                <div style={{ flex: 1 }}>
+                  <div style={cardTitleStyle}>WhatsApp Central</div>
+                  <div style={cardDescStyle}>Dúvidas Frequentes</div>
+                </div>
+              </a>
+            )}
+          </>
         )}
 
         {/* Footer */}
