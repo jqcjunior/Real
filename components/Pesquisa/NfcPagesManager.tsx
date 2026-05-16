@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { supabase } from '../../services/supabaseClient';
+import { ensureSession } from '../../services/authService';
 import { Store, Survey } from '../../types';
 import { ArrowLeft, Edit3, Plus, Smartphone, Save, CheckCircle2, XCircle } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
@@ -32,6 +33,7 @@ const NfcPagesManager: React.FC<NfcPagesManagerProps> = ({ stores, onBack }) => 
 
   const fetchData = async () => {
     setIsLoading(true);
+    await ensureSession();
     try {
       const { data: pagesData, error: pagesError } = await supabase
         .from('store_nfc_pages')
@@ -88,6 +90,7 @@ const NfcPagesManager: React.FC<NfcPagesManagerProps> = ({ stores, onBack }) => 
     }
     
     try {
+      await ensureSession();
       const payload = {
         store_id: storeId,
         survey_id: surveyId,

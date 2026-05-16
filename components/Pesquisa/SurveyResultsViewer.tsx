@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { supabase } from '../../services/supabaseClient';
+import { ensureSession } from '../../services/authService';
 import { 
   BarChart3, 
   Users, 
@@ -58,6 +59,7 @@ const SurveyResultsViewer: React.FC<SurveyResultsViewerProps> = ({ survey, curre
   const fetchData = async () => {
     setIsLoading(true);
     try {
+      await ensureSession();
       // 1. Buscar perguntas
       const { data: qData, error: qError } = await supabase
         .from('survey_questions')
