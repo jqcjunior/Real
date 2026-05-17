@@ -701,11 +701,10 @@ export default function BuyOrderParams({ user }: { user: any }) {
 
   // Função helper para converter índice visual (0-11) em ano/mês real
   const getFiscalYearMonth = (visualIndex: number): { year: number; month: number } => {
-    const realMonth = ((currentMonth - 1 + visualIndex) % 12) + 1;
-    const yearOffset = Math.floor((currentMonth - 1 + visualIndex) / 12);
+    const totalMonths = (currentMonth - 1) + visualIndex;
     return {
-      year: selectedYear + yearOffset,
-      month: realMonth
+      year: currentYear + Math.floor(totalMonths / 12),
+      month: (totalMonths % 12) + 1
     };
   };
 
@@ -779,8 +778,8 @@ export default function BuyOrderParams({ user }: { user: any }) {
       const { data: quotaData, error: quotaError } = await supabase
         .from("v_stores_quota_config")
         .select("*")
-        .eq("year", selectedYear)
-        .eq("month", currentMonth);
+        .eq("year", new Date().getFullYear())
+        .eq("month", new Date().getMonth() + 1);
 
       if (quotaError) {
         console.warn("Erro ao buscar cotas (ignorando):", quotaError);
@@ -837,12 +836,17 @@ export default function BuyOrderParams({ user }: { user: any }) {
 
     // Se tem parâmetros customizados ou não, carregamos as cotas calculadas do banco
     try {
+      const hoje = new Date();
+      const anoAtual = hoje.getFullYear();
+      const mesAtual = hoje.getMonth() + 1;
+
       // Buscar cotas da VIEW correta
       const { data: cotasView, error: cotasError } = await supabase
         .from('v_cotas_mes_correto')
         .select('*')
         .eq('store_number', store.store_number)
-        .eq('year', selectedYear)
+        .gte('year', anoAtual)
+        .order('year')
         .order('month');
 
       if (cotasError) {
@@ -885,12 +889,12 @@ export default function BuyOrderParams({ user }: { user: any }) {
 
       if (cotasView && cotasView.length > 0) {
         const newMonthly = Array.from({ length: 12 }).map((_, i) => {
-          const m = i + 1;
-          const q = cotasView.find((x: any) => x.month === m);
+          const fiscal = getFiscalYearMonth(i);
+          const q = cotasView.find((x: any) => x.month === fiscal.month && x.year === fiscal.year);
           
           if (!q) {
             return {
-              month: m,
+              month: fiscal.month,
               cotaTotal: 0,
               despesas: 0,
               cota_gerente_valor: 0,
@@ -901,7 +905,7 @@ export default function BuyOrderParams({ user }: { user: any }) {
           }
           
           return {
-            month: m,
+            month: fiscal.month,
             cotaTotal: Number(q.cota_bruta || 0),
             despesas: Number(q.despesas_comprometidas || 0),
             
