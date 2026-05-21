@@ -220,37 +220,51 @@ const App: React.FC = () => {
         setIsLoading(false);
     }, []);
 
-    // ─── SEGURANÇA: Auto-logout após 1 hora + aviso 5 min antes ──────────────
+    // ─── SEGURANÇA: Auto-logout por INATIVIDADE (não por tempo fixo) ──────────
     useEffect(() => {
         if (!user) {
             setSessionWarning(false);
             return;
         }
 
-        const HORA_EM_MS = 60 * 60 * 1000;        // 60 minutos
-        const AVISO_EM_MS = 55 * 60 * 1000;        // 55 minutos (5 min antes)
+        const INATIVIDADE_LOGOUT_MS = 60 * 60 * 1000;  // 60 min sem atividade
+        const INATIVIDADE_AVISO_MS  = 55 * 60 * 1000;  // aviso aos 55 min
 
-        // Aviso aos 55 minutos
-        const timerAviso = setTimeout(() => {
-            setSessionWarning(true);
-        }, AVISO_EM_MS);
+        let timerAviso: ReturnType<typeof setTimeout>;
+        let timerLogout: ReturnType<typeof setTimeout>;
 
-        // Logout automático ao completar 1 hora
-        const timerLogout = setTimeout(async () => {
+        const resetTimers = () => {
+            clearTimeout(timerAviso);
+            clearTimeout(timerLogout);
             setSessionWarning(false);
-            if (user) localStorage.removeItem(`realcalcados_lastView_${user.id}`);
-            await apiService.logout();
-            setUser(null);
-            setCurrentView('welcome');
-            window.location.reload();
-        }, HORA_EM_MS);
+
+            timerAviso = setTimeout(() => {
+                setSessionWarning(true);
+            }, INATIVIDADE_AVISO_MS);
+
+            timerLogout = setTimeout(async () => {
+                setSessionWarning(false);
+                if (user) localStorage.removeItem(`realcalcados_lastView_${user.id}`);
+                await apiService.logout();
+                setUser(null);
+                setCurrentView('welcome');
+                window.location.reload();
+            }, INATIVIDADE_LOGOUT_MS);
+        };
+
+        // Eventos que reiniciam o contador de inatividade
+        const eventos = ['mousemove', 'mousedown', 'keydown', 'touchstart', 'scroll', 'click'];
+        eventos.forEach(e => window.addEventListener(e, resetTimers, { passive: true }));
+
+        resetTimers(); // inicia os timers pela primeira vez
 
         return () => {
             clearTimeout(timerAviso);
             clearTimeout(timerLogout);
+            eventos.forEach(e => window.removeEventListener(e, resetTimers));
         };
-    }, [user]); // reinicia o contador sempre que o usuário muda (login/logout)
-    // ─────────────────────────────────────────────────────────────────────────
+    }, [user]);
+    // ──────────────────────────────────────────────────────────────────────────
 
     useEffect(() => {
         if (user && currentView && currentView !== 'welcome') {

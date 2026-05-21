@@ -154,16 +154,17 @@ export default function BuyOrderQuotaView({ user }: { user: User }) {
         return;
       }
       
-      // Buscar dados da VIEW correta
+      // Busca todos os meses cadastrados a partir do mês atual (sem limite de ano)
       const { data, error } = await supabase
         .from('v_cotas_mes_correto')
         .select('*')
         .eq('store_number', selectedStore)
-        .eq('year', ptYear)
-        .gte('month', ptMonth)
+        .or(
+          `and(year.eq.${ptYear},month.gte.${ptMonth}),` +
+          `year.gt.${ptYear}`
+        )
         .order('year', { ascending: true })
-        .order('month', { ascending: true })
-        .limit(12);
+        .order('month', { ascending: true });
 
       if (error) {
         console.error('VIEW ERROR:', error);
