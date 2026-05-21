@@ -775,10 +775,10 @@ export default function BuyOrderParams({ user }: { user: any }) {
 
       // Try to get quota info for the selected year
       const { data: quotaData, error: quotaError } = await supabase
-        .from("v_stores_quota_config")
-        .select("*")
+        .from("buyorder_parameters_store")
+        .select("store_number, cota_valor")
         .eq("year", selectedYear)
-        .eq("month", currentMonth);
+        .gt("cota_valor", 0);
 
       if (quotaError) {
         console.warn("Erro ao buscar cotas (ignorando):", quotaError);
@@ -786,22 +786,23 @@ export default function BuyOrderParams({ user }: { user: any }) {
 
       // Map everything
       const mappedStores: Store[] = (storesData || []).map((store) => {
-        const quotaInfo = (quotaData || []).find(
-          (q) => String(q.store_number) === String(store.number),
-        );
+        // Conta quantos meses configurados essa loja tem no ano selecionado
+        const mesesConfigurados = (quotaData || []).filter(
+          (q) => String(q.store_number) === String(store.number)
+        ).length;
+
         return {
           store_number: store.number,
           store_name: store.name,
           city: store.city,
           year: selectedYear,
           month: 1,
-          tem_parametros_customizados:
-            quotaInfo?.tem_parametros_customizados || false,
-          cota_total: quotaInfo?.cota_total || 0,
-          despesas_comprometidas: quotaInfo?.despesas_comprometidas || 0,
-          cota_compra_disponivel: quotaInfo?.cota_compra_disponivel || 0,
-          cota_gerente_valor: quotaInfo?.cota_gerente_valor || 0,
-          cota_comprador_valor: quotaInfo?.cota_comprador_valor || 0,
+          tem_parametros_customizados: mesesConfigurados >= 12,
+          cota_total: 0,
+          despesas_comprometidas: 0,
+          cota_compra_disponivel: 0,
+          cota_gerente_valor: 0,
+          cota_comprador_valor: 0,
         };
       });
 
