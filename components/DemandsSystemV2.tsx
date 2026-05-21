@@ -78,7 +78,7 @@ const DemandsSystemV2: React.FC<DemandsSystemV2Props> = ({ user, stores, onUnrea
         const setupUserSession = async () => {
             try {
                 await supabase.rpc('set_user_session', { 
-                    user_id: user.id 
+                    p_user_id: user.id 
                 });
                 console.log('✅ Sessão configurada:', user.id);
             } catch (error) {

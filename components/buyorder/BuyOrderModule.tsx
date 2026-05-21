@@ -318,7 +318,7 @@ export default function BuyOrderModule({ user }: { user?: User }) {
   useEffect(() => {
     async function setupSession() {
       if (user?.id) {
-        await supabase.rpc("set_user_session", { user_id: user.id });
+        await supabase.rpc("set_user_session", { p_user_id: user.id });
       }
     }
     setupSession();
@@ -545,7 +545,7 @@ export default function BuyOrderModule({ user }: { user?: User }) {
       // ✅ GARANTIR SESSÃO NO POSTGRES PARA RLS
       const userId = user?.id || (await getCurrentAppUserId());
       if (userId && userId !== "00000000-0000-0000-0000-000000000000") {
-        await supabase.rpc("set_user_session", { user_id: userId });
+        await supabase.rpc("set_user_session", { p_user_id: userId });
       }
 
       // 0. Pré-calcular totais e vencimentos para validação
@@ -1118,7 +1118,7 @@ export default function BuyOrderModule({ user }: { user?: User }) {
         return;
       }
 
-      await supabase.rpc("set_user_session", { user_id: userId });
+      await supabase.rpc("set_user_session", { p_user_id: userId });
       
       const { data, error } = await supabase.rpc('delete_buy_order', {
         p_order_id: orderId

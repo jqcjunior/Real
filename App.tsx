@@ -616,16 +616,88 @@ const App: React.FC = () => {
 
             // 1. CONSTRUIR QUERIES PARA CARREGAMENTO
             
-            // A. ice_cream_sales
-            let salesHeadersQuery = supabase.from('ice_cream_sales').select('*');
-            if (isSorvete || isGerente) {
-                salesHeadersQuery = salesHeadersQuery.eq('store_id', userStoreId);
-            }
-            if (dateFilter) {
-                salesHeadersQuery = salesHeadersQuery.gte('created_at', dateFilter);
-            } else if (adminStart) {
-                salesHeadersQuery = salesHeadersQuery.gte('created_at', adminStart);
-            }
+            // --- INÍCIO BLOCO SEQUENCIAL SORVETE ---
+            const ICE_CREAM_STORE_IDS = [
+              '0eef2f53-4732-4824-84a5-2092234efaef', // Loja 26 - Cruz das Almas
+              'cbeeb1ea-911f-4d3a-87a9-3c38aafa0673'  // Loja 109 - Conceição do Jacuípe
+            ];
+
+            const tmpStart = new Date();
+            tmpStart.setDate(1);
+            tmpStart.setHours(0, 0, 0, 0);
+            const sqnStartOfMonth = tmpStart.toISOString();
+
+            const tmpEnd = new Date(tmpStart);
+            tmpEnd.setMonth(tmpEnd.getMonth() + 1);
+            const sqnEndOfMonth = tmpEnd.toISOString();
+
+            const p_user_id = user?.id || '';
+
+            // 1. ice_cream_sales
+            if(p_user_id) await supabase.rpc('set_user_session', { p_user_id });
+            const { data: salesData } = await supabase
+              .from('ice_cream_sales')
+              .select('*')
+              .in('store_id', ICE_CREAM_STORE_IDS)
+              .gte('created_at', sqnStartOfMonth)
+              .lt('created_at', sqnEndOfMonth)
+              .order('created_at', { ascending: false });
+
+            // 2. ice_cream_daily_sales
+            if(p_user_id) await supabase.rpc('set_user_session', { p_user_id });
+            const { data: rawDailySalesData } = await supabase
+              .from('ice_cream_daily_sales')
+              .select('*')
+              .in('store_id', ICE_CREAM_STORE_IDS)
+              .gte('created_at', sqnStartOfMonth)
+              .lt('created_at', sqnEndOfMonth);
+            const dailySalesData = rawDailySalesData || [];
+
+            // 3. ice_cream_daily_sales_payments
+            if(p_user_id) await supabase.rpc('set_user_session', { p_user_id });
+            const { data: rawPaymentsData } = await supabase
+              .from('ice_cream_daily_sales_payments')
+              .select('*')
+              .in('store_id', ICE_CREAM_STORE_IDS)
+              .gte('created_at', sqnStartOfMonth)
+              .lt('created_at', sqnEndOfMonth);
+            const paymentsData = rawPaymentsData || [];
+
+            // 4. ice_cream_sangria
+            if(p_user_id) await supabase.rpc('set_user_session', { p_user_id });
+            const { data: sangriaData } = await supabase
+              .from('ice_cream_sangria')
+              .select('*')
+              .in('store_id', ICE_CREAM_STORE_IDS);
+
+            // 5. ice_cream_stock
+            if(p_user_id) await supabase.rpc('set_user_session', { p_user_id });
+            const { data: icst } = await supabase
+              .from('ice_cream_stock')
+              .select('*')
+              .in('store_id', ICE_CREAM_STORE_IDS);
+
+            // 6. ice_cream_stock_movements
+            if(p_user_id) await supabase.rpc('set_user_session', { p_user_id });
+            const { data: movementsData } = await supabase
+              .from('ice_cream_stock_movements')
+              .select('*')
+              .in('store_id', ICE_CREAM_STORE_IDS);
+
+            // 7. ice_cream_wastage
+            if(p_user_id) await supabase.rpc('set_user_session', { p_user_id });
+            const { data: wst } = await supabase
+              .from('ice_cream_wastage')
+              .select('*')
+              .in('store_id', ICE_CREAM_STORE_IDS);
+
+            // 8. ice_cream_future_debts
+            if(p_user_id) await supabase.rpc('set_user_session', { p_user_id });
+            const { data: fd } = await supabase
+              .from('ice_cream_future_debts')
+              .select('*')
+              .in('store_id', ICE_CREAM_STORE_IDS);
+            // --- FIM BLOCO SEQUENCIAL SORVETE ---
 
             // B. financial_card_sales
             let cardSalesQuery = supabase.from('financial_card_sales').select('*');
@@ -649,47 +721,9 @@ const App: React.FC = () => {
                 pixSalesQuery = pixSalesQuery.gte('created_at', dateFilter);
             }
 
-            // D. ice_cream_sangria
-            let sangriaQuery = supabase.from('ice_cream_sangria').select('*');
-            if (isSorvete || isGerente) {
-                sangriaQuery = sangriaQuery.eq('store_id', userStoreId);
-            }
-            if (dateFilter) {
-                sangriaQuery = sangriaQuery.gte('created_at', dateFilter);
-            } else if (adminStart) {
-                sangriaQuery = sangriaQuery.gte('created_at', adminStart);
-            }
-
-            // E. ice_cream_stock_movements
-            let movementsQuery = supabase.from('ice_cream_stock_movements').select('*');
-            if (isSorvete || isGerente) {
-                movementsQuery = movementsQuery.eq('store_id', userStoreId);
-            }
-            if (isSorvete && dateFilter) {
-                movementsQuery = movementsQuery.gte('created_at', dateFilter);
-            } else if (isGerente && cancelStart) {
-                movementsQuery = movementsQuery.gte('created_at', cancelStart);
-            } else if (adminStart) {
-                movementsQuery = movementsQuery.gte('created_at', adminStart);
-            }
-
-            // F. ice_cream_wastage
-            let wastageQuery = supabase.from('ice_cream_wastage').select('*');
-            if (isSorvete || isGerente) {
-                wastageQuery = wastageQuery.eq('store_id', userStoreId);
-            }
-            if (isSorvete && dateFilter) {
-                wastageQuery = wastageQuery.gte('created_at', dateFilter);
-            } else if (isGerente && cancelStart) {
-                wastageQuery = wastageQuery.gte('created_at', cancelStart);
-            } else if (adminStart) {
-                wastageQuery = wastageQuery.gte('created_at', adminStart);
-            }
-
             // Executar primeira leva em Promise.all
             const [
                 {data: ici}, 
-                {data: icst}, 
                 {data: icp}, 
                 {data: r}, 
                 {data: ce}, 
@@ -699,17 +733,11 @@ const App: React.FC = () => {
                 {data: lg},
                 {data: cds}, 
                 {data: pxs}, 
-                {data: salesData}, 
                 {data: sangCat}, 
-                {data: sangriaData}, 
-                {data: movementsData}, 
                 {data: part}, 
-                {data: ausers},
-                {data: fd}, 
-                {data: wst}
+                {data: ausers}
             ] = await Promise.all([
                 supabase.from('ice_cream_items').select('*'),
-                supabase.from('ice_cream_stock').select('*'),
                 supabase.from('ice_cream_promissory_notes').select('*'),
                 supabase.from('financial_receipts').select('*').order('created_at', { ascending: true }),
                 supabase.from('cash_errors').select('*').order('created_at', { ascending: false }),
@@ -719,41 +747,12 @@ const App: React.FC = () => {
                 supabase.from('system_logs').select('*').order('created_at', { ascending: false }).limit(200),
                 cardSalesQuery.order('created_at', { ascending: false }),
                 pixSalesQuery.order('created_at', { ascending: false }),
-                salesHeadersQuery.order('created_at', { ascending: false }),
                 supabase.from('ice_cream_sangria_categoria').select('*'),
-                sangriaQuery.order('created_at', { ascending: false }),
-                movementsQuery.order('created_at', { ascending: false }),
                 supabase.from('store_profit_distribution').select('*'),
-                supabase.from('admin_users').select('*'),
-                supabase.from('ice_cream_future_debts').select('*').order('due_date', { ascending: true }),
-                wastageQuery.order('created_at', { ascending: false })
+                supabase.from('admin_users').select('*')
             ]);
 
-            // 2. BUSCAR DADOS DEPENDENTES DO MÓDULO SORVETE (ice_cream_daily_sales e payments)
-            const saleIds = salesData?.map(s => s.id) || [];
-            let dailySalesData: any[] = [];
-            let paymentsData: any[] = [];
-
-            if (saleIds.length > 0) {
-                const [dailyRes, paymentsRes] = await Promise.all([
-                    supabase.from('ice_cream_daily_sales').select('*').in('sale_id', saleIds),
-                    supabase.from('ice_cream_daily_sales_payments').select('*').in('sale_id', saleIds)
-                ]);
-
-                if (dailyRes.error) {
-                    console.error('❌ Erro ao carregar ice_cream_daily_sales:', dailyRes.error);
-                } else {
-                    dailySalesData = dailyRes.data || [];
-                    console.log('✅ ice_cream_daily_sales carregados:', dailySalesData.length);
-                }
-
-                if (paymentsRes.error) {
-                    console.error('❌ Erro ao carregar payments:', paymentsRes.error);
-                } else {
-                    paymentsData = paymentsRes.data || [];
-                    console.log('✅ payments carregados:', paymentsData.length);
-                }
-            }
+            // * daily_sales e payments carregados sequencialmente acima
 
             // 3. MAPEAR DADOS PARA CAMELCASE (ice_cream_daily_sales → sales prop)
             const mappedSales = dailySalesData.map(item => ({
@@ -1441,7 +1440,7 @@ const App: React.FC = () => {
                                     last_import_by: user?.name
                                 };
                             });
-                            const { error } = await supabase.from('monthly_performance_actual').upsert(upsertData, { onConflict: 'store_id, month' });
+                            const { error } = await supabase.from('monthly_performance_actual').upsert(upsertData, { onConflict: 'store_id,month', ignoreDuplicates: false });
                             if (error) {
                                 console.error("Erro ao salvar monthly_performance_actual:", error);
                                 alert("Erro ao salvar dados no banco: " + error.message);

@@ -36,18 +36,21 @@ class ApiService {
 
       console.log('✅ Sessão setada com sucesso para user_id:', userId);
 
-      return {
-        user: {
-          id: userId,
-          user_id: userId,
-          name: userData.name,
-          email: userData.email,
-          role: userData.role_level || userData.role,
-          role_level: userData.role_level || userData.role,
-          storeId: userData.store_id || userData.storeId,
-          store_id: userData.store_id || userData.storeId
-        }
+      // Persistir no localStorage para auto-login
+      const mappedUser = {
+        id: userId,
+        user_id: userId,
+        name: userData.name,
+        email: userData.email,
+        role: (userData.role_level || userData.role || 'CASHIER').toUpperCase(),
+        role_level: (userData.role_level || userData.role || 'CASHIER').toUpperCase(),
+        storeId: userData.store_id || userData.storeId,
+        store_id: userData.store_id || userData.storeId
       };
+      localStorage.setItem('realcalcados_user', JSON.stringify(mappedUser));
+      localStorage.setItem('auth_token', 'session_' + userId);
+
+      return { user: mappedUser };
     } catch (error: any) {
       console.error('❌ Erro no login:', error);
       throw error;
