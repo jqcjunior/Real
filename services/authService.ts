@@ -26,7 +26,7 @@ export async function loginUser(email: string, password: string) {
   // 2. SETAR SESSÃO (CRÍTICO!)
   try {
     const { error: sessionError } = await supabase.rpc('set_user_session', {
-      user_id: String(userId) // ✅ SEMPRE string
+      p_user_id: String(userId) // ✅ SEMPRE string
     });
     
     if (sessionError) {
@@ -64,7 +64,7 @@ export async function ensureSession() {
     }
 
     const { error } = await supabase.rpc('set_user_session', {
-      user_id: String(userId)
+      p_user_id: String(userId)
     });
 
     if (error) {

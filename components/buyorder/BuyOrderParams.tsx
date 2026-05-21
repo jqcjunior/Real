@@ -701,10 +701,9 @@ export default function BuyOrderParams({ user }: { user: any }) {
 
   // Função helper para converter índice visual (0-11) em ano/mês real
   const getFiscalYearMonth = (visualIndex: number): { year: number; month: number } => {
-    const totalMonths = (currentMonth - 1) + visualIndex;
     return {
-      year: currentYear + Math.floor(totalMonths / 12),
-      month: (totalMonths % 12) + 1
+      year: selectedYear,
+      month: visualIndex + 1
     };
   };
 
@@ -778,8 +777,8 @@ export default function BuyOrderParams({ user }: { user: any }) {
       const { data: quotaData, error: quotaError } = await supabase
         .from("v_stores_quota_config")
         .select("*")
-        .eq("year", new Date().getFullYear())
-        .eq("month", new Date().getMonth() + 1);
+        .eq("year", selectedYear)
+        .eq("month", currentMonth);
 
       if (quotaError) {
         console.warn("Erro ao buscar cotas (ignorando):", quotaError);
@@ -836,21 +835,16 @@ export default function BuyOrderParams({ user }: { user: any }) {
 
     // Se tem parâmetros customizados ou não, carregamos as cotas calculadas do banco
     try {
-      const hoje = new Date();
-      const anoAtual = hoje.getFullYear();
-      const mesAtual = hoje.getMonth() + 1;
-
       // Buscar cotas da VIEW correta
       const { data: cotasView, error: cotasError } = await supabase
-        .from('v_cotas_mes_correto')
-        .select('*')
-        .eq('store_number', store.store_number)
-        .gte('year', anoAtual)
-        .order('year')
-        .order('month');
+        .from("v_cotas_mes_correto")
+        .select("*")
+        .eq("store_number", store.store_number)
+        .eq("year", selectedYear)
+        .order("month");
 
       if (cotasError) {
-        console.warn('Erro ao carregar cotas:', cotasError);
+        console.warn("Erro ao carregar cotas:", cotasError);
       }
 
       setCotasDisponiveis(cotasView || []);
@@ -860,7 +854,7 @@ export default function BuyOrderParams({ user }: { user: any }) {
         .from("buyorder_parameters_store")
         .select("*")
         .eq("store_number", store.store_number)
-        .gte("year", selectedYear);
+        .eq("year", selectedYear);
 
       if (paramData && paramData.length > 0) {
         // Usar o registro do mês fiscal atual (ou o primeiro encontrado) para as porcentagens globais da loja
@@ -875,7 +869,7 @@ export default function BuyOrderParams({ user }: { user: any }) {
         const { data: globalData } = await supabase
           .from("buyorder_parameters_global")
           .select("*")
-          .gte("year", selectedYear);
+          .eq("year", selectedYear);
           
         if (globalData && globalData.length > 0) {
           const currentGlobal = globalData.find(g => g.year === selectedYear) || globalData[0];

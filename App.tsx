@@ -152,7 +152,7 @@ const App: React.FC = () => {
                 if (userId) {
                     try {
                         const { error } = await supabase.rpc('set_user_session', { 
-                            user_id: String(userId) // ✅ user_id (NÃO p_user_id)
+                            p_user_id: String(userId) // ✅ usar p_user_id consistente com a DB
                         });
                         if (error) {
                             console.warn('⚠️ Erro ao restaurar sessão RLS:', error);
@@ -551,136 +551,164 @@ const App: React.FC = () => {
             setIsLoading(false);
 
             // 🚀 FILTROS INTELIGENTES POR PAPEL + LOJA
+            console.log('🍦 Iniciando carregamento módulo sorvete...');
+            console.log('overrideUser:', overrideUser);
+            console.log('user:', user);
+            
+            // Normalizar role para comparação case-insensitive
+            const userRole = (overrideUser?.role || user?.role)?.toString().toUpperCase() || '';
+            const userRoleLevel = ((overrideUser as any)?.role_level || (user as any)?.role_level)?.toString().toUpperCase() || '';
+            const userStoreId = overrideUser?.storeId || user?.storeId || '';
+
+            const isSorvete = userRole === 'ICE_CREAM' || userRole === 'SORVETE' || 
+                              userRoleLevel === 'ICE_CREAM' || userRoleLevel === 'SORVETE';
+            const isGerente = userRole === 'MANAGER' || userRole === 'GERENTE' || 
+                              userRoleLevel === 'MANAGER' || userRoleLevel === 'GERENTE';
+            const isAdmin = userRole === 'ADMIN' || userRoleLevel === 'ADMIN';
+
+            console.log('Roles detectadas:', { isSorvete, isGerente, isAdmin });
+
             const now = new Date();
             const today = now.toISOString().split('T')[0];
             const currentMonth = now.getMonth() + 1;
             const currentYear = now.getFullYear();
             const isEarlyMonth = now.getDate() <= 10;
-            
-            const userRole = (overrideUser?.role || user?.role)?.toUpperCase() || '';
-            const userStoreId = overrideUser?.storeId || user?.storeId || '';
-            
-            // 🔒 CONSTRUIR FILTROS COM ISOLAMENTO POR LOJA
-            let salesQuery = supabase.from('ice_cream_daily_sales').select('*');
-            let salesHeadersQuery = supabase.from('ice_cream_sales').select('*');
-            let cardSalesQuery = supabase.from('financial_card_sales').select('*');
-            let pixSalesQuery = supabase.from('financial_pix_sales').select('*');
-            let movementsQuery = supabase.from('ice_cream_stock_movements').select('*');
-            let wastageQuery = supabase.from('ice_cream_wastage').select('*');
-            let paymentsQuery = supabase.from('ice_cream_daily_sales_payments').select('*');
-            
-            if (userRole === 'ICE_CREAM' || userRole === 'SORVETE') {
-                // SORVETE: HOJE + MÊS ATUAL (cancelamentos/avarias)
-                const monthStart = `${currentYear}-${String(currentMonth).padStart(2, '0')}-01T00:00:00`;
-                
-                salesQuery = salesQuery
-                    .eq('store_id', userStoreId)
-                    .or(`and(created_at.gte.${today}T00:00:00,status.neq.canceled),and(created_at.gte.${monthStart},status.eq.canceled)`);
-                
-                salesHeadersQuery = salesHeadersQuery
-                    .eq('store_id', userStoreId)
-                    .gte('created_at', `${today}T00:00:00`);
-                
-                cardSalesQuery = cardSalesQuery
-                    .eq('store_id', userStoreId)
-                    .gte('created_at', `${today}T00:00:00`);
-                
-                pixSalesQuery = pixSalesQuery
-                    .eq('store_id', userStoreId)
-                    .gte('created_at', `${today}T00:00:00`);
-                
-                movementsQuery = movementsQuery
-                    .eq('store_id', userStoreId)
-                    .gte('created_at', monthStart);
 
-                wastageQuery = wastageQuery
-                    .eq('store_id', userStoreId)
-                    .gte('created_at', monthStart);
+            // Determinar filtros de data para as queries
+            let dateFilter = null;
+            let cancelStart = null;
+            let adminStart = null;
 
-                paymentsQuery = paymentsQuery
-                    .eq('store_id', userStoreId)
-                    .gte('created_at', monthStart);
-                    
-            } else if (userRole === 'MANAGER' || userRole === 'GERENTE') {
-                // GERENTE: MÊS ATUAL + ANTERIOR (se dia ≤ 10)
-                let startMonth = currentMonth;
-                let startYear = currentYear;
-                
+            if (isSorvete) {
+                // Role SORVETE: apenas mês atual
+                const startOfMonth = new Date();
+                startOfMonth.setDate(1);
+                startOfMonth.setHours(0, 0, 0, 0);
+                dateFilter = startOfMonth.toISOString();
+                console.log('Filtro SORVETE: desde', dateFilter);
+            } else if (isGerente) {
+                // Role GERENTE: mês atual + anterior se dia <= 10
                 if (isEarlyMonth) {
-                    if (currentMonth === 1) {
-                        startMonth = 12;
-                        startYear = currentYear - 1;
-                    } else {
-                        startMonth = currentMonth - 1;
-                    }
+                    const startDate = new Date();
+                    startDate.setMonth(startDate.getMonth() - 1);
+                    startDate.setDate(1);
+                    startDate.setHours(0, 0, 0, 0);
+                    dateFilter = startDate.toISOString();
+                    console.log('Filtro GERENTE (dia <= 10): desde', dateFilter);
+                } else {
+                    const startOfMonth = new Date();
+                    startOfMonth.setDate(1);
+                    startOfMonth.setHours(0, 0, 0, 0);
+                    dateFilter = startOfMonth.toISOString();
+                    console.log('Filtro GERENTE (dia > 10): desde', dateFilter);
                 }
-                
-                const salesStart = `${startYear}-${String(startMonth).padStart(2, '0')}-01T00:00:00`;
-                
+
                 // Cancelamentos/avarias: 3 meses
                 const threeMonthsAgo = new Date(now);
                 threeMonthsAgo.setMonth(threeMonthsAgo.getMonth() - 3);
-                const cancelStart = threeMonthsAgo.toISOString();
-                
-                salesQuery = salesQuery
-                    .eq('store_id', userStoreId)
-                    .or(`and(created_at.gte.${salesStart},status.neq.canceled),and(created_at.gte.${cancelStart},status.eq.canceled)`);
-                
-                salesHeadersQuery = salesHeadersQuery
-                    .eq('store_id', userStoreId)
-                    .gte('created_at', salesStart);
-                
-                cardSalesQuery = cardSalesQuery
-                    .eq('store_id', userStoreId)
-                    .gte('created_at', salesStart);
-                
-                pixSalesQuery = pixSalesQuery
-                    .eq('store_id', userStoreId)
-                    .gte('created_at', salesStart);
-                
-                movementsQuery = movementsQuery
-                    .eq('store_id', userStoreId)
-                    .gte('created_at', cancelStart);
-
-                wastageQuery = wastageQuery
-                    .eq('store_id', userStoreId)
-                    .gte('created_at', cancelStart);
-                
-                paymentsQuery = paymentsQuery
-                    .eq('store_id', userStoreId)
-                    .gte('created_at', salesStart);
-                    
+                cancelStart = threeMonthsAgo.toISOString();
             } else {
                 // ADMIN: últimos 3 meses (evita limite de 1000 linhas do Supabase)
                 const threeMonthsAgo = new Date(now);
                 threeMonthsAgo.setMonth(threeMonthsAgo.getMonth() - 3);
-                const adminStart = threeMonthsAgo.toISOString();
-
-                salesQuery = salesQuery
-                    .gte('created_at', adminStart);
-
-                salesHeadersQuery = salesHeadersQuery
-                    .gte('created_at', adminStart);
-
-                movementsQuery = movementsQuery
-                    .gte('created_at', adminStart);
-
-                wastageQuery = wastageQuery
-                    .gte('created_at', adminStart);
-                
-                paymentsQuery = paymentsQuery
-                    .gte('created_at', adminStart);
-                // cardSales e pixSales continuam sem filtro (menos volume)
+                adminStart = threeMonthsAgo.toISOString();
             }
- 
+
+            // 1. CONSTRUIR QUERIES PARA CARREGAMENTO
+            
+            // A. ice_cream_sales
+            let salesHeadersQuery = supabase.from('ice_cream_sales').select('*');
+            if (isSorvete || isGerente) {
+                salesHeadersQuery = salesHeadersQuery.eq('store_id', userStoreId);
+            }
+            if (dateFilter) {
+                salesHeadersQuery = salesHeadersQuery.gte('created_at', dateFilter);
+            } else if (adminStart) {
+                salesHeadersQuery = salesHeadersQuery.gte('created_at', adminStart);
+            }
+
+            // B. financial_card_sales
+            let cardSalesQuery = supabase.from('financial_card_sales').select('*');
+            if (isSorvete || isGerente) {
+                cardSalesQuery = cardSalesQuery.eq('store_id', userStoreId);
+            }
+            if (isSorvete) {
+                cardSalesQuery = cardSalesQuery.gte('created_at', `${today}T00:00:00`);
+            } else if (isGerente && dateFilter) {
+                cardSalesQuery = cardSalesQuery.gte('created_at', dateFilter);
+            }
+
+            // C. financial_pix_sales
+            let pixSalesQuery = supabase.from('financial_pix_sales').select('*');
+            if (isSorvete || isGerente) {
+                pixSalesQuery = pixSalesQuery.eq('store_id', userStoreId);
+            }
+            if (isSorvete) {
+                pixSalesQuery = pixSalesQuery.gte('created_at', `${today}T00:00:00`);
+            } else if (isGerente && dateFilter) {
+                pixSalesQuery = pixSalesQuery.gte('created_at', dateFilter);
+            }
+
+            // D. ice_cream_sangria
+            let sangriaQuery = supabase.from('ice_cream_sangria').select('*');
+            if (isSorvete || isGerente) {
+                sangriaQuery = sangriaQuery.eq('store_id', userStoreId);
+            }
+            if (dateFilter) {
+                sangriaQuery = sangriaQuery.gte('created_at', dateFilter);
+            } else if (adminStart) {
+                sangriaQuery = sangriaQuery.gte('created_at', adminStart);
+            }
+
+            // E. ice_cream_stock_movements
+            let movementsQuery = supabase.from('ice_cream_stock_movements').select('*');
+            if (isSorvete || isGerente) {
+                movementsQuery = movementsQuery.eq('store_id', userStoreId);
+            }
+            if (isSorvete && dateFilter) {
+                movementsQuery = movementsQuery.gte('created_at', dateFilter);
+            } else if (isGerente && cancelStart) {
+                movementsQuery = movementsQuery.gte('created_at', cancelStart);
+            } else if (adminStart) {
+                movementsQuery = movementsQuery.gte('created_at', adminStart);
+            }
+
+            // F. ice_cream_wastage
+            let wastageQuery = supabase.from('ice_cream_wastage').select('*');
+            if (isSorvete || isGerente) {
+                wastageQuery = wastageQuery.eq('store_id', userStoreId);
+            }
+            if (isSorvete && dateFilter) {
+                wastageQuery = wastageQuery.gte('created_at', dateFilter);
+            } else if (isGerente && cancelStart) {
+                wastageQuery = wastageQuery.gte('created_at', cancelStart);
+            } else if (adminStart) {
+                wastageQuery = wastageQuery.gte('created_at', adminStart);
+            }
+
+            // Executar primeira leva em Promise.all
             const [
-                {data: ici}, {data: ics}, {data: icst}, {data: icp}, {data: r}, {data: ce}, {data: ag}, {data: dl}, {data: cl}, {data: lg},
-                {data: cds}, {data: pxs}, {data: sls}, {data: slsp},
-                {data: sangCat}, {data: sang}, {data: movements}, {data: part}, {data: ausers},
-                {data: fd}, {data: wst}
+                {data: ici}, 
+                {data: icst}, 
+                {data: icp}, 
+                {data: r}, 
+                {data: ce}, 
+                {data: ag}, 
+                {data: dl}, 
+                {data: cl}, 
+                {data: lg},
+                {data: cds}, 
+                {data: pxs}, 
+                {data: salesData}, 
+                {data: sangCat}, 
+                {data: sangriaData}, 
+                {data: movementsData}, 
+                {data: part}, 
+                {data: ausers},
+                {data: fd}, 
+                {data: wst}
             ] = await Promise.all([
                 supabase.from('ice_cream_items').select('*'),
-                salesQuery.order('created_at', { ascending: false }),
                 supabase.from('ice_cream_stock').select('*'),
                 supabase.from('ice_cream_promissory_notes').select('*'),
                 supabase.from('financial_receipts').select('*').order('created_at', { ascending: true }),
@@ -692,9 +720,8 @@ const App: React.FC = () => {
                 cardSalesQuery.order('created_at', { ascending: false }),
                 pixSalesQuery.order('created_at', { ascending: false }),
                 salesHeadersQuery.order('created_at', { ascending: false }),
-                paymentsQuery.order('created_at', { ascending: false }),
                 supabase.from('ice_cream_sangria_categoria').select('*'),
-                supabase.from('ice_cream_sangria').select('*').order('created_at', { ascending: false }),
+                sangriaQuery.order('created_at', { ascending: false }),
                 movementsQuery.order('created_at', { ascending: false }),
                 supabase.from('store_profit_distribution').select('*'),
                 supabase.from('admin_users').select('*'),
@@ -702,32 +729,74 @@ const App: React.FC = () => {
                 wastageQuery.order('created_at', { ascending: false })
             ]);
 
-            console.log('=== DIAGNÓSTICO PAYMENTS ===');
-            console.log('slsp (payments) length:', slsp?.length);
-            console.log('slsp first item date:', slsp?.[0]?.created_at);
-            console.log('slsp last item date:', slsp?.[slsp.length-1]?.created_at);
-            console.log('sls (salesHeaders) length:', sls?.length);
-            console.log('sls first item date:', sls?.[0]?.created_at);
-            console.log('sls last item date:', sls?.[sls.length-1]?.created_at);
-            console.log('userRole usado:', (overrideUser?.role || user?.role));
-            console.log('adminStart calculado:', (() => { const d = new Date(); d.setMonth(d.getMonth()-3); return d.toISOString(); })());
-            console.log('============================');
- 
-            if(wst) setIcWastage(wst);
-            if(fd) setFutureDebts(fd);
-            console.log('--- DEBUG FETCH DATA ---');
-            console.log('sls (salesHeaders) length:', sls?.length);
-            console.log('ics (iceCreamSales) length:', ics?.length);
-            console.log('------------------------');
-            if(sls) setSales(sls);
-            if(slsp) setSalePayments(slsp.map(x => ({ ...x, amount: Number(x.amount || 0) })));
-            if(ici) setIceCreamItems(ici.map(x => ({ id: x.id, storeId: x.store_id, name: x.name, category: x.category, price: Number(x.price || 0), flavor: x.flavor, active: x.active, consumption_per_sale: x.consumption_per_sale || 0, recipe: typeof x.recipe === 'string' ? JSON.parse(x.recipe) : (x.recipe || []), image_url: x.image_url })));
-            if(ics) setIceCreamSales(ics.map(x => ({ id: x.id, storeId: x.store_id, itemId: x.item_id, productName: x.product_name, category: x.category, flavor: x.flavor, unitsSold: Number(x.units_sold || 0), unitPrice: Number(x.unit_price || 0), totalValue: Number(x.total_value || 0), paymentMethod: x.payment_method, saleCode: x.sale_code, buyer_name: x.buyer_name, createdAt: x.created_at, status: x.status, cancel_reason: x.cancel_reason, canceled_by: x.canceled_by })));
-            if(cds) setCardSales(cds.map(x => ({ id: x.id, storeId: x.store_id, userId: x.user_id, userName: x.user_name, date: x.date, brand: x.brand, value: Number(x.value || 0), authorizationCode: x.authorization_code, saleCode: x.sale_code, createdAt: x.created_at })));
-            if(pxs) setPixSales(pxs.map(x => ({ id: x.id, storeId: x.store_id, userId: x.user_id, userName: x.user_name, date: x.date, saleCode: x.sale_code, value: Number(x.value || 0), clientName: x.payer_name, createdAt: x.created_at })));
-            if(icst) setIceCreamStock(icst.map(item => ({ ...item, stock_id: item.id })));
-            if(icp) setIcPromissories(icp);
-            if(r) setReceipts(r.map(x => ({ 
+            // 2. BUSCAR DADOS DEPENDENTES DO MÓDULO SORVETE (ice_cream_daily_sales e payments)
+            const saleIds = salesData?.map(s => s.id) || [];
+            let dailySalesData: any[] = [];
+            let paymentsData: any[] = [];
+
+            if (saleIds.length > 0) {
+                const [dailyRes, paymentsRes] = await Promise.all([
+                    supabase.from('ice_cream_daily_sales').select('*').in('sale_id', saleIds),
+                    supabase.from('ice_cream_daily_sales_payments').select('*').in('sale_id', saleIds)
+                ]);
+
+                if (dailyRes.error) {
+                    console.error('❌ Erro ao carregar ice_cream_daily_sales:', dailyRes.error);
+                } else {
+                    dailySalesData = dailyRes.data || [];
+                    console.log('✅ ice_cream_daily_sales carregados:', dailySalesData.length);
+                }
+
+                if (paymentsRes.error) {
+                    console.error('❌ Erro ao carregar payments:', paymentsRes.error);
+                } else {
+                    paymentsData = paymentsRes.data || [];
+                    console.log('✅ payments carregados:', paymentsData.length);
+                }
+            }
+
+            // 3. MAPEAR DADOS PARA CAMELCASE (ice_cream_daily_sales → sales prop)
+            const mappedSales = dailySalesData.map(item => ({
+                id: item.id,
+                saleId: item.sale_id,
+                storeId: item.store_id,
+                itemId: item.item_id,
+                productName: item.product_name,
+                category: item.category,
+                flavor: item.flavor,
+                unitsSold: Number(item.units_sold || 0),
+                unitPrice: Number(item.unit_price || 0),
+                totalValue: Number(item.total_value || 0),
+                paymentMethod: item.payment_method,
+                saleCode: item.sale_code,
+                buyer_name: item.buyer_name,
+                createdAt: item.created_at,
+                canceledAt: item.canceled_at,
+                canceledBy: item.canceled_by,
+                status: item.status,
+                cancel_reason: item.cancel_reason
+            }));
+
+            console.log('=== DIAGNÓSTICO DO MÓDULO SORVETE ===');
+            console.log('Vendas Headers (salesData) length:', salesData?.length);
+            console.log('Vendas Daily Mapped (mappedSales) length:', mappedSales.length);
+            console.log('Payments (paymentsData) length:', paymentsData.length);
+            console.log('Sangrias length:', sangriaData?.length);
+            console.log('Movements length:', movementsData?.length);
+            console.log('=====================================');
+
+            // 4. ATUALIZAR ESTADOS
+            if (wst) setIcWastage(wst);
+            if (fd) setFutureDebts(fd);
+            if (salesData) setSales(salesData);
+            setSalePayments(paymentsData.map(x => ({ ...x, amount: Number(x.amount || 0) })));
+            if (ici) setIceCreamItems(ici.map(x => ({ id: x.id, storeId: x.store_id, name: x.name, category: x.category, price: Number(x.price || 0), flavor: x.flavor, active: x.active, consumption_per_sale: x.consumption_per_sale || 0, recipe: typeof x.recipe === 'string' ? JSON.parse(x.recipe) : (x.recipe || []), image_url: x.image_url })));
+            setIceCreamSales(mappedSales);
+            if (cds) setCardSales(cds.map(x => ({ id: x.id, storeId: x.store_id, userId: x.user_id, userName: x.user_name, date: x.date, brand: x.brand, value: Number(x.value || 0), authorizationCode: x.authorization_code, saleCode: x.sale_code, createdAt: x.created_at })));
+            if (pxs) setPixSales(pxs.map(x => ({ id: x.id, storeId: x.store_id, userId: x.user_id, userName: x.user_name, date: x.date, saleCode: x.sale_code, value: Number(x.value || 0), clientName: x.payer_name, createdAt: x.created_at })));
+            if (icst) setIceCreamStock(icst.map(item => ({ ...item, stock_id: item.id })));
+            if (icp) setIcPromissories(icp);
+            if (r) setReceipts(r.map(x => ({ 
                 id: x.id, 
                 storeId: x.store_id, 
                 receiptNumber: x.receipt_number,
@@ -741,11 +810,11 @@ const App: React.FC = () => {
                 reference: x.reference, 
                 createdAt: new Date(x.created_at) 
             })));
-            if(ce) setCashErrors(ce.map(x => ({...x, id: x.id, storeId: x.store_id, userId: x.user_id, userName: x.user_name || 'Usuário', date: x.error_date || x.date, value: Number(x.value || 0), type: x.type, reason: x.reason, createdAt: new Date(x.created_at)})));
-            if(ag) setAgenda(ag.map(x => ({...x, userId: x.user_id, title: x.title, description: x.description, dueDate: x.due_date ? x.due_date.split('T')[0] : '', dueTime: x.due_time, priority: x.priority, isCompleted: x.is_completed})));
-            if(dl) setDownloads(dl.map(x => ({...x, fileName: x.file_name, createdBy: x.created_by})));
-            if(cl) setClosures(cl.map(x => ({...x, storeId: x.store_id, closedBy: x.closed_by})));
-            if(lg) setLogs(lg.map((x: any) => ({
+            if (ce) setCashErrors(ce.map(x => ({...x, id: x.id, storeId: x.store_id, userId: x.user_id, userName: x.user_name || 'Usuário', date: x.error_date || x.date, value: Number(x.value || 0), type: x.type, reason: x.reason, createdAt: new Date(x.created_at)})));
+            if (ag) setAgenda(ag.map(x => ({...x, userId: x.user_id, title: x.title, description: x.description, dueDate: x.due_date ? x.due_date.split('T')[0] : '', dueTime: x.due_time, priority: x.priority, isCompleted: x.is_completed})));
+            if (dl) setDownloads(dl.map(x => ({...x, fileName: x.file_name, createdBy: x.created_by})));
+            if (cl) setClosures(cl.map(x => ({...x, storeId: x.store_id, closedBy: x.closed_by})));
+            if (lg) setLogs(lg.map((x: any) => ({
                 id: x.id,
                 userId: x.user_id,
                 userName: x.user_name,
@@ -754,11 +823,11 @@ const App: React.FC = () => {
                 details: x.details,
                 created_at: x.created_at
             })));
-            if(sangCat) setIcSangriaCategories(sangCat);
-            if(sang) setIcSangrias(sang);
-            if(movements) setIcStockMovements(movements);
-            if(part) setPartners(part);
-            if(ausers) setAdminUsers(ausers);
+            if (sangCat) setIcSangriaCategories(sangCat);
+            if (sangriaData) setIcSangrias(sangriaData);
+            if (movementsData) setIcStockMovements(movementsData);
+            if (part) setPartners(part);
+            if (ausers) setAdminUsers(ausers);
 
             if (user) {
                 const { data: activeSurveys } = await supabase
@@ -947,7 +1016,7 @@ const App: React.FC = () => {
             }
 
             // ✅ Aceitar múltiplos formatos de ID
-            const userId = result.user.user_id || result.user.id || result.user.userId;
+            const userId = result.user.user_id || result.user.id || (result.user as any).userId;
             
             if (!userId) {
                 console.error('❌ Debug - result.user:', result.user);

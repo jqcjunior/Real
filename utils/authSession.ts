@@ -11,7 +11,7 @@ export async function setUserSession(userId: string): Promise<boolean> {
 
     try {
         const { error } = await supabase.rpc('set_user_session', {
-            user_id: String(userId) // ✅ user_id (NÃO p_user_id)
+            p_user_id: String(userId) // ✅ usar p_user_id consistente com a DB
         });
         
         if (error) {

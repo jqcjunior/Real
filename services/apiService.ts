@@ -11,44 +11,42 @@ class ApiService {
         p_password: password.trim()
       });
 
-      if (error) {
-        console.error('❌ Supabase RPC Error:', error);
-        throw new Error(error.message || 'Erro na comunicação com o banco de dados.');
-      }
-
-      if (!data || data.length === 0) {
-        throw new Error('Usuário não encontrado ou credenciais incorretas.');
+      if (error || !data || data.length === 0) {
+        throw new Error('Credenciais inválidas');
       }
 
       const userData = data[0];
 
-      // ✅ VERIFICAR STATUS
-      if (!userData.is_valid) {
-        throw new Error(userData.error_message || 'Acesso negado');
-      }
-
-      // ✅ O BANCO RETORNA user_id (não id)
-      const userId = userData.user_id;
+      // Aceitar id ou user_id
+      const userId = userData.id || userData.user_id || userData.userId;
 
       if (!userId) {
-        console.error('❌ ERRO: authenticate_user retornou sem user_id!');
-        console.error('Dados recebidos:', userData);
         throw new Error('Erro interno: ID do usuário não encontrado');
       }
 
-      // ✅ ESTABELECER SESSÃO RLS
+      // 🔥 CRÍTICO: Setar sessão ANTES de retornar
       const { error: sessionError } = await supabase.rpc('set_user_session', {
-        user_id: String(userId) // ✅ user_id (NÃO p_user_id)
+        p_user_id: String(userId)  // ← Parâmetro correto é p_user_id, NÃO user_id
       });
 
       if (sessionError) {
-        console.warn('⚠️ Erro RLS (não bloqueante):', sessionError);
+        console.error('❌ ERRO AO SETAR SESSÃO:', sessionError);
+        throw new Error('Falha ao estabelecer sessão');
       }
 
-      // ✅ RETORNAR dados do banco (role_level virá como está)
-      return { 
-        success: true, 
-        user: userData  // Retorna exatamente o que o banco enviou
+      console.log('✅ Sessão setada com sucesso para user_id:', userId);
+
+      return {
+        user: {
+          id: userId,
+          user_id: userId,
+          name: userData.name,
+          email: userData.email,
+          role: userData.role_level || userData.role,
+          role_level: userData.role_level || userData.role,
+          storeId: userData.store_id || userData.storeId,
+          store_id: userData.store_id || userData.storeId
+        }
       };
     } catch (error: any) {
       console.error('❌ Erro no login:', error);
@@ -102,7 +100,7 @@ class ApiService {
 
     try {
       const { error } = await supabase.rpc('set_user_session', { 
-        user_id: String(userId) // ✅ user_id (NÃO p_user_id)
+        p_user_id: String(userId) // ✅ usar p_user_id consistente com a DB
       });
       
       if (error) {
