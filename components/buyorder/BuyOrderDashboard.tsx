@@ -52,6 +52,62 @@ export default function BuyOrderDashboard({ user }: { user: any }) {
   const [brandStats, setBrandStats] = useState<BrandStat[]>([]);
   const [expandedType, setExpandedType] = useState<string | null>(null);
   const [lojaFiltro, setLojaFiltro] = useState<number | null>(null);
+  const [periodo, setPeriodo] = useState<3 | 6>(3); // padrão 3M
+  const [isMobile, setIsMobile] = useState(
+    typeof window !== 'undefined' ? window.innerWidth < 768 : false
+  );
+
+  useEffect(() => {
+    const handler = () => setIsMobile(window.innerWidth < 768);
+    window.addEventListener('resize', handler);
+    return () => window.removeEventListener('resize', handler);
+  }, []);
+
+  const [categoriaParams, setCategoriaParams] = useState<{
+    feminino_pct: number;
+    masculino_pct: number;
+    infantil_menina_pct: number;
+    infantil_menino_pct: number;
+    acessorio_pct: number;
+    cota_valor: number;
+  } | null>(null);
+
+  useEffect(() => {
+    const fetchCategoriaParams = async () => {
+      const storeNum = lojaFiltro !== null
+        ? String(lojaFiltro)
+        : userStoreNumber !== null
+          ? String(userStoreNumber)
+          : null;
+
+      if (!storeNum) {
+        setCategoriaParams(null);
+        return;
+      }
+
+      const currentMonth = new Date().getMonth() + 1;
+      const currentYear  = new Date().getFullYear();
+
+      const { data } = await supabase
+        .from('buyorder_parameters_store')
+        .select('feminino_pct, masculino_pct, infantil_menina_pct, infantil_menino_pct, acessorio_pct, cota_valor')
+        .eq('store_number', storeNum)
+        .eq('year', currentYear)
+        .eq('month', currentMonth)
+        .maybeSingle();
+
+      setCategoriaParams(data ? {
+        feminino_pct:        Number(data.feminino_pct        || 0),
+        masculino_pct:       Number(data.masculino_pct       || 0),
+        infantil_menina_pct: Number(data.infantil_menina_pct || 0),
+        infantil_menino_pct: Number(data.infantil_menino_pct || 0),
+        acessorio_pct:       Number(data.acessorio_pct       || 0),
+        cota_valor:          Number(data.cota_valor          || 0),
+      } : null);
+    };
+
+    fetchCategoriaParams();
+  }, [lojaFiltro, userStoreNumber]);
 
   useEffect(() => {
     async function fetchStoreNumber() {
@@ -364,13 +420,72 @@ export default function BuyOrderDashboard({ user }: { user: any }) {
     : storeStats.filter(s => parseInt(s.loja) === lojaFiltro);
 
   const filteredSummary = lojaFiltro === null ? summary : {
-    total_pares: filteredStoreStats.reduce((a, s) => a + s.pares, 0),
-    total_unidades: filteredStoreStats.reduce((a, s) => a + s.pares, 0),
-    valor_total: filteredStoreStats.reduce((a, s) => a + s.valor, 0),
+    // Pares = apenas calçados (FEM + MASC + INF)
+    total_pares: filteredTypeStats
+      .filter(t => t.tipo !== 'ACESSÓRIO')
+      .reduce((a, t) => a + t.pares, 0),
+    // Unidades = apenas acessórios
+    total_unidades: filteredTypeStats
+      .find(t => t.tipo === 'ACESSÓRIO')?.pares || 0,
+    valor_total:    filteredStoreStats.reduce((a, s) => a + s.valor, 0),
   };
 
   const expandedStat = filteredTypeStats.find(t => t.tipo === expandedType);
   // ─────────────────────────────────────────────────────────────────────────
+
+  // ── DONUT META ─────────────────────────────────────────────────────────────
+  const DonutMeta = ({
+    meta,
+    realizado,
+    cor,
+    corClaro,
+    label = 'META',
+    small = false,
+  }: {
+    meta: number;
+    realizado: number;
+    cor: string;
+    corClaro: string;
+    label?: string;
+    small?: boolean;
+  }) => {
+    const size   = small ? 52 : 72;
+    const stroke = small ? 5 : 7;
+    const r      = (size - stroke) / 2;
+    const circ   = 2 * Math.PI * r;
+    const progresso  = meta > 0 ? Math.min(realizado / meta, 1) : 0;
+    const dashOffset = circ * (1 - progresso);
+
+    return (
+      <div className="flex flex-col items-center justify-center flex-shrink-0" style={{ position: 'relative', width: size, height: size }}>
+        <svg width={size} height={size} style={{ transform: 'rotate(-90deg)', position: 'absolute', top: 0, left: 0 }}>
+          <circle cx={size/2} cy={size/2} r={r} fill="none" stroke={corClaro} strokeWidth={stroke} />
+          <circle
+            cx={size/2} cy={size/2} r={r}
+            fill="none" stroke={cor} strokeWidth={stroke}
+            strokeDasharray={circ} strokeDashoffset={dashOffset}
+            strokeLinecap="round"
+            style={{ transition: 'stroke-dashoffset 0.6s ease' }}
+          />
+        </svg>
+        <div style={{
+          position: 'absolute', top: 0, left: 0,
+          width: size, height: size,
+          display: 'flex', flexDirection: 'column',
+          alignItems: 'center', justifyContent: 'center',
+          pointerEvents: 'none',
+        }}>
+          <span style={{ fontSize: small ? 12 : 15, fontWeight: 900, color: cor, lineHeight: 1 }}>
+            {meta.toFixed(0)}%
+          </span>
+          <span style={{ fontSize: 8, color: cor, opacity: 0.7, marginTop: 1, fontWeight: 700 }}>
+            {label}
+          </span>
+        </div>
+      </div>
+    );
+  };
+  // ───────────────────────────────────────────────────────────────────────────
 
   if (loading) {
     return (
@@ -396,7 +511,8 @@ export default function BuyOrderDashboard({ user }: { user: any }) {
             </h1>
           </div>
           {user?.role === 'ADMIN' && (
-            <div className="flex flex-wrap gap-2">
+            <div className="flex flex-wrap sm:flex-wrap items-center gap-2 overflow-x-auto pb-1">
+              {/* Botões de loja */}
               <button
                 onClick={() => setLojaFiltro(null)}
                 className={`px-3 py-1.5 rounded-lg text-[10px] font-black uppercase tracking-wider transition-all ${
@@ -416,12 +532,32 @@ export default function BuyOrderDashboard({ user }: { user: any }) {
                   }`}
                 >{num}</button>
               ))}
+
+              {/* Separador */}
+              <div className="w-px h-5 bg-slate-300 dark:bg-slate-600 mx-1" />
+
+              {/* Botões de período — só quando loja específica selecionada */}
+              {lojaFiltro !== null && (
+                <>
+                  {([3, 6] as const).map(p => (
+                    <button
+                      key={p}
+                      onClick={() => setPeriodo(p)}
+                      className={`px-3 py-1.5 rounded-lg text-[10px] font-black uppercase tracking-wider transition-all ${
+                        periodo === p
+                          ? 'bg-emerald-600 text-white shadow'
+                          : 'bg-slate-100 dark:bg-slate-800 text-slate-500 dark:text-slate-400 hover:bg-slate-200 dark:hover:bg-slate-700'
+                      }`}
+                    >{p}M</button>
+                  ))}
+                </>
+              )}
             </div>
           )}
         </div>
 
         {/* CARDS DE RESUMO */}
-        <div className="grid grid-cols-3 gap-4">
+        <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
           <div className="bg-white dark:bg-slate-800 rounded-xl shadow-sm border border-slate-200 dark:border-slate-700 p-5 flex flex-col justify-center">
             <div className="text-xs font-bold uppercase tracking-wider text-slate-500 mb-1 flex items-center gap-2">
               <Package size={16} /> Total de Pares
@@ -453,29 +589,131 @@ export default function BuyOrderDashboard({ user }: { user: any }) {
         {/* CARDS POR TIPO */}
         <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
           {['FEMININO', 'MASCULINO', 'INFANTIL', 'ACESSÓRIO'].map((tipoBase) => {
-            const stat = filteredTypeStats.find(t => t.tipo === tipoBase) || { tipo: tipoBase, pares: 0, valor: 0, percentual: 0, modelos: [] };
+            const stat = filteredTypeStats.find(t => t.tipo === tipoBase) || {
+              tipo: tipoBase, pares: 0, valor: 0, percentual: 0, modelos: []
+            };
             const isExpanded = expandedType === stat.tipo;
             const style = getTypeStyles(stat.tipo);
-            const icon = getTypeIcons(stat.tipo);
+            const icon  = getTypeIcons(stat.tipo);
+
+            // Cores do donut por tipo
+            const donutCor = (() => {
+              switch (tipoBase) {
+                case 'FEMININO':  return { forte: '#ec4899', claro: '#fce7f3' };
+                case 'MASCULINO': return { forte: '#3b82f6', claro: '#dbeafe' };
+                case 'INFANTIL':  return { forte: '#a855f7', claro: '#f3e8ff' };
+                case 'ACESSÓRIO': return { forte: '#f59e0b', claro: '#fef3c7' };
+                default:          return { forte: '#64748b', claro: '#f1f5f9' };
+              }
+            })();
+
+            // ── MODO TODAS: mix real de compras ──────────────────────────────────
+            const totalGeralValor = filteredTypeStats.reduce((a, t) => a + t.valor, 0);
+            const mixPct = totalGeralValor > 0 ? (stat.valor / totalGeralValor) * 100 : 0;
+
+            // ── MODO LOJA ESPECÍFICA: meta por período ────────────────────────────
+            const metaPct = categoriaParams ? (() => {
+              switch (tipoBase) {
+                case 'FEMININO':  return categoriaParams.feminino_pct;
+                case 'MASCULINO': return categoriaParams.masculino_pct;
+                case 'INFANTIL':  return categoriaParams.infantil_menina_pct + categoriaParams.infantil_menino_pct;
+                case 'ACESSÓRIO': return categoriaParams.acessorio_pct;
+                default:          return 0;
+              }
+            })() : 0;
+
+            // Base financeira da meta = cota_mensal × período × meta_pct / 100
+            const baseMetaValor = categoriaParams
+              ? categoriaParams.cota_valor * periodo * (metaPct / 100)
+              : 0;
+
+            // % realizado em relação à meta financeira
+            const realizadoPctMeta = baseMetaValor > 0
+              ? (stat.valor / baseMetaValor) * 100
+              : 0;
+
+            // Decisão de qual donut mostrar
+            const modoTodas   = lojaFiltro === null && userStoreNumber === null;
+            const modoLoja    = !modoTodas && metaPct > 0;
+
             return (
               <div
                 key={stat.tipo}
                 onClick={() => handleTypeClick(stat.tipo)}
                 className={`rounded-xl border cursor-pointer transition-all duration-200 p-4 ${style}
-                  ${isExpanded ? 'shadow-md scale-[1.02] border-b-4' : 'shadow-sm hover:shadow opacity-90 hover:opacity-100 dark:bg-slate-800/50 dark:border-slate-700 dark:text-slate-200'}`}
+                  ${isExpanded
+                    ? 'shadow-md scale-[1.02] border-b-4'
+                    : 'shadow-sm hover:shadow opacity-90 hover:opacity-100 dark:bg-slate-800/50 dark:border-slate-700 dark:text-slate-200'
+                  }`}
               >
+                {/* Header */}
                 <div className="font-bold text-sm uppercase tracking-wider mb-3 flex items-center gap-2">
                   <span>{icon}</span> {stat.tipo}
                 </div>
-                <div className="flex flex-col gap-1 mb-3">
-                  <div className="font-bold text-lg leading-none">
-                    {formatNum(stat.pares)} <span className="text-[10px] font-normal uppercase opacity-70">{stat.tipo === 'ACESSÓRIO' ? 'unid.' : 'pares'}</span>
+
+                {/* Corpo: dados + donut */}
+                <div className="flex items-center justify-between gap-2">
+                  <div className="flex flex-col gap-1 flex-1 min-w-0">
+                    <div className="font-bold text-base sm:text-lg leading-none">
+                      {formatNum(stat.pares)}{' '}
+                      <span className="text-[10px] font-normal uppercase opacity-70">
+                        {stat.tipo === 'ACESSÓRIO' ? 'unid.' : 'pares'}
+                      </span>
+                    </div>
+                    <div className="font-bold text-xs sm:text-sm leading-none opacity-90 truncate">
+                      {formatBRLValue(stat.valor)}
+                    </div>
+                    {/* % contextual */}
+                    {modoTodas && (
+                      <div className="font-bold text-sm sm:text-base leading-none opacity-70">
+                        {mixPct.toFixed(1)}%{' '}
+                        <span className="text-[10px] font-normal opacity-60">do mix</span>
+                      </div>
+                    )}
+                    {modoLoja && (
+                      <div className="font-bold text-sm sm:text-base leading-none opacity-70">
+                        {realizadoPctMeta.toFixed(1)}%{' '}
+                        <span className="text-[10px] font-normal opacity-60">da meta {periodo}M</span>
+                      </div>
+                    )}
+                    {!modoTodas && !modoLoja && (
+                      <div className="font-bold text-sm sm:text-base leading-none opacity-70">
+                        {stat.percentual.toFixed(1)}%
+                      </div>
+                    )}
                   </div>
-                  <div className="font-bold text-sm leading-none opacity-90">{formatBRLValue(stat.valor)}</div>
-                  <div className="font-bold text-lg leading-none opacity-70">{stat.percentual.toFixed(1)}%</div>
+
+                  {/* Donut TODAS — mix */}
+                  {modoTodas && totalGeralValor > 0 && (
+                    <DonutMeta
+                      meta={mixPct}
+                      realizado={mixPct}
+                      cor={donutCor.forte}
+                      corClaro={donutCor.claro}
+                      label="MIX"
+                      small={isMobile}
+                    />
+                  )}
+
+                  {/* Donut LOJA — meta por período */}
+                  {modoLoja && (
+                    <DonutMeta
+                      meta={metaPct}
+                      realizado={realizadoPctMeta}
+                      cor={donutCor.forte}
+                      corClaro={donutCor.claro}
+                      label="META"
+                      small={isMobile}
+                    />
+                  )}
                 </div>
-                <div className="text-[10px] font-bold uppercase tracking-wider flex items-center gap-1 opacity-70">
-                  {isExpanded ? <><ChevronDown size={14} /> Fechar</> : <><ChevronRight size={14} /> Detalhes</>}
+
+                {/* Rodapé */}
+                <div className="text-[10px] font-bold uppercase tracking-wider flex items-center gap-1 opacity-70 mt-3">
+                  {isExpanded
+                    ? <><ChevronDown size={14} /> Fechar</>
+                    : <><ChevronRight size={14} /> Detalhes</>
+                  }
                 </div>
               </div>
             );

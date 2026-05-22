@@ -995,7 +995,14 @@ export default function BuyOrderParams({ user }: { user: any }) {
       
       // ✅ TRIGGER AUTOMÁTICO sincroniza buyorder_quota_control
       toast.success(`✅ Parâmetros salvos com sucesso!`);
-      loadStores();
+
+      // ✅ ADICIONAR: recarregar lista de lojas para atualizar indicadores (bolinha verde, valores)
+      await loadStores();
+
+      // ✅ ADICIONAR: recarregar os dados do mês atual na grid
+      if (selectedStore) {
+        await handleOpenStore(selectedStore);
+      }
     } catch (err: any) {
       console.error("Erro ao salvar:", err);
       alert("❌ Erro ao salvar: " + err.message);

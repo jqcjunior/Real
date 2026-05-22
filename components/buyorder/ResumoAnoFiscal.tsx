@@ -433,7 +433,7 @@ export default function ResumoAnoFiscal({ quotas, storeNumber, onVerPedidos }: R
                         </span>
                       </div>
                       <div style={{ fontSize: '18px', fontWeight: 500, color: '#3B6D11' }}>
-                        {formatarMoeda(toNumber(quota.cota_comprador_valor))}
+                        {formatarMoeda(toNumber(quota.saldo_reserva_comprador ?? quota.cota_comprador_valor))}
                       </div>
                       <div style={{ fontSize: '9px', color: '#639922', marginTop: '2px' }}>
                         {toNumber(quota.percentual_comprador).toFixed(1)}% do total
@@ -454,7 +454,7 @@ export default function ResumoAnoFiscal({ quotas, storeNumber, onVerPedidos }: R
                         </span>
                       </div>
                       <div style={{ fontSize: '18px', fontWeight: 500, color: '#3B6D11' }}>
-                        {formatarMoeda(toNumber(quota.cota_gerente_valor))}
+                        {formatarMoeda(toNumber(quota.saldo_reserva_gerente ?? quota.cota_gerente_valor))}
                       </div>
                       <div style={{ fontSize: '9px', color: '#639922', marginTop: '2px' }}>
                         {toNumber(quota.percentual_gerente).toFixed(1)}% do total
