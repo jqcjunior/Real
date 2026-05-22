@@ -7,6 +7,27 @@ const supabaseServiceKey = process.env.SUPABASE_SERVICE_KEY || '';
 
 const supabase = createClient(supabaseUrl, supabaseServiceKey);
 
+function buildExportFilename(
+  numeroPedido: number,
+  fornecedor: string,
+  exportCount: number
+): string {
+  const now = new Date();
+  const yy = String(now.getFullYear()).slice(2);
+  const mm = String(now.getMonth() + 1).padStart(2, '0');
+  const dd = String(now.getDate()).padStart(2, '0');
+  const dateStr = `${yy}${mm}${dd}`;
+
+  const slug = fornecedor
+    .toLowerCase()
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .split(' ')[0]
+    .replace(/[^a-z0-9]/g, '');
+
+  return `Ped_${numeroPedido}_${slug}_${dateStr}-${exportCount}`;
+}
+
 /**
  * SERVIÇO DE EXPORTAÇÃO DE PEDIDO DE COMPRA (BACKEND)
  * 
@@ -36,6 +57,25 @@ export async function exportBuyOrderToExcel(orderId: string) {
             console.error('[Export] Erro ao buscar pedido:', error);
             throw new Error('Pedido não encontrado no banco de dados.');
         }
+
+        // 1.1 INCREMENTAR CONTADOR DE EXPORTAÇÃO
+        const { data: exportInfo, error: exportError } = await supabase
+            .from('buy_orders')
+            .update({ export_count: (order.export_count || 0) + 1 })
+            .eq('id', orderId)
+            .select('export_count, numero_pedido, fornecedor')
+            .single();
+
+        if (exportError || !exportInfo) {
+            console.error('[Export] Erro ao registrar exportação:', exportError);
+            throw new Error('Falha ao registrar exportação: ' + exportError?.message);
+        }
+
+        const exportFilename = buildExportFilename(
+            exportInfo.numero_pedido,
+            exportInfo.fornecedor,
+            exportInfo.export_count
+        );
 
         // 2. BAIXAR TEMPLATE DO SUPABASE STORAGE
         const TEMPLATE_URL = 'https://rwwomakjhmglgoowbmsl.supabase.co/storage/v1/object/public/template/buy_order_template.xlsx';
@@ -250,29 +290,10 @@ export async function exportBuyOrderToExcel(orderId: string) {
         console.log('[Export] Gerando buffer de saída...');
         const buffer = await workbook.outputAsync();
 
-        // ✅ NOVO: Gerar nome de arquivo personalizado
-        const dataAtual = new Date();
-        const dia = String(dataAtual.getDate()).padStart(2, '0');
-        const mes = String(dataAtual.getMonth() + 1).padStart(2, '0');
-        const ano = String(dataAtual.getFullYear()).slice(-2);
-        const dataFormatada = `${dia}${mes}${ano}`;
-
-        const marcaNormalizada = (order.marca || 'MARCA')
-            .toUpperCase()
-            .normalize('NFD')
-            .replace(/[\u0300-\u036f]/g, '') // Remove acentos
-            .replace(/[^A-Z0-9]/g, '_')       // Substitui caracteres especiais por _
-            .replace(/_+/g, '_')               // Remove _ duplicados
-            .replace(/^_|_$/g, '');            // Remove _ do início/fim
-
-        const nomeArquivo = `pedido_${order.numero_pedido}_${marcaNormalizada}_${dataFormatada}.xlsx`;
-
         return {
             buffer,
-            numeroPedido: order.numero_pedido,
-            fileName: nomeArquivo
+            filename: exportFilename
         };
-
     } catch (err) {
         console.error('[Export] Erro fatal no serviço de exportação:', err);
         throw err;

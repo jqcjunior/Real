@@ -43,11 +43,11 @@ async function startServer() {
       // Gerar Excel usando o serviço atualizado
       const result = await exportBuyOrderToExcel(orderId);
 
-      const fileName = result.fileName || `Pedido_${result.numeroPedido || orderId}.xlsx`;
+      const filename = result.filename;
       
       // Armazena no cache para download direto (evita problemas de Blob em iFrame)
       const id = Math.random().toString(36).substring(2, 15);
-      fileCache.set(id, { buffer: result.buffer as Buffer, fileName, timestamp: Date.now() });
+      fileCache.set(id, { buffer: result.buffer as Buffer, fileName: filename, timestamp: Date.now() });
 
       res.json({ success: true, downloadId: id });
 
@@ -70,10 +70,8 @@ async function startServer() {
 
         const result = await exportBuyOrderToExcel(orderId);
         
-        const filename = result.fileName || `Pedido_${result.numeroPedido || 'Export'}_${Date.now()}.xlsx`;
-        
         res.setHeader('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
-        res.setHeader('Content-Disposition', `attachment; filename="${filename}"`);
+        res.setHeader('Content-Disposition', `attachment; filename="${result.filename}.xlsx"`);
         res.send(Buffer.from(result.buffer as ArrayBuffer));
         
     } catch (error: any) {
