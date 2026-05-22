@@ -2,10 +2,10 @@ import { createClient } from '@supabase/supabase-js';
 import XlsxPopulate from 'xlsx-populate';
 import fetch from 'node-fetch';
 
-const supabaseUrl = process.env.SUPABASE_URL || '';
-const supabaseServiceKey = process.env.SUPABASE_SERVICE_KEY || '';
+const supabaseUrl = process.env.SUPABASE_URL ?? '';
+const supabaseServiceKey = process.env.SUPABASE_SERVICE_KEY ?? '';
 
-const supabase = createClient(supabaseUrl, supabaseServiceKey);
+const supabase = createClient(supabaseUrl || 'https://placeholder.supabase.co', supabaseServiceKey || 'placeholder');
 
 function buildExportFilename(
   numeroPedido: number,
