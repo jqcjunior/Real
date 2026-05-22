@@ -308,9 +308,11 @@ export default function BuyOrderModule({ user }: { user?: User }) {
   useEffect(() => {
     if (user) {
       const role = String(user?.role || "").toUpperCase();
+      const modoInterface =
+        role === "ADMIN" || role === "COMPRADOR" ? "comprador" : "gerente";
       setCab((prev) => ({
         ...prev,
-        role: role === "ADMIN" ? "comprador" : "gerente",
+        role: modoInterface,
       }));
     }
   }, [user]);
@@ -716,7 +718,7 @@ export default function BuyOrderModule({ user }: { user?: User }) {
           .insert({
             user_id: userId,
             user_name: user?.name || user?.email || "sistema",
-            user_role: cab.role,
+            user_role: String(user?.role || "").toLowerCase(),
             brand_id: brandId,
             marca: cab.marca,
             fornecedor: cab.fornecedor,
@@ -1798,8 +1800,9 @@ export default function BuyOrderModule({ user }: { user?: User }) {
                           gap: 6,
                         }}
                       >
-                        {o.user_role === "comprador" ||
-                        o.user_role === "ADMIN" ? (
+                        {["comprador", "admin", "super_admin"].includes(
+                          (o.user_role || "").toLowerCase()
+                        ) ? (
                           <>
                             <span style={{ fontSize: 14 }}>⚙️</span>
                             <div>
