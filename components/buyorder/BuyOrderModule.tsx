@@ -574,61 +574,8 @@ export default function BuyOrderModule({ user }: { user?: User }) {
 
       // ✅ VALIDAÇÃO DE COTA (APENAS PARA CONFIRMAÇÃO DIRETA)
       if (targetAction === "confirmado") {
-        const primeiroPedido = pedidos[0];
-        const storeNumber = primeiroPedido?.lojas[0];
-        const deliveryDate = new Date(cab.fat_fim + "T00:00:00");
-        const month = deliveryDate.getMonth() + 1;
-        const year = deliveryDate.getFullYear();
-
-        const validation = await apiService.validarCotaDisponivel(
-          storeNumber?.toString() || "",
-          preTotalValorLiquidoGeral,
-          cab.role,
-          month,
-          year
-        );
-
-        if (!validation.permitido) {
-          const isAdmin = user?.role === UserRole.ADMIN || user?.role === UserRole.SUPER_ADMIN;
-          
-          if (!isAdmin) {
-             toast.error(`❌ Bloqueado: ${validation.mensagem}`, { duration: 6000 });
-             setSaving(false);
-             return;
-          } else {
-             const confirmarAdmin = confirm(
-               `Atenção: A cota atual foi excedida em R$ ${validation.excede_em.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}.\n\n` +
-               `Como ADMINISTRADOR, você deseja autorizar este pedido mesmo assim?`
-             );
-             if (!confirmarAdmin) {
-               setSaving(false);
-               return;
-             }
-          }
-        }
-
-        // Mantém validação de capacidade de entrega se já existir
-        const { data: valData, error: valErr } = await supabase.rpc('validate_order_capacity_v2', {
-          p_store_number: storeNumber?.toString() || '', 
-          p_delivery_month: month,
-          p_delivery_year: year,
-          p_payment_months: preVencimentos.map(v => v.getMonth() + 1),
-          p_payment_year: preVencimentos.length > 0 ? preVencimentos[0].getFullYear() : year,
-          p_order_value: preTotalValorLiquidoGeral,
-          p_user_role: cab.role,
-          p_exclude_order_id: editingOrderId
-        });
-
-        if (valErr) throw valErr;
-
-        if (valData && !valData.success) {
-          if (valData.error === 'CAPACIDADE_ENTREGA_INSUFICIENTE') {
-            setValidationError(valData);
-            setShowSolicitarCotaExtra(true);
-            setSaving(false);
-            return;
-          }
-        }
+        // Validação de cota já é feita no BuyOrderStepPedidos antes de criar o pedido.
+        // Aqui apenas prosseguimos com a confirmação.
       }
 
       // 1. Upsert brand em buy_brands
@@ -887,7 +834,7 @@ export default function BuyOrderModule({ user }: { user?: User }) {
         // Marcar qualquer cota extra aprovada para este pedido como "usada"
         await supabase.rpc('mark_quota_extra_as_used', { p_order_id: orderId });
 
-        toast.success(`Pedido Confirmado! Cota consumida.`);
+        toast.success(`✅ Pedido #${numeroPedidoSalvo} confirmado com sucesso!`);
         resetStateAndFetch();
       } else if (targetAction === "rascunho_then_standby") {
         // Mostrar o Modal de Stand By para setar o motivo
