@@ -30,6 +30,7 @@ interface StoreStat {
   loja: string;
   cidade: string;
   pares: number;
+  unidades: number;
   valor: number;
   pedidos: number;
 }
@@ -184,7 +185,7 @@ export default function BuyOrderDashboard({ user }: { user: any }) {
       let totalUnidades = 0;
       let valorTotal = 0;
 
-      const storeAgg = new Map<string, { pares: number; valor: number; pedidos: Set<string> }>();
+      const storeAgg = new Map<string, { pares: number; unidades: number; valor: number; pedidos: Set<string> }>();
       const brandAgg = new Map<string, { pares: number; valor: number }>();
       const typeAgg = new Map<string, {
         pares: number;
@@ -237,10 +238,11 @@ export default function BuyOrderDashboard({ user }: { user: any }) {
           if (dept === 'INF') dept = 'INFANTIL';
           if (dept === 'ACES') dept = 'ACESSÓRIO';
 
+          // ✅ total_pares é por loja — multiplicar por numLojas para o total geral
           if (dept === 'ACESSÓRIO') {
-            totalUnidades += p;
+            totalUnidades += p * numLojas;
           } else {
-            totalPares += p;
+            totalPares += p * numLojas;
           }
 
           let subCat = (item.tipo || 'OUTROS').toUpperCase();
@@ -251,8 +253,9 @@ export default function BuyOrderDashboard({ user }: { user: any }) {
             else mapKey = 'UNISSEX|' + subCat;
           }
 
-          const paresPorLoja = p / numLojas;
-          const valorPorLoja = v / numLojas;
+          // ✅ total_pares já é por loja — não dividir
+          const paresPorLoja = p;
+          const valorPorLoja = v;
 
           const tAgg = typeAgg.get(dept) || { pares: 0, valor: 0, modelStats: new Map() };
           tAgg.pares += p;
@@ -278,16 +281,28 @@ export default function BuyOrderDashboard({ user }: { user: any }) {
 
         valorTotal += orderCusto;
 
+        // Para brand: usar pares/valor já divididos por loja (cada loja recebe sua fração)
         const bAgg = brandAgg.get(order.marca) || { pares: 0, valor: 0 };
-        bAgg.pares += orderPares;
-        bAgg.valor += orderCusto;
+        bAgg.pares += orderPares / numLojas;
+        bAgg.valor += orderCusto / numLojas;
         brandAgg.set(order.marca, bAgg);
+
+        // Calcular pares calçados e unidades acessórios separados para esta order
+        let orderParesCalcados = 0;
+        let orderUnidadesAcess = 0;
+        for (const item of items) {
+          const p = Number(item.total_pares || 0);
+          let dept = (item.modelo || '').toUpperCase();
+          if (dept === 'ACES') orderUnidadesAcess += p;
+          else orderParesCalcados += p;
+        }
 
         todasLojas.forEach((lojaNum: number) => {
           const loja = String(lojaNum);
-          const sAgg = storeAgg.get(loja) || { pares: 0, valor: 0, pedidos: new Set<string>() };
-          sAgg.pares += orderPares / numLojas;
-          sAgg.valor += orderCusto / numLojas;
+          const sAgg = storeAgg.get(loja) || { pares: 0, unidades: 0, valor: 0, pedidos: new Set<string>() };
+          sAgg.pares += orderParesCalcados;
+          sAgg.unidades += orderUnidadesAcess;
+          sAgg.valor += orderCusto;
           sAgg.pedidos.add(order.id);
           storeAgg.set(loja, sAgg);
         });
@@ -300,6 +315,7 @@ export default function BuyOrderDashboard({ user }: { user: any }) {
           loja,
           cidade: cityMap.get(loja) || 'Desconhecida',
           pares: agg.pares,
+          unidades: (agg as any).unidades || 0,
           valor: agg.valor,
           pedidos: agg.pedidos.size
         }))
@@ -727,14 +743,14 @@ export default function BuyOrderDashboard({ user }: { user: any }) {
           )).sort((a, b) => a - b);
 
           const renderTable = (modelos: ModelStat[]) => (
-            <div className="bg-white dark:bg-slate-900 p-0 border-t border-opacity-20 overflow-auto max-h-[400px]">
+            <div className="bg-white dark:bg-slate-900 p-0 border-t border-opacity-20 overflow-x-auto">
               <table className="w-full text-left text-sm whitespace-nowrap min-w-max">
                 <thead className="bg-slate-50 dark:bg-slate-900 sticky top-0 shadow-sm border-b border-slate-200 dark:border-slate-700 z-20">
                   <tr>
                     <th className="px-6 py-3 font-bold text-xs uppercase tracking-wider text-slate-400 dark:text-slate-500 sticky left-0 bg-slate-50 dark:bg-slate-900 z-10">Modelo</th>
                     {storesInType.map(loja => (
-                      <th key={loja} className="px-3 py-3 font-bold text-xs uppercase tracking-wider text-blue-600 dark:text-blue-400 text-center min-w-[60px]">
-                        L{loja.toString().padStart(2, '0')}
+                      <th key={loja} className="px-1 py-3 font-bold text-[9px] uppercase tracking-wide text-blue-600 dark:text-blue-400 text-center min-w-[32px] w-8">
+                        L{loja}
                       </th>
                     ))}
                     <th className="px-6 py-3 font-bold text-xs uppercase tracking-wider text-slate-400 dark:text-slate-500 text-right">Total</th>
@@ -749,8 +765,8 @@ export default function BuyOrderDashboard({ user }: { user: any }) {
                       {storesInType.map(loja => {
                         const pares = m.pares_por_loja?.[loja] || 0;
                         return (
-                          <td key={loja} className={`px-3 py-3 text-center font-medium ${pares > 0 ? 'text-green-700 dark:text-green-400' : 'text-slate-300 dark:text-slate-600'}`}>
-                            {pares > 0 ? formatNum(pares) : '—'}
+                          <td key={loja} className={`px-1 py-2 text-center text-[10px] font-bold ${pares > 0 ? 'text-green-700 dark:text-green-400' : 'text-slate-200 dark:text-slate-700'}`}>
+                            {pares > 0 ? pares : ''}
                           </td>
                         );
                       })}
@@ -814,6 +830,7 @@ export default function BuyOrderDashboard({ user }: { user: any }) {
                     <th className="px-5 py-3 font-bold text-[11px] uppercase tracking-wider text-slate-400 dark:text-slate-500">Loja</th>
                     <th className="px-5 py-3 font-bold text-[11px] uppercase tracking-wider text-slate-400 dark:text-slate-500">Cidade</th>
                     <th className="px-5 py-3 font-bold text-[11px] uppercase tracking-wider text-slate-400 dark:text-slate-500 text-right">Pares</th>
+                    <th className="px-5 py-3 font-bold text-[11px] uppercase tracking-wider text-slate-400 dark:text-slate-500 text-right">Unid.</th>
                     <th className="px-5 py-3 font-bold text-[11px] uppercase tracking-wider text-slate-400 dark:text-slate-500 text-right">Valor</th>
                     <th className="px-5 py-3 font-bold text-[11px] uppercase tracking-wider text-slate-400 dark:text-slate-500 text-center">Pedidos</th>
                   </tr>
@@ -824,6 +841,7 @@ export default function BuyOrderDashboard({ user }: { user: any }) {
                       <td className="px-5 py-2.5 font-black text-blue-600 dark:text-blue-400">{s.loja}</td>
                       <td className="px-5 py-2.5 font-medium text-slate-700 dark:text-slate-300">{s.cidade}</td>
                       <td className="px-5 py-2.5 text-right font-bold text-slate-900 dark:text-slate-200">{formatNum(s.pares)}</td>
+                      <td className="px-5 py-2.5 text-right font-bold text-slate-900 dark:text-slate-200">{formatNum(s.unidades)}</td>
                       <td className="px-5 py-2.5 text-right text-emerald-600 dark:text-emerald-400 font-bold">{formatBRLValue(s.valor)}</td>
                       <td className="px-5 py-2.5 text-center">
                         <span className="inline-flex items-center justify-center bg-slate-100 dark:bg-slate-700 text-slate-600 dark:text-slate-300 font-bold text-[10px] px-2 py-0.5 rounded">
@@ -833,7 +851,7 @@ export default function BuyOrderDashboard({ user }: { user: any }) {
                     </tr>
                   ))}
                   {filteredStoreStats.length === 0 && (
-                    <tr><td colSpan={5} className="py-8 text-center text-slate-400 italic">Nenhum dado encontrado</td></tr>
+                    <tr><td colSpan={6} className="py-8 text-center text-slate-400 italic">Nenhum dado encontrado</td></tr>
                   )}
                 </tbody>
               </table>
