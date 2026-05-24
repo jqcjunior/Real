@@ -105,6 +105,7 @@ export default function ResumoAnoFiscal({ quotas, storeNumber, onVerPedidos }: R
           vencimentos,
           user_name,
           user_role,
+          desconto,
           buy_order_items (
             total_pares,
             custo
@@ -135,12 +136,16 @@ export default function ResumoAnoFiscal({ quotas, storeNumber, onVerPedidos }: R
       // Calcular totais de cada pedido
       const pedidosComTotais = pedidosLoja.map(pedido => {
         const items = (pedido.buy_order_items as any[]) || [];
+        const desconto = pedido.desconto || 0;
+
         const totalPares = items.reduce((sum: number, item: any) => 
           sum + (item.total_pares || 0), 0
         );
-        const totalCusto = items.reduce((sum: number, item: any) => 
+        const totalCustoBruto = items.reduce((sum: number, item: any) => 
           sum + (item.total_pares || 0) * (item.custo || 0), 0
         );
+        // Aplicar desconto do pedido
+        const totalCusto = totalCustoBruto * (1 - desconto / 100);
         
         // Agrupar vencimentos por mês
         const vencimentosPorMes: Record<string, number> = {};
