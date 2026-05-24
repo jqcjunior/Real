@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import { supabase } from '../../services/supabaseClient';
 import { Package, Store as StoreIcon, Activity, BarChart3, Tag, ChevronDown, ChevronRight, DollarSign } from 'lucide-react';
 
@@ -42,6 +42,14 @@ interface BrandStat {
   percentual: number;
 }
 
+// Estrutura interna de agregação por marca (com por loja)
+interface BrandAggEntry {
+  pares: number;
+  valor: number;
+  pares_por_loja: Map<number, number>;
+  valor_por_loja: Map<number, number>;
+}
+
 const LOJAS = [5, 8, 9, 26, 31, 34, 40, 43, 44, 45, 50, 56, 72, 88, 96, 100, 102, 109];
 
 export default function BuyOrderDashboard({ user }: { user: any }) {
@@ -50,10 +58,12 @@ export default function BuyOrderDashboard({ user }: { user: any }) {
   const [summary, setSummary] = useState<DashboardSummary | null>(null);
   const [typeStats, setTypeStats] = useState<TypeStat[]>([]);
   const [storeStats, setStoreStats] = useState<StoreStat[]>([]);
+  // brandAggData guarda os dados brutos para recalcular brandStats quando lojaFiltro muda
+  const [brandAggData, setBrandAggData] = useState<Map<string, BrandAggEntry>>(new Map());
   const [brandStats, setBrandStats] = useState<BrandStat[]>([]);
   const [expandedType, setExpandedType] = useState<string | null>(null);
   const [lojaFiltro, setLojaFiltro] = useState<number | null>(null);
-  const [periodo, setPeriodo] = useState<3 | 6>(3); // padrão 3M
+  const [periodo, setPeriodo] = useState<3 | 6>(3);
   const [isMobile, setIsMobile] = useState(
     typeof window !== 'undefined' ? window.innerWidth < 768 : false
   );
@@ -81,10 +91,7 @@ export default function BuyOrderDashboard({ user }: { user: any }) {
           ? String(userStoreNumber)
           : null;
 
-      if (!storeNum) {
-        setCategoriaParams(null);
-        return;
-      }
+      if (!storeNum) { setCategoriaParams(null); return; }
 
       const currentMonth = new Date().getMonth() + 1;
       const currentYear  = new Date().getFullYear();
@@ -106,39 +113,57 @@ export default function BuyOrderDashboard({ user }: { user: any }) {
         cota_valor:          Number(data.cota_valor          || 0),
       } : null);
     };
-
     fetchCategoriaParams();
   }, [lojaFiltro, userStoreNumber]);
 
+  // ── Recalcular brandStats sempre que lojaFiltro ou brandAggData mudar ──
+  useEffect(() => {
+    if (brandAggData.size === 0) return;
+
+    // totalPares e totalUnidades globais (sem filtro de loja) para o percentual
+    const totalGlobal = Array.from(brandAggData.values()).reduce((s, a) => s + a.pares, 0);
+
+    const brStats: BrandStat[] = Array.from(brandAggData.entries())
+      .map(([marca, agg]) => {
+        const pares = lojaFiltro !== null
+          ? (agg.pares_por_loja.get(lojaFiltro) || 0)
+          : agg.pares;
+        const valor = lojaFiltro !== null
+          ? (agg.valor_por_loja.get(lojaFiltro) || 0)
+          : agg.valor;
+        return {
+          marca: marca || 'SEM MARCA',
+          pares,
+          valor,
+          percentual: totalGlobal > 0 ? (pares / totalGlobal) * 100 : 0,
+        };
+      })
+      .filter(b => b.pares > 0)
+      .sort((a, b) => b.pares - a.pares)
+      .slice(0, 18);
+
+    setBrandStats(brStats);
+  }, [lojaFiltro, brandAggData]);
+
   useEffect(() => {
     async function fetchStoreNumber() {
-      if (!user?.storeId || user.role === 'ADMIN') {
-        setUserStoreNumber(null);
-        return;
-      }
-      const { data } = await supabase
-        .from('stores')
-        .select('number')
-        .eq('id', user.storeId)
-        .single();
+      if (!user?.storeId || user.role === 'ADMIN') { setUserStoreNumber(null); return; }
+      const { data } = await supabase.from('stores').select('number').eq('id', user.storeId).single();
       if (data?.number) setUserStoreNumber(parseInt(data.number));
     }
     fetchStoreNumber();
   }, [user]);
 
-  useEffect(() => {
-    fetchData();
-  }, [userStoreNumber]);
+  useEffect(() => { fetchData(); }, [userStoreNumber]);
 
   const fetchData = async () => {
     setLoading(true);
     try {
       const currentYear = new Date().getFullYear();
 
-      // ✅ 3 queries separadas — sem multiplicação por JOIN
       const { data: orders, error: oError } = await supabase
         .from('buy_orders')
-        .select('id, marca, status, created_at, desconto') // ✅ inclui desconto
+        .select('id, marca, status, created_at, desconto')
         .eq('status', 'confirmado')
         .gte('created_at', `${currentYear}-01-01T00:00:00.000Z`)
         .lte('created_at', `${currentYear}-12-31T23:59:59.999Z`);
@@ -157,7 +182,6 @@ export default function BuyOrderDashboard({ user }: { user: any }) {
         .select('order_id, lojas_numeros')
         .in('order_id', orderIds);
 
-      // Maps para lookup sem duplicação
       const itemsByOrder = new Map<string, any[]>();
       (allItems || []).forEach(item => {
         if (!itemsByOrder.has(item.order_id)) itemsByOrder.set(item.order_id, []);
@@ -170,39 +194,33 @@ export default function BuyOrderDashboard({ user }: { user: any }) {
         subsByOrder.get(sub.order_id)!.push(sub);
       });
 
-      // Map de desconto por pedido
       const descontoByOrder = new Map<string, number>();
-      (orders || []).forEach(o => {
-        descontoByOrder.set(o.id, Number(o.desconto || 0));
-      });
+      (orders || []).forEach(o => descontoByOrder.set(o.id, Number(o.desconto || 0)));
 
-      const { data: storesObj, error: sError } = await supabase.from('stores').select('number, city');
-      if (sError) throw sError;
+      const { data: storesObj } = await supabase.from('stores').select('number, city');
       const cityMap = new Map<string, string>();
       storesObj?.forEach(s => cityMap.set(String(s.number), s.city));
 
+      // ── totais GLOBAIS (soma × numLojas) ──
       let totalPares = 0;
       let totalUnidades = 0;
       let valorTotal = 0;
 
       const storeAgg = new Map<string, { pares: number; unidades: number; valor: number; pedidos: Set<string> }>();
-      const brandAgg = new Map<string, { pares: number; valor: number }>();
+      const brandAgg = new Map<string, BrandAggEntry>();
       const typeAgg = new Map<string, {
-        pares: number;
-        valor: number;
+        pares: number; valor: number;
         modelStats: Map<string, {
-          pares: number;
-          valor: number;
+          pares: number; valor: number;
           pares_por_loja: Map<number, number>;
           valor_por_loja: Map<number, number>;
-        }>
+        }>;
       }>();
 
       for (const order of (orders || [])) {
         const subOrders = subsByOrder.get(order.id) || [];
-        const items = itemsByOrder.get(order.id) || [];
+        const items     = itemsByOrder.get(order.id) || [];
 
-        // Filtro por loja do gerente
         if (user?.role !== 'ADMIN' && userStoreNumber) {
           const incluiLoja = subOrders.some((sub: any) =>
             (sub.lojas_numeros || []).map(String).includes(String(userStoreNumber))
@@ -210,106 +228,95 @@ export default function BuyOrderDashboard({ user }: { user: any }) {
           if (!incluiLoja) continue;
         }
 
-        // ✅ Lojas únicas via Set
         const todasLojas = Array.from(new Set(
           subOrders.flatMap((sub: any) => (sub.lojas_numeros || []).map(Number))
         ));
         const numLojas = todasLojas.length || 1;
         if (todasLojas.length === 0) continue;
 
-        // ✅ Fator de desconto do pedido
-        const desconto = descontoByOrder.get(order.id) || 0;
+        const desconto     = descontoByOrder.get(order.id) || 0;
         const fatorDesconto = 1 - (desconto / 100);
 
-        let orderPares = 0;
-        let orderCusto = 0;
+        let orderPares         = 0;
+        let orderCusto         = 0;
+        let orderParesCalcados = 0;
+        let orderUnidadesAcess = 0;
 
         for (const item of items) {
           const p = Number(item.total_pares || 0);
-          // ✅ Aplica desconto no valor do item
           const v = Number(item.custo || 0) * p * fatorDesconto;
 
           orderPares += p;
           orderCusto += v;
 
           let dept = (item.modelo || 'OUTROS').toUpperCase();
-          if (dept === 'FEM') dept = 'FEMININO';
+          if (dept === 'FEM')  dept = 'FEMININO';
           if (dept === 'MASC') dept = 'MASCULINO';
-          if (dept === 'INF') dept = 'INFANTIL';
+          if (dept === 'INF')  dept = 'INFANTIL';
           if (dept === 'ACES') dept = 'ACESSÓRIO';
 
-          // p = pares por loja. Para o total geral multiplicar por numLojas
+          // ✅ TOTAL GLOBAL: p é por loja → multiplicar por numLojas
           if (dept === 'ACESSÓRIO') {
-            totalUnidades += p * numLojas;
+            totalUnidades      += p * numLojas;
+            orderUnidadesAcess += p;
           } else {
-            totalPares += p * numLojas;
+            totalPares         += p * numLojas;
+            orderParesCalcados += p;
           }
 
           let subCat = (item.tipo || 'OUTROS').toUpperCase();
           let mapKey = subCat;
           if (dept === 'INFANTIL') {
-            if (subCat.includes('FEM') || subCat.includes('MENINA')) mapKey = 'FEMININO|' + subCat;
-            else if (subCat.includes('MASC') || subCat.includes('MENINO')) mapKey = 'MASCULINO|' + subCat;
-            else mapKey = 'UNISSEX|' + subCat;
+            if (subCat.includes('FEM') || subCat.includes('MENINA'))        mapKey = 'FEMININO|'  + subCat;
+            else if (subCat.includes('MASC') || subCat.includes('MENINO'))  mapKey = 'MASCULINO|' + subCat;
+            else                                                             mapKey = 'UNISSEX|'   + subCat;
           }
 
-          // ✅ total_pares já é por loja — não dividir
-          const paresPorLoja = p;
-          const valorPorLoja = v;
-
+          // ✅ typeAgg: pares por loja (p), acumulado × numLojas para o total do card
           const tAgg = typeAgg.get(dept) || { pares: 0, valor: 0, modelStats: new Map() };
-          tAgg.pares += p;
-          tAgg.valor += v;
+          tAgg.pares += p * numLojas;   // ← total real de todas as lojas
+          tAgg.valor += v * numLojas;   // ← valor real de todas as lojas
 
           const mAgg = tAgg.modelStats.get(mapKey) || {
             pares: 0, valor: 0,
-            pares_por_loja: new Map(),
-            valor_por_loja: new Map()
+            pares_por_loja: new Map<number, number>(),
+            valor_por_loja: new Map<number, number>(),
           };
-          mAgg.pares += p;
-          mAgg.valor += v;
+          mAgg.pares += p * numLojas;
+          mAgg.valor += v * numLojas;
 
-          // ✅ Guarda pares E valor por loja
           todasLojas.forEach((lojaNum: number) => {
-            mAgg.pares_por_loja.set(lojaNum, (mAgg.pares_por_loja.get(lojaNum) || 0) + paresPorLoja);
-            mAgg.valor_por_loja.set(lojaNum, (mAgg.valor_por_loja.get(lojaNum) || 0) + valorPorLoja);
+            mAgg.pares_por_loja.set(lojaNum, (mAgg.pares_por_loja.get(lojaNum) || 0) + p);
+            mAgg.valor_por_loja.set(lojaNum, (mAgg.valor_por_loja.get(lojaNum) || 0) + v);
           });
 
           tAgg.modelStats.set(mapKey, mAgg);
           typeAgg.set(dept, tAgg);
         }
 
-        valorTotal += orderCusto;
+        valorTotal += orderCusto * numLojas;
 
-        // brandAgg guarda o total por loja para poder filtrar depois
-        // Guardar também um Map com pares/valor por loja
-        const bAgg = brandAgg.get(order.marca) || { pares: 0, valor: 0, pares_por_loja: new Map<number, number>(), valor_por_loja: new Map<number, number>() };
-        // Total geral = soma de todas as lojas
-        bAgg.pares += orderPares;
-        bAgg.valor += orderCusto;
-        // Por loja
+        // ── brandAgg ──
+        const bAgg = brandAgg.get(order.marca) || {
+          pares: 0, valor: 0,
+          pares_por_loja: new Map<number, number>(),
+          valor_por_loja: new Map<number, number>(),
+        };
+        bAgg.pares += orderPares * numLojas;
+        bAgg.valor += orderCusto * numLojas;
         todasLojas.forEach((lojaNum: number) => {
-          (bAgg as any).pares_por_loja.set(lojaNum, ((bAgg as any).pares_por_loja.get(lojaNum) || 0) + (orderPares / numLojas));
-          (bAgg as any).valor_por_loja.set(lojaNum, ((bAgg as any).valor_por_loja.get(lojaNum) || 0) + (orderCusto / numLojas));
+          bAgg.pares_por_loja.set(lojaNum, (bAgg.pares_por_loja.get(lojaNum) || 0) + orderPares);
+          bAgg.valor_por_loja.set(lojaNum, (bAgg.valor_por_loja.get(lojaNum) || 0) + orderCusto);
         });
         brandAgg.set(order.marca, bAgg);
 
-        // Calcular pares calçados e unidades acessórios separados para esta order
-        let orderParesCalcados = 0;
-        let orderUnidadesAcess = 0;
-        for (const item of items) {
-          const p = Number(item.total_pares || 0);
-          let dept = (item.modelo || '').toUpperCase();
-          if (dept === 'ACES') orderUnidadesAcess += p;
-          else orderParesCalcados += p;
-        }
-
+        // ── storeAgg ──
         todasLojas.forEach((lojaNum: number) => {
           const loja = String(lojaNum);
           const sAgg = storeAgg.get(loja) || { pares: 0, unidades: 0, valor: 0, pedidos: new Set<string>() };
-          sAgg.pares += orderParesCalcados;
+          sAgg.pares    += orderParesCalcados;
           sAgg.unidades += orderUnidadesAcess;
-          sAgg.valor += orderCusto;
+          sAgg.valor    += orderCusto;
           sAgg.pedidos.add(order.id);
           storeAgg.set(loja, sAgg);
         });
@@ -320,11 +327,11 @@ export default function BuyOrderDashboard({ user }: { user: any }) {
       const stStats: StoreStat[] = Array.from(storeAgg.entries())
         .map(([loja, agg]) => ({
           loja,
-          cidade: cityMap.get(loja) || 'Desconhecida',
-          pares: agg.pares,
-          unidades: (agg as any).unidades || 0,
-          valor: agg.valor,
-          pedidos: agg.pedidos.size
+          cidade:   cityMap.get(loja) || 'Desconhecida',
+          pares:    agg.pares,
+          unidades: agg.unidades,
+          valor:    agg.valor,
+          pedidos:  agg.pedidos.size,
         }))
         .filter(s => {
           if (user?.role !== 'ADMIN' && userStoreNumber) return parseInt(s.loja) === userStoreNumber;
@@ -333,57 +340,37 @@ export default function BuyOrderDashboard({ user }: { user: any }) {
         .sort((a, b) => Number(a.loja) - Number(b.loja));
       setStoreStats(stStats);
 
-      const brStats: BrandStat[] = Array.from(brandAgg.entries())
-        .map(([marca, agg]) => {
-          const pares = lojaFiltro !== null
-            ? ((agg as any).pares_por_loja?.get(lojaFiltro) || 0)
-            : agg.pares;
-          const valor = lojaFiltro !== null
-            ? ((agg as any).valor_por_loja?.get(lojaFiltro) || 0)
-            : agg.valor;
-          return {
-            marca: marca || 'SEM MARCA',
-            pares,
-            valor,
-            percentual: (totalPares + totalUnidades) > 0 ? (pares / (totalPares + totalUnidades)) * 100 : 0
-          };
-        })
-        .filter(b => b.pares > 0)
-        .sort((a, b) => b.pares - a.pares)
-        .slice(0, 18);
-      setBrandStats(brStats);
+      // Salvar brandAgg bruto — brandStats será calculado pelo useEffect
+      setBrandAggData(new Map(brandAgg));
 
       const builtTypes: TypeStat[] = Array.from(typeAgg.entries()).map(([tipo, agg]) => {
         const typePares = agg.pares;
         const typeModelos: ModelStat[] = Array.from(agg.modelStats.entries()).map(([key, mAgg]) => {
-          let subtipo = undefined;
+          let subtipo: string | undefined = undefined;
           let modelo = key;
           if (tipo === 'INFANTIL' && key.includes('|')) {
             [subtipo, modelo] = key.split('|') as [string, string];
           }
-
           const paresPorLojaObj: Record<number, number> = {};
           mAgg.pares_por_loja.forEach((v, k) => { paresPorLojaObj[k] = Math.round(v); });
-
           const valorPorLojaObj: Record<number, number> = {};
           mAgg.valor_por_loja.forEach((v, k) => { valorPorLojaObj[k] = v; });
-
           return {
             subtipo, modelo,
-            pares: mAgg.pares,
-            valor: mAgg.valor,
-            percentual: typePares > 0 ? (mAgg.pares / typePares) * 100 : 0,
+            pares:       mAgg.pares,
+            valor:       mAgg.valor,
+            percentual:  typePares > 0 ? (mAgg.pares / typePares) * 100 : 0,
             pares_por_loja: paresPorLojaObj,
-            valor_por_loja: valorPorLojaObj
+            valor_por_loja: valorPorLojaObj,
           };
         }).sort((a, b) => b.pares - a.pares);
 
         return {
           tipo,
-          pares: agg.pares,
-          valor: agg.valor,
+          pares:      agg.pares,
+          valor:      agg.valor,
           percentual: (totalPares + totalUnidades) > 0 ? (agg.pares / (totalPares + totalUnidades)) * 100 : 0,
-          modelos: typeModelos
+          modelos:    typeModelos,
         };
       });
 
@@ -410,24 +397,24 @@ export default function BuyOrderDashboard({ user }: { user: any }) {
     return isNaN(n) ? 0 : n;
   };
   const formatBRLValue = (val: number) => toNumber(val).toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' });
-  const formatNum = (val: number) => toNumber(val).toLocaleString('pt-BR');
+  const formatNum      = (val: number) => toNumber(val).toLocaleString('pt-BR');
 
   const getTypeStyles = (tipo: string) => {
     switch (tipo) {
-      case 'FEMININO': return 'bg-pink-50 border-pink-500 text-pink-700';
+      case 'FEMININO':  return 'bg-pink-50 border-pink-500 text-pink-700';
       case 'MASCULINO': return 'bg-blue-50 border-blue-500 text-blue-700';
-      case 'INFANTIL': return 'bg-purple-50 border-purple-500 text-purple-700';
+      case 'INFANTIL':  return 'bg-purple-50 border-purple-500 text-purple-700';
       case 'ACESSÓRIO': return 'bg-amber-50 border-amber-500 text-amber-700';
-      default: return 'bg-slate-50 border-slate-500 text-slate-700';
+      default:          return 'bg-slate-50 border-slate-500 text-slate-700';
     }
   };
   const getTypeIcons = (tipo: string) => {
     switch (tipo) {
-      case 'FEMININO': return '👗';
+      case 'FEMININO':  return '👗';
       case 'MASCULINO': return '👔';
-      case 'INFANTIL': return '👶';
+      case 'INFANTIL':  return '👶';
       case 'ACESSÓRIO': return '💼';
-      default: return '📦';
+      default:          return '📦';
     }
   };
 
@@ -436,14 +423,13 @@ export default function BuyOrderDashboard({ user }: { user: any }) {
     const modelos = ts.modelos.map(m => ({
       ...m,
       pares: m.pares_por_loja?.[lojaFiltro] || 0,
-      // ✅ usa valor_por_loja direto — sem proporção
       valor: m.valor_por_loja?.[lojaFiltro] || 0,
     })).filter(m => m.pares > 0);
     return {
       ...ts,
       pares: modelos.reduce((a, m) => a + m.pares, 0),
       valor: modelos.reduce((a, m) => a + m.valor, 0),
-      modelos
+      modelos,
     };
   }).filter(ts => ts.pares > 0);
 
@@ -452,72 +438,91 @@ export default function BuyOrderDashboard({ user }: { user: any }) {
     : storeStats.filter(s => parseInt(s.loja) === lojaFiltro);
 
   const filteredSummary = lojaFiltro === null ? summary : {
-    // Pares = apenas calçados (FEM + MASC + INF)
-    total_pares: filteredTypeStats
-      .filter(t => t.tipo !== 'ACESSÓRIO')
-      .reduce((a, t) => a + t.pares, 0),
-    // Unidades = apenas acessórios
-    total_unidades: filteredTypeStats
-      .find(t => t.tipo === 'ACESSÓRIO')?.pares || 0,
+    total_pares:    filteredTypeStats.filter(t => t.tipo !== 'ACESSÓRIO').reduce((a, t) => a + t.pares, 0),
+    total_unidades: filteredTypeStats.find(t => t.tipo === 'ACESSÓRIO')?.pares || 0,
     valor_total:    filteredStoreStats.reduce((a, s) => a + s.valor, 0),
   };
 
   const expandedStat = filteredTypeStats.find(t => t.tipo === expandedType);
-  // ─────────────────────────────────────────────────────────────────────────
 
   // ── DONUT META ─────────────────────────────────────────────────────────────
   const DonutMeta = ({
-    meta,
-    realizado,
-    cor,
-    corClaro,
-    label = 'META',
-    small = false,
+    meta, realizado, cor, corClaro, label = 'META', small = false,
   }: {
-    meta: number;
-    realizado: number;
-    cor: string;
-    corClaro: string;
-    label?: string;
-    small?: boolean;
+    meta: number; realizado: number; cor: string; corClaro: string; label?: string; small?: boolean;
   }) => {
     const size   = small ? 52 : 72;
     const stroke = small ? 5 : 7;
     const r      = (size - stroke) / 2;
     const circ   = 2 * Math.PI * r;
-    const progresso  = meta > 0 ? Math.min(realizado / meta, 1) : 0;
-    const dashOffset = circ * (1 - progresso);
-
+    const prog   = meta > 0 ? Math.min(realizado / meta, 1) : 0;
+    const offset = circ * (1 - prog);
     return (
       <div className="flex flex-col items-center justify-center flex-shrink-0" style={{ position: 'relative', width: size, height: size }}>
         <svg width={size} height={size} style={{ transform: 'rotate(-90deg)', position: 'absolute', top: 0, left: 0 }}>
           <circle cx={size/2} cy={size/2} r={r} fill="none" stroke={corClaro} strokeWidth={stroke} />
-          <circle
-            cx={size/2} cy={size/2} r={r}
-            fill="none" stroke={cor} strokeWidth={stroke}
-            strokeDasharray={circ} strokeDashoffset={dashOffset}
-            strokeLinecap="round"
-            style={{ transition: 'stroke-dashoffset 0.6s ease' }}
-          />
+          <circle cx={size/2} cy={size/2} r={r} fill="none" stroke={cor} strokeWidth={stroke}
+            strokeDasharray={circ} strokeDashoffset={offset} strokeLinecap="round"
+            style={{ transition: 'stroke-dashoffset 0.6s ease' }} />
         </svg>
-        <div style={{
-          position: 'absolute', top: 0, left: 0,
-          width: size, height: size,
-          display: 'flex', flexDirection: 'column',
-          alignItems: 'center', justifyContent: 'center',
-          pointerEvents: 'none',
-        }}>
+        <div style={{ position: 'absolute', top: 0, left: 0, width: size, height: size,
+          display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', pointerEvents: 'none' }}>
           <span style={{ fontSize: small ? 12 : 15, fontWeight: 900, color: cor, lineHeight: 1 }}>
             {meta.toFixed(0)}%
           </span>
-          <span style={{ fontSize: 8, color: cor, opacity: 0.7, marginTop: 1, fontWeight: 700 }}>
-            {label}
+          <span style={{ fontSize: 8, color: cor, opacity: 0.7, marginTop: 1, fontWeight: 700 }}>{label}</span>
+        </div>
+      </div>
+    );
+  };
+
+  // ── DONUT INFANTIL duplo (menina rosa + menino azul) ──────────────────────
+  const DonutInfantil = ({
+    paresMenina, paresMenino, small = false,
+  }: {
+    paresMenina: number; paresMenino: number; small?: boolean;
+  }) => {
+    const total = paresMenina + paresMenino;
+    if (total === 0) return null;
+    const pctMenina = (paresMenina / total) * 100;
+    const pctMenino = (paresMenino / total) * 100;
+
+    const size   = small ? 52 : 72;
+    const stroke = small ? 5 : 7;
+    const r      = (size - stroke) / 2;
+    const circ   = 2 * Math.PI * r;
+
+    // menina: arco do início
+    const dashMenina  = circ * (paresMenina / total);
+    // menino: arco depois da menina
+    const dashMenino  = circ * (paresMenino / total);
+    const offsetMenino = circ * (paresMenina / total);   // começa onde a menina termina
+
+    return (
+      <div className="flex flex-col items-center justify-center flex-shrink-0" style={{ position: 'relative', width: size, height: size }}>
+        <svg width={size} height={size} style={{ transform: 'rotate(-90deg)', position: 'absolute', top: 0, left: 0 }}>
+          {/* fundo */}
+          <circle cx={size/2} cy={size/2} r={r} fill="none" stroke="#f3e8ff" strokeWidth={stroke} />
+          {/* menina (rosa) */}
+          <circle cx={size/2} cy={size/2} r={r} fill="none" stroke="#ec4899" strokeWidth={stroke}
+            strokeDasharray={`${dashMenina} ${circ - dashMenina}`} strokeDashoffset={0} strokeLinecap="butt" />
+          {/* menino (azul) */}
+          <circle cx={size/2} cy={size/2} r={r} fill="none" stroke="#3b82f6" strokeWidth={stroke}
+            strokeDasharray={`${dashMenino} ${circ - dashMenino}`} strokeDashoffset={-offsetMenino} strokeLinecap="butt" />
+        </svg>
+        <div style={{ position: 'absolute', top: 0, left: 0, width: size, height: size,
+          display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', pointerEvents: 'none', gap: 1 }}>
+          <span style={{ fontSize: small ? 7 : 9, fontWeight: 900, color: '#ec4899', lineHeight: 1 }}>
+            ♀ {pctMenina.toFixed(0)}%
+          </span>
+          <span style={{ fontSize: small ? 7 : 9, fontWeight: 900, color: '#3b82f6', lineHeight: 1 }}>
+            ♂ {pctMenino.toFixed(0)}%
           </span>
         </div>
       </div>
     );
   };
-  // ───────────────────────────────────────────────────────────────────────────
+  // ─────────────────────────────────────────────────────────────────────────
 
   if (loading) {
     return (
@@ -531,83 +536,57 @@ export default function BuyOrderDashboard({ user }: { user: any }) {
     <div className="flex-1 h-screen overflow-y-auto bg-slate-50 dark:bg-slate-900 border-l border-slate-200 dark:border-slate-800 text-slate-800 dark:text-slate-200">
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8 space-y-6">
 
-        {/* Header + filtro de lojas */}
+        {/* Header + filtro */}
         <div className="border-b border-slate-200 dark:border-slate-800 pb-4 space-y-3">
           <div className="flex items-center gap-3">
             <BarChart3 className="text-blue-600 dark:text-blue-400" size={28} />
             <h1 className="text-2xl font-black italic uppercase tracking-tight text-slate-900 dark:text-white">
               Dashboard de Compras
-              {lojaFiltro !== null && (
-                <span className="ml-3 text-blue-600 dark:text-blue-400">· Loja {lojaFiltro}</span>
-              )}
+              {lojaFiltro !== null && <span className="ml-3 text-blue-600 dark:text-blue-400">· Loja {lojaFiltro}</span>}
             </h1>
           </div>
           {user?.role === 'ADMIN' && (
-            <div className="flex flex-wrap sm:flex-wrap items-center gap-2 overflow-x-auto pb-1">
-              {/* Botões de loja */}
-              <button
-                onClick={() => setLojaFiltro(null)}
+            <div className="flex flex-wrap items-center gap-2 overflow-x-auto pb-1">
+              <button onClick={() => setLojaFiltro(null)}
                 className={`px-3 py-1.5 rounded-lg text-[10px] font-black uppercase tracking-wider transition-all ${
-                  lojaFiltro === null
-                    ? 'bg-blue-600 text-white shadow'
-                    : 'bg-slate-100 dark:bg-slate-800 text-slate-500 dark:text-slate-400 hover:bg-slate-200 dark:hover:bg-slate-700'
-                }`}
-              >TODAS</button>
+                  lojaFiltro === null ? 'bg-blue-600 text-white shadow' : 'bg-slate-100 dark:bg-slate-800 text-slate-500 hover:bg-slate-200'}`}>
+                TODAS
+              </button>
               {LOJAS.map(num => (
-                <button
-                  key={num}
-                  onClick={() => setLojaFiltro(lojaFiltro === num ? null : num)}
+                <button key={num} onClick={() => setLojaFiltro(lojaFiltro === num ? null : num)}
                   className={`px-3 py-1.5 rounded-lg text-[10px] font-black uppercase tracking-wider transition-all ${
-                    lojaFiltro === num
-                      ? 'bg-blue-600 text-white shadow'
-                      : 'bg-slate-100 dark:bg-slate-800 text-slate-500 dark:text-slate-400 hover:bg-slate-200 dark:hover:bg-slate-700'
-                  }`}
-                >{num}</button>
+                    lojaFiltro === num ? 'bg-blue-600 text-white shadow' : 'bg-slate-100 dark:bg-slate-800 text-slate-500 hover:bg-slate-200'}`}>
+                  {num}
+                </button>
               ))}
-
-              {/* Separador */}
               <div className="w-px h-5 bg-slate-300 dark:bg-slate-600 mx-1" />
-
-              {/* Botões de período — só quando loja específica selecionada */}
-              {lojaFiltro !== null && (
-                <>
-                  {([3, 6] as const).map(p => (
-                    <button
-                      key={p}
-                      onClick={() => setPeriodo(p)}
-                      className={`px-3 py-1.5 rounded-lg text-[10px] font-black uppercase tracking-wider transition-all ${
-                        periodo === p
-                          ? 'bg-emerald-600 text-white shadow'
-                          : 'bg-slate-100 dark:bg-slate-800 text-slate-500 dark:text-slate-400 hover:bg-slate-200 dark:hover:bg-slate-700'
-                      }`}
-                    >{p}M</button>
-                  ))}
-                </>
-              )}
+              {lojaFiltro !== null && ([3, 6] as const).map(p => (
+                <button key={p} onClick={() => setPeriodo(p)}
+                  className={`px-3 py-1.5 rounded-lg text-[10px] font-black uppercase tracking-wider transition-all ${
+                    periodo === p ? 'bg-emerald-600 text-white shadow' : 'bg-slate-100 dark:bg-slate-800 text-slate-500 hover:bg-slate-200'}`}>
+                  {p}M
+                </button>
+              ))}
             </div>
           )}
         </div>
 
         {/* CARDS DE RESUMO */}
         <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
-          <div className="bg-white dark:bg-slate-800 rounded-xl shadow-sm border border-slate-200 dark:border-slate-700 p-5 flex flex-col justify-center">
-            <div className="text-xs font-bold uppercase tracking-wider text-slate-500 mb-1 flex items-center gap-2">
-              <Package size={16} /> Total de Pares
+          {[
+            { label: 'Total de Pares', val: filteredSummary?.total_pares || 0, sub: 'Calçados', unit: 'pares' },
+            { label: 'Total de Unidades', val: filteredSummary?.total_unidades || 0, sub: 'Acessórios', unit: 'unid.' },
+          ].map(c => (
+            <div key={c.label} className="bg-white dark:bg-slate-800 rounded-xl shadow-sm border border-slate-200 dark:border-slate-700 p-5 flex flex-col justify-center">
+              <div className="text-xs font-bold uppercase tracking-wider text-slate-500 mb-1 flex items-center gap-2">
+                <Package size={16} /> {c.label}
+              </div>
+              <div className="text-2xl lg:text-3xl font-black text-slate-900 dark:text-white">
+                {formatNum(c.val)} <span className="text-lg font-medium text-slate-400">{c.unit}</span>
+              </div>
+              <div className="text-[10px] text-slate-400 mt-1">{c.sub}</div>
             </div>
-            <div className="text-2xl lg:text-3xl font-black text-slate-900 dark:text-white">
-              {formatNum(filteredSummary?.total_pares || 0)} <span className="text-lg font-medium text-slate-400">pares</span>
-            </div>
-            <div className="text-[10px] text-slate-400 mt-1">Calçados</div>
-          </div>
-          <div className="bg-white dark:bg-slate-800 rounded-xl shadow-sm border border-slate-200 dark:border-slate-700 p-5 flex flex-col justify-center">
-            <div className="text-xs font-bold uppercase tracking-wider text-slate-500 mb-1 flex items-center gap-2">
-              <Package size={16} /> Total de Unidades
-            </div>
-            <div className="text-2xl lg:text-3xl font-black text-slate-900 dark:text-white">
-              {formatNum(filteredSummary?.total_unidades || 0)} <span className="text-lg font-medium text-slate-400">unid.</span>
-            </div>
-            <div className="text-[10px] text-slate-400 mt-1">Acessórios</div>
-          </div>
+          ))}
           <div className="bg-white dark:bg-slate-800 rounded-xl shadow-sm border border-slate-200 dark:border-slate-700 p-5 flex flex-col justify-center">
             <div className="text-xs font-bold uppercase tracking-wider text-slate-500 mb-1 flex items-center gap-2">
               <DollarSign size={16} /> Total Compra
@@ -622,13 +601,12 @@ export default function BuyOrderDashboard({ user }: { user: any }) {
         <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
           {['FEMININO', 'MASCULINO', 'INFANTIL', 'ACESSÓRIO'].map((tipoBase) => {
             const stat = filteredTypeStats.find(t => t.tipo === tipoBase) || {
-              tipo: tipoBase, pares: 0, valor: 0, percentual: 0, modelos: []
+              tipo: tipoBase, pares: 0, valor: 0, percentual: 0, modelos: [],
             };
             const isExpanded = expandedType === stat.tipo;
             const style = getTypeStyles(stat.tipo);
             const icon  = getTypeIcons(stat.tipo);
 
-            // Cores do donut por tipo
             const donutCor = (() => {
               switch (tipoBase) {
                 case 'FEMININO':  return { forte: '#ec4899', claro: '#fce7f3' };
@@ -639,11 +617,9 @@ export default function BuyOrderDashboard({ user }: { user: any }) {
               }
             })();
 
-            // ── MODO TODAS: mix real de compras ──────────────────────────────────
             const totalGeralValor = filteredTypeStats.reduce((a, t) => a + t.valor, 0);
             const mixPct = totalGeralValor > 0 ? (stat.valor / totalGeralValor) * 100 : 0;
 
-            // ── MODO LOJA ESPECÍFICA: meta por período ────────────────────────────
             const metaPct = categoriaParams ? (() => {
               switch (tipoBase) {
                 case 'FEMININO':  return categoriaParams.feminino_pct;
@@ -654,36 +630,27 @@ export default function BuyOrderDashboard({ user }: { user: any }) {
               }
             })() : 0;
 
-            // Base financeira da meta = cota_mensal × período × meta_pct / 100
-            const baseMetaValor = categoriaParams
-              ? categoriaParams.cota_valor * periodo * (metaPct / 100)
-              : 0;
+            const baseMetaValor = categoriaParams ? categoriaParams.cota_valor * periodo * (metaPct / 100) : 0;
+            const realizadoPctMeta = baseMetaValor > 0 ? (stat.valor / baseMetaValor) * 100 : 0;
 
-            // % realizado em relação à meta financeira
-            const realizadoPctMeta = baseMetaValor > 0
-              ? (stat.valor / baseMetaValor) * 100
-              : 0;
+            const modoTodas = lojaFiltro === null && userStoreNumber === null;
+            const modoLoja  = !modoTodas && metaPct > 0;
 
-            // Decisão de qual donut mostrar
-            const modoTodas   = lojaFiltro === null && userStoreNumber === null;
-            const modoLoja    = !modoTodas && metaPct > 0;
+            // Pares menina/menino para donut infantil
+            const paresMenina = tipoBase === 'INFANTIL'
+              ? stat.modelos.filter(m => m.subtipo === 'FEMININO').reduce((a, m) => a + m.pares, 0)
+              : 0;
+            const paresMenino = tipoBase === 'INFANTIL'
+              ? stat.modelos.filter(m => m.subtipo === 'MASCULINO').reduce((a, m) => a + m.pares, 0)
+              : 0;
 
             return (
-              <div
-                key={stat.tipo}
-                onClick={() => handleTypeClick(stat.tipo)}
+              <div key={stat.tipo} onClick={() => handleTypeClick(stat.tipo)}
                 className={`rounded-xl border cursor-pointer transition-all duration-200 p-4 ${style}
-                  ${isExpanded
-                    ? 'shadow-md scale-[1.02] border-b-4'
-                    : 'shadow-sm hover:shadow opacity-90 hover:opacity-100 dark:bg-slate-800/50 dark:border-slate-700 dark:text-slate-200'
-                  }`}
-              >
-                {/* Header */}
+                  ${isExpanded ? 'shadow-md scale-[1.02] border-b-4' : 'shadow-sm hover:shadow opacity-90 hover:opacity-100 dark:bg-slate-800/50 dark:border-slate-700 dark:text-slate-200'}`}>
                 <div className="font-bold text-sm uppercase tracking-wider mb-3 flex items-center gap-2">
                   <span>{icon}</span> {stat.tipo}
                 </div>
-
-                {/* Corpo: dados + donut */}
                 <div className="flex items-center justify-between gap-2">
                   <div className="flex flex-col gap-1 flex-1 min-w-0">
                     <div className="font-bold text-base sm:text-lg leading-none">
@@ -695,57 +662,44 @@ export default function BuyOrderDashboard({ user }: { user: any }) {
                     <div className="font-bold text-xs sm:text-sm leading-none opacity-90 truncate">
                       {formatBRLValue(stat.valor)}
                     </div>
-                    {/* % contextual */}
                     {modoTodas && (
-                      <div className="font-bold text-sm sm:text-base leading-none opacity-70">
-                        {mixPct.toFixed(1)}%{' '}
-                        <span className="text-[10px] font-normal opacity-60">do mix</span>
+                      <div className="font-bold text-sm leading-none opacity-70">
+                        {mixPct.toFixed(1)}% <span className="text-[10px] font-normal opacity-60">do mix</span>
                       </div>
                     )}
                     {modoLoja && (
-                      <div className="font-bold text-sm sm:text-base leading-none opacity-70">
-                        {realizadoPctMeta.toFixed(1)}%{' '}
-                        <span className="text-[10px] font-normal opacity-60">da meta {periodo}M</span>
+                      <div className="font-bold text-sm leading-none opacity-70">
+                        {realizadoPctMeta.toFixed(1)}% <span className="text-[10px] font-normal opacity-60">da meta {periodo}M</span>
                       </div>
                     )}
-                    {!modoTodas && !modoLoja && (
-                      <div className="font-bold text-sm sm:text-base leading-none opacity-70">
-                        {stat.percentual.toFixed(1)}%
+                    {/* Sub-info infantil: menina × menino */}
+                    {tipoBase === 'INFANTIL' && (paresMenina + paresMenino) > 0 && (
+                      <div className="flex gap-2 mt-1">
+                        <span className="text-[9px] font-bold text-pink-500">♀ {paresMenina}p</span>
+                        <span className="text-[9px] font-bold text-blue-500">♂ {paresMenino}p</span>
                       </div>
                     )}
                   </div>
 
-                  {/* Donut TODAS — mix */}
-                  {modoTodas && totalGeralValor > 0 && (
-                    <DonutMeta
-                      meta={mixPct}
-                      realizado={mixPct}
-                      cor={donutCor.forte}
-                      corClaro={donutCor.claro}
-                      label="MIX"
-                      small={isMobile}
-                    />
+                  {/* Donut INFANTIL duplo */}
+                  {tipoBase === 'INFANTIL' && (paresMenina + paresMenino) > 0 && (
+                    <DonutInfantil paresMenina={paresMenina} paresMenino={paresMenino} small={isMobile} />
                   )}
 
-                  {/* Donut LOJA — meta por período */}
-                  {modoLoja && (
-                    <DonutMeta
-                      meta={metaPct}
-                      realizado={realizadoPctMeta}
-                      cor={donutCor.forte}
-                      corClaro={donutCor.claro}
-                      label="META"
-                      small={isMobile}
-                    />
+                  {/* Donut TODAS — mix (não infantil) */}
+                  {tipoBase !== 'INFANTIL' && modoTodas && totalGeralValor > 0 && (
+                    <DonutMeta meta={mixPct} realizado={mixPct}
+                      cor={donutCor.forte} corClaro={donutCor.claro} label="MIX" small={isMobile} />
+                  )}
+
+                  {/* Donut LOJA — meta (não infantil) */}
+                  {tipoBase !== 'INFANTIL' && modoLoja && (
+                    <DonutMeta meta={metaPct} realizado={realizadoPctMeta}
+                      cor={donutCor.forte} corClaro={donutCor.claro} label="META" small={isMobile} />
                   )}
                 </div>
-
-                {/* Rodapé */}
                 <div className="text-[10px] font-bold uppercase tracking-wider flex items-center gap-1 opacity-70 mt-3">
-                  {isExpanded
-                    ? <><ChevronDown size={14} /> Fechar</>
-                    : <><ChevronRight size={14} /> Detalhes</>
-                  }
+                  {isExpanded ? <><ChevronDown size={14} /> Fechar</> : <><ChevronRight size={14} /> Detalhes</>}
                 </div>
               </div>
             );
@@ -763,15 +717,15 @@ export default function BuyOrderDashboard({ user }: { user: any }) {
               <table className="w-full text-left text-sm whitespace-nowrap min-w-max">
                 <thead className="bg-slate-50 dark:bg-slate-900 sticky top-0 shadow-sm border-b border-slate-200 dark:border-slate-700 z-20">
                   <tr>
-                    <th className="px-6 py-3 font-bold text-xs uppercase tracking-wider text-slate-400 dark:text-slate-500 sticky left-0 bg-slate-50 dark:bg-slate-900 z-10">Modelo</th>
+                    <th className="px-6 py-3 font-bold text-xs uppercase tracking-wider text-slate-400 sticky left-0 bg-slate-50 dark:bg-slate-900 z-10">Modelo</th>
                     {storesInType.map(loja => (
-                      <th key={loja} className="px-1 py-3 font-bold text-[9px] uppercase tracking-wide text-blue-600 dark:text-blue-400 text-center min-w-[32px] w-8">
+                      <th key={loja} className="px-1 py-3 font-bold text-[9px] uppercase text-blue-600 text-center min-w-[32px] w-8">
                         L{loja}
                       </th>
                     ))}
-                    <th className="px-6 py-3 font-bold text-xs uppercase tracking-wider text-slate-400 dark:text-slate-500 text-right">Total</th>
-                    <th className="px-6 py-3 font-bold text-xs uppercase tracking-wider text-slate-400 dark:text-slate-500 text-right">Valor</th>
-                    <th className="px-6 py-3 font-bold text-xs uppercase tracking-wider text-slate-400 dark:text-slate-500 text-right w-24">%</th>
+                    <th className="px-6 py-3 font-bold text-xs uppercase text-slate-400 text-right">Total</th>
+                    <th className="px-6 py-3 font-bold text-xs uppercase text-slate-400 text-right">Valor</th>
+                    <th className="px-6 py-3 font-bold text-xs uppercase text-slate-400 text-right w-24">%</th>
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-slate-100 dark:divide-slate-800">
@@ -781,18 +735,18 @@ export default function BuyOrderDashboard({ user }: { user: any }) {
                       {storesInType.map(loja => {
                         const pares = m.pares_por_loja?.[loja] || 0;
                         return (
-                          <td key={loja} className={`px-1 py-2 text-center text-[10px] font-bold ${pares > 0 ? 'text-green-700 dark:text-green-400' : 'text-slate-200 dark:text-slate-700'}`}>
+                          <td key={loja} className={`px-1 py-2 text-center text-[10px] font-bold ${pares > 0 ? 'text-green-700' : 'text-slate-200 dark:text-slate-700'}`}>
                             {pares > 0 ? pares : ''}
                           </td>
                         );
                       })}
                       <td className="px-6 py-3 text-right font-bold text-slate-900 dark:text-slate-200">{formatNum(m.pares)}</td>
-                      <td className="px-6 py-3 text-right font-medium text-emerald-600 dark:text-emerald-400">{formatBRLValue(m.valor)}</td>
+                      <td className="px-6 py-3 text-right font-medium text-emerald-600">{formatBRLValue(m.valor)}</td>
                       <td className="px-6 py-3 text-right font-bold text-slate-500">{m.percentual.toFixed(1)}%</td>
                     </tr>
                   ))}
                   {modelos.length === 0 && (
-                    <tr><td colSpan={storesInType.length + 4} className="py-8 text-center text-slate-400 italic">Nenhum dado encontrado</td></tr>
+                    <tr><td colSpan={storesInType.length + 4} className="py-8 text-center text-slate-400 italic">Nenhum dado</td></tr>
                   )}
                 </tbody>
               </table>
@@ -812,7 +766,7 @@ export default function BuyOrderDashboard({ user }: { user: any }) {
                       if (subModelos.length === 0) return null;
                       return (
                         <div key={subtipo} className="border-b last:border-0 border-slate-100 dark:border-slate-800">
-                          <div className="bg-slate-50 dark:bg-slate-800/50 px-6 py-2 font-black text-[11px] text-slate-500 dark:text-slate-400 uppercase tracking-widest">
+                          <div className="bg-slate-50 dark:bg-slate-800/50 px-6 py-2 font-black text-[11px] text-slate-500 uppercase tracking-widest">
                             {getTypeIcons(subtipo)} {subtipo} INFANTIL
                           </div>
                           {renderTable(subModelos)}
@@ -828,46 +782,45 @@ export default function BuyOrderDashboard({ user }: { user: any }) {
 
         {/* TABELAS */}
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 pt-4">
-
           {/* Compras por Loja */}
           <div className="bg-white dark:bg-slate-800 rounded-xl shadow-sm border border-slate-200 dark:border-slate-700 overflow-hidden flex flex-col max-h-[500px]">
-            <div className="bg-slate-50 dark:bg-slate-800/50 px-5 py-4 border-b border-slate-200 dark:border-slate-700 sticky top-0 z-10 flex justify-between items-center">
-              <h2 className="text-sm font-bold uppercase tracking-wider text-slate-600 dark:text-slate-400 flex items-center gap-2">
+            <div className="bg-slate-50 dark:bg-slate-800/50 px-5 py-4 border-b sticky top-0 z-10 flex justify-between items-center">
+              <h2 className="text-sm font-bold uppercase tracking-wider text-slate-600 flex items-center gap-2">
                 <StoreIcon size={18} /> Compras por Loja
               </h2>
-              <span className="text-[10px] font-bold text-slate-400 dark:text-slate-500 bg-slate-200 dark:bg-slate-700 px-2 py-1 rounded">
+              <span className="text-[10px] font-bold text-slate-400 bg-slate-200 px-2 py-1 rounded">
                 {lojaFiltro !== null ? '1 Loja' : user?.role === 'ADMIN' ? '18 Lojas' : '1 Loja'}
               </span>
             </div>
-            <div className="overflow-auto flex-1 p-0">
+            <div className="overflow-auto flex-1">
               <table className="w-full text-left text-sm whitespace-nowrap">
-                <thead className="bg-white dark:bg-slate-900 sticky top-0 shadow-[0_1px_0_0_#e2e8f0] dark:shadow-[0_1px_0_0_#1e293b]">
+                <thead className="bg-white dark:bg-slate-900 sticky top-0 shadow-[0_1px_0_0_#e2e8f0]">
                   <tr>
-                    <th className="px-5 py-3 font-bold text-[11px] uppercase tracking-wider text-slate-400 dark:text-slate-500">Loja</th>
-                    <th className="px-5 py-3 font-bold text-[11px] uppercase tracking-wider text-slate-400 dark:text-slate-500">Cidade</th>
-                    <th className="px-5 py-3 font-bold text-[11px] uppercase tracking-wider text-slate-400 dark:text-slate-500 text-right">Pares</th>
-                    <th className="px-5 py-3 font-bold text-[11px] uppercase tracking-wider text-slate-400 dark:text-slate-500 text-right">Unid.</th>
-                    <th className="px-5 py-3 font-bold text-[11px] uppercase tracking-wider text-slate-400 dark:text-slate-500 text-right">Valor</th>
-                    <th className="px-5 py-3 font-bold text-[11px] uppercase tracking-wider text-slate-400 dark:text-slate-500 text-center">Pedidos</th>
+                    <th className="px-5 py-3 font-bold text-[11px] uppercase tracking-wider text-slate-400">Loja</th>
+                    <th className="px-5 py-3 font-bold text-[11px] uppercase tracking-wider text-slate-400">Cidade</th>
+                    <th className="px-5 py-3 font-bold text-[11px] uppercase tracking-wider text-slate-400 text-right">Pares</th>
+                    <th className="px-5 py-3 font-bold text-[11px] uppercase tracking-wider text-slate-400 text-right">Unid.</th>
+                    <th className="px-5 py-3 font-bold text-[11px] uppercase tracking-wider text-slate-400 text-right">Valor</th>
+                    <th className="px-5 py-3 font-bold text-[11px] uppercase tracking-wider text-slate-400 text-center">Pedidos</th>
                   </tr>
                 </thead>
-                <tbody className="divide-y divide-slate-50 dark:divide-slate-800/50">
-                  {filteredStoreStats.map((s) => (
+                <tbody className="divide-y divide-slate-50">
+                  {filteredStoreStats.map(s => (
                     <tr key={s.loja} className="hover:bg-slate-50 dark:hover:bg-slate-800/50 transition-colors">
-                      <td className="px-5 py-2.5 font-black text-blue-600 dark:text-blue-400">{s.loja}</td>
+                      <td className="px-5 py-2.5 font-black text-blue-600">{s.loja}</td>
                       <td className="px-5 py-2.5 font-medium text-slate-700 dark:text-slate-300">{s.cidade}</td>
                       <td className="px-5 py-2.5 text-right font-bold text-slate-900 dark:text-slate-200">{formatNum(s.pares)}</td>
                       <td className="px-5 py-2.5 text-right font-bold text-slate-900 dark:text-slate-200">{formatNum(s.unidades)}</td>
-                      <td className="px-5 py-2.5 text-right text-emerald-600 dark:text-emerald-400 font-bold">{formatBRLValue(s.valor)}</td>
+                      <td className="px-5 py-2.5 text-right text-emerald-600 font-bold">{formatBRLValue(s.valor)}</td>
                       <td className="px-5 py-2.5 text-center">
-                        <span className="inline-flex items-center justify-center bg-slate-100 dark:bg-slate-700 text-slate-600 dark:text-slate-300 font-bold text-[10px] px-2 py-0.5 rounded">
+                        <span className="inline-flex items-center justify-center bg-slate-100 text-slate-600 font-bold text-[10px] px-2 py-0.5 rounded">
                           {s.pedidos}
                         </span>
                       </td>
                     </tr>
                   ))}
                   {filteredStoreStats.length === 0 && (
-                    <tr><td colSpan={6} className="py-8 text-center text-slate-400 italic">Nenhum dado encontrado</td></tr>
+                    <tr><td colSpan={6} className="py-8 text-center text-slate-400 italic">Nenhum dado</td></tr>
                   )}
                 </tbody>
               </table>
@@ -876,48 +829,44 @@ export default function BuyOrderDashboard({ user }: { user: any }) {
 
           {/* Compras por Marca */}
           <div className="bg-white dark:bg-slate-800 rounded-xl shadow-sm border border-slate-200 dark:border-slate-700 overflow-hidden flex flex-col max-h-[500px]">
-            <div className="bg-slate-50 dark:bg-slate-800/50 px-5 py-4 border-b border-slate-200 dark:border-slate-700 sticky top-0 z-10 flex justify-between items-center">
-              <h2 className="text-sm font-bold uppercase tracking-wider text-slate-600 dark:text-slate-400 flex items-center gap-2">
+            <div className="bg-slate-50 dark:bg-slate-800/50 px-5 py-4 border-b sticky top-0 z-10 flex justify-between items-center">
+              <h2 className="text-sm font-bold uppercase tracking-wider text-slate-600 flex items-center gap-2">
                 <Tag size={18} /> Compras por Marca
               </h2>
-              <span className="text-[10px] font-bold text-slate-400 dark:text-slate-500 bg-slate-200 dark:bg-slate-700 px-2 py-1 rounded">Top 18</span>
+              <span className="text-[10px] font-bold text-slate-400 bg-slate-200 px-2 py-1 rounded">Top 18</span>
             </div>
-            <div className="overflow-auto flex-1 p-0">
+            <div className="overflow-auto flex-1">
               <table className="w-full text-left text-sm whitespace-nowrap">
-                <thead className="bg-white dark:bg-slate-900 sticky top-0 shadow-[0_1px_0_0_#e2e8f0] dark:shadow-[0_1px_0_0_#1e293b]">
+                <thead className="bg-white dark:bg-slate-900 sticky top-0 shadow-[0_1px_0_0_#e2e8f0]">
                   <tr>
-                    <th className="px-5 py-3 font-bold text-[11px] uppercase tracking-wider text-slate-400 dark:text-slate-500">Marca</th>
-                    <th className="px-5 py-3 font-bold text-[11px] uppercase tracking-wider text-slate-400 dark:text-slate-500 text-right">Pares</th>
-                    <th className="px-5 py-3 font-bold text-[11px] uppercase tracking-wider text-slate-400 dark:text-slate-500 text-right">Valor</th>
-                    <th className="px-5 py-3 font-bold text-[11px] uppercase tracking-wider text-slate-400 dark:text-slate-500 w-24">% Total</th>
-                    <th className="px-5 py-3 font-bold text-[11px] uppercase tracking-wider text-slate-400 dark:text-slate-500 w-24">Barra</th>
+                    <th className="px-5 py-3 font-bold text-[11px] uppercase text-slate-400">Marca</th>
+                    <th className="px-5 py-3 font-bold text-[11px] uppercase text-slate-400 text-right">Pares</th>
+                    <th className="px-5 py-3 font-bold text-[11px] uppercase text-slate-400 text-right">Valor</th>
+                    <th className="px-5 py-3 font-bold text-[11px] uppercase text-slate-400 w-20">% Total</th>
+                    <th className="px-5 py-3 font-bold text-[11px] uppercase text-slate-400 w-24">Barra</th>
                   </tr>
                 </thead>
-                <tbody className="divide-y divide-slate-50 dark:divide-slate-800/50">
-                  {brandStats.map((b) => (
+                <tbody className="divide-y divide-slate-50">
+                  {brandStats.map(b => (
                     <tr key={b.marca} className="hover:bg-slate-50 dark:hover:bg-slate-800/50 transition-colors">
                       <td className="px-5 py-2.5 font-bold text-slate-900 dark:text-white uppercase text-[11px]">{b.marca}</td>
                       <td className="px-5 py-2.5 text-right font-bold text-slate-700 dark:text-slate-300">{formatNum(b.pares)}</td>
-                      <td className="px-5 py-2.5 text-right text-emerald-600 dark:text-emerald-400 font-bold">{formatBRLValue(b.valor)}</td>
-                      <td className="px-5 py-2.5 text-right font-black text-slate-600 dark:text-slate-400">{b.percentual.toFixed(0)}%</td>
+                      <td className="px-5 py-2.5 text-right text-emerald-600 font-bold">{formatBRLValue(b.valor)}</td>
+                      <td className="px-5 py-2.5 text-right font-black text-slate-600">{b.percentual.toFixed(0)}%</td>
                       <td className="px-5 py-2.5">
-                        <div className="flex-1 h-2 bg-slate-100 dark:bg-slate-800 rounded-full overflow-hidden flex items-center justify-start">
-                          <div
-                            className="h-full bg-blue-500 dark:bg-blue-400 rounded-full"
-                            style={{ width: `${Math.min(100, Math.max(0, b.percentual))}%` }}
-                          />
+                        <div className="h-2 bg-slate-100 rounded-full overflow-hidden">
+                          <div className="h-full bg-blue-500 rounded-full" style={{ width: `${Math.min(100, Math.max(0, b.percentual))}%` }} />
                         </div>
                       </td>
                     </tr>
                   ))}
                   {brandStats.length === 0 && (
-                    <tr><td colSpan={5} className="py-8 text-center text-slate-400 italic">Nenhum dado encontrado</td></tr>
+                    <tr><td colSpan={5} className="py-8 text-center text-slate-400 italic">Nenhum dado</td></tr>
                   )}
                 </tbody>
               </table>
             </div>
           </div>
-
         </div>
       </div>
     </div>
