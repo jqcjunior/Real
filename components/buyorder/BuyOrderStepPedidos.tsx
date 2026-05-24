@@ -207,6 +207,14 @@ export default function StepPedidos({
   const [deletingTempItem, setDeletingTempItem] = useState<number | null>(null);
   const [showCancelOrderModal, setShowCancelOrderModal] = useState(false);
 
+  type QuotaModalState = {
+    lojasFaltando: { loja: number; falta: number }[];
+    valorPorLoja: number;
+    onConfirm: (motivo?: string) => void;
+  } | null;
+
+  const [quotaModal, setQuotaModal] = useState<QuotaModalState>(null);
+
   const [storeRequirements, setStoreRequirements] = useState<
     StoreRequirement[]
   >([]);
@@ -496,7 +504,7 @@ export default function StepPedidos({
     // MANTER gradeExpandida para que o usuário veja o que acabou de vincular e possa reutilizar
   }
 
-  function criarPedido() {
+  async function criarPedido() {
     if (tempPedidoItens.length === 0) {
       alert("Vincule ao menos um item com grade antes de criar o pedido");
       return;
@@ -508,22 +516,89 @@ export default function StepPedidos({
     }
 
     const lojasParaPedido = !canViewAllStores ? AVAILABLE_LOJAS : selectedLojas;
-    const numeroPedido = gerarNumeroPedido();
 
-    setPedidos((ps) => [
-      ...ps,
-      {
-        num: ps.length + 1,
-        pedido_numero: numeroPedido,
-        itensComGrades: tempPedidoItens,
-        lojas: lojasParaPedido,
-        lojaMode: !canViewAllStores ? "all" : lojaMode,
-      },
-    ]);
+    // Calcular valor por loja já com desconto
+    const valorPorLoja = tempPedidoItens.reduce((total, icg) => {
+      const item = items[icg.itemIdx];
+      return total + icg.grades.reduce((s, g) => s + totPares(g.qtds) * item.custo, 0);
+    }, 0) * (1 - (cab.desconto || 0) / 100);
 
-    // Limpar pedido temporário
-    setStep2State((prev: any) => ({ ...prev, tempPedidoItens: [] }));
-    setStep2State((prev: any) => ({ ...prev, selectedItems: new Set() }));
+    const parcelaPorMes = cab.prazos.length > 0 ? valorPorLoja / cab.prazos.length : valorPorLoja;
+
+    const diaFat = parseInt((cab.fat_inicio || '').split('-')[2] || '1', 10);
+    const mesFat = parseInt((cab.fat_inicio || '').split('-')[1] || '1', 10);
+    const anoFat = parseInt((cab.fat_inicio || '').split('-')[0] || '2026', 10);
+    const tipoComprador = cab.role === 'gerente' ? 'GERENTE' : 'COMPRADOR';
+
+    // Verificar cota de todas as lojas em paralelo
+    const resultados = await Promise.all(
+      lojasParaPedido.map(async (loja) => {
+        const { data } = await supabase.rpc('get_otb_disponivel_mes_v2', {
+          p_store_number: String(loja),
+          p_year: anoFat,
+          p_month: mesFat,
+          p_tipo_comprador: tipoComprador,
+          p_prazo_dias: cab.prazos,
+          p_day: diaFat,
+        });
+        const resultado = data?.[0];
+        const cotaMinima = resultado?.cota_minima_disponivel ?? 0;
+        return { loja, cotaMinima, falta: Math.max(0, parcelaPorMes - cotaMinima) };
+      })
+    );
+
+    const lojasFaltando = resultados.filter((r) => r.falta > 0);
+
+    const executarCriacao = async (motivo?: string) => {
+      const numeroPedido = gerarNumeroPedido();
+
+      // Se gerente/comprador e tem lojas sem cota, registrar solicitação
+      if (lojasFaltando.length > 0 && user?.role !== 'ADMIN' && motivo) {
+        await Promise.all(
+          lojasFaltando.map((r) =>
+            supabase.rpc('request_quota_extra', {
+              p_store_number: String(r.loja),
+              p_month: mesFat,
+              p_year: anoFat,
+              p_tipo_comprador: tipoComprador,
+              p_valor_extra: r.falta,
+              p_motivo: motivo,
+              p_order_id: null,
+              p_user_id: user?.id || '',
+            })
+          )
+        );
+      }
+
+      setPedidos((ps: any[]) => [
+        ...ps,
+        {
+          num: ps.length + 1,
+          pedido_numero: numeroPedido,
+          itensComGrades: tempPedidoItens,
+          lojas: lojasParaPedido,
+          lojaMode: !canViewAllStores ? "all" : lojaMode,
+        },
+      ]);
+
+      setStep2State((prev: any) => ({ ...prev, tempPedidoItens: [], selectedItems: new Set() }));
+      setQuotaModal(null);
+    };
+
+    if (lojasFaltando.length === 0) {
+      // Todas as lojas têm cota — criar direto sem perguntar nada
+      await executarCriacao();
+    } else if (user?.role === 'ADMIN') {
+      // Admin: window.confirm e cria mesmo assim
+      const totalFalta = lojasFaltando.reduce((s, r) => s + r.falta, 0);
+      const ok = window.confirm(
+        `Atenção: A cota foi excedida em ${fmtBRL(totalFalta)} em ${lojasFaltando.length} loja(s).\n\nComo ADMINISTRADOR, deseja autorizar mesmo assim?`
+      );
+      if (ok) await executarCriacao();
+    } else {
+      // Gerente/Comprador: modal de justificativa
+      setQuotaModal({ lojasFaltando, valorPorLoja, onConfirm: executarCriacao });
+    }
   }
 
   function delPedido(idx: number) {
@@ -1554,6 +1629,35 @@ export default function StepPedidos({
           </div>
         </div>
       )}
+
+      {/* MODAL COTA INSUFICIENTE */}
+      {quotaModal && (
+        <div className="fixed inset-0 bg-black/60 backdrop-blur-sm flex items-center justify-center z-50 p-4">
+          <div className="bg-white rounded-2xl shadow-xl w-full max-w-sm overflow-hidden border border-slate-100">
+            <div className="bg-red-50 p-5 flex flex-col items-center border-b border-red-100">
+              <div className="text-3xl mb-2">🚫</div>
+              <h3 className="text-base font-black text-red-900 uppercase">Cota Insuficiente</h3>
+              <div className="text-xs text-red-700 mt-1">
+                {quotaModal.lojasFaltando.length} loja(s) sem cota suficiente
+              </div>
+            </div>
+            <div className="p-5">
+              <div className="bg-slate-50 rounded-lg p-3 border border-slate-200 mb-4 max-h-32 overflow-y-auto">
+                {quotaModal.lojasFaltando.map((r) => (
+                  <div key={r.loja} className="flex justify-between text-xs py-0.5">
+                    <span className="text-slate-600">Loja {r.loja}</span>
+                    <span className="text-red-600 font-bold">Falta {fmtBRL(r.falta)}</span>
+                  </div>
+                ))}
+              </div>
+              <QuotaJustificativaForm
+                onCancel={() => setQuotaModal(null)}
+                onConfirm={(motivo) => quotaModal.onConfirm(motivo)}
+              />
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
@@ -1719,6 +1823,51 @@ function EditTempItemPopup({
             </button>
           </div>
         </div>
+      </div>
+    </div>
+  );
+}
+
+function QuotaJustificativaForm({
+  onCancel,
+  onConfirm,
+}: {
+  onCancel: () => void;
+  onConfirm: (motivo: string) => void;
+}) {
+  const [motivo, setMotivo] = useState("");
+  const valido = motivo.trim().length >= 20;
+  return (
+    <div>
+      <label className="text-xs font-bold text-slate-700 block mb-1 uppercase">
+        Justificativa * (mín. 20 caracteres)
+      </label>
+      <textarea
+        value={motivo}
+        onChange={(e) => setMotivo(e.target.value)}
+        rows={3}
+        placeholder="Ex: Oportunidade especial com condição diferenciada..."
+        className="w-full border border-slate-300 rounded-lg p-2 text-xs resize-none focus:outline-none focus:border-blue-400"
+      />
+      <div
+        className={`text-[10px] mb-3 ${valido ? "text-green-600" : "text-amber-500"}`}
+      >
+        {motivo.trim().length} caracteres
+      </div>
+      <div className="flex gap-2">
+        <button
+          onClick={onCancel}
+          className="flex-1 py-2 border border-slate-300 rounded-xl text-xs font-bold text-slate-600 hover:bg-slate-50"
+        >
+          Cancelar
+        </button>
+        <button
+          onClick={() => valido && onConfirm(motivo.trim())}
+          disabled={!valido}
+          className="flex-1 py-2 bg-blue-600 text-white rounded-xl text-xs font-bold disabled:opacity-40 hover:bg-blue-700"
+        >
+          Solicitar e Criar
+        </button>
       </div>
     </div>
   );
