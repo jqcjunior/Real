@@ -1697,31 +1697,51 @@ export default function BuyOrderModule({ user }: { user?: User }) {
 
                     {/* Lojas */}
                     <td style={{ padding: "10px 12px" }}>
-                      <div
-                        style={{ display: "flex", gap: 4, flexWrap: "wrap" }}
-                      >
-                        {lojasUnicas.length > 0 ? (
-                          lojasUnicas.map((loja) => (
-                            <span
-                              key={loja}
-                              style={{
-                                fontSize: 9,
-                                color: "#374151",
-                                background: "#f3f4f6",
-                                padding: "2px 6px",
-                                borderRadius: 4,
-                                border: "0.5px solid #d1d5db",
-                              }}
-                            >
-                              {loja}
-                            </span>
-                          ))
-                        ) : (
-                          <span style={{ fontSize: 10, color: "#9ca3af" }}>
-                            —
-                          </span>
-                        )}
-                      </div>
+                      {(() => {
+                        // Coletar todas as lojas do pedido (de todos os sub_orders)
+                        const subOrders = (o.buy_order_sub_orders || []) as any[];
+                        const todasLojasRaw = subOrders
+                          .flatMap((s: any) => s.lojas_numeros || [])
+                          .map(Number);
+                        
+                        const todasLojas: number[] = Array.from(new Set(todasLojasRaw)).sort((a, b) => a - b);
+
+                        if (todasLojas.length === 0) {
+                          return <span style={{ fontSize: 10, color: "#9ca3af" }}>—</span>;
+                        }
+
+                        const numLojas = todasLojas.length;
+                        const metade = Math.ceil(numLojas / 2);
+                        const linha1 = todasLojas.slice(0, metade);
+                        const linha2 = todasLojas.slice(metade);
+
+                        return (
+                          <div className="flex flex-col gap-0.5">
+                            <div className="flex flex-wrap gap-0.5">
+                              {linha1.map((loja: number) => (
+                                <span
+                                  key={loja}
+                                  className="inline-flex items-center justify-center w-7 h-5 rounded text-[9px] font-black bg-slate-100 text-slate-700 border border-slate-200"
+                                >
+                                  {loja}
+                                </span>
+                              ))}
+                            </div>
+                            {linha2.length > 0 && (
+                              <div className="flex flex-wrap gap-0.5">
+                                {linha2.map((loja: number) => (
+                                  <span
+                                    key={loja}
+                                    className="inline-flex items-center justify-center w-7 h-5 rounded text-[9px] font-black bg-slate-100 text-slate-700 border border-slate-200"
+                                  >
+                                    {loja}
+                                  </span>
+                                ))}
+                              </div>
+                            )}
+                          </div>
+                        );
+                      })()}
                     </td>
 
                     {/* ✅ NOVA COLUNA: Criado por */}

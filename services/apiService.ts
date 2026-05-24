@@ -175,6 +175,8 @@ class ApiService {
     total_pares?: number;
     total_valor_bruto?: number;
     total_valor_liquido?: number;
+    order_type?: string;
+    confirmed_at?: string;
     edited_by?: string;
     edited_at?: string;
   }) {
