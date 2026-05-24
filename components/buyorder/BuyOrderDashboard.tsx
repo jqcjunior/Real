@@ -238,7 +238,7 @@ export default function BuyOrderDashboard({ user }: { user: any }) {
           if (dept === 'INF') dept = 'INFANTIL';
           if (dept === 'ACES') dept = 'ACESSÓRIO';
 
-          // ✅ total_pares é por loja — multiplicar por numLojas para o total geral
+          // p = pares por loja. Para o total geral multiplicar por numLojas
           if (dept === 'ACESSÓRIO') {
             totalUnidades += p * numLojas;
           } else {
@@ -281,10 +281,17 @@ export default function BuyOrderDashboard({ user }: { user: any }) {
 
         valorTotal += orderCusto;
 
-        // Para brand: usar pares/valor já divididos por loja (cada loja recebe sua fração)
-        const bAgg = brandAgg.get(order.marca) || { pares: 0, valor: 0 };
-        bAgg.pares += orderPares / numLojas;
-        bAgg.valor += orderCusto / numLojas;
+        // brandAgg guarda o total por loja para poder filtrar depois
+        // Guardar também um Map com pares/valor por loja
+        const bAgg = brandAgg.get(order.marca) || { pares: 0, valor: 0, pares_por_loja: new Map<number, number>(), valor_por_loja: new Map<number, number>() };
+        // Total geral = soma de todas as lojas
+        bAgg.pares += orderPares;
+        bAgg.valor += orderCusto;
+        // Por loja
+        todasLojas.forEach((lojaNum: number) => {
+          (bAgg as any).pares_por_loja.set(lojaNum, ((bAgg as any).pares_por_loja.get(lojaNum) || 0) + (orderPares / numLojas));
+          (bAgg as any).valor_por_loja.set(lojaNum, ((bAgg as any).valor_por_loja.get(lojaNum) || 0) + (orderCusto / numLojas));
+        });
         brandAgg.set(order.marca, bAgg);
 
         // Calcular pares calçados e unidades acessórios separados para esta order
@@ -327,12 +334,21 @@ export default function BuyOrderDashboard({ user }: { user: any }) {
       setStoreStats(stStats);
 
       const brStats: BrandStat[] = Array.from(brandAgg.entries())
-        .map(([marca, agg]) => ({
-          marca: marca || 'SEM MARCA',
-          pares: agg.pares,
-          valor: agg.valor,
-          percentual: (totalPares + totalUnidades) > 0 ? (agg.pares / (totalPares + totalUnidades)) * 100 : 0
-        }))
+        .map(([marca, agg]) => {
+          const pares = lojaFiltro !== null
+            ? ((agg as any).pares_por_loja?.get(lojaFiltro) || 0)
+            : agg.pares;
+          const valor = lojaFiltro !== null
+            ? ((agg as any).valor_por_loja?.get(lojaFiltro) || 0)
+            : agg.valor;
+          return {
+            marca: marca || 'SEM MARCA',
+            pares,
+            valor,
+            percentual: (totalPares + totalUnidades) > 0 ? (pares / (totalPares + totalUnidades)) * 100 : 0
+          };
+        })
+        .filter(b => b.pares > 0)
         .sort((a, b) => b.pares - a.pares)
         .slice(0, 18);
       setBrandStats(brStats);
