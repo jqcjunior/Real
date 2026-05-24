@@ -210,7 +210,7 @@ export async function exportBuyOrderToExcel(orderId: string) {
             '46': 39, '47': 40, '48': 41
         };
 
-        // Consolidar quantidades de todos os itens do pedido
+        // Consolidar grades únicas — pegar a definição de cada grade do primeiro item que a contém
         const items = order.buy_order_items || [];
         const gradesUnicas: Record<string, Record<string, number>> = {};
 
@@ -221,21 +221,22 @@ export async function exportBuyOrderToExcel(orderId: string) {
             gradesArray.forEach((gradeObj: any) => {
                 const letra = gradeObj.letra;
                 const tamanhos = gradeObj.tamanhos || {};
-                
+
                 if (!letra || !GRADE_MAP[letra]) return;
-                
-                // ✅ SÓ ADICIONA SE ESSA GRADE AINDA NÃO EXISTE
+
+                // ✅ CORREÇÃO: inicializar a grade se não existe ainda
                 if (!gradesUnicas[letra]) {
                     gradesUnicas[letra] = {};
-                    
-                    Object.entries(tamanhos).forEach(([tamanho, qtd]: any) => {
-                        const qtdNum = Number(qtd) || 0;
-                        if (qtdNum > 0) {
-                            gradesUnicas[letra][tamanho] = qtdNum; // SEM SOMAR!
-                        }
-                    });
                 }
-                // Se já existe, ignora (não adiciona/soma novamente)
+
+                // ✅ CORREÇÃO: preencher tamanhos que ainda não foram preenchidos
+                // (a grade tem sempre os mesmos tamanhos para todos os itens)
+                Object.entries(tamanhos).forEach(([tamanho, qtd]: any) => {
+                    const qtdNum = Number(qtd) || 0;
+                    if (qtdNum > 0 && !gradesUnicas[letra][tamanho]) {
+                        gradesUnicas[letra][tamanho] = qtdNum;
+                    }
+                });
             });
         });
 
