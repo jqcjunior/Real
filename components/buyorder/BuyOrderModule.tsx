@@ -641,7 +641,6 @@ export default function BuyOrderModule({ user }: { user?: User }) {
           desconto: cab.desconto,
           markup: cab.markup,
           status: "rascunho", // Volta para rascunho se foi alterado
-          edited_by: user?.id,
           edited_at: new Date().toISOString(),
         });
 
@@ -800,41 +799,28 @@ export default function BuyOrderModule({ user }: { user?: User }) {
         toast.success(`Rascunho salvo com sucesso! Nº será gerado em breve.`);
         resetStateAndFetch();
       } else if (targetAction === "confirmado") {
-        // Tentar confirmar imediatamente chamando a RPC.
-        // Ela faz o cálculo da cota, atualiza o status para 'confirmado' ou falha com erro de cota.
-        const { data: cData, error: cErr } = await supabase.rpc(
-          "confirm_order_from_stand_by",
-          {
-            p_order_id: orderId,
-            p_user_id: userId,
-          },
-        );
+        // Validação de cota já é feita no BuyOrderStepPedidos antes de criar o pedido.
+        // Aqui apenas prosseguimos com a confirmação.
 
-        if (cErr) throw cErr;
+        // Buscar suborders para definir order_type
+        const { data: subOrders } = await supabase
+          .from('buy_order_sub_orders')
+          .select('id')
+          .eq('order_id', orderId);
+          
+        const numLojas = subOrders?.length || 0;
 
-        if (!cData.success) {
-          if (cData.error === "Cota insuficiente") {
-            setQuotaModalData({
-              available: cData.cota_disponivel,
-              required: cData.valor_pedido,
-              deficit: cData.deficit,
-              buyerType: cData.tipo_comprador,
-            });
-            // O pedido já está salvo como rascunho. O usuário terá que ir ver na lista depois.
-            resetStateAndFetch();
-            toast.error(
-              "O pedido foi salvo como Rascunho devido a falta de cota.",
-            );
-            return;
-          } else {
-            throw new Error(cData.error);
-          }
-        }
+        await apiService.updateBuyOrder(orderId, { 
+          status: "confirmado", 
+          confirmed_at: new Date().toISOString(),
+          order_type: numLojas > 1 ? 'multi-store' : 'single-store'
+        });
 
         // Marcar qualquer cota extra aprovada para este pedido como "usada"
         await supabase.rpc('mark_quota_extra_as_used', { p_order_id: orderId });
 
         toast.success(`✅ Pedido #${numeroPedidoSalvo} confirmado com sucesso!`);
+        fetchRecentOrders();
         resetStateAndFetch();
       } else if (targetAction === "rascunho_then_standby") {
         // Mostrar o Modal de Stand By para setar o motivo

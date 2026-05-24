@@ -581,7 +581,13 @@ export default function StepPedidos({
         },
       ]);
 
-      setStep2State((prev: any) => ({ ...prev, tempPedidoItens: [], selectedItems: new Set() }));
+      setStep2State((prev: any) => ({ 
+        ...prev, 
+        tempPedidoItens: [], 
+        selectedItems: new Set(),
+        selectedLojas: [],
+        lojaMode: null
+      }));
       setQuotaModal(null);
     };
 
@@ -815,7 +821,7 @@ export default function StepPedidos({
                     <div className="flex-1 min-w-0">
                       <div className="flex items-center gap-2">
                         <div className="text-xs font-bold text-slate-800 truncate">
-                          {item.ref}
+                          #{items.indexOf(item) + 1} - {item.ref}
                         </div>
                         {jaVinculado && (
                           <span className="bg-green-600 text-white text-[7px] font-bold px-1.5 py-0.5 rounded uppercase shrink-0">
@@ -823,8 +829,17 @@ export default function StepPedidos({
                           </span>
                         )}
                       </div>
-                      <div className="text-[9px] text-slate-600 truncate">
-                        {item.tipo} · {item.modelo}
+                      <div className="text-[9px] text-slate-600 truncate flex items-center gap-1">
+                        <span>{item.tipo} · {item.modelo}</span>
+                        {item.cor1 && (
+                          <span className="flex items-center gap-1 ml-1 border-l pl-1 border-slate-300">
+                            <span 
+                              className="w-2 h-2 rounded-full border border-slate-300"
+                              style={{ backgroundColor: item.cor1.toLowerCase() }}
+                            />
+                            {item.cor1}
+                          </span>
+                        )}
                       </div>
                       <div className="flex items-center gap-2">
                         <div className="text-[10px] font-bold text-green-700">
@@ -1346,7 +1361,7 @@ export default function StepPedidos({
                             className="p-1 px-2 font-medium text-slate-800 truncate max-w-[80px]"
                             title={item.ref}
                           >
-                            {item.ref}
+                            {item.ref} ({icg.grades.map((g) => g.letter).join("/")})
                           </td>
                           <td className="p-1 text-center font-bold text-slate-700">
                             {totalItem}

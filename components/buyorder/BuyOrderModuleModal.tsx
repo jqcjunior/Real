@@ -143,7 +143,6 @@ export function BuyOrderModuleModal({
         .from("buy_orders")
         .update({
           ...formData,
-          edited_by: user?.id,
           edited_at: new Date().toISOString(),
           updated_at: new Date().toISOString()
         })
