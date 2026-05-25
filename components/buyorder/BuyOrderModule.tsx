@@ -1470,6 +1470,7 @@ export default function BuyOrderModule({ user }: { user?: User }) {
       </div>
 
       {/* Lista de Pedidos Recentes */}
+      {step === 0 && (
       <div
         style={{
           marginTop: 24,
@@ -2102,6 +2103,7 @@ export default function BuyOrderModule({ user }: { user?: User }) {
           </div>
         )}
       </div>
+      )}
 
       {/* Modal de Confirmação de Exclusão */}
       {deletingOrder && (

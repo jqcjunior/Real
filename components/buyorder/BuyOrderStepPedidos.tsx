@@ -389,8 +389,10 @@ export default function StepPedidos({
     e: React.KeyboardEvent,
     currentSize: string,
     allSizes: string[],
+    letterOverride?: string,
   ) {
-    if (!gradeExpandida) return;
+    const activeLetter = letterOverride || gradeExpandida;
+    if (!activeLetter) return;
 
     const currentIdx = allSizes.indexOf(currentSize);
     let nextIdx = -1;
@@ -400,12 +402,12 @@ export default function StepPedidos({
     } else if (e.key === "ArrowLeft" || e.key === "ArrowUp") {
       nextIdx = currentIdx - 1;
     } else if (e.key === "Enter") {
-      nextIdx = currentIdx + 1; // ENTER também avança
+      nextIdx = currentIdx + 1;
     }
 
     if (nextIdx >= 0 && nextIdx < allSizes.length) {
       e.preventDefault();
-      const nextKey = `${gradeExpandida}-${allSizes[nextIdx]}`;
+      const nextKey = `${activeLetter}-${allSizes[nextIdx]}`;
       inputRefs.current[nextKey]?.focus();
       inputRefs.current[nextKey]?.select();
     }
@@ -1083,7 +1085,7 @@ export default function StepPedidos({
                                       min={0}
                                       value={typeof qtd === 'number' ? (qtd || "") : ""}
                                       onChange={(e) => setGradeQtd(sz, parseInt(e.target.value) || 0)}
-                                      onKeyDown={(e) => handleGradeKeyDown(e, sz, sizes)}
+                                      onKeyDown={(e) => handleGradeKeyDown(e, sz, sizes, letter)}
                                       className={`w-full h-8 text-center text-xs border rounded-lg transition-all outline-none font-black ${
                                         qtd > 0 ? 'bg-blue-600 text-white border-blue-600 shadow-inner' : 'bg-slate-50 border-slate-200 focus:border-blue-400 focus:bg-white'
                                       }`}
@@ -1181,7 +1183,7 @@ export default function StepPedidos({
                         min={0}
                         value={typeof qtd === 'number' ? (qtd || "") : ""}
                         onChange={(e) => setGradeQtd(sz, parseInt(e.target.value) || 0)}
-                        onKeyDown={(e) => handleGradeKeyDown(e, sz, sizes)}
+                        onKeyDown={(e) => handleGradeKeyDown(e, sz, sizes, letter)}
                         className={`w-full h-8 text-center text-xs border rounded-lg transition-all outline-none font-black ${
                           qtd > 0 ? 'bg-blue-600 text-white border-blue-600 shadow-inner' : 'bg-slate-50 border-slate-200 focus:border-blue-400 focus:bg-white'
                         }`}
