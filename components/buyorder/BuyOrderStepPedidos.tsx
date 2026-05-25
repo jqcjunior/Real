@@ -841,7 +841,7 @@ export default function StepPedidos({
                           </span>
                         )}
                       </div>
-                      <div className="flex items-center gap-2">
+                      <div className="flex items-center gap-2 flex-wrap">
                         <div className="text-[10px] font-bold text-green-700">
                           Custo:{" "}
                           {fmtBRL(item.custo * (1 - (cab.desconto || 0) / 100))}
@@ -849,6 +849,21 @@ export default function StepPedidos({
                         <div className="text-[8px] text-slate-400 line-through">
                           {fmtBRL(item.preco_venda)}
                         </div>
+                        {item.cor1 && (
+                          <div className="flex items-center gap-0.5">
+                            <div
+                              className="w-2 h-2 rounded-full border border-slate-300 shrink-0"
+                              style={{
+                                backgroundColor: item.cor1.startsWith('#')
+                                  ? item.cor1
+                                  : '#94a3b8'
+                              }}
+                            />
+                            <span className="text-[7px] text-slate-500 uppercase font-medium">
+                              {item.cor1}
+                            </span>
+                          </div>
+                        )}
                       </div>
                     </div>
                   </div>
@@ -1361,7 +1376,17 @@ export default function StepPedidos({
                             className="p-1 px-2 font-medium text-slate-800 truncate max-w-[80px]"
                             title={item.ref}
                           >
-                            {item.ref} ({icg.grades.map((g) => g.letter).join("/")})
+                            <div className="font-bold">{item.ref}</div>
+                            <div className="flex gap-0.5 mt-0.5 flex-wrap">
+                              {icg.grades.map((g) => (
+                                <span
+                                  key={g.letter}
+                                  className="text-[7px] font-black bg-blue-100 text-blue-700 px-1 py-0.5 rounded leading-none"
+                                >
+                                  {g.letter}
+                                </span>
+                              ))}
+                            </div>
                           </td>
                           <td className="p-1 text-center font-bold text-slate-700">
                             {totalItem}
@@ -1775,10 +1800,7 @@ function EditTempItemPopup({
                   >
                     <div className="bg-slate-100 flex justify-between items-center px-3 py-2 border-b border-slate-200">
                       <div className="font-bold text-sm text-slate-800">
-                        Grade {grade.letter}{" "}
-                        <span className="text-xs font-normal text-slate-500 ml-2">
-                          - {paresDaGrade} pares
-                        </span>
+                        {paresDaGrade}p · Grade {grade.letter}
                       </div>
                       <button
                         onClick={() => removeGrade(gIdx)}
@@ -2000,15 +2022,12 @@ function EditPedidoPopup({
                             key={g.letter}
                             className="text-[10px] text-slate-500"
                           >
-                            <strong>Grade {g.letter}</strong> (
+                            <strong>{totPares(g.qtds)}p · Grade {g.letter}</strong> (
                             {CATS[g.cat]?.label}):{" "}
                             {Object.entries(g.qtds)
                               .filter(([_, v]) => v > 0)
                               .map(([sz, v]) => `${sz}-${v}`)
                               .join(" * ")}
-                            <span className="ml-2 text-green-700 font-bold">
-                              ({totPares(g.qtds)}p)
-                            </span>
                           </div>
                         ))}
                       </div>

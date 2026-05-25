@@ -265,15 +265,28 @@ export async function exportBuyOrderToExcel(orderId: string) {
             .select('item_id, grade_letra, sub_order_num')
             .in('item_id', items.map((i: any) => i.id));
 
-        // Mapa: item_id → Map<sub_order_num, grade_letra>
-        const itemGradeMap = new Map<string, Map<number, string>>();
+        // Mapa: item_id → Map<sub_order_num, { letra, pares }>
+        // pares = calculado da grade específica, não o total do item
+        const itemGradeMap = new Map<string, Map<number, { letra: string; pares: number }>>();
+
         (gradesSubOrders || []).forEach((g: any) => {
             if (!itemGradeMap.has(g.item_id)) {
                 itemGradeMap.set(g.item_id, new Map());
             }
             // Guardar apenas a primeira ocorrência por sub_order_num
             if (!itemGradeMap.get(g.item_id)!.has(g.sub_order_num)) {
-                itemGradeMap.get(g.item_id)!.set(g.sub_order_num, g.grade_letra);
+                // ✅ Calcular pares APENAS desta grade específica
+                const item = items.find((i: any) => i.id === g.item_id);
+                const gradeObj = (item?.grades || []).find((gr: any) => gr.letra === g.grade_letra);
+                const paresGrade = gradeObj
+                    ? Object.values(gradeObj.tamanhos as Record<string, number>)
+                        .reduce((s: number, v: any) => s + Number(v || 0), 0)
+                    : 0;
+
+                itemGradeMap.get(g.item_id)!.set(g.sub_order_num, {
+                    letra: g.grade_letra,
+                    pares: paresGrade
+                });
             }
         });
 
@@ -322,11 +335,12 @@ export async function exportBuyOrderToExcel(orderId: string) {
             // Preencher pares e grade por sub-pedido
             const gradesPorSub = itemGradeMap.get(item.id);
             if (gradesPorSub) {
-                gradesPorSub.forEach((gradLetra, subNum) => {
+                gradesPorSub.forEach((gradeInfo, subNum) => {
                     const cols = SUB_ORDER_COLS[subNum];
                     if (!cols) return;
-                    sheet.row(row).cell(cols.pares).value(Number(item.total_pares || 0));
-                    sheet.row(row).cell(cols.grade).value(gradLetra);
+                    // ✅ Usar pares da grade específica, não total_pares do item
+                    sheet.row(row).cell(cols.pares).value(gradeInfo.pares);
+                    sheet.row(row).cell(cols.grade).value(gradeInfo.letra);
                 });
             }
         });
