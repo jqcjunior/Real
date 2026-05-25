@@ -66,7 +66,10 @@ export interface ProductRestriction {
 const SUBGRUPO = [
   5, 8, 9, 26, 31, 34, 40, 43, 44, 45, 50, 56, 72, 88, 96, 100, 102, 109,
 ];
-const ALL_LOJAS = Array.from({ length: 120 }, (_, i) => i + 1);
+const ALL_LOJAS = [
+  ...Array.from({ length: 60 }, (_, i) => i + 1),         // 1–60
+  ...Array.from({ length: 51 }, (_, i) => i + 70),         // 70–120
+];
 const GRADE_LETTERS = "ABCDEFGH";
 
 const CATS: Record<string, { label: string; sizes: string[] }> = {
@@ -1110,7 +1113,7 @@ export default function StepPedidos({
 
                   {/* Grades Vazias (Layout Grade Compacta) */}
                   {gradesVazias.length > 0 && (
-  <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
+  <div className="grid grid-cols-1 md:grid-cols-1 gap-2">
     {gradesVazias.map((letter) => {
       const isExpanded = gradeExpandida === letter;
       const gradeData = gradesGlobais[letter];
@@ -1119,12 +1122,12 @@ export default function StepPedidos({
       const totalPares = totPares(gradeData.qtds);
 
       return (
-        <div key={letter} className={`flex flex-col gap-2 ${isExpanded ? 'col-span-2' : ''}`}>
+        <div key={letter} className="flex flex-col gap-2 w-full">
           <div
             onClick={() => toggleExpand(letter)}
             className={`p-2 border rounded-xl flex items-center gap-2 cursor-pointer transition-all ${
               isExpanded ? 'bg-blue-50 border-blue-400 shadow-sm ring-2 ring-blue-500/5' : 'bg-white border-slate-100 hover:border-slate-200'
-            }`}
+            } md:p-3`}
           >
             <div className={`w-5 h-5 rounded-lg text-[10px] font-black flex items-center justify-center transition-all ${
               isExpanded ? 'bg-blue-600 text-white shadow-md shadow-blue-600/20' : 'bg-slate-100 text-slate-500'
@@ -1166,7 +1169,7 @@ export default function StepPedidos({
               </div>
 
               {/* Grid de inputs */}
-              <div className="grid grid-cols-4 sm:grid-cols-6 gap-1.5 mb-4">
+              <div className="grid grid-cols-3 sm:grid-cols-4 md:grid-cols-6 gap-1.5 mb-4">
                 {sizes.map((sz) => {
                   const qtd = gradeData.qtds[sz] || 0;
                   return (
@@ -1299,7 +1302,25 @@ export default function StepPedidos({
                     </button>
                   </div>
 
-                  <div className="grid grid-cols-5 gap-1.5 mb-4 bg-slate-50/50 p-2.5 rounded-2xl border border-slate-200/50 max-h-44 overflow-y-auto custom-scrollbar">
+{/* Botão Selecionar Todas (só aparece no modo "all") */}
+                  {lojaMode === 'all' && (
+                    <div className="flex gap-2 mb-2">
+                      <button
+                        onClick={() => {
+                          const todasSelecionadas = ALL_LOJAS.every(n => selectedLojas.includes(n));
+                          setStep2State((prev: any) => ({
+                            ...prev,
+                            selectedLojas: todasSelecionadas ? [] : [...ALL_LOJAS],
+                          }));
+                        }}
+                        className="w-full py-1.5 rounded-xl border-2 text-[10px] font-black tracking-widest transition-all bg-slate-800 text-white border-slate-800 hover:bg-slate-700"
+                      >
+                        {ALL_LOJAS.every(n => selectedLojas.includes(n)) ? '✕ DESMARCAR TODAS' : '✓ SELECIONAR TODAS'}
+                      </button>
+                    </div>
+                  )}
+
+                  <div className="grid grid-cols-5 gap-1.5 mb-4 bg-slate-50/50 p-2.5 rounded-2xl border border-slate-200/50 max-h-52 overflow-y-auto custom-scrollbar">
                     {pool.map((n) => {
                       const isSelected = selectedLojas.includes(n);
                       return (
