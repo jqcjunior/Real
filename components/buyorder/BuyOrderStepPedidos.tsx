@@ -902,11 +902,15 @@ export default function StepPedidos({
 
                       <div className="flex items-center justify-between mt-2 flex-wrap gap-2 relative z-10">
                         {item.cor1 && (
-                          <div
-                            className="w-3 h-3 rounded-full border border-slate-200 shadow-sm shrink-0"
-                            style={{ backgroundColor: corParaHex(item.cor1) }}
-                            title={item.cor1}
-                          />
+                          <div className="flex items-center gap-1 shrink-0">
+                            <div
+                              className="w-3 h-3 rounded-full border border-slate-200 shadow-sm shrink-0"
+                              style={{ backgroundColor: corParaHex(item.cor1) }}
+                            />
+                            <span className="text-[8px] font-bold text-slate-500 uppercase leading-none truncate max-w-[48px]">
+                              {item.cor1}
+                            </span>
+                          </div>
                         )}
                         <div className="flex items-center gap-1.5 ml-auto">
                           <span className="text-[10px] font-black text-green-700 leading-none">
@@ -1115,7 +1119,7 @@ export default function StepPedidos({
       const totalPares = totPares(gradeData.qtds);
 
       return (
-        <div key={letter} className={`flex flex-col gap-2 ${isExpanded ? 'col-span-2 sm:col-span-1' : ''}`}>
+        <div key={letter} className={`flex flex-col gap-2 ${isExpanded ? 'col-span-2' : ''}`}>
           <div
             onClick={() => toggleExpand(letter)}
             className={`p-2 border rounded-xl flex items-center gap-2 cursor-pointer transition-all ${
@@ -1131,7 +1135,7 @@ export default function StepPedidos({
           </div>
 
           {isExpanded && (
-            <div className="bg-white border border-blue-100 rounded-xl p-3 shadow-lg shadow-blue-900/5 ring-1 ring-black/5 animate-in slide-in-from-top-2 w-full mt-2">
+            <div className="bg-white border border-blue-100 rounded-xl p-3 shadow-lg shadow-blue-900/5 ring-1 ring-black/5 animate-in slide-in-from-top-2 w-full mt-2 overflow-hidden">
               {/* Seletor de categoria */}
               <div className="flex items-center gap-1.5 mb-3 flex-wrap">
                 {catsPermitidas.map((k) => (
@@ -1162,7 +1166,7 @@ export default function StepPedidos({
               </div>
 
               {/* Grid de inputs */}
-              <div className="grid grid-cols-6 gap-1.5 mb-4">
+              <div className="grid grid-cols-4 sm:grid-cols-6 gap-1.5 mb-4">
                 {sizes.map((sz) => {
                   const qtd = gradeData.qtds[sz] || 0;
                   return (
