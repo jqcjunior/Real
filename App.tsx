@@ -916,42 +916,80 @@ const App: React.FC = () => {
         const userName = user?.name?.split(' ')[0] || 'Usuário';
         const userRole = user?.role || UserRole.CASHIER;
 
-        const getQuickAccessButtons = () => {
-            const buttons = [];
+        const roleUpper = String(user?.role || '').toUpperCase();
+        const isAdminUser  = roleUpper === 'ADMIN';
+        const isManagerUser = roleUpper === 'MANAGER' || roleUpper === 'GERENTE';
+        const isSorveteUser = roleUpper === 'ICE_CREAM' || roleUpper === 'SORVETE';
 
-            if (userRole === UserRole.ADMIN) {
-                buttons.push(
-                    { key: 'dashboard_rede', label: 'Meta da Rede', icon: '📊', color: 'from-blue-500 to-blue-600' },
-                    { key: 'users', label: 'Usuários', icon: '👥', color: 'from-purple-500 to-purple-600' },
-                    { key: 'surveys', label: 'Pesquisas', icon: '📋', color: 'from-orange-500 to-orange-600' }
-                );
-            } else if (userRole === UserRole.MANAGER) {
-                buttons.push(
-                    { key: 'dashboard_loja', label: 'Meta da Loja', icon: '📊', color: 'from-blue-500 to-blue-600' },
-                    { key: 'dashboard_pa_manager', label: 'Meta Semanal Gerente', icon: '📈', color: 'from-purple-500 to-purple-600' },
-                    { key: 'buy_order_dashboard', label: 'Dashboard Compras', icon: '💰', color: 'from-orange-500 to-orange-600' },
-                    { key: 'buy_orders', label: 'Pedido de Compra', icon: '🛒', color: 'from-green-500 to-green-600' }
-                );
-            } else if (userRole === UserRole.CASHIER) {
-                buttons.push(
-                    { key: 'caixa', label: 'Caixa', icon: '💰', color: 'from-green-500 to-green-600' },
-                    { key: 'agenda', label: 'Agenda', icon: '📅', color: 'from-purple-500 to-purple-600' },
-                    { key: 'dashboard_loja', label: 'Dashboard', icon: '📊', color: 'from-blue-500 to-blue-600' },
-                    { key: 'my_surveys', label: 'Pesquisas', icon: '📝', color: 'from-orange-500 to-orange-600' }
-                );
-            } else if (userRole === UserRole.ICE_CREAM) {
-                buttons.push(
-                    { key: 'pdv_sorveteria', label: 'Gelateria', icon: '🍦', color: 'from-pink-500 to-pink-600' },
-                    { key: 'agenda', label: 'Agenda', icon: '📅', color: 'from-purple-500 to-purple-600' },
-                    { key: 'dashboard_loja', label: 'Dashboard', icon: '📊', color: 'from-blue-500 to-blue-600' },
-                    { key: 'my_surveys', label: 'Pesquisas', icon: '📝', color: 'from-orange-500 to-orange-600' }
-                );
-            }
-
-            return buttons;
-        };
-
-        const quickAccess = getQuickAccessButtons();
+        // Cards do GERENTE (e também do ADMIN — mesmo layout)
+        const quickAccessCards = isAdminUser || isManagerUser ? [
+          {
+            label: 'Meta Loja',
+            view: 'dashboard_manager',
+            color: 'bg-blue-600',
+            icon: <LayoutDashboard size={32} />,
+            permission: 'MODULE_DASHBOARD_MANAGER',
+          },
+          {
+            label: 'Meta Semanal',
+            view: 'dashboard_pa_manager',
+            color: 'bg-purple-600',
+            icon: <Target size={32} />,
+            permission: 'MODULE_DASHBOARD_PA_MANAGER',
+          },
+          {
+            label: 'Pedido Compra',
+            view: 'buy_orders',
+            color: 'bg-green-600',
+            icon: <ShoppingCart size={32} />,
+            permission: 'MODULE_BUY_ORDERS',
+          },
+          {
+            label: 'Chamado',
+            view: 'demands_v2',
+            color: 'bg-orange-500',
+            icon: <ClipboardList size={32} />,
+            permission: 'MODULE_DEMANDS',
+          },
+          {
+            label: 'Sorvete',
+            view: 'ice_cream',
+            color: 'bg-pink-500',
+            icon: <IceCreamIcon size={32} />,
+            permission: 'MODULE_ICECREAM',
+          },
+          {
+            label: 'Pesquisa',
+            view: isAdminUser ? 'admin_surveys' : 'my_surveys',
+            color: 'bg-amber-500',
+            icon: <ClipboardList size={32} />,
+            permission: 'MODULE_ADMIN_SURVEYS',
+          },
+        ] : isSorveteUser ? [
+          {
+            label: 'Sorvete',
+            view: 'ice_cream',
+            color: 'bg-pink-500',
+            icon: <IceCreamIcon size={32} />,
+            permission: 'MODULE_ICECREAM',
+          },
+          {
+            label: 'Chamado',
+            view: 'demands_v2',
+            color: 'bg-orange-500',
+            icon: <ClipboardList size={32} />,
+            permission: 'MODULE_DEMANDS',
+          },
+        ] : [
+          // Cashier e outros — apenas chamado
+          {
+            label: 'Chamado',
+            view: 'demands_v2',
+            color: 'bg-orange-500',
+            icon: <ClipboardList size={32} />,
+            permission: 'MODULE_DEMANDS',
+          },
+        ];
 
         return (
             <div className="flex flex-col items-center justify-center min-h-screen bg-gradient-to-br from-gray-50 via-white to-blue-50 dark:from-slate-950 dark:via-slate-900 dark:to-slate-950">
@@ -975,34 +1013,29 @@ const App: React.FC = () => {
                     </p>
                 </div>
 
-                {quickAccess.length > 0 && (
+                {quickAccessCards.length > 0 && (
                     <div className="mb-12 animate-fade-in-up flex flex-col items-center px-4">
                         <p className="text-sm text-gray-500 mb-6 text-center font-medium uppercase tracking-widest">ACESSO RÁPIDO</p>
-                        <div className="grid grid-cols-2 md:flex md:gap-6 gap-4 justify-center items-center max-w-4xl">
-                            {quickAccess.map((item, index) => (
-                                <button
-                                    key={item.key}
-                                    onClick={() => setCurrentView(item.key)}
-                                    className={`
-                                        group relative flex flex-col items-center justify-center gap-3
-                                        p-6 md:p-8
-                                        bg-gradient-to-br ${item.color}
-                                        rounded-2xl shadow-lg hover:shadow-2xl
-                                        transition-all duration-300 hover:scale-105
-                                        border-2 border-white/20
-                                        min-w-[120px] md:min-w-[140px] max-w-[180px]
-                                    `}
-                                    style={{ animationDelay: `${index * 100}ms` }}
-                                >
-                                    <span className="text-4xl md:text-5xl filter drop-shadow-lg group-hover:scale-110 transition-transform duration-300">
-                                        {item.icon}
-                                    </span>
-                                    <span className="text-xs md:text-sm font-bold text-white text-center leading-tight">
-                                        {item.label}
-                                    </span>
-                                    <div className="absolute inset-0 bg-white/0 group-hover:bg-white/10 rounded-2xl transition-colors duration-300"></div>
-                                </button>
-                            ))}
+                        <div className={`grid gap-4 justify-center ${
+                          quickAccessCards.length <= 3 
+                            ? 'grid-cols-' + quickAccessCards.length 
+                            : 'grid-cols-3'
+                        } max-w-lg mx-auto`}>
+                          {quickAccessCards
+                            .filter(card => can(card.permission))
+                            .map((card, idx) => (
+                              <button
+                                key={idx}
+                                onClick={() => setCurrentView(card.view)}
+                                className={`${card.color} hover:opacity-90 active:scale-95 transition-all text-white rounded-2xl p-5 flex flex-col items-center justify-center gap-3 shadow-lg aspect-square`}
+                              >
+                                {card.icon}
+                                <span className="text-xs font-black uppercase tracking-wide text-center leading-tight">
+                                  {card.label}
+                                </span>
+                              </button>
+                            ))
+                          }
                         </div>
                     </div>
                 )}
@@ -1236,7 +1269,7 @@ const App: React.FC = () => {
                                             return hasRole && can(sub.perm);
                                         });
                                         if (visibleSubItems.length === 0) return null;
-                                        const isActiveGroup = visibleSubItems.some((sub: any) => sub.id === currentView);
+                                        const isActiveGroup = visibleSubItems.some((sub: any) => sub.id === currentView || (sub.id === 'dashboard_loja' && currentView === 'dashboard_manager'));
                                         return (
                                             <div key={item.id} className="space-y-1 mt-2">
                                                 <button
@@ -1268,7 +1301,7 @@ const App: React.FC = () => {
                                                                 key={subItem.id}
                                                                 onClick={() => { setCurrentView(subItem.id); setIsSidebarOpen(false); }}
                                                                 className={`w-full text-left py-2 px-4 rounded-lg font-bold uppercase text-[9px] flex items-center gap-3 transition-all relative ${
-                                                                    currentView === subItem.id
+                                                                    (currentView === subItem.id || (subItem.id === 'pdv_sorveteria' && currentView === 'ice_cream') || (subItem.id === 'os_demandas' && currentView === 'demands_v2') || (subItem.id === 'surveys' && currentView === 'admin_surveys') || (subItem.id === 'dashboard_loja' && currentView === 'dashboard_manager'))
                                                                         ? 'text-blue-600 dark:text-blue-400 bg-blue-50 dark:bg-blue-900/20'
                                                                         : 'text-slate-400 hover:text-slate-700 dark:hover:text-slate-300 hover:bg-slate-50/50 dark:hover:bg-slate-800/50'
                                                                 }`}
@@ -1287,7 +1320,7 @@ const App: React.FC = () => {
                                             key={item.id}
                                             onClick={() => { setCurrentView(item.id); setIsSidebarOpen(false); }}
                                             className={`w-full text-left py-2.5 px-4 rounded-xl font-black uppercase text-[10px] flex items-center gap-4 transition-all relative ${
-                                                currentView === item.id
+                                                (currentView === item.id || (item.id === 'pdv_sorveteria' && currentView === 'ice_cream') || (item.id === 'os_demandas' && currentView === 'demands_v2') || (item.id === 'surveys' && currentView === 'admin_surveys') || (item.id === 'dashboard_loja' && currentView === 'dashboard_manager'))
                                                     ? 'bg-blue-600 text-white shadow-lg shadow-blue-200 dark:shadow-blue-900/20'
                                                     : 'text-slate-500 dark:text-slate-300 hover:text-slate-900 dark:hover:text-white hover:bg-slate-50 dark:hover:bg-slate-800'
                                             }`}
@@ -1462,7 +1495,7 @@ const App: React.FC = () => {
                                 fetchData();
                             }
                         }} />;
-                        if (currentView === 'dashboard_loja' && can('MODULE_DASHBOARD_MANAGER')) return <DashboardManager user={user!} stores={stores} performanceData={performanceData} goalsData={goalsData} sangrias={icSangrias} stockMovements={icStockMovements} stock={iceCreamStock} weightRevenue={goalsRankingParams?.weight_revenue ?? 70} weightPA={goalsRankingParams?.weight_pa ?? 30} />;
+                        if ((currentView === 'dashboard_loja' || currentView === 'dashboard_manager') && can('MODULE_DASHBOARD_MANAGER')) return <DashboardManager user={user!} stores={stores} performanceData={performanceData} goalsData={goalsData} sangrias={icSangrias} stockMovements={icStockMovements} stock={iceCreamStock} weightRevenue={goalsRankingParams?.weight_revenue ?? 70} weightPA={goalsRankingParams?.weight_pa ?? 30} />;
                         if (currentView === 'metas' && can('MODULE_METAS')) return <GoalRegistration user={user!} stores={isAdmin ? stores : stores.filter(s => s.id === user?.storeId)} goalsData={goalsData} onRefresh={fetchData} onSaveGoals={async (data) => { for(const row of data) { await supabase.from('monthly_goals').upsert({ store_id: row.storeId, year: row.year, month: row.month, revenue_target: row.revenueTarget, pa_target: row.paTarget, pu_target: row.puTarget, ticket_target: row.ticketTarget, items_target: row.itemsTarget, business_days: row.businessDays, delinquency_target: row.delinquencyTarget, trend: row.trend }, { onConflict: 'store_id, year, month' }); } fetchData(); }} />;
                         if (currentView === 'dre_accounts' && can('MODULE_DRE_ACCOUNTS')) return <DREAccounts />;
                         if (currentView === 'stock_forecast' && can('MODULE_BUY_ORDERS')) return <StockForecastDashboard user={user!} stores={isAdmin ? stores : stores.filter(s => s.id === user?.storeId)} />;
@@ -1472,7 +1505,7 @@ const App: React.FC = () => {
                         if (currentView === 'admin_quota_extra' && can('MODULE_BUY_ORDERS')) return <AdminQuotaExtraApprovals userId={user!.id} />;
                         if (currentView === 'purchase_params') return <BuyOrderParams user={user!} />;
                         if (currentView === 'reports_dashboard') return <ReportsPage user={user!} />;
-                        if (currentView === 'pdv_sorveteria' && can('MODULE_ICECREAM')) return <IceCreamModule
+                        if ((currentView === 'pdv_sorveteria' || currentView === 'ice_cream') && can('MODULE_ICECREAM')) return <IceCreamModule
                             user={user!} stores={isAdmin ? stores : stores.filter(s => s.id === user?.storeId)} items={iceCreamItems} sales={iceCreamSales} salesHeaders={sales} salePayments={salePayments}
                             stock={iceCreamStock} promissories={icPromissories} can={can}
                             sangriaCategories={icSangriaCategories}
@@ -1715,7 +1748,7 @@ const App: React.FC = () => {
                         if (currentView === 'termo_condicional' && can('MODULE_TERMO_CONDICIONAL')) return <TermoAutorizacao user={user!} store={stores.find(s => s.id === user?.storeId)} />;
                         if (currentView === 'downloads' && can('MODULE_DOWNLOADS')) return <DownloadsModule user={user!} items={downloads} onUpload={async (i) => { await supabase.from('downloads').insert([i]); fetchData(); }} onDelete={async (id) => { await supabase.from('downloads').delete().eq('id', id); fetchData(); }} can={can} />;
                         if (currentView === 'users' && can('MODULE_ADMIN_USERS')) return <AdminUsersManagement currentUser={user} stores={stores} />;
-                        if (currentView === 'surveys' && can('MODULE_ADMIN_SURVEYS')) {
+                        if ((currentView === 'surveys' || currentView === 'admin_surveys') && can('MODULE_ADMIN_SURVEYS')) {
                             if (selectedSurveyForResults) {
                                 return <SurveyResultsViewer survey={selectedSurveyForResults} currentUser={user!} stores={stores} onBack={() => setSelectedSurveyForResults(null)} />;
                             }
@@ -1725,7 +1758,7 @@ const App: React.FC = () => {
                         if (currentView === 'access' && can('MODULE_ACCESS_CONTROL')) return <AccessControlManagement />;
                         if (currentView === 'audit' && can('MODULE_AUDIT')) return <SystemAudit currentUser={user!} logs={logs} receipts={receipts} cashErrors={cashErrors} iceCreamSales={iceCreamSales} icPromissories={icPromissories} cardSales={cardSales} pixSales={pixSales} closures={closures} stores={isAdmin ? stores : stores.filter(s => s.id === user?.storeId)} can={can} />;
                         if (currentView === 'settings' && can('MODULE_SETTINGS')) return <AdminSettings stores={stores} onAddStore={async (s) => { await supabase.from('stores').insert([s]); fetchData(); }} onUpdateStore={async (s) => { const { id, ...updates } = s; await supabase.from('stores').update(updates).eq('id', id); fetchData(); }} onDeleteStore={async (id) => { await supabase.from('stores').delete().eq('id', id); fetchData(); }} />;
-                        if (currentView === 'os_demandas' && can('MODULE_DEMANDS')) return (
+                        if ((currentView === 'os_demandas' || currentView === 'demands_v2') && can('MODULE_DEMANDS')) return (
                             <DemandsSystemV2 
                                 user={user!} 
                                 stores={stores} 

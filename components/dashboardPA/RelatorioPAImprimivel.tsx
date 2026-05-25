@@ -456,10 +456,22 @@ const RelatorioPAImprimivel: React.FC<RelatorioProps> = ({ storeId, storeName, s
                             <p className={`text-[15px] font-black leading-none mb-1 whitespace-nowrap ${v.atingiu_meta_vendas ? 'text-emerald-600' : 'text-red-500'}`}>
                               R$ {v.total_vendas.toLocaleString('pt-BR', { maximumFractionDigits: 0 })}
                             </p>
-                            <div className="flex items-center justify-center gap-1.5 mt-1.5 bg-emerald-100 rounded-lg py-1 px-2 border border-emerald-200">
-                              <TrendingUp size={14} className="text-emerald-600" />
-                              <span className="text-[11px] font-black text-emerald-700 tracking-tighter transition-all">+{(Math.random() * 5 + 1).toFixed(1)}%</span>
-                            </div>
+                            {(() => {
+                              const meta = parametros?.vendas_minimo || 0;
+                              const pct = meta > 0 ? (v.total_vendas / meta) * 100 : 0;
+                              const bateu = v.atingiu_meta_vendas;
+                              return (
+                                <div className={`flex items-center justify-center gap-1.5 mt-1.5 rounded-lg py-1 px-2 border ${bateu ? 'bg-emerald-100 border-emerald-200' : 'bg-red-100 border-red-200'}`}>
+                                  {bateu
+                                    ? <TrendingUp size={14} className="text-emerald-600" />
+                                    : <TrendingUp size={14} className="text-red-500 rotate-180" />
+                                  }
+                                  <span className={`text-[11px] font-black tracking-tighter ${bateu ? 'text-emerald-700' : 'text-red-600'}`}>
+                                    {pct.toFixed(1)}%
+                                  </span>
+                                </div>
+                              );
+                            })()}
                           </div>
                           
                           <div className="mt-auto">
@@ -497,10 +509,22 @@ const RelatorioPAImprimivel: React.FC<RelatorioProps> = ({ storeId, storeName, s
                             <p className={`text-[15px] font-black leading-none mb-1 whitespace-nowrap ${v.atingiu_meta_ticket ? 'text-blue-600' : 'text-red-500'}`}>
                               R$ {v.ticket_medio.toFixed(0)}
                             </p>
-                            <div className="flex items-center justify-center gap-1.5 mt-1.5 bg-blue-100 rounded-lg py-1 px-2 border border-blue-200">
-                              <TrendingUp size={14} className="text-blue-600" />
-                              <span className="text-[11px] font-black text-blue-700 tracking-tighter transition-all">+{(Math.random() * 8 + 2).toFixed(1)}%</span>
-                            </div>
+                            {(() => {
+                              const meta = parametros?.ticket_minimo || 0;
+                              const pct = meta > 0 ? (v.ticket_medio / meta) * 100 : 0;
+                              const bateu = v.atingiu_meta_ticket;
+                              return (
+                                <div className={`flex items-center justify-center gap-1.5 mt-1.5 rounded-lg py-1 px-2 border ${bateu ? 'bg-blue-100 border-blue-200' : 'bg-red-100 border-red-200'}`}>
+                                  {bateu
+                                    ? <TrendingUp size={14} className="text-blue-600" />
+                                    : <TrendingUp size={14} className="text-red-500 rotate-180" />
+                                  }
+                                  <span className={`text-[11px] font-black tracking-tighter ${bateu ? 'text-blue-700' : 'text-red-600'}`}>
+                                    {pct.toFixed(1)}%
+                                  </span>
+                                </div>
+                              );
+                            })()}
                           </div>
                           
                           <div className="mt-auto">
@@ -538,10 +562,22 @@ const RelatorioPAImprimivel: React.FC<RelatorioProps> = ({ storeId, storeName, s
                             <p className="text-[15px] font-black leading-none mb-1 text-orange-600 whitespace-nowrap">
                               {v.pa_atingido.toFixed(2)}
                             </p>
-                            <div className="flex items-center justify-center gap-1.5 mt-1.5 bg-orange-100 rounded-lg py-1 px-2 border border-orange-200">
-                              <TrendingUp size={14} className="text-orange-600" />
-                              <span className="text-[11px] font-black text-orange-700 tracking-tighter transition-all">+{(Math.random() * 3 + 1).toFixed(1)}%</span>
-                            </div>
+                            {(() => {
+                              const meta = v.pa_meta || 0;
+                              const pct = meta > 0 ? (v.pa_atingido / meta) * 100 : 0;
+                              const bateu = v.pa_atingido >= meta;
+                              return (
+                                <div className={`flex items-center justify-center gap-1.5 mt-1.5 rounded-lg py-1 px-2 border ${bateu ? 'bg-orange-100 border-orange-200' : 'bg-red-100 border-red-200'}`}>
+                                  {bateu
+                                    ? <TrendingUp size={14} className="text-orange-600" />
+                                    : <TrendingUp size={14} className="text-red-500 rotate-180" />
+                                  }
+                                  <span className={`text-[11px] font-black tracking-tighter ${bateu ? 'text-orange-700' : 'text-red-600'}`}>
+                                    {pct.toFixed(1)}%
+                                  </span>
+                                </div>
+                              );
+                            })()}
                           </div>
                           
                           <div className="mt-auto">
