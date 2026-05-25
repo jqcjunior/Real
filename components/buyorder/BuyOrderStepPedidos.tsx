@@ -105,6 +105,15 @@ function totPares(qtds: Record<string, number>): number {
   return Object.values(qtds).reduce((s, v) => s + (v || 0), 0);
 }
 
+function sanitizeQtds(qtds: Record<string, any>): Record<string, number> {
+  const result: Record<string, number> = {};
+  for (const [k, v] of Object.entries(qtds || {})) {
+    const parsed = typeof v === 'number' ? v : parseInt(String(v), 10);
+    if (!isNaN(parsed) && parsed > 0) result[k] = parsed;
+  }
+  return result;
+}
+
 function corParaHex(cor: string): string {
   const mapa: Record<string, string> = {
     'PRETO': '#1a1a1a', 'BRANCO': '#f5f5f5', 'VERMELHO': '#dc2626',
@@ -227,6 +236,41 @@ export default function StepPedidos({
 
   const [quotaModal, setQuotaModal] = useState<QuotaModalState>(null);
   const [lojasOpen, setLojasOpen] = useState(true);
+
+  // 1. Sanitizar gradesGlobais ao montar ou receber dados
+  useEffect(() => {
+    let hasInvalid = false;
+    const sanitizedGrades: Record<string, any> = {};
+
+    for (const [letter, grade] of Object.entries(gradesGlobais || {})) {
+      const sanitizedQtds = sanitizeQtds(grade.qtds);
+      
+      // Checa se qtds mudou (compara tamanho e valores)
+      const curKeys = Object.keys(grade.qtds || {});
+      const newKeys = Object.keys(sanitizedQtds);
+      let isDifferent = curKeys.length !== newKeys.length;
+      if (!isDifferent) {
+        for (const k of curKeys) {
+          if (grade.qtds[k] !== sanitizedQtds[k]) {
+            isDifferent = true;
+            break;
+          }
+        }
+      }
+
+      if (isDifferent) {
+        hasInvalid = true;
+      }
+      sanitizedGrades[letter] = { ...grade, qtds: sanitizedQtds };
+    }
+
+    if (hasInvalid) {
+      setStep2State((prev: any) => ({
+        ...prev,
+        gradesGlobais: sanitizedGrades
+      }));
+    }
+  }, [gradesGlobais, setStep2State]);
 
   const [storeRequirements, setStoreRequirements] = useState<
     StoreRequirement[]
@@ -1030,7 +1074,7 @@ export default function StepPedidos({
                                       ref={(el) => { inputRefs.current[`${letter}-${sz}`] = el; }}
                                       type="number"
                                       min={0}
-                                      value={qtd || ""}
+                                      value={typeof qtd === 'number' ? (qtd || "") : ""}
                                       onChange={(e) => setGradeQtd(sz, parseInt(e.target.value) || 0)}
                                       onKeyDown={(e) => handleGradeKeyDown(e, sz, sizes)}
                                       className={`w-full h-8 text-center text-xs border rounded-lg transition-all outline-none font-black ${
@@ -1071,7 +1115,7 @@ export default function StepPedidos({
       const totalPares = totPares(gradeData.qtds);
 
       return (
-        <div key={letter} className="flex flex-col gap-2">
+        <div key={letter} className={`flex flex-col gap-2 ${isExpanded ? 'col-span-2 sm:col-span-1' : ''}`}>
           <div
             onClick={() => toggleExpand(letter)}
             className={`p-2 border rounded-xl flex items-center gap-2 cursor-pointer transition-all ${
@@ -1087,7 +1131,7 @@ export default function StepPedidos({
           </div>
 
           {isExpanded && (
-            <div className="bg-white border border-blue-100 rounded-xl p-3 shadow-lg shadow-blue-900/5 ring-1 ring-black/5 animate-in slide-in-from-top-2 absolute left-4 right-4 mt-12 z-10 sm:static sm:mt-0">
+            <div className="bg-white border border-blue-100 rounded-xl p-3 shadow-lg shadow-blue-900/5 ring-1 ring-black/5 animate-in slide-in-from-top-2 w-full mt-2">
               {/* Seletor de categoria */}
               <div className="flex items-center gap-1.5 mb-3 flex-wrap">
                 {catsPermitidas.map((k) => (
@@ -1128,7 +1172,7 @@ export default function StepPedidos({
                         ref={(el) => { inputRefs.current[`${letter}-${sz}`] = el; }}
                         type="number"
                         min={0}
-                        value={qtd || ""}
+                        value={typeof qtd === 'number' ? (qtd || "") : ""}
                         onChange={(e) => setGradeQtd(sz, parseInt(e.target.value) || 0)}
                         onKeyDown={(e) => handleGradeKeyDown(e, sz, sizes)}
                         className={`w-full h-8 text-center text-xs border rounded-lg transition-all outline-none font-black ${
@@ -1176,7 +1220,16 @@ export default function StepPedidos({
                   {tempPedidoItens.map((icg, idx) => (
                     <div key={idx} className="flex items-center justify-between bg-white/5 p-1.5 rounded-lg border border-white/5 hover:bg-white/10 transition-colors">
                       <div>
-                        <span className="text-[9px] font-black text-slate-200 uppercase">{items[icg.itemIdx].ref}</span>
+                        <div className="flex items-center gap-1.5">
+                          {items[icg.itemIdx].cor1 && (
+                            <div
+                              className="w-2.5 h-2.5 rounded-full border border-white/20 shrink-0"
+                              style={{ backgroundColor: corParaHex(items[icg.itemIdx].cor1!) }}
+                              title={items[icg.itemIdx].cor1}
+                            />
+                          )}
+                          <span className="text-[9px] font-black text-slate-200 uppercase">{items[icg.itemIdx].ref}</span>
+                        </div>
                         <div className="flex gap-1 mt-0.5">
                           {icg.grades.map(g => (
                             <span key={g.letter} className="text-[8px] font-black text-blue-400 italic">Grade {g.letter}</span>
@@ -1301,7 +1354,16 @@ export default function StepPedidos({
 
                       <div className="flex items-center justify-between mb-3 relative z-10">
                         <div className="flex flex-col">
-                          <span className="text-[11px] font-black text-slate-800 uppercase tracking-tighter">Pedido #{ped.num}</span>
+                          <div className="flex items-center gap-1.5 flex-wrap">
+                            <span className="text-[11px] font-black text-slate-800 uppercase tracking-tighter">Pedido #{ped.num}</span>
+                            <div className="flex items-center gap-1">
+                              {Array.from(new Set(ped.itensComGrades.flatMap(icg => icg.grades.map(g => g.letter)))).sort().map(letra => (
+                                <span key={letra} className="text-[8px] font-black bg-blue-100 text-blue-700 border border-blue-200 px-1 rounded">
+                                  {letra}
+                                </span>
+                              ))}
+                            </div>
+                          </div>
                           <span className="text-[8px] font-mono text-slate-400 uppercase tracking-widest">{ped.pedido_numero}</span>
                         </div>
                         <button
@@ -1334,6 +1396,28 @@ export default function StepPedidos({
                         {ped.lojas.length > 15 && (
                           <span className="text-[8px] font-black text-slate-400 bg-slate-100 rounded px-2 py-0.5 border border-slate-200">+{ped.lojas.length - 15}</span>
                         )}
+                      </div>
+
+                      {/* Itens do pedido com cor e grade */}
+                      <div className="flex flex-wrap gap-1 mt-2 relative z-10">
+                        {ped.itensComGrades.map((icg) => {
+                          const item = items[icg.itemIdx];
+                          return (
+                            <div key={icg.itemIdx} className="flex items-center gap-1 bg-slate-50 border border-slate-100 rounded-lg px-1.5 py-0.5">
+                              {item.cor1 && (
+                                <div
+                                  className="w-2 h-2 rounded-full shrink-0"
+                                  style={{ backgroundColor: corParaHex(item.cor1) }}
+                                  title={item.cor1}
+                                />
+                              )}
+                              <span className="text-[8px] font-black text-slate-600 uppercase">{item.ref}</span>
+                              <span className="text-[7px] text-slate-400 font-bold">
+                                {icg.grades.map(g => g.letter).join('+')}
+                              </span>
+                            </div>
+                          );
+                        })}
                       </div>
                     </div>
                   );
