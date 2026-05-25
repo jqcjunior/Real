@@ -1216,46 +1216,7 @@ export default function StepPedidos({
               )}
             </div>
             
-            {/* Rascunho Rápido */}
-            {tempPedidoItens.length > 0 && (
-              <div className="p-3 bg-slate-900 text-white border-t border-slate-800 shrink-0">
-                <div className="flex justify-between items-center mb-2">
-                  <span className="text-[9px] font-black uppercase tracking-widest text-slate-400">Rascunho Atual</span>
-                  <div className="bg-blue-600 px-2 py-0.5 rounded text-[10px] font-black shadow-lg shadow-blue-600/20">
-                    {totaisPedidoTemp.totalParesPorLoja} PARES
-                  </div>
-                </div>
-                <div className="max-h-24 overflow-y-auto custom-scrollbar space-y-1">
-                  {tempPedidoItens.map((icg, idx) => (
-                    <div key={idx} className="flex items-center justify-between bg-white/5 p-1.5 rounded-lg border border-white/5 hover:bg-white/10 transition-colors">
-                      <div>
-                        <div className="flex items-center gap-1.5">
-                          {items[icg.itemIdx].cor1 && (
-                            <div
-                              className="w-2.5 h-2.5 rounded-full border border-white/20 shrink-0"
-                              style={{ backgroundColor: corParaHex(items[icg.itemIdx].cor1!) }}
-                              title={items[icg.itemIdx].cor1}
-                            />
-                          )}
-                          <span className="text-[9px] font-black text-slate-200 uppercase">{items[icg.itemIdx].ref}</span>
-                        </div>
-                        <div className="flex gap-1 mt-0.5">
-                          {icg.grades.map(g => (
-                            <span key={g.letter} className="text-[8px] font-black text-blue-400 italic">Grade {g.letter}</span>
-                          ))}
-                        </div>
-                      </div>
-                      <div className="flex items-center gap-2">
-                        <span className="text-[9px] font-black text-slate-400">{icg.grades.reduce((s, g) => s + totPares(g.qtds), 0)}p</span>
-                        <button onClick={() => setDeletingTempItem(idx)} className="text-white/20 hover:text-red-400 transition-colors">
-                          <Trash2 size={12} />
-                        </button>
-                      </div>
-                    </div>
-                  ))}
-                </div>
-              </div>
-            )}
+            {/* Rascunho Rápido was moved to Col3 */}
           </div>
 
           {/* COLUNA 3: LOJAS + PEDIDOS CRIADOS */}
@@ -1355,6 +1316,69 @@ export default function StepPedidos({
               )}
             </div>
 
+            {/* RASCUNHO ATUAL */}
+            {tempPedidoItens.length > 0 && (
+              <div className="flex flex-col border-b border-slate-200 bg-slate-900 border-x-0 w-full shrink-0">
+                <div className="flex items-center justify-between p-3 border-b border-white/10">
+                  <span className="text-[10px] font-black tracking-widest text-white uppercase flex items-center gap-2">
+                    <span className="w-2 h-2 rounded-full bg-blue-500 animate-pulse"></span>
+                    Rascunho Atual
+                  </span>
+                  <div className="bg-blue-600 px-2 py-0.5 rounded text-[10px] font-black text-white shadow-lg shadow-blue-600/20">
+                    {totaisPedidoTemp.totalParesPorLoja} PARES
+                  </div>
+                </div>
+                <div className="p-2 space-y-1">
+                  {tempPedidoItens.map((icg, idx) => (
+                    <div key={idx} className="flex items-center justify-between bg-white/5 p-2 rounded-xl border border-white/5 hover:bg-white/10 transition-colors">
+                      <div className="flex flex-col gap-1">
+                        <div className="flex items-center gap-1.5 flex-wrap">
+                          {items[icg.itemIdx].cor1 && (
+                            <div className="flex items-center gap-1 shrink-0">
+                              <div
+                                className="w-2.5 h-2.5 rounded-full border border-white/20 shrink-0"
+                                style={{ backgroundColor: corParaHex(items[icg.itemIdx].cor1!) }}
+                              />
+                              <span className="text-[9px] font-black text-slate-300 uppercase leading-none truncate max-w-[48px]">
+                                {items[icg.itemIdx].cor1}
+                              </span>
+                            </div>
+                          )}
+                          <span className="text-[10px] font-black text-white uppercase">{items[icg.itemIdx].ref}</span>
+                        </div>
+                        <div className="flex gap-1">
+                          {icg.grades.map(g => (
+                            <span key={g.letter} className="text-[8px] font-black text-blue-400">Grade {g.letter}</span>
+                          ))}
+                        </div>
+                      </div>
+                      <div className="flex flex-col items-end gap-1">
+                        <span className="text-[10px] font-black text-white bg-white/10 px-1.5 py-0.5 rounded">
+                          {icg.grades.reduce((s, g) => s + totPares(g.qtds), 0)}p
+                        </span>
+                        <div className="flex items-center gap-1.5 mt-1">
+                          <button
+                            onClick={() => setEditingTempItem(idx)}
+                            className="text-white/40 hover:text-blue-400 transition-colors"
+                            title="Editar grade"
+                          >
+                            <svg xmlns="http://www.w3.org/2000/svg" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M17 3a2.85 2.83 0 1 1 4 4L7.5 20.5 2 22l1.5-5.5Z"/></svg>
+                          </button>
+                          <button
+                            onClick={() => setDeletingTempItem(idx)}
+                            className="text-white/40 hover:text-red-400 transition-colors"
+                            title="Remover item"
+                          >
+                            <Trash2 size={12} />
+                          </button>
+                        </div>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
+
             {/* LISTA DE PEDIDOS FIXADO EMBAIXO */}
             <div className="flex flex-col p-4">
               <div className="flex items-center justify-between mb-4">
@@ -1401,16 +1425,22 @@ export default function StepPedidos({
                       </button>
                     </div>
 
-                      <div className="grid grid-cols-2 gap-2 mb-3 relative z-10">
-                        <div className="bg-slate-50/80 p-2 rounded-xl border border-slate-100 text-center">
-                          <div className="text-[8px] font-black text-slate-400 uppercase mb-0.5">Pares/Loja</div>
-                          <div className="text-[12px] font-black text-slate-900">{totais.totalParesPorLoja}p</div>
+                      <div className="flex flex-col gap-2 mb-3 relative z-10">
+                        <div className="flex items-center justify-between bg-slate-50 p-2 rounded-xl border border-slate-100">
+                          <span className="text-[9px] font-black text-slate-400 uppercase">Pares Fixos/Loja</span>
+                          <span className="text-[11px] font-black text-slate-900">{totais.totalParesPorLoja}p</span>
                         </div>
-                        <div className="bg-green-50/50 p-2 rounded-xl border border-green-100 text-center">
-                          <div className="text-[8px] font-black text-green-600 uppercase mb-0.5">Total Líquido</div>
-                          <div className="text-[12px] font-black text-green-700">
-                            {fmtBRL(totais.totalValorLiquidoPorLoja)}
-                          </div>
+                        <div className="flex items-center justify-between bg-slate-50 p-2 rounded-xl border border-slate-100">
+                          <span className="text-[9px] font-black text-slate-400 uppercase">Valor Fixo/Loja {cab.desconto ? `(-${cab.desconto}%)` : ''}</span>
+                          <span className="text-[11px] font-black text-slate-900">{fmtBRL(totais.totalValorLiquidoPorLoja)}</span>
+                        </div>
+                        <div className="flex items-center justify-between bg-blue-50/50 p-2 rounded-xl border border-blue-100">
+                          <span className="text-[9px] font-black text-blue-600 uppercase">Total Pares ({ped.lojas.length} lojas)</span>
+                          <span className="text-[11px] font-black text-blue-700">{totais.totalParesGeral}p</span>
+                        </div>
+                        <div className="flex items-center justify-between bg-green-50/50 p-2 rounded-xl border border-green-100">
+                          <span className="text-[9px] font-black text-green-600 uppercase">Total Geral {cab.desconto ? `(-${cab.desconto}%)` : ''}</span>
+                          <span className="text-[11px] font-black text-green-700">{fmtBRL(totais.totalValorLiquidoGeral)}</span>
                         </div>
                       </div>
 
@@ -1423,28 +1453,6 @@ export default function StepPedidos({
                         {ped.lojas.length > 15 && (
                           <span className="text-[8px] font-black text-slate-400 bg-slate-100 rounded px-2 py-0.5 border border-slate-200">+{ped.lojas.length - 15}</span>
                         )}
-                      </div>
-
-                      {/* Itens do pedido com cor e grade */}
-                      <div className="flex flex-wrap gap-1 mt-2 relative z-10">
-                        {ped.itensComGrades.map((icg) => {
-                          const item = items[icg.itemIdx];
-                          return (
-                            <div key={icg.itemIdx} className="flex items-center gap-1 bg-slate-50 border border-slate-100 rounded-lg px-1.5 py-0.5">
-                              {item.cor1 && (
-                                <div
-                                  className="w-2 h-2 rounded-full shrink-0"
-                                  style={{ backgroundColor: corParaHex(item.cor1) }}
-                                  title={item.cor1}
-                                />
-                              )}
-                              <span className="text-[8px] font-black text-slate-600 uppercase">{item.ref}</span>
-                              <span className="text-[7px] text-slate-400 font-bold">
-                                {icg.grades.map(g => g.letter).join('+')}
-                              </span>
-                            </div>
-                          );
-                        })}
                       </div>
                     </div>
                   );
