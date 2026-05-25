@@ -581,12 +581,13 @@ export default function StepPedidos({
         },
       ]);
 
-      setStep2State((prev: any) => ({ 
-        ...prev, 
-        tempPedidoItens: [], 
+      // Limpar pedido temporário e lojas para novo pedido
+      setStep2State((prev: any) => ({
+        ...prev,
+        tempPedidoItens: [],
         selectedItems: new Set(),
         selectedLojas: [],
-        lojaMode: null
+        lojaMode: null,
       }));
       setQuotaModal(null);
     };
@@ -820,8 +821,11 @@ export default function StepPedidos({
                     />
                     <div className="flex-1 min-w-0">
                       <div className="flex items-center gap-2">
+                        <span className="text-[9px] font-black text-slate-400 shrink-0 bg-slate-200 rounded px-1">
+                          #{idx + 1}
+                        </span>
                         <div className="text-xs font-bold text-slate-800 truncate">
-                          #{items.indexOf(item) + 1} - {item.ref}
+                          {item.ref}
                         </div>
                         {jaVinculado && (
                           <span className="bg-green-600 text-white text-[7px] font-bold px-1.5 py-0.5 rounded uppercase shrink-0">
@@ -829,17 +833,8 @@ export default function StepPedidos({
                           </span>
                         )}
                       </div>
-                      <div className="text-[9px] text-slate-600 truncate flex items-center gap-1">
-                        <span>{item.tipo} · {item.modelo}</span>
-                        {item.cor1 && (
-                          <span className="flex items-center gap-1 ml-1 border-l pl-1 border-slate-300">
-                            <span 
-                              className="w-2 h-2 rounded-full border border-slate-300"
-                              style={{ backgroundColor: item.cor1.toLowerCase() }}
-                            />
-                            {item.cor1}
-                          </span>
-                        )}
+                      <div className="text-[9px] text-slate-600 truncate">
+                        {item.tipo} · {item.modelo}
                       </div>
                       <div className="flex items-center gap-2 flex-wrap">
                         <div className="text-[10px] font-bold text-green-700">
@@ -853,11 +848,7 @@ export default function StepPedidos({
                           <div className="flex items-center gap-0.5">
                             <div
                               className="w-2 h-2 rounded-full border border-slate-300 shrink-0"
-                              style={{
-                                backgroundColor: item.cor1.startsWith('#')
-                                  ? item.cor1
-                                  : '#94a3b8'
-                              }}
+                              style={{ backgroundColor: '#94a3b8' }}
                             />
                             <span className="text-[7px] text-slate-500 uppercase font-medium">
                               {item.cor1}
@@ -1370,13 +1361,13 @@ export default function StepPedidos({
                       return (
                         <tr
                           key={idx}
-                          className="border-b border-amber-50 hover:bg-amber-50 transition-colors"
+                          className="border-b border-slate-100 hover:bg-slate-50 transition-colors"
                         >
                           <td
                             className="p-1 px-2 font-medium text-slate-800 truncate max-w-[80px]"
                             title={item.ref}
                           >
-                            <div className="font-bold">{item.ref}</div>
+                            <div className="font-bold text-[9px]">{item.ref}</div>
                             <div className="flex gap-0.5 mt-0.5 flex-wrap">
                               {icg.grades.map((g) => (
                                 <span
@@ -1800,7 +1791,7 @@ function EditTempItemPopup({
                   >
                     <div className="bg-slate-100 flex justify-between items-center px-3 py-2 border-b border-slate-200">
                       <div className="font-bold text-sm text-slate-800">
-                        {paresDaGrade}p · Grade {grade.letter}
+                        Grade {grade.letter} ({paresDaGrade}p)
                       </div>
                       <button
                         onClick={() => removeGrade(gIdx)}
@@ -2022,7 +2013,7 @@ function EditPedidoPopup({
                             key={g.letter}
                             className="text-[10px] text-slate-500"
                           >
-                            <strong>{totPares(g.qtds)}p · Grade {g.letter}</strong> (
+                            <strong>Grade {g.letter} ({totPares(g.qtds)}p)</strong> (
                             {CATS[g.cat]?.label}):{" "}
                             {Object.entries(g.qtds)
                               .filter(([_, v]) => v > 0)
