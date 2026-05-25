@@ -457,26 +457,33 @@ export default function StepPedidos({
   };
 
   function adicionarGrade() {
-    const letrasUsadas = Object.keys(gradesGlobais);
+    // Filtrar apenas chaves válidas (letras A-H), ignorar chaves numéricas ou inválidas
+    const letrasUsadas = Object.keys(gradesGlobais).filter(k => /^[A-H]$/.test(k));
     const proxima = GRADE_LETTERS.split("").find(
       (l) => !letrasUsadas.includes(l),
     );
-    if (proxima) {
-      const firstItemIdx = Array.from(selectedItems)[0] ?? 0;
-      const initialCat = (items[firstItemIdx]?.modelo || "MASC") as any;
+    if (!proxima) return;
 
-      setStep2State((prev: any) => ({
+    const firstItemIdx = Array.from(selectedItems)[0];
+    const initialCat = (
+      firstItemIdx !== undefined ? items[firstItemIdx]?.modelo : undefined
+    ) || "ACES";
+
+    setStep2State((prev: any) => {
+      // Remover chaves inválidas (numéricas) ao adicionar nova grade
+      const gradesLimpas: Record<string, any> = {};
+      Object.entries(prev.gradesGlobais).forEach(([k, v]) => {
+        if (/^[A-H]$/.test(k)) gradesLimpas[k] = v;
+      });
+      return {
         ...prev,
         gradesGlobais: {
-          ...prev.gradesGlobais,
-          [proxima]: {
-            cat: initialCat,
-            qtds: {},
-          },
+          ...gradesLimpas,
+          [proxima]: { cat: initialCat, qtds: {} },
         },
         gradeExpandida: proxima,
-      }));
-    }
+      };
+    });
   }
 
   const handleLimparGrade = (letter: string) => {
@@ -494,30 +501,56 @@ export default function StepPedidos({
   };
 
   const handleExcluirGrade = (letter: string) => {
-    if (!window.confirm(`Tem certeza que deseja EXCLUIR a Grade ${letter}?`)) {
-      return;
-    }
+    // Salvar snapshot da grade para possível desfazer
+    const gradeSnapshot = gradesGlobais[letter];
 
     setStep2State((prev: any) => {
       const { [letter]: _, ...resto } = prev.gradesGlobais;
       return {
         ...prev,
         gradesGlobais: resto,
+        gradeExpandida: prev.gradeExpandida === letter ? null : prev.gradeExpandida,
       };
     });
 
-    toast.success(`🗑️ Grade ${letter} excluída com sucesso!`);
+    toast.success(`🗑️ Grade ${letter} excluída!`, {
+      action: {
+        label: 'Desfazer',
+        onClick: () => {
+          setStep2State((prev: any) => ({
+            ...prev,
+            gradesGlobais: {
+              ...prev.gradesGlobais,
+              [letter]: gradeSnapshot,
+            },
+          }));
+          toast.info(`↩️ Grade ${letter} restaurada!`);
+        },
+      },
+      duration: 5000,
+    });
   };
 
   const handleLimparTodasGrades = () => {
-    if (!window.confirm("Tem certeza que deseja LIMPAR todas as grades?")) {
-      return;
-    }
+    const snapshot = { ...gradesGlobais };
     setStep2State((prev: any) => ({
       ...prev,
       gradesGlobais: {},
+      gradeExpandida: null,
     }));
-    toast.info("🧹 Todas as grades foram limpas!");
+    toast.info("🧹 Todas as grades limpas!", {
+      action: {
+        label: 'Desfazer',
+        onClick: () => {
+          setStep2State((prev: any) => ({
+            ...prev,
+            gradesGlobais: snapshot,
+          }));
+          toast.info("↩️ Grades restauradas!");
+        },
+      },
+      duration: 5000,
+    });
   };
 
   function vincularAoPedido(gradeLetter: string) {
@@ -917,52 +950,18 @@ export default function StepPedidos({
                         {item.tipo} · {item.modelo}
                       </div>
 
-                      <div className="flex items-center justify-between mt-2 flex-wrap gap-2 relative z-10">
-                        <div className="flex items-center gap-1.5 flex-wrap flex-1">
-                          {item.cor1 && (
-                            <div className="flex items-center gap-1 shrink-0">
-                              <div
-                                className="w-2.5 h-2.5 rounded-full border border-slate-200 shadow-sm shrink-0"
-                                style={{ backgroundColor: corParaHex(item.cor1) }}
-                              />
-                              <span className="text-[9px] font-bold text-slate-600 uppercase leading-none">
-                                {item.cor1}
-                              </span>
-                            </div>
-                          )}
-                          {item.cor2 && (
-                            <div className="flex items-center gap-1 shrink-0">
-                              <span className="text-[9px] text-slate-400 font-bold">/</span>
-                              <div
-                                className="w-2.5 h-2.5 rounded-full border border-slate-200 shadow-sm shrink-0"
-                                style={{ backgroundColor: corParaHex(item.cor2) }}
-                              />
-                              <span className="text-[9px] font-bold text-slate-600 uppercase leading-none">
-                                {item.cor2}
-                              </span>
-                            </div>
-                          )}
-                          {item.cor3 && (
-                            <div className="flex items-center gap-1 shrink-0">
-                              <span className="text-[9px] text-slate-400 font-bold">/</span>
-                              <div
-                                className="w-2.5 h-2.5 rounded-full border border-slate-200 shadow-sm shrink-0"
-                                style={{ backgroundColor: corParaHex(item.cor3) }}
-                              />
-                              <span className="text-[9px] font-bold text-slate-600 uppercase leading-none">
-                                {item.cor3}
-                              </span>
-                            </div>
-                          )}
-                        </div>
-                        <div className="flex items-center gap-1.5 shrink-0">
-                          <span className="text-[10px] font-black text-green-700 leading-none">
-                            {fmtBRL(item.custo * (1 - (cab.desconto || 0) / 100))}
+                      <div className="flex items-center gap-1.5 mt-2 relative z-10">
+                        {item.cor1 && (
+                          <span className="text-[8px] font-bold text-slate-600 truncate max-w-[52px] leading-none">
+                            {item.cor1}
                           </span>
-                          <span className="text-[8px] text-slate-400 line-through font-bold leading-none">
-                            {fmtBRL(item.preco_venda)}
-                          </span>
-                        </div>
+                        )}
+                        <span className="text-[9px] font-black text-green-700 leading-none shrink-0">
+                          {fmtBRL(item.custo * (1 - (cab.desconto || 0) / 100))}
+                        </span>
+                        <span className="text-[7px] text-slate-300 line-through leading-none shrink-0">
+                          {fmtBRL(item.preco_venda)}
+                        </span>
                       </div>
                     </div>
                   );
@@ -1378,45 +1377,47 @@ export default function StepPedidos({
                 <div className="p-2 space-y-1 bg-slate-50/50">
                   {tempPedidoItens.map((icg, idx) => {
                     const item = items[icg.itemIdx];
-                    const gradeLetters = icg.grades.map(g => g.letter).join('/');
-                    const pairs = icg.grades.reduce((s, g) => s + totPares(g.qtds), 0);
-                    const labelElements = [item.tipo, item.cor1].filter(Boolean).join(' - ');
-                    
+                    const totalItem = icg.grades.reduce((s, g) => s + totPares(g.qtds), 0);
+                    const gradesLabel = icg.grades.map(g => `Gr ${g.letter}`).join(' · ');
+                    const isLong = item.ref.length > 10;
+
                     return (
-                      <div key={idx} className="flex items-center justify-between bg-white px-3 py-2 rounded-lg border border-slate-200 hover:border-blue-300 transition-colors shadow-sm group">
-                        <div className="flex flex-1 items-center gap-2 overflow-hidden">
-                          <span className="text-[10px] font-black text-slate-400 w-4 text-center shrink-0">#{idx + 1}</span>
-                          <span className="text-[10px] font-black text-slate-800 uppercase shrink-0 truncate max-w-[90px]" title={item.ref}>{item.ref}</span>
-                          <span className="text-[10px] text-slate-300 font-bold">-</span>
-                          <span className="text-[9px] font-bold text-slate-500 uppercase truncate leading-none mt-[1px]" title={labelElements}>
-                            {labelElements}
-                          </span>
-                          <span className="text-[10px] text-slate-300 font-bold">-</span>
-                          <span className="text-[10px] font-black text-blue-600 shrink-0">
-                            GR {gradeLetters}
-                          </span>
-                        </div>
-                        <div className="flex items-center gap-3 shrink-0 ml-2">
-                          <span className="text-[10px] font-black text-slate-800 bg-slate-100 px-1.5 py-0.5 rounded border border-slate-200">
-                            {pairs}p
-                          </span>
-                          <div className="flex items-center gap-2 opacity-50 group-hover:opacity-100 transition-opacity">
-                            <button
-                              onClick={() => setEditingTempItem(idx)}
-                              className="text-slate-400 hover:text-blue-500 transition-colors"
-                              title="Editar grade"
-                            >
-                              <svg xmlns="http://www.w3.org/2000/svg" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M17 3a2.85 2.83 0 1 1 4 4L7.5 20.5 2 22l1.5-5.5Z"/></svg>
-                            </button>
-                            <button
-                              onClick={() => setDeletingTempItem(idx)}
-                              className="text-slate-400 hover:text-red-500 transition-colors"
-                              title="Remover item"
-                            >
-                              <Trash2 size={12} />
-                            </button>
+                      <div
+                        key={idx}
+                        className="bg-white border border-amber-100 rounded-lg px-2 py-1.5 flex flex-col gap-0.5"
+                      >
+                        {isLong ? (
+                          // Layout 2 linhas para ref longa
+                          <>
+                            <div className="flex items-center justify-between gap-1">
+                              <div className="flex items-center gap-1 min-w-0">
+                                <span className="text-[8px] font-black text-slate-400 shrink-0">#{idx + 1}</span>
+                                <span className="text-[9px] font-black text-slate-800 truncate">{item.ref}</span>
+                              </div>
+                              <div className="flex items-center gap-1 shrink-0">
+                                <button onClick={() => setEditingTempItem(idx)} className="text-blue-500 hover:text-blue-700 text-[10px] leading-none" title="Editar">✏️</button>
+                                <button onClick={() => setDeletingTempItem(idx)} className="text-red-400 hover:text-red-600 text-[10px] leading-none" title="Excluir">🗑️</button>
+                              </div>
+                            </div>
+                            <div className="flex items-center justify-between gap-1">
+                              <span className="text-[7px] text-slate-400 truncate">{item.tipo}</span>
+                              <div className="flex items-center gap-1 shrink-0">
+                                <span className="text-[8px] font-bold text-blue-600">{gradesLabel}</span>
+                                <span className="text-[8px] font-black text-slate-700 bg-slate-100 rounded px-1">{totalItem}p</span>
+                              </div>
+                            </div>
+                          </>
+                        ) : (
+                          // Layout 1 linha para ref curta
+                          <div className="flex items-center gap-1">
+                            <span className="text-[8px] font-black text-slate-400 shrink-0">#{idx + 1}</span>
+                            <span className="text-[9px] font-black text-slate-800 truncate flex-1">{item.ref}</span>
+                            <span className="text-[8px] font-bold text-blue-600 shrink-0">{gradesLabel}</span>
+                            <span className="text-[8px] font-black text-slate-700 bg-slate-100 rounded px-1 shrink-0">{totalItem}p</span>
+                            <button onClick={() => setEditingTempItem(idx)} className="text-blue-500 hover:text-blue-700 text-[10px] leading-none shrink-0" title="Editar">✏️</button>
+                            <button onClick={() => setDeletingTempItem(idx)} className="text-red-400 hover:text-red-600 text-[10px] leading-none shrink-0" title="Excluir">🗑️</button>
                           </div>
-                        </div>
+                        )}
                       </div>
                     );
                   })}
@@ -1633,140 +1634,85 @@ function EditTempItemPopup({
     JSON.parse(JSON.stringify(itemComGrade)),
   );
 
-  const updateQtd = (gradeIndex: number, size: string, value: number) => {
-    setLocalItem((prev) => {
-      const copy = { ...prev };
-      copy.grades[gradeIndex].qtds[size] = Math.max(0, value);
-      return copy;
-    });
-  };
-
   const removeGrade = (gradeIndex: number) => {
-    setLocalItem((prev) => {
-      const copy = { ...prev };
-      copy.grades = copy.grades.filter((_, i) => i !== gradeIndex);
-      return copy;
-    });
+    setLocalItem((prev) => ({
+      ...prev,
+      grades: prev.grades.filter((_, i) => i !== gradeIndex),
+    }));
   };
 
-  const calculateTotalPares = () => {
-    return localItem.grades.reduce((sum, g) => sum + totPares(g.qtds), 0);
-  };
-
-  const totalPares = calculateTotalPares();
-  const totalCusto =
-    totalPares * (itemData.custo * (1 - (cab.desconto || 0) / 100));
+  const totalPares = localItem.grades.reduce((sum, g) => sum + totPares(g.qtds), 0);
 
   return (
     <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
-      <div className="bg-white rounded-lg shadow-2xl max-w-xl w-full max-h-[90vh] overflow-hidden flex flex-col">
+      <div className="bg-white rounded-lg shadow-2xl max-w-md w-full overflow-hidden flex flex-col">
+        {/* Header */}
         <div className="bg-gradient-to-r from-blue-600 to-blue-700 text-white p-4 flex items-center justify-between">
           <div>
-            <h3 className="text-lg font-bold">✏️ Editar Item do Pedido</h3>
-            <p className="text-xs opacity-90 truncate max-w-sm">
-              Ref: {itemData.ref}
-            </p>
+            <h3 className="text-sm font-bold">✏️ Gerenciar Grades do Item</h3>
+            <p className="text-xs opacity-80 truncate">{itemData.ref} · {itemData.tipo}</p>
           </div>
-          <button
-            onClick={onClose}
-            className="text-white hover:bg-white/20 rounded-lg w-8 h-8 flex items-center justify-center text-xl"
-          >
-            ✕
-          </button>
+          <button onClick={onClose} className="text-white hover:bg-white/20 rounded-lg w-8 h-8 flex items-center justify-center text-xl">✕</button>
         </div>
 
-        <div className="p-4 overflow-y-auto flex-1">
-          <div className="bg-slate-50 rounded-lg p-3 border border-slate-200 mb-4">
-            <div className="font-bold text-slate-800">
-              📦 REFERÊNCIA: {itemData.ref}
-            </div>
-            <div className="text-xs text-slate-600 mt-1 uppercase">
-              DESCRIÇÃO: {itemData.modelo}
-            </div>
-            <div className="text-xs text-slate-600 uppercase">
-              TIPO: {itemData.tipo}
-            </div>
-            <div className="text-xs text-slate-600 uppercase">
-              CUSTO (Líquido):{" "}
-              {fmtBRL(itemData.custo * (1 - (cab.desconto || 0) / 100))}
-            </div>
-          </div>
+        {/* Aviso */}
+        <div className="bg-amber-50 border-b border-amber-200 px-4 py-2 flex items-center gap-2">
+          <span className="text-amber-600 text-sm">⚠️</span>
+          <p className="text-[10px] text-amber-700 font-medium">
+            Para alterar quantidades, volte à coluna 2 e edite a grade diretamente.
+          </p>
+        </div>
 
-          <div className="text-sm font-bold text-slate-800 mb-3 border-b border-slate-200 pb-1">
-            🔢 GRADES VINCULADAS:
-          </div>
-
+        {/* Corpo */}
+        <div className="p-4 space-y-2 overflow-y-auto max-h-64">
           {localItem.grades.length === 0 ? (
-            <div className="text-xs italic text-red-500 py-4 text-center">
-              Nenhuma grade vinculada. Ao salvar, este item não fará parte do
-              pedido.
+            <div className="text-center py-6 text-red-500 text-xs font-bold">
+              Nenhuma grade vinculada. Ao salvar, este item será removido do rascunho.
             </div>
           ) : (
-            <div className="space-y-4">
-              {localItem.grades.map((grade, gIdx) => {
-                const paresDaGrade = totPares(grade.qtds);
-                return (
-                  <div
-                    key={gIdx}
-                    className="border border-slate-200 rounded-lg overflow-hidden"
-                  >
-                    <div className="bg-slate-100 flex justify-between items-center px-3 py-2 border-b border-slate-200">
-                      <div className="font-bold text-sm text-slate-800">
-                        Grade {grade.letter} ({paresDaGrade}p)
-                      </div>
-                      <button
-                        onClick={() => removeGrade(gIdx)}
-                        className="text-red-500 hover:text-red-700 text-xs font-bold uppercase"
-                      >
-                        Remover Grade
-                      </button>
-                    </div>
-                    <div className="p-3 bg-white flex flex-wrap gap-2 justify-center">
-                      {Object.keys(grade.qtds).map((sz) => (
-                        <div key={sz} className="w-12 text-center">
-                          <label className="block text-[10px] font-bold text-slate-600 mb-1">
-                            {sz}
-                          </label>
-                          <input
-                            type="number"
-                            min="0"
-                            className="w-full text-center border border-slate-300 rounded p-1 text-sm bg-slate-50 focus:bg-white focus:border-blue-500 outline-none"
-                            value={grade.qtds[sz] || 0}
-                            onChange={(e) =>
-                              updateQtd(gIdx, sz, parseInt(e.target.value) || 0)
-                            }
-                          />
-                        </div>
-                      ))}
+            localItem.grades.map((grade, gIdx) => {
+              const pares = totPares(grade.qtds);
+              const resumo = Object.entries(grade.qtds)
+                .filter(([_, v]) => v > 0)
+                .map(([sz, v]) => `${sz}:${v}`)
+                .join(' ');
+              return (
+                <div key={gIdx} className="flex items-center justify-between bg-slate-50 border border-slate-200 rounded-lg px-3 py-2">
+                  <div className="flex-1 min-w-0">
+                    <div className="flex items-center gap-2">
+                      <span className="w-5 h-5 bg-blue-600 text-white rounded text-[10px] font-black flex items-center justify-center shrink-0">
+                        {grade.letter}
+                      </span>
+                      <span className="text-[10px] font-bold text-slate-700">{pares} pares</span>
+                      <span className="text-[9px] text-slate-400 font-mono truncate">{resumo}</span>
                     </div>
                   </div>
-                );
-              })}
-            </div>
+                  <button
+                    onClick={() => removeGrade(gIdx)}
+                    className="ml-2 px-2 py-1 text-[9px] font-bold text-red-600 bg-red-50 border border-red-200 rounded hover:bg-red-100 transition shrink-0"
+                  >
+                    Remover
+                  </button>
+                </div>
+              );
+            })
           )}
         </div>
 
-        <div className="border-t border-slate-200 p-4 bg-slate-50">
-          <div className="flex justify-between items-center mb-4">
-            <div className="text-slate-600 text-sm font-medium">
-              Total:{" "}
-              <strong className="text-slate-900">{totalPares} pares</strong>
-            </div>
-            <div className="text-slate-600 text-sm font-medium">
-              Subtotal:{" "}
-              <strong className="text-green-700">{fmtBRL(totalCusto)}</strong>
-            </div>
+        {/* Footer */}
+        <div className="border-t border-slate-200 p-3 bg-slate-50 flex items-center justify-between gap-2">
+          <div className="text-xs text-slate-500">
+            Total: <strong className="text-slate-800">{totalPares} pares</strong>
+            {' · '}
+            <strong className="text-green-700">{fmtBRL(totalPares * itemData.custo * (1 - (cab.desconto || 0) / 100))}</strong>
           </div>
           <div className="flex gap-2">
-            <button
-              onClick={onClose}
-              className="flex-1 px-4 py-2 text-sm border border-slate-300 bg-white text-slate-700 rounded-lg hover:bg-slate-50 font-bold uppercase"
-            >
+            <button onClick={onClose} className="px-3 py-1.5 text-[10px] font-bold border border-slate-300 rounded-lg hover:bg-slate-100">
               Cancelar
             </button>
             <button
               onClick={() => onSave(localItem)}
-              className="flex-1 px-4 py-2 text-sm bg-blue-600 text-white rounded-lg hover:bg-blue-700 font-bold flex justify-center items-center gap-2 uppercase"
+              className="px-3 py-1.5 text-[10px] font-bold bg-blue-600 text-white rounded-lg hover:bg-blue-700"
             >
               💾 Salvar
             </button>
