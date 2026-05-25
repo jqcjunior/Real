@@ -105,6 +105,18 @@ function totPares(qtds: Record<string, number>): number {
   return Object.values(qtds).reduce((s, v) => s + (v || 0), 0);
 }
 
+function corParaHex(cor: string): string {
+  const mapa: Record<string, string> = {
+    'PRETO': '#1a1a1a', 'BRANCO': '#f5f5f5', 'VERMELHO': '#dc2626',
+    'AZUL': '#2563eb', 'VERDE': '#16a34a', 'AMARELO': '#ca8a04',
+    'ROSA': '#ec4899', 'ROXO': '#7c3aed', 'LARANJA': '#ea580c',
+    'MARROM': '#92400e', 'CINZA': '#6b7280', 'BEGE': '#d4a017',
+    'VIOLETA': '#7c3aed', 'CHAMPANHE': '#d4a017', 'GRAFITE': '#374151',
+    'BORDO': '#881337', 'CARAMELO': '#b45309', 'AREIA': '#d4a017',
+  };
+  return mapa[cor?.toUpperCase()] || '#94a3b8';
+}
+
 function gerarNumeroPedido(): string {
   const now = new Date();
   const ano = now.getFullYear();
@@ -214,6 +226,7 @@ export default function StepPedidos({
   } | null;
 
   const [quotaModal, setQuotaModal] = useState<QuotaModalState>(null);
+  const [lojasOpen, setLojasOpen] = useState(true);
 
   const [storeRequirements, setStoreRequirements] = useState<
     StoreRequirement[]
@@ -374,6 +387,13 @@ export default function StepPedidos({
       return { ...prev, selectedItems: next };
     });
   }
+
+  const toggleExpand = (letra: string) => {
+    setStep2State((prev: any) => ({
+      ...prev,
+      gradeExpandida: prev.gradeExpandida === letra ? null : letra,
+    }));
+  };
 
   function adicionarGrade() {
     const letrasUsadas = Object.keys(gradesGlobais);
@@ -738,957 +758,720 @@ export default function StepPedidos({
     setShowCancelOrderModal(false);
   };
 
+  const gradesComPares = Object.keys(gradesGlobais)
+    .sort()
+    .filter((l) => totPares(gradesGlobais[l].qtds) > 0);
+  const gradesVazias = Object.keys(gradesGlobais)
+    .sort()
+    .filter((l) => totPares(gradesGlobais[l].qtds) === 0);
+
   return (
-    <div className="p-4">
-      <div className="bg-gradient-to-r from-blue-600 to-blue-700 text-white p-3 rounded-t-lg">
-        <h3 className="text-sm font-bold uppercase tracking-wide">
-          📦 Montagem de Pedidos
-        </h3>
-        <p className="text-xs opacity-90 mt-0.5">
-          Selecione: Item → Grade → Lojas → Criar Pedido
-        </p>
-      </div>
-
-      <div
-        className={`grid ${isMobile ? "grid-cols-1 gap-4" : !canViewAllStores ? "grid-cols-3 gap-0" : "grid-cols-4 gap-0"} bg-white border border-slate-200 rounded-b-lg overflow-hidden`}
-      >
-        {/* COLUNA 1: ITENS */}
-        <div
-          className={`p-3 ${!isMobile && "border-r border-slate-200"} bg-slate-50`}
-        >
-          <div className="flex items-center gap-2 mb-2">
-            <span className="bg-blue-600 text-white w-6 h-6 rounded-full flex items-center justify-center text-xs font-bold">
-              1
-            </span>
-            <h4 className="text-xs font-bold text-slate-700 uppercase flex-1">
-              Itens
-            </h4>
+    <div className="p-4 bg-slate-100 min-h-screen">
+      <div className="max-w-[1450px] mx-auto bg-white rounded-xl shadow-lg border border-slate-200 overflow-hidden">
+        {/* HEADER COMPACTO */}
+        <div className="bg-gradient-to-r from-blue-700 to-blue-800 text-white p-3 px-4 flex justify-between items-center shrink-0 shadow-md relative z-10">
+          <div className="flex items-center gap-3">
+            <div className="w-8 h-8 bg-white/10 rounded-lg flex items-center justify-center border border-white/20">
+              <span className="text-lg">📦</span>
+            </div>
+            <div>
+              <h3 className="text-sm font-black uppercase tracking-widest leading-none">
+                Montagem de Pedidos
+              </h3>
+              <p className="text-[10px] opacity-60 font-bold mt-1 uppercase tracking-tighter">
+                Real Calçados · Painel Operacional
+              </p>
+            </div>
           </div>
-
-          {/* Botões Selecionar/Desmarcar Todos */}
-          <div className="flex gap-1.5 mb-2">
-            <button
-              onClick={() =>
-                setStep2State((prev: any) => ({
-                  ...prev,
-                  selectedItems: new Set(items.map((_, idx) => idx)),
-                }))
-              }
-              className="flex-1 px-2 py-1 text-[8px] font-bold bg-blue-600 text-white rounded-md hover:bg-blue-700 transition-colors shadow-sm active:scale-95"
-            >
-              ✓ Todos
-            </button>
-            <button
-              onClick={() =>
-                setStep2State((prev: any) => ({
-                  ...prev,
-                  selectedItems: new Set(),
-                }))
-              }
-              className="flex-1 px-2 py-1 text-[8px] font-bold bg-slate-400 text-white rounded-md hover:bg-slate-500 transition-colors shadow-sm active:scale-95"
-            >
-              ✕ Limpar
-            </button>
-          </div>
-
-          <div
-            className={`${!canViewAllStores ? "grid grid-cols-2 gap-2" : "space-y-2"} max-h-[500px] overflow-y-auto`}
-          >
-            {items.map((item, idx) => {
-              const isSelected = selectedItems.has(idx);
-              const jaVinculado = tempPedidoItens.some(
-                (icg) => icg.itemIdx === idx,
-              );
-
-              return (
-                <div
-                  key={idx}
-                  onClick={() => toggleItem(idx)}
-                  className={`p-2 rounded-lg border cursor-pointer transition-all ${
-                    jaVinculado
-                      ? "bg-green-50 border-green-300 shadow-sm"
-                      : isSelected
-                        ? "bg-blue-50 border-blue-400 shadow-sm"
-                        : "bg-white border-slate-200 hover:border-blue-300"
-                  }`}
-                >
-                  <div className="flex items-start gap-2">
-                    <input
-                      type="checkbox"
-                      checked={isSelected}
-                      onChange={() => {}}
-                      className="mt-0.5"
-                    />
-                    <div className="flex-1 min-w-0">
-                      <div className="flex items-center gap-2">
-                        <span className="text-[9px] font-black text-slate-400 shrink-0 bg-slate-200 rounded px-1">
-                          #{idx + 1}
-                        </span>
-                        <div className="text-xs font-bold text-slate-800 truncate">
-                          {item.ref}
-                        </div>
-                        {jaVinculado && (
-                          <span className="bg-green-600 text-white text-[7px] font-bold px-1.5 py-0.5 rounded uppercase shrink-0">
-                            Vinculado
-                          </span>
-                        )}
-                      </div>
-                      <div className="text-[9px] text-slate-600 truncate">
-                        {item.tipo} · {item.modelo}
-                      </div>
-                      <div className="flex items-center gap-2 flex-wrap">
-                        <div className="text-[10px] font-bold text-green-700">
-                          Custo:{" "}
-                          {fmtBRL(item.custo * (1 - (cab.desconto || 0) / 100))}
-                        </div>
-                        <div className="text-[8px] text-slate-400 line-through">
-                          {fmtBRL(item.preco_venda)}
-                        </div>
-                        {item.cor1 && (
-                          <div className="flex items-center gap-0.5">
-                            <div
-                              className="w-2 h-2 rounded-full border border-slate-300 shrink-0"
-                              style={{ backgroundColor: '#94a3b8' }}
-                            />
-                            <span className="text-[7px] text-slate-500 uppercase font-medium">
-                              {item.cor1}
-                            </span>
-                          </div>
-                        )}
-                      </div>
-                    </div>
-                  </div>
-                </div>
-              );
-            })}
+          <div className="flex gap-2">
+            {tempPedidoItens.length > 0 && (
+              <button
+                onClick={() => setShowCancelOrderModal(true)}
+                className="px-3 py-1.5 bg-red-600/20 hover:bg-red-600/40 border border-red-500/30 rounded-lg text-[10px] font-black uppercase tracking-wider transition-all flex items-center gap-2"
+              >
+                <Trash2 size={12} />
+                Limpar Rascunho
+              </button>
+            )}
           </div>
         </div>
 
-        {/* COLUNA 2: GRADES */}
-        <div className={`p-3 ${!isMobile && "border-r border-slate-200"}`}>
-          <div className="flex items-center gap-2 mb-3">
-            <span className="bg-blue-600 text-white w-6 h-6 rounded-full flex items-center justify-center text-xs font-bold">
-              2
-            </span>
-            <h4 className="text-xs font-bold text-slate-700 uppercase flex-1">
-              Grades
-            </h4>
-            <div className="flex gap-2">
-              {Object.keys(gradesGlobais).length > 0 && (
+        {/* ESTRUTURA 3 COLUNAS */}
+        <div className="grid grid-cols-[1.8fr_1fr_1.2fr] h-[calc(100vh-160px)] min-h-[460px]">
+          {/* COLUNA 1: ITENS (2 colunas internas) */}
+          <div className="border-r border-slate-100 flex flex-col bg-slate-50/10 overflow-hidden">
+            <div className="p-3 border-b border-slate-100 flex items-center justify-between bg-white shrink-0">
+              <div className="flex items-center gap-2">
+                <span className="bg-blue-600 text-white w-5 h-5 rounded-full flex items-center justify-center text-[10px] font-black shadow-sm">1</span>
+                <h4 className="text-[10px] font-black text-slate-700 uppercase tracking-widest">Produtos Disponíveis</h4>
+              </div>
+              <div className="flex gap-1">
                 <button
-                  onClick={handleLimparTodasGrades}
-                  className="px-2 py-1 text-[9px] font-bold bg-red-50 hover:bg-red-100 text-red-600 border border-red-200 rounded transition"
-                  title="Limpar todas as grades"
+                  onClick={() => setStep2State(p => ({ ...p, selectedItems: new Set(items.map((_, i) => i)) }))}
+                  className="px-2 py-1 bg-blue-100 text-blue-700 hover:bg-blue-200 rounded text-[9px] font-black transition-colors border border-blue-200/50"
                 >
-                  Limpar Tudo
+                  ✓ TODOS
                 </button>
-              )}
-              {Object.keys(gradesGlobais).length < 8 && (
                 <button
-                  onClick={adicionarGrade}
-                  className="px-2 py-1 text-[9px] font-bold bg-green-600 text-white rounded hover:bg-green-700"
+                  onClick={() => setStep2State(p => ({ ...p, selectedItems: new Set() }))}
+                  className="px-2 py-1 bg-slate-100 text-slate-500 hover:bg-slate-200 rounded text-[9px] font-black transition-colors"
                 >
-                  + Grade
+                  ✕ LIMPAR
                 </button>
-              )}
+              </div>
             </div>
-          </div>
 
-          {Object.keys(gradesGlobais).length === 0 ? (
-            <div className="text-center py-12 text-slate-400 text-[10px]">
-              Clique em "+ Grade" para começar
-            </div>
-          ) : (
-            <div className="space-y-2 max-h-[500px] overflow-y-auto">
-              {Object.keys(gradesGlobais)
-                .sort()
-                .map((letter) => {
-                  const isExpanded = gradeExpandida === letter;
-                  const gradeData = gradesGlobais[letter];
-                  const currentCat = gradeData.cat;
-                  const sizes = CATS[currentCat]?.sizes || [];
-                  const totalPares = totPares(gradeData.qtds);
+            <div className="p-2 overflow-y-auto flex-1 bg-slate-50/20 custom-scrollbar">
+              <div className="grid grid-cols-2 gap-2">
+                {items.map((item, idx) => {
+                  const isSelected = selectedItems.has(idx);
+                  const jaVinculado = tempPedidoItens.some(icg => icg.itemIdx === idx);
 
                   return (
                     <div
-                      key={letter}
-                      className="border rounded-lg p-2 bg-white group"
+                      key={idx}
+                      onClick={() => toggleItem(idx)}
+                      className={`p-2 rounded-xl border-2 cursor-pointer transition-all duration-300 relative group overflow-hidden ${
+                        jaVinculado ? 'bg-green-50/80 border-green-200 shadow-sm' :
+                        isSelected ? 'bg-blue-50 border-blue-500 ring-4 ring-blue-500/10' :
+                        'bg-white border-slate-200 hover:border-slate-300 shadow-sm'
+                      }`}
                     >
-                      {/* Header da Grade (sempre visível) */}
-                      <div className="flex items-center gap-2 pb-2">
-                        <div
-                          className="flex-1 flex items-center gap-2 cursor-pointer"
-                          onClick={() =>
-                            setStep2State((prev: any) => ({
-                              ...prev,
-                              gradeExpandida: isExpanded ? null : letter,
-                            }))
-                          }
-                        >
-                          <div className="w-6 h-6 bg-blue-600 text-white rounded font-bold flex items-center justify-center text-xs">
-                            {letter}
-                          </div>
-                          <div className="flex-1 font-semibold text-[10px] text-slate-600">
-                            {totalPares > 0 ? "Pares" : "Grade Vazia"}
-                          </div>
-                          <span className="bg-green-100 text-green-700 px-2 py-0.5 rounded text-[10px] font-bold">
-                            {totalPares}p
-                          </span>
-                          <span className="text-slate-400 text-[10px] mr-2">
-                            {isExpanded ? "▼" : "▶"}
-                          </span>
-                        </div>
-
-                        {/* NOVOS BOTÕES */}
-                        <div className="flex gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
-                          <button
-                            onClick={(e) => {
-                              e.stopPropagation();
-                              handleLimparGrade(letter);
-                            }}
-                            className="p-1 bg-amber-50 hover:bg-amber-100 border border-amber-200 rounded transition"
-                            title="Limpar quantidades desta grade"
-                          >
-                            <RefreshCw size={12} className="text-amber-600" />
-                          </button>
-                          <button
-                            onClick={(e) => {
-                              e.stopPropagation();
-                              handleExcluirGrade(letter);
-                            }}
-                            className="p-1 bg-red-50 hover:bg-red-100 border border-red-200 rounded transition"
-                            title="Excluir esta grade"
-                          >
-                            <Trash2 size={12} className="text-red-600" />
-                          </button>
-                        </div>
+                      {/* Badge Background Ref */}
+                      <div className="absolute -right-2 -bottom-2 text-[30px] font-black text-slate-900/5 select-none uppercase -rotate-12 group-hover:rotate-0 transition-transform">
+                        {item.ref.slice(-3)}
                       </div>
 
-                      {/* Resumo da Grade (sempre visível se houver pares e não estiver expandido, ou sempre acima do botão) */}
-                      {!isExpanded && totalPares > 0 && (
-                        <div className="flex flex-wrap gap-2.5 mb-2 px-1">
-                          {Object.entries(gradeData?.qtds || {})
-                            .filter(([_, v]) => v > 0)
-                            .map(([sz, v]) => (
-                              <div
-                                key={sz}
-                                className="text-[10px] text-slate-600"
-                              >
-                                <span className="font-bold text-slate-800">
-                                  {sz}-
-                                </span>
-                                {v}
-                              </div>
-                            ))}
+                      <div className="flex items-center gap-1.5 relative z-10">
+                        <span className="text-[8px] font-black text-slate-400 bg-slate-100 rounded px-1 shrink-0 group-hover:bg-slate-200 transition-colors">
+                          #{idx + 1}
+                        </span>
+                        <span className="text-[10px] font-black text-slate-800 truncate flex-1 uppercase tracking-tight">{item.ref}</span>
+                        {jaVinculado && (
+                          <div className="w-4 h-4 bg-green-600 text-white rounded-full flex items-center justify-center text-[8px] font-black shadow-md border border-white">✓+GRADE</div>
+                        )}
+                      </div>
+                      
+                      <div className="text-[9px] text-slate-500 font-bold truncate mt-1 relative z-10 opacity-70">
+                        {item.tipo} · {item.modelo}
+                      </div>
+
+                      <div className="flex items-center gap-2 mt-2 relative z-10">
+                        {item.cor1 && (
+                        <div className="flex items-center gap-1">
+                          <div
+                            className="w-3 h-3 rounded-full border-2 border-white shadow-sm shrink-0 ring-1 ring-slate-200"
+                            style={{ backgroundColor: corParaHex(item.cor1) }}
+                          />
+                          <span className="text-[8px] text-slate-500 font-bold uppercase leading-none">
+                            {item.cor1}
+                          </span>
                         </div>
                       )}
-
-                      {/* Grid Expandido */}
-                      {isExpanded && (
-                        <div className="mt-2 pt-2 border-t">
-                          {/* Seletor de categoria */}
-                          <div className="flex flex-wrap gap-1 mb-2">
-                            {catsPermitidas.map((k) => {
-                              const v = CATS[k];
-                              return (
-                                <button
-                                  key={k}
-                                  onClick={() => {
-                                    setStep2State((prev: any) => ({
-                                      ...prev,
-                                      gradesGlobais: {
-                                        ...prev.gradesGlobais,
-                                        [letter]: {
-                                          ...prev.gradesGlobais[letter],
-                                          cat: k as any,
-                                          qtds: {},
-                                        },
-                                      },
-                                    }));
-                                  }}
-                                  className={`px-2 py-0.5 text-[8px] font-bold rounded border ${
-                                    currentCat === k
-                                      ? "bg-blue-600 text-white border-blue-600"
-                                      : "bg-white border-slate-200 text-slate-500"
-                                  }`}
-                                >
-                                  {v.label}
-                                </button>
-                              );
-                            })}
-                          </div>
-
-                          {/* Grid de numeração COMPACTO */}
-                          <div className="grid grid-cols-6 gap-1">
-                            {sizes.map((sz) => {
-                              const qtd = gradeData?.qtds[sz] || 0;
-                              return (
-                                <div key={sz} className="text-center">
-                                  <div className="text-[7px] text-slate-400 font-bold mb-0.5">
-                                    {sz}
-                                  </div>
-                                  {isMobile ? (
-                                    // Mobile: Botões +/-
-                                    <div className="flex flex-col gap-0.5">
-                                      <button
-                                        onClick={() => setGradeQtd(sz, qtd + 1)}
-                                        className="w-full h-5 bg-green-500 text-white rounded text-[10px] font-bold active:bg-green-600"
-                                      >
-                                        +
-                                      </button>
-                                      <div
-                                        className={`text-[9px] font-bold ${qtd > 0 ? "text-green-700" : "text-slate-300"}`}
-                                      >
-                                        {qtd}
-                                      </div>
-                                      <button
-                                        onClick={() => setGradeQtd(sz, qtd - 1)}
-                                        className="w-full h-5 bg-red-500 text-white rounded text-[10px] font-bold active:bg-red-600"
-                                      >
-                                        −
-                                      </button>
-                                    </div>
-                                  ) : (
-                                    // Desktop: Input
-                                    <input
-                                      ref={(el) => {
-                                        inputRefs.current[`${letter}-${sz}`] =
-                                          el;
-                                      }}
-                                      type="number"
-                                      min={0}
-                                      value={qtd || ""}
-                                      onChange={(e) =>
-                                        setGradeQtd(
-                                          sz,
-                                          parseInt(e.target.value) || 0,
-                                        )
-                                      }
-                                      onKeyDown={(e) =>
-                                        handleGradeKeyDown(e, sz, sizes)
-                                      }
-                                      className={`w-full h-6 text-center text-[10px] border rounded ${
-                                        qtd > 0
-                                          ? "bg-green-50 border-green-300 text-green-700 font-bold"
-                                          : "bg-white border-slate-200"
-                                      }`}
-                                    />
-                                  )}
-                                </div>
-                              );
-                            })}
-                          </div>
-                        </div>
-                      )}
-
-                      <button
-                        onClick={() => vincularAoPedido(letter)}
-                        disabled={totalPares === 0}
-                        className="mt-2 w-full px-2 py-1 bg-blue-600 text-white text-[9px] font-bold rounded hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed"
-                      >
-                        ✓ Vincular Grade {letter}
-                      </button>
+                      <div className="flex items-center gap-1.5 flex-wrap">
+                        <span className="text-[10px] font-black text-green-700 leading-none">
+                          {fmtBRL(item.custo * (1 - (cab.desconto || 0) / 100))}
+                        </span>
+                        <span className="text-[8px] text-slate-400 line-through font-bold leading-none">
+                          {fmtBRL(item.preco_venda)}
+                        </span>
+                      </div>
+                      </div>
                     </div>
                   );
                 })}
+              </div>
+            </div>
+          </div>
+
+          {/* COLUNA 2: GRADES (Sem scroll horizontal) */}
+          <div className="border-r border-slate-100 flex flex-col bg-white overflow-hidden">
+            <div className="p-3 border-b border-slate-100 flex items-center justify-between bg-white shrink-0">
+              <div className="flex items-center gap-2">
+                <span className="bg-blue-600 text-white w-5 h-5 rounded-full flex items-center justify-center text-[10px] font-black shadow-sm">2</span>
+                <h4 className="text-[10px] font-black text-slate-700 uppercase tracking-widest">Montagem</h4>
+              </div>
+              <div className="flex gap-1">
+                {Object.keys(gradesGlobais).length > 0 && (
+                  <button
+                    onClick={handleLimparTodasGrades}
+                    className="p-1 text-slate-400 hover:text-red-500 rounded transition-colors"
+                  >
+                    <Trash2 size={14} />
+                  </button>
+                )}
+                {Object.keys(gradesGlobais).length < 8 && (
+                  <button
+                    onClick={adicionarGrade}
+                    className="px-2 py-1 bg-green-600 text-white rounded-lg text-[9px] font-black hover:bg-green-700 transition-all shadow-md shadow-green-600/10 active:scale-95"
+                  >
+                    + GRADE
+                  </button>
+                )}
+              </div>
+            </div>
+
+            <div className="flex-1 overflow-y-auto p-2 space-y-2 custom-scrollbar bg-slate-50/40">
+              {Object.keys(gradesGlobais).length === 0 ? (
+                <div className="h-full flex flex-col items-center justify-center opacity-30 text-center px-4">
+                  <div className="text-5xl mb-4">🧵</div>
+                  <p className="text-[10px] font-black text-slate-500 uppercase tracking-widest leading-relaxed">
+                    Nenhuma grade criada.<br/>Use o botão + GRADE para começar.
+                  </p>
+                </div>
+              ) : (
+                <>
+                  {/* Grades com Pares (Ativas) */}
+                  {gradesComPares.map((letter) => {
+                    const isExpanded = gradeExpandida === letter;
+                    const gradeData = gradesGlobais[letter];
+                    const paresCount = totPares(gradeData.qtds);
+                    const currentCat = gradeData.cat;
+                    const sizes = CATS[currentCat]?.sizes || [];
+
+                    return (
+                      <div key={letter} className="border border-slate-200 rounded-xl bg-white shadow-sm overflow-hidden transition-all duration-300">
+                        {/* Header — expande/recolhe ao clicar */}
+                        <div
+                          className={`p-2 flex items-center gap-3 cursor-pointer transition-colors ${isExpanded ? 'bg-blue-50/50' : 'hover:bg-slate-50'}`}
+                          onClick={() => toggleExpand(letter)}
+                        >
+                          <div className={`w-6 h-6 rounded-lg text-[11px] font-black flex items-center justify-center transition-all ${
+                            isExpanded ? 'bg-blue-600 text-white shadow-lg shadow-blue-600/20' : 'bg-slate-100 text-slate-500'
+                          }`}>
+                            {letter}
+                          </div>
+
+                          <div className="flex-1 overflow-hidden">
+                            <div className="text-[9px] font-black text-slate-400 uppercase tracking-widest mb-0.5">Resumo da Grade</div>
+                            <div className="text-[8px] font-bold text-slate-600 truncate">
+                              {Object.entries(gradeData.qtds)
+                                .filter(([_, v]) => (v || 0) > 0)
+                                .map(([sz, v]) => `${sz}·${v}`).join('  ')}
+                            </div>
+                          </div>
+
+                          <span className={`text-[10px] font-black px-1.5 py-0.5 rounded-lg border shrink-0 ${
+                            paresCount > 0 ? 'bg-green-100 text-green-700 border-green-200' : 'bg-slate-100 text-slate-400 border-slate-200'
+                          }`}>
+                            {paresCount}p
+                          </span>
+                        </div>
+
+                        {/* Quando RECOLHIDA: clique no resumo vincula + mostra lojas selecionadas */}
+                        {!isExpanded && (
+                          <div
+                            className={`mx-2 mb-2 rounded-lg py-1.5 px-2 flex items-center justify-between cursor-pointer transition-all ${
+                              paresCount > 0 && selectedItems.size > 0
+                                ? 'bg-blue-600 hover:bg-blue-700 text-white'
+                                : 'bg-slate-100 text-slate-300 cursor-not-allowed'
+                            }`}
+                            onClick={() => {
+                              if (paresCount > 0 && selectedItems.size > 0) vincularAoPedido(letter);
+                            }}
+                          >
+                            <span className="text-[9px] font-black uppercase tracking-wider truncate">
+                              ✓ Vincular Grade {letter}
+                            </span>
+                            <span className={`text-[8px] font-black shrink-0 ml-2 px-1.5 py-0.5 rounded ${
+                              paresCount > 0 && selectedItems.size > 0
+                                ? 'bg-white/20'
+                                : 'bg-slate-200 text-slate-400'
+                            }`}>
+                              {selectedItems.size > 0
+                                ? `${selectedItems.size} iten${selectedItems.size > 1 ? 's' : ''}`
+                                : 'sel. itens'}
+                            </span>
+                          </div>
+                        )}
+
+                        {/* Linha de lojas selecionadas — só quando recolhida */}
+                        {!isExpanded && selectedLojas.length > 0 && (
+                          <div className="px-2 pb-2">
+                            <span className="text-[8px] text-slate-400 font-bold">
+                              {selectedLojas.length} loja{selectedLojas.length > 1 ? 's' : ''} selecionada{selectedLojas.length > 1 ? 's' : ''}
+                            </span>
+                          </div>
+                        )}
+
+                        {isExpanded && (
+                          <div className="p-3 pt-1 border-t border-slate-100 bg-white">
+                            {/* Toolbar de Grade */}
+                            <div className="flex items-center gap-1.5 mb-3 flex-wrap">
+                              {catsPermitidas.map((k) => (
+                                <button
+                                  key={k}
+                                  onClick={() => setStep2State(p => ({
+                                    ...p,
+                                    gradesGlobais: {
+                                      ...p.gradesGlobais,
+                                      [letter]: { ...p.gradesGlobais[letter], cat: k, qtds: {} }
+                                    }
+                                  }))}
+                                  className={`px-2 py-1 text-[8px] font-black rounded-md border transition-all ${
+                                    currentCat === k ? 'bg-blue-600 text-white border-blue-600 shadow-md' : 'bg-white border-slate-200 text-slate-400 hover:border-slate-300'
+                                  }`}
+                                >
+                                  {CATS[k].label}
+                                </button>
+                              ))}
+                              <div className="flex gap-1 ml-auto">
+                                <button onClick={() => handleLimparGrade(letter)} className="p-1.5 bg-amber-50 text-amber-600 rounded-md border border-amber-100 hover:bg-amber-100 transition-colors">
+                                  <RefreshCw size={12} />
+                                </button>
+                                <button onClick={() => handleExcluirGrade(letter)} className="p-1.5 bg-red-50 text-red-600 rounded-md border border-red-100 hover:bg-red-100 transition-colors">
+                                  <Trash2 size={12} />
+                                </button>
+                              </div>
+                            </div>
+
+                            {/* Grid Visual de Inputs */}
+                            <div className="grid grid-cols-6 gap-1.5 mb-4">
+                              {sizes.map((sz) => {
+                                const qtd = gradeData.qtds[sz] || 0;
+                                return (
+                                  <div key={sz} className="flex flex-col items-center">
+                                    <span className="text-[8px] font-black text-slate-300 mb-1">{sz}</span>
+                                    <input
+                                      ref={(el) => { inputRefs.current[`${letter}-${sz}`] = el; }}
+                                      type="number"
+                                      min={0}
+                                      value={qtd || ""}
+                                      onChange={(e) => setGradeQtd(sz, parseInt(e.target.value) || 0)}
+                                      onKeyDown={(e) => handleGradeKeyDown(e, sz, sizes)}
+                                      className={`w-full h-8 text-center text-xs border rounded-lg transition-all outline-none font-black ${
+                                        qtd > 0 ? 'bg-blue-600 text-white border-blue-600 shadow-inner' : 'bg-slate-50 border-slate-200 focus:border-blue-400 focus:bg-white'
+                                      }`}
+                                    />
+                                  </div>
+                                );
+                              })}
+                            </div>
+
+                            <button
+                              onClick={() => vincularAoPedido(letter)}
+                              disabled={paresCount === 0 || selectedItems.size === 0}
+                              className={`w-full py-2 rounded-lg text-[10px] font-black uppercase tracking-widest transition-all shadow-md flex items-center justify-center gap-2 ${
+                                paresCount > 0 && selectedItems.size > 0
+                                  ? 'bg-blue-600 text-white hover:bg-blue-700 shadow-blue-600/10'
+                                  : 'bg-slate-100 text-slate-300 cursor-not-allowed border border-slate-200'
+                              }`}
+                            >
+                              ✓ Vincular Grade {letter}
+                              {selectedItems.size > 0 && <span className="bg-white/20 px-1.5 rounded">{selectedItems.size} ITENS</span>}
+                            </button>
+                          </div>
+                        )}
+                      </div>
+                    );
+                  })}
+
+                  {/* Grades Vazias (Layout Grade Compacta) */}
+                  {gradesVazias.length > 0 && (
+  <div className="space-y-2">
+    {gradesVazias.map((letter) => {
+      const isExpanded = gradeExpandida === letter;
+      const gradeData = gradesGlobais[letter];
+      const currentCat = gradeData.cat;
+      const sizes = CATS[currentCat]?.sizes || [];
+      const totalPares = totPares(gradeData.qtds);
+
+      return (
+        <div key={letter} className={`border rounded-xl bg-white shadow-sm overflow-hidden transition-all duration-300 ${
+          isExpanded ? 'border-blue-400' : 'border-slate-200 opacity-70'
+        }`}>
+          <div
+            className={`p-2 flex items-center gap-3 cursor-pointer transition-colors ${isExpanded ? 'bg-blue-50/50' : 'hover:bg-slate-50'}`}
+            onClick={() => toggleExpand(letter)}
+          >
+            <div className={`w-6 h-6 rounded-lg text-[11px] font-black flex items-center justify-center transition-all ${
+              isExpanded ? 'bg-blue-600 text-white shadow-lg shadow-blue-600/20' : 'bg-slate-100 text-slate-500'
+            }`}>
+              {letter}
+            </div>
+            <span className="text-[9px] font-black text-slate-400 uppercase tracking-widest flex-1">
+              {isExpanded ? 'Preenchendo...' : 'Vazia — clique para editar'}
+            </span>
+            <span className={`text-[10px] transition-transform duration-300 text-slate-400 ${isExpanded ? 'rotate-90' : ''}`}>▶</span>
+          </div>
+
+          {isExpanded && (
+            <div className="p-3 pt-1 border-t border-slate-100 bg-white">
+              {/* Seletor de categoria */}
+              <div className="flex items-center gap-1.5 mb-3 flex-wrap">
+                {catsPermitidas.map((k) => (
+                  <button
+                    key={k}
+                    onClick={() => setStep2State((p: any) => ({
+                      ...p,
+                      gradesGlobais: {
+                        ...p.gradesGlobais,
+                        [letter]: { ...p.gradesGlobais[letter], cat: k, qtds: {} }
+                      }
+                    }))}
+                    className={`px-2 py-1 text-[8px] font-black rounded-md border transition-all ${
+                      currentCat === k ? 'bg-blue-600 text-white border-blue-600 shadow-md' : 'bg-white border-slate-200 text-slate-400 hover:border-slate-300'
+                    }`}
+                  >
+                    {CATS[k].label}
+                  </button>
+                ))}
+                <div className="flex gap-1 ml-auto">
+                  <button onClick={() => handleLimparGrade(letter)} className="p-1.5 bg-amber-50 text-amber-600 rounded-md border border-amber-100 hover:bg-amber-100 transition-colors">
+                    <RefreshCw size={12} />
+                  </button>
+                  <button onClick={() => handleExcluirGrade(letter)} className="p-1.5 bg-red-50 text-red-600 rounded-md border border-red-100 hover:bg-red-100 transition-colors">
+                    <Trash2 size={12} />
+                  </button>
+                </div>
+              </div>
+
+              {/* Grid de inputs */}
+              <div className="grid grid-cols-6 gap-1.5 mb-4">
+                {sizes.map((sz) => {
+                  const qtd = gradeData.qtds[sz] || 0;
+                  return (
+                    <div key={sz} className="flex flex-col items-center">
+                      <span className="text-[8px] font-black text-slate-300 mb-1">{sz}</span>
+                      <input
+                        ref={(el) => { inputRefs.current[`${letter}-${sz}`] = el; }}
+                        type="number"
+                        min={0}
+                        value={qtd || ""}
+                        onChange={(e) => setGradeQtd(sz, parseInt(e.target.value) || 0)}
+                        onKeyDown={(e) => handleGradeKeyDown(e, sz, sizes)}
+                        className={`w-full h-8 text-center text-xs border rounded-lg transition-all outline-none font-black ${
+                          qtd > 0 ? 'bg-blue-600 text-white border-blue-600 shadow-inner' : 'bg-slate-50 border-slate-200 focus:border-blue-400 focus:bg-white'
+                        }`}
+                      />
+                    </div>
+                  );
+                })}
+              </div>
+
+              <button
+                onClick={() => vincularAoPedido(letter)}
+                disabled={totalPares === 0 || selectedItems.size === 0}
+                className={`w-full py-2 rounded-lg text-[10px] font-black uppercase tracking-widest transition-all shadow-md flex items-center justify-center gap-2 ${
+                  totalPares > 0 && selectedItems.size > 0
+                    ? 'bg-blue-600 text-white hover:bg-blue-700 shadow-blue-600/10'
+                    : 'bg-slate-100 text-slate-300 cursor-not-allowed border border-slate-200'
+                }`}
+              >
+                ✓ Vincular Grade {letter}
+                {selectedItems.size > 0 && <span className="bg-white/20 px-1.5 rounded">{selectedItems.size} ITENS</span>}
+              </button>
             </div>
           )}
         </div>
-
-        {/* COLUNA 3: LOJAS */}
-        {canViewAllStores && (
-          <div
-            className={`p-3 ${!isMobile && "border-r border-slate-200"} bg-slate-50`}
-          >
-            <div className="flex items-center gap-2 mb-3">
-              <span className="bg-blue-600 text-white w-6 h-6 rounded-full flex items-center justify-center text-xs font-bold">
-                3
-              </span>
-              <h4 className="text-xs font-bold text-slate-700 uppercase">
-                Lojas
-              </h4>
+      );
+    })}
+  </div>
+)}
+                </>
+              )}
             </div>
-
-            <div className="flex gap-2 mb-2">
-              <button
-                onClick={() => selectLojaMode("sub")}
-                className={`px-2 py-1 text-[10px] rounded font-medium ${
-                  lojaMode === "sub"
-                    ? "bg-blue-600 text-white"
-                    : "bg-white border border-slate-300 text-slate-600"
-                }`}
-              >
-                Sub
-              </button>
-              <button
-                onClick={() => selectLojaMode("all")}
-                className={`px-2 py-1 text-[10px] rounded font-medium ${
-                  lojaMode === "all"
-                    ? "bg-blue-600 text-white"
-                    : "bg-white border border-slate-300 text-slate-600"
-                }`}
-              >
-                Todas
-              </button>
-              <span className="text-[9px] text-slate-500 self-center ml-auto">
-                {selectedLojas.length} sel.
-              </span>
-            </div>
-
-            {pool.length > 0 && (
-              <div className="max-h-[400px] overflow-y-auto">
-                <div className="flex flex-wrap gap-1.5">
-                  {pool.map((n) => (
-                    <div
-                      key={n}
-                      onClick={() => toggleLoja(n)}
-                      className={`w-9 h-9 flex items-center justify-center text-[10px] font-bold rounded border cursor-pointer ${
-                        selectedLojas.includes(n)
-                          ? "bg-blue-600 text-white border-blue-600"
-                          : "bg-white border-slate-200 text-slate-500"
-                      }`}
-                    >
-                      {n}
+            
+            {/* Rascunho Rápido */}
+            {tempPedidoItens.length > 0 && (
+              <div className="p-3 bg-slate-900 text-white border-t border-slate-800 shrink-0">
+                <div className="flex justify-between items-center mb-2">
+                  <span className="text-[9px] font-black uppercase tracking-widest text-slate-400">Rascunho Atual</span>
+                  <div className="bg-blue-600 px-2 py-0.5 rounded text-[10px] font-black shadow-lg shadow-blue-600/20">
+                    {totaisPedidoTemp.totalParesPorLoja} PARES
+                  </div>
+                </div>
+                <div className="max-h-24 overflow-y-auto custom-scrollbar space-y-1">
+                  {tempPedidoItens.map((icg, idx) => (
+                    <div key={idx} className="flex items-center justify-between bg-white/5 p-1.5 rounded-lg border border-white/5 hover:bg-white/10 transition-colors">
+                      <div>
+                        <span className="text-[9px] font-black text-slate-200 uppercase">{items[icg.itemIdx].ref}</span>
+                        <div className="flex gap-1 mt-0.5">
+                          {icg.grades.map(g => (
+                            <span key={g.letter} className="text-[8px] font-black text-blue-400 italic">Grade {g.letter}</span>
+                          ))}
+                        </div>
+                      </div>
+                      <div className="flex items-center gap-2">
+                        <span className="text-[9px] font-black text-slate-400">{icg.grades.reduce((s, g) => s + totPares(g.qtds), 0)}p</span>
+                        <button onClick={() => setDeletingTempItem(idx)} className="text-white/20 hover:text-red-400 transition-colors">
+                          <Trash2 size={12} />
+                        </button>
+                      </div>
                     </div>
                   ))}
                 </div>
               </div>
             )}
+          </div>
 
-            {/* ⚠️ ALERTAS: RESTRIÇÕES DE MARCA/PRODUTO E REQUISITOS DE GRADE */}
-            {(brandRestriction ||
-              productRestrictions.length > 0 ||
-              storeRequirements.length > 0) && (
-              <div className="mt-3 space-y-2">
-                {/* ALERTA DE RESTRIÇÃO DE MARCA (VERMELHO ESCURO) */}
-                {brandRestriction && (
-                  <div className="p-3 bg-red-50 border-2 border-red-500 rounded-lg">
-                    <div className="flex items-center gap-2 mb-2">
-                      <span className="text-red-600 text-xl">⛔</span>
-                      <h5 className="text-xs font-bold text-red-900 uppercase">
-                        Atenção: Restrição de Marca
-                      </h5>
+          {/* COLUNA 3: LOJAS + PEDIDOS CRIADOS */}
+          <div className="flex flex-col bg-slate-50/30 overflow-hidden relative">
+            
+            {/* CONTROLE DE LOJAS */}
+            <div className="flex flex-col border-b border-slate-200 bg-white z-20">
+              <div
+                className={`flex items-center gap-3 px-4 py-3.5 cursor-pointer transition-all ${
+                  lojasOpen ? 'bg-blue-600 text-white shadow-xl rotate-0' : 'bg-white hover:bg-slate-50 text-slate-600'
+                }`}
+                onClick={() => setLojasOpen(prev => !prev)}
+              >
+                <div className={`w-6 h-6 rounded-full text-[11px] font-black flex items-center justify-center transition-all ${
+                  lojasOpen ? 'bg-white text-blue-600 shadow-md transform rotate-90' : 'bg-slate-100 text-slate-400'
+                }`}>
+                  3
+                </div>
+                <h4 className="text-[11px] font-black uppercase tracking-[0.2em] flex-1">Distribuição</h4>
+                {selectedLojas.length > 0 && (
+                  <div className="px-2 py-0.5 bg-white/10 border border-white/20 rounded-full text-[9px] font-black animate-in zoom-in duration-300">
+                    {selectedLojas.length} LOJAS
+                  </div>
+                )}
+                <span className={`text-[10px] transition-transform duration-500 ${lojasOpen ? '-rotate-90' : ''}`}>▶</span>
+              </div>
+
+              {lojasOpen && canViewAllStores && (
+                <div className="p-4 animate-in slide-in-from-top-4 duration-500 ease-out border-t border-slate-100">
+                  <div className="flex gap-2 mb-4">
+                    <button
+                      onClick={() => selectLojaMode('sub')}
+                      className={`flex-1 py-1.5 rounded-xl border-2 text-[10px] font-black tracking-widest transition-all ${
+                        lojaMode === 'sub' ? 'bg-blue-600 text-white border-blue-600 shadow-lg scale-105' : 'bg-white border-slate-100 text-slate-400 hover:border-slate-200'
+                      }`}
+                    >
+                      SUBGRUPO
+                    </button>
+                    <button
+                      onClick={() => selectLojaMode('all')}
+                      className={`flex-1 py-1.5 rounded-xl border-2 text-[10px] font-black tracking-widest transition-all ${
+                        lojaMode === 'all' ? 'bg-blue-600 text-white border-blue-600 shadow-lg scale-105' : 'bg-white border-slate-100 text-slate-400 hover:border-slate-200'
+                      }`}
+                    >
+                      TODAS
+                    </button>
+                  </div>
+
+                  <div className="grid grid-cols-5 gap-1.5 mb-4 bg-slate-50/50 p-2.5 rounded-2xl border border-slate-200/50 max-h-44 overflow-y-auto custom-scrollbar">
+                    {pool.map((n) => {
+                      const isSelected = selectedLojas.includes(n);
+                      return (
+                        <button
+                          key={n}
+                          onClick={() => toggleLoja(n)}
+                          className={`h-8 flex items-center justify-center text-[10px] font-black rounded-xl border-2 transition-all ${
+                            isSelected
+                              ? 'bg-blue-600 text-white border-blue-600 shadow-md ring-4 ring-blue-600/10'
+                              : 'bg-white border-slate-200 text-slate-400 hover:bg-white hover:shadow-sm'
+                          }`}
+                        >
+                          {n}
+                        </button>
+                      );
+                    })}
+                  </div>
+
+                  {tempPedidoItens.length > 0 && selectedLojas.length > 0 && (
+                    <button
+                      onClick={criarPedido}
+                      className="w-full py-3 bg-green-600 hover:bg-green-700 text-white rounded-2xl text-[11px] font-black tracking-[0.1em] shadow-xl shadow-green-600/20 active:scale-95 transition-all flex items-center justify-center gap-3"
+                    >
+                      <span>✓ FINALIZAR PEDIDO</span>
+                      <div className="h-4 w-px bg-white/20" />
+                      <span className="bg-white/20 px-3 rounded-full py-0.5">{selectedLojas.length} LOJAS</span>
+                    </button>
+                  )}
+                </div>
+              )}
+            </div>
+
+            {/* LISTA DE PEDIDOS FIXADO EMBAIXO */}
+            <div className="flex-1 flex flex-col p-4 overflow-hidden">
+              <div className="flex items-center justify-between mb-4">
+                <div className="flex items-center gap-2">
+                  <div className="w-5 h-5 bg-green-600 text-white rounded-full flex items-center justify-center text-[11px] font-black shadow-lg shadow-green-600/10">4</div>
+                  <h4 className="text-[11px] font-black text-slate-700 uppercase tracking-widest">Controle de Pedidos</h4>
+                </div>
+                {pedidos.length > 0 && (
+                  <span className="text-[10px] font-black text-green-700 bg-green-100 px-2.5 py-0.5 rounded-full shadow-sm">
+                    {pedidos.length} TOTAL
+                  </span>
+                )}
+              </div>
+
+              <div className="flex flex-col gap-3">
+                {pedidos.map((ped, i) => {
+                  const totais = calcPedidoTotals(ped);
+                  return (
+                    <div
+                      key={ped.num}
+                      className="group bg-white border-2 border-slate-100 rounded-2xl p-3 shadow-md hover:border-blue-400 transition-all duration-500 relative overflow-hidden"
+                    >
+                      <div className="absolute top-0 right-0 w-20 h-20 bg-slate-50 -mr-10 -mt-10 rounded-full group-hover:scale-150 transition-transform duration-700 opacity-30" />
+
+                      <div className="flex items-center justify-between mb-3 relative z-10">
+                        <div className="flex flex-col">
+                          <span className="text-[11px] font-black text-slate-800 uppercase tracking-tighter">Pedido #{ped.num}</span>
+                          <span className="text-[8px] font-mono text-slate-400 uppercase tracking-widest">{ped.pedido_numero}</span>
+                        </div>
+                        <button
+                          onClick={() => delPedido(i)}
+                          className="w-7 h-7 rounded-xl bg-slate-50 text-slate-300 flex items-center justify-center hover:bg-red-50 hover:text-red-500 transition-all shadow-inner"
+                        >
+                          <Trash2 size={14} />
+                      </button>
                     </div>
 
-                    <div className="bg-white rounded p-2 border border-red-300">
-                      <div className="flex items-start gap-2">
-                        <span className="text-red-600 text-lg">🚫</span>
-                        <div className="flex-1">
-                          <div className="text-xs font-bold text-red-900">
-                            {brandRestriction.mensagem_alerta}
-                          </div>
-                          <div className="text-[10px] text-red-700 mt-1">
-                            Lojas selecionadas com restrição:{" "}
-                            {brandRestriction.lojas_proibidas_encontradas.join(
-                              ", ",
-                            )}
+                      <div className="grid grid-cols-2 gap-2 mb-3 relative z-10">
+                        <div className="bg-slate-50/80 p-2 rounded-xl border border-slate-100 text-center">
+                          <div className="text-[8px] font-black text-slate-400 uppercase mb-0.5">Pares/Loja</div>
+                          <div className="text-[12px] font-black text-slate-900">{totais.totalParesPorLoja}p</div>
+                        </div>
+                        <div className="bg-green-50/50 p-2 rounded-xl border border-green-100 text-center">
+                          <div className="text-[8px] font-black text-green-600 uppercase mb-0.5">Total Líquido</div>
+                          <div className="text-[12px] font-black text-green-700">
+                            {fmtBRL(totais.totalValorLiquidoPorLoja)}
                           </div>
                         </div>
                       </div>
-                    </div>
-                  </div>
-                )}
 
-                {/* ALERTA DE RESTRIÇÃO DE PRODUTO (VERMELHO CLARO) */}
-                {productRestrictions.length > 0 && (
-                  <div className="p-3 bg-orange-50 border-2 border-orange-400 rounded-lg">
-                    <div className="flex items-center gap-2 mb-2">
-                      <span className="text-orange-600 text-xl">⚠️</span>
-                      <h5 className="text-xs font-bold text-orange-900 uppercase">
-                        Atenção: Produto Não Vendido
-                      </h5>
+                      <div className="flex flex-wrap gap-1 mt-1 relative z-10">
+                        {ped.lojas.slice(0, 15).map(l => (
+                          <span key={l} className="text-[8px] font-black bg-blue-50 text-blue-600 border border-blue-100/50 px-1.5 py-0.5 rounded shadow-sm">
+                            L{l}
+                          </span>
+                        ))}
+                        {ped.lojas.length > 15 && (
+                          <span className="text-[8px] font-black text-slate-400 bg-slate-100 rounded px-2 py-0.5 border border-slate-200">+{ped.lojas.length - 15}</span>
+                        )}
+                      </div>
                     </div>
+                  );
+                })}
 
-                    <div className="space-y-2">
-                      {productRestrictions.map((res, idx) => (
-                        <div
-                          key={idx}
-                          className="bg-white rounded p-2 border border-orange-300"
-                        >
-                          <div className="flex items-start gap-2">
-                            <span className="text-orange-600 text-lg">🚫</span>
-                            <div className="flex-1">
-                              <div className="text-xs font-bold text-orange-900">
-                                {res.mensagem_alerta}
-                              </div>
-                              <div className="text-[10px] text-orange-700 mt-1">
-                                Lojas selecionadas:{" "}
-                                {res.lojas_proibidas_encontradas.join(", ")}
-                              </div>
-                            </div>
-                          </div>
-                        </div>
-                      ))}
-                    </div>
-                  </div>
-                )}
-
-                {/* ALERTA DE REQUISITOS DE GRADE (AMARELO) */}
-                {storeRequirements.length > 0 && (
-                  <div className="p-3 bg-amber-50 border border-amber-300 rounded-lg">
-                    <div className="flex items-center gap-2 mb-2">
-                      <span className="text-amber-600 text-lg">⚠️</span>
-                      <h5 className="text-xs font-bold text-amber-900 uppercase">
-                        Atenção: Requisitos de Grade
-                      </h5>
-                    </div>
-
-                    <div className="space-y-2">
-                      {storeRequirements.map((req, idx) => (
-                        <div
-                          key={idx}
-                          className="bg-white rounded p-2 border border-amber-200"
-                        >
-                          <div className="flex items-start gap-2">
-                            <span className="text-amber-600">📍</span>
-                            <div className="flex-1">
-                              <div className="text-xs font-bold text-amber-900">
-                                {req.mensagem}
-                              </div>
-                              <div className="text-[10px] text-amber-700 mt-1">
-                                Tamanhos obrigatórios:{" "}
-                                {req.tamanhos_obrigatorios.join(", ")}
-                              </div>
-                            </div>
-                          </div>
-                        </div>
-                      ))}
-                    </div>
+                {pedidos.length === 0 && (
+                  <div className="h-full flex flex-col items-center justify-center py-20 px-10">
+                    <div className="text-6xl mb-6 opacity-20 filter grayscale">📋</div>
+                    <span className="text-[11px] font-black uppercase tracking-[0.3em] text-slate-300 text-center leading-relaxed">
+                      Painel Vazio<br/>Inicie o Fluxo à Esquerda
+                    </span>
                   </div>
                 )}
               </div>
-            )}
+            </div>
+          </div>
+        </div>
+
+        {/* POPUP DE EDIÇÃO */}
+        {editingPedido !== null && (
+          <EditPedidoPopup
+            pedido={pedidos[editingPedido]}
+            items={items}
+            cab={cab}
+            onClose={() => setEditingPedido(null)}
+            onSave={(updated) => {
+              setPedidos((ps) =>
+                ps.map((p, i) => (i === editingPedido ? updated : p)),
+              );
+              setEditingPedido(null);
+            }}
+          />
+        )}
+
+        {/* POPUP DE EDIÇÃO ITEM TEMPORÁRIO */}
+        {editingTempItem !== null && (
+          <EditTempItemPopup
+            itemComGrade={tempPedidoItens[editingTempItem]}
+            itemData={items[tempPedidoItens[editingTempItem].itemIdx]}
+            cab={cab}
+            onClose={() => setEditingTempItem(null)}
+            onSave={(updated) => {
+              setStep2State((prev: any) => {
+                const newItens = [...prev.tempPedidoItens];
+
+                // Verifica se ainda há pares na grade
+                const totalPares = updated.grades.reduce(
+                  (acc: number, g: any) => {
+                    return (
+                      acc +
+                      Object.values(g.qtds as Record<string, number>).reduce(
+                        (s: number, q: number) => s + (q || 0),
+                        0,
+                      )
+                    );
+                  },
+                  0,
+                );
+
+                if (totalPares > 0) {
+                  newItens[editingTempItem] = updated;
+                } else {
+                  // Remove if 0 pairs remaining
+                  newItens.splice(editingTempItem, 1);
+                }
+                return { ...prev, tempPedidoItens: newItens };
+              });
+              setEditingTempItem(null);
+            }}
+          />
+        )}
+
+        {/* MODAIS (Styled) */}
+        {deletingTempItem !== null && (
+          <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-sm flex items-center justify-center z-[100] p-4 animate-in fade-in duration-300">
+            <div className="bg-white rounded-2xl shadow-2xl p-6 max-w-sm w-full border border-slate-100 transition-all scale-100">
+              <div className="text-3xl mb-4">🗑️</div>
+              <h3 className="text-base font-black text-slate-800 uppercase tracking-tight">Remover do Rascunho?</h3>
+              <p className="text-xs text-slate-500 mt-2 leading-relaxed">Esta ação removerá o item e suas grades vinculadas permanentemente deste pedido em construção.</p>
+              <div className="flex gap-2 mt-6">
+                <button onClick={() => setDeletingTempItem(null)} className="flex-1 py-2 text-[10px] font-black text-slate-400 uppercase hover:bg-slate-50 rounded-xl transition-colors">Voltar</button>
+                <button onClick={() => handleRemoveTempItem(deletingTempItem)} className="flex-1 py-2 text-[10px] font-black text-white bg-red-600 rounded-xl shadow-lg shadow-red-600/20 hover:bg-red-700 transition-all">Confirmar Exclusão</button>
+              </div>
+            </div>
           </div>
         )}
 
-        {/* COLUNA 4: FINALIZAÇÃO COM LISTA DE PEDIDOS */}
-        <div className="p-3 flex flex-col">
-          <div className="flex items-center gap-2 mb-3">
-            <span className="bg-green-600 text-white w-6 h-6 rounded-full flex items-center justify-center text-xs font-bold">
-              {!canViewAllStores ? "3" : "4"}
-            </span>
-            <h4 className="text-xs font-bold text-slate-700 uppercase flex-1">
-              Pedidos
-            </h4>
-          </div>
-
-          {/* Badge informativo para restrito */}
-          {!canViewAllStores && AVAILABLE_LOJAS.length > 0 && (
-            <div className="mb-3 bg-blue-50 border border-blue-200 rounded-lg p-2 flex items-center gap-2 flex-wrap">
-              {AVAILABLE_LOJAS.map((lojaNum) => (
-                <div
-                  key={lojaNum}
-                  className="w-8 h-8 flex items-center justify-center bg-blue-600 text-white rounded font-bold text-sm"
-                >
-                  {lojaNum}
-                </div>
-              ))}
-              <div className="flex-1">
-                <div className="text-[10px] font-bold text-blue-900">
-                  Lojas Permitidas
-                </div>
-                <div className="text-[8px] text-blue-600">
-                  Pedido automático
-                </div>
+        {showCancelOrderModal && (
+          <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-sm flex items-center justify-center z-[100] p-4 animate-in fade-in duration-300">
+            <div className="bg-white rounded-2xl shadow-2xl p-6 max-w-sm w-full border border-slate-100 transition-all scale-100">
+              <div className="text-3xl mb-4">⚠️</div>
+              <h3 className="text-base font-black text-slate-800 uppercase tracking-tight">Limpar Todo o Trabalho?</h3>
+              <p className="text-xs text-slate-500 mt-2 leading-relaxed">Você perderá todo o progresso atual deste pedido. Esta ação não pode ser desfeita.</p>
+              <div className="flex gap-2 mt-6">
+                <button onClick={() => setShowCancelOrderModal(false)} className="flex-1 py-2 text-[10px] font-black text-slate-400 uppercase hover:bg-slate-50 rounded-xl transition-colors">Continuar Editando</button>
+                <button onClick={handleCancelOrder} className="flex-1 py-2 text-[10px] font-black text-white bg-slate-800 rounded-xl shadow-lg hover:bg-slate-900 transition-all">Limpar Tudo</button>
               </div>
             </div>
-          )}
-
-          {/* Pedido Temporário */}
-          {tempPedidoItens.length > 0 && (
-            <div className="bg-amber-50 border border-amber-300 rounded-lg p-2 mb-3 flex flex-col max-h-[50vh]">
-              <div className="flex justify-between items-center mb-2">
-                <div className="text-xs font-bold text-amber-900">
-                  Pedido Temporário
-                </div>
-                <button
-                  onClick={() => setShowCancelOrderModal(true)}
-                  className="text-[9px] bg-red-100 text-red-700 px-2 py-1 rounded hover:bg-red-200 border border-red-200 font-bold flex items-center gap-1 transition-colors"
-                  title="Cancelar Pedido Inteiro"
-                >
-                  <span className="text-red-500 text-sm leading-none">🗑️</span>{" "}
-                  Cancelar Pedido
-                </button>
-              </div>
-
-              <div className="text-[9px] text-amber-700 space-y-0.5 mb-2">
-                <div>
-                  Pares/Loja:{" "}
-                  <strong>{totaisPedidoTemp.totalParesPorLoja}</strong>
-                </div>
-                <div>
-                  Lojas: <strong>{totaisPedidoTemp.numLojas}</strong>
-                </div>
-                <div className="pt-1 border-t border-amber-200">
-                  <div className="text-blue-700">
-                    Total Geral:{" "}
-                    <strong>{totaisPedidoTemp.totalParesGeral} pares</strong>
-                  </div>
-                  <div className="text-slate-500 line-through">
-                    Bruto: {fmtBRL(totaisPedidoTemp.totalValorBrutoGeral)}
-                  </div>
-                  <div className="text-green-700">
-                    Líquido (-{cab.desconto}%):{" "}
-                    <strong>
-                      {fmtBRL(totaisPedidoTemp.totalValorLiquidoGeral)}
-                    </strong>
-                  </div>
-                </div>
-              </div>
-
-              <div className="mt-1 mb-2 flex-1 overflow-y-auto bg-white rounded border border-amber-200 shadow-sm">
-                <table className="w-full text-left text-[9px]">
-                  <thead className="bg-amber-100 sticky top-0 shadow-sm">
-                    <tr>
-                      <th className="p-1 px-2 border-b border-amber-200 font-bold text-amber-900">
-                        Ref
-                      </th>
-                      <th className="p-1 border-b border-amber-200 font-bold text-amber-900 text-center">
-                        Pares
-                      </th>
-                      <th className="p-1 border-b border-amber-200 font-bold text-amber-900 text-center w-14">
-                        Ações
-                      </th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {tempPedidoItens.map((icg, idx) => {
-                      const item = items[icg.itemIdx];
-                      const totalItem = icg.grades.reduce(
-                        (s, g) => s + totPares(g.qtds),
-                        0,
-                      );
-                      return (
-                        <tr
-                          key={idx}
-                          className="border-b border-slate-100 hover:bg-slate-50 transition-colors"
-                        >
-                          <td
-                            className="p-1 px-2 font-medium text-slate-800 truncate max-w-[80px]"
-                            title={item.ref}
-                          >
-                            <div className="font-bold text-[9px]">{item.ref}</div>
-                            <div className="flex gap-0.5 mt-0.5 flex-wrap">
-                              {icg.grades.map((g) => (
-                                <span
-                                  key={g.letter}
-                                  className="text-[7px] font-black bg-blue-100 text-blue-700 px-1 py-0.5 rounded leading-none"
-                                >
-                                  {g.letter}
-                                </span>
-                              ))}
-                            </div>
-                          </td>
-                          <td className="p-1 text-center font-bold text-slate-700">
-                            {totalItem}
-                          </td>
-                          <td className="p-1 text-center">
-                            <div className="flex gap-2 justify-center items-center h-full">
-                              <button
-                                onClick={() => setEditingTempItem(idx)}
-                                className="text-blue-600 hover:text-blue-800 transition-colors"
-                                title="Editar item"
-                              >
-                                ✏️
-                              </button>
-                              <button
-                                onClick={() => setDeletingTempItem(idx)}
-                                className="text-red-600 hover:text-red-800 transition-colors"
-                                title="Excluir item"
-                              >
-                                🗑️
-                              </button>
-                            </div>
-                          </td>
-                        </tr>
-                      );
-                    })}
-                  </tbody>
-                </table>
-              </div>
-
-              <button
-                onClick={criarPedido}
-                className="w-full px-2 py-1.5 bg-green-600 text-white text-[10px] font-bold rounded hover:bg-green-700 mt-auto"
-              >
-                ✓ Criar Pedido
-              </button>
-            </div>
-          )}
-
-          {/* Lista de Pedidos Criados */}
-          <div className="flex-1 overflow-y-auto space-y-2">
-            {pedidos
-              .filter((p) => p.itensComGrades.length > 0)
-              .map((ped) => {
-                const totals = calcPedidoTotals(ped);
-                const pedidoIndex = pedidos.findIndex((p) => p.num === ped.num);
-
-                return (
-                  <div
-                    key={ped.num}
-                    onClick={() => setEditingPedido(pedidoIndex)}
-                    className="bg-white border border-slate-200 rounded-lg p-2 cursor-pointer hover:border-blue-400 transition-all"
-                  >
-                    <div className="flex items-center gap-2 mb-1">
-                      <div className="text-xs font-bold text-slate-800">
-                        Pedido {ped.num}
-                      </div>
-                      <div className="text-[8px] bg-slate-100 px-1.5 py-0.5 rounded text-slate-600 font-mono">
-                        {ped.pedido_numero}
-                      </div>
-                      <button
-                        onClick={(e) => {
-                          e.stopPropagation();
-                          delPedido(pedidoIndex);
-                        }}
-                        className="ml-auto text-red-500 text-xs"
-                      >
-                        ✕
-                      </button>
-                    </div>
-                    <div className="text-[9px] text-slate-600 space-y-0.5">
-                      <div>
-                        Pares Total:{" "}
-                        <strong className="text-green-700">
-                          {totals.totalParesGeral}
-                        </strong>
-                      </div>
-                      <div>
-                        Valor Total:{" "}
-                        <strong className="text-green-700">
-                          {fmtBRL(totals.totalValorLiquidoGeral)}
-                        </strong>
-                      </div>
-                    </div>
-                  </div>
-                );
-              })}
           </div>
-        </div>
+        )}
+
+        {quotaModal && (
+          <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-sm flex items-center justify-center z-[100] p-4 animate-in fade-in duration-300">
+            <div className="bg-white rounded-2xl shadow-xl w-full max-w-sm overflow-hidden border border-slate-100 transition-all scale-100">
+              <div className="bg-red-50 p-5 flex flex-col items-center border-b border-red-100">
+                <div className="text-3xl mb-2">🚫</div>
+                <h3 className="text-base font-black text-red-900 uppercase">Cota Insuficiente</h3>
+                <div className="text-xs text-red-700 mt-1">
+                  {quotaModal.lojasFaltando.length} loja(s) sem cota suficiente
+                </div>
+              </div>
+              <div className="p-5">
+                <div className="bg-slate-50 rounded-lg p-3 border border-slate-200 mb-4 max-h-32 overflow-y-auto">
+                  {quotaModal.lojasFaltando.map((r) => (
+                    <div key={r.loja} className="flex justify-between text-xs py-0.5">
+                      <span className="text-slate-600">Loja {r.loja}</span>
+                      <span className="text-red-600 font-bold">Falta {fmtBRL(r.falta)}</span>
+                    </div>
+                  ))}
+                </div>
+                <QuotaJustificativaForm
+                  onCancel={() => setQuotaModal(null)}
+                  onConfirm={(motivo) => quotaModal.onConfirm(motivo)}
+                />
+              </div>
+            </div>
+          </div>
+        )}
       </div>
-
-      {/* POPUP DE EDIÇÃO */}
-      {editingPedido !== null && (
-        <EditPedidoPopup
-          pedido={pedidos[editingPedido]}
-          items={items}
-          cab={cab}
-          onClose={() => setEditingPedido(null)}
-          onSave={(updated) => {
-            setPedidos((ps) =>
-              ps.map((p, i) => (i === editingPedido ? updated : p)),
-            );
-            setEditingPedido(null);
-          }}
-        />
-      )}
-
-      {/* POPUP DE EDIÇÃO ITEM TEMPORÁRIO */}
-      {editingTempItem !== null && (
-        <EditTempItemPopup
-          itemComGrade={tempPedidoItens[editingTempItem]}
-          itemData={items[tempPedidoItens[editingTempItem].itemIdx]}
-          cab={cab}
-          onClose={() => setEditingTempItem(null)}
-          onSave={(updated) => {
-            setStep2State((prev: any) => {
-              const newItens = [...prev.tempPedidoItens];
-
-              // Verifica se ainda há pares na grade
-              const totalPares = updated.grades.reduce(
-                (acc: number, g: any) => {
-                  return (
-                    acc +
-                    Object.values(g.qtds as Record<string, number>).reduce(
-                      (s: number, q: number) => s + (q || 0),
-                      0,
-                    )
-                  );
-                },
-                0,
-              );
-
-              if (totalPares > 0) {
-                newItens[editingTempItem] = updated;
-              } else {
-                // Remove if 0 pairs remaining
-                newItens.splice(editingTempItem, 1);
-              }
-              return { ...prev, tempPedidoItens: newItens };
-            });
-            setEditingTempItem(null);
-          }}
-        />
-      )}
-
-      {/* MODAL CANCELAR PEDIDO INTEIRO */}
-      {showCancelOrderModal && (
-        <div className="fixed inset-0 bg-black/60 backdrop-blur-sm flex items-center justify-center z-50 p-4">
-          <div className="bg-white rounded-2xl shadow-xl w-full max-w-sm overflow-hidden animate-fade-in-up border border-slate-100">
-            <div className="bg-red-50 p-6 flex flex-col items-center border-b border-red-100">
-              <div className="w-16 h-16 bg-red-100 text-red-600 rounded-full flex items-center justify-center text-3xl mb-4 shadow-sm border border-red-200">
-                ⚠️
-              </div>
-              <h3 className="text-lg font-black text-red-900 text-center uppercase tracking-tight">
-                Cancelar Pedido Completo?
-              </h3>
-            </div>
-
-            <div className="p-6">
-              <p className="text-sm text-slate-600 text-center mb-6">
-                Tem certeza que deseja cancelar <strong>TODO O PEDIDO</strong>?
-              </p>
-
-              <div className="bg-slate-50 border border-slate-200 rounded-xl p-4 mb-6">
-                <div className="flex justify-between items-center text-xs mb-2">
-                  <span className="text-slate-500 font-medium font-sans uppercase tracking-wider">
-                    Total Pares
-                  </span>
-                  <span className="text-slate-900 font-black">
-                    {totaisPedidoTemp.totalParesGeral}
-                  </span>
-                </div>
-                <div className="flex justify-between items-center text-xs mb-2">
-                  <span className="text-slate-500 font-medium font-sans uppercase tracking-wider">
-                    Total Valor
-                  </span>
-                  <span className="text-slate-900 font-black">
-                    {fmtBRL(totaisPedidoTemp.totalValorLiquidoGeral)}
-                  </span>
-                </div>
-                <div className="flex justify-between items-center text-xs">
-                  <span className="text-slate-500 font-medium font-sans uppercase tracking-wider">
-                    Lojas
-                  </span>
-                  <span className="text-slate-900 font-black">
-                    {totaisPedidoTemp.numLojas}
-                  </span>
-                </div>
-              </div>
-
-              <p className="text-xs text-red-600/80 text-center font-bold mb-6 italic">
-                ⚠️ TODOS os itens serão perdidos! Esta ação não pode ser
-                desfeita.
-              </p>
-
-              <div className="flex gap-3">
-                <button
-                  onClick={() => setShowCancelOrderModal(false)}
-                  className="flex-1 px-4 py-3 bg-white border border-slate-300 text-slate-700 font-bold text-xs uppercase tracking-wider rounded-xl hover:bg-slate-50 hover:border-slate-400 transition-all shadow-sm"
-                >
-                  Não, Manter
-                </button>
-                <button
-                  onClick={handleCancelOrder}
-                  className="flex-1 px-4 py-3 bg-red-600 text-white font-bold text-xs uppercase tracking-wider rounded-xl hover:bg-red-700 transition-all shadow-sm flex justify-center items-center gap-2"
-                >
-                  ❌ Sim, Cancelar
-                </button>
-              </div>
-            </div>
-          </div>
-        </div>
-      )}
-
-      {/* MODAL EXCLUIR ITEM TEMPORÁRIO */}
-      {deletingTempItem !== null && (
-        <div className="fixed inset-0 bg-black/60 backdrop-blur-sm flex items-center justify-center z-50 p-4">
-          <div className="bg-white rounded-2xl shadow-xl w-full max-w-sm overflow-hidden animate-fade-in-up border border-slate-100">
-            <div className="bg-red-50 p-5 flex flex-col items-center border-b border-red-100">
-              <div className="w-12 h-12 bg-red-100 text-red-600 rounded-full flex items-center justify-center text-2xl mb-3 shadow-sm border border-red-200">
-                🗑️
-              </div>
-              <h3 className="text-md font-black text-red-900 text-center uppercase tracking-tight">
-                Confirmar Exclusão
-              </h3>
-            </div>
-
-            <div className="p-5">
-              <p className="text-sm text-slate-600 text-center mb-4">
-                Tem certeza que deseja excluir?
-              </p>
-
-              <div className="bg-slate-50 border border-slate-200 rounded-xl p-3 mb-5">
-                <div className="text-xs font-black text-slate-800 mb-1">
-                  📦 Ref: {items[tempPedidoItens[deletingTempItem].itemIdx].ref}
-                </div>
-                <div className="text-[10px] text-slate-600 uppercase mb-2 line-clamp-1">
-                  {items[tempPedidoItens[deletingTempItem].itemIdx].modelo}
-                </div>
-                <div className="flex justify-between items-center pt-2 border-t border-slate-200">
-                  <div className="text-[10px] font-bold text-blue-700">
-                    {tempPedidoItens[deletingTempItem].grades.reduce(
-                      (s, g) => s + totPares(g.qtds),
-                      0,
-                    )}{" "}
-                    pares
-                  </div>
-                  <div className="text-[10px] font-bold text-green-700">
-                    {fmtBRL(
-                      tempPedidoItens[deletingTempItem].grades.reduce(
-                        (s, g) => s + totPares(g.qtds),
-                        0,
-                      ) *
-                        (items[tempPedidoItens[deletingTempItem].itemIdx]
-                          .custo *
-                          (1 - (cab.desconto || 0) / 100)),
-                    )}
-                  </div>
-                </div>
-              </div>
-
-              <p className="text-xs text-red-600/80 text-center font-bold mb-5 italic">
-                ⚠️ Esta ação não pode ser desfeita.
-              </p>
-
-              <div className="flex gap-2">
-                <button
-                  onClick={() => setDeletingTempItem(null)}
-                  className="flex-1 px-3 py-2.5 bg-white border border-slate-300 text-slate-700 font-bold text-[10px] uppercase tracking-wider rounded-xl hover:bg-slate-50 hover:border-slate-400 transition-all shadow-sm"
-                >
-                  Não, Cancelar
-                </button>
-                <button
-                  onClick={() => handleRemoveTempItem(deletingTempItem)}
-                  className="flex-1 px-3 py-2.5 bg-red-600 text-white font-bold text-[10px] uppercase tracking-wider rounded-xl hover:bg-red-700 transition-all shadow-sm flex justify-center items-center gap-1"
-                >
-                  ❌ Sim, Excluir
-                </button>
-              </div>
-            </div>
-          </div>
-        </div>
-      )}
-
-      {/* MODAL COTA INSUFICIENTE */}
-      {quotaModal && (
-        <div className="fixed inset-0 bg-black/60 backdrop-blur-sm flex items-center justify-center z-50 p-4">
-          <div className="bg-white rounded-2xl shadow-xl w-full max-w-sm overflow-hidden border border-slate-100">
-            <div className="bg-red-50 p-5 flex flex-col items-center border-b border-red-100">
-              <div className="text-3xl mb-2">🚫</div>
-              <h3 className="text-base font-black text-red-900 uppercase">Cota Insuficiente</h3>
-              <div className="text-xs text-red-700 mt-1">
-                {quotaModal.lojasFaltando.length} loja(s) sem cota suficiente
-              </div>
-            </div>
-            <div className="p-5">
-              <div className="bg-slate-50 rounded-lg p-3 border border-slate-200 mb-4 max-h-32 overflow-y-auto">
-                {quotaModal.lojasFaltando.map((r) => (
-                  <div key={r.loja} className="flex justify-between text-xs py-0.5">
-                    <span className="text-slate-600">Loja {r.loja}</span>
-                    <span className="text-red-600 font-bold">Falta {fmtBRL(r.falta)}</span>
-                  </div>
-                ))}
-              </div>
-              <QuotaJustificativaForm
-                onCancel={() => setQuotaModal(null)}
-                onConfirm={(motivo) => quotaModal.onConfirm(motivo)}
-              />
-            </div>
-          </div>
-        </div>
-      )}
     </div>
   );
 }
