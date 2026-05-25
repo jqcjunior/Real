@@ -879,13 +879,27 @@ export default function StepPedidos({
           </div>
           <div className="flex gap-2">
             {tempPedidoItens.length > 0 && (
-              <button
-                onClick={() => setShowCancelOrderModal(true)}
-                className="px-3 py-1.5 bg-red-600/20 hover:bg-red-600/40 border border-red-500/30 rounded-lg text-[10px] font-black uppercase tracking-wider transition-all flex items-center gap-2"
-              >
-                <Trash2 size={12} />
-                Limpar Rascunho
-              </button>
+              <>
+                <button
+                  onClick={() => setShowCancelOrderModal(true)}
+                  className="px-3 py-1.5 bg-red-600/20 hover:bg-red-600/40 border border-red-500/30 rounded-lg text-[10px] font-black uppercase tracking-wider transition-all flex items-center gap-2"
+                >
+                  <Trash2 size={12} />
+                  Limpar Rascunho
+                </button>
+                <button
+                  onClick={criarPedido}
+                  className="px-3 py-1.5 bg-white/10 hover:bg-white/20 border border-white/20 rounded-lg text-[10px] font-black uppercase tracking-wider transition-all flex items-center gap-2 active:scale-95"
+                >
+                  <span className="w-4 h-4 bg-green-400 rounded-full flex items-center justify-center shrink-0 shadow-md shadow-green-900/30">
+                    <span className="text-white text-[9px] font-black leading-none">✓</span>
+                  </span>
+                  Concluir Pedido
+                  <span className="bg-white/15 border border-white/20 px-1.5 py-0.5 rounded-full text-[9px] font-bold">
+                    {canViewAllStores ? selectedLojas.length : AVAILABLE_LOJAS.length}L
+                  </span>
+                </button>
+              </>
             )}
           </div>
         </div>
