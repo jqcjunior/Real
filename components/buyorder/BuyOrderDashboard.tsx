@@ -179,7 +179,7 @@ export default function BuyOrderDashboard({ user }: { user: any }) {
 
       const { data: allSubOrders } = await supabase
         .from('buy_order_sub_orders')
-        .select('order_id, lojas_numeros')
+        .select('order_id, lojas_numeros, total_pares, valor_bruto')
         .in('order_id', orderIds);
 
       const itemsByOrder = new Map<string, any[]>();
@@ -296,29 +296,41 @@ export default function BuyOrderDashboard({ user }: { user: any }) {
 
         valorTotal += orderCusto * numLojas;
 
-        // ── brandAgg ──
+        // ── brandAgg: usar sub-orders reais ──
         const bAgg = brandAgg.get(order.marca) || {
           pares: 0, valor: 0,
           pares_por_loja: new Map<number, number>(),
           valor_por_loja: new Map<number, number>(),
         };
-        bAgg.pares += orderPares * numLojas;
-        bAgg.valor += orderCusto * numLojas;
-        todasLojas.forEach((lojaNum: number) => {
-          bAgg.pares_por_loja.set(lojaNum, (bAgg.pares_por_loja.get(lojaNum) || 0) + orderPares);
-          bAgg.valor_por_loja.set(lojaNum, (bAgg.valor_por_loja.get(lojaNum) || 0) + orderCusto);
+        subOrders.forEach((sub: any) => {
+          const lojas: number[] = sub.lojas_numeros || [];
+          const paresPorLoja = Number(sub.total_pares || 0);
+          const valorLiqPorLoja = Number(sub.valor_bruto || 0) * fatorDesconto;
+          lojas.forEach((lojaNum: number) => {
+            bAgg.pares += paresPorLoja;
+            bAgg.valor += valorLiqPorLoja;
+            bAgg.pares_por_loja.set(lojaNum, (bAgg.pares_por_loja.get(lojaNum) || 0) + paresPorLoja);
+            bAgg.valor_por_loja.set(lojaNum, (bAgg.valor_por_loja.get(lojaNum) || 0) + valorLiqPorLoja);
+          });
         });
         brandAgg.set(order.marca, bAgg);
 
-        // ── storeAgg ──
-        todasLojas.forEach((lojaNum: number) => {
-          const loja = String(lojaNum);
-          const sAgg = storeAgg.get(loja) || { pares: 0, unidades: 0, valor: 0, pedidos: new Set<string>() };
-          sAgg.pares    += orderParesCalcados;
-          sAgg.unidades += orderUnidadesAcess;
-          sAgg.valor    += orderCusto;
-          sAgg.pedidos.add(order.id);
-          storeAgg.set(loja, sAgg);
+// ── storeAgg: usar total_pares e valor_bruto reais de cada sub-order ──
+        subOrders.forEach((sub: any) => {
+          const lojas: number[] = sub.lojas_numeros || [];
+          const paresPorLoja = Number(sub.total_pares || 0);
+          const valorBrutoPorLoja = Number(sub.valor_bruto || 0);
+          const valorLiquidoPorLoja = valorBrutoPorLoja * fatorDesconto;
+
+          lojas.forEach((lojaNum: number) => {
+            const loja = String(lojaNum);
+            const sAgg = storeAgg.get(loja) || { pares: 0, unidades: 0, valor: 0, pedidos: new Set<string>() };
+            sAgg.pares    += paresPorLoja;
+            sAgg.unidades += 0; // acessórios não têm sub-order separado por ora
+            sAgg.valor    += valorLiquidoPorLoja;
+            sAgg.pedidos.add(order.id);
+            storeAgg.set(loja, sAgg);
+          });
         });
       }
 
