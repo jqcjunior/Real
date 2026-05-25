@@ -385,6 +385,14 @@ export default function StepPedidos({
 
   const inputRefs = useRef<Record<string, HTMLInputElement | null>>({});
 
+  const [activeInput, setActiveInput] = useState<string | null>(null);
+
+  useEffect(() => {
+    if (activeInput && inputRefs.current[activeInput]) {
+      inputRefs.current[activeInput]?.focus();
+    }
+  }, [gradesGlobais]); // Re-run when gradesGlobais changes in case of remount
+
   function handleGradeKeyDown(
     e: React.KeyboardEvent,
     currentSize: string,
@@ -408,8 +416,12 @@ export default function StepPedidos({
     if (nextIdx >= 0 && nextIdx < allSizes.length) {
       e.preventDefault();
       const nextKey = `${activeLetter}-${allSizes[nextIdx]}`;
-      inputRefs.current[nextKey]?.focus();
-      inputRefs.current[nextKey]?.select();
+      setTimeout(() => {
+        if (inputRefs.current[nextKey]) {
+          inputRefs.current[nextKey]?.focus();
+          inputRefs.current[nextKey]?.select();
+        }
+      }, 10);
     }
   }
 
@@ -809,10 +821,10 @@ export default function StepPedidos({
 
   const gradesComPares = Object.keys(gradesGlobais)
     .sort()
-    .filter((l) => totPares(gradesGlobais[l].qtds) > 0);
+    .filter((l) => totPares(gradesGlobais[l].qtds) > 0 || l === gradeExpandida);
   const gradesVazias = Object.keys(gradesGlobais)
     .sort()
-    .filter((l) => totPares(gradesGlobais[l].qtds) === 0);
+    .filter((l) => totPares(gradesGlobais[l].qtds) === 0 && l !== gradeExpandida);
 
   return (
     <div className="p-4 bg-slate-100 min-h-screen">
@@ -906,18 +918,44 @@ export default function StepPedidos({
                       </div>
 
                       <div className="flex items-center justify-between mt-2 flex-wrap gap-2 relative z-10">
-                        {item.cor1 && (
-                          <div className="flex items-center gap-1 shrink-0">
-                            <div
-                              className="w-3 h-3 rounded-full border border-slate-200 shadow-sm shrink-0"
-                              style={{ backgroundColor: corParaHex(item.cor1) }}
-                            />
-                            <span className="text-[8px] font-bold text-slate-500 uppercase leading-none truncate max-w-[48px]">
-                              {item.cor1}
-                            </span>
-                          </div>
-                        )}
-                        <div className="flex items-center gap-1.5 ml-auto">
+                        <div className="flex items-center gap-1.5 flex-wrap flex-1">
+                          {item.cor1 && (
+                            <div className="flex items-center gap-1 shrink-0">
+                              <div
+                                className="w-2.5 h-2.5 rounded-full border border-slate-200 shadow-sm shrink-0"
+                                style={{ backgroundColor: corParaHex(item.cor1) }}
+                              />
+                              <span className="text-[9px] font-bold text-slate-600 uppercase leading-none">
+                                {item.cor1}
+                              </span>
+                            </div>
+                          )}
+                          {item.cor2 && (
+                            <div className="flex items-center gap-1 shrink-0">
+                              <span className="text-[9px] text-slate-400 font-bold">/</span>
+                              <div
+                                className="w-2.5 h-2.5 rounded-full border border-slate-200 shadow-sm shrink-0"
+                                style={{ backgroundColor: corParaHex(item.cor2) }}
+                              />
+                              <span className="text-[9px] font-bold text-slate-600 uppercase leading-none">
+                                {item.cor2}
+                              </span>
+                            </div>
+                          )}
+                          {item.cor3 && (
+                            <div className="flex items-center gap-1 shrink-0">
+                              <span className="text-[9px] text-slate-400 font-bold">/</span>
+                              <div
+                                className="w-2.5 h-2.5 rounded-full border border-slate-200 shadow-sm shrink-0"
+                                style={{ backgroundColor: corParaHex(item.cor3) }}
+                              />
+                              <span className="text-[9px] font-bold text-slate-600 uppercase leading-none">
+                                {item.cor3}
+                              </span>
+                            </div>
+                          )}
+                        </div>
+                        <div className="flex items-center gap-1.5 shrink-0">
                           <span className="text-[10px] font-black text-green-700 leading-none">
                             {fmtBRL(item.custo * (1 - (cab.desconto || 0) / 100))}
                           </span>
@@ -1086,6 +1124,11 @@ export default function StepPedidos({
                                       value={typeof qtd === 'number' ? (qtd || "") : ""}
                                       onChange={(e) => setGradeQtd(sz, parseInt(e.target.value) || 0)}
                                       onKeyDown={(e) => handleGradeKeyDown(e, sz, sizes, letter)}
+                                      onFocus={() => setActiveInput(`${letter}-${sz}`)}
+                                      onBlur={(e) => {
+                                        // only clear if it's losing focus without moving to another
+                                        if (!e.relatedTarget) setActiveInput(null);
+                                      }}
                                       className={`w-full h-8 text-center text-xs border rounded-lg transition-all outline-none font-black ${
                                         qtd > 0 ? 'bg-blue-600 text-white border-blue-600 shadow-inner' : 'bg-slate-50 border-slate-200 focus:border-blue-400 focus:bg-white'
                                       }`}
@@ -1184,6 +1227,10 @@ export default function StepPedidos({
                         value={typeof qtd === 'number' ? (qtd || "") : ""}
                         onChange={(e) => setGradeQtd(sz, parseInt(e.target.value) || 0)}
                         onKeyDown={(e) => handleGradeKeyDown(e, sz, sizes, letter)}
+                        onFocus={() => setActiveInput(`${letter}-${sz}`)}
+                        onBlur={(e) => {
+                          if (!e.relatedTarget) setActiveInput(null);
+                        }}
                         className={`w-full h-8 text-center text-xs border rounded-lg transition-all outline-none font-black ${
                           qtd > 0 ? 'bg-blue-600 text-white border-blue-600 shadow-inner' : 'bg-slate-50 border-slate-200 focus:border-blue-400 focus:bg-white'
                         }`}
@@ -1318,63 +1365,61 @@ export default function StepPedidos({
 
             {/* RASCUNHO ATUAL */}
             {tempPedidoItens.length > 0 && (
-              <div className="flex flex-col border-b border-slate-200 bg-slate-900 border-x-0 w-full shrink-0">
-                <div className="flex items-center justify-between p-3 border-b border-white/10">
-                  <span className="text-[10px] font-black tracking-widest text-white uppercase flex items-center gap-2">
-                    <span className="w-2 h-2 rounded-full bg-blue-500 animate-pulse"></span>
+              <div className="flex flex-col border-b border-t border-slate-200 bg-slate-50 border-x-0 w-full shrink-0">
+                <div className="flex items-center justify-between p-3 border-b border-slate-200 bg-white">
+                  <span className="text-[10px] font-black tracking-widest text-slate-700 uppercase flex items-center gap-2">
+                    <span className="w-2 h-2 rounded-full bg-blue-500 animate-pulse border border-slate-200"></span>
                     Rascunho Atual
                   </span>
-                  <div className="bg-blue-600 px-2 py-0.5 rounded text-[10px] font-black text-white shadow-lg shadow-blue-600/20">
+                  <div className="bg-blue-600 px-2 py-0.5 rounded text-[10px] font-black text-white shadow-sm">
                     {totaisPedidoTemp.totalParesPorLoja} PARES
                   </div>
                 </div>
-                <div className="p-2 space-y-1">
-                  {tempPedidoItens.map((icg, idx) => (
-                    <div key={idx} className="flex items-center justify-between bg-white/5 p-2 rounded-xl border border-white/5 hover:bg-white/10 transition-colors">
-                      <div className="flex flex-col gap-1">
-                        <div className="flex items-center gap-1.5 flex-wrap">
-                          {items[icg.itemIdx].cor1 && (
-                            <div className="flex items-center gap-1 shrink-0">
-                              <div
-                                className="w-2.5 h-2.5 rounded-full border border-white/20 shrink-0"
-                                style={{ backgroundColor: corParaHex(items[icg.itemIdx].cor1!) }}
-                              />
-                              <span className="text-[9px] font-black text-slate-300 uppercase leading-none truncate max-w-[48px]">
-                                {items[icg.itemIdx].cor1}
-                              </span>
-                            </div>
-                          )}
-                          <span className="text-[10px] font-black text-white uppercase">{items[icg.itemIdx].ref}</span>
+                <div className="p-2 space-y-1 bg-slate-50/50">
+                  {tempPedidoItens.map((icg, idx) => {
+                    const item = items[icg.itemIdx];
+                    const gradeLetters = icg.grades.map(g => g.letter).join('/');
+                    const pairs = icg.grades.reduce((s, g) => s + totPares(g.qtds), 0);
+                    const labelElements = [item.tipo, item.cor1].filter(Boolean).join(' - ');
+                    
+                    return (
+                      <div key={idx} className="flex items-center justify-between bg-white px-3 py-2 rounded-lg border border-slate-200 hover:border-blue-300 transition-colors shadow-sm group">
+                        <div className="flex flex-1 items-center gap-2 overflow-hidden">
+                          <span className="text-[10px] font-black text-slate-400 w-4 text-center shrink-0">#{idx + 1}</span>
+                          <span className="text-[10px] font-black text-slate-800 uppercase shrink-0 truncate max-w-[90px]" title={item.ref}>{item.ref}</span>
+                          <span className="text-[10px] text-slate-300 font-bold">-</span>
+                          <span className="text-[9px] font-bold text-slate-500 uppercase truncate leading-none mt-[1px]" title={labelElements}>
+                            {labelElements}
+                          </span>
+                          <span className="text-[10px] text-slate-300 font-bold">-</span>
+                          <span className="text-[10px] font-black text-blue-600 shrink-0">
+                            GR {gradeLetters}
+                          </span>
                         </div>
-                        <div className="flex gap-1">
-                          {icg.grades.map(g => (
-                            <span key={g.letter} className="text-[8px] font-black text-blue-400">Grade {g.letter}</span>
-                          ))}
-                        </div>
-                      </div>
-                      <div className="flex flex-col items-end gap-1">
-                        <span className="text-[10px] font-black text-white bg-white/10 px-1.5 py-0.5 rounded">
-                          {icg.grades.reduce((s, g) => s + totPares(g.qtds), 0)}p
-                        </span>
-                        <div className="flex items-center gap-1.5 mt-1">
-                          <button
-                            onClick={() => setEditingTempItem(idx)}
-                            className="text-white/40 hover:text-blue-400 transition-colors"
-                            title="Editar grade"
-                          >
-                            <svg xmlns="http://www.w3.org/2000/svg" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M17 3a2.85 2.83 0 1 1 4 4L7.5 20.5 2 22l1.5-5.5Z"/></svg>
-                          </button>
-                          <button
-                            onClick={() => setDeletingTempItem(idx)}
-                            className="text-white/40 hover:text-red-400 transition-colors"
-                            title="Remover item"
-                          >
-                            <Trash2 size={12} />
-                          </button>
+                        <div className="flex items-center gap-3 shrink-0 ml-2">
+                          <span className="text-[10px] font-black text-slate-800 bg-slate-100 px-1.5 py-0.5 rounded border border-slate-200">
+                            {pairs}p
+                          </span>
+                          <div className="flex items-center gap-2 opacity-50 group-hover:opacity-100 transition-opacity">
+                            <button
+                              onClick={() => setEditingTempItem(idx)}
+                              className="text-slate-400 hover:text-blue-500 transition-colors"
+                              title="Editar grade"
+                            >
+                              <svg xmlns="http://www.w3.org/2000/svg" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M17 3a2.85 2.83 0 1 1 4 4L7.5 20.5 2 22l1.5-5.5Z"/></svg>
+                            </button>
+                            <button
+                              onClick={() => setDeletingTempItem(idx)}
+                              className="text-slate-400 hover:text-red-500 transition-colors"
+                              title="Remover item"
+                            >
+                              <Trash2 size={12} />
+                            </button>
+                          </div>
                         </div>
                       </div>
-                    </div>
-                  ))}
+                    );
+                  })}
                 </div>
               </div>
             )}
@@ -1407,13 +1452,6 @@ export default function StepPedidos({
                         <div className="flex flex-col">
                           <div className="flex items-center gap-1.5 flex-wrap">
                             <span className="text-[11px] font-black text-slate-800 uppercase tracking-tighter">Pedido #{ped.num}</span>
-                            <div className="flex items-center gap-1">
-                              {Array.from(new Set(ped.itensComGrades.flatMap(icg => icg.grades.map(g => g.letter)))).sort().map(letra => (
-                                <span key={letra} className="text-[8px] font-black bg-blue-100 text-blue-700 border border-blue-200 px-1 rounded">
-                                  {letra}
-                                </span>
-                              ))}
-                            </div>
                           </div>
                           <span className="text-[8px] font-mono text-slate-400 uppercase tracking-widest">{ped.pedido_numero}</span>
                         </div>
@@ -1444,16 +1482,6 @@ export default function StepPedidos({
                         </div>
                       </div>
 
-                      <div className="flex flex-wrap gap-1 mt-1 relative z-10">
-                        {ped.lojas.slice(0, 15).map(l => (
-                          <span key={l} className="text-[8px] font-black bg-blue-50 text-blue-600 border border-blue-100/50 px-1.5 py-0.5 rounded shadow-sm">
-                            L{l}
-                          </span>
-                        ))}
-                        {ped.lojas.length > 15 && (
-                          <span className="text-[8px] font-black text-slate-400 bg-slate-100 rounded px-2 py-0.5 border border-slate-200">+{ped.lojas.length - 15}</span>
-                        )}
-                      </div>
                     </div>
                   );
                 })}

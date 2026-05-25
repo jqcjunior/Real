@@ -113,7 +113,9 @@ export default function ResumoAnoFiscal({ quotas, storeNumber, onVerPedidos }: R
           buy_order_sub_orders (
             id,
             sub_order_num,
-            lojas_numeros
+            lojas_numeros,
+            total_pares,
+            valor_bruto
           )
         `)
         .gte('fat_inicio', `${ano}-${String(mes).padStart(2, '0')}-01`)
@@ -135,15 +137,46 @@ export default function ResumoAnoFiscal({ quotas, storeNumber, onVerPedidos }: R
       
       // Calcular totais de cada pedido
       const pedidosComTotais = pedidosLoja.map(pedido => {
-        const items = (pedido.buy_order_items as any[]) || [];
         const desconto = pedido.desconto || 0;
 
-        const totalPares = items.reduce((sum: number, item: any) => 
-          sum + (item.total_pares || 0), 0
-        );
-        const totalCustoBruto = items.reduce((sum: number, item: any) => 
-          sum + (item.total_pares || 0) * (item.custo || 0), 0
-        );
+        let totalParesLoja = 0;
+        let totalCustoBrutoLoja = 0;
+        let foundSpecificSubOrderTotals = false;
+
+        if (pedido.buy_order_sub_orders) {
+          pedido.buy_order_sub_orders.forEach((sub: any) => {
+            if (sub.lojas_numeros && sub.lojas_numeros.includes(parseInt(storeNumber))) {
+              const qtdLojasNaSub = sub.lojas_numeros.length;
+              if (sub.total_pares !== undefined && sub.valor_bruto !== undefined && sub.total_pares !== null) {
+                totalParesLoja += Math.round(sub.total_pares / qtdLojasNaSub);
+                totalCustoBrutoLoja += sub.valor_bruto / qtdLojasNaSub;
+                foundSpecificSubOrderTotals = true;
+              }
+            }
+          });
+        }
+
+        if (!foundSpecificSubOrderTotals) {
+          const items = (pedido.buy_order_items as any[]) || [];
+          let todasLojas: number[] = [];
+          if (pedido.buy_order_sub_orders) {
+            todasLojas = pedido.buy_order_sub_orders.flatMap((sub: any) => sub.lojas_numeros || []);
+          }
+          const totalUniqueStores = new Set(todasLojas).size || 1;
+
+          const totalParesRaw = items.reduce((sum: number, item: any) => 
+            sum + (item.total_pares || 0), 0
+          );
+          const totalCustoBrutoRaw = items.reduce((sum: number, item: any) => 
+            sum + (item.total_pares || 0) * (item.custo || 0), 0
+          );
+
+          totalParesLoja = Math.round(totalParesRaw / totalUniqueStores);
+          totalCustoBrutoLoja = totalCustoBrutoRaw / totalUniqueStores;
+        }
+
+        const totalPares = totalParesLoja;
+        const totalCustoBruto = totalCustoBrutoLoja;
         // Aplicar desconto do pedido
         const totalCusto = totalCustoBruto * (1 - desconto / 100);
         

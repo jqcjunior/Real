@@ -49,7 +49,7 @@ BEGIN
     IF v_order_total_value <= 0 THEN RETURN jsonb_build_object('success', true, 'message', 'Valor zero, sem débitos'); END IF;
 
     -- 3. Get vencimentos
-    v_vencimentos := get_vencimentos_as_dates(v_order.vencimentos);
+    v_vencimentos := v_order.vencimentos;
     v_num_parcelas := array_length(v_vencimentos, 1);
     IF v_num_parcelas IS NULL OR v_num_parcelas = 0 THEN
         -- Fallback to default logic if no vencimentos specified

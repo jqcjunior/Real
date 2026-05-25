@@ -767,12 +767,27 @@ export default function BuyOrderModule({ user }: { user?: User }) {
 
       // 5. Insert buy_order_sub_orders
       if (pedidos.length > 0) {
-        const subRows = pedidos.map((ped) => ({
-          order_id: orderId,
-          sub_order_num: ped.num,
-          pedido_numero: ped.pedido_numero || null,
-          lojas_numeros: ped.lojas,
-        }));
+        const subRows = pedidos.map((ped) => {
+          let pedTotalPares = 0;
+          let pedValorBruto = 0;
+          ped.itensComGrades.forEach(icg => {
+            const itemObj = items[icg.itemIdx];
+            icg.grades.forEach(g => {
+              const pares = totPares(g.qtds) * ped.lojas.length;
+              pedTotalPares += pares;
+              pedValorBruto += pares * itemObj.custo;
+            });
+          });
+
+          return {
+            order_id: orderId,
+            sub_order_num: ped.num,
+            pedido_numero: ped.pedido_numero || null,
+            lojas_numeros: ped.lojas,
+            total_pares: pedTotalPares,
+            valor_bruto: pedValorBruto
+          };
+        });
         const { error: sErr } = await supabase
           .from("buy_order_sub_orders")
           .insert(subRows);
@@ -795,9 +810,6 @@ export default function BuyOrderModule({ user }: { user?: User }) {
       await supabase
         .from("buy_orders")
         .update({ 
-          total_valor_bruto: totalBruto,
-          total_valor_liquido: totalLiquido,
-          total_pares: pedidos.reduce((acc, p) => acc + (p.itensComGrades.reduce((sum, i) => sum + i.grades.reduce((s, g) => s + totPares(g.qtds), 0), 0) * p.lojas.length), 0),
           updated_at: new Date().toISOString()
         })
         .eq("id", orderId);
@@ -820,9 +832,7 @@ export default function BuyOrderModule({ user }: { user?: User }) {
         const numLojas = subOrders?.length || 0;
 
         await apiService.updateBuyOrder(orderId, { 
-          status: "confirmado", 
-          confirmed_at: new Date().toISOString(),
-          order_type: numLojas > 1 ? 'multi-store' : 'single-store'
+          status: "confirmado"
         });
 
         // Marcar qualquer cota extra aprovada para este pedido como "usada"
