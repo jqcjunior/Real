@@ -257,6 +257,48 @@ export async function exportBuyOrderToExcel(orderId: string) {
 
         console.log('[Export] Tabela de grades finalizada.');
 
+        // 6. BUSCAR GRADES POR SUB-PEDIDO
+        console.log('[Export] Buscando grades por sub-pedido...');
+
+        const { data: gradesSubOrders } = await supabase
+            .from('buy_order_item_suborder_grades')
+            .select('item_id, grade_letra, sub_order_num')
+            .in('item_id', items.map((i: any) => i.id));
+
+        // Mapa: item_id → Map<sub_order_num, grade_letra>
+        const itemGradeMap = new Map<string, Map<number, string>>();
+        (gradesSubOrders || []).forEach((g: any) => {
+            if (!itemGradeMap.has(g.item_id)) {
+                itemGradeMap.set(g.item_id, new Map());
+            }
+            // Guardar apenas a primeira ocorrência por sub_order_num
+            if (!itemGradeMap.get(g.item_id)!.has(g.sub_order_num)) {
+                itemGradeMap.get(g.item_id)!.set(g.sub_order_num, g.grade_letra);
+            }
+        });
+
+        // Colunas do template por sub-pedido (confirmadas no template xlsx):
+        // sub 1 → pares col23, grade col24, valor col45
+        // sub 2 → pares col26, grade col27, valor col46
+        // sub 3 → pares col29, grade col30, valor col47
+        // sub 4 → pares col32, grade col33, valor col48
+        // sub 5 → pares col35, grade col36, valor col49
+        const SUB_ORDER_COLS: Record<number, { pares: number; grade: number }> = {
+            1: { pares: 23, grade: 24 },
+            2: { pares: 26, grade: 27 },
+            3: { pares: 29, grade: 30 },
+            4: { pares: 32, grade: 33 },
+            5: { pares: 35, grade: 36 },
+        };
+
+        // Mapeamento modelo: INF→INFANTIL, MASC→MASCULINO, FEM→FEMININO, ACES→ACESSÓRIO
+        const MODELO_MAP: Record<string, string> = {
+            'INF': 'INFANTIL',
+            'MASC': 'MASCULINO',
+            'FEM': 'FEMININO',
+            'ACES': 'ACESSÓRIO',
+        };
+
         // 6. PREENCHER ITENS (A partir da linha 36)
         console.log('[Export] Preenchendo itens...');
         const START_ROW = 36;
@@ -265,19 +307,27 @@ export async function exportBuyOrderToExcel(orderId: string) {
             const row = START_ROW + idx;
             if (row > 500) return;
 
-            sheet.cell(`C${row}`).value((item.referencia || '').toUpperCase());
-            sheet.cell(`H${row}`).value((item.tipo || '').toUpperCase());
-            sheet.cell(`R${row}`).value((item.cor1 || '').toUpperCase());
-            sheet.cell(`U${row}`).value((item.modelo || item.tipo_footwear || '').toUpperCase());
-            
-            // Custo e Preço Venda
-            sheet.cell(`AL${row}`).value(Number(item.custo || 0));
-            sheet.cell(`AO${row}`).value(Number(item.preco_venda || 0));
+            // Dados básicos do item
+            const modelo = item.modelo ? (MODELO_MAP[item.modelo.toUpperCase()] || item.modelo.toUpperCase()) : '';
 
-            // Letra da Grade (Coluna X)
-            const grades = item.grades || [];
-            if (Array.isArray(grades) && grades.length > 0) {
-                sheet.cell(`X${row}`).value(grades[0].letra || '');
+            sheet.row(row).cell(3).value((item.referencia || '').toUpperCase());   // col3 = REFERÊNCIA
+            sheet.row(row).cell(8).value((item.tipo || '').toUpperCase());          // col8 = TIPO
+            sheet.row(row).cell(18).value((item.cor1 || '').toUpperCase());         // col18 = COR 1
+            sheet.row(row).cell(19).value((item.cor2 || '').toUpperCase());         // col19 = COR 2
+            sheet.row(row).cell(20).value((item.cor3 || '').toUpperCase());         // col20 = COR 3
+            sheet.row(row).cell(21).value(modelo);                                  // col21 = MODELO
+            sheet.row(row).cell(38).value(Number(item.custo || 0));                 // col38 = CUSTO
+            sheet.row(row).cell(41).value(Number(item.preco_venda || 0));           // col41 = VENDA
+
+            // Preencher pares e grade por sub-pedido
+            const gradesPorSub = itemGradeMap.get(item.id);
+            if (gradesPorSub) {
+                gradesPorSub.forEach((gradLetra, subNum) => {
+                    const cols = SUB_ORDER_COLS[subNum];
+                    if (!cols) return;
+                    sheet.row(row).cell(cols.pares).value(Number(item.total_pares || 0));
+                    sheet.row(row).cell(cols.grade).value(gradLetra);
+                });
             }
         });
 
