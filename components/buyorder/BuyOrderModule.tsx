@@ -290,6 +290,15 @@ function totPares(qtds: Record<string, number>): number {
 
 export default function BuyOrderModule({ user }: { user?: User }) {
   const [step, setStep] = useState(0);
+  const [isMobile, setIsMobile] = useState(
+    typeof window !== 'undefined' ? window.innerWidth < 768 : false
+  );
+
+  useEffect(() => {
+    const handler = () => setIsMobile(window.innerWidth < 768);
+    window.addEventListener('resize', handler);
+    return () => window.removeEventListener('resize', handler);
+  }, []);
   const [cab, setCab] = useState<Cabecalho>({
     role: "comprador",
     brand_id: null,
@@ -1287,6 +1296,7 @@ export default function BuyOrderModule({ user }: { user?: User }) {
             numeroPedidoSalvo={numeroPedidoSalvo}
             setNumeroPedidoSalvo={setNumeroPedidoSalvo}
             roundBase={roundBase}
+            isMobile={isMobile}
           />
         )}
         {step === 1 && (
@@ -1296,6 +1306,7 @@ export default function BuyOrderModule({ user }: { user?: User }) {
             cab={cab}
             roundBase={roundBase}
             selectedLojas={step2State.selectedLojas}
+            isMobile={isMobile}
           />
         )}
         {step === 2 && (
@@ -1570,6 +1581,88 @@ export default function BuyOrderModule({ user }: { user?: User }) {
 
         {/* Tabela */}
         <div style={{ overflowX: "auto" }}>
+          {isMobile ? (
+            <div className="space-y-2 p-3">
+              {recentOrders.length === 0 && (
+                  <div className="p-4 text-center text-slate-400 text-sm">
+                    {searchTerm
+                      ? "Nenhum pedido encontrado com esse filtro."
+                      : "Nenhum pedido encontrado."}
+                  </div>
+              )}
+              {recentOrders.map((order) => {
+                const subOrders = order.buy_order_sub_orders || [];
+                const todasLojas = subOrders.flatMap(
+                  (sub: any) => sub.lojas_numeros || []
+                ) as number[];
+                const lojasUnicas = [...new Set(todasLojas)].sort((a, b) => a - b);
+                const status = order.status || (order.exported_at ? "exportado" : "confirmado");
+
+                return (
+                  <div key={order.id} className="bg-white border border-slate-200 rounded-xl p-3 shadow-sm">
+                    <div className="flex items-center justify-between mb-2">
+                      <div className="flex flex-col">
+                        <span className="text-[12px] font-black text-slate-800 uppercase leading-none">{order.marca}</span>
+                        <span className="text-[10px] text-slate-500 font-bold mt-1">Pedido #{order.numero_pedido}</span>
+                      </div>
+                      <span className={`text-[9px] font-black px-2 py-1 rounded-lg uppercase tracking-widest border ${
+                        status === 'confirmado' ? 'bg-green-50 text-green-700 border-green-200' :
+                        status === 'exportado' ? 'bg-blue-50 text-blue-700 border-blue-200' :
+                        status === 'rascunho' ? 'bg-slate-50 text-slate-500 border-slate-200' :
+                        'bg-amber-50 text-amber-700 border-amber-200'
+                      }`}>
+                        {status}
+                      </span>
+                    </div>
+                    {/* Lojas em badges */}
+                    <div className="flex flex-wrap gap-1 mb-3">
+                      {lojasUnicas.slice(0, 9).map((l: number) => (
+                        <span key={l} className="text-[8px] font-black bg-blue-50 text-blue-600 border border-blue-100 px-1.5 py-0.5 rounded">
+                          L{l}
+                        </span>
+                      ))}
+                      {lojasUnicas.length > 9 && (
+                        <span className="text-[8px] font-black bg-blue-50 text-blue-600 border border-blue-100 px-1.5 py-0.5 rounded">
+                          +{lojasUnicas.length - 9}
+                        </span>
+                      )}
+                    </div>
+                    {/* Botões de ação em linha */}
+                    <div className="flex gap-2 border-t border-slate-100 pt-3">
+                      <button 
+                        onClick={() => handleExportExcel(order.id)}
+                        disabled={exportando === order.id}
+                        className="flex-1 py-2 bg-[#185FA5] text-white rounded-lg text-[10px] font-black uppercase tracking-wider flex items-center justify-center gap-1 opacity-90 hover:opacity-100 transition-opacity disabled:opacity-50"
+                      >
+                        <Download size={12} /> {exportando === order.id ? 'Exportando...' : 'Exportar'}
+                      </button>
+                      {canEditOrder(order) && (status === 'rascunho' || isAdmin) && (
+                        <button
+                          onClick={() => {
+                            setStep(0);
+                            handleEditOrder(order.id);
+                          }}
+                          disabled={exportando === order.id}
+                          className="flex-none w-10 h-10 border border-slate-200 text-[#185FA5] bg-slate-50 hover:bg-slate-100 rounded-lg flex items-center justify-center transition-colors disabled:opacity-50"
+                        >
+                          <Pencil size={14} />
+                        </button>
+                      )}
+                      {canCancelOrder(order) && (
+                        <button
+                          onClick={() => setDeletingOrder({ id: order.id, numero_pedido: order.numero_pedido })}
+                          disabled={exportando === order.id}
+                          className="flex-none w-10 h-10 border border-red-200 text-red-600 bg-red-50 hover:bg-red-100 rounded-lg flex items-center justify-center transition-colors disabled:opacity-50"
+                        >
+                          <X size={14} />
+                        </button>
+                      )}
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          ) : (
           <table
             style={{ width: "100%", borderCollapse: "collapse", fontSize: 11 }}
           >
@@ -1979,6 +2072,7 @@ export default function BuyOrderModule({ user }: { user?: User }) {
               })}
             </tbody>
           </table>
+          )}
         </div>
 
         {/* Botão Ver Mais */}
@@ -2192,6 +2286,7 @@ function StepCabecalho({
   numeroPedidoSalvo,
   setNumeroPedidoSalvo,
   roundBase,
+  isMobile,
 }: {
   cab: Cabecalho;
   setCab: Dispatch<SetStateAction<Cabecalho>>;
@@ -2200,6 +2295,7 @@ function StepCabecalho({
   numeroPedidoSalvo: number | null;
   setNumeroPedidoSalvo: (n: number | null) => void;
   roundBase: number;
+  isMobile?: boolean;
 }) {
   const { fetchAndFillBrand, isLoading } = useBrandAutocomplete();
   const [brands, setBrands] = useState<Brand[]>([]);
@@ -2340,7 +2436,7 @@ function StepCabecalho({
         📦 Dados do Fornecedor
       </div>
       <div className="p-4 md:p-6 border-b border-slate-200 space-y-5">
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
           <div className="relative">
             <label style={labelStyle}>Marca *</label>
             <input
@@ -2392,7 +2488,7 @@ function StepCabecalho({
           </div>
         </div>
 
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-5">
+        <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
           <div className="relative">
             <label style={labelStyle}>Representante *</label>
             <input
@@ -2445,7 +2541,7 @@ function StepCabecalho({
         📅 Faturamento
       </div>
       <div className="p-4 md:p-6 border-b border-slate-200">
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-5 mb-5">
+        <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 mb-5">
           <div>
             <label style={labelStyle}>Data Inicial *</label>
             <input
@@ -2512,7 +2608,7 @@ function StepCabecalho({
       </div>
       <div className="p-4 md:p-6 border-b border-slate-200">
         <div className="grid grid-cols-1 md:grid-cols-2 gap-6 items-start">
-          <div className="grid grid-cols-2 gap-4">
+          <div className="grid grid-cols-2 gap-3">
             <div className="w-full">
               <label style={labelStyle} className="text-left w-full block">
                 Markup (%) *
@@ -2634,12 +2730,14 @@ function StepItens({
   cab,
   roundBase,
   selectedLojas,
+  isMobile,
 }: {
   items: OrderItem[];
   setItems: Dispatch<SetStateAction<OrderItem[]>>;
   cab: Cabecalho;
   roundBase: number;
   selectedLojas: number[];
+  isMobile?: boolean;
 }) {
   const [showPopup, setShowPopup] = useState(false);
   const [editIdx, setEditIdx] = useState(-1);
@@ -2680,7 +2778,6 @@ function StepItens({
     field: "cor1" | "cor2" | "cor3" | null;
   }>({ field: null });
 
-  const [isMobile, setIsMobile] = useState(false);
   const [selectedSuggestionIndex, setSelectedSuggestionIndex] = useState(-1);
 
   const refInputRef = useRef<HTMLInputElement>(null);
@@ -2705,15 +2802,6 @@ function StepItens({
       nextRef.current?.focus();
     }
   }
-
-  useEffect(() => {
-    const checkDevice = () => {
-      setIsMobile(window.innerWidth < 768 || "ontouchstart" in window);
-    };
-    checkDevice();
-    window.addEventListener("resize", checkDevice);
-    return () => window.removeEventListener("resize", checkDevice);
-  }, []);
 
   async function searchTipos(query: string) {
     if (query.length < 3) {
@@ -2892,7 +2980,45 @@ function StepItens({
       </div>
 
       <div className="overflow-auto flex-1">
-        <table className="w-full border-collapse table-fixed">
+        {isMobile ? (
+          <div className="space-y-2 p-3">
+            {items.map((item, idx) => (
+              <div key={idx} className="bg-white border border-slate-200 rounded-xl p-3 shadow-sm">
+                <div className="flex items-center justify-between mb-2">
+                  <span className="text-[10px] font-black text-slate-400 bg-slate-100 rounded px-1">#{idx+1}</span>
+                  <span className="text-[11px] font-black text-slate-800">{item.ref}</span>
+                </div>
+                <div className="text-[10px] text-slate-600 mb-2">{item.tipo}</div>
+                <div className="grid grid-cols-2 gap-2 mb-2">
+                  <div>
+                    <label className="text-[8px] font-black text-slate-400 uppercase block mb-1">Custo</label>
+                    <span className="text-[10px] text-slate-600 font-bold">{fmtBRL(item.custo)}</span>
+                  </div>
+                  <div>
+                    <label className="text-[8px] font-black text-slate-400 uppercase block mb-1">Preço Venda</label>
+                    <span className="text-[11px] text-[#185FA5] font-black">{fmtBRL(item.preco_venda)}</span>
+                  </div>
+                </div>
+                {(item.cor1 || item.cor2 || item.cor3) && (
+                  <div className="flex gap-2 text-[10px] text-slate-500 mb-2">
+                    {item.cor1 && <span>{item.cor1}</span>}
+                    {item.cor2 && <span>/ {item.cor2}</span>}
+                    {item.cor3 && <span>/ {item.cor3}</span>}
+                  </div>
+                )}
+                <div className="flex justify-end gap-3 border-t border-slate-100 pt-2 mt-2">
+                  <button onClick={() => openEdit(idx)} className="text-[#185FA5] flex items-center gap-1 text-[10px] font-bold">
+                    <Pencil size={12}/> Editar
+                  </button>
+                  <button onClick={() => delItem(idx)} className="text-red-500 flex items-center gap-1 text-[10px] font-bold">
+                    <X size={12}/> Excluir
+                  </button>
+                </div>
+              </div>
+            ))}
+          </div>
+        ) : (
+          <table className="w-full border-collapse table-fixed">
           <thead>
             <tr style={{ background: "#f9fafb" }}>
               <th
@@ -3102,6 +3228,7 @@ function StepItens({
             ))}
           </tbody>
         </table>
+        )}
       </div>
 
       {/* Popup item */}

@@ -797,9 +797,9 @@ export default function StepPedidos({
         </div>
 
         {/* ESTRUTURA 3 COLUNAS */}
-        <div className="grid grid-cols-[1.8fr_1fr_1.2fr] h-[calc(100vh-160px)] min-h-[460px]">
+        <div className="grid grid-cols-1 md:grid-cols-[1.8fr_1fr_1.2fr] min-h-[460px]">
           {/* COLUNA 1: ITENS (2 colunas internas) */}
-          <div className="border-r border-slate-100 flex flex-col bg-slate-50/10 overflow-hidden">
+          <div className="border-r border-slate-100 flex flex-col bg-slate-50/10 h-full">
             <div className="p-3 border-b border-slate-100 flex items-center justify-between bg-white shrink-0">
               <div className="flex items-center gap-2">
                 <span className="bg-blue-600 text-white w-5 h-5 rounded-full flex items-center justify-center text-[10px] font-black shadow-sm">1</span>
@@ -848,7 +848,7 @@ export default function StepPedidos({
                         </span>
                         <span className="text-[10px] font-black text-slate-800 truncate flex-1 uppercase tracking-tight">{item.ref}</span>
                         {jaVinculado && (
-                          <div className="w-4 h-4 bg-green-600 text-white rounded-full flex items-center justify-center text-[8px] font-black shadow-md border border-white">✓+GRADE</div>
+                          <div className="w-4 h-4 bg-green-600 text-white rounded-full flex items-center justify-center text-[10px] font-black shadow-md border border-white">✓</div>
                         )}
                       </div>
                       
@@ -856,26 +856,22 @@ export default function StepPedidos({
                         {item.tipo} · {item.modelo}
                       </div>
 
-                      <div className="flex items-center gap-2 mt-2 relative z-10">
+                      <div className="flex items-center justify-between mt-2 flex-wrap gap-2 relative z-10">
                         {item.cor1 && (
-                        <div className="flex items-center gap-1">
                           <div
-                            className="w-3 h-3 rounded-full border-2 border-white shadow-sm shrink-0 ring-1 ring-slate-200"
+                            className="w-3 h-3 rounded-full border border-slate-200 shadow-sm shrink-0"
                             style={{ backgroundColor: corParaHex(item.cor1) }}
+                            title={item.cor1}
                           />
-                          <span className="text-[8px] text-slate-500 font-bold uppercase leading-none">
-                            {item.cor1}
+                        )}
+                        <div className="flex items-center gap-1.5 ml-auto">
+                          <span className="text-[10px] font-black text-green-700 leading-none">
+                            {fmtBRL(item.custo * (1 - (cab.desconto || 0) / 100))}
+                          </span>
+                          <span className="text-[8px] text-slate-400 line-through font-bold leading-none">
+                            {fmtBRL(item.preco_venda)}
                           </span>
                         </div>
-                      )}
-                      <div className="flex items-center gap-1.5 flex-wrap">
-                        <span className="text-[10px] font-black text-green-700 leading-none">
-                          {fmtBRL(item.custo * (1 - (cab.desconto || 0) / 100))}
-                        </span>
-                        <span className="text-[8px] text-slate-400 line-through font-bold leading-none">
-                          {fmtBRL(item.preco_venda)}
-                        </span>
-                      </div>
                       </div>
                     </div>
                   );
@@ -951,11 +947,18 @@ export default function StepPedidos({
                             </div>
                           </div>
 
-                          <span className={`text-[10px] font-black px-1.5 py-0.5 rounded-lg border shrink-0 ${
-                            paresCount > 0 ? 'bg-green-100 text-green-700 border-green-200' : 'bg-slate-100 text-slate-400 border-slate-200'
-                          }`}>
-                            {paresCount}p
-                          </span>
+                          <div className="flex flex-col items-end shrink-0">
+                            <span className={`text-[10px] font-black px-1.5 py-0.5 rounded-lg border ${
+                              paresCount > 0 ? 'bg-green-100 text-green-700 border-green-200' : 'bg-slate-100 text-slate-400 border-slate-200'
+                            }`}>
+                              {paresCount}p
+                            </span>
+                            {selectedLojas.length > 0 && !isExpanded && (
+                              <span className="text-[8px] font-black text-slate-400 mt-1 uppercase">
+                                {selectedLojas.length} {selectedLojas.length === 1 ? 'Loja' : 'Lojas'}
+                              </span>
+                            )}
+                          </div>
                         </div>
 
                         {/* Quando RECOLHIDA: clique no resumo vincula + mostra lojas selecionadas */}
@@ -981,15 +984,6 @@ export default function StepPedidos({
                               {selectedItems.size > 0
                                 ? `${selectedItems.size} iten${selectedItems.size > 1 ? 's' : ''}`
                                 : 'sel. itens'}
-                            </span>
-                          </div>
-                        )}
-
-                        {/* Linha de lojas selecionadas — só quando recolhida */}
-                        {!isExpanded && selectedLojas.length > 0 && (
-                          <div className="px-2 pb-2">
-                            <span className="text-[8px] text-slate-400 font-bold">
-                              {selectedLojas.length} loja{selectedLojas.length > 1 ? 's' : ''} selecionada{selectedLojas.length > 1 ? 's' : ''}
                             </span>
                           </div>
                         )}
@@ -1068,7 +1062,7 @@ export default function StepPedidos({
 
                   {/* Grades Vazias (Layout Grade Compacta) */}
                   {gradesVazias.length > 0 && (
-  <div className="space-y-2">
+  <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
     {gradesVazias.map((letter) => {
       const isExpanded = gradeExpandida === letter;
       const gradeData = gradesGlobais[letter];
@@ -1077,26 +1071,23 @@ export default function StepPedidos({
       const totalPares = totPares(gradeData.qtds);
 
       return (
-        <div key={letter} className={`border rounded-xl bg-white shadow-sm overflow-hidden transition-all duration-300 ${
-          isExpanded ? 'border-blue-400' : 'border-slate-200 opacity-70'
-        }`}>
+        <div key={letter} className="flex flex-col gap-2">
           <div
-            className={`p-2 flex items-center gap-3 cursor-pointer transition-colors ${isExpanded ? 'bg-blue-50/50' : 'hover:bg-slate-50'}`}
             onClick={() => toggleExpand(letter)}
+            className={`p-2 border rounded-xl flex items-center gap-2 cursor-pointer transition-all ${
+              isExpanded ? 'bg-blue-50 border-blue-400 shadow-sm ring-2 ring-blue-500/5' : 'bg-white border-slate-100 hover:border-slate-200'
+            }`}
           >
-            <div className={`w-6 h-6 rounded-lg text-[11px] font-black flex items-center justify-center transition-all ${
-              isExpanded ? 'bg-blue-600 text-white shadow-lg shadow-blue-600/20' : 'bg-slate-100 text-slate-500'
+            <div className={`w-5 h-5 rounded-lg text-[10px] font-black flex items-center justify-center transition-all ${
+              isExpanded ? 'bg-blue-600 text-white shadow-md shadow-blue-600/20' : 'bg-slate-100 text-slate-500'
             }`}>
               {letter}
             </div>
-            <span className="text-[9px] font-black text-slate-400 uppercase tracking-widest flex-1">
-              {isExpanded ? 'Preenchendo...' : 'Vazia — clique para editar'}
-            </span>
-            <span className={`text-[10px] transition-transform duration-300 text-slate-400 ${isExpanded ? 'rotate-90' : ''}`}>▶</span>
+            <span className={`text-[9px] font-black uppercase tracking-widest ${isExpanded ? 'text-blue-700' : 'text-slate-400'}`}>Vazia</span>
           </div>
 
           {isExpanded && (
-            <div className="p-3 pt-1 border-t border-slate-100 bg-white">
+            <div className="bg-white border border-blue-100 rounded-xl p-3 shadow-lg shadow-blue-900/5 ring-1 ring-black/5 animate-in slide-in-from-top-2 absolute left-4 right-4 mt-12 z-10 sm:static sm:mt-0">
               {/* Seletor de categoria */}
               <div className="flex items-center gap-1.5 mb-3 flex-wrap">
                 {catsPermitidas.map((k) => (
@@ -1206,7 +1197,7 @@ export default function StepPedidos({
           </div>
 
           {/* COLUNA 3: LOJAS + PEDIDOS CRIADOS */}
-          <div className="flex flex-col bg-slate-50/30 overflow-hidden relative">
+          <div className="flex flex-col bg-slate-50/30 h-full relative">
             
             {/* CONTROLE DE LOJAS */}
             <div className="flex flex-col border-b border-slate-200 bg-white z-20">
@@ -1285,7 +1276,7 @@ export default function StepPedidos({
             </div>
 
             {/* LISTA DE PEDIDOS FIXADO EMBAIXO */}
-            <div className="flex-1 flex flex-col p-4 overflow-hidden">
+            <div className="flex flex-col p-4">
               <div className="flex items-center justify-between mb-4">
                 <div className="flex items-center gap-2">
                   <div className="w-5 h-5 bg-green-600 text-white rounded-full flex items-center justify-center text-[11px] font-black shadow-lg shadow-green-600/10">4</div>
