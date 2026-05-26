@@ -51,6 +51,11 @@ export const usePermissions = (currentUser: User | null | undefined) => {
 
   const canCancelOrder = (order: any) => {
     if (isAdmin) return true;
+
+    // Se NÃO for ADMIN → só pode excluir rascunho e stand_by, e apenas os seus próprios pedidos
+    const statusValido = ['rascunho', 'stand_by', null, undefined, ''].includes(order.status || '');
+    if (!statusValido) return false;
+
     if (isManager) return checkManagerOwnership(order);
     return false;
   };

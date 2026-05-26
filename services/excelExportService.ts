@@ -9,7 +9,7 @@ const supabase = createClient(supabaseUrl || 'https://placeholder.supabase.co', 
 
 function buildExportFilename(
   numeroPedido: number,
-  fornecedor: string,
+  marca: string,
   exportCount: number
 ): string {
   const now = new Date();
@@ -18,12 +18,12 @@ function buildExportFilename(
   const dd = String(now.getDate()).padStart(2, '0');
   const dateStr = `${yy}${mm}${dd}`;
 
-  const slug = fornecedor
+  const slug = marca
     .toLowerCase()
     .normalize('NFD')
     .replace(/[\u0300-\u036f]/g, '')
-    .split(' ')[0]
-    .replace(/[^a-z0-9]/g, '');
+    .replace(/\s+/g, '_')
+    .replace(/[^a-z0-9_]/g, '');
 
   return `Ped_${numeroPedido}_${slug}_${dateStr}-${exportCount}`;
 }
@@ -63,7 +63,7 @@ export async function exportBuyOrderToExcel(orderId: string) {
             .from('buy_orders')
             .update({ export_count: (order.export_count || 0) + 1 })
             .eq('id', orderId)
-            .select('export_count, numero_pedido, fornecedor')
+            .select('export_count, numero_pedido, marca')
             .single();
 
         if (exportError || !exportInfo) {
@@ -73,7 +73,7 @@ export async function exportBuyOrderToExcel(orderId: string) {
 
         const exportFilename = buildExportFilename(
             exportInfo.numero_pedido,
-            exportInfo.fornecedor,
+            exportInfo.marca,
             exportInfo.export_count
         );
 
