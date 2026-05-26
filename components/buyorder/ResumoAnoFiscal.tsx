@@ -146,10 +146,9 @@ export default function ResumoAnoFiscal({ quotas, storeNumber, onVerPedidos }: R
         if (pedido.buy_order_sub_orders) {
           pedido.buy_order_sub_orders.forEach((sub: any) => {
             if (sub.lojas_numeros && sub.lojas_numeros.includes(parseInt(storeNumber))) {
-              const qtdLojasNaSub = sub.lojas_numeros.length;
               if (sub.total_pares !== undefined && sub.valor_bruto !== undefined && sub.total_pares !== null) {
-                totalParesLoja += Math.round(sub.total_pares / qtdLojasNaSub);
-                totalCustoBrutoLoja += sub.valor_bruto / qtdLojasNaSub;
+                totalParesLoja += Number(sub.total_pares || 0);
+                totalCustoBrutoLoja += Number(sub.valor_bruto || 0);
                 foundSpecificSubOrderTotals = true;
               }
             }
