@@ -226,6 +226,13 @@ export default function BuyOrderDashboard({ user }: { user: any }) {
         }>;
       }>();
 
+      const isAcessorio = (item: any): boolean => {
+        const modelo = (item.modelo || '').toUpperCase().trim();
+        const tipo   = (item.tipo   || '').toUpperCase().trim();
+        return modelo === 'ACES'      || modelo === 'ACESSÓRIO' || modelo === 'ACESSORIO'
+            || tipo   === 'ACES'      || tipo   === 'ACESSÓRIO' || tipo   === 'ACESSORIO';
+      };
+
       for (const order of (orders || [])) {
         const subOrders = subsByOrder.get(order.id) || [];
         const items     = itemsByOrder.get(order.id) || [];
@@ -256,10 +263,10 @@ export default function BuyOrderDashboard({ user }: { user: any }) {
           const v = Number(item.custo || 0) * p * fatorDesconto;
 
           let dept = (item.modelo || 'OUTROS').toUpperCase();
-          if (dept === 'FEM')  dept = 'FEMININO';
-          if (dept === 'MASC') dept = 'MASCULINO';
-          if (dept === 'INF')  dept = 'INFANTIL';
-          if (dept === 'ACES') dept = 'ACESSÓRIO';
+          if (isAcessorio(item))    dept = 'ACESSÓRIO';
+          else if (dept === 'FEM')  dept = 'FEMININO';
+          else if (dept === 'MASC') dept = 'MASCULINO';
+          else if (dept === 'INF')  dept = 'INFANTIL';
 
           const itemSubOrderNums: number[] = (item.buy_order_item_suborder_grades || [])
             .map((g: any) => Number(g.sub_order_num))
@@ -277,7 +284,7 @@ export default function BuyOrderDashboard({ user }: { user: any }) {
           if (itemNumLojas === 0) continue;
 
           // ✅ TOTAL GLOBAL: p é por loja → multiplicar por itemNumLojas (real)
-          if (dept === 'ACESSÓRIO') {
+          if (isAcessorio(item)) {
             totalUnidades      += p * itemNumLojas;
           } else {
             totalPares         += p * itemNumLojas;
@@ -359,8 +366,7 @@ export default function BuyOrderDashboard({ user }: { user: any }) {
 
           itemsDesteS.forEach((item: any) => {
             const p = Number(item.total_pares || 0);
-            const modelo = (item.modelo || '').toUpperCase();
-            if (modelo === 'ACES' || modelo === 'ACESSÓRIO') {
+            if (isAcessorio(item)) {
               unidadesSub += p;
             } else {
               paresSub += p;
