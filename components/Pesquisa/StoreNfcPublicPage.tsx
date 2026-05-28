@@ -1,7 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { supabase } from '../../services/supabaseClient';
 import { MessageCircle, ExternalLink, MessageSquare, PhoneCall, Loader2, QrCode } from 'lucide-react';
-import { BRAND_LOGO } from '../../constants';
 
 interface StoreNfcPublicPageProps {
   storeNumber: string;
@@ -226,6 +225,22 @@ const StoreNfcPublicPage: React.FC<StoreNfcPublicPageProps> = ({ storeNumber }) 
                 <div style={{ ...cardDescStyle, color: 'rgba(255,255,255,0.8)' }}>Deixe sua opinião sobre a loja</div>
               </div>
             </button>
+          </>
+        )}
+
+        {/* Avaliação Google */}
+        {nfcPage.google_review_url && (
+          <>
+            <div style={sectionLabelStyle}>Avalie nossa loja</div>
+            <a href={nfcPage.google_review_url} target="_blank" rel="noopener noreferrer" style={actionCardStyle}>
+              <div style={{ ...iconWrapStyle, background: '#FEF3C7' }}>
+                <span style={{ fontSize: '22px' }}>⭐</span>
+              </div>
+              <div style={{ flex: 1 }}>
+                <div style={cardTitleStyle}>Avaliar no Google</div>
+                <div style={cardDescStyle}>Deixe sua opinião e ajude outros clientes</div>
+              </div>
+            </a>
           </>
         )}
 

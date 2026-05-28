@@ -35,7 +35,8 @@ const NfcPagesManager: React.FC<NfcPagesManagerProps> = ({ stores, onBack }) => 
     show_whatsapp_store: true,
     show_whatsapp_manager: true,
     show_whatsapp_central: true,
-    show_whatsapp_beneficios: false
+    show_whatsapp_beneficios: false,
+    google_review_url: ''
   });
 
   useEffect(() => {
@@ -87,7 +88,8 @@ const NfcPagesManager: React.FC<NfcPagesManagerProps> = ({ stores, onBack }) => 
         show_whatsapp_store: existingPage.show_whatsapp_store ?? true,
         show_whatsapp_manager: existingPage.show_whatsapp_manager ?? true,
         show_whatsapp_central: existingPage.show_whatsapp_central ?? true,
-        show_whatsapp_beneficios: existingPage.show_whatsapp_beneficios ?? false
+        show_whatsapp_beneficios: existingPage.show_whatsapp_beneficios ?? false,
+        google_review_url: existingPage.google_review_url || ''
       });
     } else {
       setEditingPage(null);
@@ -108,7 +110,8 @@ const NfcPagesManager: React.FC<NfcPagesManagerProps> = ({ stores, onBack }) => 
         show_whatsapp_store: true,
         show_whatsapp_manager: true,
         show_whatsapp_central: true,
-        show_whatsapp_beneficios: false
+        show_whatsapp_beneficios: false,
+        google_review_url: ''
       });
     }
   };
@@ -453,6 +456,22 @@ const NfcPagesManager: React.FC<NfcPagesManagerProps> = ({ stores, onBack }) => 
                     placeholder="Ex: 5575999999999"
                     value={formData.whatsapp_beneficios}
                     onChange={(e) => setFormData({...formData, whatsapp_beneficios: e.target.value})}
+                    className="w-full px-4 py-3 bg-white dark:bg-slate-800 rounded-xl text-sm font-bold text-slate-900 dark:text-white outline-none focus:ring-2 focus:ring-blue-500 border border-slate-200 dark:border-slate-700 placeholder:text-slate-400"
+                  />
+                </div>
+
+                {/* Google Reviews */}
+                <div style={{ background: '#F8F9FA', borderRadius: '16px', padding: '16px 20px', marginBottom: '12px' }}>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '10px' }}>
+                    <label style={{ fontSize: '11px', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '1.5px', color: '#6B7280' }}>
+                      LINK AVALIAÇÃO GOOGLE
+                    </label>
+                  </div>
+                  <input
+                    type="url"
+                    placeholder="https://g.page/r/..."
+                    value={formData.google_review_url}
+                    onChange={(e) => setFormData({...formData, google_review_url: e.target.value})}
                     className="w-full px-4 py-3 bg-white dark:bg-slate-800 rounded-xl text-sm font-bold text-slate-900 dark:text-white outline-none focus:ring-2 focus:ring-blue-500 border border-slate-200 dark:border-slate-700 placeholder:text-slate-400"
                   />
                 </div>
