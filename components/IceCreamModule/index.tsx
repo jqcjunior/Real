@@ -118,17 +118,22 @@ const IceCreamModule: React.FC<IceCreamModuleProps> = ({
         };
     }, [activeTab, fetchData]);
     // ═══════════════════════════════════════════════════════════════
-    const [effectiveStoreId, setEffectiveStoreId] = useState('');
+    const LOJA_26_ID = '0eef2f53-4732-4824-84a5-2092234efaef';
+
+    const [effectiveStoreId, setEffectiveStoreId] = useState(() => {
+        if (user?.storeId) return user.storeId;
+        const loja26 = stores.find(s => s.id === LOJA_26_ID);
+        if (loja26) return loja26.id;
+        if (stores.length > 0) return stores[0].id;
+        return '';
+    });
 
     useEffect(() => {
-        if (effectiveStoreId) return; // já tem loja, não sobrescreve
-        if (user?.role === UserRole.ADMIN) {
-            if (stores.length > 0) setEffectiveStoreId(stores[0].id);
-        } else {
-            if (user?.storeId) setEffectiveStoreId(user.storeId);
-            else if (stores.length > 0) setEffectiveStoreId(stores[0].id);
+        if (!effectiveStoreId && stores.length > 0) {
+            const loja26 = stores.find(s => s.id === LOJA_26_ID);
+            setEffectiveStoreId(loja26 ? loja26.id : stores[0].id);
         }
-    }, [stores, user]);
+    }, [stores]);
     const isAdmin = user?.role === UserRole.ADMIN;
     const canManage = can('MODULE_ICECREAM_MANAGE');
     const isSorvete = user?.role === UserRole.ICE_CREAM;
