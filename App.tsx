@@ -645,7 +645,9 @@ const App: React.FC = () => {
             tmpEnd.setMonth(tmpEnd.getMonth() + 1);
             const sqnEndOfMonth = tmpEnd.toISOString();
 
-            const p_user_id = user?.id || '';
+            const saved = localStorage.getItem('realcalcados_user');
+            const savedUser = saved ? JSON.parse(saved) : null;
+            const p_user_id = savedUser?.id || savedUser?.user_id || user?.id || '';
 
             // 1. ice_cream_sales
             if(p_user_id) await supabase.rpc('set_user_session', { p_user_id });

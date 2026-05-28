@@ -118,7 +118,17 @@ const IceCreamModule: React.FC<IceCreamModuleProps> = ({
         };
     }, [activeTab, fetchData]);
     // ═══════════════════════════════════════════════════════════════
-    const [effectiveStoreId, setEffectiveStoreId] = useState(user?.storeId || (stores.length > 0 ? stores[0].id : ''));
+    const [effectiveStoreId, setEffectiveStoreId] = useState('');
+
+    useEffect(() => {
+        if (effectiveStoreId) return; // já tem loja, não sobrescreve
+        if (user?.role === UserRole.ADMIN) {
+            if (stores.length > 0) setEffectiveStoreId(stores[0].id);
+        } else {
+            if (user?.storeId) setEffectiveStoreId(user.storeId);
+            else if (stores.length > 0) setEffectiveStoreId(stores[0].id);
+        }
+    }, [stores, user]);
     const isAdmin = user?.role === UserRole.ADMIN;
     const canManage = can('MODULE_ICECREAM_MANAGE');
     const isSorvete = user?.role === UserRole.ICE_CREAM;
@@ -198,15 +208,19 @@ const IceCreamModule: React.FC<IceCreamModuleProps> = ({
     
         // Se for HOJE, usamos os dados do App.tsx (props) que já estão em tempo real
         if (displayDate === todayStr) {
-            setExtraSales([]);
-            setExtraHeaders([]);
-            setExtraPayments([]);
-            setExtraSangrias([]);
-            return;
+            if (salesHeaders.length > 0) {
+                setExtraSales([]);
+                setExtraHeaders([]);
+                setExtraPayments([]);
+                setExtraSangrias([]);
+                return;
+            }
+            // Se as props estiverem vazias (salesHeaders.length === 0), não fazemos o return imediato.
+            // Isso permite que o useEffect continue a execução e realize o fetch diretamente no Supabase.
         }
 
         // Se for no mês atual e o usuário for ADMIN ou GERENTE, ele já tem os dados (App.tsx carrega o mês todo)
-        if (selectedMonthStart === loadedMonthStart && (isAdmin || canManage)) {
+        if (selectedMonthStart === loadedMonthStart && (isAdmin || canManage) && effectiveStoreId && effectiveStoreId !== 'all') {
             setExtraSales([]);
             setExtraHeaders([]);
             setExtraPayments([]);
@@ -216,6 +230,15 @@ const IceCreamModule: React.FC<IceCreamModuleProps> = ({
     
         // Fora desses casos, buscamos o dia específico no Supabase
         const fetchDayData = async () => {
+            // Se effectiveStoreId for 'all' ou inválido, não faz fetch local
+            if (!effectiveStoreId || effectiveStoreId === 'all') {
+                setExtraSales([]);
+                setExtraHeaders([]);
+                setExtraPayments([]);
+                setExtraSangrias([]);
+                setIsDRELoading(false);
+                return;
+            }
 
             setIsDRELoading(true);
             try {
@@ -1134,6 +1157,7 @@ const IceCreamModule: React.FC<IceCreamModuleProps> = ({
                                     onChange={e => setEffectiveStoreId(e.target.value)}
                                     className="bg-slate-100 border-none rounded-xl px-3 py-2 text-[9px] font-black uppercase text-slate-600 outline-none cursor-pointer"
                                 >
+                                    <option value="all">TODAS AS LOJAS</option>
                                     {stores.map(s => <option key={s.id} value={s.id}>{s.name}</option>)}
                                 </select>
                             ) : (
