@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { supabase } from '../../services/supabaseClient';
-import { MessageCircle, ExternalLink, MessageSquare, PhoneCall, Loader2, QrCode, Instagram, Star, Award, ShieldCheck, CreditCard, ChevronRight, CheckCircle2, MapPin, Check } from 'lucide-react';
+import { MessageCircle, ExternalLink, MessageSquare, PhoneCall, Loader2, QrCode, Instagram, Facebook, Star, Award, ShieldCheck, CreditCard, ChevronRight, CheckCircle2, MapPin, Check } from 'lucide-react';
 
 interface StoreNfcPublicPageProps {
   storeNumber: string;
@@ -82,7 +82,7 @@ const StoreNfcPublicPage: React.FC<StoreNfcPublicPageProps> = ({ storeNumber }) 
   const footerStyle: React.CSSProperties = { padding: '32px 20px', display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '12px', marginTop: '24px' };
 
   return (
-    <div style={{fontFamily:"'Inter',sans-serif",maxWidth:'430px',margin:'0 auto',background:'#F5F5F5',minHeight:'100vh',position:'relative'}}>
+    <div style={{fontFamily:"'Inter',sans-serif",maxWidth:'480px',margin:'0 auto',background:'#F7F7F7',minHeight:'100vh',position:'relative'}}>
       <style>{`
         @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800;900&display=swap');
         *{box-sizing:border-box;margin:0;padding:0}
@@ -108,7 +108,7 @@ const StoreNfcPublicPage: React.FC<StoreNfcPublicPageProps> = ({ storeNumber }) 
           style={{position:'absolute',top:0,left:0,width:'100%',height:'100%',objectFit:'cover',opacity:0.5,display:'block'}}
           onError={(e:any)=>{e.target.style.display='none'}}
         />
-        <div style={{position:'absolute',inset:0,background:'linear-gradient(180deg, rgba(80,0,10,0.5) 0%, rgba(140,10,30,0.85) 60%, rgba(180,10,30,1) 100%)'}}/>
+        <div style={{position:'absolute',inset:0,background:'linear-gradient(180deg, rgba(200,16,46,0.55) 0%, rgba(0,0,0,0.60) 100%)'}}/>
         <div style={{position:'relative',display:'flex',flexDirection:'column',alignItems:'center',justifyContent:'center',gap:'12px',padding:'48px 24px 24px'}}>
           <img
             src="https://rwwomakjhmglgoowbmsl.supabase.co/storage/v1/object/public/Fotos/logo-real.webp"
@@ -117,12 +117,12 @@ const StoreNfcPublicPage: React.FC<StoreNfcPublicPageProps> = ({ storeNumber }) 
           />
           <h1 style={{fontSize:'28px',fontWeight:900,color:'white',letterSpacing:'-0.5px',textAlign:'center',margin:0}}>Real Calçados</h1>
           
-          <div style={{display:'flex',alignItems:'center',gap:'8px',background:'rgba(0,0,0,0.4)',border:'1px solid rgba(255,255,255,0.1)',borderRadius:'20px',padding:'6px 16px',marginTop:'4px'}}>
-            <CheckCircle2 color="#FF3B30" size={16} fill="white" />
+          <div style={{display:'flex',alignItems:'center',gap:'8px',background:'#C8102E',border:'1px solid rgba(255,255,255,0.1)',borderRadius:'20px',padding:'6px 16px',marginTop:'4px',boxShadow:'0 4px 15px rgba(200,16,46,0.5)'}}>
+            <CheckCircle2 color="white" size={16} fill="transparent" strokeWidth={3} />
             <span style={{fontSize:'12px',fontWeight:800,color:'white',letterSpacing:'1px',textTransform:'uppercase'}}>Loja Oficial</span>
           </div>
           
-          <div style={{display:'flex',alignItems:'center',gap:'6px',background:'rgba(0,0,0,0.5)',borderRadius:'20px',padding:'6px 16px',marginTop:'4px'}}>
+          <div style={{display:'flex',alignItems:'center',gap:'6px',background:'transparent',borderRadius:'20px',padding:'6px 16px',marginTop:'4px'}}>
             <MapPin size={14} color="white" />
             <span style={{fontSize:'12px',fontWeight:600,color:'rgba(255,255,255,0.95)'}}>
               {store.city} • {store.state === 'BA' ? 'Bahia' : store.state === 'PE' ? 'Pernambuco' : store.state}
@@ -141,11 +141,11 @@ const StoreNfcPublicPage: React.FC<StoreNfcPublicPageProps> = ({ storeNumber }) 
           
           <div style={{flex:1, position:'relative', zIndex: 1, display:'flex', flexDirection:'column', justifyContent:'center'}}>
             <p style={{fontSize:'12px',fontWeight:800,color:'white',textTransform:'uppercase',margin:'0 0 2px'}}>Tudo em até</p>
-            <div style={{display:'flex', alignItems:'center', gap:'8px'}}>
-               <span style={{fontSize:'46px',fontWeight:900,color:'white',lineHeight:0.9,letterSpacing:'-2px'}}>10X</span>
+            <div style={{display:'flex', alignItems:'center', gap:'12px', marginTop:'4px', marginBottom:'4px'}}>
+               <span style={{fontSize:'64px',fontWeight:900,color:'white',lineHeight:0.8,letterSpacing:'-3px'}}>10X</span>
                <div style={{display:'flex', flexDirection:'column', justifyContent:'center'}}>
                  <span style={{color:'#FCD34D',fontSize:'18px',fontWeight:900,lineHeight:1}}>SEM</span>
-                 <span style={{color:'#FCD34D',fontSize:'20px',fontWeight:900,lineHeight:1}}>JUROS</span>
+                 <span style={{color:'#FCD34D',fontSize:'22px',fontWeight:900,lineHeight:1}}>JUROS</span>
                </div>
             </div>
             <p style={{fontSize:'10px',color:'rgba(255,255,255,0.9)',fontWeight:500,margin:'4px 0 0'}}>As melhores marcas e condições da região!</p>
@@ -158,11 +158,11 @@ const StoreNfcPublicPage: React.FC<StoreNfcPublicPageProps> = ({ storeNumber }) 
         <div className="f3" style={{display:'grid',gridTemplateColumns:'1fr 1fr',gap:'12px'}}>
           {nfcPage.show_instagram && nfcPage.instagram && (
             <a href={`https://instagram.com/${nfcPage.instagram}`} target="_blank" rel="noopener noreferrer" className="tap" style={{background:'white',borderRadius:'16px',padding:'16px',display:'flex',alignItems:'center',gap:'12px',textDecoration:'none',boxShadow:'0 4px 15px rgba(0,0,0,0.04)'}}>
-              <div style={{width:'46px',height:'46px',borderRadius:'12px',background:'linear-gradient(45deg, #f09433 0%, #e6683c 25%, #dc2743 50%, #cc2366 75%, #bc1888 100%)',display:'flex',alignItems:'center',justifyContent:'center',flexShrink:0}}>
-                 <Instagram color="white" size={24} />
+              <div style={{width:'60px',height:'60px',borderRadius:'12px',background:'linear-gradient(45deg, #f09433 0%, #e6683c 25%, #dc2743 50%, #cc2366 75%, #bc1888 100%)',display:'flex',alignItems:'center',justifyContent:'center',flexShrink:0}}>
+                 <Instagram color="white" size={28} />
               </div>
               <div style={{flex:1}}>
-                <p style={{fontSize:'13px',fontWeight:800,color:'#1A1815',margin:'0 0 2px'}}>Instagram</p>
+                <p style={{fontSize:'18px',fontWeight:800,color:'#1A1815',margin:'0 0 2px'}}>Instagram</p>
                 <p style={{fontSize:'10px',color:'#7A7570',fontWeight:500,margin:0,lineHeight:1.3}}>Siga nosso perfil e fique por dentro!</p>
               </div>
               <ChevronRight size={16} color="#ccc" />
@@ -170,11 +170,11 @@ const StoreNfcPublicPage: React.FC<StoreNfcPublicPageProps> = ({ storeNumber }) 
           )}
           {nfcPage.show_pix && nfcPage.pix_key && (
             <button onClick={()=>setShowPix(!showPix)} className="tap" style={{background:'white',borderRadius:'16px',padding:'16px',display:'flex',alignItems:'center',gap:'12px',border:'none',cursor:'pointer',textAlign:'left',boxShadow:'0 4px 15px rgba(0,0,0,0.04)',width:'100%'}}>
-              <div style={{width:'46px',height:'46px',borderRadius:'12px',background:'#32BCAD',display:'flex',alignItems:'center',justifyContent:'center',flexShrink:0}}>
-                 <QrCode color="white" size={24} />
+              <div style={{width:'60px',height:'60px',borderRadius:'12px',background:'#32BCAD',display:'flex',alignItems:'center',justifyContent:'center',flexShrink:0}}>
+                 <QrCode color="white" size={28} />
               </div>
               <div style={{flex:1}}>
-                <p style={{fontSize:'13px',fontWeight:800,color:'#1A1815',margin:'0 0 2px'}}>Pagar com Pix</p>
+                <p style={{fontSize:'18px',fontWeight:800,color:'#1A1815',margin:'0 0 2px'}}>Pagar com Pix</p>
                 <p style={{fontSize:'10px',color:'#7A7570',fontWeight:500,margin:0,lineHeight:1.3}}>Pagamento rápido, prático e seguro</p>
               </div>
               <ChevronRight size={16} color="#ccc" />
@@ -182,11 +182,11 @@ const StoreNfcPublicPage: React.FC<StoreNfcPublicPageProps> = ({ storeNumber }) 
           )}
           {nfcPage.google_review_url && (
             <a href={nfcPage.google_review_url} target="_blank" rel="noopener noreferrer" className="tap" style={{background:'white',borderRadius:'16px',padding:'16px',display:'flex',alignItems:'center',gap:'12px',textDecoration:'none',boxShadow:'0 4px 15px rgba(0,0,0,0.04)'}}>
-              <div style={{width:'46px',height:'46px',borderRadius:'12px',background:'#FFC107',display:'flex',alignItems:'center',justifyContent:'center',flexShrink:0}}>
-                 <Star color="white" size={24} fill="white" />
+              <div style={{width:'60px',height:'60px',borderRadius:'12px',background:'#FFC107',display:'flex',alignItems:'center',justifyContent:'center',flexShrink:0}}>
+                 <Star color="white" size={28} fill="white" />
               </div>
               <div style={{flex:1}}>
-                <p style={{fontSize:'13px',fontWeight:800,color:'#1A1815',margin:'0 0 2px'}}>Avaliar no Google</p>
+                <p style={{fontSize:'18px',fontWeight:800,color:'#1A1815',margin:'0 0 2px'}}>Avaliar no Google</p>
                 <p style={{fontSize:'10px',color:'#7A7570',fontWeight:500,margin:0,lineHeight:1.3}}>Sua opinião faz toda a diferença!</p>
               </div>
               <ChevronRight size={16} color="#ccc" />
@@ -194,11 +194,11 @@ const StoreNfcPublicPage: React.FC<StoreNfcPublicPageProps> = ({ storeNumber }) 
           )}
           {nfcPage.show_survey && surveyUrl && (
             <button onClick={()=>{window.location.href=surveyUrl}} className="tap" style={{background:'white',borderRadius:'16px',padding:'16px',display:'flex',alignItems:'center',gap:'12px',border:'none',cursor:'pointer',textAlign:'left',boxShadow:'0 4px 15px rgba(0,0,0,0.04)',width:'100%'}}>
-              <div style={{width:'46px',height:'46px',borderRadius:'12px',background:'#1B2A6B',display:'flex',alignItems:'center',justifyContent:'center',flexShrink:0}}>
-                 <MessageSquare color="white" size={24} fill="white" />
+              <div style={{width:'60px',height:'60px',borderRadius:'12px',background:'#1B2A6B',display:'flex',alignItems:'center',justifyContent:'center',flexShrink:0}}>
+                 <MessageSquare color="white" size={28} fill="white" />
               </div>
               <div style={{flex:1}}>
-                <p style={{fontSize:'13px',fontWeight:800,color:'#1A1815',margin:'0 0 2px'}}>Sua Experiência</p>
+                <p style={{fontSize:'18px',fontWeight:800,color:'#1A1815',margin:'0 0 2px'}}>Sua Experiência</p>
                 <p style={{fontSize:'10px',color:'#7A7570',fontWeight:500,margin:0,lineHeight:1.3}}>Conte pra gente como foi sua experiência</p>
               </div>
               <ChevronRight size={16} color="#ccc" />
@@ -224,7 +224,7 @@ const StoreNfcPublicPage: React.FC<StoreNfcPublicPageProps> = ({ storeNumber }) 
           <div style={{display:'flex',flexDirection:'column',alignItems:'center',gap:'8px',textAlign:'center'}}>
             <Award color="#C8102E" size={28} />
             <div>
-              <p style={{fontSize:'11px',fontWeight:800,color:'#1A1815',lineHeight:1.1,marginBottom:'4px'}}>Há mais de 30 anos</p>
+              <p style={{fontSize:'11px',fontWeight:800,color:'#1A1815',lineHeight:1.1,marginBottom:'4px'}}>+30 anos de tradição</p>
               <p style={{fontSize:'9px',color:'#7A7570',fontWeight:500,lineHeight:1.2}}>Calçando famílias baianas</p>
             </div>
           </div>
@@ -246,41 +246,45 @@ const StoreNfcPublicPage: React.FC<StoreNfcPublicPageProps> = ({ storeNumber }) 
 
         {/* ── WHATSAPP ── */}
         {nfcPage.show_whatsapp_store && nfcPage.whatsapp_store && (
-          <div className="f5 whatsapp-pattern" style={{backgroundColor:'#161719',borderRadius:'16px',padding:'16px 20px',display:'flex',alignItems:'center',gap:'16px',boxShadow:'0 8px 20px rgba(0,0,0,0.1)'}}>
-            <div style={{flexShrink:0}}>
-              <MessageCircle color="white" size={40} strokeWidth={1.5} />
+          <div className="f5 whatsapp-pattern" style={{backgroundColor:'#161719',borderRadius:'24px',padding:'24px',display:'flex',flexDirection:'column',gap:'16px',boxShadow:'0 8px 20px rgba(0,0,0,0.1)'}}>
+            <div style={{display:'flex',alignItems:'center',gap:'16px'}}>
+              <div style={{flexShrink:0}}>
+                <MessageCircle color="white" size={48} strokeWidth={1.5} />
+              </div>
+              <div style={{flex:1}}>
+                <p style={{fontSize:'12px',color:'rgba(255,255,255,0.7)',fontWeight:500,margin:'0 0 2px'}}>Dúvidas? Fale conosco!</p>
+                <p style={{fontSize:'18px',fontWeight:800,color:'white',margin:'0 0 2px',letterSpacing:'-0.3px'}}>Atendimento via WhatsApp</p>
+                <p style={{fontSize:'12px',color:'rgba(255,255,255,0.5)',margin:0,lineHeight:1.1}}>Estamos prontos para te atender</p>
+              </div>
             </div>
-            <div style={{flex:1}}>
-              <p style={{fontSize:'10px',color:'rgba(255,255,255,0.7)',fontWeight:500,margin:'0 0 2px'}}>Dúvidas? Fale conosco!</p>
-              <p style={{fontSize:'14px',fontWeight:800,color:'white',margin:'0 0 2px',letterSpacing:'-0.3px'}}>Atendimento via WhatsApp</p>
-              <p style={{fontSize:'10px',color:'rgba(255,255,255,0.5)',margin:0,lineHeight:1.1}}>Estamos prontos para te atender</p>
-            </div>
-            <a href={`https://wa.me/55${nfcPage.whatsapp_store}`} target="_blank" rel="noopener noreferrer" className="tap" style={{background:'#25D366',borderRadius:'10px',padding:'10px 14px',display:'flex',alignItems:'center',justifyContent:'center',gap:'6px',textDecoration:'none',flexShrink:0}}>
-              <MessageCircle color="white" size={16} />
-              <span style={{fontSize:'12px',fontWeight:800,color:'white'}}>FALAR AGORA</span>
-              <ChevronRight color="white" size={14} style={{marginLeft:'-2px'}} />
+            <a href={`https://wa.me/55${nfcPage.whatsapp_store}`} target="_blank" rel="noopener noreferrer" className="tap" style={{background:'#25D366',borderRadius:'16px',padding:'16px',display:'flex',alignItems:'center',justifyContent:'center',gap:'8px',textDecoration:'none',width:'100%',boxShadow:'0 4px 15px rgba(37,211,102,0.4)'}}>
+              <MessageCircle color="white" size={20} />
+              <span style={{fontSize:'16px',fontWeight:900,color:'white',letterSpacing:'0.5px'}}>FALAR AGORA</span>
             </a>
           </div>
         )}
 
         {/* ── REAL BENEFÍCIOS (Opcional, mantido parecido) ── */}
         {nfcPage.show_whatsapp_beneficios && nfcPage.whatsapp_beneficios && (
-          <div className="f6" style={{background:'linear-gradient(135deg,#00A86B,#16A34A)',borderRadius:'16px',padding:'20px',display:'flex',flexDirection:'column',gap:'16px',position:'relative',overflow:'hidden'}}>
-            <div style={{position:'absolute',top:-30,right:-30,width:'100px',height:'100px',background:'rgba(255,255,255,0.07)',borderRadius:'50%'}}/>
+          <div className="f6" style={{background:'linear-gradient(135deg,#00A86B,#16A34A)',borderRadius:'24px',padding:'24px',display:'flex',flexDirection:'column',gap:'16px',position:'relative',overflow:'hidden',boxShadow:'0 8px 20px rgba(0,168,107,0.2)'}}>
+            <div style={{position:'absolute',top:-30,right:-30,width:'120px',height:'120px',background:'rgba(255,255,255,0.07)',borderRadius:'50%'}}/>
             <div>
-              <p style={{fontSize:'20px',fontWeight:900,color:'white',margin:'0 0 4px'}}>Real Benefícios</p>
-              <p style={{fontSize:'12px',color:'rgba(255,255,255,0.8)',fontWeight:500,margin:0}}>Assistência Saúde para você e sua família</p>
+              <div style={{display:'flex',alignItems:'center',gap:'8px',marginBottom:'6px'}}>
+                <span style={{fontSize:'20px'}}>💚</span>
+                <p style={{fontSize:'20px',fontWeight:900,color:'white',margin:0,letterSpacing:'-0.5px'}}>REAL BENEFÍCIOS</p>
+              </div>
+              <p style={{fontSize:'14px',color:'rgba(255,255,255,0.9)',fontWeight:600,margin:0,lineHeight:1.3}}>Assistência Saúde<br/>para você e sua família</p>
             </div>
-            <div style={{display:'flex',flexDirection:'column',gap:'6px'}}>
-              {['Consultas médicas','Exames laboratoriais','Benefícios exclusivos'].map(item=>(
-                <div key={item} style={{display:'flex',alignItems:'center',gap:'8px'}}>
-                  <div style={{width:'18px',height:'18px',background:'rgba(255,255,255,0.25)',borderRadius:'50%',display:'flex',alignItems:'center',justifyContent:'center',fontSize:'10px',flexShrink:0,color:'white',fontWeight:700}}>✓</div>
-                  <span style={{fontSize:'12px',fontWeight:600,color:'white'}}>{item}</span>
+            <div style={{display:'flex',flexDirection:'column',gap:'8px',marginTop:'4px'}}>
+              {['Consultas','Exames','Benefícios Exclusivos'].map(item=>(
+                <div key={item} style={{display:'flex',alignItems:'center',gap:'10px'}}>
+                  <div style={{width:'20px',height:'20px',background:'rgba(255,255,255,0.3)',borderRadius:'50%',display:'flex',alignItems:'center',justifyContent:'center',fontSize:'12px',flexShrink:0,color:'white',fontWeight:800}}>✓</div>
+                  <span style={{fontSize:'14px',fontWeight:700,color:'white'}}>{item}</span>
                 </div>
               ))}
             </div>
-            <a href={`https://wa.me/55${nfcPage.whatsapp_beneficios}`} target="_blank" rel="noopener noreferrer" className="tap" style={{background:'white',borderRadius:'10px',padding:'12px',textAlign:'center',textDecoration:'none',display:'block',marginTop:'4px'}}>
-              <span style={{fontSize:'13px',fontWeight:800,color:'#16A34A'}}>CONHECER BENEFÍCIOS</span>
+            <a href={`https://wa.me/55${nfcPage.whatsapp_beneficios}`} target="_blank" rel="noopener noreferrer" className="tap" style={{background:'white',borderRadius:'16px',padding:'16px',textAlign:'center',textDecoration:'none',display:'block',marginTop:'8px',boxShadow:'0 4px 15px rgba(0,0,0,0.1)'}}>
+              <span style={{fontSize:'15px',fontWeight:900,color:'#16A34A'}}>CONHECER BENEFÍCIOS</span>
             </a>
           </div>
         )}
@@ -288,9 +292,11 @@ const StoreNfcPublicPage: React.FC<StoreNfcPublicPageProps> = ({ storeNumber }) 
         {/* ── FOOTER ── */}
         <div style={{padding:'24px 0 16px',display:'flex',flexDirection:'column',alignItems:'center',gap:'8px'}}>
           <div style={{display:'flex',alignItems:'center',justifyContent:'center',marginBottom:'8px'}}>
-            <div style={{height:'1px',width:'100px',background:'rgba(0,0,0,0.05)'}}></div>
-            <div style={{margin:'0 16px', fontSize:'24px', fontWeight:900, color:'#C8102E', letterSpacing:'-1px'}}>R</div>
-            <div style={{height:'1px',width:'100px',background:'rgba(0,0,0,0.05)'}}></div>
+            <img 
+              src="https://rwwomakjhmglgoowbmsl.supabase.co/storage/v1/object/public/Fotos/logo-real.webp" 
+              alt="Real Calçados" 
+              style={{width:'50px',height:'50px',objectFit:'contain', filter:'brightness(0.2) sepia(1) saturate(100) hue-rotate(330deg)'}}
+            />
           </div>
           <p style={{fontSize:'15px',fontWeight:800,color:'#1A1815',margin:0,letterSpacing:'-0.3px'}}>Real Calçados</p>
           <p style={{fontSize:'12px',color:'#7A7570',margin:0,fontWeight:600}}>Desde 19XX <span style={{color:'#C8102E'}}>❤️</span></p>
@@ -307,7 +313,7 @@ const StoreNfcPublicPage: React.FC<StoreNfcPublicPageProps> = ({ storeNumber }) 
               </a>
             )}
             <a href="#" style={{width:'32px',height:'32px',background:'#1A1815',borderRadius:'50%',display:'flex',alignItems:'center',justifyContent:'center'}}>
-                <svg width="16" height="16" fill="white" viewBox="0 0 24 24"><path d="M9 8h-3v4h3v12h5v-12h3.642l.358-4h-4v-1.667c0-.955.192-1.333 1.115-1.333h2.885v-5h-3.808c-3.596 0-5.192 1.583-5.192 4.615v3.385z"/></svg>
+                <Facebook color="white" size={16} />
             </a>
           </div>
           <p style={{fontSize:'10px',color:'#C0BAB3',marginTop:'8px'}}>© 2026 · Todos os direitos reservados</p>
