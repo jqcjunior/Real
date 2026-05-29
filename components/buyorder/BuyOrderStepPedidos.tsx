@@ -1425,14 +1425,17 @@ export default function StepPedidos({
                           </>
                         ) : (
                           // Layout 1 linha para ref curta
-                          <div className="flex items-center gap-1">
-                            <span className="text-[8px] font-black text-slate-400 shrink-0">#{idx + 1}</span>
-                            <span className="text-[9px] font-black text-slate-800 truncate flex-1">{item.ref}</span>
-                            <span className="text-[8px] font-bold text-blue-600 shrink-0">{gradesLabel}</span>
-                            <span className="text-[8px] font-black text-slate-700 bg-slate-100 rounded px-1 shrink-0">{totalItem}p</span>
-                            <button onClick={() => setEditingTempItem(idx)} className="text-blue-500 hover:text-blue-700 text-[10px] leading-none shrink-0" title="Editar">✏️</button>
-                            <button onClick={() => setDeletingTempItem(idx)} className="text-red-400 hover:text-red-600 text-[10px] leading-none shrink-0" title="Excluir">🗑️</button>
-                          </div>
+                          <>
+                            <div className="flex items-center gap-1">
+                              <span className="text-[8px] font-black text-slate-400 shrink-0">#{idx + 1}</span>
+                              <span className="text-[9px] font-black text-slate-800 truncate flex-1">{item.ref}</span>
+                              <span className="text-[8px] font-bold text-blue-600 shrink-0">{gradesLabel}</span>
+                              <span className="text-[8px] font-black text-slate-700 bg-slate-100 rounded px-1 shrink-0">{totalItem}p</span>
+                              <button onClick={() => setEditingTempItem(idx)} className="text-blue-500 hover:text-blue-700 text-[10px] leading-none shrink-0" title="Editar">✏️</button>
+                              <button onClick={() => setDeletingTempItem(idx)} className="text-red-400 hover:text-red-600 text-[10px] leading-none shrink-0" title="Excluir">🗑️</button>
+                            </div>
+                            <span className="text-[7px] text-slate-400 truncate">{item.tipo}</span>
+                          </>
                         )}
                       </div>
                     );

@@ -536,6 +536,7 @@ export default function BuyOrderModule({ user }: { user?: User }) {
   ) {
     setSaving(true);
     setError("");
+    let numeroPedidoLocal: number | null = null;
     try {
       // ✅ VALIDAÇÃO 1: Verificar se há ITENS
       if (items.length === 0) {
@@ -634,6 +635,7 @@ export default function BuyOrderModule({ user }: { user?: User }) {
       let orderId = editingOrderId;
 
       if (editingOrderId) {
+        numeroPedidoLocal = numeroPedidoSalvo;
         // ✅ USAR FUNÇÃO SEGURA DO APISERVICE
         await apiService.updateBuyOrder(orderId, {
           user_name: user?.name || user?.email || "sistema",
@@ -694,6 +696,7 @@ export default function BuyOrderModule({ user }: { user?: User }) {
         orderId = order.id;
         setEditingOrderId(order.id);
         setNumeroPedidoSalvo(order.numero_pedido);
+        numeroPedidoLocal = order.numero_pedido;
       }
 
       // 4. Insert buy_order_items
@@ -839,7 +842,7 @@ export default function BuyOrderModule({ user }: { user?: User }) {
         // Marcar qualquer cota extra aprovada para este pedido como "usada"
         await supabase.rpc('mark_quota_extra_as_used', { p_order_id: orderId });
 
-        toast.success(`✅ Pedido #${numeroPedidoSalvo} confirmado com sucesso!`);
+        toast.success(`✅ Pedido #${numeroPedidoLocal ?? numeroPedidoSalvo} confirmado com sucesso!`);
         fetchRecentOrders();
         resetStateAndFetch();
       } else if (targetAction === "rascunho_then_standby") {
