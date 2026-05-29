@@ -20,6 +20,8 @@ const NfcPagesManager: React.FC<NfcPagesManagerProps> = ({ stores, onBack }) => 
   const [storeId, setStoreId] = useState('');
   const [formData, setFormData] = useState({
     survey_id: '',
+    payment_url: '',
+    show_payment: false,
     cover_image_url: '',
     instagram: '',
     whatsapp_store: '',
@@ -89,7 +91,9 @@ const NfcPagesManager: React.FC<NfcPagesManagerProps> = ({ stores, onBack }) => 
         show_whatsapp_manager: existingPage.show_whatsapp_manager ?? true,
         show_whatsapp_central: existingPage.show_whatsapp_central ?? true,
         show_whatsapp_beneficios: existingPage.show_whatsapp_beneficios ?? false,
-        google_review_url: existingPage.google_review_url || ''
+        google_review_url: existingPage.google_review_url || '',
+        payment_url: existingPage.payment_url || '',
+        show_payment: existingPage.show_payment ?? false
       });
     } else {
       setEditingPage(null);
@@ -111,7 +115,9 @@ const NfcPagesManager: React.FC<NfcPagesManagerProps> = ({ stores, onBack }) => 
         show_whatsapp_manager: true,
         show_whatsapp_central: true,
         show_whatsapp_beneficios: false,
-        google_review_url: ''
+        google_review_url: '',
+        payment_url: '',
+        show_payment: false
       });
     }
   };
@@ -456,6 +462,27 @@ const NfcPagesManager: React.FC<NfcPagesManagerProps> = ({ stores, onBack }) => 
                     placeholder="Ex: 5575999999999"
                     value={formData.whatsapp_beneficios}
                     onChange={(e) => setFormData({...formData, whatsapp_beneficios: e.target.value})}
+                    className="w-full px-4 py-3 bg-white dark:bg-slate-800 rounded-xl text-sm font-bold text-slate-900 dark:text-white outline-none focus:ring-2 focus:ring-blue-500 border border-slate-200 dark:border-slate-700 placeholder:text-slate-400"
+                  />
+                </div>
+
+                {/* Link Pagamento Online */}
+                <div style={{ background: '#F8F9FA', borderRadius: '16px', padding: '16px 20px', marginBottom: '12px' }}>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '10px' }}>
+                    <label style={{ fontSize: '11px', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '1.5px', color: '#6B7280' }}>
+                      LINK PAGAMENTO ONLINE
+                    </label>
+                    <label className="relative cursor-pointer">
+                      <input type="checkbox" className="sr-only" checked={formData.show_payment} onChange={(e) => setFormData({...formData, show_payment: e.target.checked})} />
+                      <div className={`block w-12 h-6 rounded-full transition-colors ${formData.show_payment ? 'bg-green-500' : 'bg-slate-300 dark:bg-slate-600'}`}></div>
+                      <div className={`absolute left-1 top-1 bg-white w-4 h-4 rounded-full transition-transform ${formData.show_payment ? 'translate-x-6' : ''}`}></div>
+                    </label>
+                  </div>
+                  <input
+                    type="url"
+                    placeholder="https://link-de-pagamento..."
+                    value={formData.payment_url}
+                    onChange={(e) => setFormData({...formData, payment_url: e.target.value})}
                     className="w-full px-4 py-3 bg-white dark:bg-slate-800 rounded-xl text-sm font-bold text-slate-900 dark:text-white outline-none focus:ring-2 focus:ring-blue-500 border border-slate-200 dark:border-slate-700 placeholder:text-slate-400"
                   />
                 </div>

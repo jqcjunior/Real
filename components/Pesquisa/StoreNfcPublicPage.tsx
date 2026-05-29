@@ -81,6 +81,10 @@ const StoreNfcPublicPage: React.FC<StoreNfcPublicPageProps> = ({ storeNumber }) 
 
   const footerStyle: React.CSSProperties = { padding: '32px 20px', display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '12px', marginTop: '24px' };
 
+  const heroImage = (nfcPage.show_whatsapp_beneficios && nfcPage.whatsapp_beneficios)
+    ? 'https://rwwomakjhmglgoowbmsl.supabase.co/storage/v1/object/public/Fotos/LayoutNfc.png'
+    : 'https://rwwomakjhmglgoowbmsl.supabase.co/storage/v1/object/public/Fotos/LayoutNfc2.png';
+
   return (
     <div style={{fontFamily:"'Inter',sans-serif",maxWidth:'480px',margin:'0 auto',background:'#F7F7F7',minHeight:'100vh',position:'relative'}}>
       <style>{`
@@ -103,7 +107,7 @@ const StoreNfcPublicPage: React.FC<StoreNfcPublicPageProps> = ({ storeNumber }) 
       {/* ── HERO ── */}
       <div className="f1" style={{position:'relative',borderRadius:'0 0 48px 48px',overflow:'hidden',paddingBottom:'40px',background:'#1a0005',marginBottom:'-24px', zIndex: 1, boxShadow:'0 10px 30px rgba(0,0,0,0.1)'}}>
         <img
-          src="https://rwwomakjhmglgoowbmsl.supabase.co/storage/v1/object/public/Fotos/fachada-loja.jpg"
+          src={heroImage}
           alt="Loja Real Calçados"
           style={{position:'absolute',top:0,left:0,width:'100%',height:'100%',objectFit:'cover',opacity:0.5,display:'block'}}
           onError={(e:any)=>{e.target.style.display='none'}}
