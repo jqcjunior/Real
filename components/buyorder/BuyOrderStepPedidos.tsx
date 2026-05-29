@@ -464,10 +464,12 @@ export default function StepPedidos({
     );
     if (!proxima) return;
 
-    const firstItemIdx = Array.from(selectedItems)[0];
-    const initialCat = (
-      firstItemIdx !== undefined ? items[firstItemIdx]?.modelo : undefined
-    ) || "ACES";
+    // Pegar modelo do primeiro item da lista (já cadastrado no step anterior)
+    const modeloMap: Record<string, string> = {
+      'MASC': 'MASC', 'FEM': 'FEM', 'INF': 'INF', 'ACES': 'ACES',
+    };
+    const primeiroModelo = items[0]?.modelo?.toUpperCase() || 'MASC';
+    const initialCat = (modeloMap[primeiroModelo] || 'MASC') as any;
 
     setStep2State((prev: any) => {
       // Remover chaves inválidas (numéricas) ao adicionar nova grade
@@ -961,7 +963,7 @@ export default function StepPedidos({
                       </div>
                       
                       <div className="text-[9px] text-slate-500 font-bold truncate mt-1 relative z-10 opacity-70">
-                        {item.tipo} · {item.modelo}
+                        {item.tipo || '—'} · {item.modelo}
                       </div>
 
                       <div className="flex items-center gap-1.5 mt-2 relative z-10">
@@ -1385,7 +1387,7 @@ export default function StepPedidos({
                     Rascunho Atual
                   </span>
                   <div className="bg-blue-600 px-2 py-0.5 rounded text-[10px] font-black text-white shadow-sm">
-                    {totaisPedidoTemp.totalParesPorLoja} PARES
+                    {totaisPedidoTemp.totalParesPorLoja} ITENS
                   </div>
                 </div>
                 <div className="p-2 space-y-1 bg-slate-50/50">
