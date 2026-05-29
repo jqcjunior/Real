@@ -65,9 +65,7 @@ const StoreNfcPublicPage: React.FC<StoreNfcPublicPageProps> = ({ storeNumber }) 
     ? `/pesquisa/${nfcPage.surveys.public_token}?loja=${store.number}`
     : null;
 
-  const heroImage = (nfcPage.show_whatsapp_beneficios && nfcPage.whatsapp_beneficios)
-    ? 'https://rwwomakjhmglgoowbmsl.supabase.co/storage/v1/object/public/Fotos/LayoutNfc.png'
-    : 'https://rwwomakjhmglgoowbmsl.supabase.co/storage/v1/object/public/Fotos/LayoutNfc2.png';
+  const heroImage = 'https://rwwomakjhmglgoowbmsl.supabase.co/storage/v1/object/public/Fotos/layout.Nfc.png';
 
   return (
     <div style={{ fontFamily: "'Inter',sans-serif", maxWidth: 480, margin: '0 auto', background: '#fff', minHeight: '100vh' }}>
