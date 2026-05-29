@@ -1867,6 +1867,9 @@ const AppRouter: React.FC = () => {
     if (pathParts[1] === 'loja' && pathParts[2]) {
         return <StoreNfcPublicPage storeNumber={pathParts[2]} />;
     }
+    if (pathParts[1] === 'nfc' && pathParts[2]) {
+        return <StoreNfcPublicPage storeNumber={pathParts[2]} />;
+    }
     return <App />;
 };
 
