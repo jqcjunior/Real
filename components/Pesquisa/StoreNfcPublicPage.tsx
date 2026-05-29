@@ -98,7 +98,7 @@ const StoreNfcPublicPage: React.FC<StoreNfcPublicPageProps> = ({ storeNumber }) 
           onError={(e: any) => { e.currentTarget.style.display = 'none'; }}
         />
 
-        {/* PAGAMENTO ONLINE */}
+        {/* PAGAMENTO ONLINE - Posicionado na faixa branca entre a fachada da loja e o banner vermelho */}
         {nfcPage.show_payment && nfcPage.payment_url && (
           <a
             href={nfcPage.payment_url}
@@ -107,11 +107,11 @@ const StoreNfcPublicPage: React.FC<StoreNfcPublicPageProps> = ({ storeNumber }) 
             className="tap"
             style={{
               position: 'absolute',
-              top: '18.8%',
+              top: '21.5%',
               left: '50%',
               transform: 'translateX(-50%)',
               width: '62%',
-              height: '3.6%',
+              height: '2.5%',
               background: 'white',
               borderRadius: 999,
               display: 'flex',
@@ -119,15 +119,16 @@ const StoreNfcPublicPage: React.FC<StoreNfcPublicPageProps> = ({ storeNumber }) 
               justifyContent: 'center',
               gap: 8,
               textDecoration: 'none',
-              boxShadow: '0 4px 14px rgba(0,0,0,0.15)'
+              boxShadow: '0 4px 14px rgba(0,0,0,0.15)',
+              border: '1px solid rgba(0,0,0,0.05)'
             }}
           >
-            <CreditCard size={18} color="#1B2A6B" />
-            <span style={{ fontSize: 14, fontWeight: 900, color: '#1B2A6B' }}>PAGAR AGORA</span>
+            <CreditCard size={14} color="#1B2A6B" />
+            <span style={{ fontSize: 12, fontWeight: 900, color: '#1B2A6B', letterSpacing: '0.5px' }}>PAGAR AGORA</span>
           </a>
         )}
 
-        {/* INSTAGRAM */}
+        {/* INSTAGRAM - Posicionado na primeira linha de atalhos na grande área branca abaixo dos cards */}
         {nfcPage.show_instagram && nfcPage.instagram && (
           <a
             href={`https://instagram.com/${nfcPage.instagram}`}
@@ -136,10 +137,10 @@ const StoreNfcPublicPage: React.FC<StoreNfcPublicPageProps> = ({ storeNumber }) 
             className="tap"
             style={{
               position: 'absolute',
-              top: '26%',
-              left: '18%',
-              width: '20%',
-              height: '5%',
+              top: '51%',
+              left: '15%',
+              width: '24%',
+              height: '6%',
               display: 'flex',
               flexDirection: 'column',
               alignItems: 'center',
@@ -153,17 +154,17 @@ const StoreNfcPublicPage: React.FC<StoreNfcPublicPageProps> = ({ storeNumber }) 
           </a>
         )}
 
-        {/* PIX */}
+        {/* PIX - Posicionado na primeira linha de atalhos na grande área branca abaixo dos cards */}
         {nfcPage.show_pix && nfcPage.pix_key && (
           <button
             onClick={() => setShowPix(!showPix)}
             className="tap"
             style={{
               position: 'absolute',
-              top: '26%',
-              left: '62%',
-              width: '20%',
-              height: '5%',
+              top: '51%',
+              left: '61%',
+              width: '24%',
+              height: '6%',
               background: 'transparent',
               border: 'none',
               cursor: 'pointer',
@@ -179,7 +180,7 @@ const StoreNfcPublicPage: React.FC<StoreNfcPublicPageProps> = ({ storeNumber }) 
           </button>
         )}
 
-        {/* GOOGLE */}
+        {/* GOOGLE - Posicionado na segunda linha de atalhos na grande área branca abaixo dos cards */}
         {nfcPage.google_review_url && (
           <a
             href={nfcPage.google_review_url}
@@ -188,10 +189,10 @@ const StoreNfcPublicPage: React.FC<StoreNfcPublicPageProps> = ({ storeNumber }) 
             className="tap"
             style={{
               position: 'absolute',
-              top: '33%',
-              left: '18%',
-              width: '20%',
-              height: '5%',
+              top: '60%',
+              left: '15%',
+              width: '24%',
+              height: '6%',
               display: 'flex',
               flexDirection: 'column',
               alignItems: 'center',
@@ -205,17 +206,17 @@ const StoreNfcPublicPage: React.FC<StoreNfcPublicPageProps> = ({ storeNumber }) 
           </a>
         )}
 
-        {/* PESQUISA / EXPERIÊNCIA */}
+        {/* PESQUISA / EXPERIÊNCIA - Posicionado na segunda linha de atalhos na grande área branca abaixo dos cards */}
         {nfcPage.show_survey && surveyUrl && (
           <button
             onClick={() => { window.location.href = surveyUrl!; }}
             className="tap"
             style={{
               position: 'absolute',
-              top: '33%',
-              left: '62%',
-              width: '20%',
-              height: '5%',
+              top: '60%',
+              left: '61%',
+              width: '24%',
+              height: '6%',
               background: 'transparent',
               border: 'none',
               cursor: 'pointer',
@@ -231,7 +232,7 @@ const StoreNfcPublicPage: React.FC<StoreNfcPublicPageProps> = ({ storeNumber }) 
           </button>
         )}
 
-        {/* WHATSAPP */}
+        {/* WHATSAPP - Posicionado abaixo da segunda linha de atalhos na grande área branca */}
         {nfcPage.show_whatsapp_store && nfcPage.whatsapp_store && (
           <a
             href={`https://wa.me/55${nfcPage.whatsapp_store}`}
@@ -240,7 +241,7 @@ const StoreNfcPublicPage: React.FC<StoreNfcPublicPageProps> = ({ storeNumber }) 
             className="tap"
             style={{
               position: 'absolute',
-              top: '41%',
+              top: '69%',
               left: '50%',
               transform: 'translateX(-50%)',
               width: '42%',
@@ -260,7 +261,7 @@ const StoreNfcPublicPage: React.FC<StoreNfcPublicPageProps> = ({ storeNumber }) 
           </a>
         )}
 
-        {/* CONHECER BENEFÍCIOS */}
+        {/* CONHECER BENEFÍCIOS - Posicionado abaixo do WhatsApp na grande área branca */}
         {nfcPage.show_whatsapp_beneficios && nfcPage.whatsapp_beneficios && (
           <a
             href={`https://wa.me/55${nfcPage.whatsapp_beneficios}`}
@@ -269,7 +270,7 @@ const StoreNfcPublicPage: React.FC<StoreNfcPublicPageProps> = ({ storeNumber }) 
             className="tap"
             style={{
               position: 'absolute',
-              top: '50%',
+              top: '78%',
               left: '50%',
               transform: 'translateX(-50%)',
               width: '82%',
@@ -281,7 +282,8 @@ const StoreNfcPublicPage: React.FC<StoreNfcPublicPageProps> = ({ storeNumber }) 
               justifyContent: 'center',
               gap: 8,
               textDecoration: 'none',
-              boxShadow: '0 4px 14px rgba(0,0,0,0.1)'
+              boxShadow: '0 4px 14px rgba(0,0,0,0.1)',
+              border: '1px solid rgba(0,0,0,0.05)'
             }}
           >
             <span style={{ fontSize: 14, fontWeight: 900, color: '#16A34A' }}>CONHECER BENEFÍCIOS</span>
