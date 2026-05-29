@@ -698,37 +698,38 @@ export default function BuyOrderModule({ user }: { user?: User }) {
 
       // 4. Insert buy_order_items
       if (items.length > 0) {
-        const itemInputs: BuyOrderItemInput[] = items.map((it, idx) => {
-          const itemGradesObj: Record<string, any> = {};
-          let totalParesItem = 0;
-
-          pedidos.forEach((ped) => {
-            const icg = ped.itensComGrades.find((x) => x.itemIdx === idx);
-            if (icg) {
-              icg.grades.forEach((g) => {
-                // Mapeia a letra da grade para suas quantidades
-                itemGradesObj[g.letter] = g.qtds;
-                totalParesItem += totPares(g.qtds) * ped.lojas.length;
-              });
-            }
-          });
-
-          return {
-            order_id: orderId,
-            item_order: idx + 1,
-            referencia: it.ref,
-            tipo: it.tipo || "",
-            cor1: it.cor1,
-            cor2: it.cor2 || null,
-            cor3: it.cor3 || null,
-            modelo: (it.modelo as any) || tipoParaModelo(it.tipo),
-            custo: it.custo,
-            preco_venda: it.preco_venda,
-            grades: itemGradesObj,
-            total_pares: totalParesItem,
-            markup_aplicado: cab.markup,
-          };
-        });
+        const itemInputs: BuyOrderItemInput[] = items
+          .map((it, idx) => {
+            const itemGradesObj: Record<string, any> = {};
+            let totalParesItem = 0;
+            pedidos.forEach((ped) => {
+              const icg = ped.itensComGrades.find((x) => x.itemIdx === idx);
+              if (icg) {
+                icg.grades.forEach((g) => {
+                  itemGradesObj[g.letter] = g.qtds;
+                  totalParesItem += totPares(g.qtds) * ped.lojas.length;
+                });
+              }
+            });
+            // Retorna null se item não tem grade vinculada
+            if (Object.keys(itemGradesObj).length === 0) return null;
+            return {
+              order_id: orderId,
+              item_order: idx + 1,
+              referencia: it.ref,
+              tipo: it.tipo || "",
+              cor1: it.cor1,
+              cor2: it.cor2 || null,
+              cor3: it.cor3 || null,
+              modelo: (it.modelo as any) || tipoParaModelo(it.tipo),
+              custo: it.custo,
+              preco_venda: it.preco_venda,
+              grades: itemGradesObj,
+              total_pares: totalParesItem,
+              markup_aplicado: cab.markup,
+            } as BuyOrderItemInput;
+          })
+          .filter((item): item is BuyOrderItemInput => item !== null);
 
         const result = await insertBuyOrderItems(itemInputs);
         if (!result.success) {
