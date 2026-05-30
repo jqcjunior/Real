@@ -54,7 +54,7 @@ const StoreNfcPublicPage: React.FC<StoreNfcPublicPageProps> = ({ storeNumber }) 
   }
 
   const { store, nfcPage } = data;
-  const heroImage = 'https://rwwomakjhmglgoowbmsl.supabase.co/storage/v1/object/public/Fotos/layout.Nfc.png';
+  const heroImage = 'https://rwwomakjhmglgoowbmsl.supabase.co/storage/v1/object/public/Fotos/layout.Nfc.final.png';
   const surveyUrl = nfcPage.surveys?.public_token
     ? `/pesquisa/${nfcPage.surveys.public_token}?loja=${store.number}`
     : null;
