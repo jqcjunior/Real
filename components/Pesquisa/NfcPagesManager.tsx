@@ -11,6 +11,17 @@ interface NfcPagesManagerProps {
   onBack: () => void;
 }
 
+const sanitizeInstagram = (value: string): string => {
+  if (!value) return '';
+  // Remove URL completa se colada
+  value = value.replace('https://www.instagram.com/', '');
+  value = value.replace('http://www.instagram.com/', '');
+  value = value.replace('https://instagram.com/', '');
+  // Remove @ se digitado
+  value = value.replace('@', '');
+  return value.trim();
+};
+
 const NfcPagesManager: React.FC<NfcPagesManagerProps> = ({ stores, onBack }) => {
   const [storePages, setStorePages] = useState<any[]>([]);
   const [surveys, setSurveys] = useState<Survey[]>([]);
@@ -148,7 +159,8 @@ const NfcPagesManager: React.FC<NfcPagesManagerProps> = ({ stores, onBack }) => 
       await ensureSession();
       const payload = {
         store_id: storeId,
-        ...formData
+        ...formData,
+        instagram: sanitizeInstagram(formData.instagram)
       };
 
       const { error } = await supabase
@@ -327,7 +339,7 @@ const NfcPagesManager: React.FC<NfcPagesManagerProps> = ({ stores, onBack }) => 
                     type="text"
                     placeholder="realcalcadoscruzdasalmas"
                     value={formData.instagram}
-                    onChange={(e) => setFormData({...formData, instagram: e.target.value.replace('@', '')})}
+                    onChange={e => setFormData({...formData, instagram: sanitizeInstagram(e.target.value)})}
                     className="w-full px-4 py-3 bg-white dark:bg-slate-800 rounded-xl text-sm font-bold text-slate-900 dark:text-white outline-none focus:ring-2 focus:ring-blue-500 border border-slate-200 dark:border-slate-700 placeholder:text-slate-400"
                   />
                 </div>

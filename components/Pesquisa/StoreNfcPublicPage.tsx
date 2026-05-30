@@ -58,6 +58,11 @@ const StoreNfcPublicPage: React.FC<StoreNfcPublicPageProps> = ({ storeNumber }) 
   const surveyUrl = nfcPage.surveys?.public_token
     ? `/pesquisa/${nfcPage.surveys.public_token}?loja=${store.number}`
     : null;
+  const instagramUrl = nfcPage.instagram
+    ? (nfcPage.instagram.startsWith('http') 
+      ? nfcPage.instagram 
+      : `https://www.instagram.com/${nfcPage.instagram}`)
+    : '';
 
   return (
     <div style={{ fontFamily: "'Inter',sans-serif", maxWidth: 480, margin: '0 auto', background: '#F4F6F9', minHeight: '100vh' }}>
@@ -126,7 +131,7 @@ const StoreNfcPublicPage: React.FC<StoreNfcPublicPageProps> = ({ storeNumber }) 
           {/* INSTAGRAM */}
           {nfcPage.show_instagram && nfcPage.instagram && (
             <a
-              href={`https://instagram.com/${nfcPage.instagram}`}
+              href={instagramUrl}
               target="_blank"
               rel="noopener noreferrer"
               className="tap"
@@ -373,7 +378,7 @@ const StoreNfcPublicPage: React.FC<StoreNfcPublicPageProps> = ({ storeNumber }) 
 
           {/* Instagram */}
           {nfcPage.instagram && (
-            <a href={`https://instagram.com/${nfcPage.instagram}`} target="_blank" rel="noopener noreferrer"
+            <a href={instagramUrl} target="_blank" rel="noopener noreferrer"
               style={{ width: 44, height: 44, borderRadius: 12, overflow: 'hidden', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
               <svg viewBox="0 0 48 48" width="44" height="44" xmlns="http://www.w3.org/2000/svg">
                 <defs>
