@@ -14,6 +14,7 @@ interface NfcPagesManagerProps {
 const NfcPagesManager: React.FC<NfcPagesManagerProps> = ({ stores, onBack }) => {
   const [storePages, setStorePages] = useState<any[]>([]);
   const [surveys, setSurveys] = useState<Survey[]>([]);
+  const [localStores, setLocalStores] = useState<Store[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [editingPage, setEditingPage] = useState<any | null>(null);
 
@@ -49,6 +50,12 @@ const NfcPagesManager: React.FC<NfcPagesManagerProps> = ({ stores, onBack }) => 
     setIsLoading(true);
     await ensureSession();
     try {
+      const { data: storesData, error: storesError } = await supabase
+        .from('stores')
+        .select('*')
+        .order('number');
+      if (storesError) throw storesError;
+
       const { data: pagesData, error: pagesError } = await supabase
         .from('store_nfc_pages')
         .select('*, surveys(title, public_token), stores(name, number)');
@@ -60,6 +67,7 @@ const NfcPagesManager: React.FC<NfcPagesManagerProps> = ({ stores, onBack }) => 
         .eq('is_active', true);
       if (surveysError) throw surveysError;
 
+      setLocalStores(storesData || []);
       setStorePages(pagesData || []);
       setSurveys(surveysData || []);
     } catch (err: any) {
@@ -182,7 +190,7 @@ const NfcPagesManager: React.FC<NfcPagesManagerProps> = ({ stores, onBack }) => 
         </div>
       ) : (
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-          {stores.map(store => {
+          {localStores.map(store => {
             const page = storePages.find(p => p.store_id === store.id);
             return (
               <div key={store.id} className="bg-white dark:bg-slate-900 p-6 rounded-[32px] border border-slate-100 dark:border-slate-800 flex flex-col justify-between h-full shadow-sm">
@@ -277,7 +285,7 @@ const NfcPagesManager: React.FC<NfcPagesManagerProps> = ({ stores, onBack }) => 
                     {editingPage ? 'Editar Página NFC' : 'Nova Página NFC'}
                   </h3>
                   <p className="text-[10px] font-bold uppercase tracking-widest text-slate-400 mt-2">
-                    Loja selecionada: {stores.find(s => s.id === storeId)?.name}
+                    Loja selecionada: {localStores.find(s => s.id === storeId)?.name}
                   </p>
                 </div>
               </div>
