@@ -39,7 +39,8 @@ const NfcPagesManager: React.FC<NfcPagesManagerProps> = ({ stores, onBack }) => 
     show_whatsapp_manager: true,
     show_whatsapp_central: true,
     show_whatsapp_beneficios: false,
-    google_review_url: ''
+    google_review_url: '',
+    payment_qrcode_url: ''
   });
 
   useEffect(() => {
@@ -101,7 +102,8 @@ const NfcPagesManager: React.FC<NfcPagesManagerProps> = ({ stores, onBack }) => 
         show_whatsapp_beneficios: existingPage.show_whatsapp_beneficios ?? false,
         google_review_url: existingPage.google_review_url || '',
         payment_url: existingPage.payment_url || '',
-        show_payment: existingPage.show_payment ?? false
+        show_payment: existingPage.show_payment ?? false,
+        payment_qrcode_url: existingPage.payment_qrcode_url || ''
       });
     } else {
       setEditingPage(null);
@@ -125,7 +127,8 @@ const NfcPagesManager: React.FC<NfcPagesManagerProps> = ({ stores, onBack }) => 
         show_whatsapp_beneficios: false,
         google_review_url: '',
         payment_url: '',
-        show_payment: false
+        show_payment: false,
+        payment_qrcode_url: ''
       });
     }
   };
@@ -491,6 +494,22 @@ const NfcPagesManager: React.FC<NfcPagesManagerProps> = ({ stores, onBack }) => 
                     placeholder="https://link-de-pagamento..."
                     value={formData.payment_url}
                     onChange={(e) => setFormData({...formData, payment_url: e.target.value})}
+                    className="w-full px-4 py-3 bg-white dark:bg-slate-800 rounded-xl text-sm font-bold text-slate-900 dark:text-white outline-none focus:ring-2 focus:ring-blue-500 border border-slate-200 dark:border-slate-700 placeholder:text-slate-400"
+                  />
+                </div>
+
+                {/* QR Code Pagamento Online */}
+                <div style={{ background: '#F8F9FA', borderRadius: '16px', padding: '16px 20px', marginBottom: '12px' }}>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '10px' }}>
+                    <label style={{ fontSize: '11px', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '1.5px', color: '#6B7280' }}>
+                      URL DO QR CODE PAGAMENTO
+                    </label>
+                  </div>
+                  <input
+                    type="url"
+                    placeholder="https://..."
+                    value={formData.payment_qrcode_url}
+                    onChange={(e) => setFormData({...formData, payment_qrcode_url: e.target.value})}
                     className="w-full px-4 py-3 bg-white dark:bg-slate-800 rounded-xl text-sm font-bold text-slate-900 dark:text-white outline-none focus:ring-2 focus:ring-blue-500 border border-slate-200 dark:border-slate-700 placeholder:text-slate-400"
                   />
                 </div>
