@@ -119,7 +119,7 @@ const SurveyResultsViewer: React.FC<SurveyResultsViewerProps> = ({ survey, curre
       const avg = vals.length > 0 ? vals.reduce((a, b) => a + b, 0) / vals.length : 0;
       return { avg: avg.toFixed(1), total: vals.length };
     }
-    if (question.question_type === 'multiple_choice' || question.question_type === 'boolean') {
+    if (question.question_type === 'multiple_choice' || question.question_type === 'yes_no') {
       const counts: Record<string, number> = {};
       const motivos: string[] = [];
       questionAnswers.forEach(v => {
@@ -258,7 +258,7 @@ const SurveyResultsViewer: React.FC<SurveyResultsViewerProps> = ({ survey, curre
                   )}
 
                   {/* MULTIPLE CHOICE / BOOLEAN — BARRAS HORIZONTAIS CSS */}
-                  {(q.question_type === 'multiple_choice' || q.question_type === 'boolean') && (
+                  {(q.question_type === 'multiple_choice' || q.question_type === 'yes_no') && (
                     <div className="space-y-2">
                       {((stats as any).stats as {name: string, value: number}[]).map((item, i) => {
                         const pct = responses.length > 0 ? Math.round((item.value / responses.length) * 100) : 0;
@@ -272,7 +272,7 @@ const SurveyResultsViewer: React.FC<SurveyResultsViewerProps> = ({ survey, curre
                           </div>
                         );
                       })}
-                      {q.question_type === 'boolean' && (stats as any).motivos?.length > 0 && (
+                      {q.question_type === 'yes_no' && (stats as any).motivos?.length > 0 && (
                         <div className="mt-3 pt-3 border-t border-slate-100 dark:border-slate-800">
                           <p className="text-[9px] font-black uppercase tracking-widest text-slate-400 mb-2 flex items-center gap-1"><MessageSquare size={11} /> {(stats as any).motivos.length} motivo(s) do não</p>
                           {((stats as any).motivos as string[]).map((m, i) => (
@@ -284,7 +284,7 @@ const SurveyResultsViewer: React.FC<SurveyResultsViewerProps> = ({ survey, curre
                   )}
 
                   {/* TEXT */}
-                  {q.question_type === 'text' && (
+                  {q.question_type === 'short_text' && (
                     <div className="space-y-2">
                       {((stats as string[]).slice(0, 3)).map((text, i) => (
                         <p key={i} className="text-xs text-slate-500 italic bg-slate-50 dark:bg-slate-800 rounded-lg px-3 py-2">"{text}"</p>

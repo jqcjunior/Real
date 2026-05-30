@@ -6,7 +6,7 @@ import {
   Plus, Search, Edit3, Trash2, Link, BarChart3, X, Save,
   ChevronRight, ChevronLeft, Check, PlusCircle, Trash,
   GripVertical, ShieldAlert, UserCheck, Users, Smartphone,
-  Copy, ToggleLeft, ToggleRight, Eye, EyeOff
+  Copy, ToggleLeft, ToggleRight, Eye, EyeOff, Loader2
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 import NfcPagesManager from './NfcPagesManager';
@@ -22,15 +22,21 @@ interface AdminSurveyManagementProps {
 }
 
 const QUESTION_TYPES = [
-  { value: 'text',            label: 'Texto livre' },
+  { value: 'short_text',      label: 'Texto livre' },
   { value: 'rating',          label: 'Avaliação (1-5 estrelas)' },
-  { value: 'boolean',         label: 'Sim / Não' },
+  { value: 'yes_no',          label: 'Sim / Não' },
   { value: 'multiple_choice', label: 'Múltipla escolha' },
 ];
 
+const generateToken = (): string => {
+  const array = new Uint8Array(16);
+  crypto.getRandomValues(array);
+  return Array.from(array).map(b => b.toString(16).padStart(2, '0')).join('');
+};
+
 const emptyQuestion = (order: number): Partial<SurveyQuestion> => ({
   question_text: '',
-  question_type: 'text',
+  question_type: 'short_text',
   is_required: true,
   sort_order: order,
   options: [],
@@ -46,6 +52,16 @@ const AdminSurveyManagement: React.FC<AdminSurveyManagementProps> = ({
   const [showEditor, setShowEditor] = useState(false);
   const [showNfcPages, setShowNfcPages] = useState(false);
   const [editingSurvey, setEditingSurvey] = useState<Survey | null>(null);
+
+  // States para filtros
+  const [filterTarget, setFilterTarget] = useState<'all' | 'external' | 'internal'>('all');
+  const [filterStatus, setFilterStatus] = useState<'all' | 'active' | 'inactive'>('all');
+  const [filterStoreId, setFilterStoreId] = useState<string>('all');
+
+  // States para duplicação
+  const [duplicatingSurvey, setDuplicatingSurvey] = useState<Survey | null>(null);
+  const [duplicateTargetStoreIds, setDuplicateTargetStoreIds] = useState<string[]>([]);
+  const [isDuplicating, setIsDuplicating] = useState(false);
 
   useEffect(() => { fetchSurveys(); }, []);
 
@@ -95,9 +111,85 @@ const AdminSurveyManagement: React.FC<AdminSurveyManagementProps> = ({
     }
   };
 
-  const filteredSurveys = surveys.filter(s =>
-    s.title.toLowerCase().includes(searchTerm.toLowerCase())
-  );
+  const handleDuplicate = async () => {
+    if (!duplicatingSurvey || duplicateTargetStoreIds.length === 0) return;
+    setIsDuplicating(true);
+    try {
+      await ensureSession();
+
+      // Buscar perguntas originais UMA vez só
+      const { data: questions } = await supabase
+        .from('survey_questions')
+        .select('*')
+        .eq('survey_id', duplicatingSurvey.id)
+        .order('sort_order', { ascending: true });
+
+      // Criar uma survey para cada loja selecionada
+      for (const storeId of duplicateTargetStoreIds) {
+        const slug = duplicatingSurvey.title
+          .toLowerCase()
+          .normalize('NFD')
+          .replace(/[\u0300-\u036f]/g, '')
+          .replace(/[^a-z0-9\s-]/g, '')
+          .trim()
+          .replace(/\s+/g, '-') + '-' + Date.now() + '-' + storeId.slice(0, 4);
+
+        const { data: newSurvey, error } = await supabase
+          .from('surveys')
+          .insert([{
+            title: duplicatingSurvey.title,
+            description: duplicatingSurvey.description,
+            is_active: false,
+            allow_anonymous: (duplicatingSurvey as any).allow_anonymous ?? true,
+            target_type: duplicatingSurvey.target_type,
+            target_category: duplicatingSurvey.target_category,
+            target_store_ids: [storeId],
+            store_id: storeId,
+            results_visible_to: duplicatingSurvey.results_visible_to,
+            created_by: currentUser.id,
+            slug,
+            public_token: generateToken(),
+          }])
+          .select()
+          .single();
+
+        if (error) throw error;
+
+        // Copiar perguntas para esta survey
+        if (questions && questions.length > 0) {
+          const newQuestions = questions.map(q => ({
+            survey_id: newSurvey.id,
+            question_text: q.question_text,
+            question_type: q.question_type,
+            options: q.options || [],
+            is_required: q.is_required,
+            sort_order: q.sort_order,
+          }));
+          await supabase.from('survey_questions').insert(newQuestions);
+        }
+      }
+
+      toast.success(
+        `Pesquisa duplicada para ${duplicateTargetStoreIds.length} loja${duplicateTargetStoreIds.length > 1 ? 's' : ''}! Lembre de ativar cada uma.`
+      );
+      setDuplicatingSurvey(null);
+      setDuplicateTargetStoreIds([]);
+      fetchSurveys();
+    } catch (err: any) {
+      toast.error('Erro ao duplicar: ' + err.message);
+    } finally {
+      setIsDuplicating(false);
+    }
+  };
+
+  const filteredSurveys = surveys
+    .filter(s => s.title.toLowerCase().includes(searchTerm.toLowerCase()))
+    .filter(s => filterTarget === 'all' || s.target_type === filterTarget)
+    .filter(s => filterStatus === 'all' || (filterStatus === 'active' ? s.is_active : !s.is_active))
+    .filter(s => filterStoreId === 'all' || 
+      (s as any).store_id === filterStoreId || 
+      s.target_store_ids?.includes(filterStoreId)
+    );
 
   // ── EDITOR ABERTO ──────────────────────────────────────────────────────────
   if (showEditor) {
@@ -165,6 +257,89 @@ const AdminSurveyManagement: React.FC<AdminSurveyManagementProps> = ({
         </div>
       </div>
 
+      {/* Filtros em chips compactos horizontais */}
+      <div className="flex flex-col gap-2.5 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl p-4 md:p-5 shadow-sm">
+        {/* Público */}
+        <div className="flex items-center gap-2 overflow-hidden">
+          <span className="text-xs font-semibold text-slate-400 w-16 flex-shrink-0">Público:</span>
+          <div className="flex gap-1.5 overflow-x-auto no-scrollbar py-0.5 flex-nowrap scroll-smooth">
+            {[
+              { id: 'all', label: 'Todos' },
+              { id: 'external', label: 'Clientes' },
+              { id: 'internal', label: 'Funcionários' }
+            ].map(item => (
+              <button
+                key={item.id}
+                onClick={() => setFilterTarget(item.id as any)}
+                className={`px-3 py-1.5 rounded-lg border text-xs font-semibold whitespace-nowrap transition-all ${
+                  filterTarget === item.id
+                    ? 'border-blue-600 bg-blue-50 text-blue-700 dark:bg-blue-900/40 dark:text-blue-400'
+                    : 'border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 text-slate-600 dark:text-slate-400 hover:border-slate-300'
+                }`}
+              >
+                {item.label} {filterTarget === item.id && '✓'}
+              </button>
+            ))}
+          </div>
+        </div>
+
+        {/* Status */}
+        <div className="flex items-center gap-2 overflow-hidden">
+          <span className="text-xs font-semibold text-slate-400 w-16 flex-shrink-0">Status:</span>
+          <div className="flex gap-1.5 overflow-x-auto no-scrollbar py-0.5 flex-nowrap scroll-smooth">
+            {[
+              { id: 'all', label: 'Todas' },
+              { id: 'active', label: 'Ativas' },
+              { id: 'inactive', label: 'Inativas' }
+            ].map(item => (
+              <button
+                key={item.id}
+                onClick={() => setFilterStatus(item.id as any)}
+                className={`px-3 py-1.5 rounded-lg border text-xs font-semibold whitespace-nowrap transition-all ${
+                  filterStatus === item.id
+                    ? 'border-blue-600 bg-blue-50 text-blue-700 dark:bg-blue-900/40 dark:text-blue-400'
+                    : 'border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 text-slate-600 dark:text-slate-400 hover:border-slate-300'
+                }`}
+              >
+                {item.label} {filterStatus === item.id && '✓'}
+              </button>
+            ))}
+          </div>
+        </div>
+
+        {/* Loja */}
+        {stores.length > 1 && (
+          <div className="flex items-center gap-2 overflow-hidden border-t border-slate-100 dark:border-slate-800 pt-2.5">
+            <span className="text-xs font-semibold text-slate-400 w-16 flex-shrink-0">Loja:</span>
+            <div className="flex gap-1.5 overflow-x-auto no-scrollbar py-0.5 flex-nowrap scroll-smooth">
+              <button
+                onClick={() => setFilterStoreId('all')}
+                className={`px-3 py-1.5 rounded-lg border text-xs font-semibold whitespace-nowrap transition-all ${
+                  filterStoreId === 'all'
+                    ? 'border-blue-600 bg-blue-50 text-blue-700 dark:bg-blue-900/40 dark:text-blue-400'
+                    : 'border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 text-slate-600 dark:text-slate-400 hover:border-slate-300'
+                }`}
+              >
+                Todas {filterStoreId === 'all' && '✓'}
+              </button>
+              {stores.map(store => (
+                <button
+                  key={store.id}
+                  onClick={() => setFilterStoreId(store.id)}
+                  className={`px-3 py-1.5 rounded-lg border text-xs font-semibold whitespace-nowrap transition-all ${
+                    filterStoreId === store.id
+                      ? 'border-blue-600 bg-blue-50 text-blue-700 dark:bg-blue-900/40 dark:text-blue-400'
+                      : 'border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 text-slate-600 dark:text-slate-400 hover:border-slate-300'
+                  }`}
+                >
+                  Loja {store.number} ({store.city}) {filterStoreId === store.id && '✓'}
+                </button>
+              ))}
+            </div>
+          </div>
+        )}
+      </div>
+
       {/* Lista */}
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
         {isLoading
@@ -191,13 +366,20 @@ const AdminSurveyManagement: React.FC<AdminSurveyManagementProps> = ({
             >
               <div className="p-5 flex-1">
                 <div className="flex items-start justify-between gap-2 mb-3">
-                  <span className={`text-xs px-2.5 py-1 rounded-full font-medium border ${
-                    survey.target_type === 'external'
-                      ? 'bg-purple-50 text-purple-600 border-purple-100 dark:bg-purple-900/20 dark:border-purple-800'
-                      : 'bg-blue-50 text-blue-600 border-blue-100 dark:bg-blue-900/20 dark:border-blue-800'
-                  }`}>
-                    {survey.target_type === 'external' ? 'Clientes' : 'Interno'}
-                  </span>
+                  <div className="flex items-center gap-1.5">
+                    <span className={`text-xs px-2.5 py-1 rounded-full font-medium border ${
+                      survey.target_type === 'external'
+                        ? 'bg-purple-50 text-purple-600 border-purple-100 dark:bg-purple-900/20 dark:border-purple-800'
+                        : 'bg-blue-50 text-blue-600 border-blue-100 dark:bg-blue-900/20 dark:border-blue-800'
+                    }`}>
+                      {survey.target_type === 'external' ? 'Clientes' : 'Interno'}
+                    </span>
+                    {!survey.is_active && (
+                      <span className="text-[10px] font-bold px-2 py-0.5 bg-amber-50 text-amber-600 border border-amber-100 rounded-md dark:bg-amber-950/20 dark:border-amber-900 dark:text-amber-400">
+                        Inativa
+                      </span>
+                    )}
+                  </div>
                   <button
                     onClick={() => handleToggleActive(survey)}
                     className={`flex-shrink-0 transition-colors ${survey.is_active ? 'text-green-500' : 'text-slate-300'}`}
@@ -239,6 +421,16 @@ const AdminSurveyManagement: React.FC<AdminSurveyManagementProps> = ({
                     <Edit3 size={15} />
                   </button>
                   <button
+                    onClick={() => {
+                      setDuplicatingSurvey(survey);
+                      setDuplicateTargetStoreIds([]);
+                    }}
+                    className="p-2 rounded-lg border border-slate-200 dark:border-slate-700 text-slate-500 hover:text-purple-600 hover:border-purple-200 transition-all"
+                    title="Duplicar para outra loja"
+                  >
+                    <Copy size={15} />
+                  </button>
+                  <button
                     onClick={() => handleDelete(survey.id)}
                     className="p-2 rounded-lg border border-slate-200 dark:border-slate-700 text-slate-500 hover:text-red-500 hover:border-red-200 transition-all"
                     title="Excluir"
@@ -257,6 +449,107 @@ const AdminSurveyManagement: React.FC<AdminSurveyManagementProps> = ({
           ))
         }
       </div>
+
+      {/* Modal Simples de Duplicação */}
+      <AnimatePresence>
+        {duplicatingSurvey && (
+          <div className="fixed inset-0 z-[100] flex items-center justify-center p-4">
+            <motion.div
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              exit={{ opacity: 0 }}
+              onClick={() => {
+                if (!isDuplicating) {
+                  setDuplicatingSurvey(null);
+                  setDuplicateTargetStoreIds([]);
+                }
+              }}
+              className="absolute inset-0 bg-slate-900/60 backdrop-blur-sm"
+            />
+            <motion.div
+              initial={{ opacity: 0, scale: 0.95 }}
+              animate={{ opacity: 1, scale: 1 }}
+              exit={{ opacity: 0, scale: 0.95 }}
+              className="relative bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl p-6 shadow-2xl w-full max-w-md z-10 flex flex-col gap-4"
+            >
+              <div>
+                <h3 className="text-lg font-bold text-slate-900 dark:text-white flex items-center gap-2">
+                  <Copy size={20} className="text-blue-500" />
+                  Duplicar pesquisa
+                </h3>
+                <p className="text-xs text-slate-500 mt-1">
+                  Selecione as lojas de destino para a cópia de "{duplicatingSurvey.title}".
+                </p>
+              </div>
+
+              <div className="space-y-2">
+                <label className="text-xs font-semibold text-slate-500 block">Lojas de Destino</label>
+                <div className="grid grid-cols-2 gap-2 max-h-48 overflow-y-auto pr-1">
+                  {stores.map(store => {
+                    const isSelected = duplicateTargetStoreIds.includes(store.id);
+                    return (
+                      <button
+                        key={store.id}
+                        type="button"
+                        disabled={isDuplicating}
+                        onClick={() => {
+                          setDuplicateTargetStoreIds(prev =>
+                            prev.includes(store.id) ? prev.filter(s => s !== store.id) : [...prev, store.id]
+                          );
+                        }}
+                        className={`p-3 rounded-xl border text-left text-xs font-medium transition-all flex flex-col justify-between relative ${
+                          isSelected
+                            ? 'border-blue-600 bg-blue-50 dark:bg-blue-900/30 text-blue-700 dark:text-blue-400 font-semibold shadow-sm'
+                            : 'border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-800 dark:hover:border-slate-700 hover:border-slate-300 text-slate-700 dark:text-slate-300'
+                        }`}
+                      >
+                        <div className="flex items-center justify-between w-full">
+                          <span>Loja {store.number}</span>
+                          {isSelected && <Check size={14} className="text-blue-600 dark:text-blue-400" />}
+                        </div>
+                        <p className="text-[10px] text-slate-400 font-normal leading-tight mt-0.5 truncate w-full">{store.city}</p>
+                      </button>
+                    );
+                  })}
+                </div>
+              </div>
+
+              <div className="flex items-center justify-end gap-2 mt-2 pt-2 border-t border-slate-100 dark:border-slate-800">
+                <button
+                  type="button"
+                  disabled={isDuplicating}
+                  onClick={() => {
+                    setDuplicatingSurvey(null);
+                    setDuplicateTargetStoreIds([]);
+                  }}
+                  className="px-4 py-2 border border-slate-200 dark:border-slate-700 text-slate-600 dark:text-slate-400 hover:bg-slate-50 dark:hover:bg-slate-800 rounded-xl text-xs font-semibold transition-all"
+                >
+                  Cancelar
+                </button>
+                <button
+                  type="button"
+                  disabled={duplicateTargetStoreIds.length === 0 || isDuplicating}
+                  onClick={handleDuplicate}
+                  className="px-4 py-2 text-white bg-blue-600 hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed rounded-xl text-xs font-semibold transition-all shadow-md flex items-center justify-center gap-1.5 min-w-[120px]"
+                >
+                  {isDuplicating ? (
+                    <>
+                      <Loader2 size={14} className="animate-spin" />
+                      <span>Duplicando...</span>
+                    </>
+                  ) : (
+                    <span>
+                      {duplicateTargetStoreIds.length === 0
+                        ? 'Duplicar'
+                        : `Duplicar para ${duplicateTargetStoreIds.length} loja${duplicateTargetStoreIds.length > 1 ? 's' : ''}`}
+                    </span>
+                  )}
+                </button>
+              </div>
+            </motion.div>
+          </div>
+        )}
+      </AnimatePresence>
     </div>
   );
 };
@@ -408,7 +701,7 @@ const SurveyEditor: React.FC<SurveyEditorProps> = ({
         const { error } = await supabase.from('surveys').update(surveyData).eq('id', editingSurvey.id);
         if (error) throw error;
       } else {
-        const { data, error } = await supabase.from('surveys').insert([{ ...surveyData, slug }]).select().single();
+        const { data, error } = await supabase.from('surveys').insert([{ ...surveyData, slug, public_token: generateToken() }]).select().single();
         if (error) throw error;
         surveyId = data.id;
       }
@@ -438,7 +731,7 @@ const SurveyEditor: React.FC<SurveyEditorProps> = ({
   const steps = ['Informações', 'Direcionamento', 'Perguntas'];
 
   return (
-    <div className="min-h-screen bg-slate-50 dark:bg-slate-950 flex flex-col">
+    <div className="h-screen bg-slate-50 dark:bg-slate-950 flex flex-col overflow-hidden">
 
       {/* ── HEADER DO EDITOR ── */}
       <header className="bg-white dark:bg-slate-900 border-b border-slate-200 dark:border-slate-800 px-4 md:px-8 py-4 flex items-center gap-4 sticky top-0 z-40">
@@ -497,7 +790,7 @@ const SurveyEditor: React.FC<SurveyEditorProps> = ({
       </header>
 
       {/* ── BODY ── */}
-      <div className="flex-1 flex flex-col lg:flex-row gap-0">
+      <div className="flex-1 flex flex-col lg:flex-row gap-0 overflow-hidden">
 
         {/* Coluna principal */}
         <main className="flex-1 overflow-y-auto px-4 py-6 md:px-8 md:py-8">
@@ -708,7 +1001,7 @@ const SurveyEditor: React.FC<SurveyEditorProps> = ({
                               className="flex-1 bg-transparent text-sm text-slate-900 dark:text-white outline-none placeholder:text-slate-400 min-w-0"
                             />
                             <select
-                              value={q.question_type || 'text'}
+                              value={q.question_type || 'short_text'}
                               onChange={e => updateQuestion(idx, 'question_type', e.target.value)}
                               className="flex-shrink-0 text-xs px-2 py-1.5 bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-lg text-slate-600 dark:text-slate-400 outline-none cursor-pointer"
                             >
@@ -782,7 +1075,7 @@ const SurveyEditor: React.FC<SurveyEditorProps> = ({
 
         {/* Preview lateral — só desktop, só step 3 */}
         {step === 3 && (
-          <aside className="hidden lg:flex flex-col w-72 bg-white dark:bg-slate-900 border-l border-slate-200 dark:border-slate-800 p-6 gap-4 sticky top-16 h-[calc(100vh-64px)] overflow-y-auto">
+          <aside className="hidden lg:flex flex-col w-72 bg-white dark:bg-slate-900 border-l border-slate-200 dark:border-slate-800 p-6 gap-4 overflow-y-auto">
             <p className="text-xs font-medium text-slate-400 flex items-center gap-1.5">
               <Eye size={13} /> Preview do formulário
             </p>
@@ -805,13 +1098,13 @@ const SurveyEditor: React.FC<SurveyEditorProps> = ({
                         ))}
                       </div>
                     )}
-                    {q.question_type === 'boolean' && (
+                    {q.question_type === 'yes_no' && (
                       <div className="flex gap-2">
                         <span className="text-xs px-2 py-1 border border-slate-200 rounded-lg text-slate-400">Sim</span>
                         <span className="text-xs px-2 py-1 border border-slate-200 rounded-lg text-slate-400">Não</span>
                       </div>
                     )}
-                    {q.question_type === 'text' && (
+                    {q.question_type === 'short_text' && (
                       <div className="h-8 bg-white dark:bg-slate-700 border border-slate-200 dark:border-slate-600 rounded-lg" />
                     )}
                     {q.question_type === 'multiple_choice' && Array.isArray(q.options) && q.options.length > 0 && (

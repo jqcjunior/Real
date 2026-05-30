@@ -412,7 +412,7 @@ export interface AdminUser {
 ========================= */
 export type SurveyTargetType = 'internal' | 'external';
 export type SurveyTargetCategory = 'all_managers' | 'all_cashiers' | 'all_sellers' | 'all_ice_cream' | 'specific_stores' | 'specific_users' | 'all_employees';
-export type SurveyQuestionType = 'text' | 'rating' | 'multiple_choice' | 'boolean';
+export type SurveyQuestionType = 'short_text' | 'rating' | 'multiple_choice' | 'yes_no';
 export type SurveyResultVisibility = 'admin' | 'store_manager' | 'respondent';
 
 export interface Survey {

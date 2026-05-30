@@ -342,7 +342,7 @@ const SurveyResponseForm: React.FC<SurveyResponseFormProps> = ({
                 <div className="space-y-4">
 
                   {/* TEXTO */}
-                  {currentQuestion.question_type === 'text' && (
+                  {currentQuestion.question_type === 'short_text' && (
                     <textarea
                       autoFocus
                       value={answers[currentQuestion.id] || ''}
@@ -421,7 +421,7 @@ const SurveyResponseForm: React.FC<SurveyResponseFormProps> = ({
                   )}
 
                   {/* BOOLEAN — SIM / NÃO */}
-                  {currentQuestion.question_type === 'boolean' && (
+                  {currentQuestion.question_type === 'yes_no' && (
                     <div className="space-y-3">
                       <div className="grid grid-cols-2 gap-3">
                         {['SIM', 'NÃO'].map(val => (
