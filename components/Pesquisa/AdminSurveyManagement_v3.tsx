@@ -314,25 +314,27 @@ const AdminSurveyManagement: React.FC<AdminSurveyManagementProps> = ({
             <div className="flex gap-1.5 overflow-x-auto no-scrollbar py-0.5 flex-nowrap scroll-smooth">
               <button
                 onClick={() => setFilterStoreId('all')}
-                className={`px-3 py-1.5 rounded-lg border text-xs font-semibold whitespace-nowrap transition-all ${
+                className={`w-9 h-9 flex-shrink-0 rounded-lg border text-xs font-semibold transition-all flex items-center justify-center ${
                   filterStoreId === 'all'
-                    ? 'border-blue-600 bg-blue-50 text-blue-700 dark:bg-blue-900/40 dark:text-blue-400'
-                    : 'border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 text-slate-600 dark:text-slate-400 hover:border-slate-300'
+                    ? 'border-blue-600 bg-blue-600 text-white'
+                    : 'border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 text-slate-600 dark:text-slate-400 hover:border-blue-300'
                 }`}
+                title="Todas as lojas"
               >
-                Todas {filterStoreId === 'all' && '✓'}
+                Tds
               </button>
               {stores.map(store => (
                 <button
                   key={store.id}
-                  onClick={() => setFilterStoreId(store.id)}
-                  className={`px-3 py-1.5 rounded-lg border text-xs font-semibold whitespace-nowrap transition-all ${
+                  onClick={() => setFilterStoreId(filterStoreId === store.id ? 'all' : store.id)}
+                  className={`w-9 h-9 flex-shrink-0 rounded-lg border text-xs font-semibold transition-all ${
                     filterStoreId === store.id
-                      ? 'border-blue-600 bg-blue-50 text-blue-700 dark:bg-blue-900/40 dark:text-blue-400'
-                      : 'border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 text-slate-600 dark:text-slate-400 hover:border-slate-300'
+                      ? 'border-blue-600 bg-blue-600 text-white'
+                      : 'border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 text-slate-600 dark:text-slate-400 hover:border-blue-300'
                   }`}
+                  title={store.name}
                 >
-                  Loja {store.number} ({store.city}) {filterStoreId === store.id && '✓'}
+                  {store.number}
                 </button>
               ))}
             </div>
