@@ -714,10 +714,17 @@ const SurveyEditor: React.FC<SurveyEditorProps> = ({
         allow_anonymous: allowAnonymous,
         target_type: targetType,
         target_category: targetType === 'internal' ? targetCategory : null,
-        target_store_ids: targetStoreIds.length > 0 ? targetStoreIds : null,
         results_visible_to: resultsVisibleTo,
-        store_id: (currentUser as any).store_id || (currentUser as any).storeId || null,
-        created_by: currentUser.id,
+        // target_store_ids e store_id só mudam na criação — nunca na edição
+        ...(editingSurvey ? {} : {
+          store_id: (currentUser as any).store_id || (currentUser as any).storeId || null,
+          target_store_ids: targetStoreIds.length > 0 ? targetStoreIds : null,
+          created_by: currentUser.id,
+        }),
+        // Na edição preservar os target_store_ids que o usuário selecionou no step 2
+        ...(editingSurvey ? {
+          target_store_ids: targetStoreIds.length > 0 ? targetStoreIds : editingSurvey.target_store_ids,
+        } : {}),
       };
 
       let surveyId = editingSurvey?.id;
