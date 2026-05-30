@@ -383,13 +383,20 @@ const AdminSurveyManagement: React.FC<AdminSurveyManagementProps> = ({
                     )}
                   </div>
                   <button
-                    onClick={() => handleToggleActive(survey)}
-                    className={`flex-shrink-0 transition-colors ${survey.is_active ? 'text-green-500' : 'text-slate-300'}`}
-                    title={survey.is_active ? 'Desativar' : 'Ativar'}
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      handleToggleActive(survey);
+                    }}
+                    className={`relative w-12 h-6 rounded-full transition-colors duration-200 flex-shrink-0 focus:outline-none ${
+                      survey.is_active 
+                        ? 'bg-green-500' 
+                        : 'bg-slate-300 dark:bg-slate-600'
+                    }`}
+                    title={survey.is_active ? 'Desativar pesquisa' : 'Ativar pesquisa'}
                   >
-                    {survey.is_active
-                      ? <ToggleRight size={22} />
-                      : <ToggleLeft size={22} />}
+                    <span className={`absolute top-0.5 w-5 h-5 bg-white rounded-full shadow-md transition-transform duration-200 ${
+                      survey.is_active ? 'translate-x-6' : 'translate-x-0.5'
+                    }`} />
                   </button>
                 </div>
 
