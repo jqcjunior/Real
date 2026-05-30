@@ -101,13 +101,35 @@ const AdminSurveyManagement: React.FC<AdminSurveyManagementProps> = ({
     }
   };
 
-  const handleToggleActive = async (survey: Survey) => {
+  const handleToggleActive = async (e: React.MouseEvent, survey: Survey) => {
+    e.preventDefault();
+    e.stopPropagation();
+    
+    // Atualização otimista — atualiza UI imediatamente
+    setSurveys(prev => prev.map(s => 
+      s.id === survey.id ? { ...s, is_active: !s.is_active } : s
+    ));
+
     try {
       await ensureSession();
-      await supabase.from('surveys').update({ is_active: !survey.is_active }).eq('id', survey.id);
-      fetchSurveys();
+      const { error } = await supabase
+        .from('surveys')
+        .update({ is_active: !survey.is_active })
+        .eq('id', survey.id);
+      
+      if (error) {
+        // Reverter se falhou
+        setSurveys(prev => prev.map(s => 
+          s.id === survey.id ? { ...s, is_active: survey.is_active } : s
+        ));
+        toast.error('Erro ao atualizar status');
+      }
     } catch (err) {
-      console.error(err);
+      // Reverter se falhou
+      setSurveys(prev => prev.map(s => 
+        s.id === survey.id ? { ...s, is_active: survey.is_active } : s
+      ));
+      toast.error('Erro ao atualizar status');
     }
   };
 
@@ -383,20 +405,14 @@ const AdminSurveyManagement: React.FC<AdminSurveyManagementProps> = ({
                     )}
                   </div>
                   <button
-                    onClick={(e) => {
-                      e.stopPropagation();
-                      handleToggleActive(survey);
-                    }}
-                    className={`relative w-12 h-6 rounded-full transition-colors duration-200 flex-shrink-0 focus:outline-none ${
-                      survey.is_active 
-                        ? 'bg-green-500' 
-                        : 'bg-slate-300 dark:bg-slate-600'
+                    onClick={(e) => handleToggleActive(e, survey)}
+                    className={`px-3 py-1 rounded-full text-xs font-semibold transition-all flex-shrink-0 ${
+                      survey.is_active
+                        ? 'bg-green-100 text-green-700 hover:bg-red-100 hover:text-red-600'
+                        : 'bg-slate-100 text-slate-500 hover:bg-green-100 hover:text-green-700'
                     }`}
-                    title={survey.is_active ? 'Desativar pesquisa' : 'Ativar pesquisa'}
                   >
-                    <span className={`absolute top-0.5 w-5 h-5 bg-white rounded-full shadow-md transition-transform duration-200 ${
-                      survey.is_active ? 'translate-x-6' : 'translate-x-0.5'
-                    }`} />
+                    {survey.is_active ? 'Ativa' : 'Inativa'}
                   </button>
                 </div>
 
