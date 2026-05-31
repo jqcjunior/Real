@@ -966,18 +966,25 @@ export default function StepPedidos({
                         {item.tipo || '—'} · {item.modelo}
                       </div>
 
-                      <div className="flex items-center gap-1.5 mt-2 relative z-10">
-                        {item.cor1 && (
-                          <span className="text-[8px] font-bold text-slate-600 truncate max-w-[52px] leading-none">
-                            {item.cor1}
-                          </span>
-                        )}
-                        <span className="text-[9px] font-black text-green-700 leading-none shrink-0">
-                          {fmtBRL(item.custo * (1 - (cab.desconto || 0) / 100))}
-                        </span>
-                        <span className="text-[7px] text-slate-300 line-through leading-none shrink-0">
-                          {fmtBRL(item.preco_venda)}
-                        </span>
+                      <div className="mt-2 relative z-10">
+                        <div className="flex items-center gap-1 mb-1.5">
+                          <span className="text-[8px] text-slate-400 leading-none">C</span>
+                          <span className="text-[9px] font-bold text-slate-500 leading-none">{fmtBRL(item.custo)}</span>
+                          <span className="mx-0.5 text-slate-200 text-[8px]">·</span>
+                          <span className="text-[8px] text-slate-400 leading-none">V</span>
+                          <span className="text-[9px] font-black text-green-700 leading-none">{fmtBRL(item.preco_venda)}</span>
+                        </div>
+                        <div className="flex items-center gap-2">
+                          {[item.cor1, item.cor2, item.cor3].filter(Boolean).map((cor, i) => (
+                            <div key={i} className="flex items-center gap-1">
+                              <div
+                                style={{ background: corParaHex(cor) }}
+                                className="w-2.5 h-2.5 rounded-full border border-black/10 shrink-0"
+                              />
+                              <span className="text-[8px] text-slate-500 leading-none truncate max-w-[38px]">{cor}</span>
+                            </div>
+                          ))}
+                        </div>
                       </div>
                     </div>
                   );
