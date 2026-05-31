@@ -226,6 +226,7 @@ export default function StepPedidos({
 
   const [isMobile, setIsMobile] = useState(false);
   const [editingPedido, setEditingPedido] = useState<number | null>(null);
+  const [openDetails, setOpenDetails] = useState<Record<number, boolean>>({});
 
   const [editingTempItem, setEditingTempItem] = useState<number | null>(null);
   const [deletingTempItem, setDeletingTempItem] = useState<number | null>(null);
@@ -1464,47 +1465,203 @@ export default function StepPedidos({
               <div className="flex flex-col gap-3">
                 {pedidos.map((ped, i) => {
                   const totais = calcPedidoTotals(ped);
+
+                  // ── Detectar pares e unidades ──────────────────────────────
+                  let totalPrs = 0;
+                  let totalUn = 0;
+                  const lojaMap: Record<number, { prs: number; un: number; valor: number }> = {};
+
+                  ped.lojas.forEach((loja: number) => {
+                    lojaMap[loja] = { prs: 0, un: 0, valor: 0 };
+                  });
+
+                  ped.itensComGrades.forEach((icg: any) => {
+                    const item = items[icg.itemIdx];
+                    icg.grades.forEach((g: any) => {
+                      const qtd = totPares(g.qtds);
+                      const valorItem = qtd * item.custo * (1 - (cab.desconto || 0) / 100);
+                      if (g.cat === "ACES") {
+                        totalUn += qtd;
+                        ped.lojas.forEach((loja: number) => {
+                          if (lojaMap[loja]) {
+                            lojaMap[loja].un += qtd;
+                            lojaMap[loja].valor += valorItem;
+                          }
+                        });
+                      } else {
+                        totalPrs += qtd;
+                        ped.lojas.forEach((loja: number) => {
+                          if (lojaMap[loja]) {
+                            lojaMap[loja].prs += qtd;
+                            lojaMap[loja].valor += valorItem;
+                          }
+                        });
+                      }
+                    });
+                  });
+
+                  const hasPrs = totalPrs > 0;
+                  const hasUn = totalUn > 0;
+                  const isMix = hasPrs && hasUn;
+                  const numLojas = ped.lojas.length;
+                  const maisDecincoLojas = numLojas > 5;
+
+                  const detailOpen = !!openDetails[i];
+                  const setDetailOpen = (val: boolean | ((prev: boolean) => boolean)) => {
+                    setOpenDetails((prev) => ({
+                      ...prev,
+                      [i]: typeof val === 'function' ? val(!!prev[i]) : val
+                    }));
+                  };
+
                   return (
                     <div
                       key={ped.num}
-                      className="group bg-white border-2 border-slate-100 rounded-2xl p-3 shadow-md hover:border-blue-400 transition-all duration-500 relative overflow-hidden"
+                      className="bg-white border border-slate-200 rounded-xl p-3 shadow-sm"
                     >
-                      <div className="absolute top-0 right-0 w-20 h-20 bg-slate-50 -mr-10 -mt-10 rounded-full group-hover:scale-150 transition-transform duration-700 opacity-30" />
+                      {/* ── Linha 1: título + chips inline (≤5 lojas) + ações ── */}
+                      <div className="flex items-center gap-2 min-w-0">
+                        <span className="text-[12px] font-black text-slate-800 shrink-0">
+                          Pedido #{ped.num}
+                        </span>
 
-                      <div className="flex items-center justify-between mb-3 relative z-10">
-                        <div className="flex flex-col">
-                          <div className="flex items-center gap-1.5 flex-wrap">
-                            <span className="text-[11px] font-black text-slate-800 uppercase tracking-tighter">Pedido #{ped.num}</span>
+                        {isMix && (
+                          <span className="text-[9px] font-bold px-1.5 py-0.5 rounded-full bg-teal-50 text-teal-700 border border-teal-200 shrink-0">
+                            MIX
+                          </span>
+                        )}
+
+                        {/* chips inline quando ≤5 lojas */}
+                        {!maisDecincoLojas && (
+                          <div className="flex flex-wrap gap-1 flex-1 min-w-0">
+                            {ped.lojas.sort((a: number, b: number) => a - b).map((loja: number) => (
+                              <span
+                                key={loja}
+                                className="inline-flex items-center gap-0.5 text-[10px] font-bold px-1.5 h-[20px] rounded-full bg-blue-50 text-blue-600 border border-blue-200 shrink-0"
+                              >
+                                <svg width="9" height="9" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d="M3 9l9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/><polyline points="9 22 9 12 15 12 15 22"/></svg>
+                                {loja}
+                              </span>
+                            ))}
                           </div>
-                          <span className="text-[8px] font-mono text-slate-400 uppercase tracking-widest">{ped.pedido_numero}</span>
-                        </div>
-                        <button
-                          onClick={() => delPedido(i)}
-                          className="w-7 h-7 rounded-xl bg-slate-50 text-slate-300 flex items-center justify-center hover:bg-red-50 hover:text-red-500 transition-all shadow-inner"
-                        >
-                          <Trash2 size={14} />
-                      </button>
-                    </div>
+                        )}
 
-                      <div className="flex flex-col gap-2 mb-3 relative z-10">
-                        <div className="flex items-center justify-between bg-slate-50 p-2 rounded-xl border border-slate-100">
-                          <span className="text-[9px] font-black text-slate-400 uppercase">Pares Fixos/Loja</span>
-                          <span className="text-[11px] font-black text-slate-900">{totais.totalParesPorLoja}p</span>
-                        </div>
-                        <div className="flex items-center justify-between bg-slate-50 p-2 rounded-xl border border-slate-100">
-                          <span className="text-[9px] font-black text-slate-400 uppercase">Valor Fixo/Loja {cab.desconto ? `(-${cab.desconto}%)` : ''}</span>
-                          <span className="text-[11px] font-black text-slate-900">{fmtBRL(totais.totalValorLiquidoPorLoja)}</span>
-                        </div>
-                        <div className="flex items-center justify-between bg-blue-50/50 p-2 rounded-xl border border-blue-100">
-                          <span className="text-[9px] font-black text-blue-600 uppercase">Total Pares ({ped.lojas.length} lojas)</span>
-                          <span className="text-[11px] font-black text-blue-700">{totais.totalParesGeral}p</span>
-                        </div>
-                        <div className="flex items-center justify-between bg-green-50/50 p-2 rounded-xl border border-green-100">
-                          <span className="text-[9px] font-black text-green-600 uppercase">Total Geral {cab.desconto ? `(-${cab.desconto}%)` : ''}</span>
-                          <span className="text-[11px] font-black text-green-700">{fmtBRL(totais.totalValorLiquidoGeral)}</span>
+                        <div className="flex gap-1 ml-auto shrink-0">
+                          <button
+                            onClick={() => setEditingPedido(i)}
+                            className="w-[26px] h-[26px] flex items-center justify-center rounded-lg border border-slate-200 text-slate-400 hover:bg-slate-50 hover:text-blue-500 transition-colors"
+                            aria-label="Editar pedido"
+                          >
+                            <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/></svg>
+                          </button>
+                          <button
+                            onClick={() => delPedido(i)}
+                            className="w-[26px] h-[26px] flex items-center justify-center rounded-lg border border-slate-200 text-slate-400 hover:bg-red-50 hover:text-red-500 transition-colors"
+                            aria-label="Excluir pedido"
+                          >
+                            <Trash2 size={13} />
+                          </button>
                         </div>
                       </div>
 
+                      {/* ── Linha 2: chips em grid quando >5 lojas ── */}
+                      {maisDecincoLojas && (
+                        <>
+                          <div className="border-t border-slate-100 my-2" />
+                          <div
+                            className="grid gap-1"
+                            style={{ gridTemplateColumns: "repeat(9, minmax(0, 1fr))" }}
+                          >
+                            {ped.lojas.sort((a: number, b: number) => a - b).map((loja: number) => (
+                              <span
+                                key={loja}
+                                className="inline-flex items-center justify-center gap-0.5 text-[10px] font-bold h-[22px] rounded-full bg-blue-50 text-blue-600 border border-blue-200"
+                              >
+                                <svg width="8" height="8" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d="M3 9l9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/><polyline points="9 22 9 12 15 12 15 22"/></svg>
+                                {loja}
+                              </span>
+                            ))}
+                          </div>
+                        </>
+                      )}
+
+                      {/* ── Linha 3: resumo + botão detalhes ── */}
+                      <div className="border-t border-slate-100 my-2" />
+                      <div className="flex items-center gap-3">
+                        {hasPrs && (
+                          <div className="flex flex-col gap-0.5">
+                            <span className="text-[9px] font-bold text-slate-400 uppercase tracking-wide">Total Prs</span>
+                            <span className="text-[13px] font-black text-blue-600">{totalPrs * numLojas}Prs</span>
+                          </div>
+                        )}
+                        {isMix && <div className="w-px h-7 bg-slate-200" />}
+                        {hasUn && (
+                          <div className="flex flex-col gap-0.5">
+                            <span className="text-[9px] font-bold text-slate-400 uppercase tracking-wide">Total Un</span>
+                            <span className="text-[13px] font-black text-amber-600">{totalUn * numLojas}Un</span>
+                          </div>
+                        )}
+                        <div className="w-px h-7 bg-slate-200" />
+                        <div className="flex flex-col gap-0.5">
+                          <span className="text-[9px] font-bold text-slate-400 uppercase tracking-wide">Total Valor</span>
+                          <span className="text-[12px] font-black text-slate-700">{fmtBRL(totais.totalValorLiquidoGeral)}</span>
+                        </div>
+                        <button
+                          onClick={() => setDetailOpen((v) => !v)}
+                          className="ml-auto flex items-center gap-1 text-[10px] font-bold text-slate-500 border border-slate-200 rounded-lg px-2 py-1 hover:bg-slate-50 transition-colors shrink-0"
+                        >
+                          <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><line x1="8" y1="6" x2="21" y2="6"/><line x1="8" y1="12" x2="21" y2="12"/><line x1="8" y1="18" x2="21" y2="18"/><line x1="3" y1="6" x2="3.01" y2="6"/><line x1="3" y1="12" x2="3.01" y2="12"/><line x1="3" y1="18" x2="3.01" y2="18"/></svg>
+                          <span>{detailOpen ? "fechar" : "detalhes"}</span>
+                          <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true" style={{ transform: detailOpen ? "rotate(180deg)" : "rotate(0deg)", transition: "transform 0.2s" }}><polyline points="6 9 12 15 18 9"/></svg>
+                        </button>
+                      </div>
+
+                      {/* ── Detalhe por loja ── */}
+                      {detailOpen && (
+                        <>
+                          <div className="border-t border-slate-100 mt-2 pt-2 space-y-1">
+                            {ped.lojas.sort((a: number, b: number) => a - b).map((loja: number) => {
+                              const d = lojaMap[loja];
+                              if (!d) return null;
+                              return (
+                                <div
+                                  key={loja}
+                                  className="flex items-center justify-between bg-slate-50 rounded-lg px-2 py-1.5"
+                                >
+                                  <span className="flex items-center gap-1.5 text-[12px] font-bold text-slate-700">
+                                    <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="#2563eb" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d="M3 9l9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/><polyline points="9 22 9 12 15 12 15 22"/></svg>
+                                    Loja {loja}
+                                  </span>
+                                  <div className="flex items-center gap-2">
+                                    {d.prs > 0 && (
+                                      <span className="text-[11px] font-black text-blue-600">{d.prs}Prs</span>
+                                    )}
+                                    {d.prs > 0 && d.un > 0 && (
+                                      <span className="text-[10px] text-slate-300">·</span>
+                                    )}
+                                    {d.un > 0 && (
+                                      <span className="text-[11px] font-black text-amber-600">{d.un}Un</span>
+                                    )}
+                                    <span className="text-[11px] text-slate-500">{fmtBRL(d.valor)}</span>
+                                  </div>
+                                </div>
+                              );
+                            })}
+                          </div>
+                        </>
+                      )}
+
+                      {/* ── Total geral ── */}
+                      <div className="mt-2 flex items-center justify-between bg-blue-50 border border-blue-100 rounded-lg px-2 py-1.5">
+                        <span className="text-[9px] font-black text-blue-500 uppercase tracking-wider">Total geral</span>
+                        <span className="text-[12px] font-black text-blue-800">
+                          {hasPrs && `${totalPrs * numLojas}Prs`}
+                          {isMix && " · "}
+                          {hasUn && `${totalUn * numLojas}Un`}
+                          {" · "}
+                          {fmtBRL(totais.totalValorLiquidoGeral)}
+                        </span>
+                      </div>
                     </div>
                   );
                 })}
