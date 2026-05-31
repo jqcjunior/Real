@@ -634,6 +634,18 @@ export default function StepPedidos({
 
     const lojasParaPedido = !canViewAllStores ? AVAILABLE_LOJAS : selectedLojas;
 
+    const lojaJaUsada = lojasParaPedido.filter((loja) =>
+      pedidos.some((p) => p.lojas.includes(loja))
+    );
+
+    if (lojaJaUsada.length > 0) {
+      toast.warning(
+        lojaJaUsada.length === 1
+          ? `Loja ${lojaJaUsada[0]} já está em outro pedido desta sessão.`
+          : `Lojas ${lojaJaUsada.join(", ")} já estão em outros pedidos desta sessão.`
+      );
+    }
+
     // Calcular valor por loja já com desconto
     const valorPorLoja = tempPedidoItens.reduce((total, icg) => {
       const item = items[icg.itemIdx];
@@ -1466,15 +1478,13 @@ export default function StepPedidos({
                 {pedidos.map((ped, i) => {
                   const totais = calcPedidoTotals(ped);
 
-                  // ── Detectar pares e unidades ──────────────────────────────
+                  // ── Detectar pares e unidades por loja ──────────────────
                   let totalPrs = 0;
                   let totalUn = 0;
                   const lojaMap: Record<number, { prs: number; un: number; valor: number }> = {};
-
                   ped.lojas.forEach((loja: number) => {
                     lojaMap[loja] = { prs: 0, un: 0, valor: 0 };
                   });
-
                   ped.itensComGrades.forEach((icg: any) => {
                     const item = items[icg.itemIdx];
                     icg.grades.forEach((g: any) => {
@@ -1504,48 +1514,23 @@ export default function StepPedidos({
                   const hasUn = totalUn > 0;
                   const isMix = hasPrs && hasUn;
                   const numLojas = ped.lojas.length;
-                  const maisDecincoLojas = numLojas > 5;
-
-                  const detailOpen = !!openDetails[i];
-                  const setDetailOpen = (val: boolean | ((prev: boolean) => boolean)) => {
-                    setOpenDetails((prev) => ({
-                      ...prev,
-                      [i]: typeof val === 'function' ? val(!!prev[i]) : val
-                    }));
-                  };
+                  const detailOpen = openDetails[ped.num] ?? false;
 
                   return (
                     <div
                       key={ped.num}
                       className="bg-white border border-slate-200 rounded-xl p-3 shadow-sm"
                     >
-                      {/* ── Linha 1: título + chips inline (≤5 lojas) + ações ── */}
-                      <div className="flex items-center gap-2 min-w-0">
+                      {/* ── Linha 1: título + badge MIX + ações ── */}
+                      <div className="flex items-center justify-between gap-2">
                         <span className="text-[12px] font-black text-slate-800 shrink-0">
                           Pedido #{ped.num}
                         </span>
-
                         {isMix && (
                           <span className="text-[9px] font-bold px-1.5 py-0.5 rounded-full bg-teal-50 text-teal-700 border border-teal-200 shrink-0">
                             MIX
                           </span>
                         )}
-
-                        {/* chips inline quando ≤5 lojas */}
-                        {!maisDecincoLojas && (
-                          <div className="flex flex-wrap gap-1 flex-1 min-w-0">
-                            {ped.lojas.sort((a: number, b: number) => a - b).map((loja: number) => (
-                              <span
-                                key={loja}
-                                className="inline-flex items-center gap-0.5 text-[10px] font-bold px-1.5 h-[20px] rounded-full bg-blue-50 text-blue-600 border border-blue-200 shrink-0"
-                              >
-                                <svg width="9" height="9" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d="M3 9l9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/><polyline points="9 22 9 12 15 12 15 22"/></svg>
-                                {loja}
-                              </span>
-                            ))}
-                          </div>
-                        )}
-
                         <div className="flex gap-1 ml-auto shrink-0">
                           <button
                             onClick={() => setEditingPedido(i)}
@@ -1564,26 +1549,22 @@ export default function StepPedidos({
                         </div>
                       </div>
 
-                      {/* ── Linha 2: chips em grid quando >5 lojas ── */}
-                      {maisDecincoLojas && (
-                        <>
-                          <div className="border-t border-slate-100 my-2" />
-                          <div
-                            className="grid gap-1"
-                            style={{ gridTemplateColumns: "repeat(9, minmax(0, 1fr))" }}
+                      {/* ── Linha 2: chips de lojas em grid 9 colunas ── */}
+                      <div className="border-t border-slate-100 my-2" />
+                      <div
+                        className="grid gap-1 w-full"
+                        style={{ gridTemplateColumns: "repeat(9, minmax(0, 1fr))" }}
+                      >
+                        {ped.lojas.sort((a: number, b: number) => a - b).map((loja: number) => (
+                          <span
+                            key={loja}
+                            className="inline-flex items-center justify-center gap-0.5 text-[10px] font-bold h-[22px] rounded-full bg-blue-50 text-blue-600 border border-blue-200 overflow-hidden"
                           >
-                            {ped.lojas.sort((a: number, b: number) => a - b).map((loja: number) => (
-                              <span
-                                key={loja}
-                                className="inline-flex items-center justify-center gap-0.5 text-[10px] font-bold h-[22px] rounded-full bg-blue-50 text-blue-600 border border-blue-200"
-                              >
-                                <svg width="8" height="8" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d="M3 9l9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/><polyline points="9 22 9 12 15 12 15 22"/></svg>
-                                {loja}
-                              </span>
-                            ))}
-                          </div>
-                        </>
-                      )}
+                            <svg width="8" height="8" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d="M3 9l9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/><polyline points="9 22 9 12 15 12 15 22"/></svg>
+                            {loja}
+                          </span>
+                        ))}
+                      </div>
 
                       {/* ── Linha 3: resumo + botão detalhes ── */}
                       <div className="border-t border-slate-100 my-2" />
@@ -1607,7 +1588,7 @@ export default function StepPedidos({
                           <span className="text-[12px] font-black text-slate-700">{fmtBRL(totais.totalValorLiquidoGeral)}</span>
                         </div>
                         <button
-                          onClick={() => setDetailOpen((v) => !v)}
+                          onClick={() => setOpenDetails((prev) => ({ ...prev, [ped.num]: !detailOpen }))}
                           className="ml-auto flex items-center gap-1 text-[10px] font-bold text-slate-500 border border-slate-200 rounded-lg px-2 py-1 hover:bg-slate-50 transition-colors shrink-0"
                         >
                           <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><line x1="8" y1="6" x2="21" y2="6"/><line x1="8" y1="12" x2="21" y2="12"/><line x1="8" y1="18" x2="21" y2="18"/><line x1="3" y1="6" x2="3.01" y2="6"/><line x1="3" y1="12" x2="3.01" y2="12"/><line x1="3" y1="18" x2="3.01" y2="18"/></svg>
@@ -1616,39 +1597,37 @@ export default function StepPedidos({
                         </button>
                       </div>
 
-                      {/* ── Detalhe por loja ── */}
+                      {/* ── Detalhes por loja (expansível) ── */}
                       {detailOpen && (
-                        <>
-                          <div className="border-t border-slate-100 mt-2 pt-2 space-y-1">
-                            {ped.lojas.sort((a: number, b: number) => a - b).map((loja: number) => {
-                              const d = lojaMap[loja];
-                              if (!d) return null;
-                              return (
-                                <div
-                                  key={loja}
-                                  className="flex items-center justify-between bg-slate-50 rounded-lg px-2 py-1.5"
-                                >
-                                  <span className="flex items-center gap-1.5 text-[12px] font-bold text-slate-700">
-                                    <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="#2563eb" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d="M3 9l9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/><polyline points="9 22 9 12 15 12 15 22"/></svg>
-                                    Loja {loja}
-                                  </span>
-                                  <div className="flex items-center gap-2">
-                                    {d.prs > 0 && (
-                                      <span className="text-[11px] font-black text-blue-600">{d.prs}Prs</span>
-                                    )}
-                                    {d.prs > 0 && d.un > 0 && (
-                                      <span className="text-[10px] text-slate-300">·</span>
-                                    )}
-                                    {d.un > 0 && (
-                                      <span className="text-[11px] font-black text-amber-600">{d.un}Un</span>
-                                    )}
-                                    <span className="text-[11px] text-slate-500">{fmtBRL(d.valor)}</span>
-                                  </div>
+                        <div className="border-t border-slate-100 mt-2 pt-2 space-y-1">
+                          {ped.lojas.sort((a: number, b: number) => a - b).map((loja: number) => {
+                            const d = lojaMap[loja];
+                            if (!d) return null;
+                            return (
+                              <div
+                                key={loja}
+                                className="flex items-center justify-between bg-slate-50 rounded-lg px-2 py-1.5"
+                              >
+                                <span className="flex items-center gap-1.5 text-[12px] font-bold text-slate-700">
+                                  <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="#2563eb" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d="M3 9l9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/><polyline points="9 22 9 12 15 12 15 22"/></svg>
+                                  Loja {loja}
+                                </span>
+                                <div className="flex items-center gap-2">
+                                  {d.prs > 0 && (
+                                    <span className="text-[11px] font-black text-blue-600">{d.prs}Prs</span>
+                                  )}
+                                  {d.prs > 0 && d.un > 0 && (
+                                    <span className="text-[10px] text-slate-300">·</span>
+                                  )}
+                                  {d.un > 0 && (
+                                    <span className="text-[11px] font-black text-amber-600">{d.un}Un</span>
+                                  )}
+                                  <span className="text-[11px] text-slate-500">{fmtBRL(d.valor)}</span>
                                 </div>
-                              );
-                            })}
-                          </div>
-                        </>
+                              </div>
+                            );
+                          })}
+                        </div>
                       )}
 
                       {/* ── Total geral ── */}
