@@ -227,6 +227,7 @@ export default function StepPedidos({
   const [isMobile, setIsMobile] = useState(false);
   const [editingPedido, setEditingPedido] = useState<number | null>(null);
   const [openDetails, setOpenDetails] = useState<Record<number, boolean>>({});
+  const [isSubmitting, setIsSubmitting] = useState(false);
 
   const [editingTempItem, setEditingTempItem] = useState<number | null>(null);
   const [deletingTempItem, setDeletingTempItem] = useState<number | null>(null);
@@ -622,13 +623,18 @@ export default function StepPedidos({
   }
 
   async function criarPedido() {
+    if (isSubmitting) return;
+    setIsSubmitting(true);
+
     if (tempPedidoItens.length === 0) {
       alert("Vincule ao menos um item com grade antes de criar o pedido");
+      setIsSubmitting(false);
       return;
     }
 
     if (selectedLojas.length === 0 && canViewAllStores) {
       alert("Selecione ao menos uma loja");
+      setIsSubmitting(false);
       return;
     }
 
@@ -718,6 +724,7 @@ export default function StepPedidos({
         selectedLojas: [],
         lojaMode: null,
       }));
+      setIsSubmitting(false);
       setQuotaModal(null);
     };
 
@@ -730,9 +737,14 @@ export default function StepPedidos({
       const ok = window.confirm(
         `Atenção: A cota foi excedida em ${fmtBRL(totalFalta)} em ${lojasFaltando.length} loja(s).\n\nComo ADMINISTRADOR, deseja autorizar mesmo assim?`
       );
-      if (ok) await executarCriacao();
+      if (ok) {
+        await executarCriacao();
+      } else {
+        setIsSubmitting(false); // cancelou
+      }
     } else {
       // Gerente/Comprador: modal de justificativa
+      setIsSubmitting(false); // abre modal, reset aqui
       setQuotaModal({ lojasFaltando, valorPorLoja, onConfirm: executarCriacao });
     }
   }
@@ -904,12 +916,13 @@ export default function StepPedidos({
                 </button>
                 <button
                   onClick={criarPedido}
-                  className="px-3 py-1.5 bg-white/10 hover:bg-white/20 border border-white/20 rounded-lg text-[10px] font-black uppercase tracking-wider transition-all flex items-center gap-2 active:scale-95"
+                  disabled={isSubmitting}
+                  className="px-3 py-1.5 bg-white/10 hover:bg-white/20 border border-white/20 rounded-lg text-[10px] font-black uppercase tracking-wider transition-all flex items-center gap-2 active:scale-95 disabled:opacity-50 disabled:cursor-not-allowed"
                 >
                   <span className="w-4 h-4 bg-green-400 rounded-full flex items-center justify-center shrink-0 shadow-md shadow-green-900/30">
                     <span className="text-white text-[9px] font-black leading-none">✓</span>
                   </span>
-                  Concluir Pedido
+                  {isSubmitting ? 'Salvando...' : 'Concluir Pedido'}
                   <span className="bg-white/15 border border-white/20 px-1.5 py-0.5 rounded-full text-[9px] font-bold">
                     {canViewAllStores ? selectedLojas.length : AVAILABLE_LOJAS.length}L
                   </span>
@@ -1383,9 +1396,10 @@ export default function StepPedidos({
                   {tempPedidoItens.length > 0 && selectedLojas.length > 0 && (
                     <button
                       onClick={criarPedido}
-                      className="w-full py-3 bg-green-600 hover:bg-green-700 text-white rounded-2xl text-[11px] font-black tracking-[0.1em] shadow-xl shadow-green-600/20 active:scale-95 transition-all flex items-center justify-center gap-3"
+                      disabled={isSubmitting}
+                      className="w-full py-3 bg-green-600 hover:bg-green-700 text-white rounded-2xl text-[11px] font-black tracking-[0.1em] shadow-xl shadow-green-600/20 active:scale-95 transition-all flex items-center justify-center gap-3 disabled:opacity-50 disabled:cursor-not-allowed"
                     >
-                      <span>✓ FINALIZAR PEDIDO</span>
+                      <span>{isSubmitting ? 'Salvando...' : '✓ FINALIZAR PEDIDO'}</span>
                       <div className="h-4 w-px bg-white/20" />
                       <span className="bg-white/20 px-3 rounded-full py-0.5">{selectedLojas.length} LOJAS</span>
                     </button>
