@@ -1109,7 +1109,7 @@ export default function StepPedidos({
                             }}
                           >
                             <span className="text-[9px] font-black uppercase tracking-wider truncate">
-                              ✓ Vincular Grade {letter}
+                              ✓ Vincular {letter}
                             </span>
                             <span className={`text-[8px] font-black shrink-0 ml-2 px-1.5 py-0.5 rounded ${
                               paresCount > 0 && selectedItems.size > 0
@@ -1185,14 +1185,14 @@ export default function StepPedidos({
                             <button
                               onClick={() => vincularAoPedido(letter)}
                               disabled={paresCount === 0 || selectedItems.size === 0}
-                              className={`w-full py-2 rounded-lg text-[10px] font-black uppercase tracking-widest transition-all shadow-md flex items-center justify-center gap-2 ${
+                              className={`w-full py-2 rounded-lg text-[10px] font-black uppercase tracking-widest transition-all shadow-md flex items-center justify-center gap-2 whitespace-nowrap min-w-0 ${
                                 paresCount > 0 && selectedItems.size > 0
                                   ? 'bg-blue-600 text-white hover:bg-blue-700 shadow-blue-600/10'
                                   : 'bg-slate-100 text-slate-300 cursor-not-allowed border border-slate-200'
                               }`}
                             >
-                              ✓ Vincular Grade {letter}
-                              {selectedItems.size > 0 && <span className="bg-white/20 px-1.5 rounded">{selectedItems.size} ITENS</span>}
+                              <span className="whitespace-nowrap">✓ Vincular Grade {letter}</span>
+                              {selectedItems.size > 0 && <span className="bg-white/20 px-1.5 rounded shrink-0">{selectedItems.size}it</span>}
                             </button>
                           </div>
                         )}
@@ -1287,14 +1287,14 @@ export default function StepPedidos({
               <button
                 onClick={() => vincularAoPedido(letter)}
                 disabled={totalPares === 0 || selectedItems.size === 0}
-                className={`w-full py-2 rounded-lg text-[10px] font-black uppercase tracking-widest transition-all shadow-md flex items-center justify-center gap-2 ${
+                className={`w-full py-2 rounded-lg text-[10px] font-black uppercase tracking-widest transition-all shadow-md flex items-center justify-center gap-2 whitespace-nowrap min-w-0 ${
                   totalPares > 0 && selectedItems.size > 0
                     ? 'bg-blue-600 text-white hover:bg-blue-700 shadow-blue-600/10'
                     : 'bg-slate-100 text-slate-300 cursor-not-allowed border border-slate-200'
                 }`}
               >
-                ✓ Vincular Grade {letter}
-                {selectedItems.size > 0 && <span className="bg-white/20 px-1.5 rounded">{selectedItems.size} ITENS</span>}
+                <span className="whitespace-nowrap">✓ Vincular Grade {letter}</span>
+                {selectedItems.size > 0 && <span className="bg-white/20 px-1.5 rounded shrink-0">{selectedItems.size}it</span>}
               </button>
             </div>
           )}
