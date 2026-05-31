@@ -976,13 +976,9 @@ export default function StepPedidos({
                         </div>
                         <div className="flex items-center gap-2">
                           {[item.cor1, item.cor2, item.cor3].filter(Boolean).map((cor, i) => (
-                            <div key={i} className="flex items-center gap-1">
-                              <div
-                                style={{ background: corParaHex(cor) }}
-                                className="w-2.5 h-2.5 rounded-full border border-black/10 shrink-0"
-                              />
-                              <span className="text-[8px] text-slate-500 leading-none truncate max-w-[38px]">{cor}</span>
-                            </div>
+                            <span key={i} className="text-[8px] font-bold text-slate-600 leading-none truncate max-w-[44px]">
+                              {cor}{i < [item.cor1, item.cor2, item.cor3].filter(Boolean).length - 1 ? ' ·' : ''}
+                            </span>
                           ))}
                         </div>
                       </div>
