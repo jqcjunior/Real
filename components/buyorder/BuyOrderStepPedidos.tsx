@@ -1954,6 +1954,20 @@ function EditPedidoPopup({
   cab: Cabecalho;
 }) {
   const [localPedido, setLocalPedido] = useState({ ...pedido });
+  const [showAddLoja, setShowAddLoja] = useState(false);
+  const [searchLoja, setSearchLoja] = useState("");
+
+  const lojasDisponiveis = ALL_LOJAS.filter(
+    (n) => !localPedido.lojas.includes(n) && String(n).includes(searchLoja)
+  );
+
+  function addLoja(loja: number) {
+    setLocalPedido((p) => ({
+      ...p,
+      lojas: [...p.lojas, loja].sort((a, b) => a - b),
+    }));
+    setSearchLoja("");
+  }
 
   function removeItem(itemIdx: number) {
     setLocalPedido((p) => ({
@@ -1988,8 +2002,7 @@ function EditPedidoPopup({
       totalValorLiquidoPorLoja,
       totalParesGeral: totalParesPorLoja * localPedido.lojas.length,
       totalValorBrutoGeral: totalValorBrutoPorLoja * localPedido.lojas.length,
-      totalValorLiquidoGeral:
-        totalValorLiquidoPorLoja * localPedido.lojas.length,
+      totalValorLiquidoGeral: totalValorLiquidoPorLoja * localPedido.lojas.length,
     };
   })();
 
@@ -2048,10 +2061,7 @@ function EditPedidoPopup({
                       </div>
                       <div className="space-y-1">
                         {icg.grades.map((g) => (
-                          <div
-                            key={g.letter}
-                            className="text-[10px] text-slate-500"
-                          >
+                          <div key={g.letter} className="text-[10px] text-slate-500">
                             <strong>Grade {g.letter} ({totPares(g.qtds)}p)</strong> (
                             {CATS[g.cat]?.label}):{" "}
                             {Object.entries(g.qtds)
@@ -2080,18 +2090,56 @@ function EditPedidoPopup({
           </div>
 
           <div>
-            <div className="text-xs font-bold text-slate-700 uppercase mb-2">
-              Lojas ({localPedido.lojas.length})
+            {/* ── Header lojas + botão adicionar ── */}
+            <div className="flex items-center justify-between mb-2">
+              <div className="text-xs font-bold text-slate-700 uppercase">
+                Lojas ({localPedido.lojas.length})
+              </div>
+              <button
+                onClick={() => setShowAddLoja((v) => !v)}
+                className="text-[10px] font-bold px-2 py-1 bg-blue-50 text-blue-600 border border-blue-200 rounded-lg hover:bg-blue-100 transition-colors"
+              >
+                {showAddLoja ? "✕ Fechar" : "+ Adicionar Loja"}
+              </button>
             </div>
+
+            {/* ── Seletor de lojas ── */}
+            {showAddLoja && (
+              <div className="mb-3 border border-slate-200 rounded-xl p-3 bg-slate-50">
+                <input
+                  type="text"
+                  placeholder="Buscar loja pelo número..."
+                  value={searchLoja}
+                  onChange={(e) => setSearchLoja(e.target.value)}
+                  className="w-full border border-slate-300 rounded-lg px-3 py-1.5 text-xs mb-2 focus:outline-none focus:border-blue-400"
+                />
+                <div className="grid grid-cols-8 gap-1.5 max-h-32 overflow-y-auto">
+                  {lojasDisponiveis.map((n) => (
+                    <button
+                      key={n}
+                      onClick={() => addLoja(n)}
+                      className="h-8 flex items-center justify-center text-[10px] font-black rounded-xl border-2 border-slate-200 bg-white text-slate-500 hover:bg-blue-600 hover:text-white hover:border-blue-600 transition-all"
+                    >
+                      {n}
+                    </button>
+                  ))}
+                  {lojasDisponiveis.length === 0 && (
+                    <div className="col-span-8 text-center text-[10px] text-slate-400 py-2">
+                      Nenhuma loja disponível
+                    </div>
+                  )}
+                </div>
+              </div>
+            )}
+
+            {/* ── Lista de lojas atuais ── */}
             <div className="flex flex-wrap gap-2">
               {localPedido.lojas.map((loja) => (
                 <div
                   key={loja}
                   className="bg-blue-50 border border-blue-300 px-3 py-1.5 rounded-lg flex items-center gap-2"
                 >
-                  <span className="text-sm font-bold text-blue-800">
-                    {loja}
-                  </span>
+                  <span className="text-sm font-bold text-blue-800">{loja}</span>
                   <button
                     onClick={() => removeLoja(loja)}
                     className="text-red-500 hover:text-red-700 text-xs"
