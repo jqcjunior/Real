@@ -673,6 +673,7 @@ export default function BuyOrderModule({ user }: { user?: User }) {
         const { data: order, error: oErr } = await supabase
           .from("buy_orders")
           .insert({
+            numero_pedido: 0,
             user_id: userId,
             user_name: user?.name || user?.email || "sistema",
             user_role: String(user?.role || "").toLowerCase(),

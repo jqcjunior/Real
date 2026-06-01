@@ -1572,9 +1572,8 @@ export default function StepPedidos({
                         {ped.lojas.sort((a: number, b: number) => a - b).map((loja: number) => (
                           <span
                             key={loja}
-                            className="inline-flex items-center justify-center gap-0.5 text-[10px] font-bold h-[22px] rounded-full bg-blue-50 text-blue-600 border border-blue-200 overflow-hidden"
+                            className="inline-flex items-center justify-center text-[12px] font-black h-[22px] px-2 rounded-full bg-blue-50 text-blue-700 border border-blue-300 overflow-hidden"
                           >
-                            <svg width="8" height="8" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d="M3 9l9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/><polyline points="9 22 9 12 15 12 15 22"/></svg>
                             {loja}
                           </span>
                         ))}
