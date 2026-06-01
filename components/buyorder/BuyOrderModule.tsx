@@ -2571,7 +2571,7 @@ function StepCabecalho({
         📅 Faturamento
       </div>
       <div className="p-4 md:p-6 border-b border-slate-200">
-        <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 mb-5">
+        <div className="grid grid-cols-3 gap-4 mb-5">
           <div>
             <label style={labelStyle}>Data Inicial *</label>
             <input
