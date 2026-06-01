@@ -66,7 +66,7 @@ const AuditoriaTab: React.FC<AuditoriaTabProps> = ({
                 <div className="flex flex-col md:flex-row justify-between items-center gap-4">
                     <div>
                         <h3 className="text-xl font-black uppercase italic text-blue-950 tracking-tighter flex items-center gap-3">
-                            <History className="text-blue-700" size={28}/> Auditoria <span className="text-red-600">Geral</span>
+                            <History className="text-blue-700" size={28}/> {isSorvete ? 'Auditoria do dia' : <>Auditoria <span className="text-red-600">Geral</span></>}
                         </h3>
                         <div className="flex bg-gray-100 p-1 rounded-xl mt-3">
                             <button onClick={() => setAuditSubTab('vendas')} className={`px-4 py-1.5 rounded-lg text-[9px] font-black uppercase transition-all ${auditSubTab === 'vendas' ? 'bg-white text-blue-900 shadow-sm' : 'text-gray-400'}`}>
@@ -92,7 +92,12 @@ const AuditoriaTab: React.FC<AuditoriaTabProps> = ({
                     )}
                 </div>
                 
-                {auditSubTab === 'cancelamentos' ? (
+                {isSorvete ? (
+                    <div className="relative">
+                        <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-300" size={14}/>
+                        <input value={auditSearch} onChange={e => setAuditSearch(e.target.value)} placeholder="PESQUISAR NA AUDITORIA..." className="w-full bg-gray-50 border-none rounded-xl pl-10 pr-4 py-3 text-[10px] font-black uppercase outline-none shadow-inner" />
+                    </div>
+                ) : auditSubTab === 'cancelamentos' ? (
                     <div className="grid grid-cols-2 md:grid-cols-3 gap-4">
                         <select value={auditMonth} onChange={e => setAuditMonth(e.target.value)} className="bg-gray-50 border-none rounded-xl p-3 text-[10px] font-black uppercase text-slate-900 outline-none shadow-inner">
                             <option value="">MÊS</option>

@@ -42,42 +42,247 @@ const EditSangriaModal = lazy(() => import('./modals/EditSangriaModal'));
 
 import { IceCreamModuleProps } from './types';
 
+const ICE_CREAM_STORE_IDS = [
+    '0eef2f53-4732-4824-84a5-2092234efaef', // Loja 26 - Cruz das Almas
+    'cbeeb1ea-911f-4d3a-87a9-3c38aafa0673'  // Loja 109 - Conceição do Jacuípe
+];
+
 const IceCreamModule: React.FC<IceCreamModuleProps> = ({
     user,
     stores = [],
-    items = [],
-    stock = [],
-    sales = [],
-    salesHeaders = [],
-    salePayments = [],
-    promissories = [],
     can,
-    onAddSales,
-    onAddSaleAtomic,
-    onCancelSale,
-    onUpdatePrice,
-    onAddItem,
-    onSaveProduct,
-    onDeleteItem,
-    onUpdateStock,
-    liquidatePromissory,
-    onDeleteStockItem,
-    sangriaCategories = [],
-    sangrias = [],
-    stockMovements = [],
-    wastage = [],
     partners = [],
-    adminUsers = [],
-    onAddSangria,
-    onAddSangriaCategory,
-    onDeleteSangriaCategory,
-    onAddStockMovement,
-    futureDebts = [],
-    onAddFutureDebt,
-    onPayFutureDebt,
-    fetchData
+    adminUsers = []
 }) => {
     const [activeTab, setActiveTab] = useState<'pdv' | 'dre' | 'dre_mensal' | 'stock' | 'audit' | 'produtos' | 'despesas'>('pdv');
+
+    // ═══════════════════════════════════════════════════════════════
+    // ⚙️ INTERNAL STATES (Ice Cream Module)
+    // ═══════════════════════════════════════════════════════════════
+    const [salesHeaders, setSalesHeaders] = useState<any[]>([]);
+    const [sales, setSales] = useState<any[]>([]);
+    const [salePayments, setSalePayments] = useState<any[]>([]);
+    const [sangrias, setSangrias] = useState<any[]>([]);
+    const [stock, setStock] = useState<any[]>([]);
+    const [stockMovements, setStockMovements] = useState<any[]>([]);
+    const [wastage, setWastage] = useState<any[]>([]);
+    const [futureDebts, setFutureDebts] = useState<any[]>([]);
+    const [items, setItems] = useState<any[]>([]);
+    const [promissories, setPromissories] = useState<any[]>([]);
+    const [sangriaCategories, setSangriaCategories] = useState<any[]>([]);
+    const [isLoading, setIsLoading] = useState(true);
+
+    const LOJA_26_ID = '0eef2f53-4732-4824-84a5-2092234efaef';
+
+    const [effectiveStoreId, setEffectiveStoreId] = useState(() => {
+        if (user?.storeId) return user.storeId;
+        const loja26 = stores.find(s => s.id === LOJA_26_ID);
+        if (loja26) return loja26.id;
+        if (stores.length > 0) return stores[0].id;
+        return '';
+    });
+
+    useEffect(() => {
+        if (!effectiveStoreId && stores.length > 0) {
+            const loja26 = stores.find(s => s.id === LOJA_26_ID);
+            setEffectiveStoreId(loja26 ? loja26.id : stores[0].id);
+        }
+    }, [stores]);
+
+    const isAdmin = user?.role === UserRole.ADMIN;
+    const canManage = can('MODULE_ICECREAM_MANAGE');
+    const isSorvete = user?.role === UserRole.ICE_CREAM;
+
+    // ✅ FIX: Auto-selecionar loja para usuários SORVETE
+    useEffect(() => {
+        if (user?.role === UserRole.ICE_CREAM && user?.storeId && effectiveStoreId !== user.storeId) {
+            console.log('🔧 Auto-selecionando loja do usuário SORVETE:', user.storeId);
+            setEffectiveStoreId(user.storeId);
+        }
+    }, [user]);
+
+    // ═══════════════════════════════════════════════════════════════
+    // 🔄 LOAD DATA FOR THE USER PROFILE
+    // ═══════════════════════════════════════════════════════════════
+    const loadIceCreamData = async () => {
+        setIsLoading(true);
+        try {
+            const now = new Date();
+            const isSorveteRole = user?.role === UserRole.ICE_CREAM;
+            const isGerente = user?.role === UserRole.MANAGER;
+
+            // Determinar range de datas
+            let startDate: string;
+            let endDate: string;
+
+            if (isSorveteRole) {
+                // SORVETE: apenas HOJE
+                const today = new Date();
+                today.setHours(0, 0, 0, 0);
+                startDate = today.toISOString();
+                const tomorrow = new Date(today);
+                tomorrow.setDate(tomorrow.getDate() + 1);
+                endDate = tomorrow.toISOString();
+            } else if (isGerente) {
+                // GERENTE: mês atual + anterior se dia <= 10
+                const start = new Date();
+                if (now.getDate() <= 10) {
+                    start.setMonth(start.getMonth() - 1);
+                }
+                start.setDate(1);
+                start.setHours(0, 0, 0, 0);
+                startDate = start.toISOString();
+                const end = new Date();
+                end.setMonth(end.getMonth() + 1);
+                end.setDate(1);
+                end.setHours(0, 0, 0, 0);
+                endDate = end.toISOString();
+            } else {
+                // ADMIN: mês atual
+                const start = new Date();
+                start.setDate(1);
+                start.setHours(0, 0, 0, 0);
+                startDate = start.toISOString();
+                const end = new Date(start);
+                end.setMonth(end.getMonth() + 1);
+                endDate = end.toISOString();
+            }
+
+            // Filtro de loja para SORVETE
+            const storeFilter = isSorveteRole && user?.storeId 
+                ? [user.storeId] 
+                : ICE_CREAM_STORE_IDS;
+
+            // TODAS as queries em PARALELO com Promise.all
+            const [
+                { data: headers },
+                { data: dailySales },
+                { data: payments },
+                { data: sangriaData },
+                { data: stockData },
+                { data: movements },
+                { data: wastageData },
+                { data: debts },
+                { data: itemsData },
+                { data: promissoryData },
+                { data: sangriaCategoriesData }
+            ] = await Promise.all([
+                // 1. ice_cream_sales (headers)
+                supabase.from('ice_cream_sales').select('*')
+                    .in('store_id', storeFilter)
+                    .gte('created_at', startDate)
+                    .lt('created_at', endDate)
+                    .order('created_at', { ascending: false }),
+                
+                // 2. ice_cream_daily_sales (itens)
+                supabase.from('ice_cream_daily_sales').select('*')
+                    .in('store_id', storeFilter)
+                    .gte('created_at', startDate)
+                    .lt('created_at', endDate),
+                
+                // 3. ice_cream_daily_sales_payments
+                supabase.from('ice_cream_daily_sales_payments').select('*')
+                    .in('store_id', storeFilter)
+                    .gte('created_at', startDate)
+                    .lt('created_at', endDate),
+                
+                // 4. ice_cream_sangria (filtrar por data também!)
+                supabase.from('ice_cream_sangria').select('*')
+                    .in('store_id', storeFilter)
+                    .gte('created_at', startDate)
+                    .lt('created_at', endDate),
+                
+                // 5. ice_cream_stock (sem filtro de data, é estado atual)
+                supabase.from('ice_cream_stock').select('*')
+                    .in('store_id', storeFilter),
+                
+                // 6. ice_cream_stock_movements (COM filtro de data!)
+                supabase.from('ice_cream_stock_movements').select('*')
+                    .in('store_id', storeFilter)
+                    .gte('created_at', startDate)
+                    .lt('created_at', endDate),
+                
+                // 7. ice_cream_wastage
+                supabase.from('ice_cream_wastage').select('*')
+                    .in('store_id', storeFilter)
+                    .gte('created_at', startDate)
+                    .lt('created_at', endDate),
+                
+                // 8. ice_cream_future_debts (sem filtro de data)
+                supabase.from('ice_cream_future_debts').select('*')
+                    .in('store_id', storeFilter),
+                
+                // 9. ice_cream_items (catálogo, sem filtro)
+                supabase.from('ice_cream_items').select('*'),
+
+                // 10. ice_cream_promissory_notes
+                supabase.from('ice_cream_promissory_notes').select('*'),
+
+                // 11. ice_cream_sangria_categoria
+                supabase.from('ice_cream_sangria_categoria').select('*')
+            ]);
+
+            setSalesHeaders(headers || []);
+            setSales(
+                (dailySales || []).map((x: any) => ({
+                    id: x.id,
+                    saleId: x.sale_id,
+                    storeId: x.store_id,
+                    itemId: x.item_id,
+                    productName: x.product_name,
+                    category: x.category,
+                    flavor: x.flavor,
+                    unitsSold: Number(x.units_sold || 0),
+                    unitPrice: Number(x.unit_price || 0),
+                    totalValue: Number(x.total_value || 0),
+                    paymentMethod: x.payment_method,
+                    saleCode: x.sale_code,
+                    buyer_name: x.buyer_name,
+                    createdAt: x.created_at,
+                    canceledAt: x.canceled_at,
+                    canceledBy: x.canceled_by,
+                    status: x.status,
+                    cancel_reason: x.cancel_reason
+                }))
+            );
+            setSalePayments((payments || []).map((x: any) => ({ ...x, amount: Number(x.amount || 0) })));
+            setSangrias(sangriaData || []);
+            setStock((stockData || []).map((item: any) => ({ ...item, stock_id: item.id })));
+            setStockMovements(movements || []);
+            setWastage(wastageData || []);
+            setFutureDebts(debts || []);
+            setItems(
+                (itemsData || []).map((x: any) => ({
+                    id: x.id,
+                    storeId: x.store_id,
+                    name: x.name,
+                    category: x.category,
+                    price: Number(x.price || 0),
+                    flavor: x.flavor,
+                    active: x.active,
+                    consumption_per_sale: x.consumption_per_sale || 0,
+                    recipe: typeof x.recipe === 'string' ? JSON.parse(x.recipe) : (x.recipe || []),
+                    image_url: x.image_url
+                }))
+            );
+            setPromissories(promissoryData || []);
+            setSangriaCategories(sangriaCategoriesData || []);
+        } catch (e) {
+            console.error('❌ Erro carregando dados de Sorvete:', e);
+        } finally {
+            setIsLoading(false);
+        }
+    };
+
+    // Chamar no mount e nas dependências apropriadas
+    useEffect(() => {
+        loadIceCreamData();
+    }, [effectiveStoreId]);
+
+    const fetchData = useCallback(async (silent = false) => {
+        if (!silent) setIsLoading(true);
+        await loadIceCreamData();
+    }, [effectiveStoreId]);
 
     // ═══════════════════════════════════════════════════════════════
     // 🔄 AUTO-REFRESH SILENCIOSO - Atualiza dados a cada 30 segundos
@@ -97,7 +302,7 @@ const IceCreamModule: React.FC<IceCreamModuleProps> = ({
             
             isFetching = true;
             try {
-                if (fetchData) await fetchData(true);
+                await fetchData(true);
             } catch (error) {
                 console.error('❌ Erro no auto-refresh:', error);
             } finally {
@@ -117,56 +322,6 @@ const IceCreamModule: React.FC<IceCreamModuleProps> = ({
             document.removeEventListener('visibilitychange', handleVisibilityChange);
         };
     }, [activeTab, fetchData]);
-    // ═══════════════════════════════════════════════════════════════
-    const LOJA_26_ID = '0eef2f53-4732-4824-84a5-2092234efaef';
-
-    const [effectiveStoreId, setEffectiveStoreId] = useState(() => {
-        if (user?.storeId) return user.storeId;
-        const loja26 = stores.find(s => s.id === LOJA_26_ID);
-        if (loja26) return loja26.id;
-        if (stores.length > 0) return stores[0].id;
-        return '';
-    });
-
-    useEffect(() => {
-        if (!effectiveStoreId && stores.length > 0) {
-            const loja26 = stores.find(s => s.id === LOJA_26_ID);
-            setEffectiveStoreId(loja26 ? loja26.id : stores[0].id);
-        }
-    }, [stores]);
-    const isAdmin = user?.role === UserRole.ADMIN;
-    const canManage = can('MODULE_ICECREAM_MANAGE');
-    const isSorvete = user?.role === UserRole.ICE_CREAM;
-
-    // 🔍 DEBUG: Verificar permissões
-    console.log('=== DEBUG PERMISSÕES DROPDOWN ===');
-    console.log('user.role:', user?.role);
-    console.log('user.name:', user?.name);
-    console.log('isAdmin:', isAdmin);
-    console.log('canManage:', canManage);
-    console.log('isSorvete:', isSorvete);
-    console.log('UserRole.ICE_CREAM:', UserRole.ICE_CREAM);
-    console.log('can(ALWAYS):', can('ALWAYS'));
-    console.log('================================');
-
-    // ✅ FIX: Auto-selecionar loja para usuários SORVETE
-    useEffect(() => {
-        if (user?.role === UserRole.ICE_CREAM && user?.storeId && effectiveStoreId !== user.storeId) {
-            console.log('🔧 Auto-selecionando loja do usuário SORVETE:', user.storeId);
-            setEffectiveStoreId(user.storeId);
-        }
-    }, [user]);
-
-    // 🔍 DEBUG: Verificar dados recebidos
-    useEffect(() => {
-        console.log('=== DEBUG DADOS ===');
-        console.log('items total:', items.length);
-        console.log('items da loja:', items.filter(i => i.storeId === effectiveStoreId).length);
-        console.log('stock total:', stock.length);
-        console.log('stock da loja:', stock.filter(s => s.store_id === effectiveStoreId).length);
-        console.log('effectiveStoreId:', effectiveStoreId);
-        console.log('==================');
-    }, [items, stock, effectiveStoreId]);
 
     // Dates
     const [displayDate, setDisplayDate] = useState(new Date().toISOString().split('T')[0]);
@@ -182,11 +337,14 @@ const IceCreamModule: React.FC<IceCreamModuleProps> = ({
     const [auditSearch, setAuditSearch] = useState('');
 
     const selectedAuditDate = useMemo(() => {
+        if (isSorvete) {
+            return new Date().toISOString().split('T')[0];
+        }
         if (!auditDay || !auditMonth || !auditYear) return '';
         const d = auditDay.padStart(2, '0');
         const m = auditMonth.padStart(2, '0');
         return `${auditYear}-${m}-${d}`;
-    }, [auditDay, auditMonth, auditYear]);
+    }, [auditDay, auditMonth, auditYear, isSorvete]);
 
     // ─── FETCH SOB DEMANDA — DRE DIÁRIO ─────────────────────────────────────────
     // Dados extras buscados quando o usuário navega para uma data fora do mês atual
@@ -194,98 +352,104 @@ const IceCreamModule: React.FC<IceCreamModuleProps> = ({
     const [extraHeaders, setExtraHeaders] = useState<any[]>([]);
     const [extraPayments, setExtraPayments] = useState<any[]>([]);
     const [extraSangrias, setExtraSangrias] = useState<any[]>([]);
+    const [extraStockMovements, setExtraStockMovements] = useState<any[]>([]);
+    const [extraWastage, setExtraWastage] = useState<any[]>([]);
     const [isDRELoading, setIsDRELoading] = useState(false);
-    
-    // Mês base carregado pelo App.tsx (mês corrente em que o sistema iniciou)
-    const loadedMonthStart = useMemo(() => {
-        const now = new Date();
-        return new Date(now.getFullYear(), now.getMonth(), 1).getTime();
-    }, []);
     
     // Detecta mudança de data e busca dados extras se necessário
     useEffect(() => {
         if (!displayDate || !effectiveStoreId) return;
     
         const now = new Date();
-        const todayStr = now.toISOString().split('T')[0];
         const selected = new Date(displayDate + 'T00:00:00');
         const selectedMonthStart = new Date(selected.getFullYear(), selected.getMonth(), 1).getTime();
+        const currentMonthStart = new Date(now.getFullYear(), now.getMonth(), 1).getTime();
     
-        // Se for HOJE, usamos os dados do App.tsx (props) que já estão em tempo real
-        if (displayDate === todayStr) {
-            if (salesHeaders.length > 0) {
-                setExtraSales([]);
-                setExtraHeaders([]);
-                setExtraPayments([]);
-                setExtraSangrias([]);
-                return;
-            }
-            // Se as props estiverem vazias (salesHeaders.length === 0), não fazemos o return imediato.
-            // Isso permite que o useEffect continue a execução e realize o fetch diretamente no Supabase.
-        }
-
-        // Se for no mês atual e o usuário for ADMIN ou GERENTE, ele já tem os dados (App.tsx carrega o mês todo)
-        if (selectedMonthStart === loadedMonthStart && (isAdmin || canManage) && effectiveStoreId && effectiveStoreId !== 'all') {
+        // Se for no mês atual e o usuário for ADMIN ou GERENTE, ele já tem os dados carregados localmente
+        if (selectedMonthStart === currentMonthStart) {
             setExtraSales([]);
             setExtraHeaders([]);
             setExtraPayments([]);
             setExtraSangrias([]);
+            setExtraStockMovements([]);
+            setExtraWastage([]);
             return;
         }
     
-        // Fora desses casos, buscamos o dia específico no Supabase
-        const fetchDayData = async () => {
-            // Se effectiveStoreId for 'all' ou inválido, não faz fetch local
+        // Fora desses casos, buscamos o mês selecionado no Supabase (DRE completo para o mês selecionado)
+        const fetchOnDemandData = async () => {
             if (!effectiveStoreId || effectiveStoreId === 'all') {
                 setExtraSales([]);
                 setExtraHeaders([]);
                 setExtraPayments([]);
                 setExtraSangrias([]);
+                setExtraStockMovements([]);
+                setExtraWastage([]);
                 setIsDRELoading(false);
                 return;
             }
 
             setIsDRELoading(true);
             try {
-                const dayStart = `${displayDate}T00:00:00`;
-                const dayEnd   = `${displayDate}T23:59:59`;
+                const start = new Date(selected.getFullYear(), selected.getMonth(), 1);
+                const startDate = start.toISOString();
+                const end = new Date(start);
+                end.setMonth(end.getMonth() + 1);
+                const endDate = end.toISOString();
+
+                const storeFilter = [effectiveStoreId];
     
-                const [{ data: hdrs }, { data: sngs }] = await Promise.all([
+                const [
+                    { data: hdrs },
+                    { data: sngs },
+                    { data: itms },
+                    { data: pays },
+                    { data: mvmts },
+                    { data: wstg }
+                ] = await Promise.all([
                     supabase
                         .from('ice_cream_sales')
                         .select('*')
-                        .eq('store_id', effectiveStoreId)
-                        .gte('created_at', dayStart)
-                        .lte('created_at', dayEnd),
+                        .in('store_id', storeFilter)
+                        .gte('created_at', startDate)
+                        .lt('created_at', endDate),
                     supabase
                         .from('ice_cream_sangria')
                         .select('*')
-                        .eq('store_id', effectiveStoreId)
-                        .gte('transaction_date', displayDate)
-                        .lte('transaction_date', displayDate)
-                ]);
-    
-                const saleIds = (hdrs || []).map((h: any) => h.id);
-    
-                const [{ data: itms }, { data: pays }] = await Promise.all([
-                    saleIds.length > 0
-                        ? supabase
-                            .from('ice_cream_daily_sales')
-                            .select('*')
-                            .in('sale_id', saleIds)
-                        : Promise.resolve({ data: [] }),
-                    saleIds.length > 0
-                        ? supabase
-                            .from('ice_cream_daily_sales_payments')
-                            .select('*')
-                            .in('sale_id', saleIds)
-                        : Promise.resolve({ data: [] })
+                        .in('store_id', storeFilter)
+                        .gte('created_at', startDate)
+                        .lt('created_at', endDate),
+                    supabase
+                        .from('ice_cream_daily_sales')
+                        .select('*')
+                        .in('store_id', storeFilter)
+                        .gte('created_at', startDate)
+                        .lt('created_at', endDate),
+                    supabase
+                        .from('ice_cream_daily_sales_payments')
+                        .select('*')
+                        .in('store_id', storeFilter)
+                        .gte('created_at', startDate)
+                        .lt('created_at', endDate),
+                    supabase
+                        .from('ice_cream_stock_movements')
+                        .select('*')
+                        .in('store_id', storeFilter)
+                        .gte('created_at', startDate)
+                        .lt('created_at', endDate),
+                    supabase
+                        .from('ice_cream_wastage')
+                        .select('*')
+                        .in('store_id', storeFilter)
+                        .gte('created_at', startDate)
+                        .lt('created_at', endDate)
                 ]);
     
                 setExtraHeaders(hdrs || []);
                 setExtraSales(
                     (itms || []).map((x: any) => ({
                         id: x.id,
+                        saleId: x.sale_id,
                         storeId: x.store_id,
                         itemId: x.item_id,
                         productName: x.product_name,
@@ -307,14 +471,16 @@ const IceCreamModule: React.FC<IceCreamModuleProps> = ({
                     (pays || []).map((x: any) => ({ ...x, amount: Number(x.amount || 0) }))
                 );
                 setExtraSangrias(sngs || []);
+                setExtraStockMovements(mvmts || []);
+                setExtraWastage(wstg || []);
             } catch (e) {
-                console.error('[DRE] Erro ao buscar dados do dia:', e);
+                console.error('[On Demand] Erro ao buscar dados do mês selecionado:', e);
             } finally {
                 setIsDRELoading(false);
             }
         };
     
-        fetchDayData();
+        fetchOnDemandData();
     }, [displayDate, effectiveStoreId]);
 
     // ✅ Sync displayDate with audit date when tab is audit
@@ -324,12 +490,372 @@ const IceCreamModule: React.FC<IceCreamModuleProps> = ({
         }
     }, [selectedAuditDate, activeTab]);
 
-    
-    // Fonte de dados ativa: extras (dia específico) ou normais (mês atual)
+    // ═══════════════════════════════════════════════════════════════
+    // 📡 SUPABASE REALTIME (Atualização automática)
+    // ═══════════════════════════════════════════════════════════════
+    useEffect(() => {
+        const storeFilter = isSorvete && user?.storeId 
+            ? [user.storeId] 
+            : ICE_CREAM_STORE_IDS;
+
+        const channel = supabase
+            .channel('ice-cream-realtime-channel')
+            .on('postgres_changes', 
+                { event: '*', schema: 'public', table: 'ice_cream_sales' },
+                (payload) => {
+                    const rec = payload.eventType === 'DELETE' ? payload.old : payload.new;
+                    if (!rec || !storeFilter.includes(rec.store_id)) return;
+
+                    if (payload.eventType === 'INSERT') {
+                        setSalesHeaders(prev => {
+                            if (prev.some(x => x.id === rec.id)) return prev;
+                            return [rec, ...prev];
+                        });
+                    }
+                    if (payload.eventType === 'UPDATE') {
+                        setSalesHeaders(prev => prev.map(h => h.id === rec.id ? rec : h));
+                    }
+                    if (payload.eventType === 'DELETE') {
+                        setSalesHeaders(prev => prev.filter(h => h.id !== rec.id));
+                    }
+                }
+            )
+            .on('postgres_changes',
+                { event: '*', schema: 'public', table: 'ice_cream_daily_sales' },
+                (payload) => {
+                    const rec = payload.eventType === 'DELETE' ? payload.old : payload.new;
+                    if (!rec || !storeFilter.includes(rec.store_id)) return;
+
+                    const mapped = payload.eventType === 'DELETE' ? null : {
+                        id: rec.id,
+                        saleId: rec.sale_id,
+                        storeId: rec.store_id,
+                        itemId: rec.item_id,
+                        productName: rec.product_name,
+                        category: rec.category,
+                        flavor: rec.flavor,
+                        unitsSold: Number(rec.units_sold || 0),
+                        unitPrice: Number(rec.unit_price || 0),
+                        totalValue: Number(rec.total_value || 0),
+                        paymentMethod: rec.payment_method,
+                        saleCode: rec.sale_code,
+                        buyer_name: rec.buyer_name,
+                        createdAt: rec.created_at,
+                        canceledAt: rec.canceled_at,
+                        canceledBy: rec.canceled_by,
+                        status: rec.status,
+                        cancel_reason: rec.cancel_reason
+                    };
+
+                    if (payload.eventType === 'INSERT' && mapped) {
+                        setSales(prev => {
+                            if (prev.some(x => x.id === mapped.id)) return prev;
+                            return [...prev, mapped];
+                        });
+                    }
+                    if (payload.eventType === 'UPDATE' && mapped) {
+                        setSales(prev => prev.map(s => s.id === mapped.id ? mapped : s));
+                    }
+                    if (payload.eventType === 'DELETE') {
+                        setSales(prev => prev.filter(s => s.id !== rec.id));
+                    }
+                }
+            )
+            .on('postgres_changes',
+                { event: '*', schema: 'public', table: 'ice_cream_daily_sales_payments' },
+                (payload) => {
+                    const rec = payload.eventType === 'DELETE' ? payload.old : payload.new;
+                    if (!rec || !storeFilter.includes(rec.store_id)) return;
+
+                    const mapped = payload.eventType === 'DELETE' ? null : {
+                        ...rec,
+                        amount: Number(rec.amount || 0)
+                    };
+
+                    if (payload.eventType === 'INSERT' && mapped) {
+                        setSalePayments(prev => {
+                            if (prev.some(x => (x as any).id === (mapped as any).id)) return prev;
+                            return [...prev, mapped];
+                        });
+                    }
+                    if (payload.eventType === 'UPDATE' && mapped) {
+                        setSalePayments(prev => prev.map(p => (p as any).id === (mapped as any).id ? mapped : p));
+                    }
+                    if (payload.eventType === 'DELETE') {
+                        setSalePayments(prev => prev.filter(p => (p as any).id !== rec.id));
+                    }
+                }
+            )
+            .on('postgres_changes',
+                { event: '*', schema: 'public', table: 'ice_cream_stock' },
+                (payload) => {
+                    const rec = payload.eventType === 'DELETE' ? payload.old : payload.new;
+                    if (!rec || !storeFilter.includes(rec.store_id)) return;
+
+                    const mapped = payload.eventType === 'DELETE' ? null : {
+                        ...rec,
+                        stock_id: rec.id
+                    };
+
+                    if (payload.eventType === 'INSERT' && mapped) {
+                        setStock(prev => {
+                            if (prev.some(x => (x as any).id === (mapped as any).id)) return prev;
+                            return [...prev, mapped];
+                        });
+                    }
+                    if (payload.eventType === 'UPDATE' && mapped) {
+                        setStock(prev => prev.map(s => (s as any).id === (mapped as any).id ? mapped : s));
+                    }
+                }
+            )
+            .subscribe();
+
+        return () => {
+            supabase.removeChannel(channel);
+        };
+    }, [user, effectiveStoreId]);
+
+    // ═══════════════════════════════════════════════════════════════
+    // 💾 LOCAL DATABASE-ACTION HANDLERS
+    // ═══════════════════════════════════════════════════════════════
+    const onAddSangria = async (s: Partial<IceCreamSangria>) => {
+        const { error } = await supabase.from('ice_cream_sangria').insert([s]);
+        if (error) throw error;
+        await fetchData();
+    };
+
+    const onAddSangriaCategory = async (c: Partial<IceCreamSangriaCategory>) => {
+        const { error } = await supabase.from('ice_cream_sangria_categoria').insert([c]);
+        if (error) throw error;
+        await fetchData();
+    };
+
+    const onDeleteSangriaCategory = async (id: string) => {
+        const { error } = await supabase.from('ice_cream_sangria_categoria').delete().eq('id', id);
+        if (error) throw error;
+        await fetchData();
+    };
+
+    const onAddStockMovement = async (m: Partial<IceCreamStockMovement>) => {
+        const { error } = await supabase.from('ice_cream_stock_movements').insert([m]);
+        if (error) throw error;
+        await fetchData();
+    };
+
+    const onAddFutureDebt = async (debtData: Partial<IceCreamFutureDebt>) => {
+        const { error } = await supabase.from('ice_cream_future_debts').insert([
+            {
+                store_id: debtData.store_id,
+                supplier_name: debtData.supplier_name,
+                total_amount: debtData.total_amount,
+                installment_number: debtData.installment_number,
+                total_installments: debtData.total_installments,
+                installment_amount: debtData.installment_amount,
+                due_date: debtData.due_date,
+                status: debtData.status || 'pending',
+                category_id: debtData.category_id,
+                description: debtData.description,
+                created_by: user?.id
+            }
+        ]);
+        if (error) throw error;
+        await fetchData();
+    };
+
+    const onPayFutureDebt = async (debtId: string, paymentDate: string) => {
+        const { error } = await supabase.from('ice_cream_future_debts').update({
+            status: 'paid',
+            payment_date: paymentDate
+        }).eq('id', debtId);
+        if (error) throw error;
+        await fetchData();
+    };
+
+    const onAddSales = async (s: IceCreamDailySale[]) => {
+        await supabase.from('ice_cream_daily_sales').insert(s.map(x => ({
+            store_id: x.storeId,
+            item_id: x.itemId,
+            product_name: x.productName,
+            category: x.category,
+            flavor: x.flavor,
+            units_sold: Math.round(x.unitsSold),
+            unit_price: x.unitPrice,
+            total_value: x.totalValue,
+            payment_method: x.paymentMethod,
+            sale_code: x.saleCode || (x as any).sale_code,
+            buyer_name: x.buyer_name || (x as any).buyerName,
+            status: 'completed'
+        })));
+        await fetchData();
+    };
+
+    const onAddSaleAtomic = async (saleData: any, itemsList: IceCreamDailySale[], paymentsList: { method: string, amount: number }[]) => {
+        const totalPayments = paymentsList.reduce((acc, p) => acc + p.amount, 0);
+        if (Math.abs(totalPayments - saleData.total) > 0.01) {
+            throw new Error("A soma dos pagamentos não confere com o total da venda.");
+        }
+
+        const buyerName = saleData.buyer_name?.trim() || null;
+
+        const { data: header, error: headerError } = await supabase
+            .from('ice_cream_sales')
+            .insert([{
+                store_id: saleData.store_id,
+                total_value: saleData.total,
+                sale_code: saleData.sale_code,
+                buyer_name: buyerName,
+                status: 'completed',
+                created_at: new Date().toISOString()
+            }])
+            .select().single();
+
+        if (headerError) throw headerError;
+        const saleId = header.id;
+
+        try {
+            const { error: itemsError } = await supabase.from('ice_cream_daily_sales').insert(itemsList.map(x => ({
+                sale_id: saleId,
+                store_id: saleData.store_id,
+                item_id: x.itemId,
+                product_name: x.productName,
+                category: x.category,
+                flavor: x.flavor,
+                units_sold: Math.round(x.unitsSold),
+                unit_price: x.unitPrice,
+                total_value: x.totalValue,
+                payment_method: paymentsList.length > 1 ? 'Misto' : paymentsList[0].method,
+                sale_code: saleData.sale_code,
+                buyer_name: buyerName,
+                status: 'completed'
+            })));
+
+            if (itemsError) {
+                await supabase.from('ice_cream_sales').delete().eq('id', saleId);
+                throw itemsError;
+            }
+
+            const { error: paymentsError } = await supabase.from('ice_cream_daily_sales_payments').insert(paymentsList.map(p => ({
+                sale_id: saleId,
+                store_id: header.store_id,
+                payment_method: p.method,
+                amount: p.amount,
+                sale_code: saleData.sale_code,
+                buyer_name: buyerName,
+                created_at: new Date().toISOString()
+            })));
+
+            if (paymentsError) {
+                await supabase.from('ice_cream_daily_sales').delete().eq('sale_id', saleId);
+                await supabase.from('ice_cream_sales').delete().eq('id', saleId);
+                throw paymentsError;
+            }
+        } catch (err) {
+            console.error("Erro na transação de venda (Rollback manual):", err);
+            throw err;
+        }
+        await fetchData();
+    };
+
+    const onCancelSale = async (idOrCode: string, reason?: string) => {
+        const isUUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(idOrCode);
+
+        let saleCode = idOrCode;
+        let saleId = isUUID ? idOrCode : null;
+
+        if (isUUID) {
+            const { data: sale } = await supabase.from('ice_cream_sales').select('sale_code').eq('id', idOrCode).maybeSingle();
+            if (sale) saleCode = sale.sale_code;
+        } else {
+            const { data: sale } = await supabase.from('ice_cream_sales').select('id').eq('sale_code', idOrCode).maybeSingle();
+            if (sale) saleId = sale.id;
+        }
+
+        const cancelData = {
+            status: 'canceled',
+            cancel_reason: reason || null,
+            canceled_by: user?.name,
+            canceled_at: new Date().toISOString()
+        };
+
+        if (saleId) {
+            await supabase.from('ice_cream_sales').update({ ...cancelData, canceled_by_name: user?.name }).eq('id', saleId);
+            await supabase.from('ice_cream_daily_sales').update(cancelData).eq('sale_id', saleId);
+        } else {
+            await supabase.from('ice_cream_sales').update({ ...cancelData, canceled_by_name: user?.name }).eq('sale_code', saleCode);
+            await supabase.from('ice_cream_daily_sales').update(cancelData).eq('sale_code', saleCode);
+        }
+
+        await Promise.all([
+            supabase.from('financial_card_sales').delete().eq('sale_code', saleCode),
+            supabase.from('financial_pix_sales').delete().eq('sale_code', saleCode),
+            supabase.from('ice_cream_daily_sales_payments').delete().eq('sale_code', saleCode)
+        ]);
+
+        await fetchData();
+    };
+
+    const onUpdatePrice = async (id: string, price: number) => {
+        await supabase.from('ice_cream_items').update({ price }).eq('id', id);
+        await fetchData();
+    };
+
+    const onSaveProduct = async (product: Partial<IceCreamItem>) => {
+        const payload = {
+            store_id: product.storeId, name: product.name, category: product.category, price: product.price,
+            flavor: product.flavor, active: product.active ?? true, consumption_per_sale: product.consumptionPerSale || 0,
+            recipe: JSON.stringify(product.recipe || []), image_url: product.image_url
+        };
+        if (product.id) await supabase.from('ice_cream_items').update(payload).eq('id', product.id);
+        else await supabase.from('ice_cream_items').insert([payload]);
+        await fetchData();
+    };
+
+    const onAddItem = async (name: string, category: string, price: number, flavor?: string, stockInitial?: number, unit?: string, consumptionPerSale?: number, targetStoreId?: string, recipe?: IceCreamRecipeItem[]) => {
+        await onSaveProduct({ storeId: targetStoreId, name, category: category as any, price, flavor, recipe });
+    };
+
+    const onDeleteItem = async (id: string) => {
+        await supabase.from('ice_cream_items').delete().eq('id', id);
+        await fetchData();
+    };
+
+    const onUpdateStock = async (storeId: string, base: string, value: number, unit: string, type: string, stockId?: string) => {
+        if (type === 'INVENTARIO' && stockId) {
+            const { error } = await supabase.rpc('perform_inventory', {
+                p_stock_id:     stockId,
+                p_new_quantity: value,
+                p_user_id:      null,
+                p_notes:        'Inventário manual'
+            });
+            if (error) throw error;
+        } else {
+            const { data: current } = await supabase.from('ice_cream_stock').select('stock_current').eq('store_id', storeId).eq('product_base', base).maybeSingle();
+            let finalVal = value;
+            if (current) { finalVal = Number(current.stock_current || 0) + value; }
+            await supabase.from('ice_cream_stock').upsert({ store_id: storeId, product_base: base, stock_current: finalVal, unit: unit, is_active: true }, { onConflict: 'store_id, product_base' });
+        }
+        await fetchData();
+    };
+
+    const liquidatePromissory = async (id: string) => {
+        await supabase.from('ice_cream_promissory_notes').update({ status: 'paid' }).eq('id', id);
+        await fetchData();
+    };
+
+    const onDeleteStockItem = async (id: string) => {
+        if (can('MODULE_ADMIN_STOCK_DELETE') || can('MODULE_ADMIN')) {
+            await supabase.from('ice_cream_stock').delete().eq('id', id);
+            await fetchData();
+        }
+    };
+
+    // Fonte de dados ativa: extras (mês específico) ou normais (período selecionado pela função de carga principal)
     const activeSales    = extraSales.length > 0    ? extraSales    : sales;
     const activeHeaders  = extraHeaders.length > 0  ? extraHeaders  : salesHeaders;
     const activePayments = extraPayments.length > 0 ? extraPayments : salePayments;
     const activeSangrias = extraSangrias.length > 0 ? extraSangrias : sangrias;
+    const activeStockMovements = extraStockMovements.length > 0 ? extraStockMovements : stockMovements;
+    const activeWastage        = extraWastage.length > 0        ? extraWastage        : wastage;
 
     // Modals Visibility
     const [showNewInsumoModal, setShowNewInsumoModal] = useState(false);
@@ -1135,6 +1661,15 @@ const IceCreamModule: React.FC<IceCreamModuleProps> = ({
             alert("Erro ao adicionar categoria: " + e.message);
         }
     };
+
+    if (isLoading) {
+        return (
+            <div className="flex flex-col items-center justify-center min-h-[400px] h-96 bg-[#f8fafc] w-full">
+                <Loader2 className="animate-spin text-blue-600 mb-4" size={48} />
+                <span className="text-sm font-black uppercase text-slate-400 tracking-widest animate-pulse">Carregando dados...</span>
+            </div>
+        );
+    }
 
     return (
         <div className="min-h-screen bg-[#f8fafc] text-slate-900 font-sans selection:bg-blue-100 selection:text-blue-900">

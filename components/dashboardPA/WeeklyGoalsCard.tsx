@@ -7,6 +7,8 @@ interface WeeklyGoalsCardProps {
   storeId: string;
   storeName: string;
   storeNumber: string;
+  selectedMonth?: number;
+  selectedYear?: number;
 }
 
 interface GoalParameters {
@@ -29,21 +31,30 @@ interface GoalParameters {
   incremento_valor: number;
 }
 
-const WeeklyGoalsCard: React.FC<WeeklyGoalsCardProps> = ({ storeId, storeName, storeNumber }) => {
+const WeeklyGoalsCard: React.FC<WeeklyGoalsCardProps> = ({ storeId, storeName, storeNumber, selectedMonth, selectedYear }) => {
   const [params, setParams] = useState<GoalParameters | null>(null);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
     fetchParameters();
-  }, [storeId]);
+  }, [storeId, selectedMonth, selectedYear]);
 
   const fetchParameters = async () => {
     try {
-      const { data, error } = await supabase
+      setLoading(true);
+      let query = supabase
         .from('Dashboard_PA_Parametros')
         .select('*')
-        .eq('store_id', storeId)
-        .maybeSingle();
+        .eq('store_id', storeId);
+
+      if (selectedMonth) {
+        query = query.eq('mes_ref', selectedMonth);
+      }
+      if (selectedYear) {
+        query = query.eq('ano_ref', selectedYear);
+      }
+
+      const { data, error } = await query.maybeSingle();
 
       if (error) throw error;
 

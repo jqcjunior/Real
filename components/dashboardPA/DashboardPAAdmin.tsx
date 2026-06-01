@@ -364,6 +364,8 @@ const DashboardPAAdmin: React.FC<DashboardPAAdminProps> = ({ user, stores, onRef
       {showParamsModal && (
         <WeeklyParametersModal
           stores={stores}
+          selectedMonth={selectedMonth}
+          selectedYear={selectedYear}
           onClose={() => setShowParamsModal(false)}
           onSaved={() => {
             if (viewMode === 'semana' && selectedWeek) loadWeekPerformance();

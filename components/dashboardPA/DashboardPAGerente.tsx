@@ -136,7 +136,7 @@ const DashboardPAGerente: React.FC<DashboardPAGerenteProps> = ({ user, store }) 
     try {
       setLoading(true);
       const [paramsData, weeksData] = await Promise.all([
-        dashboardPAService.getParameters(store.id),
+        dashboardPAService.getParameters(store.id, selectedMonth, selectedYear),
         dashboardPAService.getWeeks(store.id, selectedYear, selectedMonth)
       ]);
       
@@ -831,6 +831,8 @@ const DashboardPAGerente: React.FC<DashboardPAGerenteProps> = ({ user, store }) 
             storeId={store.id}
             storeName={store.name}
             storeNumber={store.number}
+            selectedMonth={selectedMonth}
+            selectedYear={selectedYear}
           />
           
           {/* Active Week Info */}

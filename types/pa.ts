@@ -1,6 +1,8 @@
 export interface PAParameters {
   id?: string;
   store_id: string;
+  mes_ref?: number;
+  ano_ref?: number;
   pa_inicial: number;
   incremento_pa: number;
   valor_base: number;

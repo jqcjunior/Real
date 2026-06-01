@@ -4,12 +4,14 @@
 // ============================================
 
 import React, { useState, useEffect } from 'react';
-import { X, Check, ChevronRight, Loader2, Settings, Trophy, Zap } from 'lucide-react';
+import { X, Check, ChevronRight, Loader2, Settings, Trophy, Zap, Copy } from 'lucide-react';
 import { supabase } from '../../services/supabaseClient';
 import { Store } from '../../types';
 
 interface PAParametros {
   store_id: string;
+  mes_ref?: number;
+  ano_ref?: number;
   pa_inicial: number;
   incremento_pa: number;
   valor_base: number;
@@ -28,6 +30,8 @@ interface WeeklyParametersModalProps {
   stores: Store[];
   onClose: () => void;
   onSaved: () => void;
+  selectedMonth: number;
+  selectedYear: number;
 }
 
 function calcularPremioTotal(performance: { pa: number; vendas: number; ticket: number }, params: PAParametros): number {
@@ -66,7 +70,7 @@ function calcularPremioTotal(performance: { pa: number; vendas: number; ticket: 
   return total;
 }
 
-export const WeeklyParametersModal: React.FC<WeeklyParametersModalProps> = ({ stores, onClose, onSaved }) => {
+export const WeeklyParametersModal: React.FC<WeeklyParametersModalProps> = ({ stores, onClose, onSaved, selectedMonth, selectedYear }) => {
   const [localStores, setLocalStores] = useState<Store[]>(stores || []);
   const [params, setParams] = useState<Record<string, PAParametros>>({});
   const [selectedStoreId, setSelectedStoreId] = useState<string | null>(null);
@@ -75,12 +79,21 @@ export const WeeklyParametersModal: React.FC<WeeklyParametersModalProps> = ({ st
   const [saved, setSaved] = useState(false);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [toast, setToast] = useState<{ message: string; type: 'success' | 'error' } | null>(null);
 
   useEffect(() => {
     if (stores && stores.length > 0) {
       setLocalStores(stores);
     }
   }, [stores]);
+
+  const getMonthName = (month: number) => {
+    const months = [
+      'Janeiro', 'Fevereiro', 'Março', 'Abril', 'Maio', 'Junho',
+      'Julho', 'Agosto', 'Setembro', 'Outubro', 'Novembro', 'Dezembro'
+    ];
+    return months[month - 1] || '';
+  };
 
   useEffect(() => {
     const fetchParams = async () => {
@@ -114,7 +127,9 @@ export const WeeklyParametersModal: React.FC<WeeklyParametersModalProps> = ({ st
 
         const { data, error: fetchError } = await supabase
           .from('Dashboard_PA_Parametros')
-          .select(`*`);
+          .select(`*`)
+          .eq('mes_ref', selectedMonth)
+          .eq('ano_ref', selectedYear);
         
         if (fetchError) {
           setError(`Erro ao carregar parâmetros: ${fetchError.message}`);
@@ -122,11 +137,13 @@ export const WeeklyParametersModal: React.FC<WeeklyParametersModalProps> = ({ st
           return;
         }
         
+        const map: Record<string, PAParametros> = {};
         if (data) {
-          const map: Record<string, PAParametros> = {};
           data.forEach((p: any) => { 
             map[p.store_id] = {
               store_id: p.store_id,
+              mes_ref: p.mes_ref,
+              ano_ref: p.ano_ref,
               pa_inicial: p.pa_inicial !== null ? Number(p.pa_inicial) : 1.60,
               incremento_pa: p.incremento_pa !== null ? Number(p.incremento_pa) : 0.05,
               valor_base: p.valor_base !== null ? Number(p.valor_base) : 50,
@@ -141,8 +158,8 @@ export const WeeklyParametersModal: React.FC<WeeklyParametersModalProps> = ({ st
               ticket_inc_valor: p.ticket_inc_valor !== null ? Number(p.ticket_inc_valor) : null,
             };
           });
-          setParams(map);
         }
+        setParams(map);
       } catch (err: any) {
         setError(`Erro inesperado: ${err.message}`);
       } finally {
@@ -151,7 +168,7 @@ export const WeeklyParametersModal: React.FC<WeeklyParametersModalProps> = ({ st
     };
     
     fetchParams();
-  }, [stores]);
+  }, [stores, selectedMonth, selectedYear]);
 
   const handleSelectStore = (storeId: string) => {
     setSelectedStoreId(storeId);
@@ -164,6 +181,8 @@ export const WeeklyParametersModal: React.FC<WeeklyParametersModalProps> = ({ st
     } else {
       setDraft({
         store_id: storeId,
+        mes_ref: selectedMonth,
+        ano_ref: selectedYear,
         pa_inicial: 1.60,
         incremento_pa: 0.05,
         valor_base: 50,
@@ -180,27 +199,108 @@ export const WeeklyParametersModal: React.FC<WeeklyParametersModalProps> = ({ st
     }
   };
 
+  const handleCopyFromPreviousMonth = async () => {
+    setLoading(true);
+    setError(null);
+    try {
+      const prevMonth = selectedMonth === 1 ? 12 : selectedMonth - 1;
+      const prevYear = selectedMonth === 1 ? selectedYear - 1 : selectedYear;
+
+      const { data: prevData, error: prevError } = await supabase
+        .from('Dashboard_PA_Parametros')
+        .select('*')
+        .eq('mes_ref', prevMonth)
+        .eq('ano_ref', prevYear);
+
+      if (prevError) {
+        throw new Error(`Erro ao ler parâmetros do mês anterior: ${prevError.message}`);
+      }
+
+      if (!prevData || prevData.length === 0) {
+        setToast({ message: 'Nenhum parâmetro encontrado no mês anterior para copiar.', type: 'error' });
+        setTimeout(() => setToast(null), 4000);
+        return;
+      }
+
+      const copyPayload = prevData.map((item: any) => ({
+        store_id: item.store_id,
+        mes_ref: selectedMonth,
+        ano_ref: selectedYear,
+        pa_inicial: item.pa_inicial,
+        incremento_pa: item.incremento_pa,
+        valor_base: item.valor_base,
+        incremento_valor: item.incremento_valor,
+        vendas_minimo: item.vendas_minimo,
+        vendas_incremento: item.vendas_incremento,
+        vendas_valor_base: item.vendas_valor_base,
+        vendas_inc_valor: item.vendas_inc_valor,
+        ticket_minimo: item.ticket_minimo,
+        ticket_incremento: item.ticket_incremento,
+        ticket_valor_base: item.ticket_valor_base,
+        ticket_inc_valor: item.ticket_inc_valor,
+        criado_por_role: item.criado_por_role,
+        criado_por_id: item.criado_por_id,
+        updated_at: new Date().toISOString()
+      }));
+
+      const { error: copyUpsertError } = await supabase
+        .from('Dashboard_PA_Parametros')
+        .upsert(copyPayload, { onConflict: 'store_id,mes_ref,ano_ref' });
+
+      if (copyUpsertError) {
+        throw new Error(`Erro ao salvar parâmetros copiados: ${copyUpsertError.message}`);
+      }
+
+      const map: Record<string, PAParametros> = { ...params };
+      copyPayload.forEach((p: any) => {
+        map[p.store_id] = {
+          store_id: p.store_id,
+          mes_ref: p.mes_ref,
+          ano_ref: p.ano_ref,
+          pa_inicial: p.pa_inicial !== null ? Number(p.pa_inicial) : 1.60,
+          incremento_pa: p.incremento_pa !== null ? Number(p.incremento_pa) : 0.05,
+          valor_base: p.valor_base !== null ? Number(p.valor_base) : 50,
+          incremento_valor: p.incremento_valor !== null ? Number(p.incremento_valor) : 0.10,
+          vendas_minimo: p.vendas_minimo !== null ? Number(p.vendas_minimo) : null,
+          vendas_incremento: p.vendas_incremento !== null ? Number(p.vendas_incremento) : null,
+          vendas_valor_base: p.vendas_valor_base !== null ? Number(p.vendas_valor_base) : null,
+          vendas_inc_valor: p.vendas_inc_valor !== null ? Number(p.vendas_inc_valor) : null,
+          ticket_minimo: p.ticket_minimo !== null ? Number(p.ticket_minimo) : null,
+          ticket_incremento: p.ticket_incremento !== null ? Number(p.ticket_incremento) : null,
+          ticket_valor_base: p.ticket_valor_base !== null ? Number(p.ticket_valor_base) : null,
+          ticket_inc_valor: p.ticket_inc_valor !== null ? Number(p.ticket_inc_valor) : null,
+        };
+      });
+
+      setParams(map);
+      setToast({ message: `Parâmetros copiados de ${getMonthName(prevMonth)}/${prevYear}!`, type: 'success' });
+      setTimeout(() => setToast(null), 4000);
+      onSaved();
+    } catch (err: any) {
+      setError(err.message);
+    } finally {
+      setLoading(false);
+    }
+  };
+
   const handleSave = async () => {
     if (!draft || !selectedStoreId) return;
     
     setSaving(true);
     
     try {
-      // 1. Preparar o objeto com os 12 campos, garantindo conversão numérica
-      // Se o campo for nulo ou vazio, enviamos null para o banco
       const payload = {
         store_id: selectedStoreId,
-        // Seção P.A
+        mes_ref: selectedMonth,
+        ano_ref: selectedYear,
         pa_inicial: draft.pa_inicial !== null ? Number(draft.pa_inicial) : 0,
         incremento_pa: draft.incremento_pa !== null ? Number(draft.incremento_pa) : 1,
         valor_base: draft.valor_base !== null ? Number(draft.valor_base) : 0,
         incremento_valor: draft.incremento_valor !== null ? Number(draft.incremento_valor) : 0,
-        // Seção Vendas
         vendas_minimo: (draft.vendas_minimo !== null && draft.vendas_minimo !== undefined && String(draft.vendas_minimo) !== '') ? Number(draft.vendas_minimo) : null,
         vendas_incremento: (draft.vendas_incremento !== null && draft.vendas_incremento !== undefined && String(draft.vendas_incremento) !== '') ? Number(draft.vendas_incremento) : null,
         vendas_valor_base: (draft.vendas_valor_base !== null && draft.vendas_valor_base !== undefined && String(draft.vendas_valor_base) !== '') ? Number(draft.vendas_valor_base) : null,
         vendas_inc_valor: (draft.vendas_inc_valor !== null && draft.vendas_inc_valor !== undefined && String(draft.vendas_inc_valor) !== '') ? Number(draft.vendas_inc_valor) : null,
-        // Seção Ticket
         ticket_minimo: (draft.ticket_minimo !== null && draft.ticket_minimo !== undefined && String(draft.ticket_minimo) !== '') ? Number(draft.ticket_minimo) : null,
         ticket_incremento: (draft.ticket_incremento !== null && draft.ticket_incremento !== undefined && String(draft.ticket_incremento) !== '') ? Number(draft.ticket_incremento) : null,
         ticket_valor_base: (draft.ticket_valor_base !== null && draft.ticket_valor_base !== undefined && String(draft.ticket_valor_base) !== '') ? Number(draft.ticket_valor_base) : null,
@@ -210,17 +310,15 @@ export const WeeklyParametersModal: React.FC<WeeklyParametersModalProps> = ({ st
 
       console.log('💾 [SAVE] Enviando payload completo:', payload);
 
-      // 2. Usar upsert para evitar deletar e inserir (mais seguro e atômico)
       const { error: saveError } = await supabase
         .from('Dashboard_PA_Parametros')
-        .upsert(payload, { onConflict: 'store_id' });
+        .upsert(payload, { onConflict: 'store_id,mes_ref,ano_ref' });
 
       if (saveError) throw saveError;
 
-      // 3. Atualizar estado local
-      setParams(prev => ({ ...prev, [selectedStoreId]: draft }));
+      setParams(prev => ({ ...prev, [selectedStoreId]: { ...draft, mes_ref: selectedMonth, ano_ref: selectedYear } }));
       setSaved(true);
-      onSaved(); // Notifica o componente pai para atualizar listagens se necessário
+      onSaved();
       
       setTimeout(() => setSaved(false), 2000);
       console.log('✅ [SAVE] Sucesso ao salvar os 12 parâmetros!');
@@ -256,28 +354,48 @@ export const WeeklyParametersModal: React.FC<WeeklyParametersModalProps> = ({ st
     <div className="fixed inset-0 z-[200] flex items-center justify-center p-2 sm:p-4 bg-slate-900/60 backdrop-blur-sm">
       <div className="bg-white dark:bg-slate-900 rounded-2xl shadow-2xl border border-slate-200 dark:border-slate-800 w-full max-w-4xl max-h-[95vh] sm:max-h-[90vh] flex flex-col overflow-hidden leading-tight">
         
-        {/* Header Compacto */}
-        <div className="flex items-center justify-between px-4 py-3 sm:px-6 sm:py-4 border-b border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 z-10">
+        {/* Header Compacto com Filtros do Mês e Botão de Copiar */}
+        <div className="flex flex-col sm:flex-row sm:items-center justify-between px-4 py-3 sm:px-6 sm:py-4 border-b border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 gap-3 z-10">
           <div className="flex items-center gap-3">
             <div className="p-2 bg-orange-50 dark:bg-orange-900/20 rounded-lg">
               <Settings size={18} className="text-orange-600 dark:text-orange-400" />
             </div>
             <div>
               <h2 className="text-sm sm:text-base font-black text-slate-900 dark:text-white uppercase italic tracking-tight">
-                Configurar Metas
+                Configurar Metas — {getMonthName(selectedMonth).toUpperCase()} {selectedYear}
               </h2>
               <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest leading-none">
-                {loading ? 'Carregando...' : `${Object.keys(params).length} Lojas Ativas`}
+                {loading ? 'Carregando...' : `${localStores.length} LOJAS ATIVAS`}
               </p>
             </div>
           </div>
-          <button
-            onClick={onClose}
-            className="p-1.5 rounded-lg text-slate-400 hover:text-slate-900 dark:hover:text-white hover:bg-slate-100 dark:hover:bg-slate-800 transition-all"
-          >
-            <X size={18} />
-          </button>
+          
+          <div className="flex items-center gap-2 self-end sm:self-auto">
+            <button
+              onClick={handleCopyFromPreviousMonth}
+              disabled={loading || saving}
+              className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-[9px] sm:text-[10px] font-black uppercase tracking-wider bg-slate-100 hover:bg-slate-200 dark:bg-slate-800 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-300 border border-slate-200 dark:border-slate-700 transition-all disabled:opacity-50"
+              title="Copiar dados do mês anterior para este mês"
+            >
+              <Copy size={12} className="text-orange-500" />
+              COPIAR DO MÊS ANTERIOR
+            </button>
+            <button
+              onClick={onClose}
+              className="p-1.5 rounded-lg text-slate-400 hover:text-slate-900 dark:hover:text-white hover:bg-slate-100 dark:hover:bg-slate-800 transition-all"
+            >
+              <X size={18} />
+            </button>
+          </div>
         </div>
+
+        {toast && (
+          <div className={`mx-4 mt-2 p-2 border rounded-lg ${toast.type === 'success' ? 'bg-emerald-50 dark:bg-emerald-900/20 border-emerald-100 dark:border-emerald-800 text-emerald-600 dark:text-emerald-400' : 'bg-rose-50 dark:bg-rose-900/20 border-rose-100 dark:border-rose-800 text-rose-600 dark:text-rose-400'}`}>
+            <p className="text-[10px] font-bold text-center uppercase tracking-wider">
+              {toast.message}
+            </p>
+          </div>
+        )}
 
         {error && (
           <div className="mx-4 mt-2 p-2 bg-red-50 dark:bg-red-900/20 border border-red-100 dark:border-red-800 rounded-lg">
@@ -288,7 +406,7 @@ export const WeeklyParametersModal: React.FC<WeeklyParametersModalProps> = ({ st
         )}
 
         <div className="flex flex-1 overflow-hidden flex-col sm:flex-row">
-          {/* Lista de Lojas - Mais compacta */}
+          {/* Lista de Lojas - Com Bolinha verde se possui metas no mês, cinza senão */}
           <div className="w-full sm:w-48 md:w-56 border-b sm:border-b-0 sm:border-r border-slate-200 dark:border-slate-800 overflow-y-auto bg-slate-50/30 dark:bg-slate-900/30 max-h-[120px] sm:max-h-full">
             {loading ? (
               <div className="flex items-center justify-center py-8">
@@ -315,10 +433,15 @@ export const WeeklyParametersModal: React.FC<WeeklyParametersModalProps> = ({ st
                         </p>
                         <p className="text-[9px] font-bold text-slate-400 truncate uppercase">{store.city}</p>
                       </div>
-                      <div className="hidden sm:flex items-center gap-1">
-                        {hasParams && (
-                          <div className="w-1.5 h-1.5 rounded-full bg-emerald-400" />
-                        )}
+                      <div className="flex items-center gap-1.5">
+                        <div 
+                          className={`w-2.5 h-2.5 rounded-full transition-all duration-300 ${
+                            hasParams 
+                              ? 'bg-emerald-500 shadow-sm shadow-emerald-500/50' 
+                              : 'bg-slate-300 dark:bg-slate-750'
+                          }`}
+                          title={hasParams ? 'Parâmetros configurados para este mês' : 'Parâmetros pendentes para este mês'}
+                        />
                         <ChevronRight size={12} className={isSelected ? 'text-orange-500' : 'text-slate-300'} />
                       </div>
                     </button>

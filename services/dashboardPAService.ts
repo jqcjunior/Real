@@ -3,12 +3,20 @@ import { PAParameters, PAWeek, PASale, PAStoreSummary } from '../types/pa';
 
 export const dashboardPAService = {
   // Parameters
-  async getParameters(storeId: string): Promise<PAParameters | null> {
-    const { data, error } = await supabase
+  async getParameters(storeId: string, mesRef?: number, anoRef?: number): Promise<PAParameters | null> {
+    let query = supabase
       .from('Dashboard_PA_Parametros')
       .select('*')
-      .eq('store_id', storeId)
-      .maybeSingle();
+      .eq('store_id', storeId);
+    
+    if (mesRef !== undefined && mesRef !== null) {
+      query = query.eq('mes_ref', mesRef);
+    }
+    if (anoRef !== undefined && anoRef !== null) {
+      query = query.eq('ano_ref', anoRef);
+    }
+    
+    const { data, error } = await query.maybeSingle();
     
     if (error) throw error;
     return data;
@@ -21,7 +29,7 @@ export const dashboardPAService = {
         ...params,
         updated_at: new Date().toISOString()
       }, {
-        onConflict: 'store_id'
+        onConflict: 'store_id,mes_ref,ano_ref'
       });
     
     if (error) throw error;
@@ -120,9 +128,21 @@ export const dashboardPAService = {
   },
 
   async importSales(weekId: string, storeId: string, rows: any[], importadoPor: string): Promise<void> {
-    // 1. Get parameters for the store
-    const params = await this.getParameters(storeId);
-    if (!params) throw new Error('Parâmetros do P.A. não configurados para esta loja.');
+    // 1. Get week reference month and year to fetch the correct parameters
+    const { data: week, error: weekError } = await supabase
+      .from('Dashboard_PA_Semanas')
+      .select('mes_ref, ano_ref')
+      .eq('id', weekId)
+      .single();
+
+    if (weekError || !week) {
+      throw new Error('Não foi possível obter o mês e ano de referência da semana sendo calculada.');
+    }
+
+    const params = await this.getParameters(storeId, week.mes_ref, week.ano_ref);
+    if (!params) {
+      throw new Error(`Parâmetros do P.A. não configurados para esta loja para o período ${week.mes_ref}/${week.ano_ref}.`);
+    }
 
     // 2. Prepare sales data
     const salesToUpsert = rows.map(row => ({
