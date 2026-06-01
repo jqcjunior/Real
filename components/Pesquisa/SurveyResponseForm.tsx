@@ -57,7 +57,8 @@ const SurveyResponseForm: React.FC<SurveyResponseFormProps> = ({
         .eq('survey_id', survey.id)
         .order('sort_order', { ascending: true });
       if (error) throw error;
-      setQuestions(data || []);
+      const activeQuestions = (data || []).filter((q: any) => q.is_active !== false);
+      setQuestions(activeQuestions);
     } catch (err) {
       console.error('Erro ao buscar perguntas:', err);
     } finally {

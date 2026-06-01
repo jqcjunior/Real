@@ -425,6 +425,7 @@ export interface Survey {
   target_user_ids: string[] | null;
   results_visible_to: SurveyResultVisibility[];
   is_active: boolean;
+  allow_anonymous?: boolean;
   created_by: string;
   created_at: string;
   updated_at: string;
@@ -440,6 +441,7 @@ export interface SurveyQuestion {
   options: string[];
   is_required: boolean;
   sort_order: number;
+  is_active?: boolean;
   created_at: string;
 }
 

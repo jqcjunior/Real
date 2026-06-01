@@ -686,6 +686,23 @@ const SurveyEditor: React.FC<SurveyEditorProps> = ({
     });
   };
 
+  const handleToggleQuestionActive = async (question: Partial<SurveyQuestion>, idx: number) => {
+    const newValue = question.is_active === false ? true : false;
+    if (question.id) {
+      try {
+        await supabase
+          .from('survey_questions')
+          .update({ is_active: newValue, updated_at: new Date().toISOString() })
+          .eq('id', question.id);
+      } catch (err) {
+        console.error('Erro ao atualizar status da pergunta:', err);
+      }
+    }
+    setQuestions(prev => prev.map((q, i) => 
+      i === idx ? { ...q, is_active: newValue } : q
+    ));
+  };
+
   const canGoNext = () => {
     if (step === 1) return title.trim().length > 0;
     if (step === 2) return true;
@@ -715,6 +732,7 @@ const SurveyEditor: React.FC<SurveyEditorProps> = ({
         target_type: targetType,
         target_category: targetType === 'internal' ? targetCategory : null,
         results_visible_to: resultsVisibleTo,
+        updated_at: new Date().toISOString(),
         // target_store_ids e store_id só mudam na criação — nunca na edição
         ...(editingSurvey ? {} : {
           store_id: (currentUser as any).store_id || (currentUser as any).storeId || null,
@@ -746,6 +764,7 @@ const SurveyEditor: React.FC<SurveyEditorProps> = ({
         question_type: q.question_type,
         options: q.options || [],
         is_required: q.is_required ?? true,
+        is_active: q.is_active !== false,
         sort_order: idx,
       }));
       const { error: qError } = await supabase.from('survey_questions').insert(questionsToInsert);
@@ -1020,7 +1039,9 @@ const SurveyEditor: React.FC<SurveyEditorProps> = ({
                           initial={{ opacity: 0, y: 8 }}
                           animate={{ opacity: 1, y: 0 }}
                           exit={{ opacity: 0, y: -8 }}
-                          className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-xl overflow-hidden group hover:border-blue-300 dark:hover:border-blue-700 transition-all"
+                          className={`bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-xl overflow-hidden group hover:border-blue-300 dark:hover:border-blue-700 transition-all ${
+                            q.is_active === false ? 'opacity-50' : ''
+                          }`}
                         >
                           {/* Linha superior */}
                           <div className="flex items-start gap-3 p-4">
@@ -1030,7 +1051,9 @@ const SurveyEditor: React.FC<SurveyEditorProps> = ({
                               value={q.question_text || ''}
                               onChange={e => updateQuestion(idx, 'question_text', e.target.value)}
                               placeholder="Digite a pergunta..."
-                              className="flex-1 bg-transparent text-sm text-slate-900 dark:text-white outline-none placeholder:text-slate-400 min-w-0"
+                              className={`flex-1 bg-transparent text-sm text-slate-900 dark:text-white outline-none placeholder:text-slate-400 min-w-0 ${
+                                q.is_active === false ? 'line-through text-slate-400' : ''
+                              }`}
                             />
                             <select
                               value={q.question_type || 'short_text'}
@@ -1068,7 +1091,23 @@ const SurveyEditor: React.FC<SurveyEditorProps> = ({
                               />
                               <span className="text-xs text-slate-500">Obrigatória</span>
                             </label>
-                            <div className="flex items-center gap-1">
+                            <div className="flex items-center gap-2">
+                              {/* Toggle Ativo/Inativo */}
+                              <button
+                                type="button"
+                                onClick={() => handleToggleQuestionActive(q, idx)}
+                                className={`relative w-11 h-6 rounded-full transition-colors duration-200 flex-shrink-0 ${
+                                  q.is_active !== false
+                                    ? 'bg-green-500' 
+                                    : 'bg-slate-300 dark:bg-slate-600'
+                                }`}
+                                title={q.is_active !== false ? 'Desativar pergunta' : 'Ativar pergunta'}
+                              >
+                                <span className={`absolute top-0.5 w-5 h-5 bg-white rounded-full shadow-md transition-transform duration-200 ${
+                                  q.is_active !== false ? 'translate-x-5' : 'translate-x-0.5'
+                                }`} />
+                              </button>
+
                               <button
                                 onClick={() => duplicateQuestion(idx)}
                                 className="p-1.5 rounded-lg text-slate-400 hover:text-slate-600 hover:bg-slate-100 dark:hover:bg-slate-700 transition-all"
