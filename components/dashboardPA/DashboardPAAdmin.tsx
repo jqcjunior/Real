@@ -25,6 +25,8 @@ interface WeekData {
   data_pagamento?: string;
   store_id: string;
   status: string;
+  mes_ref?: number;
+  ano_ref?: number;
 }
 
 const parseLocalDate = (dateStr: string): Date => {
@@ -710,16 +712,50 @@ const DashboardPAAdmin: React.FC<DashboardPAAdminProps> = ({ user, stores, onRef
                   </tr>
                 </thead>
                 <tbody>
-                  {allWeeks
-                    .filter(w => selectedStoreId === 'all' || w.store_id === selectedStoreId)
-                    .map((w) => {
+                  {(() => {
+                    const filteredWeeks = allWeeks
+                      .filter(w => selectedStoreId === 'all' || w.store_id === selectedStoreId)
+                      .filter(week => {
+                        const now = new Date();
+                        const currentMonth = now.getMonth() + 1; // 1-12
+                        const currentYear = now.getFullYear();
+                        const ano_ref = week.ano_ref ?? parseLocalDate(week.data_inicio).getFullYear();
+                        const mes_ref = week.mes_ref ?? (parseLocalDate(week.data_inicio).getMonth() + 1);
+                        
+                        const isCurrentOrFutureMonth = 
+                          ano_ref > currentYear || 
+                          (ano_ref === currentYear && mes_ref >= currentMonth);
+                        
+                        if (isCurrentOrFutureMonth) {
+                          // Mês atual ou futuro: mostra tudo
+                          return true;
+                        } else {
+                          // Mês passado: mostra apenas semanas abertas (pendentes)
+                          return week.status === 'aberta';
+                        }
+                      });
+
+                    return filteredWeeks.map((w) => {
                       const store = stores.find(s => s.id === w.store_id);
                       const isFinalized = w.status === 'recibos_impressos' || w.status === 'bloqueada';
                       const isReopening = reopeningId === w.id;
- 
+
+                      const now = new Date();
+                      const currentMonth = now.getMonth() + 1; // 1-12
+                      const currentYear = now.getFullYear();
+                      const ano_ref = w.ano_ref ?? parseLocalDate(w.data_inicio).getFullYear();
+                      const mes_ref = w.mes_ref ?? (parseLocalDate(w.data_inicio).getMonth() + 1);
+                      const isPastMonth = ano_ref < currentYear || (ano_ref === currentYear && mes_ref < currentMonth);
+                      const isPendingPastWeek = isPastMonth && w.status === 'aberta';
+
                       return (
-                        <tr key={w.id} className="border-b border-slate-50 dark:border-slate-800/50 hover:bg-slate-50/50 dark:hover:bg-slate-800/30 transition-all">
-                          <td className="px-6 py-4">
+                        <tr 
+                          key={w.id} 
+                          className={`border-b border-slate-50 dark:border-slate-800/50 hover:bg-slate-50/50 dark:hover:bg-slate-800/30 transition-all ${
+                            isPendingPastWeek ? 'bg-red-50/30 dark:bg-red-950/10' : ''
+                          }`}
+                        >
+                          <td className={`px-6 py-4 ${isPendingPastWeek ? 'border-l-4 border-l-red-500' : ''}`}>
                             <div className="flex items-center gap-3">
                               <div className="w-8 h-8 rounded-lg bg-slate-100 dark:bg-slate-800 flex items-center justify-center text-[10px] font-black text-slate-500">
                                 {store?.number || '??'}
@@ -740,18 +776,27 @@ const DashboardPAAdmin: React.FC<DashboardPAAdminProps> = ({ user, stores, onRef
                           </td>
                           <td className="px-6 py-4">
                             <div className="flex items-center gap-2">
-                              {w.status === 'aberta' && <div className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse" />}
-                              {w.status === 'importada' && <div className="w-2 h-2 rounded-full bg-blue-500" />}
-                              {w.status === 'bloqueada' && <Lock size={14} className="text-amber-500" />}
-                              {w.status === 'recibos_impressos' && <Check size={14} className="text-emerald-500" />}
-                              <span className={`text-[10px] font-black uppercase italic ${
-                                w.status === 'aberta' ? 'text-emerald-600' :
-                                w.status === 'importada' ? 'text-blue-600' :
-                                w.status === 'bloqueada' ? 'text-amber-600' :
-                                'text-slate-600'
-                              }`}>
-                                {w.status.replace('_', ' ')}
-                              </span>
+                              {isPendingPastWeek ? (
+                                <span className="inline-flex items-center gap-1.5 px-2 py-0.5 rounded-full text-[9px] font-black uppercase tracking-wider bg-red-100 dark:bg-red-950/50 text-red-600 dark:text-red-400 border border-red-200 dark:border-red-900/50">
+                                  <span className="w-1.5 h-1.5 rounded-full bg-red-500 animate-pulse" />
+                                  PENDENTE
+                                </span>
+                              ) : (
+                                <>
+                                  {w.status === 'aberta' && <div className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse" />}
+                                  {w.status === 'importada' && <div className="w-2 h-2 rounded-full bg-blue-500" />}
+                                  {w.status === 'bloqueada' && <Lock size={14} className="text-amber-500" />}
+                                  {w.status === 'recibos_impressos' && <Check size={14} className="text-emerald-500" />}
+                                  <span className={`text-[10px] font-black uppercase italic ${
+                                    w.status === 'aberta' ? 'text-emerald-600' :
+                                    w.status === 'importada' ? 'text-blue-600' :
+                                    w.status === 'bloqueada' ? 'text-amber-600' :
+                                    'text-slate-600'
+                                  }`}>
+                                    {w.status.replace('_', ' ')}
+                                  </span>
+                                </>
+                              )}
                             </div>
                           </td>
                           <td className="px-6 py-4 text-right">
@@ -775,18 +820,41 @@ const DashboardPAAdmin: React.FC<DashboardPAAdminProps> = ({ user, stores, onRef
                           </td>
                         </tr>
                       );
-                    })}
+                    });
+                  })()}
                 </tbody>
               </table>
             </div>
           </div>
- 
-          {allWeeks.filter(w => selectedStoreId === 'all' || w.store_id === selectedStoreId).length === 0 && (
-            <div className="bg-white dark:bg-slate-900 rounded-3xl p-12 text-center border border-slate-200 dark:border-slate-800">
-              <AlertCircle className="mx-auto mb-4 text-slate-300" size={48} />
-              <p className="text-sm font-black text-slate-400 uppercase italic">Nenhuma semana encontrada para este período</p>
-            </div>
-          )}
+
+          {(() => {
+            const filteredWeeksCount = allWeeks
+              .filter(w => selectedStoreId === 'all' || w.store_id === selectedStoreId)
+              .filter(week => {
+                const now = new Date();
+                const currentMonth = now.getMonth() + 1; // 1-12
+                const currentYear = now.getFullYear();
+                const ano_ref = week.ano_ref ?? parseLocalDate(week.data_inicio).getFullYear();
+                const mes_ref = week.mes_ref ?? (parseLocalDate(week.data_inicio).getMonth() + 1);
+                
+                const isCurrentOrFutureMonth = 
+                  ano_ref > currentYear || 
+                  (ano_ref === currentYear && mes_ref >= currentMonth);
+                
+                if (isCurrentOrFutureMonth) {
+                  return true;
+                } else {
+                  return week.status === 'aberta';
+                }
+              }).length;
+
+            return filteredWeeksCount === 0 && (
+              <div className="bg-white dark:bg-slate-900 rounded-3xl p-12 text-center border border-slate-200 dark:border-slate-800">
+                <AlertCircle className="mx-auto mb-4 text-slate-300" size={48} />
+                <p className="text-sm font-black text-slate-400 uppercase italic">Nenhuma semana encontrada para este período</p>
+              </div>
+            );
+          })()}
         </div>
       )}
     </div>

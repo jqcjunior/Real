@@ -67,6 +67,7 @@ function calcularPremioTotal(performance: { pa: number; vendas: number; ticket: 
 }
 
 export const WeeklyParametersModal: React.FC<WeeklyParametersModalProps> = ({ stores, onClose, onSaved }) => {
+  const [localStores, setLocalStores] = useState<Store[]>(stores || []);
   const [params, setParams] = useState<Record<string, PAParametros>>({});
   const [selectedStoreId, setSelectedStoreId] = useState<string | null>(null);
   const [draft, setDraft] = useState<PAParametros | null>(null);
@@ -76,11 +77,41 @@ export const WeeklyParametersModal: React.FC<WeeklyParametersModalProps> = ({ st
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
+    if (stores && stores.length > 0) {
+      setLocalStores(stores);
+    }
+  }, [stores]);
+
+  useEffect(() => {
     const fetchParams = async () => {
       setLoading(true);
       setError(null);
       
       try {
+        // Garantir que a lista de lojas esteja populada
+        let activeStores = [...(stores || [])];
+        if (activeStores.length === 0) {
+          const { data: dbStores, error: dbError } = await supabase
+            .from('stores')
+            .select('*');
+          
+          if (!dbError && dbStores) {
+            activeStores = dbStores.map((s: any) => ({
+              id: s.id,
+              number: String(s.number),
+              name: s.name || '',
+              city: s.city || '',
+              managerName: s.manager_name || '',
+              managerEmail: s.manager_email || '',
+              managerPhone: s.manager_phone || '',
+              status: s.status || 'active'
+            }));
+            setLocalStores(activeStores);
+          }
+        } else {
+          setLocalStores(activeStores);
+        }
+
         const { data, error: fetchError } = await supabase
           .from('Dashboard_PA_Parametros')
           .select(`*`);
@@ -120,7 +151,7 @@ export const WeeklyParametersModal: React.FC<WeeklyParametersModalProps> = ({ st
     };
     
     fetchParams();
-  }, []);
+  }, [stores]);
 
   const handleSelectStore = (storeId: string) => {
     setSelectedStoreId(storeId);
@@ -201,11 +232,11 @@ export const WeeklyParametersModal: React.FC<WeeklyParametersModalProps> = ({ st
     }
   };
 
-  const selectedStore = stores.find(s => s.id === selectedStoreId);
+  const selectedStore = localStores.find(s => s.id === selectedStoreId);
   
-  const storesSorted = [...stores].sort((a, b) => {
-    const numA = parseInt(a.number);
-    const numB = parseInt(b.number);
+  const storesSorted = [...localStores].sort((a, b) => {
+    const numA = parseInt(a.number || '0');
+    const numB = parseInt(b.number || '0');
     return numA - numB;
   });
 
