@@ -286,6 +286,19 @@ function totPares(qtds: Record<string, number>): number {
   return Object.values(qtds).reduce((s, v) => s + (v || 0), 0);
 }
 
+const getCategoryBadge = (tipo: string): { label: string; color: string } => {
+  const t = (tipo || '').toUpperCase();
+  if (t.includes('ACESSORIO') || t.includes('ACESSÓRIO')) 
+    return { label: 'ACES', color: 'bg-purple-100 text-purple-700' };
+  if (t.includes('INFANTIL')) 
+    return { label: 'INF', color: 'bg-amber-100 text-amber-700' };
+  if (t.includes('FEMININO') || t.includes('FEM')) 
+    return { label: 'FEM', color: 'bg-pink-100 text-pink-700' };
+  if (t.includes('MASCULINO') || t.includes('MASC')) 
+    return { label: 'MASC', color: 'bg-blue-100 text-blue-700' };
+  return { label: 'OUT', color: 'bg-gray-100 text-gray-700' };
+};
+
 // ─── Componente principal ─────────────────────────────────────────────────────
 
 export default function BuyOrderModule({ user }: { user?: User }) {
@@ -3078,6 +3091,19 @@ function StepItens({
                 Tipo
               </th>
               <th
+                className="w-16 text-xs"
+                style={{
+                  padding: "6px 4px",
+                  textAlign: "left",
+                  fontWeight: 500,
+                  color: "#6b7280",
+                  borderBottom: "0.5px solid #e5e7eb",
+                  whiteSpace: "nowrap",
+                }}
+              >
+                Cat
+              </th>
+              <th
                 className="w-20 text-xs"
                 style={{
                   padding: "6px 4px",
@@ -3158,7 +3184,7 @@ function StepItens({
             {items.length === 0 && (
               <tr>
                 <td
-                  colSpan={9}
+                  colSpan={10}
                   style={{
                     textAlign: "center",
                     padding: "20px 0",
@@ -3170,79 +3196,87 @@ function StepItens({
                 </td>
               </tr>
             )}
-            {items.map((it, i) => (
-              <tr key={i} style={{ borderBottom: "0.5px solid #f3f4f6" }}>
-                <td
-                  className="text-[10px]"
-                  style={{ padding: "5px 4px", color: "#9ca3af" }}
-                >
-                  {i + 1}
-                </td>
-                <td
-                  className="text-xs"
-                  style={{ padding: "5px 4px", fontWeight: 500 }}
-                >
-                  {it.ref || "—"}
-                </td>
-                <td className="text-[10px]" style={{ padding: "5px 4px" }}>
-                  {it.tipo || "—"}
-                </td>
-                <td className="text-[10px]" style={{ padding: "5px 4px" }}>
-                  {it.cor1 || "—"}
-                </td>
-                <td
-                  className="text-[10px]"
-                  style={{ padding: "5px 4px", color: "#9ca3af" }}
-                >
-                  {it.cor2 || "—"}
-                </td>
-                <td
-                  className="text-[10px]"
-                  style={{ padding: "5px 4px", color: "#9ca3af" }}
-                >
-                  {it.cor3 || "—"}
-                </td>
-                <td
-                  className="text-[11px] text-right font-medium"
-                  style={{ padding: "5px 8px", color: "#64748b" }}
-                >
-                  {fmtBRL(it.custo)}
-                </td>
-                <td
-                  className={`text-xs text-right font-semibold ${it.historico_preco_venda && it.preco_venda > it.historico_preco_venda ? "text-emerald-600 animate-pulse" : it.historico_preco_venda && it.preco_venda < it.historico_preco_venda ? "text-amber-500 animate-pulse" : "text-[#185FA5]"}`}
-                  style={{ padding: "5px 12px" }}
-                >
-                  {fmtBRL(it.preco_venda)}
-                </td>
-                <td className="text-right" style={{ padding: "5px 12px" }}>
-                  <button
-                    onClick={() => openEdit(i)}
-                    style={{
-                      border: "none",
-                      background: "transparent",
-                      cursor: "pointer",
-                      color: "#185FA5",
-                      marginRight: 8,
-                    }}
-                    title="Editar"
+            {items.map((it, i) => {
+              const cat = getCategoryBadge(it.tipo);
+              return (
+                <tr key={i} style={{ borderBottom: "0.5px solid #f3f4f6" }}>
+                  <td
+                    className="text-[10px]"
+                    style={{ padding: "5px 4px", color: "#9ca3af" }}
                   >
-                    <Pencil size={12} strokeWidth={2.5} />
-                  </button>
-                  <button
-                    onClick={() => delItem(i)}
-                    style={{
-                      border: "none",
-                      background: "transparent",
-                      cursor: "pointer",
-                      color: "#dc2626",
-                    }}
-                    title="Excluir"
+                    {i + 1}
+                  </td>
+                  <td
+                    className="text-xs"
+                    style={{ padding: "5px 4px", fontWeight: 500 }}
                   >
-                    <X size={14} strokeWidth={2.5} />
-                  </button>
-                </td>
-              </tr>
-            ))}
+                    {it.ref || "—"}
+                  </td>
+                  <td className="text-[10px]" style={{ padding: "5px 4px" }}>
+                    {it.tipo || "—"}
+                  </td>
+                  <td className="text-[10px]" style={{ padding: "5px 4px" }}>
+                    <span className={`px-2 py-0.5 rounded-full text-[10px] font-bold ${cat.color}`}>
+                      {cat.label}
+                    </span>
+                  </td>
+                  <td className="text-[10px]" style={{ padding: "5px 4px" }}>
+                    {it.cor1 || "—"}
+                  </td>
+                  <td
+                    className="text-[10px]"
+                    style={{ padding: "5px 4px", color: "#9ca3af" }}
+                  >
+                    {it.cor2 || "—"}
+                  </td>
+                  <td
+                    className="text-[10px]"
+                    style={{ padding: "5px 4px", color: "#9ca3af" }}
+                  >
+                    {it.cor3 || "—"}
+                  </td>
+                  <td
+                    className="text-[11px] text-right font-medium"
+                    style={{ padding: "5px 8px", color: "#64748b" }}
+                  >
+                    {fmtBRL(it.custo)}
+                  </td>
+                  <td
+                    className={`text-xs text-right font-semibold ${it.historico_preco_venda && it.preco_venda > it.historico_preco_venda ? "text-emerald-600 animate-pulse" : it.historico_preco_venda && it.preco_venda < it.historico_preco_venda ? "text-amber-500 animate-pulse" : "text-[#185FA5]"}`}
+                    style={{ padding: "5px 12px" }}
+                  >
+                    {fmtBRL(it.preco_venda)}
+                  </td>
+                  <td className="text-right" style={{ padding: "5px 12px" }}>
+                    <button
+                      onClick={() => openEdit(i)}
+                      style={{
+                        border: "none",
+                        background: "transparent",
+                        cursor: "pointer",
+                        color: "#185FA5",
+                        marginRight: 8,
+                      }}
+                      title="Editar"
+                    >
+                      <Pencil size={12} strokeWidth={2.5} />
+                    </button>
+                    <button
+                      onClick={() => delItem(i)}
+                      style={{
+                        border: "none",
+                        background: "transparent",
+                        cursor: "pointer",
+                        color: "#dc2626",
+                      }}
+                      title="Excluir"
+                    >
+                      <X size={14} strokeWidth={2.5} />
+                    </button>
+                  </td>
+                </tr>
+              );
+            })}
           </tbody>
         </table>
         )}
