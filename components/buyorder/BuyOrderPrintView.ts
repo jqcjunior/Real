@@ -25,7 +25,7 @@ export const printOrder = async (order: any, supabase: SupabaseClient) => {
   const totalBruto = itemsWithPhotos.reduce((s, i) => s + ((Number(i.custo) || 0) * (i.total_pares || 0)), 0);
   const desconto = Number(order.desconto) || 0;
   const totalLiquido = totalBruto * (1 - desconto / 100);
-  const lojas = [...new Set((subOrders || []).map((s: any) => s.store_number))].sort().join(', ');
+  const lojas = [...new Set((subOrders || []).flatMap((s: any) => s.lojas_numeros || []))].sort((a, b) => a - b).join(', ');
 
   const fmt = (v: number) => v.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' });
 
@@ -120,10 +120,8 @@ export const printOrder = async (order: any, supabase: SupabaseClient) => {
       </tr></thead>
       <tbody>
         ${itemsWithPhotos.map(item => {
-          const gradesStr = item.grades
-            ? Object.entries(item.grades as Record<string, number>)
-                .filter(([_, v]) => v > 0)
-                .map(([k, v]) => k + ':' + v).join(' | ')
+          const gradesStr = Array.isArray(item.grades) && item.grades.length > 0
+            ? item.grades.map((g: any) => g.letra + ': ' + Object.entries(g.tamanhos || {}).map(([tam, qty]) => tam + '×' + qty).join(', ')).join(' | ')
             : '-';
           return '<tr>' +
             '<td>' + (item.image_url

@@ -28,7 +28,10 @@ const resizeImage = (file: File, maxSize = 400): Promise<Blob> => {
       canvas.height = height;
       canvas.getContext('2d')!.drawImage(img, 0, 0, width, height);
       canvas.toBlob(
-        (blob) => blob ? resolve(blob) : reject(new Error('Falha ao converter')),
+        (blob) => {
+          URL.revokeObjectURL(img.src);
+          blob ? resolve(blob) : reject(new Error('Falha ao converter'));
+        },
         'image/webp', 0.85
       );
     };
@@ -43,6 +46,10 @@ const ProductPhotoUpload: React.FC<ProductPhotoUploadProps> = ({
   const inputRef = useRef<HTMLInputElement>(null);
   const [uploading, setUploading] = useState(false);
   const [preview, setPreview] = useState<string | null>(existingImageUrl || null);
+
+  React.useEffect(() => {
+    setPreview(existingImageUrl || null);
+  }, [existingImageUrl]);
 
   const handleFileSelect = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
