@@ -1711,14 +1711,22 @@ export default function BuyOrderModule({ user }: { user?: User }) {
                       )}
                     </div>
                     {/* Botões de ação em linha */}
-                    <div className="flex gap-2 border-t border-slate-100 pt-3">
+                    <div style={{ display: 'flex', gap: '8px', marginTop: '8px', paddingTop: '12px', borderTop: '1px solid #f1f5f9' }}>
                       <button 
                         onClick={() => handleExportExcel(order.id)}
                         disabled={exportando === order.id}
-                        className="flex-1 py-2 bg-[#185FA5] text-white rounded-lg text-[10px] font-black uppercase tracking-wider flex items-center justify-center gap-1 opacity-90 hover:opacity-100 transition-opacity disabled:opacity-50"
+                        className="flex-1 flex items-center justify-center gap-2 py-2 bg-blue-600 text-white rounded-lg text-[11px] font-medium hover:bg-blue-700 disabled:opacity-50"
                       >
-                        <Download size={12} /> {exportando === order.id ? 'Exportando...' : 'Exportar'}
+                        <Download size={14} /> {exportando === order.id ? 'Exp...' : 'Exportar'}
                       </button>
+                      
+                      <button
+                        onClick={() => printOrder(order, supabase)}
+                        className="flex-1 flex items-center justify-center gap-2 py-2 bg-blue-100 text-blue-700 rounded-lg text-[11px] font-medium hover:bg-blue-200"
+                      >
+                        <Printer size={14} /> Imprimir
+                      </button>
+
                       {canEditOrder(order) && (status === 'rascunho' || isAdmin) && (
                         <button
                           onClick={() => {
@@ -1726,18 +1734,19 @@ export default function BuyOrderModule({ user }: { user?: User }) {
                             handleEditOrder(order.id);
                           }}
                           disabled={exportando === order.id}
-                          className="flex-none w-10 h-10 border border-slate-200 text-[#185FA5] bg-slate-50 hover:bg-slate-100 rounded-lg flex items-center justify-center transition-colors disabled:opacity-50"
+                          className="flex-1 flex items-center justify-center gap-2 py-2 bg-slate-100 text-slate-700 rounded-lg text-[11px] font-medium hover:bg-slate-200 disabled:opacity-50"
                         >
-                          <Pencil size={14} />
+                          <Pencil size={14} /> Editar
                         </button>
                       )}
+
                       {canCancelOrder(order) && (
                         <button
                           onClick={() => setDeletingOrder({ id: order.id, numero_pedido: order.numero_pedido })}
                           disabled={exportando === order.id}
-                          className="flex-none w-10 h-10 border border-red-200 text-red-600 bg-red-50 hover:bg-red-100 rounded-lg flex items-center justify-center transition-colors disabled:opacity-50"
+                          className="flex-1 flex items-center justify-center gap-2 py-2 bg-red-50 text-red-500 rounded-lg text-[11px] font-medium hover:bg-red-100 disabled:opacity-50"
                         >
-                          <X size={14} />
+                          <X size={14} /> Excluir
                         </button>
                       )}
                     </div>
@@ -3079,29 +3088,41 @@ function StepItens({
           <div className="space-y-2 p-3">
             {items.map((item, idx) => (
               <div key={idx} className="bg-white border border-slate-200 rounded-xl p-3 shadow-sm">
-                <div className="flex items-center justify-between mb-2">
+                <div className="flex items-center justify-between gap-1 mb-1">
                   <span className="text-[10px] font-black text-slate-400 bg-slate-100 rounded px-1">#{idx+1}</span>
                   <span className="text-[11px] font-black text-slate-800">{item.ref}</span>
                 </div>
-                <div className="text-[10px] text-slate-600 mb-2">{item.tipo}</div>
-                <div className="grid grid-cols-2 gap-2 mb-2">
+                <div className="text-[10px] text-slate-600 mb-1">{item.tipo}</div>
+                <div className="grid grid-cols-2 gap-2 mb-1">
                   <div>
-                    <label className="text-[8px] font-black text-slate-400 uppercase block mb-1">Custo</label>
+                    <label className="text-xs text-gray-500 block">Custo</label>
                     <span className="text-[10px] text-slate-600 font-bold">{fmtBRL(item.custo)}</span>
                   </div>
                   <div>
-                    <label className="text-[8px] font-black text-slate-400 uppercase block mb-1">Preço Venda</label>
+                    <label className="text-xs text-gray-500 block">Preço Venda</label>
                     <span className="text-[11px] text-[#185FA5] font-black">{fmtBRL(item.preco_venda)}</span>
                   </div>
                 </div>
                 {(item.cor1 || item.cor2 || item.cor3) && (
-                  <div className="flex gap-2 text-[10px] text-slate-500 mb-2">
-                    {item.cor1 && <span>{item.cor1}</span>}
-                    {item.cor2 && <span>/ {item.cor2}</span>}
-                    {item.cor3 && <span>/ {item.cor3}</span>}
+                  <div className="text-xs text-gray-500 truncate mb-1">
+                    {[item.cor1, item.cor2, item.cor3].filter(Boolean).join(" / ")}
                   </div>
                 )}
-                <div className="flex justify-end gap-3 border-t border-slate-100 pt-2 mt-2">
+                <div className="flex justify-end items-center gap-3 border-t border-slate-100 pt-2 mt-2">
+                  <ProductPhotoUpload
+                    supabase={supabase}
+                    marca={cab.marca}
+                    referencia={item.ref}
+                    cor1={item.cor1 || ''}
+                    tipo={item.tipo}
+                    modelo={item.modelo}
+                    existingImageUrl={item._catalogImageUrl}
+                    onPhotoUploaded={(url) => {
+                      const updated = [...items];
+                      updated[idx]._catalogImageUrl = url;
+                      setItems(updated);
+                    }}
+                  />
                   <button onClick={() => openEdit(idx)} className="text-[#185FA5] flex items-center gap-1 text-[10px] font-bold">
                     <Pencil size={12}/> Editar
                   </button>
@@ -3376,20 +3397,24 @@ function StepItens({
           style={{
             position: "fixed",
             inset: 0,
-            background: "rgba(0,0,0,0.4)",
+            zIndex: 50,
             display: "flex",
-            alignItems: "center",
+            alignItems: "flex-start",
             justifyContent: "center",
-            zIndex: 100,
+            background: "rgba(0,0,0,0.5)",
+            overflowY: "auto",
+            padding: 16,
           }}
         >
           <div
             style={{
-              background: "#fff",
-              borderRadius: 10,
-              border: "0.5px solid #e5e7eb",
-              width: 400,
-              overflow: "hidden",
+              width: "100%",
+              maxWidth: 500,
+              maxHeight: "90vh",
+              overflowY: "auto",
+              borderRadius: 12,
+              background: "white",
+              margin: "auto",
             }}
           >
             <div
@@ -3848,8 +3873,11 @@ function StepItens({
             </div>
             <div
               style={{
-                padding: "10px 16px",
-                borderTop: "0.5px solid #e5e7eb",
+                position: "sticky",
+                bottom: 0,
+                background: "white",
+                padding: "12px 16px",
+                borderTop: "1px solid #e5e7eb",
                 display: "flex",
                 justifyContent: "flex-end",
                 gap: 8,
