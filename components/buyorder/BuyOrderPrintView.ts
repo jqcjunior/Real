@@ -157,7 +157,7 @@ export const printOrder = async (order: any, supabase: SupabaseClient) => {
       </div>
     </div>
 
-    <div class="footer">RealAdmin — Gerado em ${new Date().toLocaleDateString('pt-BR')} às ${new Date().toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' })} — Folha A4</div>
+    <div class="footer">Real Calçados — Gestão de Compras • ${new Date().toLocaleDateString('pt-BR')} ${new Date().toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' })}</div>
 
     <script>setTimeout(() => window.print(), 500);</script>
   </body></html>`);

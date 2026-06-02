@@ -66,13 +66,14 @@ const ProductPhotoUpload: React.FC<ProductPhotoUploadProps> = ({
       if (uploadError) throw uploadError;
 
       const { data: { publicUrl } } = supabase.storage.from('Fotos').getPublicUrl(path);
+      const cacheBustUrl = publicUrl + '?t=' + Date.now();
 
       await supabase.from('product_catalog').upsert({
         marca, referencia, cor1: cor1 || '', tipo, modelo, image_url: publicUrl
       }, { onConflict: 'marca,referencia,cor1' });
 
-      setPreview(publicUrl);
-      onPhotoUploaded(publicUrl);
+      setPreview(cacheBustUrl);
+      onPhotoUploaded(cacheBustUrl);
     } catch (err) {
       console.error('Erro ao fazer upload:', err);
       alert('Erro ao salvar foto. Tente novamente.');

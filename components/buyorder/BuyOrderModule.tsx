@@ -3117,9 +3117,9 @@ function StepItens({
           <thead>
             <tr style={{ background: "#f9fafb" }}>
               <th
-                className="w-8"
+                className="w-6"
                 style={{
-                  padding: "6px 4px",
+                  padding: "6px 2px",
                   textAlign: "left",
                   fontWeight: 500,
                   color: "#6b7280",
@@ -3129,6 +3129,13 @@ function StepItens({
               >
                 #
               </th>
+              <th
+                className="w-10"
+                style={{
+                  padding: "6px 0px",
+                  borderBottom: "0.5px solid #e5e7eb",
+                }}
+              ></th>
               <th
                 className="w-28"
                 style={{
@@ -3249,7 +3256,7 @@ function StepItens({
             {items.length === 0 && (
               <tr>
                 <td
-                  colSpan={10}
+                  colSpan={11}
                   style={{
                     textAlign: "center",
                     padding: "20px 0",
@@ -3267,14 +3274,11 @@ function StepItens({
                 <tr key={i} style={{ borderBottom: "0.5px solid #f3f4f6" }}>
                   <td
                     className="text-[10px]"
-                    style={{ padding: "5px 4px", color: "#9ca3af" }}
+                    style={{ padding: "5px 2px", color: "#9ca3af", textAlign: "left" }}
                   >
                     {i + 1}
                   </td>
-                  <td
-                    className="text-xs"
-                    style={{ padding: "5px 4px", fontWeight: 500, display: "flex", alignItems: "center", gap: "8px" }}
-                  >
+                  <td style={{ padding: "5px 0px", textAlign: "center" }}>
                     <ProductPhotoUpload
                       supabase={supabase}
                       marca={cab.marca}
@@ -3289,28 +3293,33 @@ function StepItens({
                         setItems(updated);
                       }}
                     />
+                  </td>
+                  <td
+                    className="text-xs"
+                    style={{ padding: "5px 4px", fontWeight: 500, textAlign: "left" }}
+                  >
                     {it.ref || "—"}
                   </td>
-                  <td className="text-[10px]" style={{ padding: "5px 4px" }}>
+                  <td className="text-[10px]" style={{ padding: "5px 4px", textAlign: "left" }}>
                     {it.tipo || "—"}
                   </td>
-                  <td className="text-[10px]" style={{ padding: "5px 4px" }}>
+                  <td className="text-[10px]" style={{ padding: "5px 4px", textAlign: "left" }}>
                     <span className={`px-2 py-0.5 rounded-full text-[10px] font-bold ${cat.color}`}>
                       {cat.label}
                     </span>
                   </td>
-                  <td className="text-[10px]" style={{ padding: "5px 4px" }}>
+                  <td className="text-[10px]" style={{ padding: "5px 4px", textAlign: "left" }}>
                     {it.cor1 || "—"}
                   </td>
                   <td
                     className="text-[10px]"
-                    style={{ padding: "5px 4px", color: "#9ca3af" }}
+                    style={{ padding: "5px 4px", color: "#9ca3af", textAlign: "left" }}
                   >
                     {it.cor2 || "—"}
                   </td>
                   <td
                     className="text-[10px]"
-                    style={{ padding: "5px 4px", color: "#9ca3af" }}
+                    style={{ padding: "5px 4px", color: "#9ca3af", textAlign: "left" }}
                   >
                     {it.cor3 || "—"}
                   </td>
