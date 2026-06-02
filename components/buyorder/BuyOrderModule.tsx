@@ -6,8 +6,10 @@ import React, {
   Dispatch,
   SetStateAction,
 } from "react";
-import { Pencil, X, Download, RefreshCw } from "lucide-react";
+import { Pencil, X, Download, RefreshCw, Printer } from "lucide-react";
 import { toast } from "sonner";
+import { printOrder } from './BuyOrderPrintView';
+import ProductPhotoUpload from './ProductPhotoUpload';
 import { supabase } from "../../services/supabaseClient";
 import apiService from '../../services/apiService';
 import { useBrandAutocomplete } from "../../hooks/useBrandAutocomplete";
@@ -377,7 +379,17 @@ export default function BuyOrderModule({ user }: { user?: User }) {
   );
   const [exportando, setExportando] = useState<string | null>(null);
   const [searchTerm, setSearchTerm] = useState("");
+  const [roleFilter, setRoleFilter] = useState<string>("");
+  const PAGE_SIZE = 20;
+  const [page, setPage] = useState(0);
+  const [hasMore, setHasMore] = useState(false);
+
   const [selectedLoja, setSelectedLoja] = useState<number | null>(null);
+
+  useEffect(() => {
+    setPage(0);
+  }, [searchTerm, roleFilter, selectedLoja]);
+
   const [limitPedidos, setLimitPedidos] = useState(5);
   const [totalPedidos, setTotalPedidos] = useState(0);
   const [roundBase, setRoundBase] = useState(15.5);
@@ -458,13 +470,26 @@ export default function BuyOrderModule({ user }: { user?: User }) {
       let query = supabase
         .from("buy_orders")
         .select("*, buy_order_sub_orders(lojas_numeros)", { count: "exact" })
-        .order("created_at", { ascending: false });
+        .order("created_at", { ascending: false })
+        .range(0, (page + 1) * PAGE_SIZE - 1);
 
       // 3. Aplicar busca por texto
-      if (searchTerm.trim()) {
-        query = query.or(
-          `numero_pedido.eq.${searchTerm},marca.ilike.%${searchTerm}%,fornecedor.ilike.%${searchTerm}%`,
-        );
+      const searchTxt = searchTerm.trim();
+      if (searchTxt) {
+        const isNumeric = /^\d+$/.test(searchTxt);
+        const filters = [
+          `marca.ilike.%${searchTxt}%`,
+          `fornecedor.ilike.%${searchTxt}%`
+        ];
+        if (isNumeric) {
+          filters.push(`numero_pedido.eq.${searchTxt}`);
+        }
+        query = query.or(filters.join(','));
+      }
+
+      // NOVO: Filtro de Papel
+      if (roleFilter) {
+        query = query.eq('user_role', roleFilter);
       }
 
       // ✅ FILTRO CORRETO
@@ -478,14 +503,14 @@ export default function BuyOrderModule({ user }: { user?: User }) {
         data: allOrders,
         error: fetchError,
         count,
-      } = await query.limit(500);
+      } = await query;
 
       if (fetchError) throw fetchError;
 
       let finalData = allOrders || [];
 
       if (isManager && userStoreNumber) {
-        // Filtrar no frontend os pedidos que incluem a loja do gerente (se precisar, embora o insert só crie com as lojas corretas)
+        // Filtrar no frontend os pedidos que incluem a loja do gerente
         finalData = finalData.filter((order: any) => {
           const subOrders = order.buy_order_sub_orders || [];
           const todasLojas = subOrders.flatMap(
@@ -504,13 +529,14 @@ export default function BuyOrderModule({ user }: { user?: User }) {
         });
       }
 
-      setRecentOrders(finalData.slice(0, limitPedidos));
-      setTotalPedidos(finalData.length);
+      setRecentOrders(finalData);
+      setHasMore(allOrders?.length === (page + 1) * PAGE_SIZE);
+      setTotalPedidos(count || 0);
     } catch (error: any) {
       console.error("Erro ao buscar pedidos:", error);
       toast.error(`❌ ${error.message || "Erro ao carregar pedidos"}`);
     }
-  }, [searchTerm, selectedLoja, limitPedidos, user, isManager, isAdmin]);
+  }, [searchTerm, selectedLoja, roleFilter, page, user, isManager, isAdmin]);
 
   useEffect(() => {
     fetchRecentOrders();
@@ -972,7 +998,7 @@ export default function BuyOrderModule({ user }: { user?: User }) {
       if (error) throw error;
 
       // ✅ SEMPRE carregar no fluxo de 3 etapas (COM cores e grades)
-      loadOrderIntoSteps(data);
+      await loadOrderIntoSteps(data);
       
     } catch (err: any) {
       console.error("❌ Erro ao buscar pedido:", err);
@@ -982,7 +1008,7 @@ export default function BuyOrderModule({ user }: { user?: User }) {
     }
   };
 
-  const loadOrderIntoSteps = (order: any) => {
+  const loadOrderIntoSteps = async (order: any) => {
     console.log("📦 Carregando pedido para edição:", order);
 
     // 1. Preencher Cabeçalho
@@ -1004,7 +1030,7 @@ export default function BuyOrderModule({ user }: { user?: User }) {
     setPrazosRaw(order.prazos ? order.prazos.join("/") : "");
 
     // ✅ 2. Preencher Itens COM CORES
-    const loadedItems = (order.buy_order_items || [])
+    let loadedItems: OrderItem[] = (order.buy_order_items || [])
       .sort((a: any, b: any) => (a.item_order || 0) - (b.item_order || 0))
       .map((item: any) => ({
         ref: item.referencia || "",
@@ -1016,6 +1042,17 @@ export default function BuyOrderModule({ user }: { user?: User }) {
         custo: item.custo || 0,
         preco_venda: item.preco_venda || 0,
       }));
+
+    loadedItems = await Promise.all(
+      loadedItems.map(async (item: OrderItem) => {
+        if (!item.ref) return { ...item, _catalogImageUrl: null };
+        const { data } = await supabase
+          .from('product_catalog').select('image_url')
+          .eq('marca', order.marca).eq('referencia', item.ref)
+          .eq('cor1', item.cor1 || '').maybeSingle();
+        return { ...item, _catalogImageUrl: data?.image_url || null };
+      })
+    );
     
     setItems(loadedItems);
     console.log("✅ Itens carregados:", loadedItems);
@@ -1529,7 +1566,7 @@ export default function BuyOrderModule({ user }: { user?: User }) {
                 letterSpacing: "0.05em",
               }}
             >
-              Pedidos Recentes ({recentOrders.length})
+              Pedidos Recentes ({recentOrders.length}{hasMore ? '+' : ''})
             </span>
             <button
               onClick={fetchRecentOrders}
@@ -1551,7 +1588,7 @@ export default function BuyOrderModule({ user }: { user?: User }) {
           </div>
 
           {/* Filtros */}
-          <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+          <div className="flex flex-col sm:flex-row gap-2">
             {/* Busca */}
             <input
               type="text"
@@ -1567,6 +1604,23 @@ export default function BuyOrderModule({ user }: { user?: User }) {
                 fontSize: 11,
               }}
             />
+
+            {/* Novo Filtro de Papel */}
+            <select
+              value={roleFilter}
+              onChange={(e) => setRoleFilter(e.target.value)}
+              style={{
+                padding: "6px 10px",
+                border: "1px solid #d1d5db",
+                borderRadius: 6,
+                fontSize: 11,
+                minWidth: 120,
+              }}
+            >
+              <option value="">Todos</option>
+              <option value="manager">Gerente</option>
+              <option value="comprador">Comprador</option>
+            </select>
 
             {/* ✅ Filtro de loja baseado em permissões */}
             {canViewAllStores ? (
@@ -2071,6 +2125,28 @@ export default function BuyOrderModule({ user }: { user?: User }) {
                             </button>
                           )}
 
+                        {/* Botão Imprimir */}
+                        <button
+                          onClick={() => printOrder(o, supabase)}
+                          title="Imprimir pedido com fotos"
+                          style={{
+                            width: 28,
+                            height: 28,
+                            padding: 0,
+                            display: "flex",
+                            alignItems: "center",
+                            justifyContent: "center",
+                            background: "#dbeafe",
+                            color: "#1d4ed8",
+                            border: "none",
+                            borderRadius: 6,
+                            cursor: "pointer",
+                            transition: "all 0.2s",
+                          }}
+                        >
+                          <Printer size={14} />
+                        </button>
+
                         {/* Botão Excluir */}
                         {canCancelOrder(o) && (
                           <button
@@ -2105,7 +2181,7 @@ export default function BuyOrderModule({ user }: { user?: User }) {
         </div>
 
         {/* Botão Ver Mais */}
-        {recentOrders.length >= limitPedidos && (
+        {hasMore && (
           <div
             style={{
               padding: 12,
@@ -2114,7 +2190,7 @@ export default function BuyOrderModule({ user }: { user?: User }) {
             }}
           >
             <button
-              onClick={() => setLimitPedidos((prev) => prev + 10)}
+              onClick={() => setPage((prev) => prev + 1)}
               style={{
                 padding: "6px 16px",
                 background: "#f3f4f6",
@@ -2126,7 +2202,7 @@ export default function BuyOrderModule({ user }: { user?: User }) {
                 color: "#374151",
               }}
             >
-              Ver mais 10 pedidos
+              Carregar mais
             </button>
           </div>
         )}
@@ -2571,7 +2647,7 @@ function StepCabecalho({
         📅 Faturamento
       </div>
       <div className="p-4 md:p-6 border-b border-slate-200">
-        <div className="grid grid-cols-3 gap-4 mb-5">
+        <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 mb-5">
           <div>
             <label style={labelStyle}>Data Inicial *</label>
             <input
@@ -2638,7 +2714,7 @@ function StepCabecalho({
       </div>
       <div className="p-4 md:p-6 border-b border-slate-200">
         <div className="grid grid-cols-1 md:grid-cols-2 gap-6 items-start">
-          <div className="grid grid-cols-2 gap-3">
+          <div className="grid grid-cols-2 gap-4">
             <div className="w-full">
               <label style={labelStyle} className="text-left w-full block">
                 Markup (%) *
@@ -2682,18 +2758,7 @@ function StepCabecalho({
             </div>
           </div>
           <div className="w-full pt-0 md:pt-[18px]">
-            <div
-              style={{
-                background: "#f8fafc",
-                border: "1px solid #e2e8f0",
-                borderRadius: 8,
-                padding: "0 20px",
-                display: "flex",
-                alignItems: "center",
-                height: 40,
-                justifyContent: "space-between",
-              }}
-            >
+            <div className="flex flex-wrap items-center justify-center gap-3 p-3 bg-slate-50 border border-slate-200 rounded-lg">
               <div className="flex items-center gap-2">
                 <div
                   style={{
@@ -3208,8 +3273,22 @@ function StepItens({
                   </td>
                   <td
                     className="text-xs"
-                    style={{ padding: "5px 4px", fontWeight: 500 }}
+                    style={{ padding: "5px 4px", fontWeight: 500, display: "flex", alignItems: "center", gap: "8px" }}
                   >
+                    <ProductPhotoUpload
+                      supabase={supabase}
+                      marca={cab.marca}
+                      referencia={it.ref}
+                      cor1={it.cor1 || ''}
+                      tipo={it.tipo}
+                      modelo={it.modelo}
+                      existingImageUrl={it._catalogImageUrl}
+                      onPhotoUploaded={(url) => {
+                        const updated = [...items];
+                        updated[i]._catalogImageUrl = url;
+                        setItems(updated);
+                      }}
+                    />
                     {it.ref || "—"}
                   </td>
                   <td className="text-[10px]" style={{ padding: "5px 4px" }}>

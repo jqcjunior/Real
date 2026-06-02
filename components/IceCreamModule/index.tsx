@@ -47,6 +47,10 @@ const ICE_CREAM_STORE_IDS = [
     'cbeeb1ea-911f-4d3a-87a9-3c38aafa0673'  // Loja 109 - Conceição do Jacuípe
 ];
 
+const getTodayBrazil = (): string => {
+    return new Date().toLocaleDateString('en-CA', { timeZone: 'America/Sao_Paulo' });
+};
+
 const IceCreamModule: React.FC<IceCreamModuleProps> = ({
     user,
     stores = [],
@@ -324,7 +328,7 @@ const IceCreamModule: React.FC<IceCreamModuleProps> = ({
     }, [activeTab, fetchData]);
 
     // Dates
-    const [displayDate, setDisplayDate] = useState(new Date().toISOString().split('T')[0]);
+    const [displayDate, setDisplayDate] = useState(getTodayBrazil());
     const [selectedMonth, setSelectedMonth] = useState(new Date().getMonth() + 1);
     const [selectedYear, setSelectedYear] = useState(new Date().getFullYear());
 
@@ -338,7 +342,7 @@ const IceCreamModule: React.FC<IceCreamModuleProps> = ({
 
     const selectedAuditDate = useMemo(() => {
         if (isSorvete) {
-            return new Date().toISOString().split('T')[0];
+            return getTodayBrazil();
         }
         if (!auditDay || !auditMonth || !auditYear) return '';
         const d = auditDay.padStart(2, '0');
@@ -1638,7 +1642,7 @@ const IceCreamModule: React.FC<IceCreamModuleProps> = ({
     };
 
     const handlePayFutureDebt = async (debtId: string) => {
-        const hoje = new Date().toISOString().split('T')[0];
+        const hoje = getTodayBrazil();
         const input = window.prompt(
             'Data do pagamento (AAAA-MM-DD):\nDeixe a data de hoje ou altere para uma data retroativa.',
             hoje

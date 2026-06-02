@@ -69,6 +69,10 @@ import {
 import { motion, AnimatePresence } from 'motion/react';
 import { Toaster } from 'sonner';
 
+const getTodayBrazil = (): string => {
+    return new Date().toLocaleDateString('en-CA', { timeZone: 'America/Sao_Paulo' });
+};
+
 const PageLoader = () => (
     <div className="flex items-center justify-center h-full min-h-[400px]">
         <div className="flex flex-col items-center gap-4">
@@ -583,7 +587,7 @@ const App: React.FC = () => {
             console.log('Roles detectadas:', { isSorvete, isGerente, isAdmin });
 
             const now = new Date();
-            const today = now.toISOString().split('T')[0];
+            const today = getTodayBrazil();
             const currentMonth = now.getMonth() + 1;
             const currentYear = now.getFullYear();
             const isEarlyMonth = now.getDate() <= 10;

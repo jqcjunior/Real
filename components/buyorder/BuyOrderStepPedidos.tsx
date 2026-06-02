@@ -33,6 +33,7 @@ export interface OrderItem {
   custo: number;
   preco_venda: number;
   historico_preco_venda?: number;
+  _catalogImageUrl?: string | null;
 }
 
 export interface SubOrder {
