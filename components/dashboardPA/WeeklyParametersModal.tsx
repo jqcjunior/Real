@@ -511,7 +511,7 @@ export const WeeklyParametersModal: React.FC<WeeklyParametersModalProps> = ({ st
                       <label className="text-[9px] font-black text-slate-400 uppercase mb-1 block">Mínimo (Meta)</label>
                       <input
                         type="number" step="100" min="0"
-                        value={draft.vendas_minimo ?? ''}
+                        value={draft.vendas_minimo || ''}
                         onChange={e => setDraft({ ...draft, vendas_minimo: e.target.value === '' ? '' : e.target.value })}
                         onBlur={() => setDraft(prev => prev ? { ...prev, vendas_minimo: prev.vendas_minimo === '' ? null : Number(prev.vendas_minimo) } : null)}
                         className="w-full bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-lg px-2 py-1.5 text-xs font-black outline-none focus:border-emerald-400 transition-all"
@@ -521,7 +521,7 @@ export const WeeklyParametersModal: React.FC<WeeklyParametersModalProps> = ({ st
                       <label className="text-[9px] font-black text-slate-400 uppercase mb-1 block">Base (Prêmio)</label>
                       <input
                         type="number" step="5" min="0"
-                        value={draft.vendas_valor_base ?? ''}
+                        value={draft.vendas_valor_base || ''}
                         onChange={e => setDraft({ ...draft, vendas_valor_base: e.target.value === '' ? '' : e.target.value })}
                         onBlur={() => setDraft(prev => prev ? { ...prev, vendas_valor_base: prev.vendas_valor_base === '' ? null : Number(prev.vendas_valor_base) } : null)}
                         className="w-full bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-lg px-2 py-1.5 text-xs font-black outline-none focus:border-emerald-400 transition-all"
@@ -531,7 +531,7 @@ export const WeeklyParametersModal: React.FC<WeeklyParametersModalProps> = ({ st
                       <label className="text-[9px] font-black text-slate-400 uppercase mb-1 block">Incremento</label>
                       <input
                         type="number" step="100" min="0"
-                        value={draft.vendas_incremento ?? ''}
+                        value={draft.vendas_incremento || ''}
                         onChange={e => setDraft({ ...draft, vendas_incremento: e.target.value === '' ? '' : e.target.value })}
                         onBlur={() => setDraft(prev => prev ? { ...prev, vendas_incremento: prev.vendas_incremento === '' ? null : Number(prev.vendas_incremento) } : null)}
                         className="w-full bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-lg px-2 py-1.5 text-xs font-black outline-none focus:border-emerald-400 transition-all"
@@ -541,7 +541,7 @@ export const WeeklyParametersModal: React.FC<WeeklyParametersModalProps> = ({ st
                       <label className="text-[9px] font-black text-slate-400 uppercase mb-1 block">Valor Inc.</label>
                       <input
                         type="number" step="5" min="0"
-                        value={draft.vendas_inc_valor ?? ''}
+                        value={draft.vendas_inc_valor || ''}
                         onChange={e => setDraft({ ...draft, vendas_inc_valor: e.target.value === '' ? '' : e.target.value })}
                         onBlur={() => setDraft(prev => prev ? { ...prev, vendas_inc_valor: prev.vendas_inc_valor === '' ? null : Number(prev.vendas_inc_valor) } : null)}
                         className="w-full bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-lg px-2 py-1.5 text-xs font-black outline-none focus:border-emerald-400 transition-all"
@@ -563,7 +563,7 @@ export const WeeklyParametersModal: React.FC<WeeklyParametersModalProps> = ({ st
                       <label className="text-[9px] font-black text-slate-400 uppercase mb-1 block">Mínimo (Meta)</label>
                       <input
                         type="number" step="1" min="0"
-                        value={draft.ticket_minimo ?? ''}
+                        value={draft.ticket_minimo || ''}
                         onChange={e => setDraft({ ...draft, ticket_minimo: e.target.value === '' ? '' : e.target.value })}
                         onBlur={() => setDraft(prev => prev ? { ...prev, ticket_minimo: prev.ticket_minimo === '' ? null : Number(prev.ticket_minimo) } : null)}
                         className="w-full bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-lg px-2 py-1.5 text-xs font-black outline-none focus:border-blue-400 transition-all"
@@ -573,7 +573,7 @@ export const WeeklyParametersModal: React.FC<WeeklyParametersModalProps> = ({ st
                       <label className="text-[9px] font-black text-slate-400 uppercase mb-1 block">Base (Prêmio)</label>
                       <input
                         type="number" step="5" min="0"
-                        value={draft.ticket_valor_base ?? ''}
+                        value={draft.ticket_valor_base || ''}
                         onChange={e => setDraft({ ...draft, ticket_valor_base: e.target.value === '' ? '' : e.target.value })}
                         onBlur={() => setDraft(prev => prev ? { ...prev, ticket_valor_base: prev.ticket_valor_base === '' ? null : Number(prev.ticket_valor_base) } : null)}
                         className="w-full bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-lg px-2 py-1.5 text-xs font-black outline-none focus:border-blue-400 transition-all"
@@ -583,7 +583,7 @@ export const WeeklyParametersModal: React.FC<WeeklyParametersModalProps> = ({ st
                       <label className="text-[9px] font-black text-slate-400 uppercase mb-1 block">Incremento</label>
                       <input
                         type="number" step="1" min="0"
-                        value={draft.ticket_incremento ?? ''}
+                        value={draft.ticket_incremento || ''}
                         onChange={e => setDraft({ ...draft, ticket_incremento: e.target.value === '' ? '' : e.target.value })}
                         onBlur={() => setDraft(prev => prev ? { ...prev, ticket_incremento: prev.ticket_incremento === '' ? null : Number(prev.ticket_incremento) } : null)}
                         className="w-full bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-lg px-3 py-1.5 text-xs font-black outline-none focus:border-blue-400 transition-all"
@@ -593,7 +593,7 @@ export const WeeklyParametersModal: React.FC<WeeklyParametersModalProps> = ({ st
                       <label className="text-[9px] font-black text-slate-400 uppercase mb-1 block">Valor Inc.</label>
                       <input
                         type="number" step="5" min="0"
-                        value={draft.ticket_inc_valor ?? ''}
+                        value={draft.ticket_inc_valor || ''}
                         onChange={e => setDraft({ ...draft, ticket_inc_valor: e.target.value === '' ? '' : e.target.value })}
                         onBlur={() => setDraft(prev => prev ? { ...prev, ticket_inc_valor: prev.ticket_inc_valor === '' ? null : Number(prev.ticket_inc_valor) } : null)}
                         className="w-full bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-lg px-2 py-1.5 text-xs font-black outline-none focus:border-blue-400 transition-all"
@@ -615,7 +615,7 @@ export const WeeklyParametersModal: React.FC<WeeklyParametersModalProps> = ({ st
                       <label className="text-[9px] font-black text-slate-400 uppercase mb-1 block">P.A Meta</label>
                       <input
                         type="number" step="0.05" min="0"
-                        value={draft.pa_inicial ?? ''}
+                        value={draft.pa_inicial || ''}
                         onChange={e => setDraft({ ...draft, pa_inicial: e.target.value === '' ? '' : e.target.value })}
                         onBlur={() => setDraft(prev => prev ? { ...prev, pa_inicial: prev.pa_inicial === '' ? 1.60 : Number(prev.pa_inicial) } : null)}
                         className="w-full bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-lg px-2 py-1.5 text-xs font-black outline-none focus:border-orange-400 transition-all"
@@ -625,7 +625,7 @@ export const WeeklyParametersModal: React.FC<WeeklyParametersModalProps> = ({ st
                       <label className="text-[9px] font-black text-slate-400 uppercase mb-1 block">Base (Prêmio)</label>
                       <input
                         type="number" step="5" min="0"
-                        value={draft.valor_base ?? ''}
+                        value={draft.valor_base || ''}
                         onChange={e => setDraft({ ...draft, valor_base: e.target.value === '' ? '' : e.target.value })}
                         onBlur={() => setDraft(prev => prev ? { ...prev, valor_base: prev.valor_base === '' ? 50 : Number(prev.valor_base) } : null)}
                         className="w-full bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-lg px-2 py-1.5 text-xs font-black outline-none focus:border-orange-400 transition-all"
@@ -635,7 +635,7 @@ export const WeeklyParametersModal: React.FC<WeeklyParametersModalProps> = ({ st
                       <label className="text-[9px] font-black text-slate-400 uppercase mb-1 block">Inc. Faixa</label>
                       <input
                         type="number" step="0.05" min="0"
-                        value={draft.incremento_pa ?? ''}
+                        value={draft.incremento_pa || ''}
                         onChange={e => setDraft({ ...draft, incremento_pa: e.target.value === '' ? '' : e.target.value })}
                         onBlur={() => setDraft(prev => prev ? { ...prev, incremento_pa: prev.incremento_pa === '' ? 0.05 : Number(prev.incremento_pa) } : null)}
                         className="w-full bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-lg px-2 py-1.5 text-xs font-black outline-none focus:border-orange-400 transition-all"
@@ -645,7 +645,7 @@ export const WeeklyParametersModal: React.FC<WeeklyParametersModalProps> = ({ st
                       <label className="text-[9px] font-black text-slate-400 uppercase mb-1 block">Valor Inc.</label>
                       <input
                         type="number" step="1" min="0"
-                        value={draft.incremento_valor ?? ''}
+                        value={draft.incremento_valor || ''}
                         onChange={e => setDraft({ ...draft, incremento_valor: e.target.value === '' ? '' : e.target.value })}
                         onBlur={() => setDraft(prev => prev ? { ...prev, incremento_valor: prev.incremento_valor === '' ? 0.10 : Number(prev.incremento_valor) } : null)}
                         className="w-full bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-lg px-2 py-1.5 text-xs font-black outline-none focus:border-orange-400 transition-all"
