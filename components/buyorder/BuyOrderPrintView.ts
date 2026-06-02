@@ -55,12 +55,17 @@ export const printOrder = async (order: any, supabase: SupabaseClient) => {
     table { width: 100%; border-collapse: collapse; }
     th { background: #1e40af; color: white; padding: 5px 4px; font-size: 8px; text-align: left; font-weight: 500; }
     td { border-bottom: 0.5px solid #e5e7eb; padding: 4px; font-size: 9px; vertical-align: middle; }
-    .photo { width: 44px; height: 44px; object-fit: cover; border-radius: 3px; border: 0.5px solid #e5e7eb; }
+    .photo { width: 44px; height: 44px; object-fit: contain; background: #f9fafb; border-radius: 3px; border: 0.5px solid #e5e7eb; }
     .no-photo { width: 44px; height: 44px; background: #f3f4f6; border-radius: 3px; display: flex; align-items: center; justify-content: center; color: #9ca3af; font-size: 7px; text-align: center; line-height: 1.2; }
     .ref { font-weight: 600; font-size: 10px; }
     .venda { font-weight: 600; color: #1e40af; }
     .pares { font-weight: 600; font-size: 10px; text-align: center; }
     .grades { font-size: 8px; color: #666; }
+    .grade-row { display: flex; align-items: center; gap: 6px; margin-bottom: 4px; flex-wrap: wrap; }
+    .grade-letra { font-size: 14px; font-weight: bold; min-width: 55px; color: #1e3a8a; }
+    .grade-pair { display: inline-flex; border-radius: 3px; overflow: hidden; margin: 1px 0; }
+    .grade-tam { background: #1e3a8a; color: white; padding: 2px 6px; font-size: 11px; font-weight: 600; }
+    .grade-qty { background: #dbeafe; color: #1e3a8a; padding: 2px 6px; font-size: 11px; font-weight: 600; }
     .totals-grid { display: grid; grid-template-columns: 1fr 1fr 1fr 1fr; border: 0.5px solid #ddd; border-radius: 4px; margin-top: 10px; overflow: hidden; }
     .total-cell { padding: 6px 10px; text-align: center; border-right: 0.5px solid #ddd; }
     .total-cell:last-child { border-right: none; background: #f0f7ff; }
@@ -69,8 +74,11 @@ export const printOrder = async (order: any, supabase: SupabaseClient) => {
     .total-cell:last-child .total-label { color: #1e40af; font-weight: 600; }
     .total-cell:last-child .total-value { color: #1e40af; }
     .footer { margin-top: 10px; text-align: center; font-size: 8px; color: #aaa; }
-    @media print { body { padding: 0; } }
+    .btn-fechar { position: fixed; top: 12px; right: 12px; z-index: 999; background: #1e40af; color: white; border: none; border-radius: 8px; padding: 10px 18px; font-size: 14px; font-weight: 600; cursor: pointer; box-shadow: 0 2px 8px rgba(0,0,0,0.3); }
+    @media print { .btn-fechar { display: none; } body { padding: 0; } }
   </style></head><body>
+
+    <button class="btn-fechar" onclick="window.close()">✕ Fechar</button>
 
     <div class="header">
       <div>
@@ -120,8 +128,21 @@ export const printOrder = async (order: any, supabase: SupabaseClient) => {
       </tr></thead>
       <tbody>
         ${itemsWithPhotos.map(item => {
-          const gradesStr = Array.isArray(item.grades) && item.grades.length > 0
-            ? item.grades.map((g: any) => g.letra + ': ' + Object.entries(g.tamanhos || {}).map(([tam, qty]) => tam + '×' + qty).join(', ')).join(' | ')
+          const gradesHtml = Array.isArray(item.grades) && item.grades.length > 0
+            ? item.grades.map((g: any) => {
+                const pairs = Object.entries(g.tamanhos || {})
+                  .filter(([_, qty]) => (Number(qty) || 0) > 0)
+                  .sort(([a], [b]) => {
+                    const numA = parseInt(a.split('-')[0]) || 0;
+                    const numB = parseInt(b.split('-')[0]) || 0;
+                    return numA - numB;
+                  })
+                  .map(([sizeKey, qty]) => {
+                    const tam = sizeKey.split('-')[0];
+                    return `<span class="grade-pair"><span class="grade-tam">${tam}</span><span class="grade-qty">${qty}</span></span>`;
+                  }).join(' ');
+                return `<div class="grade-row"><span class="grade-letra">Grade ${g.letra}</span>${pairs}</div>`;
+              }).join('')
             : '-';
           return '<tr>' +
             '<td>' + (item.image_url
@@ -133,7 +154,7 @@ export const printOrder = async (order: any, supabase: SupabaseClient) => {
             '<td style="text-align:right">R$ ' + Number(item.custo).toFixed(2) + '</td>' +
             '<td style="text-align:right" class="venda">R$ ' + Number(item.preco_venda).toFixed(2) + '</td>' +
             '<td class="pares">' + (item.total_pares || 0) + '</td>' +
-            '<td class="grades">' + gradesStr + '</td></tr>';
+            '<td class="grades">' + gradesHtml + '</td></tr>';
         }).join('')}
       </tbody>
     </table>

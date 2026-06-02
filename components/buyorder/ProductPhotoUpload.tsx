@@ -89,7 +89,7 @@ const ProductPhotoUpload: React.FC<ProductPhotoUploadProps> = ({
         style={{ display: 'none' }} onChange={handleFileSelect} />
       {preview ? (
         <img src={preview} alt="Produto" onClick={() => inputRef.current?.click()}
-          style={{ width: 40, height: 40, objectFit: 'cover', borderRadius: 4,
+          style={{ width: 40, height: 40, objectFit: 'contain', background: '#f9fafb', borderRadius: 4,
             border: '1px solid #e5e7eb', cursor: 'pointer' }}
           title="Clique para trocar a foto" />
       ) : (
