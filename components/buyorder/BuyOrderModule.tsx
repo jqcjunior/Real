@@ -11,6 +11,7 @@ import { toast } from "sonner";
 import { printOrder } from './BuyOrderPrintView';
 import ProductPhotoUpload from './ProductPhotoUpload';
 import { supabase } from "../../services/supabaseClient";
+import { cleanupOrphanPhotos } from "../../services/cleanupOrphanPhotos";
 import apiService from '../../services/apiService';
 import { useBrandAutocomplete } from "../../hooks/useBrandAutocomplete";
 import { usePermissions } from "../../hooks/usePermissions";
@@ -1141,6 +1142,11 @@ export default function BuyOrderModule({ user }: { user?: User }) {
       
       if (data?.success) {
         toast.success(data.message || '✅ Pedido excluído!');
+        try {
+          await cleanupOrphanPhotos(supabase);
+        } catch (cleanErr) {
+          console.error("Erro ao limpar fotos órfãs:", cleanErr);
+        }
         await fetchRecentOrders();
         setDeletingOrder(null);
       } else {
