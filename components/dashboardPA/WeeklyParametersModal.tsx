@@ -74,7 +74,7 @@ export const WeeklyParametersModal: React.FC<WeeklyParametersModalProps> = ({ st
   const [localStores, setLocalStores] = useState<Store[]>(stores || []);
   const [params, setParams] = useState<Record<string, PAParametros>>({});
   const [selectedStoreId, setSelectedStoreId] = useState<string | null>(null);
-  const [draft, setDraft] = useState<PAParametros | null>(null);
+  const [draft, setDraft] = useState<any>(null);
   const [saving, setSaving] = useState(false);
   const [saved, setSaved] = useState(false);
   const [loading, setLoading] = useState(true);
@@ -316,7 +316,8 @@ export const WeeklyParametersModal: React.FC<WeeklyParametersModalProps> = ({ st
 
       if (saveError) throw saveError;
 
-      setParams(prev => ({ ...prev, [selectedStoreId]: { ...draft, mes_ref: selectedMonth, ano_ref: selectedYear } }));
+      const cleanedDraftToStore = draftCleaned ? { ...draftCleaned } : draft;
+      setParams(prev => ({ ...prev, [selectedStoreId]: { ...cleanedDraftToStore, mes_ref: selectedMonth, ano_ref: selectedYear } }));
       setSaved(true);
       onSaved();
       
@@ -338,17 +339,37 @@ export const WeeklyParametersModal: React.FC<WeeklyParametersModalProps> = ({ st
     return numA - numB;
   });
 
-  const previewTotal = draft ? calcularPremioTotal({ 
-    pa: draft.pa_inicial, 
-    vendas: draft.vendas_minimo || 0, 
-    ticket: draft.ticket_minimo || 0 
-  }, draft) : 0;
+  const cleanDraftForCalc = (d: any): PAParametros => {
+    return {
+      store_id: d.store_id,
+      pa_inicial: d.pa_inicial === '' || d.pa_inicial === null || d.pa_inicial === undefined ? 0 : Number(d.pa_inicial),
+      incremento_pa: d.incremento_pa === '' || d.incremento_pa === null || d.incremento_pa === undefined ? 1 : Number(d.incremento_pa),
+      valor_base: d.valor_base === '' || d.valor_base === null || d.valor_base === undefined ? 0 : Number(d.valor_base),
+      incremento_valor: d.incremento_valor === '' || d.incremento_valor === null || d.incremento_valor === undefined ? 0 : Number(d.incremento_valor),
+      vendas_minimo: d.vendas_minimo === '' || d.vendas_minimo === null || d.vendas_minimo === undefined ? null : Number(d.vendas_minimo),
+      vendas_incremento: d.vendas_incremento === '' || d.vendas_incremento === null || d.vendas_incremento === undefined ? null : Number(d.vendas_incremento),
+      vendas_valor_base: d.vendas_valor_base === '' || d.vendas_valor_base === null || d.vendas_valor_base === undefined ? null : Number(d.vendas_valor_base),
+      vendas_inc_valor: d.vendas_inc_valor === '' || d.vendas_inc_valor === null || d.vendas_inc_valor === undefined ? null : Number(d.vendas_inc_valor),
+      ticket_minimo: d.ticket_minimo === '' || d.ticket_minimo === null || d.ticket_minimo === undefined ? null : Number(d.ticket_minimo),
+      ticket_incremento: d.ticket_incremento === '' || d.ticket_incremento === null || d.ticket_incremento === undefined ? null : Number(d.ticket_incremento),
+      ticket_valor_base: d.ticket_valor_base === '' || d.ticket_valor_base === null || d.ticket_valor_base === undefined ? null : Number(d.ticket_valor_base),
+      ticket_inc_valor: d.ticket_inc_valor === '' || d.ticket_inc_valor === null || d.ticket_inc_valor === undefined ? null : Number(d.ticket_inc_valor),
+    };
+  };
 
-  const previewMaisUm = draft ? calcularPremioTotal({ 
-    pa: draft.pa_inicial + draft.incremento_pa, 
-    vendas: (draft.vendas_minimo || 0) + (draft.vendas_incremento || 0), 
-    ticket: (draft.ticket_minimo || 0) + (draft.ticket_incremento || 0) 
-  }, draft) : 0;
+  const draftCleaned = draft ? cleanDraftForCalc(draft) : null;
+
+  const previewTotal = draftCleaned ? calcularPremioTotal({ 
+    pa: draftCleaned.pa_inicial, 
+    vendas: draftCleaned.vendas_minimo || 0, 
+    ticket: draftCleaned.ticket_minimo || 0 
+  }, draftCleaned) : 0;
+
+  const previewMaisUm = draftCleaned ? calcularPremioTotal({ 
+    pa: draftCleaned.pa_inicial + (draftCleaned.incremento_pa || 0), 
+    vendas: (draftCleaned.vendas_minimo || 0) + (draftCleaned.vendas_incremento || 0), 
+    ticket: (draftCleaned.ticket_minimo || 0) + (draftCleaned.ticket_incremento || 0) 
+  }, draftCleaned) : 0;
 
   return (
     <div className="fixed inset-0 z-[200] flex items-center justify-center p-2 sm:p-4 bg-slate-900/60 backdrop-blur-sm">
@@ -486,39 +507,43 @@ export const WeeklyParametersModal: React.FC<WeeklyParametersModalProps> = ({ st
                     <div className="h-px bg-emerald-50 dark:bg-emerald-900/10 flex-1"></div>
                   </div>
                   <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
-                    <div className="bg-emerald-50/10 dark:bg-emerald-900/5 p-3 rounded-xl border border-emerald-50 dark:border-emerald-900/10">
+                    <div className="bg-emerald-50/10 dark:bg-emerald-950/5 p-3 rounded-xl border border-emerald-50 dark:border-emerald-900/10">
                       <label className="text-[9px] font-black text-slate-400 uppercase mb-1 block">Mínimo (Meta)</label>
                       <input
                         type="number" step="100" min="0"
                         value={draft.vendas_minimo ?? ''}
-                        onChange={e => setDraft({ ...draft, vendas_minimo: e.target.value ? Number(e.target.value) : null })}
+                        onChange={e => setDraft({ ...draft, vendas_minimo: e.target.value === '' ? '' : e.target.value })}
+                        onBlur={() => setDraft(prev => prev ? { ...prev, vendas_minimo: prev.vendas_minimo === '' ? null : Number(prev.vendas_minimo) } : null)}
                         className="w-full bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-lg px-2 py-1.5 text-xs font-black outline-none focus:border-emerald-400 transition-all"
                       />
                     </div>
-                    <div className="bg-emerald-50/10 dark:bg-emerald-900/5 p-3 rounded-xl border border-emerald-50 dark:border-emerald-900/10">
+                    <div className="bg-emerald-50/10 dark:bg-emerald-950/5 p-3 rounded-xl border border-emerald-50 dark:border-emerald-900/10">
                       <label className="text-[9px] font-black text-slate-400 uppercase mb-1 block">Base (Prêmio)</label>
                       <input
                         type="number" step="5" min="0"
                         value={draft.vendas_valor_base ?? ''}
-                        onChange={e => setDraft({ ...draft, vendas_valor_base: e.target.value ? Number(e.target.value) : null })}
+                        onChange={e => setDraft({ ...draft, vendas_valor_base: e.target.value === '' ? '' : e.target.value })}
+                        onBlur={() => setDraft(prev => prev ? { ...prev, vendas_valor_base: prev.vendas_valor_base === '' ? null : Number(prev.vendas_valor_base) } : null)}
                         className="w-full bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-lg px-2 py-1.5 text-xs font-black outline-none focus:border-emerald-400 transition-all"
                       />
                     </div>
-                    <div className="bg-emerald-50/10 dark:bg-emerald-900/5 p-3 rounded-xl border border-emerald-50 dark:border-emerald-900/10">
+                    <div className="bg-emerald-50/10 dark:bg-emerald-950/5 p-3 rounded-xl border border-emerald-50 dark:border-emerald-900/10">
                       <label className="text-[9px] font-black text-slate-400 uppercase mb-1 block">Incremento</label>
                       <input
                         type="number" step="100" min="0"
                         value={draft.vendas_incremento ?? ''}
-                        onChange={e => setDraft({ ...draft, vendas_incremento: e.target.value ? Number(e.target.value) : null })}
+                        onChange={e => setDraft({ ...draft, vendas_incremento: e.target.value === '' ? '' : e.target.value })}
+                        onBlur={() => setDraft(prev => prev ? { ...prev, vendas_incremento: prev.vendas_incremento === '' ? null : Number(prev.vendas_incremento) } : null)}
                         className="w-full bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-lg px-2 py-1.5 text-xs font-black outline-none focus:border-emerald-400 transition-all"
                       />
                     </div>
-                    <div className="bg-emerald-50/10 dark:bg-emerald-900/5 p-3 rounded-xl border border-emerald-50 dark:border-emerald-900/10">
+                    <div className="bg-emerald-50/10 dark:bg-emerald-950/5 p-3 rounded-xl border border-emerald-50 dark:border-emerald-900/10">
                       <label className="text-[9px] font-black text-slate-400 uppercase mb-1 block">Valor Inc.</label>
                       <input
                         type="number" step="5" min="0"
                         value={draft.vendas_inc_valor ?? ''}
-                        onChange={e => setDraft({ ...draft, vendas_inc_valor: e.target.value ? Number(e.target.value) : null })}
+                        onChange={e => setDraft({ ...draft, vendas_inc_valor: e.target.value === '' ? '' : e.target.value })}
+                        onBlur={() => setDraft(prev => prev ? { ...prev, vendas_inc_valor: prev.vendas_inc_valor === '' ? null : Number(prev.vendas_inc_valor) } : null)}
                         className="w-full bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-lg px-2 py-1.5 text-xs font-black outline-none focus:border-emerald-400 transition-all"
                       />
                     </div>
@@ -534,39 +559,43 @@ export const WeeklyParametersModal: React.FC<WeeklyParametersModalProps> = ({ st
                     <div className="h-px bg-blue-50 dark:bg-blue-900/10 flex-1"></div>
                   </div>
                   <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
-                    <div className="bg-blue-50/10 dark:bg-blue-900/5 p-3 rounded-xl border border-blue-50 dark:border-blue-900/10">
+                    <div className="bg-blue-50/10 dark:bg-blue-950/5 p-3 rounded-xl border border-blue-50 dark:border-blue-900/10">
                       <label className="text-[9px] font-black text-slate-400 uppercase mb-1 block">Mínimo (Meta)</label>
                       <input
                         type="number" step="1" min="0"
                         value={draft.ticket_minimo ?? ''}
-                        onChange={e => setDraft({ ...draft, ticket_minimo: e.target.value ? Number(e.target.value) : null })}
+                        onChange={e => setDraft({ ...draft, ticket_minimo: e.target.value === '' ? '' : e.target.value })}
+                        onBlur={() => setDraft(prev => prev ? { ...prev, ticket_minimo: prev.ticket_minimo === '' ? null : Number(prev.ticket_minimo) } : null)}
                         className="w-full bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-lg px-2 py-1.5 text-xs font-black outline-none focus:border-blue-400 transition-all"
                       />
                     </div>
-                    <div className="bg-blue-50/10 dark:bg-blue-900/5 p-3 rounded-xl border border-blue-50 dark:border-blue-900/10">
+                    <div className="bg-blue-50/10 dark:bg-blue-950/5 p-3 rounded-xl border border-blue-50 dark:border-blue-900/10">
                       <label className="text-[9px] font-black text-slate-400 uppercase mb-1 block">Base (Prêmio)</label>
                       <input
                         type="number" step="5" min="0"
                         value={draft.ticket_valor_base ?? ''}
-                        onChange={e => setDraft({ ...draft, ticket_valor_base: e.target.value ? Number(e.target.value) : null })}
+                        onChange={e => setDraft({ ...draft, ticket_valor_base: e.target.value === '' ? '' : e.target.value })}
+                        onBlur={() => setDraft(prev => prev ? { ...prev, ticket_valor_base: prev.ticket_valor_base === '' ? null : Number(prev.ticket_valor_base) } : null)}
                         className="w-full bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-lg px-2 py-1.5 text-xs font-black outline-none focus:border-blue-400 transition-all"
                       />
                     </div>
-                    <div className="bg-blue-50/10 dark:bg-blue-900/5 p-3 rounded-xl border border-blue-50 dark:border-blue-900/10">
+                    <div className="bg-blue-50/10 dark:bg-blue-950/5 p-3 rounded-xl border border-blue-50 dark:border-blue-900/10">
                       <label className="text-[9px] font-black text-slate-400 uppercase mb-1 block">Incremento</label>
                       <input
                         type="number" step="1" min="0"
                         value={draft.ticket_incremento ?? ''}
-                        onChange={e => setDraft({ ...draft, ticket_incremento: e.target.value ? Number(e.target.value) : null })}
+                        onChange={e => setDraft({ ...draft, ticket_incremento: e.target.value === '' ? '' : e.target.value })}
+                        onBlur={() => setDraft(prev => prev ? { ...prev, ticket_incremento: prev.ticket_incremento === '' ? null : Number(prev.ticket_incremento) } : null)}
                         className="w-full bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-lg px-3 py-1.5 text-xs font-black outline-none focus:border-blue-400 transition-all"
                       />
                     </div>
-                    <div className="bg-blue-50/10 dark:bg-blue-900/5 p-3 rounded-xl border border-blue-50 dark:border-blue-900/10">
+                    <div className="bg-blue-50/10 dark:bg-blue-950/5 p-3 rounded-xl border border-blue-50 dark:border-blue-900/10">
                       <label className="text-[9px] font-black text-slate-400 uppercase mb-1 block">Valor Inc.</label>
                       <input
                         type="number" step="5" min="0"
                         value={draft.ticket_inc_valor ?? ''}
-                        onChange={e => setDraft({ ...draft, ticket_inc_valor: e.target.value ? Number(e.target.value) : null })}
+                        onChange={e => setDraft({ ...draft, ticket_inc_valor: e.target.value === '' ? '' : e.target.value })}
+                        onBlur={() => setDraft(prev => prev ? { ...prev, ticket_inc_valor: prev.ticket_inc_valor === '' ? null : Number(prev.ticket_inc_valor) } : null)}
                         className="w-full bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-lg px-2 py-1.5 text-xs font-black outline-none focus:border-blue-400 transition-all"
                       />
                     </div>
@@ -582,39 +611,43 @@ export const WeeklyParametersModal: React.FC<WeeklyParametersModalProps> = ({ st
                     <div className="h-px bg-orange-50 dark:bg-orange-900/10 flex-1"></div>
                   </div>
                   <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
-                    <div className="bg-orange-50/10 dark:bg-orange-900/5 p-3 rounded-xl border border-orange-50 dark:border-orange-900/10">
+                    <div className="bg-orange-50/10 dark:bg-orange-950/5 p-3 rounded-xl border border-orange-50 dark:border-orange-900/10">
                       <label className="text-[9px] font-black text-slate-400 uppercase mb-1 block">P.A Meta</label>
                       <input
                         type="number" step="0.05" min="0"
-                        value={draft.pa_inicial}
-                        onChange={e => setDraft({ ...draft, pa_inicial: Number(e.target.value) })}
+                        value={draft.pa_inicial ?? ''}
+                        onChange={e => setDraft({ ...draft, pa_inicial: e.target.value === '' ? '' : e.target.value })}
+                        onBlur={() => setDraft(prev => prev ? { ...prev, pa_inicial: prev.pa_inicial === '' ? 1.60 : Number(prev.pa_inicial) } : null)}
                         className="w-full bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-lg px-2 py-1.5 text-xs font-black outline-none focus:border-orange-400 transition-all"
                       />
                     </div>
-                    <div className="bg-orange-50/10 dark:bg-orange-900/5 p-3 rounded-xl border border-orange-50 dark:border-orange-900/10">
+                    <div className="bg-orange-50/10 dark:bg-orange-950/5 p-3 rounded-xl border border-orange-50 dark:border-orange-900/10">
                       <label className="text-[9px] font-black text-slate-400 uppercase mb-1 block">Base (Prêmio)</label>
                       <input
                         type="number" step="5" min="0"
-                        value={draft.valor_base}
-                        onChange={e => setDraft({ ...draft, valor_base: Number(e.target.value) })}
+                        value={draft.valor_base ?? ''}
+                        onChange={e => setDraft({ ...draft, valor_base: e.target.value === '' ? '' : e.target.value })}
+                        onBlur={() => setDraft(prev => prev ? { ...prev, valor_base: prev.valor_base === '' ? 50 : Number(prev.valor_base) } : null)}
                         className="w-full bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-lg px-2 py-1.5 text-xs font-black outline-none focus:border-orange-400 transition-all"
                       />
                     </div>
-                    <div className="bg-orange-50/10 dark:bg-orange-900/5 p-3 rounded-xl border border-orange-50 dark:border-orange-900/10">
+                    <div className="bg-orange-50/10 dark:bg-orange-950/5 p-3 rounded-xl border border-orange-50 dark:border-orange-900/10">
                       <label className="text-[9px] font-black text-slate-400 uppercase mb-1 block">Inc. Faixa</label>
                       <input
                         type="number" step="0.05" min="0"
-                        value={draft.incremento_pa}
-                        onChange={e => setDraft({ ...draft, incremento_pa: Number(e.target.value) })}
+                        value={draft.incremento_pa ?? ''}
+                        onChange={e => setDraft({ ...draft, incremento_pa: e.target.value === '' ? '' : e.target.value })}
+                        onBlur={() => setDraft(prev => prev ? { ...prev, incremento_pa: prev.incremento_pa === '' ? 0.05 : Number(prev.incremento_pa) } : null)}
                         className="w-full bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-lg px-2 py-1.5 text-xs font-black outline-none focus:border-orange-400 transition-all"
                       />
                     </div>
-                    <div className="bg-orange-50/10 dark:bg-orange-900/5 p-3 rounded-xl border border-orange-50 dark:border-orange-900/10">
+                    <div className="bg-orange-50/10 dark:bg-orange-950/5 p-3 rounded-xl border border-orange-50 dark:border-orange-900/10">
                       <label className="text-[9px] font-black text-slate-400 uppercase mb-1 block">Valor Inc.</label>
                       <input
                         type="number" step="1" min="0"
-                        value={draft.incremento_valor}
-                        onChange={e => setDraft({ ...draft, incremento_valor: Number(e.target.value) })}
+                        value={draft.incremento_valor ?? ''}
+                        onChange={e => setDraft({ ...draft, incremento_valor: e.target.value === '' ? '' : e.target.value })}
+                        onBlur={() => setDraft(prev => prev ? { ...prev, incremento_valor: prev.incremento_valor === '' ? 0.10 : Number(prev.incremento_valor) } : null)}
                         className="w-full bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-lg px-2 py-1.5 text-xs font-black outline-none focus:border-orange-400 transition-all"
                       />
                     </div>
