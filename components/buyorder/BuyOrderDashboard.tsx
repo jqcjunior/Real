@@ -110,7 +110,7 @@ export default function BuyOrderDashboard({ user }: { user: any }) {
         infantil_menina_pct: Number(data.infantil_menina_pct || 0),
         infantil_menino_pct: Number(data.infantil_menino_pct || 0),
         acessorio_pct:       Number(data.acessorio_pct       || 0),
-        cota_valor:          Number(data.cota_valor          || 0),
+        cota_valor:          Number(data.cota_valor           || 0),
       } : null);
     };
     fetchCategoriaParams();
@@ -149,7 +149,13 @@ export default function BuyOrderDashboard({ user }: { user: any }) {
     async function fetchStoreNumber() {
       if (!user?.storeId || user.role === 'ADMIN') { setUserStoreNumber(null); return; }
       const { data } = await supabase.from('stores').select('number').eq('id', user.storeId).single();
-      if (data?.number) setUserStoreNumber(parseInt(data.number));
+      if (data?.number) {
+        const num = parseInt(data.number);
+        setUserStoreNumber(num);
+        // ✅ FIX: Ativar filtro automaticamente para gerente
+        // Sem isso, lojaFiltro ficava null e os cards/totais mostravam dados de TODAS as lojas
+        setLojaFiltro(num);
+      }
     }
     fetchStoreNumber();
   }, [user]);
@@ -337,7 +343,7 @@ export default function BuyOrderDashboard({ user }: { user: any }) {
           const valorLiqPorLoja = valorLiqTotalSub;
 
           // Somar ao total de compra global de forma legítima baseada em sub-pedidos
-          // O total geral “Todos” deve somar sub.total_pares × lojas.length (pois cada loja recebe aquela quantidade)
+          // O total geral "Todos" deve somar sub.total_pares × lojas.length (pois cada loja recebe aquela quantidade)
           valorTotal += valorLiqPorLoja * lojas.length;
 
           lojas.forEach((lojaNum: number) => {
