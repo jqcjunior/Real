@@ -3025,9 +3025,11 @@ function StepItens({
     const custo = parseFloat(form.custo) || 0;
     const preco_venda = estVenda;
 
+    const savedTipo = (form.tipo || "").trim().toUpperCase();
+
     const item: OrderItem = {
       ref: form.ref,
-      tipo: form.tipo,
+      tipo: savedTipo,
       cor1: form.cor1,
       cor2: form.cor2,
       cor3: form.cor3,
@@ -3035,6 +3037,7 @@ function StepItens({
       custo,
       preco_venda,
       historico_preco_venda: historicPrice || undefined,
+      _catalogImageUrl: editIdx >= 0 ? items[editIdx]._catalogImageUrl : undefined,
     };
     if (editIdx >= 0)
       setItems((its) => its.map((it, i) => (i === editIdx ? item : it)));
