@@ -126,8 +126,10 @@ export const printOrder = async (order: any, supabase: SupabaseClient) => {
       <div class="info-sub">${order.user_role || '-'}</div>
     </div>
     <div class="info-cell">
-      <div class="info-label">Markup</div>
-      <div class="info-value">${order.markup}x</div>
+      <div class="info-label">Embarque</div>
+      <div class="info-value">
+        ${order.fat_inicio ? new Date(order.fat_inicio + 'T00:00:00').toLocaleDateString('pt-BR') : '—'} até ${order.fat_fim ? new Date(order.fat_fim + 'T00:00:00').toLocaleDateString('pt-BR') : '—'}
+      </div>
     </div>
     <div class="info-cell">
       <div class="info-label">Prazos</div>
@@ -165,9 +167,9 @@ export const printOrder = async (order: any, supabase: SupabaseClient) => {
           '<div class="item-line2">' +
             '<div class="item-grades">' + gradesHtml + '</div>' +
             '<div class="item-prices">' +
+              '<span class="item-pares">Qtde ' + (item.total_pares || 0) + '</span>' +
               '<span><span class="item-custo-label">Custo </span><span class="item-custo-val">R$ ' + Number(item.custo).toFixed(2).replace('.', ',') + '</span></span>' +
               (incluirVenda ? '<span><span class="item-venda-label">Venda </span><span class="item-venda-val">R$ ' + Number(item.preco_venda).toFixed(2).replace('.', ',') + '</span></span>' : '') +
-              '<span class="item-pares">' + (item.total_pares || 0) + ' prs</span>' +
             '</div>' +
           '</div>' +
         '</div>' +

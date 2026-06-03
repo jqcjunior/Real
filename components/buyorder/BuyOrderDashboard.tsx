@@ -125,9 +125,9 @@ export default function BuyOrderDashboard({ user }: { user: any }) {
 
     const brStats: BrandStat[] = Array.from(brandAggData.entries())
       .map(([marca, agg]) => {
-        const pares = lojaFiltro !== null
+        const pares = Math.round(lojaFiltro !== null
           ? (agg.pares_por_loja.get(lojaFiltro) || 0)
-          : agg.pares;
+          : agg.pares);
         const valor = lojaFiltro !== null
           ? (agg.valor_por_loja.get(lojaFiltro) || 0)
           : agg.valor;
@@ -366,8 +366,8 @@ export default function BuyOrderDashboard({ user }: { user: any }) {
         .map(([loja, agg]) => ({
           loja,
           cidade:   cityMap.get(loja) || 'Desconhecida',
-          pares:    agg.pares,
-          unidades: agg.unidades,
+          pares:    Math.round(agg.pares),
+          unidades: Math.round(agg.unidades),
           valor:    agg.valor,
           pedidos:  agg.pedidos.size,
         }))
