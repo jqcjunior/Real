@@ -1,13 +1,9 @@
 import express from "express";
 import { createServer as createViteServer } from "vite";
 import path from "path";
-import { fileURLToPath } from "url";
 import { exec } from "child_process";
 import fs from "fs";
 import { exportBuyOrderToExcel } from "./services/excelExportService";
-
-const __filename = fileURLToPath(import.meta.url);
-const __dirname = path.dirname(__filename);
 
 // Armazenamento temporário em memória para arquivos
 const fileCache = new Map<string, { buffer: Buffer, fileName: string, timestamp: number }>();
