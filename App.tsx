@@ -1436,9 +1436,10 @@ const App: React.FC = () => {
                     <Suspense fallback={<PageLoader />}>
                         {(() => {
                         if (currentView === 'welcome') return <WelcomeScreen />;
-                        if (currentView === 'dashboard_rede' && can('MODULE_DASHBOARD_ADMIN')) return <DashboardAdmin stores={stores} performanceData={performanceData} goalsData={goalsData} sangrias={icSangrias} initialWeightRevenue={goalsRankingParams?.weight_revenue ?? 70} initialWeightPA={goalsRankingParams?.weight_pa ?? 30} onSaveWeights={async (wRev, wPA) => {
+                        if (currentView === 'dashboard_rede' && can('MODULE_DASHBOARD_ADMIN')) return <DashboardAdmin stores={stores} performanceData={performanceData} goalsData={goalsData} sangrias={icSangrias} initialWeightRevenue={goalsRankingParams?.weight_revenue ?? 50} initialWeightTicket={goalsRankingParams?.weight_ticket ?? 30} initialWeightPA={goalsRankingParams?.weight_pa ?? 20} onSaveWeights={async (wRev, wTicket, wPA) => {
                             const payload = {
                                 weight_revenue: wRev,
+                                weight_ticket: wTicket,
                                 weight_pa: wPA,
                                 updated_at: new Date().toISOString()
                             };

@@ -32,11 +32,12 @@ interface DashboardAdminProps {
     onImportPerformance: (data: any[]) => Promise<void>;
     onRefresh: () => Promise<void>;
     initialWeightRevenue?: number;
+    initialWeightTicket?: number;
     initialWeightPA?: number;
-    onSaveWeights?: (wRev: number, wPA: number) => Promise<void>;
+    onSaveWeights?: (wRev: number, wTicket: number, wPA: number) => Promise<void>;
 }
  
-const DashboardAdmin: React.FC<DashboardAdminProps> = ({ stores, performanceData, goalsData, onImportPerformance, onRefresh, sangrias, initialWeightRevenue = 50, initialWeightPA = 50, onSaveWeights }) => {
+const DashboardAdmin: React.FC<DashboardAdminProps> = ({ stores, performanceData, goalsData, onImportPerformance, onRefresh, sangrias, initialWeightRevenue = 50, initialWeightTicket = 30, initialWeightPA = 20, onSaveWeights }) => {
     const currentMonthStr = useMemo(() => {
         const now = new Date();
         return `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`;
@@ -50,13 +51,15 @@ const DashboardAdmin: React.FC<DashboardAdminProps> = ({ stores, performanceData
     // 🆕 NOVO: Estado para controlar pesos do ranking
     const [showWeightConfig, setShowWeightConfig] = useState(false);
     const [weightRevenue, setWeightRevenue] = useState(initialWeightRevenue); // Peso da Meta de Faturamento
+    const [weightTicket, setWeightTicket] = useState(initialWeightTicket);
     const [weightPA, setWeightPA] = useState(initialWeightPA); // Peso do P.A
     const [isSavingWeights, setIsSavingWeights] = useState(false);
 
     useEffect(() => {
         setWeightRevenue(initialWeightRevenue);
+        setWeightTicket(initialWeightTicket);
         setWeightPA(initialWeightPA);
-    }, [initialWeightRevenue, initialWeightPA]);
+    }, [initialWeightRevenue, initialWeightTicket, initialWeightPA]);
 
     const handleRefresh = async () => {
         setIsRefreshing(true);
@@ -220,10 +223,11 @@ const DashboardAdmin: React.FC<DashboardAdminProps> = ({ stores, performanceData
             : (target / actual) * 100;
     };
 
-    const getScore = (s: any, wRev: number, wPA: number) => {
+    const getScore = (s: any, wRev: number, wTicket: number, wPA: number) => {
         const pF = Math.min(calcAttainment(s.revenueActual, s.revenueTarget, 'higher'), 120);
+        const pTicket = Math.min(calcAttainment(s.averageTicket, s.ticketTarget, 'higher'), 120);
         const pPA = Math.min(calcAttainment(s.paActual, s.paTarget, 'higher'), 120);
-        return (pF * (wRev / 100)) + (pPA * (wPA / 100));
+        return (pF * (wRev / 100)) + (pTicket * (wTicket / 100)) + (pPA * (wPA / 100));
     };
 
     const stats = useMemo(() => {
@@ -381,10 +385,10 @@ const DashboardAdmin: React.FC<DashboardAdminProps> = ({ stores, performanceData
             revenueForecast,
             storeCount: stores.length,
             currentData: storeStats.sort((a, b) => {
-                return getScore(b, weightRevenue, weightPA) - getScore(a, weightRevenue, weightPA);
+                return getScore(b, weightRevenue, weightTicket, weightPA) - getScore(a, weightRevenue, weightTicket, weightPA);
             })
         };
-    }, [performanceData, goalsData, selectedMonth, stores, sangrias, weightRevenue, weightPA]);
+    }, [performanceData, goalsData, selectedMonth, stores, sangrias, weightRevenue, weightTicket, weightPA]);
  
     const renderKPICard = (title: string, actual: number, target: number, percent: number, icon: React.ReactNode, type: 'currency' | 'decimal' | 'integer', isPrimary: boolean = false, mode: 'higher' | 'lower' = 'higher') => {
         const isSuccess = mode === 'higher' ? actual >= (target || 0) : actual <= (target || 999999);
@@ -501,7 +505,7 @@ const DashboardAdmin: React.FC<DashboardAdminProps> = ({ stores, performanceData
  
             if (next) {
                 const currPAAttainment = Math.min((curr.paActual / curr.paTarget), 1.2);
-                const nextScoreDecimal = getScore(next, weightRevenue, weightPA) / 100;
+                const nextScoreDecimal = getScore(next, weightRevenue, weightTicket, weightPA) / 100;
                 const wRev = weightRevenue / 100;
                 const wPA = weightPA / 100;
                 const neededRevAttainment = (nextScoreDecimal - (currPAAttainment * wPA)) / wRev;
@@ -523,11 +527,11 @@ const DashboardAdmin: React.FC<DashboardAdminProps> = ({ stores, performanceData
  
     // 🆕 NOVO: Presets de peso para seleção rápida
     const weightPresets = [
-        { name: 'Balanceado', revenue: 50, pa: 50, description: 'Peso igual para Meta e P.A' },
-        { name: 'Foco Meta', revenue: 70, pa: 30, description: 'Prioriza faturamento' },
-        { name: 'Foco P.A', revenue: 30, pa: 70, description: 'Prioriza produtos/atendimento' },
-        { name: 'Meta Total', revenue: 100, pa: 0, description: 'Apenas faturamento' },
-        { name: 'P.A Total', revenue: 0, pa: 100, description: 'Apenas P.A' },
+        { name: 'Padrão', revenue: 50, ticket: 30, pa: 20, description: 'Meta 50 + Ticket 30 + PA 20' },
+        { name: 'Balanceado', revenue: 35, ticket: 35, pa: 30, description: 'Peso equilibrado nos 3' },
+        { name: 'Foco Meta', revenue: 70, ticket: 15, pa: 15, description: 'Prioriza faturamento' },
+        { name: 'Foco Ticket', revenue: 20, ticket: 60, pa: 20, description: 'Prioriza ticket médio' },
+        { name: 'Foco P.A', revenue: 20, ticket: 20, pa: 60, description: 'Prioriza volume de produtos' },
     ];
  
     return (
@@ -638,7 +642,7 @@ const DashboardAdmin: React.FC<DashboardAdminProps> = ({ stores, performanceData
                         <div className="bg-white dark:bg-slate-800 p-3 sm:p-4 rounded-xl border border-blue-100 dark:border-blue-900">
                             <p className="text-[8px] sm:text-[9px] font-black text-slate-400 dark:text-slate-500 uppercase tracking-widest mb-2">Fórmula Atual</p>
                             <div className="font-mono text-[10px] sm:text-xs font-black text-blue-950 dark:text-white">
-                                Score = (Meta × <span className="text-blue-600">{weightRevenue}%</span>) + (P.A × <span className="text-indigo-600">{weightPA}%</span>)
+                                Score = (Meta × <span className="text-blue-600">{weightRevenue}%</span>) + (Ticket × <span className="text-emerald-600">{weightTicket}%</span>) + (P.A × <span className="text-indigo-600">{weightPA}%</span>)
                             </div>
                         </div>
  
@@ -650,35 +654,55 @@ const DashboardAdmin: React.FC<DashboardAdminProps> = ({ stores, performanceData
                                     <span className="text-xs sm:text-sm font-black text-blue-600 dark:text-blue-400">{weightRevenue}%</span>
                                 </div>
                                 <input 
-                                    type="range" 
-                                    min="0" 
-                                    max="100" 
-                                    step="5"
+                                    type="range" min="0" max="100" step="5"
                                     value={weightRevenue} 
                                     onChange={(e) => {
-                                        const newValue = Number(e.target.value);
-                                        setWeightRevenue(newValue);
-                                        setWeightPA(100 - newValue);
+                                        const newRev = Number(e.target.value);
+                                        const remaining = 100 - newRev;
+                                        const ratioTicket = weightTicket / Math.max(weightTicket + weightPA, 1);
+                                        setWeightRevenue(newRev);
+                                        setWeightTicket(Math.round(remaining * ratioTicket / 5) * 5);
+                                        setWeightPA(remaining - Math.round(remaining * ratioTicket / 5) * 5);
                                     }}
                                     className="w-full h-2 bg-slate-200 dark:bg-slate-700 rounded-lg appearance-none cursor-pointer accent-blue-600"
                                 />
                             </div>
- 
+
+                            <div>
+                                <div className="flex justify-between items-center mb-2">
+                                    <label className="text-[9px] sm:text-[10px] font-black text-slate-700 dark:text-slate-300 uppercase">Peso Ticket Médio</label>
+                                    <span className="text-xs sm:text-sm font-black text-emerald-600 dark:text-emerald-400">{weightTicket}%</span>
+                                </div>
+                                <input 
+                                    type="range" min="0" max="100" step="5"
+                                    value={weightTicket} 
+                                    onChange={(e) => {
+                                        const newTicket = Number(e.target.value);
+                                        const remaining = 100 - newTicket;
+                                        const ratioRev = weightRevenue / Math.max(weightRevenue + weightPA, 1);
+                                        setWeightTicket(newTicket);
+                                        setWeightRevenue(Math.round(remaining * ratioRev / 5) * 5);
+                                        setWeightPA(remaining - Math.round(remaining * ratioRev / 5) * 5);
+                                    }}
+                                    className="w-full h-2 bg-slate-200 dark:bg-slate-700 rounded-lg appearance-none cursor-pointer accent-emerald-600"
+                                />
+                            </div>
+
                             <div>
                                 <div className="flex justify-between items-center mb-2">
                                     <label className="text-[9px] sm:text-[10px] font-black text-slate-700 dark:text-slate-300 uppercase">Peso P.A (Produtos/Atend.)</label>
                                     <span className="text-xs sm:text-sm font-black text-indigo-600 dark:text-indigo-400">{weightPA}%</span>
                                 </div>
                                 <input 
-                                    type="range" 
-                                    min="0" 
-                                    max="100" 
-                                    step="5"
+                                    type="range" min="0" max="100" step="5"
                                     value={weightPA} 
                                     onChange={(e) => {
-                                        const newValue = Number(e.target.value);
-                                        setWeightPA(newValue);
-                                        setWeightRevenue(100 - newValue);
+                                        const newPA = Number(e.target.value);
+                                        const remaining = 100 - newPA;
+                                        const ratioRev = weightRevenue / Math.max(weightRevenue + weightTicket, 1);
+                                        setWeightPA(newPA);
+                                        setWeightRevenue(Math.round(remaining * ratioRev / 5) * 5);
+                                        setWeightTicket(remaining - Math.round(remaining * ratioRev / 5) * 5);
                                     }}
                                     className="w-full h-2 bg-slate-200 dark:bg-slate-700 rounded-lg appearance-none cursor-pointer accent-indigo-600"
                                 />
@@ -694,16 +718,17 @@ const DashboardAdmin: React.FC<DashboardAdminProps> = ({ stores, performanceData
                                         key={idx}
                                         onClick={() => {
                                             setWeightRevenue(preset.revenue);
+                                            setWeightTicket(preset.ticket);
                                             setWeightPA(preset.pa);
                                         }}
                                         className={`p-2 sm:p-3 rounded-xl text-[8px] sm:text-[9px] font-black uppercase transition-all border-2 ${
-                                            weightRevenue === preset.revenue && weightPA === preset.pa
+                                            weightRevenue === preset.revenue && weightTicket === preset.ticket && weightPA === preset.pa
                                                 ? 'bg-blue-600 text-white border-blue-700 shadow-lg scale-105'
                                                 : 'bg-white dark:bg-slate-700 text-slate-700 dark:text-slate-300 border-slate-200 dark:border-slate-600 hover:border-blue-300 dark:hover:border-blue-700'
                                         }`}
                                     >
                                         <div className="font-black mb-1">{preset.name}</div>
-                                        <div className="text-[7px] opacity-70">{preset.revenue}/{preset.pa}</div>
+                                        <div className="text-[7px] opacity-70">{preset.revenue}/{preset.ticket}/{preset.pa}</div>
                                     </button>
                                 ))}
                             </div>
@@ -713,7 +738,7 @@ const DashboardAdmin: React.FC<DashboardAdminProps> = ({ stores, performanceData
                         <div className="flex items-start gap-2 p-3 bg-blue-100 dark:bg-blue-900/30 rounded-xl border border-blue-200 dark:border-blue-800">
                             <Info size={14} className="text-blue-600 dark:text-blue-400 shrink-0 mt-0.5" />
                             <p className="text-[8px] sm:text-[9px] font-medium text-blue-900 dark:text-blue-100 leading-relaxed">
-                                A soma dos pesos sempre será 100%. Ajuste conforme a estratégia da rede: mais peso em Meta prioriza faturamento, mais peso em P.A prioriza volume de produtos vendidos por atendimento.
+                                A soma dos pesos sempre será 100%. Meta prioriza faturamento, Ticket prioriza valor médio por venda, P.A prioriza quantidade de produtos por atendimento. Ajuste conforme a estratégia da rede.
                             </p>
                         </div>
 
@@ -724,7 +749,7 @@ const DashboardAdmin: React.FC<DashboardAdminProps> = ({ stores, performanceData
                                     if (onSaveWeights) {
                                         setIsSavingWeights(true);
                                         try {
-                                            await onSaveWeights(weightRevenue, weightPA);
+                                            await onSaveWeights(weightRevenue, weightTicket, weightPA);
                                             setShowWeightConfig(false);
                                         } finally {
                                             setIsSavingWeights(false);
@@ -749,7 +774,7 @@ const DashboardAdmin: React.FC<DashboardAdminProps> = ({ stores, performanceData
                 <div className="flex items-center justify-center gap-2 px-4 py-2 bg-gradient-to-r from-blue-100 to-indigo-100 dark:from-blue-900/20 dark:to-indigo-900/20 rounded-xl border border-blue-200 dark:border-blue-800">
                     <BarChart3 size={14} className="text-blue-600 dark:text-blue-400" />
                     <p className="text-[8px] sm:text-[9px] font-black text-blue-900 dark:text-blue-100 uppercase">
-                        Ranking: <span className="text-blue-600 dark:text-blue-400">{weightRevenue}% Meta</span> + <span className="text-indigo-600 dark:text-indigo-400">{weightPA}% P.A</span>
+                        Ranking: <span className="text-blue-600 dark:text-blue-400">{weightRevenue}% Meta</span> + <span className="text-emerald-600 dark:text-emerald-400">{weightTicket}% Ticket</span> + <span className="text-indigo-600 dark:text-indigo-400">{weightPA}% P.A</span>
                     </p>
                 </div>
             </div>
@@ -783,7 +808,7 @@ const DashboardAdmin: React.FC<DashboardAdminProps> = ({ stores, performanceData
                 
                 <div className="grid grid-cols-1 gap-3 sm:gap-4">
                     {stats.currentData.map((d, index) => {
-                        const score = getScore(d, weightRevenue, weightPA);
+                        const score = getScore(d, weightRevenue, weightTicket, weightPA);
                         const nextStore = stats.currentData[index - 1];
                         
                         const getTier = (idx: number) => {
