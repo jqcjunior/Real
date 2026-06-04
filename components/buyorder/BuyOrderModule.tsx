@@ -1009,6 +1009,35 @@ export default function BuyOrderModule({ user }: { user?: User }) {
     }
   };
 
+/**
+ * Converte grades do formato banco (array) para formato frontend (objeto).
+ * Banco:    [{letra: "A", tamanhos: {33: 1, 34: 2}}, {letra: "B", tamanhos: {35: 1}}]
+ * Frontend: {A: {33: 1, 34: 2}, B: {35: 1}}
+ * Também aceita formato objeto direto (caso já esteja no formato certo).
+ */
+function gradesArrayToObject(grades: any): Record<string, Record<string, number>> {
+  if (!grades) return {};
+  
+  // Se já é objeto com letras como chave (formato antigo/direto), retornar como está
+  if (!Array.isArray(grades)) {
+    // Verificar se as chaves são letras A-H (formato objeto)
+    const keys = Object.keys(grades);
+    if (keys.length > 0 && keys.every(k => /^[A-H]$/.test(k))) {
+      return grades;
+    }
+    return {};
+  }
+  
+  // Converter array para objeto
+  const result: Record<string, Record<string, number>> = {};
+  for (const g of grades) {
+    if (g && g.letra) {
+      result[g.letra] = g.tamanhos || {};
+    }
+  }
+  return result;
+}
+
   const loadOrderIntoSteps = async (order: any) => {
     console.log("📦 Carregando pedido para edição:", order);
 
@@ -1063,11 +1092,12 @@ export default function BuyOrderModule({ user }: { user?: User }) {
     
     order.buy_order_items.forEach((item: any) => {
       if (item.grades) {
-        Object.keys(item.grades).forEach(letra => {
+        const gradesObj = gradesArrayToObject(item.grades);
+        Object.keys(gradesObj).forEach(letra => {
           if (!gradesMap[letra]) {
             gradesMap[letra] = {
               cat: item.modelo,
-              qtds: item.grades[letra]
+              qtds: gradesObj[letra]
             };
           }
         });
@@ -1095,6 +1125,7 @@ export default function BuyOrderModule({ user }: { user?: User }) {
         )
         .map((item: any) => {
           const itemIdx = loadedItems.findIndex((i: any) => i.ref === item.referencia);
+          const gradesObj = gradesArrayToObject(item.grades);
           return {
             itemIdx,
             grades: item.buy_order_item_suborder_grades
@@ -1102,7 +1133,7 @@ export default function BuyOrderModule({ user }: { user?: User }) {
               .map((g: any) => ({
                 letter: g.grade_letra,
                 cat: item.modelo,
-                qtds: item.grades[g.grade_letra] || {}
+                qtds: gradesObj[g.grade_letra] || {}
               }))
           };
         })
