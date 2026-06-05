@@ -40,6 +40,14 @@ const resizeImage = (file: File, maxSize = 400): Promise<Blob> => {
   });
 };
 
+function sanitizePath(str: string): string {
+  return str
+    .normalize('NFD') // divide caracteres acentuados em caractere + acento decomposto
+    .replace(/[\u0300-\u036f]/g, '') // remove acentos
+    .replace(/[^a-zA-Z0-9_\-\.\/]/g, '_') // caracteres especiais/espaços → underscore
+    .toLowerCase();
+}
+
 const ProductPhotoUpload: React.FC<ProductPhotoUploadProps> = ({
   supabase, marca, referencia, cor1, tipo, modelo, existingImageUrl, onPhotoUploaded
 }) => {
@@ -57,9 +65,7 @@ const ProductPhotoUpload: React.FC<ProductPhotoUploadProps> = ({
     setUploading(true);
     try {
       const resized = await resizeImage(file);
-      const marcaSlug = marca.toLowerCase().replace(/\s+/g, '_');
-      const corSlug = (cor1 || 'sem_cor').toLowerCase().replace(/\s+/g, '_');
-      const path = `catalogo/${marcaSlug}/${referencia}_${corSlug}.webp`;
+      const path = sanitizePath(`catalogo/${marca}/${referencia}_${cor1 || 'sem_cor'}.webp`);
 
       const { error: uploadError } = await supabase.storage
         .from('Fotos').upload(path, resized, { contentType: 'image/webp', upsert: true });
