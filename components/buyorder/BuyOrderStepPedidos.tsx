@@ -1415,10 +1415,15 @@ export default function StepPedidos({
                 <div className="flex items-center justify-between p-3 border-b border-slate-200 bg-white">
                   <span className="text-[10px] font-black tracking-widest text-slate-700 uppercase flex items-center gap-2">
                     <span className="w-2 h-2 rounded-full bg-blue-500 animate-pulse border border-slate-200"></span>
-                    Rascunho Atual
+                    Rascunho
                   </span>
-                  <div className="bg-blue-600 px-2 py-0.5 rounded text-[10px] font-black text-white shadow-sm">
-                    {totaisPedidoTemp.totalParesPorLoja} ITENS
+                  <div className="flex items-center gap-2">
+                    <div className="bg-emerald-600 px-2 py-0.5 rounded text-[10px] font-black text-white shadow-sm">
+                      {fmtBRL(totaisPedidoTemp.totalValorLiquidoPorLoja)}
+                    </div>
+                    <div className="bg-blue-600 px-2 py-0.5 rounded text-[10px] font-black text-white shadow-sm">
+                      {totaisPedidoTemp.totalParesPorLoja} Prs
+                    </div>
                   </div>
                 </div>
                 <div className="p-2 space-y-1 bg-slate-50/50">
