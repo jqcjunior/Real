@@ -2863,6 +2863,34 @@ function StepCabecalho({
   );
 }
 
+const ACESSORIO_KEYWORDS = [
+  'BOLSA', 'CARTEIRA', 'CINTO', 'MALA', 'MOCHILA', 'SACOLA', 'PASTA',
+  'NECESSAIRE', 'FRASQUEIRA', 'TIRACOLO', 'TOTE', 'CROOSBODY', 'SHOPPING BAG', 'CAMERA BAG',
+  'RELOGIO', 'OCULO',
+  'MEIA', 'BERMUDA', 'CALCA', 'CALCAO', 'SHORT', 'CAMISETA', 'TOP', 'MACACAO', 'MACAQUINHO',
+  'BOLA', 'LUVA', 'CANELEIRA', 'CANELITO', 'CALIBRADOR', 'PORTA CHUTEIRA',
+  'ACESSORIO', 'ACESSÓRIO',
+];
+
+function detectModelo(tipo: string): string | null {
+  const t = tipo.toUpperCase().trim();
+  if (!t) return null;
+
+  // 1. Checar acessórios primeiro (maior prioridade)
+  if (ACESSORIO_KEYWORDS.some(kw => t.includes(kw))) return 'ACES';
+
+  // 2. Checar infantil
+  if (t.includes('INFANTIL')) return 'INF';
+
+  // 3. Checar feminino
+  if (t.includes('FEMININO') || t.includes('FEMININA')) return 'FEM';
+
+  // 4. Checar masculino
+  if (t.includes('MASCULINO') || t.includes('MASCULINA')) return 'MASC';
+
+  return null; // Não alterar
+}
+
 // ─── Step 1: Itens ────────────────────────────────────────────────────────────
 
 function StepItens({
@@ -2980,7 +3008,12 @@ function StepItens({
 
   function selectTipo(tipo: string) {
     const tu = tipo.toUpperCase();
-    setForm((f) => ({ ...f, tipo: tu }));
+    const autoModelo = detectModelo(tu);
+    setForm((f) => ({
+      ...f,
+      tipo: tu,
+      ...(autoModelo ? { modelo: autoModelo } : {}),
+    }));
     setShowTipoDropdown(false);
     supabase.rpc("increment_tipo_usage", { tipo_name: tu });
   }
@@ -3126,13 +3159,18 @@ function StepItens({
       <div className="overflow-auto flex-1">
         {isMobile ? (
           <div className="space-y-2 p-3">
-            {items.map((item, idx) => (
-              <div key={idx} className="bg-white border border-slate-200 rounded-xl p-3 shadow-sm">
-                <div className="flex items-center justify-between gap-1 mb-1">
-                  <span className="text-[10px] font-black text-slate-400 bg-slate-100 rounded px-1">#{idx+1}</span>
-                  <span className="text-[11px] font-black text-slate-800">{item.ref}</span>
-                </div>
-                <div className="text-[10px] text-slate-600 mb-1">{item.tipo}</div>
+            {items.map((item, idx) => {
+              const cat = getCategoryBadge(item.modelo);
+              return (
+                <div key={idx} className="bg-white border border-slate-200 rounded-xl p-3 shadow-sm">
+                  <div className="flex items-center justify-between gap-1 mb-1">
+                    <span className="text-[10px] font-black text-slate-400 bg-slate-100 rounded px-1">#{idx+1}</span>
+                    <span className="text-[11px] font-black text-slate-800">{item.ref}</span>
+                    <span className={`px-2 py-0.5 rounded-full text-[10px] font-bold ${cat.color} ml-auto`}>
+                      {cat.label}
+                    </span>
+                  </div>
+                  <div className="text-[10px] text-slate-600 mb-1">{item.tipo}</div>
                 <div className="grid grid-cols-2 gap-2 mb-1">
                   <div>
                     <label className="text-xs text-gray-500 block">Custo</label>
@@ -3171,7 +3209,8 @@ function StepItens({
                   </button>
                 </div>
               </div>
-            ))}
+            );
+          })}
           </div>
         ) : (
           <table className="w-full border-collapse table-fixed">
@@ -3330,7 +3369,7 @@ function StepItens({
               </tr>
             )}
             {items.map((it, i) => {
-              const cat = getCategoryBadge(it.tipo);
+              const cat = getCategoryBadge(it.modelo);
               return (
                 <tr key={i} style={{ borderBottom: "0.5px solid #f3f4f6" }}>
                   <td
@@ -3541,7 +3580,12 @@ function StepItens({
                   value={form.tipo}
                   onChange={(e) => {
                     const v = e.target.value.toUpperCase();
-                    setForm((f) => ({ ...f, tipo: v }));
+                    const autoModelo = detectModelo(v);
+                    setForm((f) => ({
+                      ...f,
+                      tipo: v,
+                      ...(autoModelo ? { modelo: autoModelo } : {}),
+                    }));
                     searchTipos(v);
                     setSelectedSuggestionIndex(-1);
                   }}
@@ -3865,7 +3909,13 @@ function StepItens({
                 </label>
                 <input
                   ref={custoInputRef}
-                  onKeyDown={(e) => handleEnterKey(e, btnSalvarRef, true)}
+                  onKeyDown={(e) => {
+                    if (e.key === 'Enter' && (!form.custo || parseFloat(form.custo) <= 0)) {
+                      e.preventDefault();
+                      return;
+                    }
+                    handleEnterKey(e, btnSalvarRef, true);
+                  }}
                   type="number"
                   step={0.01}
                   value={form.custo}
