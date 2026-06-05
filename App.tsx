@@ -59,6 +59,7 @@ import LoginScreen from './components/LoginScreen';
 import NotificationHeader from './components/NotificationHeader';
 import ChangePasswordModal from './components/ChangePasswordModal';
 import ErrorBoundary from './components/ErrorBoundary';
+import { printReceipt } from './services/thermalPrinterService';
 
 // Ícones
 import {
@@ -1630,6 +1631,32 @@ const App: React.FC = () => {
                                         await supabase.from('ice_cream_daily_sales').delete().eq('sale_id', saleId);
                                         await supabase.from('ice_cream_sales').delete().eq('id', saleId);
                                         throw paymentsError;
+                                    }
+
+                                    // === IMPRESSÃO AUTOMÁTICA VIA THERMAL PRINTER (RAWBT CLASSIC) ===
+                                    try {
+                                        const store = stores.find(s => s.id === saleData.store_id);
+                                        const isFiado = payments.some(p => p.method === 'Fiado');
+                                        
+                                        printReceipt({
+                                            storeName: 'REAL CALCADOS',
+                                            storeSubtitle: `Sorveteria - ${store?.name || 'Geral'}`,
+                                            orderNumber: header.order_number || 1,
+                                            date: new Date().toLocaleString('pt-BR'),
+                                            attendantName: user?.name || user?.email || '',
+                                            items: items.map(item => ({
+                                                product_name: item.productName || '',
+                                                units_sold: Math.round(item.unitsSold || 1),
+                                                unit_price: Number(item.unitPrice || 0),
+                                                total_value: Number(item.totalValue || 0),
+                                            })),
+                                            total: saleData.total,
+                                            isFiado,
+                                            buyerName: buyerName || undefined
+                                        });
+                                        console.log('[Printer] Cupom enviado para impressora.');
+                                    } catch (printErr) {
+                                        console.error('[Printer] Erro na impressão automática:', printErr);
                                     }
                                 } catch (err) {
                                     console.error("Erro na transação de venda (Rollback manual):", err);

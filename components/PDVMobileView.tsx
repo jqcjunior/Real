@@ -4,6 +4,7 @@ import {
     IceCreamPaymentMethod, User 
 } from '../types';
 import { formatCurrency } from '../constants';
+import { printTest } from '@/services/thermalPrinterService';
 import { 
     ShoppingCart, Plus, Trash2, 
     CheckCircle2, Loader2, ChevronLeft,
@@ -254,7 +255,13 @@ const PDVMobileView: React.FC<PDVMobileViewProps> = (props) => {
                 <h1 className="text-xs sm:text-sm font-black uppercase tracking-widest text-blue-950 dark:text-white italic">
                     Gelateria <span className="text-red-600">Real</span>
                 </h1>
-                <div className="w-8" />
+                <button 
+                    onClick={() => printTest()}
+                    title="Testar Impressora"
+                    className="p-1 px-2.5 bg-slate-100 hover:bg-slate-200 dark:bg-slate-800 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-200 rounded-lg text-[9px] font-black uppercase transition-all flex items-center gap-1 cursor-pointer active:scale-95 border border-slate-200 dark:border-slate-700"
+                >
+                    🖨️ Teste
+                </button>
             </header>
 
             {/* Main Content */}

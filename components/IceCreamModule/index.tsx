@@ -14,6 +14,7 @@ import {
     UserRole
 } from '../../types';
 import { formatCurrency } from '../../constants';
+import { printSaleReceipt } from '@/services/thermalPrinterService';
 import { MONTHS } from './constants';
 import { useDREStats } from './hooks/useDREStats';
 
@@ -1087,9 +1088,31 @@ const IceCreamModule: React.FC<IceCreamModuleProps> = ({
 
     // Handlers
     const handleOpenPrintPreview = (items: any[], saleCode: string, method: string, buyer?: string) => {
+        const store = stores.find(s => s.id === effectiveStoreId);
+
+        // Imprimir automaticamente via RawBT (Android) se disponível (Sem janela pop-up)
+        try {
+            printSaleReceipt({
+                storeName: 'REAL CALCADOS',
+                storeSubtitle: 'Sorveteria ' + (store?.name || ''),
+                date: new Date().toLocaleString('pt-BR'),
+                saleCode: saleCode,
+                operator: user?.name || user?.email || '',
+                items: items.map(i => ({
+                    name: i.productName || i.product_name,
+                    quantity: i.unitsSold || i.units_sold || 1,
+                    unitPrice: Number(i.unitPrice || i.unit_price || 0),
+                    total: Number(i.totalValue || i.total_value || 0),
+                })),
+                total: items.reduce((acc, i) => acc + Number(i.totalValue || 0), 0),
+                paymentMethod: method,
+            });
+        } catch (printErr) {
+            console.error('Erro de impressão RawBT:', printErr);
+        }
+
         const printWindow = window.open('', '_blank');
         if (!printWindow) { alert("Pop-up bloqueado!"); return; }
-        const store = stores.find(s => s.id === effectiveStoreId);
         
         const html = `
             <!DOCTYPE html>

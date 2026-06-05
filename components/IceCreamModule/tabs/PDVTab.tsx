@@ -6,6 +6,7 @@ import PDVMobileView from '../../PDVMobileView';
 import { ProductGrid } from '../../ProductGrid';
 import { PRODUCT_CATEGORIES } from '../constants';
 import { useCustomerAutocomplete } from '../../../hooks/useCustomerAutocomplete';
+import { printTest } from '@/services/thermalPrinterService';
 
 interface PDVTabProps {
     user: any;
@@ -191,7 +192,18 @@ const PDVTab: React.FC<PDVTabProps> = ({
 
                 </div>
                 <div className="col-span-4 bg-white rounded-[40px] shadow-2xl border border-gray-100 p-8 flex flex-col h-full overflow-hidden">
-                    <h3 className="text-lg font-black uppercase italic mb-6 flex items-center gap-3 border-b pb-4"><ShoppingCart className="text-red-600" size={20} /> Venda <span className="text-gray-300 ml-auto font-bold text-xs">{cart.length} ITENS</span></h3>
+                    <h3 className="text-lg font-black uppercase italic mb-6 flex items-center gap-3 border-b pb-4">
+                        <ShoppingCart className="text-red-600" size={20} /> Venda 
+                        <button 
+                            type="button"
+                            onClick={() => printTest()}
+                            title="Testar Impressora Térmica"
+                            className="bg-slate-100 hover:bg-slate-200 active:scale-95 text-slate-700 px-2.5 py-1 rounded-xl text-[10px] font-black uppercase tracking-wider flex items-center gap-1 transition-all border border-slate-200 cursor-pointer"
+                        >
+                            🖨️ Teste
+                        </button>
+                        <span className="text-gray-300 ml-auto font-bold text-xs">{cart.length} ITENS</span>
+                    </h3>
                     <div className="flex-1 overflow-y-auto mb-6 space-y-2 no-scrollbar">
                         {cart.map((c) => (
                             <div key={c.id} className="flex justify-between items-center p-4 bg-gray-50 rounded-2xl border border-gray-100">
