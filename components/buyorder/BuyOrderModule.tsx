@@ -290,16 +290,16 @@ function totPares(qtds: Record<string, number>): number {
 }
 
 const getCategoryBadge = (tipo: string): { label: string; color: string } => {
-  const t = (tipo || '').toUpperCase();
-  if (t.includes('ACESSORIO') || t.includes('ACESSÓRIO')) 
+  const t = (tipo || '').toUpperCase().trim();
+  if (t === 'ACES' || t.includes('ACESSORIO') || t.includes('ACESSÓRIO')) 
     return { label: 'ACES', color: 'bg-purple-100 text-purple-700' };
-  if (t.includes('INFANTIL')) 
+  if (t === 'INF' || t.includes('INFANTIL')) 
     return { label: 'INF', color: 'bg-amber-100 text-amber-700' };
-  if (t.includes('FEMININO') || t.includes('FEM')) 
+  if (t === 'FEM' || t.includes('FEMININO')) 
     return { label: 'FEM', color: 'bg-pink-100 text-pink-700' };
-  if (t.includes('MASCULINO') || t.includes('MASC')) 
+  if (t === 'MASC' || t.includes('MASCULINO')) 
     return { label: 'MASC', color: 'bg-blue-100 text-blue-700' };
-  return { label: 'OUT', color: 'bg-gray-100 text-gray-700' };
+  return { label: t || '', color: t ? 'bg-gray-100 text-gray-700' : 'bg-transparent text-transparent' };
 };
 
 // ─── Componente principal ─────────────────────────────────────────────────────
@@ -2863,32 +2863,39 @@ function StepCabecalho({
   );
 }
 
-const ACESSORIO_KEYWORDS = [
-  'BOLSA', 'CARTEIRA', 'CINTO', 'MALA', 'MOCHILA', 'SACOLA', 'PASTA',
-  'NECESSAIRE', 'FRASQUEIRA', 'TIRACOLO', 'TOTE', 'CROOSBODY', 'SHOPPING BAG', 'CAMERA BAG',
-  'RELOGIO', 'OCULO',
-  'MEIA', 'BERMUDA', 'CALCA', 'CALCAO', 'SHORT', 'CAMISETA', 'TOP', 'MACACAO', 'MACAQUINHO',
-  'BOLA', 'LUVA', 'CANELEIRA', 'CANELITO', 'CALIBRADOR', 'PORTA CHUTEIRA',
-  'ACESSORIO', 'ACESSÓRIO',
-];
+function classificarModelo(tipo: string, modeloAtual?: string): string {
+  const t = (tipo || '').toUpperCase().trim();
 
-function detectModelo(tipo: string): string | null {
-  const t = tipo.toUpperCase().trim();
-  if (!t) return null;
+  const KEYWORDS_ACESSORIO = [
+    'RELOGIO', 'RELÓGIO', 'WATCH',
+    'MEIA',
+    'BOLA',
+    'BERMUDA', 'CALCA', 'CALCAO', 'SHORT', 'TOP',
+    'LUVA', 'CANELEI',
+    'OCULO', 'OCULOS',
+    'CALIBRA',
+    'PORTA ', 'MINI ',
+    'CINTO', 'BOLSA', 'BONE', 'BONÉ',
+    'CARTEIRA', 'MOCHILA', 'MALA',
+    'POCHETE', 'POLCHETE',
+    'CROSSBODY', 'CROOSBODY',
+    'TIRACOLO', 'TOTE',
+    'SHOPPING BAG', 'CAMERA BAG',
+    'KIT CARTEIRA',
+    'ACESSORIO', 'ACESSÓRIO',
+  ];
 
-  // 1. Checar acessórios primeiro (maior prioridade)
-  if (ACESSORIO_KEYWORDS.some(kw => t.includes(kw))) return 'ACES';
+  // Se o tipo bater com qualquer keyword, é ACES
+  if (KEYWORDS_ACESSORIO.some(kw => t.includes(kw)) || t === 'ACES') {
+    return 'ACES';
+  }
 
-  // 2. Checar infantil
-  if (t.includes('INFANTIL')) return 'INF';
+  // Se não é acessório, mas o modelo atual era ACES, volta a ser vazio para escolha
+  if (modeloAtual === 'ACES') {
+    return '';
+  }
 
-  // 3. Checar feminino
-  if (t.includes('FEMININO') || t.includes('FEMININA')) return 'FEM';
-
-  // 4. Checar masculino
-  if (t.includes('MASCULINO') || t.includes('MASCULINA')) return 'MASC';
-
-  return null; // Não alterar
+  return modeloAtual || '';
 }
 
 // ─── Step 1: Itens ────────────────────────────────────────────────────────────
@@ -2916,7 +2923,7 @@ function StepItens({
     cor1: "",
     cor2: "",
     cor3: "",
-    modelo: "FEM",
+    modelo: "",
     custo: "",
   });
   const [historicPrice, setHistoricPrice] = useState<number | null>(null);
@@ -2938,6 +2945,7 @@ function StepItens({
   }, [form.ref]);
   const [cor2Manual, setCor2Manual] = useState(false);
   const [cor3Manual, setCor3Manual] = useState(false);
+  const [modeloManual, setModeloManual] = useState(false);
   const [isCalculating, setIsCalculating] = useState(false);
 
   const [tipoSuggestions, setTipoSuggestions] = useState<string[]>([]);
@@ -3008,12 +3016,14 @@ function StepItens({
 
   function selectTipo(tipo: string) {
     const tu = tipo.toUpperCase();
-    const autoModelo = detectModelo(tu);
-    setForm((f) => ({
-      ...f,
-      tipo: tu,
-      ...(autoModelo ? { modelo: autoModelo } : {}),
-    }));
+    setForm((f) => {
+      const novoModelo = modeloManual ? f.modelo : classificarModelo(tu, f.modelo);
+      return {
+        ...f,
+        tipo: tu,
+        modelo: novoModelo,
+      };
+    });
     setShowTipoDropdown(false);
     supabase.rpc("increment_tipo_usage", { tipo_name: tu });
   }
@@ -3045,12 +3055,13 @@ function StepItens({
       cor1: "",
       cor2: "",
       cor3: "",
-      modelo: "FEM",
+      modelo: "",
       custo: "",
     });
     setEditIdx(-1);
     setCor2Manual(false);
     setCor3Manual(false);
+    setModeloManual(false);
     setCorSuggestions([]);
     setTipoSuggestions([]);
     setShowPopup(true);
@@ -3063,12 +3074,13 @@ function StepItens({
       cor1: it.cor1,
       cor2: it.cor2,
       cor3: it.cor3,
-      modelo: it.modelo || "FEM",
+      modelo: it.modelo || "",
       custo: String(it.custo),
     });
     setEditIdx(i);
     setCor2Manual(!!it.cor2);
     setCor3Manual(!!it.cor3);
+    setModeloManual(true);
     setCorSuggestions([]);
     setTipoSuggestions([]);
     setShowPopup(true);
@@ -3580,12 +3592,14 @@ function StepItens({
                   value={form.tipo}
                   onChange={(e) => {
                     const v = e.target.value.toUpperCase();
-                    const autoModelo = detectModelo(v);
-                    setForm((f) => ({
-                      ...f,
-                      tipo: v,
-                      ...(autoModelo ? { modelo: autoModelo } : {}),
-                    }));
+                    setForm((f) => {
+                      const novoModelo = modeloManual ? f.modelo : classificarModelo(v, f.modelo);
+                      return {
+                        ...f,
+                        tipo: v,
+                        modelo: novoModelo,
+                      };
+                    });
                     searchTipos(v);
                     setSelectedSuggestionIndex(-1);
                   }}
@@ -3873,9 +3887,10 @@ function StepItens({
                   ref={modeloInputRef}
                   value={form.modelo}
                   onKeyDown={(e) => handleEnterKey(e, custoInputRef, true)}
-                  onChange={(e) =>
-                    setForm((f) => ({ ...f, modelo: e.target.value }))
-                  }
+                  onChange={(e) => {
+                    setModeloManual(true);
+                    setForm((f) => ({ ...f, modelo: e.target.value }));
+                  }}
                   style={{
                     height: 30,
                     width: "100%",
@@ -3887,6 +3902,7 @@ function StepItens({
                     background: "#fff",
                   }}
                 >
+                  <option value="">Selecione...</option>
                   <option value="MASC">Masculino</option>
                   <option value="FEM">Feminino</option>
                   <option value="INF">Infantil</option>

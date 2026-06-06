@@ -260,7 +260,7 @@ const PDVMobileView: React.FC<PDVMobileViewProps> = (props) => {
                     title="Testar Impressora"
                     className="p-1 px-2.5 bg-slate-100 hover:bg-slate-200 dark:bg-slate-800 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-200 rounded-lg text-[9px] font-black uppercase transition-all flex items-center gap-1 cursor-pointer active:scale-95 border border-slate-200 dark:border-slate-700"
                 >
-                    🖨️ Teste
+                    🖨️ Print
                 </button>
             </header>
 

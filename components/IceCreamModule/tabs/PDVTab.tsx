@@ -200,7 +200,7 @@ const PDVTab: React.FC<PDVTabProps> = ({
                             title="Testar Impressora Térmica"
                             className="bg-slate-100 hover:bg-slate-200 active:scale-95 text-slate-700 px-2.5 py-1 rounded-xl text-[10px] font-black uppercase tracking-wider flex items-center gap-1 transition-all border border-slate-200 cursor-pointer"
                         >
-                            🖨️ Teste
+                            🖨️ Print
                         </button>
                         <span className="text-gray-300 ml-auto font-bold text-xs">{cart.length} ITENS</span>
                     </h3>
