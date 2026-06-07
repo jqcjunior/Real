@@ -381,6 +381,7 @@ export default function BuyOrderModule({ user }: { user?: User }) {
   const [exportando, setExportando] = useState<string | null>(null);
   const [searchTerm, setSearchTerm] = useState("");
   const [roleFilter, setRoleFilter] = useState<string>("");
+  const [statusFilter, setStatusFilter] = useState<string>("");
   const PAGE_SIZE = 20;
   const [page, setPage] = useState(0);
   const [hasMore, setHasMore] = useState(false);
@@ -389,7 +390,7 @@ export default function BuyOrderModule({ user }: { user?: User }) {
 
   useEffect(() => {
     setPage(0);
-  }, [searchTerm, roleFilter, selectedLoja]);
+  }, [searchTerm, roleFilter, selectedLoja, statusFilter]);
 
   const [limitPedidos, setLimitPedidos] = useState(5);
   const [totalPedidos, setTotalPedidos] = useState(0);
@@ -568,7 +569,7 @@ export default function BuyOrderModule({ user }: { user?: User }) {
       console.error("Erro ao buscar pedidos:", error);
       toast.error(`❌ ${error.message || "Erro ao carregar pedidos"}`);
     }
-  }, [searchTerm, selectedLoja, roleFilter, page, user, isManager, isAdmin]);
+  }, [searchTerm, selectedLoja, roleFilter, statusFilter, page, user, isManager, isAdmin]);
 
   useEffect(() => {
     fetchRecentOrders();
@@ -1284,6 +1285,36 @@ function gradesArrayToObject(grades: any): Record<string, Record<string, number>
     );
   }
 
+  const filteredOrders = recentOrders.filter((order) => {
+    // 1. Termo de busca (nº, marca ou fornecedor)
+    if (searchTerm.trim()) {
+      const txt = searchTerm.toLowerCase().trim();
+      const numPedido = String(order.numero_pedido || "").toLowerCase();
+      const marca = String(order.marca || "").toLowerCase();
+      const fornecedor = String(order.fornecedor || "").toLowerCase();
+      
+      const matchSearch = numPedido.includes(txt) || marca.includes(txt) || fornecedor.includes(txt);
+      if (!matchSearch) return false;
+    }
+
+    // 2. Filtro de Status
+    if (statusFilter) {
+      const orderStatus = order.status || (order.exported_at ? "exportado" : "confirmado");
+      if (orderStatus !== statusFilter) return false;
+    }
+
+    // 3. Filtro de Loja
+    if (selectedLoja) {
+      const subOrders = order.buy_order_sub_orders || [];
+      const todasLojas = subOrders.flatMap(
+        (sub: any) => sub.lojas_numeros || []
+      ).map(Number);
+      if (!todasLojas.includes(Number(selectedLoja))) return false;
+    }
+
+    return true;
+  });
+
   return (
     <div className="max-w-5xl mx-auto p-4 md:p-6">
       {/* TABS */}
@@ -1634,7 +1665,7 @@ function gradesArrayToObject(grades: any): Record<string, Record<string, number>
                 letterSpacing: "0.05em",
               }}
             >
-              Pedidos Recentes ({recentOrders.length}{hasMore ? '+' : ''})
+              Pedidos Recentes ({filteredOrders.length}{hasMore ? '+' : ''})
             </span>
             <button
               onClick={fetchRecentOrders}
@@ -1673,6 +1704,25 @@ function gradesArrayToObject(grades: any): Record<string, Record<string, number>
               }}
             />
 
+            {/* Seletor de Status (Todos) */}
+            <select
+              value={statusFilter}
+              onChange={(e) => setStatusFilter(e.target.value)}
+              style={{
+                padding: "6px 10px",
+                border: "1px solid #d1d5db",
+                borderRadius: 6,
+                fontSize: 11,
+                minWidth: 120,
+              }}
+            >
+              <option value="">Todos (Status)</option>
+              <option value="rascunho">Rascunho</option>
+              <option value="stand_by">Stand By</option>
+              <option value="confirmado">Confirmado</option>
+              <option value="exportado">Exportado</option>
+            </select>
+
             {/* Novo Filtro de Papel */}
             <select
               value={roleFilter}
@@ -1685,7 +1735,7 @@ function gradesArrayToObject(grades: any): Record<string, Record<string, number>
                 minWidth: 120,
               }}
             >
-              <option value="">Todos</option>
+              <option value="">Todos (Papel)</option>
               <option value="manager">Gerente</option>
               <option value="comprador">Comprador</option>
             </select>
@@ -1734,14 +1784,12 @@ function gradesArrayToObject(grades: any): Record<string, Record<string, number>
         <div style={{ overflowX: "auto" }}>
           {isMobile ? (
             <div className="space-y-2 p-3">
-              {recentOrders.length === 0 && (
+              {filteredOrders.length === 0 && (
                   <div className="p-4 text-center text-slate-400 text-sm">
-                    {searchTerm
-                      ? "Nenhum pedido encontrado com esse filtro."
-                      : "Nenhum pedido encontrado."}
+                    Nenhum pedido encontrado com esse filtro.
                   </div>
               )}
-              {recentOrders.map((order) => {
+              {filteredOrders.map((order) => {
                 const subOrders = order.buy_order_sub_orders || [];
                 const todasLojas = subOrders.flatMap(
                   (sub: any) => sub.lojas_numeros || []
@@ -1897,7 +1945,7 @@ function gradesArrayToObject(grades: any): Record<string, Record<string, number>
               </tr>
             </thead>
             <tbody>
-              {recentOrders.length === 0 && (
+              {filteredOrders.length === 0 && (
                 <tr>
                   <td
                     colSpan={6}
@@ -1907,13 +1955,11 @@ function gradesArrayToObject(grades: any): Record<string, Record<string, number>
                       color: "#9ca3af",
                     }}
                   >
-                    {searchTerm
-                      ? "Nenhum pedido encontrado com esse filtro."
-                      : "Nenhum pedido encontrado."}
+                    Nenhum pedido encontrado com esse filtro.
                   </td>
                 </tr>
               )}
-              {recentOrders.map((o) => {
+              {filteredOrders.map((o) => {
                 const subOrders = o.buy_order_sub_orders || [];
                 const todasLojas = subOrders.flatMap(
                   (sub: any) => sub.lojas_numeros || [],
