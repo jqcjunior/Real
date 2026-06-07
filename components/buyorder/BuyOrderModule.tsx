@@ -2865,8 +2865,10 @@ function StepCabecalho({
 
 function classificarModelo(tipo: string, modeloAtual?: string): string {
   const t = (tipo || '').toUpperCase().trim();
+  if (!t) return '';
 
-  const KEYWORDS_ACESSORIO = [
+  // 1) Acessório (maior prioridade)
+  const KEYWORDS_ACES = [
     'RELOGIO', 'RELÓGIO', 'WATCH',
     'MEIA',
     'BOLA',
@@ -2884,15 +2886,23 @@ function classificarModelo(tipo: string, modeloAtual?: string): string {
     'KIT CARTEIRA',
     'ACESSORIO', 'ACESSÓRIO',
   ];
-
-  // Se o tipo bater com qualquer keyword, é ACES
-  if (KEYWORDS_ACESSORIO.some(kw => t.includes(kw)) || t === 'ACES') {
+  if (KEYWORDS_ACES.some(kw => t.includes(kw)) || t === 'ACES') {
     return 'ACES';
   }
 
-  // Se não é acessório, mas o modelo atual era ACES, volta a ser vazio para escolha
-  if (modeloAtual === 'ACES') {
-    return '';
+  // 2) Infantil (antes de FEM/MASC, pois pode ter "INFANTIL FEMININO")
+  if (t.includes('INFANTIL') || t.includes('KIDS') || t.includes('BABY') || t.includes('BEBE') || t.includes('BEBÊ') || t === 'INF') {
+    return 'INF';
+  }
+
+  // 3) Feminino
+  if (t.includes('FEMININO') || t.includes('FEMININA') || t.includes(' FEM') || t === 'FEM') {
+    return 'FEM';
+  }
+
+  // 4) Masculino
+  if (t.includes('MASCULINO') || t.includes('MASCULINA') || t.includes(' MASC') || t === 'MASC') {
+    return 'MASC';
   }
 
   return modeloAtual || '';
@@ -3068,19 +3078,20 @@ function StepItens({
   }
   function openEdit(i: number) {
     const it = items[i];
+    const initialModelo = it.modelo || classificarModelo(it.tipo || "");
     setForm({
       ref: it.ref,
       tipo: it.tipo,
       cor1: it.cor1,
       cor2: it.cor2,
       cor3: it.cor3,
-      modelo: it.modelo || "",
+      modelo: initialModelo,
       custo: String(it.custo),
     });
     setEditIdx(i);
     setCor2Manual(!!it.cor2);
     setCor3Manual(!!it.cor3);
-    setModeloManual(true);
+    setModeloManual(!!it.modelo);
     setCorSuggestions([]);
     setTipoSuggestions([]);
     setShowPopup(true);
