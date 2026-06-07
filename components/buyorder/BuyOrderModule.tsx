@@ -421,6 +421,37 @@ export default function BuyOrderModule({ user }: { user?: User }) {
       });
   }, []);
 
+  const prevDesconto = useRef<number>(cab.desconto);
+  const prevMarkup = useRef<number>(cab.markup);
+
+  useEffect(() => {
+    const desconto = Number(cab.desconto) || 0;
+    const markup = Number(cab.markup) || 0;
+
+    if (
+      prevDesconto.current === desconto &&
+      prevMarkup.current === markup
+    ) {
+      return;
+    }
+
+    prevDesconto.current = desconto;
+    prevMarkup.current = markup;
+
+    if (markup <= 0) return;
+
+    setItems((prevItems) => {
+      if (prevItems.length === 0) return prevItems;
+      return prevItems.map((item) => {
+        const custo = Number(item.custo) || 0;
+        if (custo <= 0) return item;
+
+        const novaVenda = calcularPrecoVenda(custo, desconto, markup);
+        return { ...item, preco_venda: novaVenda };
+      });
+    });
+  }, [cab.desconto, cab.markup]);
+
   const [recentOrders, setRecentOrders] = useState<any[]>([]);
 
   const isHeaderValid = !!(

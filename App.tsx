@@ -44,6 +44,7 @@ import BuyOrderParams from './components/buyorder/BuyOrderParams.tsx';
 import BuyOrderDashboard from './components/buyorder/BuyOrderDashboard.tsx';
 import StockForecastDashboard from './components/StockForecastDashboard.tsx';
 import BuyOrderQuotaView from './components/buyorder/BuyOrderQuotaView.tsx';
+import { BuyOrderPhotos } from './components/buyorder/BuyOrderPhotos.tsx';
 const ReportsPage = lazy(() => import('./components/ReportsPage'));
 const AdminQuotaExtraApprovals = lazy(() => import('./components/buyorder/AdminQuotaExtraApprovals'));
 const BuyOrderAnalytic = lazy(() => import('./components/buyorder/BuyOrderAnalytic'));
@@ -65,7 +66,7 @@ import { printReceipt } from './services/thermalPrinterService';
 import {
     LayoutDashboard, Target, ShoppingBag, Calculator, IceCream as IceCreamIcon,
     DollarSign, AlertCircle, Calendar, LogOut, Loader2, Menu, X, ClipboardList, Shield, UserCog, Users, ShieldAlert, Settings, FileSignature, FileText, Download, Lock,
-    Sun, Moon, Trophy, BarChart3, ArrowRight, TrendingUp, ShoppingCart, CheckCircle
+    Sun, Moon, Trophy, BarChart3, ArrowRight, TrendingUp, ShoppingCart, CheckCircle, Camera
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 import { Toaster } from 'sonner';
@@ -1222,7 +1223,7 @@ const App: React.FC = () => {
                                     { id: 'admin_quota_extra', label: 'APROVAÇÃO COTA EXTRA', icon: CheckCircle, perm: 'MODULE_BUY_ORDERS', roles: ['admin'] },
                                     { id: 'purchase_params', label: 'PARÂMETROS DE COMPRA', icon: Settings, perm: 'MODULE_PURCHASES', roles: ['admin'] },
                                     { id: 'reports_dashboard', label: 'RELATÓRIOS EXECUTIVOS', icon: FileText, perm: 'MODULE_BUY_ORDERS', roles: ['admin'] },
-                                    { id: 'stock_forecast', label: 'PREVISÃO DE ESTOQUE', icon: TrendingUp, perm: 'MODULE_BUY_ORDERS', roles: ['admin', 'manager'] }
+                                    { id: 'buy_order_photos', label: 'FOTOS DO PEDIDO', icon: Camera, perm: 'MODULE_BUY_ORDERS', roles: ['admin', 'manager'] }
                                 ] 
                             },
                             { id: 'dre_accounts', label: 'Plano de Contas DRE', icon: ClipboardList, perm: 'MODULE_DRE_ACCOUNTS', roles: ['admin'] },
@@ -1506,7 +1507,7 @@ const App: React.FC = () => {
                         if ((currentView === 'dashboard_loja' || currentView === 'dashboard_manager') && can('MODULE_DASHBOARD_MANAGER')) return <DashboardManager user={user!} stores={stores} performanceData={performanceData} goalsData={goalsData} sangrias={icSangrias} stockMovements={icStockMovements} stock={iceCreamStock} weightRevenue={goalsRankingParams?.weight_revenue ?? 70} weightPA={goalsRankingParams?.weight_pa ?? 30} />;
                         if (currentView === 'metas' && can('MODULE_METAS')) return <GoalRegistration user={user!} stores={isAdmin ? stores : stores.filter(s => s.id === user?.storeId)} goalsData={goalsData} onRefresh={fetchData} onSaveGoals={async (data) => { for(const row of data) { await supabase.from('monthly_goals').upsert({ store_id: row.storeId, year: row.year, month: row.month, revenue_target: row.revenueTarget, pa_target: row.paTarget, pu_target: row.puTarget, ticket_target: row.ticketTarget, items_target: row.itemsTarget, business_days: row.businessDays, delinquency_target: row.delinquencyTarget, trend: row.trend }, { onConflict: 'store_id, year, month' }); } fetchData(); }} />;
                         if (currentView === 'dre_accounts' && can('MODULE_DRE_ACCOUNTS')) return <DREAccounts />;
-                        if (currentView === 'stock_forecast' && can('MODULE_BUY_ORDERS')) return <StockForecastDashboard user={user!} stores={isAdmin ? stores : stores.filter(s => s.id === user?.storeId)} />;
+                        if (currentView === 'buy_order_photos' && can('MODULE_BUY_ORDERS')) return <BuyOrderPhotos />;
                         if (currentView === 'buy_order_dashboard' && can('MODULE_BUY_ORDERS')) return <BuyOrderDashboard user={user!} />;
                         if (currentView === 'buy_order_analytic' && can('MODULE_BUY_ORDERS')) return <BuyOrderAnalytic user={user!} stores={stores} />;
                         if (currentView === 'buy_order_quota' && can('MODULE_BUY_ORDERS')) return <BuyOrderQuotaView user={user!} />;
