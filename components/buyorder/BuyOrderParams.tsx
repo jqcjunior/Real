@@ -760,6 +760,10 @@ export default function BuyOrderParams({ user }: { user: any }) {
 
   useEffect(() => {
     loadStores();
+    // Recarregar dados da loja selecionada quando o ano muda
+    if (selectedStore) {
+      handleOpenStore(selectedStore);
+    }
   }, [selectedYear]);
 
   const loadStores = async () => {
@@ -978,7 +982,8 @@ export default function BuyOrderParams({ user }: { user: any }) {
           masculino_pct: masculino,
           acessorio_pct: acessorio,
           cota_valor: m.cotaTotal,
-          despesas_comprometidas: m.despesas,
+          // despesas_comprometidas não é mais salvo — calculado automaticamente pela view
+          // despesas_comprometidas: m.despesas,
           usa_parametros_customizados: true,
           usar_cota_fixa: m.usar_cota_fixa,
           cota_gerente_fixa: m.cota_gerente_fixa,
@@ -1410,23 +1415,9 @@ export default function BuyOrderParams({ user }: { user: any }) {
                               
                               {/* ✅ DESPESAS: INPUT CENTRALIZADO */}
                               <td className="p-2">
-                                <input
-                                  type="number"
-                                  inputMode="decimal"
-                                  step="1000"
-                                  min="0"
-                                  value={data.despesas || ""}
-                                  onChange={(e) =>
-                                    handleUpdateMonth(
-                                      index,
-                                      "despesas",
-                                      e.target.value === ""
-                                        ? 0
-                                        : Number(e.target.value),
-                                    )
-                                  }
-                                  className="w-full bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-lg px-2 py-1.5 text-[11px] font-black outline-none focus:border-orange-400 transition-all text-slate-900 dark:text-white text-center"
-                                />
+                                <div className="w-full bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-lg px-2 py-1.5 text-[11px] font-black text-slate-600 dark:text-slate-400 text-center">
+                                  {data.despesas > 0 ? formatarMoeda(data.despesas) : '—'}
+                                </div>
                               </td>
                               
                               {/* ✅ COTA LIMPA: READONLY CENTRALIZADO COM FUNDO AZUL CLARO */}
