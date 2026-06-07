@@ -1300,7 +1300,11 @@ function gradesArrayToObject(grades: any): Record<string, Record<string, number>
     // 2. Filtro de Status
     if (statusFilter) {
       const orderStatus = order.status || (order.exported_at ? "exportado" : "confirmado");
-      if (orderStatus !== statusFilter) return false;
+      if (statusFilter === "nao_exportado") {
+        if (orderStatus === "exportado") return false;
+      } else {
+        if (orderStatus !== statusFilter) return false;
+      }
     }
 
     // 3. Filtro de Loja
@@ -1721,6 +1725,7 @@ function gradesArrayToObject(grades: any): Record<string, Record<string, number>
               <option value="stand_by">Stand By</option>
               <option value="confirmado">Confirmado</option>
               <option value="exportado">Exportado</option>
+              <option value="nao_exportado">Não Exportado</option>
             </select>
 
             {/* Novo Filtro de Papel */}

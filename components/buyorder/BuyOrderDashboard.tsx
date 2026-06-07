@@ -187,11 +187,13 @@ export default function BuyOrderDashboard({ user }: { user: any }) {
       const { data: allItems } = await supabase
         .from('buy_order_items')
         .select(`
+          id,
           order_id, 
           total_pares, 
           custo, 
           tipo, 
           modelo, 
+          grades,
           buy_order_item_suborder_grades (
             sub_order_num
           )
@@ -202,6 +204,18 @@ export default function BuyOrderDashboard({ user }: { user: any }) {
         .from('buy_order_sub_orders')
         .select('order_id, sub_order_num, lojas_numeros, total_pares, valor_bruto')
         .in('order_id', orderIds);
+
+      // ===== QUERY 4: Grade-SubOrder links (para distribuição correta de acessórios) =====
+      const { data: itemSubGrades } = await supabase
+        .from('buy_order_item_suborder_grades')
+        .select('item_id, sub_order_num, grade_letra');
+
+      // Criar lookup Map: item_id -> Map<sub_order_num, grade_letra>
+      const gradeMap = new Map<string, Map<number, string>>();
+      (itemSubGrades || []).forEach((g: any) => {
+        if (!gradeMap.has(g.item_id)) gradeMap.set(g.item_id, new Map());
+        gradeMap.get(g.item_id)!.set(Number(g.sub_order_num), g.grade_letra);
+      });
 
       const itemsByOrder = new Map<string, any[]>();
       (allItems || []).forEach(item => {
@@ -274,9 +288,6 @@ export default function BuyOrderDashboard({ user }: { user: any }) {
         for (const item of items) {
           const isAces = isAcessorio(item);
           
-          const p = Number(item.total_pares || 0);
-          const v = Number(item.custo || 0) * p * fatorDesconto;
-
           let dept = (item.modelo || 'OUTROS').toUpperCase();
           if (isAces)           dept = 'ACESSÓRIO';
           else if (dept === 'FEM')  dept = 'FEMININO';
@@ -292,26 +303,75 @@ export default function BuyOrderDashboard({ user }: { user: any }) {
             activeSubOrders = subOrders.filter((sub: any) => itemSubOrderNums.includes(Number(sub.sub_order_num)));
           }
 
-          const itemStores = Array.from(new Set(
-            activeSubOrders.flatMap((sub: any) => (sub.lojas_numeros || []).map(Number))
-          ));
-          const itemNumLojas = itemStores.length;
-          if (itemNumLojas === 0) continue;
+          const storeParesMap = new Map<number, number>();
+          const storeValorMap = new Map<number, number>();
 
-          // Distribute proportionally among the store items to avoid multiplying values
-          const paresPorLoja = p / itemNumLojas;
-          const valorPorLoja = v / itemNumLojas;
+          let itemTotalParesOfDraft = 0;
+          let itemTotalValorOfDraft = 0;
 
           if (isAces) {
-            totalUnidades      += p;
+            // Acessórios: buscar qual grade este sub_order usa para este item
+            for (const sub of activeSubOrders) {
+              const lojas: number[] = (sub.lojas_numeros || []).map(Number);
+              if (lojas.length === 0) continue;
+
+              const itemGrades = gradeMap.get(item.id);
+              const gradLetra = itemGrades?.get(Number(sub.sub_order_num));
+              if (!gradLetra) continue;
+
+              // Extrair quantidade da grade específica do JSONB
+              const gradeEntry = (item.grades || []).find((g: any) => g.letra === gradLetra);
+              if (!gradeEntry || !gradeEntry.tamanhos) continue;
+
+              const qtdPerStore = Object.values(gradeEntry.tamanhos as Record<string, number>)
+                .reduce((sum: number, v: number) => sum + (typeof v === 'number' ? v : 0), 0);
+
+              const valorPerStore = qtdPerStore * Number(item.custo || 0) * fatorDesconto;
+
+              for (const loja of lojas) {
+                storeParesMap.set(loja, (storeParesMap.get(loja) || 0) + qtdPerStore);
+                storeValorMap.set(loja, (storeValorMap.get(loja) || 0) + valorPerStore);
+
+                itemTotalParesOfDraft += qtdPerStore;
+                itemTotalValorOfDraft += valorPerStore;
+              }
+            }
           } else {
-            totalPares         += p;
+            // Calçados: total_pares já é per-store
+            const p = Number(item.total_pares || 0);
+            const v = Number(item.custo || 0) * p * fatorDesconto;
+
+            const itemStores = Array.from(new Set(
+              activeSubOrders.flatMap((sub: any) => (sub.lojas_numeros || []).map(Number))
+            ));
+            const itemNumLojas = itemStores.length;
+
+            if (itemNumLojas > 0) {
+              const paresPorLoja = p / itemNumLojas;
+              const valorPorLoja = v / itemNumLojas;
+
+              for (const loja of itemStores) {
+                storeParesMap.set(loja, (storeParesMap.get(loja) || 0) + paresPorLoja);
+                storeValorMap.set(loja, (storeValorMap.get(loja) || 0) + valorPorLoja);
+
+                itemTotalParesOfDraft += paresPorLoja;
+                itemTotalValorOfDraft += valorPorLoja;
+              }
+            }
           }
-          valorTotal           += v;
+
+          if (itemTotalParesOfDraft === 0 && itemTotalValorOfDraft === 0) continue;
+
+          if (isAces) {
+            totalUnidades      += itemTotalParesOfDraft;
+          } else {
+            totalPares         += itemTotalParesOfDraft;
+          }
+          valorTotal           += itemTotalValorOfDraft;
 
           const tAgg = typeAgg.get(dept) || { pares: 0, valor: 0, modelStats: new Map() };
-          tAgg.pares += p;
-          tAgg.valor += v;
+          tAgg.pares += itemTotalParesOfDraft;
+          tAgg.valor += itemTotalValorOfDraft;
 
           let subCat = (item.tipo || 'OUTROS').toUpperCase();
           let mapKey = subCat;
@@ -326,32 +386,32 @@ export default function BuyOrderDashboard({ user }: { user: any }) {
             pares_por_loja: new Map<number, number>(),
             valor_por_loja: new Map<number, number>(),
           };
-          mAgg.pares += p;
-          mAgg.valor += v;
+          mAgg.pares += itemTotalParesOfDraft;
+          mAgg.valor += itemTotalValorOfDraft;
 
-          itemStores.forEach((lojaNum: number) => {
-            mAgg.pares_por_loja.set(lojaNum, (mAgg.pares_por_loja.get(lojaNum) || 0) + paresPorLoja);
-            mAgg.valor_por_loja.set(lojaNum, (mAgg.valor_por_loja.get(lojaNum) || 0) + valorPorLoja);
+          storeParesMap.forEach((pares, lojaNum) => {
+            mAgg.pares_por_loja.set(lojaNum, (mAgg.pares_por_loja.get(lojaNum) || 0) + pares);
+            mAgg.valor_por_loja.set(lojaNum, (mAgg.valor_por_loja.get(lojaNum) || 0) + storeValorMap.get(lojaNum)!);
 
             // Store Aggregation
             const loja = String(lojaNum);
             const sAgg = storeAgg.get(loja) || { pares: 0, unidades: 0, valor: 0, pedidos: new Set<string>() };
             if (isAces) {
-              sAgg.unidades += paresPorLoja;
+              sAgg.unidades += pares;
             } else {
-              sAgg.pares    += paresPorLoja;
+              sAgg.pares    += pares;
             }
-            sAgg.valor      += valorPorLoja;
+            sAgg.valor      += storeValorMap.get(lojaNum)!;
             sAgg.pedidos.add(order.id);
             storeAgg.set(loja, sAgg);
 
             // Brand Aggregation per store
-            bAgg.pares_por_loja.set(lojaNum, (bAgg.pares_por_loja.get(lojaNum) || 0) + paresPorLoja);
-            bAgg.valor_por_loja.set(lojaNum, (bAgg.valor_por_loja.get(lojaNum) || 0) + valorPorLoja);
+            bAgg.pares_por_loja.set(lojaNum, (bAgg.pares_por_loja.get(lojaNum) || 0) + pares);
+            bAgg.valor_por_loja.set(lojaNum, (bAgg.valor_por_loja.get(lojaNum) || 0) + storeValorMap.get(lojaNum)!);
           });
 
-          bAgg.pares += p;
-          bAgg.valor += v;
+          bAgg.pares += itemTotalParesOfDraft;
+          bAgg.valor += itemTotalValorOfDraft;
 
           tAgg.modelStats.set(mapKey, mAgg);
           typeAgg.set(dept, tAgg);
@@ -393,11 +453,18 @@ export default function BuyOrderDashboard({ user }: { user: any }) {
           mAgg.pares_por_loja.forEach((v, k) => { paresPorLojaObj[k] = Math.round(v); });
           const valorPorLojaObj: Record<number, number> = {};
           mAgg.valor_por_loja.forEach((v, k) => { valorPorLojaObj[k] = v; });
+
+          // TOTAL = soma de pares_por_loja de TODAS as lojas
+          const totalModelo = Object.values(paresPorLojaObj).reduce((s, v) => s + v, 0);
+
+          // VALOR = soma de valor_por_loja de TODAS as lojas
+          const valorModelo = Object.values(valorPorLojaObj).reduce((s, v) => s + v, 0);
+
           return {
             subtipo, modelo,
-            pares:       mAgg.pares,
-            valor:       mAgg.valor,
-            percentual:  typePares > 0 ? (mAgg.pares / typePares) * 100 : 0,
+            pares:       totalModelo,
+            valor:       valorModelo,
+            percentual:  typePares > 0 ? (totalModelo / typePares) * 100 : 0,
             pares_por_loja: paresPorLojaObj,
             valor_por_loja: valorPorLojaObj,
           };
