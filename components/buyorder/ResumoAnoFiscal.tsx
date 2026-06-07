@@ -107,8 +107,10 @@ export default function ResumoAnoFiscal({ quotas, storeNumber, onVerPedidos }: R
           user_role,
           desconto,
           buy_order_items (
+            id,
             total_pares,
-            custo
+            custo,
+            grades
           ),
           buy_order_sub_orders (
             id,
@@ -134,50 +136,64 @@ export default function ResumoAnoFiscal({ quotas, storeNumber, onVerPedidos }: R
         }
         return false;
       });
+
+      // Query separada: grade_letra por item por sub_order
+      const itemIds = pedidosLoja.flatMap(o => (o.buy_order_items || []).map((i: any) => i.id)).filter(Boolean);
+      let allItemSubGrades: any[] = [];
+      if (itemIds.length > 0) {
+        const { data: subGradesData, error: subGradesError } = await supabase
+          .from('buy_order_item_suborder_grades')
+          .select('item_id, sub_order_num, grade_letra')
+          .in('item_id', itemIds);
+        if (subGradesError) throw subGradesError;
+        if (subGradesData) {
+          allItemSubGrades = subGradesData;
+        }
+      }
+
+      // Criar lookup: item_id -> Map<sub_order_num, grade_letra>
+      const gradeMap = new Map<string, Map<number, string>>();
+      (allItemSubGrades || []).forEach((g: any) => {
+        if (!gradeMap.has(g.item_id)) gradeMap.set(g.item_id, new Map());
+        gradeMap.get(g.item_id)!.set(Number(g.sub_order_num), g.grade_letra);
+      });
       
-      // Calcular totais de cada pedido
+      // Calcular totais de cada pedido de forma correta e sem inflar
       const pedidosComTotais = pedidosLoja.map(pedido => {
         const desconto = pedido.desconto || 0;
-
+        const fatorDesconto = 1 - (desconto / 100);
+        const items = (pedido.buy_order_items as any[]) || [];
+        const subOrders = (pedido.buy_order_sub_orders as any[]) || [];
+        
         let totalParesLoja = 0;
         let totalCustoBrutoLoja = 0;
-        let foundSpecificSubOrderTotals = false;
 
-        if (pedido.buy_order_sub_orders) {
-          pedido.buy_order_sub_orders.forEach((sub: any) => {
-            if (sub.lojas_numeros && sub.lojas_numeros.includes(parseInt(storeNumber))) {
-              if (sub.total_pares !== undefined && sub.valor_bruto !== undefined && sub.total_pares !== null) {
-                totalParesLoja += Number(sub.total_pares || 0);
-                totalCustoBrutoLoja += Number(sub.valor_bruto || 0);
-                foundSpecificSubOrderTotals = true;
-              }
-            }
-          });
-        }
+        for (const item of items) {
+          const itemGrades = gradeMap.get(item.id);
+          if (!itemGrades) continue;
 
-        if (!foundSpecificSubOrderTotals) {
-          const items = (pedido.buy_order_items as any[]) || [];
-          let todasLojas: number[] = [];
-          if (pedido.buy_order_sub_orders) {
-            todasLojas = pedido.buy_order_sub_orders.flatMap((sub: any) => sub.lojas_numeros || []);
+          for (const sub of subOrders) {
+            // Verificar se ESTA loja está neste sub_order
+            const lojas = (sub.lojas_numeros || []).map(Number);
+            if (!lojas.includes(parseInt(storeNumber))) continue;
+
+            const gradLetra = itemGrades.get(Number(sub.sub_order_num));
+            if (!gradLetra) continue;
+
+            // Extrair quantidade da grade específica
+            const gradeEntry = (item.grades || []).find((g: any) => g.letra === gradLetra);
+            if (!gradeEntry || !gradeEntry.tamanhos) continue;
+
+            const qtd = Object.values(gradeEntry.tamanhos as Record<string, number>)
+              .reduce((sum: number, v: number) => sum + (typeof v === 'number' ? v : 0), 0);
+
+            totalParesLoja += qtd;
+            totalCustoBrutoLoja += qtd * Number(item.custo || 0);
           }
-          const totalUniqueStores = new Set(todasLojas).size || 1;
-
-          const totalParesRaw = items.reduce((sum: number, item: any) => 
-            sum + (item.total_pares || 0), 0
-          );
-          const totalCustoBrutoRaw = items.reduce((sum: number, item: any) => 
-            sum + (item.total_pares || 0) * (item.custo || 0), 0
-          );
-
-          totalParesLoja = Math.round(totalParesRaw / totalUniqueStores);
-          totalCustoBrutoLoja = totalCustoBrutoRaw / totalUniqueStores;
         }
 
         const totalPares = totalParesLoja;
-        const totalCustoBruto = totalCustoBrutoLoja;
-        // Aplicar desconto do pedido
-        const totalCusto = totalCustoBruto * (1 - desconto / 100);
+        const totalCusto = totalCustoBrutoLoja * fatorDesconto;
         
         // Agrupar vencimentos por mês
         const vencimentosPorMes: Record<string, number> = {};
