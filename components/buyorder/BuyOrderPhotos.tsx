@@ -86,6 +86,9 @@ export const BuyOrderPhotos: React.FC = () => {
   const [uploadingIds, setUploadingIds] = useState<Record<string, boolean>>({});
 
   const [searchTerm, setSearchTerm] = useState('');
+  const [matchedByReferencia, setMatchedByReferencia] = useState<string[]>([]);
+  const [searchingReferencia, setSearchingReferencia] = useState(false);
+  const [highlightReference, setHighlightReference] = useState<string>('');
   const [showSuggestions, setShowSuggestions] = useState(false);
   const suggestionsContainerRef = useRef<HTMLDivElement>(null);
 
@@ -119,29 +122,140 @@ export const BuyOrderPhotos: React.FC = () => {
     };
   }, []);
 
+  // Async search for references when standard search yields no matches
+  useEffect(() => {
+    const term = searchTerm.trim().toLowerCase();
+    if (!term || term.length < 2) {
+      setMatchedByReferencia([]);
+      return;
+    }
+
+    // Check if there are matches in standard fields (numero_pedido, fornecedor, marca)
+    const hasStandardMatches = pedidos.some(p => {
+      const numStr = p.numero_pedido ? String(p.numero_pedido) : '';
+      const fornStr = (p.fornecedor || '').toLowerCase();
+      const brandStr = (p.marca || '').toLowerCase();
+      return numStr.includes(term) || fornStr.includes(term) || brandStr.includes(term);
+    });
+
+    if (hasStandardMatches) {
+      setMatchedByReferencia([]);
+      return;
+    }
+
+    let active = true;
+    const fetchMatches = async () => {
+      setSearchingReferencia(true);
+      try {
+        const { data: itemMatches } = await supabase
+          .from('buy_order_items')
+          .select('order_id')
+          .ilike('referencia', `%${term}%`);
+
+        if (active && itemMatches && itemMatches.length > 0) {
+          const matchedOrderIds = [...new Set(itemMatches.map(m => m.order_id))];
+          setMatchedByReferencia(matchedOrderIds);
+        } else if (active) {
+          setMatchedByReferencia([]);
+        }
+      } catch (err) {
+        console.error('Erro ao buscar referências:', err);
+      } finally {
+        if (active) setSearchingReferencia(false);
+      }
+    };
+
+    const handler = setTimeout(() => {
+      fetchMatches();
+    }, 300);
+
+    return () => {
+      active = false;
+      clearTimeout(handler);
+    };
+  }, [searchTerm, pedidos]);
+
+  // Scroll and highlight effect for matched reference
+  useEffect(() => {
+    if (highlightReference && itens.length > 0) {
+      const lowerRef = highlightReference.toLowerCase();
+      const matchedItem = itens.find(i => (i.referencia || '').toLowerCase().includes(lowerRef));
+      if (matchedItem) {
+        const timer = setTimeout(() => {
+          const element = document.getElementById(`card-${matchedItem.id}`);
+          if (element) {
+            element.scrollIntoView({ behavior: 'smooth', block: 'center' });
+            element.classList.add('ring-4', 'ring-indigo-500', 'bg-indigo-50/50', 'dark:bg-indigo-950/25', 'scale-[1.02]', 'z-10');
+            // Remove highlight after a few seconds
+            setTimeout(() => {
+              element.classList.remove('ring-4', 'ring-indigo-500', 'bg-indigo-50/50', 'dark:bg-indigo-950/25', 'scale-[1.02]', 'z-10');
+            }, 5000);
+          }
+        }, 300);
+        return () => clearTimeout(timer);
+      }
+    }
+  }, [itens, highlightReference]);
+
   const filteredPedidos = React.useMemo(() => {
     const term = searchTerm.toLowerCase().trim();
     if (!term) return pedidos.slice(0, 10); // Show top 10 if nothing typed
-    return pedidos
-      .filter((p) => {
-        const numStr = p.numero_pedido ? String(p.numero_pedido) : '';
-        const fornStr = (p.fornecedor || '').toLowerCase();
-        const brandStr = (p.marca || '').toLowerCase();
-        return numStr.includes(term) || fornStr.includes(term) || brandStr.includes(term);
-      })
-      .slice(0, 10);
-  }, [pedidos, searchTerm]);
+    
+    const stdFiltered = pedidos.filter((p) => {
+      const numStr = p.numero_pedido ? String(p.numero_pedido) : '';
+      const fornStr = (p.fornecedor || '').toLowerCase();
+      const brandStr = (p.marca || '').toLowerCase();
+      return numStr.includes(term) || fornStr.includes(term) || brandStr.includes(term);
+    });
 
-  const handleKeyDown = (e: React.KeyboardEvent<HTMLInputElement>) => {
+    if (stdFiltered.length > 0) {
+      return stdFiltered.slice(0, 10);
+    }
+
+    if (matchedByReferencia.length > 0) {
+      return pedidos
+        .filter(p => matchedByReferencia.includes(p.id))
+        .slice(0, 10);
+    }
+
+    return [];
+  }, [pedidos, searchTerm, matchedByReferencia]);
+
+  const handleKeyDown = async (e: React.KeyboardEvent<HTMLInputElement>) => {
     if (e.key === 'Enter') {
       const term = searchTerm.trim();
+      if (!term) return;
+
       if (/^\d+$/.test(term)) {
         const exactMatch = pedidos.find(p => String(p.numero_pedido) === term);
         if (exactMatch) {
           setSelectedOrderId(exactMatch.id);
           setShowSuggestions(false);
           setSearchTerm('');
+          setHighlightReference('');
+          return;
         }
+      }
+
+      setLoadingItems(true);
+      try {
+        const { data: itemMatches } = await supabase
+          .from('buy_order_items')
+          .select('order_id')
+          .ilike('referencia', `%${term}%`)
+          .limit(1);
+
+        if (itemMatches && itemMatches.length > 0) {
+          const matchedOrderId = itemMatches[0].order_id;
+          setSelectedOrderId(matchedOrderId);
+          setHighlightReference(term);
+          setShowSuggestions(false);
+          setSearchTerm('');
+        }
+      } catch (err) {
+        console.error(err);
+      } finally {
+        setLoadingItems(false);
       }
     }
   };
@@ -396,7 +510,7 @@ export const BuyOrderPhotos: React.FC = () => {
               <div ref={suggestionsContainerRef} className="relative flex-1">
                 <input
                   type="text"
-                  placeholder="Nº Pedido ou Fornecedor/Marca..."
+                  placeholder="Nº Pedido, Fornecedor/Marca ou Referência..."
                   className="w-full text-sm bg-slate-100 dark:bg-slate-700 text-slate-800 dark:text-white font-semibold py-2 px-3 pr-8 rounded-lg border border-slate-200 dark:border-slate-600 outline-none focus:ring-2 focus:ring-indigo-500 transition-all cursor-pointer"
                   value={searchTerm}
                   onChange={(e) => {
@@ -427,6 +541,9 @@ export const BuyOrderPhotos: React.FC = () => {
                           onClick={() => {
                             setSelectedOrderId(p.id);
                             setShowSuggestions(false);
+                            if (searchTerm.trim()) {
+                              setHighlightReference(searchTerm.trim());
+                            }
                             setSearchTerm('');
                           }}
                         >
