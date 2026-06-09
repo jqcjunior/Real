@@ -315,7 +315,8 @@ const App: React.FC = () => {
                 { key: 'MODULE_ICECREAM_MANAGE', label: 'Gelateria: Gestão', group: 'Gelateria' },
                 { key: 'MODULE_ICECREAM_DESPESAS', label: 'Gelateria: Despesas', group: 'Gelateria' },
                 { key: 'MODULE_AUDIT_MANAGE', label: 'Auditoria: Gestão', group: 'Auditoria' },
-                { key: 'admin_settings', label: 'Configurações Avançadas', group: 'Administração' }
+                { key: 'admin_settings', label: 'Configurações Avançadas', group: 'Administração' },
+                { key: 'relatorios_compras', label: 'Relatórios de Compras', group: 'Compras' }
             ];
 
             for (const p of perms) {
@@ -1215,8 +1216,8 @@ const App: React.FC = () => {
                                 icon: ShoppingCart, 
                                 isGroup: true, 
                                 subItems: [
-                                    { id: 'buy_order_dashboard', label: 'Dashboard Compras', icon: BarChart3, perm: 'MODULE_BUY_ORDERS', roles: ['admin', 'manager'] },
-                                    { id: 'buy_order_analytic', label: 'ANÁLISE FORNECEDORES', icon: BarChart3, perm: 'MODULE_BUY_ORDERS', roles: ['admin'] },
+                                    { id: 'buy_order_dashboard', label: 'Dashboard Compras', icon: BarChart3, perm: 'relatorios_compras', roles: ['admin', 'manager'] },
+                                    { id: 'buy_order_analytic', label: 'ANÁLISE FORNECEDORES', icon: BarChart3, perm: 'relatorios_compras', roles: ['admin', 'manager'] },
                                     { id: 'buy_orders', label: 'Pedido de Compra', icon: ShoppingBag, perm: 'MODULE_BUY_ORDERS', roles: ['admin', 'manager'] },
                                     { id: 'buy_order_quota', label: 'COTA DE COMPRA', icon: DollarSign, perm: 'MODULE_BUY_ORDERS', roles: ['admin', 'manager'] },
                                     { id: 'admin_quota_extra', label: 'APROVAÇÃO COTA EXTRA', icon: CheckCircle, perm: 'MODULE_BUY_ORDERS', roles: ['admin'] },
@@ -1224,7 +1225,7 @@ const App: React.FC = () => {
                                     { id: 'buy_order_photos', label: 'FOTOS DO PEDIDO', icon: Camera, perm: 'MODULE_BUY_ORDERS', roles: ['admin', 'manager'] }
                                 ] 
                             },
-                            { id: 'reports_dashboard', label: 'Gestão de Relatórios', icon: BarChart3, perm: 'MODULE_BUY_ORDERS', roles: ['admin', 'manager'] },
+                            { id: 'reports_dashboard', label: 'Gestão de Relatórios', icon: BarChart3, perm: 'relatorios_compras', roles: ['admin', 'manager'] },
                             { id: 'dre_accounts', label: 'Plano de Contas DRE', icon: ClipboardList, perm: 'MODULE_DRE_ACCOUNTS', roles: ['admin'] },
                             { id: 'metas', label: 'Metas', icon: Target, perm: 'MODULE_METAS', roles: ['admin'] },
                             { id: 'os_demandas', label: 'Chamado', icon: ClipboardList, perm: 'MODULE_DEMANDS' }
@@ -1503,12 +1504,48 @@ const App: React.FC = () => {
                         if (currentView === 'metas' && can('MODULE_METAS')) return <GoalRegistration user={user!} stores={isAdmin ? stores : stores.filter(s => s.id === user?.storeId)} goalsData={goalsData} onRefresh={fetchData} onSaveGoals={async (data) => { for(const row of data) { await supabase.from('monthly_goals').upsert({ store_id: row.storeId, year: row.year, month: row.month, revenue_target: row.revenueTarget, pa_target: row.paTarget, pu_target: row.puTarget, ticket_target: row.ticketTarget, items_target: row.itemsTarget, business_days: row.businessDays, delinquency_target: row.delinquencyTarget, trend: row.trend }, { onConflict: 'store_id, year, month' }); } fetchData(); }} />;
                         if (currentView === 'dre_accounts' && can('MODULE_DRE_ACCOUNTS')) return <DREAccounts />;
                         if (currentView === 'buy_order_photos' && can('MODULE_BUY_ORDERS')) return <BuyOrderPhotos />;
-                        if (currentView === 'buy_order_dashboard' && can('MODULE_BUY_ORDERS')) return <BuyOrderDashboard user={user!} />;
-                        if (currentView === 'buy_order_analytic' && can('MODULE_BUY_ORDERS')) return <BuyOrderAnalytic user={user!} stores={stores} />;
+                        if (currentView === 'buy_order_dashboard') {
+                            if (can('relatorios_compras')) {
+                                return <BuyOrderDashboard user={user!} />;
+                            } else {
+                                return (
+                                    <div className="flex flex-col items-center justify-center h-full text-center p-6 bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl max-w-md mx-auto my-12 shadow-sm">
+                                        <span className="text-4xl mb-4">🚫</span>
+                                        <h3 className="text-lg font-black text-slate-800 dark:text-slate-100 uppercase tracking-tighter mb-2">Acesso Não Autorizado</h3>
+                                        <p className="text-slate-500 dark:text-slate-400 text-xs">Você não tem permissão para visualizar o Dashboard de Compras. Solicite a liberação desta permissão para o administrador.</p>
+                                    </div>
+                                );
+                            }
+                        }
+                        if (currentView === 'buy_order_analytic') {
+                            if (can('relatorios_compras')) {
+                                return <BuyOrderAnalytic user={user!} stores={stores} />;
+                            } else {
+                                return (
+                                    <div className="flex flex-col items-center justify-center h-full text-center p-6 bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl max-w-md mx-auto my-12 shadow-sm">
+                                        <span className="text-4xl mb-4">🚫</span>
+                                        <h3 className="text-lg font-black text-slate-800 dark:text-slate-100 uppercase tracking-tighter mb-2">Acesso Não Autorizado</h3>
+                                        <p className="text-slate-500 dark:text-slate-400 text-xs">Você não tem permissão para visualizar a Análise de Fornecedores. Solicite a liberação desta permissão para o administrador.</p>
+                                    </div>
+                                );
+                            }
+                        }
                         if (currentView === 'buy_order_quota' && can('MODULE_BUY_ORDERS')) return <BuyOrderQuotaView user={user!} />;
                         if (currentView === 'admin_quota_extra' && can('MODULE_BUY_ORDERS')) return <AdminQuotaExtraApprovals userId={user!.id} />;
                         if (currentView === 'purchase_params') return <BuyOrderParams user={user!} />;
-                        if (currentView === 'reports_dashboard') return <ReportsPage user={user!} />;
+                        if (currentView === 'reports_dashboard') {
+                            if (can('relatorios_compras')) {
+                                return <ReportsPage user={user!} />;
+                            } else {
+                                return (
+                                    <div className="flex flex-col items-center justify-center h-full text-center p-6 bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl max-w-md mx-auto my-12 shadow-sm">
+                                        <span className="text-4xl mb-4">🚫</span>
+                                        <h3 className="text-lg font-black text-slate-800 dark:text-slate-100 uppercase tracking-tighter mb-2">Acesso Não Autorizado</h3>
+                                        <p className="text-slate-500 dark:text-slate-400 text-xs">Você não tem permissão para visualizar a Gestão de Relatórios. Solicite a liberação desta permissão para o administrador.</p>
+                                    </div>
+                                );
+                            }
+                        }
                         if ((currentView === 'pdv_sorveteria' || currentView === 'ice_cream') && can('MODULE_ICECREAM')) return <IceCreamModule
                             user={user!} stores={isAdmin ? stores : stores.filter(s => s.id === user?.storeId)} items={iceCreamItems} sales={iceCreamSales} salesHeaders={sales} salePayments={salePayments}
                             stock={iceCreamStock} promissories={icPromissories} can={can}

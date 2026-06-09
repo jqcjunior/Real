@@ -6,7 +6,7 @@ import React, {
   Dispatch,
   SetStateAction,
 } from "react";
-import { Pencil, X, Download, RefreshCw, Printer } from "lucide-react";
+import { Pencil, X, Download, RefreshCw, Printer, Plus, Copy } from "lucide-react";
 import { toast } from "sonner";
 import { printOrder } from './BuyOrderPrintView';
 import ProductPhotoUpload from './ProductPhotoUpload';
@@ -397,6 +397,8 @@ export default function BuyOrderModule({ user }: { user?: User }) {
   const [roundBase, setRoundBase] = useState(15.5);
   const [loading, setLoading] = useState(false);
   const [deletingOrder, setDeletingOrder] = useState<any | null>(null);
+  const [copyingOrder, setCopyingOrder] = useState<any | null>(null);
+  const [copiedFromPedido, setCopiedFromPedido] = useState<{ numero: number; marca: string } | null>(null);
 
   const [step2State, setStep2State] = useState({
     selectedItems: new Set<number>(),
@@ -503,7 +505,7 @@ export default function BuyOrderModule({ user }: { user?: User }) {
       let query = supabase
         .from("buy_orders")
         .select("*, buy_order_sub_orders(lojas_numeros)", { count: "exact" })
-        .order("created_at", { ascending: false })
+        .order("numero_pedido", { ascending: false })
         .range(0, (page + 1) * PAGE_SIZE - 1);
 
       // 3. Aplicar busca por texto
@@ -932,6 +934,7 @@ export default function BuyOrderModule({ user }: { user?: User }) {
   function resetStateAndFetch() {
     setEditingOrderId(null);
     setNumeroPedidoSalvo(null);
+    setCopiedFromPedido(null);
     setStep(0);
     setCab({
       role: "comprador",
@@ -1229,6 +1232,53 @@ function gradesArrayToObject(grades: any): Record<string, Record<string, number>
     }
   };
 
+  const handleCopyOrder = async (originalOrder: any) => {
+    setLoading(true);
+    try {
+      // 1. Buscar os dados completos do pedido original (SELECT-only)
+      const { data, error } = await supabase
+        .from("buy_orders")
+        .select(
+          `
+          id, numero_pedido, marca, fornecedor, representante, telefone, email,
+          fat_inicio, fat_fim, prazos, desconto, markup, user_name, user_role,
+          created_at, exported_at,
+          buy_order_items (
+            id, item_order, referencia, tipo, cor1, cor2, cor3, modelo, 
+            total_pares, custo, preco_venda, grades,
+            buy_order_item_suborder_grades (item_id, sub_order_num, grade_letra)
+          ),
+          buy_order_sub_orders (id, sub_order_num, pedido_numero, lojas_numeros)
+        `,
+        )
+        .eq("id", originalOrder.id)
+        .single();
+
+      if (error) throw error;
+
+      // 2. Carregar nos steps do wizard como se fosse uma nova criação
+      await loadOrderIntoSteps(data);
+
+      // 3. Modificar estados para forçar criação de NOVO registro ao salvar (sem IDs do banco)
+      setEditingOrderId(null);
+      setNumeroPedidoSalvo(null);
+      setCopiedFromPedido({
+        numero: data.numero_pedido,
+        marca: data.marca || data.fornecedor || "S/M",
+      });
+
+      toast.success(
+        `📋 Dados do pedido #${originalOrder.numero_pedido || "S/N"} carregados! Ajuste o que quiser antes de salvar.`,
+      );
+      setCopyingOrder(null);
+    } catch (err: any) {
+      console.error("Erro ao buscar pedido para cópia:", err);
+      toast.error(`❌ Erro ao carregar dados do pedido: ${err.message || err}`);
+    } finally {
+      setLoading(false);
+    }
+  };
+
   // ─── Render ──────────────────────────────────────────────────────────────────
 
   const [activeTab, setActiveTab] = useState<"create" | "stand_by">("create");
@@ -1354,8 +1404,17 @@ function gradesArrayToObject(grades: any): Record<string, Record<string, number>
                 Pedido #{numeroPedidoSalvo}
               </span>
             ) : (
-              <span style={{ fontSize: 15, fontWeight: 500 }}>
+              <span style={{ fontSize: 15, fontWeight: 500 }} className="flex items-center gap-2">
                 Novo pedido de compra
+                {items.length > 0 && (
+                  <button
+                    onClick={resetStateAndFetch}
+                    className="text-[10px] text-red-600 hover:text-red-800 font-bold px-2 py-0.5 rounded hover:bg-red-50 border border-red-200 transition-colors ml-2"
+                    title="Descartar todos os dados e começar do zero"
+                  >
+                    Descartar
+                  </button>
+                )}
               </span>
             )}
             <span
@@ -1401,6 +1460,26 @@ function gradesArrayToObject(grades: any): Record<string, Record<string, number>
             </div>
           )}
         </div>
+        
+        {/* Banner de Cópia */}
+        {copiedFromPedido && (
+          <div className="bg-blue-50 border-b border-blue-200 px-4 md:px-6 py-2.5 flex items-center justify-between text-blue-800 text-xs font-medium">
+            <span className="flex items-center gap-1.5 leading-none">
+              <span>📋</span>
+              <span>
+                Copiado do pedido <strong>#{copiedFromPedido.numero}</strong> ({copiedFromPedido.marca}) — Revise e ajuste antes de salvar
+              </span>
+            </span>
+            <button
+              onClick={() => setCopiedFromPedido(null)}
+              className="text-blue-500 hover:text-blue-700 font-bold ml-2 text-sm leading-none"
+              title="Fechar aviso"
+              aria-label="Fechar aviso"
+            >
+              ×
+            </button>
+          </div>
+        )}
 
         {/* Stepper */}
         <div className="flex px-4 md:px-6 border-b">
@@ -1848,6 +1927,15 @@ function gradesArrayToObject(grades: any): Record<string, Record<string, number>
                         <Printer size={14} /> Imprimir
                       </button>
 
+                      <button
+                        onClick={() => setCopyingOrder(order)}
+                        className="flex-1 flex items-center justify-center gap-1.5 py-2 bg-slate-100 text-slate-700 rounded-lg text-[11px] font-medium hover:bg-slate-200"
+                        title="Copiar pedido"
+                        aria-label="Copiar pedido"
+                      >
+                        <Copy size={14} /> Copiar
+                      </button>
+
                       {canEditOrder(order) && (status === 'rascunho' || isAdmin) && (
                         <button
                           onClick={() => {
@@ -2275,6 +2363,29 @@ function gradesArrayToObject(grades: any): Record<string, Record<string, number>
                           <Printer size={14} />
                         </button>
 
+                        {/* Botão Copiar */}
+                        <button
+                          onClick={() => setCopyingOrder(o)}
+                          title="Copiar pedido"
+                          aria-label="Copiar pedido"
+                          style={{
+                            width: 28,
+                            height: 28,
+                            padding: 0,
+                            display: "flex",
+                            alignItems: "center",
+                            justifyContent: "center",
+                            background: "#f1f5f9",
+                            color: "#475569",
+                            border: "1px solid #cbd5e1",
+                            borderRadius: 6,
+                            cursor: "pointer",
+                            transition: "all 0.2s",
+                          }}
+                        >
+                          <Copy size={14} />
+                        </button>
+
                         {/* Botão Excluir */}
                         {canCancelOrder(o) && (
                           <button
@@ -2458,6 +2569,116 @@ function gradesArrayToObject(grades: any): Record<string, Record<string, number>
                 }}
               >
                 ❌ Excluir
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Modal de Confirmação de Cópia de Pedido */}
+      {copyingOrder && (
+        <div
+          style={{
+            position: "fixed",
+            inset: 0,
+            background: "rgba(0,0,0,0.6)",
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "center",
+            zIndex: 100,
+            padding: "16px",
+          }}
+        >
+          <div
+            style={{
+              background: "#fff",
+              borderRadius: 10,
+              width: "100%",
+              maxWidth: 400,
+              overflow: "hidden",
+            }}
+          >
+            <div
+              style={{
+                padding: "16px",
+                background: "#eff6ff",
+                borderBottom: "1px solid #bfdbfe",
+              }}
+            >
+              <div
+                style={{
+                  fontSize: 16,
+                  fontWeight: 700,
+                  color: "#1e40af",
+                  textAlign: "center",
+                }}
+              >
+                📋 Copiar Pedido
+              </div>
+            </div>
+            <div style={{ padding: 20 }}>
+              <p
+                style={{
+                  fontSize: 13,
+                  color: "#374151",
+                  textAlign: "center",
+                  marginBottom: 16,
+                  lineHeight: "1.5",
+                }}
+              >
+                Copiar pedido <strong>#{copyingOrder.numero_pedido || "S/N"} ({copyingOrder.marca || copyingOrder.fornecedor})</strong>?
+              </p>
+              <p
+                style={{
+                  fontSize: 12,
+                  color: "#4b5563",
+                  textAlign: "center",
+                  marginBottom: 16,
+                  lineHeight: "1.4",
+                }}
+              >
+                Os dados do pedido serão carregados para criação de um novo pedido. 
+                Você poderá alterar tudo antes de salvar.
+              </p>
+            </div>
+            <div
+              style={{
+                padding: "12px 16px",
+                borderTop: "0.5px solid #e5e7eb",
+                display: "flex",
+                justifyContent: "flex-end",
+                gap: 8,
+              }}
+            >
+              <button
+                onClick={() => setCopyingOrder(null)}
+                style={{
+                  height: 32,
+                  padding: "0 16px",
+                  borderRadius: 6,
+                  border: "1px solid #d1d5db",
+                  background: "#fff",
+                  cursor: "pointer",
+                  fontSize: 12,
+                }}
+              >
+                Cancelar
+              </button>
+              <button
+                onClick={() => handleCopyOrder(copyingOrder)}
+                style={{
+                  height: 32,
+                  padding: "0 16px",
+                  borderRadius: 6,
+                  border: "none",
+                  background: "#2563eb",
+                  color: "#fff",
+                  cursor: "pointer",
+                  fontSize: 12,
+                  fontWeight: 600,
+                }}
+              >
+                Copiar e Editar
               </button>
             </div>
           </div>
@@ -3018,7 +3239,77 @@ function StepItens({
     modelo: "",
     custo: "",
   });
+  const [showAutoFilledMessage, setShowAutoFilledMessage] = useState(false);
+
+  const checkAndFillReference = (refVal: string) => {
+    // Only check if we are creating a new item (editIdx === -1)
+    if (editIdx !== -1) return;
+    
+    const cleanedRef = refVal.trim().toUpperCase();
+    if (!cleanedRef) {
+      setShowAutoFilledMessage(false);
+      return;
+    }
+    const existente = items.find(
+      (item) => item.ref && item.ref.trim().toUpperCase() === cleanedRef
+    );
+    if (existente) {
+      setForm({
+        ref: cleanedRef,
+        tipo: (existente.tipo || "").trim().toUpperCase(),
+        cor1: "",
+        cor2: "",
+        cor3: "",
+        modelo: existente.modelo || "",
+        custo: existente.custo !== undefined ? String(existente.custo) : "",
+      });
+      setCor2Manual(false);
+      setCor3Manual(false);
+      setModeloManual(true);
+      setShowAutoFilledMessage(true);
+    }
+  };
+
   const [historicPrice, setHistoricPrice] = useState<number | null>(null);
+  const listContainerRef = useRef<HTMLDivElement>(null);
+  const lastTouchY = useRef<number | null>(null);
+
+  const handleOverlayWheel = (e: React.WheelEvent<HTMLDivElement>) => {
+    if (e.target === e.currentTarget && listContainerRef.current) {
+      listContainerRef.current.scrollTop += e.deltaY;
+    }
+  };
+
+  const handleOverlayTouchStart = (e: React.TouchEvent<HTMLDivElement>) => {
+    if (e.target === e.currentTarget && e.touches.length === 1) {
+      lastTouchY.current = e.touches[0].clientY;
+    }
+  };
+
+  const handleOverlayTouchMove = (e: React.TouchEvent<HTMLDivElement>) => {
+    if (e.target === e.currentTarget && e.touches.length === 1 && lastTouchY.current !== null && listContainerRef.current) {
+      const currentY = e.touches[0].clientY;
+      const deltaY = lastTouchY.current - currentY;
+      listContainerRef.current.scrollTop += deltaY;
+      lastTouchY.current = currentY;
+    }
+  };
+
+  const handleOverlayTouchEnd = () => {
+    lastTouchY.current = null;
+  };
+
+  // Scroll to bottom of items list on adding a new item
+  useEffect(() => {
+    if (items.length > 0 && listContainerRef.current) {
+      setTimeout(() => {
+        listContainerRef.current?.scrollTo({
+          top: listContainerRef.current.scrollHeight,
+          behavior: "smooth",
+        });
+      }, 100);
+    }
+  }, [items.length]);
 
   useEffect(() => {
     if (form.ref && form.ref.length >= 5) {
@@ -3156,6 +3447,7 @@ function StepItens({
     setModeloManual(false);
     setCorSuggestions([]);
     setTipoSuggestions([]);
+    setShowAutoFilledMessage(false);
     setShowPopup(true);
   }
   function openEdit(i: number) {
@@ -3176,6 +3468,7 @@ function StepItens({
     setModeloManual(!!it.modelo);
     setCorSuggestions([]);
     setTipoSuggestions([]);
+    setShowAutoFilledMessage(false);
     setShowPopup(true);
   }
 
@@ -3226,7 +3519,7 @@ function StepItens({
   );
 
   return (
-    <div className="flex flex-col h-full">
+    <div className="flex flex-col h-full relative">
       <div
         style={{
           padding: "6px 18px",
@@ -3243,25 +3536,13 @@ function StepItens({
         }}
       >
         <span>Itens do pedido</span>
-        <button
-          onClick={openNew}
-          style={{
-            height: 22,
-            padding: "0 10px",
-            borderRadius: 4,
-            fontSize: 11,
-            fontWeight: 500,
-            cursor: "pointer",
-            border: "none",
-            background: "#185FA5",
-            color: "#fff",
-          }}
-        >
-          + Item
-        </button>
       </div>
 
-      <div className="overflow-auto flex-1">
+      <div 
+        ref={listContainerRef} 
+        className="overflow-auto flex-1 animate-fadeIn" 
+        style={{ paddingBottom: "80px" }}
+      >
         {isMobile ? (
           <div className="space-y-2 p-3">
             {items.map((item, idx) => {
@@ -3575,30 +3856,69 @@ function StepItens({
         )}
       </div>
 
+      {/* Floating Action Button (FAB) for adding new items */}
+      <div className="animate-fab-entrance group fixed md:bottom-[80px] bottom-[72px] md:right-[24px] right-[16px] z-50 flex items-center">
+        {/* Tooltip (visible on hover on desktop md or larger) */}
+        <span className="hidden md:block absolute right-[68px] opacity-0 group-hover:opacity-100 bg-slate-800 text-white text-xs px-2.5 py-1.5 rounded-lg shadow-lg whitespace-nowrap transition-all duration-200 pointer-events-none transform translate-x-2 group-hover:translate-x-0 font-medium z-50">
+          Adicionar item
+        </span>
+        
+        <button
+          onClick={() => {
+            openNew();
+          }}
+          className="w-12 h-12 md:w-14 md:h-14 rounded-full bg-[#185FA5] text-white flex items-center justify-center shadow-[0_4px_12px_rgba(0,0,0,0.25)] transition-all duration-200 hover:brightness-90 active:scale-95 cursor-pointer transform hover:scale-105 active:scale-95"
+          style={{ border: "none" }}
+          aria-label="Adicionar novo item ao pedido"
+        >
+          <Plus size={24} className="text-white" />
+        </button>
+      </div>
+
+      <style>{`
+        @keyframes fab-entrance {
+          0% { transform: scale(0); opacity: 0; }
+          70% { transform: scale(1.1); }
+          100% { transform: scale(1); opacity: 1; }
+        }
+        .animate-fab-entrance {
+          animation: fab-entrance 0.35s cubic-bezier(0.34, 1.56, 0.64, 1) forwards;
+        }
+      `}</style>
+
       {/* Popup item */}
       {showPopup && (
         <div
+          onClick={(e) => {
+            if (e.target === e.currentTarget) {
+              setShowPopup(false);
+            }
+          }}
+          onWheel={handleOverlayWheel}
+          onTouchStart={handleOverlayTouchStart}
+          onTouchMove={handleOverlayTouchMove}
+          onTouchEnd={handleOverlayTouchEnd}
           style={{
             position: "fixed",
             inset: 0,
             zIndex: 50,
             display: "flex",
-            alignItems: "flex-start",
+            alignItems: "center",
             justifyContent: "center",
-            background: "rgba(0,0,0,0.5)",
-            overflowY: "auto",
-            padding: 16,
+            background: "rgba(0,0,0,0.4)",
+            padding: isMobile ? "24px 16px" : 16,
           }}
         >
           <div
             style={{
               width: "100%",
               maxWidth: 500,
-              maxHeight: "90vh",
+              maxHeight: isMobile ? "70vh" : "80vh",
               overflowY: "auto",
               borderRadius: 12,
               background: "white",
-              margin: "auto",
+              boxShadow: "0 10px 25px -5px rgba(0, 0, 0, 0.1), 0 8px 10px -6px rgba(0, 0, 0, 0.1)",
+              margin: isMobile ? "auto 16px" : "auto",
             }}
           >
             <div
@@ -3643,14 +3963,23 @@ function StepItens({
                 </label>
                 <input
                   ref={refInputRef}
-                  onKeyDown={(e) => handleEnterKey(e, tipoInputRef, true)}
+                  onKeyDown={(e) => {
+                    if (e.key === "Enter" || e.key === "Tab") {
+                      checkAndFillReference(form.ref);
+                    }
+                    handleEnterKey(e, tipoInputRef, true);
+                  }}
+                  onBlur={() => {
+                    checkAndFillReference(form.ref);
+                  }}
                   value={form.ref}
-                  onChange={(e) =>
+                  onChange={(e) => {
                     setForm((f) => ({
                       ...f,
                       ref: e.target.value.toUpperCase(),
-                    }))
-                  }
+                    }));
+                    setShowAutoFilledMessage(false);
+                  }}
                   placeholder="REF-001"
                   style={{
                     height: 30,
@@ -3664,6 +3993,11 @@ function StepItens({
                   }}
                   autoFocus
                 />
+                {showAutoFilledMessage && (
+                  <div style={{ color: "#475569", fontSize: "11px", marginTop: "4px", fontWeight: 500 }}>
+                    Ref. encontrada no pedido — campos preenchidos automaticamente
+                  </div>
+                )}
               </div>
 
               {/* LINHA 2: Tipo com AUTOCOMPLETE */}
@@ -3695,6 +4029,7 @@ function StepItens({
                     });
                     searchTipos(v);
                     setSelectedSuggestionIndex(-1);
+                    setShowAutoFilledMessage(false);
                   }}
                   onKeyDown={(e) => {
                     if (isMobile) {
@@ -3809,6 +4144,7 @@ function StepItens({
                       onCor1(vu);
                       searchCores(vu, "cor1");
                       setSelectedSuggestionIndex(-1);
+                      setShowAutoFilledMessage(false);
                     },
                   },
                   {
@@ -3822,6 +4158,7 @@ function StepItens({
                       setForm((f) => ({ ...f, cor2: vu }));
                       searchCores(vu, "cor2");
                       setSelectedSuggestionIndex(-1);
+                      setShowAutoFilledMessage(false);
                     },
                   },
                   {
@@ -3835,6 +4172,7 @@ function StepItens({
                       setForm((f) => ({ ...f, cor3: vu }));
                       searchCores(vu, "cor3");
                       setSelectedSuggestionIndex(-1);
+                      setShowAutoFilledMessage(false);
                     },
                   },
                 ].map((f) => (
@@ -3983,6 +4321,7 @@ function StepItens({
                   onChange={(e) => {
                     setModeloManual(true);
                     setForm((f) => ({ ...f, modelo: e.target.value }));
+                    setShowAutoFilledMessage(false);
                   }}
                   style={{
                     height: 30,
@@ -4028,9 +4367,10 @@ function StepItens({
                   type="number"
                   step={0.01}
                   value={form.custo}
-                  onChange={(e) =>
-                    setForm((f) => ({ ...f, custo: e.target.value }))
-                  }
+                  onChange={(e) => {
+                    setForm((f) => ({ ...f, custo: e.target.value }));
+                    setShowAutoFilledMessage(false);
+                  }}
                   placeholder="0,00"
                   style={{
                     height: 30,
