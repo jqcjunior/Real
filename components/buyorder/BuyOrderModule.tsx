@@ -590,9 +590,25 @@ export default function BuyOrderModule({ user }: { user?: User }) {
         return;
       }
     }
-    if (step === 1 && items.length === 0) {
-      setError("Adicione ao menos um item antes de continuar.");
-      return;
+    if (step === 1) {
+      if (items.length === 0) {
+        setError("Adicione ao menos um item antes de continuar.");
+        return;
+      }
+      setStep2State((prev: any) => ({
+        ...prev,
+        tempPedidoItens: (prev.tempPedidoItens || []).filter(
+          (icg: any) => icg.itemIdx >= 0 && icg.itemIdx < items.length,
+        ),
+      }));
+      setPedidos((prev: any[]) => {
+        return (prev || []).map((ped) => ({
+          ...ped,
+          itensComGrades: (ped.itensComGrades || []).filter(
+            (icg: any) => icg.itemIdx >= 0 && icg.itemIdx < items.length,
+          ),
+        }));
+      });
     }
     setError("");
     setStep((s) => s + 1);
@@ -1554,6 +1570,8 @@ function gradesArrayToObject(grades: any): Record<string, Record<string, number>
             roundBase={roundBase}
             selectedLojas={step2State.selectedLojas}
             isMobile={isMobile}
+            setStep2State={setStep2State}
+            setPedidos={setPedidos}
           />
         )}
         {step === 2 && (
@@ -3220,6 +3238,8 @@ function StepItens({
   roundBase,
   selectedLojas,
   isMobile,
+  setStep2State,
+  setPedidos,
 }: {
   items: OrderItem[];
   setItems: Dispatch<SetStateAction<OrderItem[]>>;
@@ -3227,6 +3247,8 @@ function StepItens({
   roundBase: number;
   selectedLojas: number[];
   isMobile?: boolean;
+  setStep2State?: Dispatch<SetStateAction<any>>;
+  setPedidos?: Dispatch<SetStateAction<any[]>>;
 }) {
   const [showPopup, setShowPopup] = useState(false);
   const [editIdx, setEditIdx] = useState(-1);
@@ -3510,6 +3532,52 @@ function StepItens({
 
   function delItem(i: number) {
     setItems((its) => its.filter((_, idx) => idx !== i));
+    
+    if (setStep2State) {
+      setStep2State((prev: any) => {
+        const nextTemp = (prev.tempPedidoItens || [])
+          .filter((icg: any) => icg.itemIdx !== i)
+          .map((icg: any) => {
+            if (icg.itemIdx > i) {
+              return { ...icg, itemIdx: icg.itemIdx - 1 };
+            }
+            return icg;
+          });
+
+        const nextSelected = new Set<number>();
+        if (prev.selectedItems instanceof Set) {
+          prev.selectedItems.forEach((idx: number) => {
+            if (idx < i) nextSelected.add(idx);
+            else if (idx > i) nextSelected.add(idx - 1);
+          });
+        }
+
+        return {
+          ...prev,
+          tempPedidoItens: nextTemp,
+          selectedItems: nextSelected,
+        };
+      });
+    }
+
+    if (setPedidos) {
+      setPedidos((prev: any[]) => {
+        return (prev || []).map((ped) => {
+          const nextItens = (ped.itensComGrades || [])
+            .filter((icg: any) => icg.itemIdx !== i)
+            .map((icg: any) => {
+              if (icg.itemIdx > i) {
+                return { ...icg, itemIdx: icg.itemIdx - 1 };
+              }
+              return icg;
+            });
+          return {
+            ...ped,
+            itensComGrades: nextItens,
+          };
+        });
+      });
+    }
   }
 
   const estVenda = calcularPrecoVenda(

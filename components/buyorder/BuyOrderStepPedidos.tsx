@@ -579,6 +579,9 @@ export default function StepPedidos({
     const updatedTempItens = [...tempPedidoItens];
 
     selectedItems.forEach((itemIdx) => {
+      const item = items[itemIdx];
+      if (!item) return;
+
       const gradeData: GradeItem = {
         letter: gradeLetter,
         cat: gradeTemplate.cat as any,
@@ -596,7 +599,7 @@ export default function StepPedidos({
             (g) => g.letter === gradeLetter,
           )
         ) {
-          itensJaVinculados.push(items[itemIdx].ref);
+          itensJaVinculados.push(item.ref);
         } else {
           updatedTempItens[existingIdx].grades.push(gradeData);
         }
@@ -656,6 +659,7 @@ export default function StepPedidos({
     // Calcular valor por loja já com desconto
     const valorPorLoja = tempPedidoItens.reduce((total, icg) => {
       const item = items[icg.itemIdx];
+      if (!item) return total;
       return total + icg.grades.reduce((s, g) => s + totPares(g.qtds) * item.custo, 0);
     }, 0) * (1 - (cab.desconto || 0) / 100);
 
@@ -814,6 +818,7 @@ export default function StepPedidos({
 
     ped.itensComGrades.forEach((icg) => {
       const item = items[icg.itemIdx];
+      if (!item) return;
       icg.grades.forEach((g) => {
         const pares = totPares(g.qtds);
         totalParesPorLoja += pares;
@@ -842,7 +847,7 @@ export default function StepPedidos({
 
   const catsPermitidas = (() => {
     if (selectedItems.size === 0) return Object.keys(CATS);
-    const modelos = Array.from(selectedItems).map((idx) => items[idx].modelo);
+    const modelos = Array.from(selectedItems).map((idx) => items[idx]?.modelo).filter(Boolean) as string[];
     const unico = new Set(modelos);
     if (unico.size === 1) {
       return CATS_COMPATIVEIS[Array.from(unico)[0]] || Object.keys(CATS);
@@ -1429,6 +1434,7 @@ export default function StepPedidos({
                 <div className="p-2 space-y-1 bg-slate-50/50">
                   {tempPedidoItens.map((icg, idx) => {
                     const item = items[icg.itemIdx];
+                    if (!item) return null;
                     const totalItem = icg.grades.reduce((s, g) => s + totPares(g.qtds), 0);
                     const gradesLabel = icg.grades.map(g => `Gr ${g.letter}`).join(' · ');
                     const isLong = item.ref.length > 10;
@@ -1507,6 +1513,7 @@ export default function StepPedidos({
                   });
                   ped.itensComGrades.forEach((icg: any) => {
                     const item = items[icg.itemIdx];
+                    if (!item) return;
                     icg.grades.forEach((g: any) => {
                       const qtd = totPares(g.qtds);
                       const valorItem = qtd * item.custo * (1 - (cab.desconto || 0) / 100);
@@ -1993,6 +2000,7 @@ function EditPedidoPopup({
     let totalValorBrutoPorLoja = 0;
     localPedido.itensComGrades.forEach((icg) => {
       const item = items[icg.itemIdx];
+      if (!item) return;
       icg.grades.forEach((g) => {
         const pares = totPares(g.qtds);
         totalParesPorLoja += pares;
@@ -2048,6 +2056,7 @@ function EditPedidoPopup({
             <div className="space-y-2">
               {localPedido.itensComGrades.map((icg) => {
                 const item = items[icg.itemIdx];
+                if (!item) return null;
                 const totalItem = icg.grades.reduce(
                   (s, g) => s + totPares(g.qtds),
                   0,
