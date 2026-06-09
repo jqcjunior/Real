@@ -173,8 +173,7 @@ const App: React.FC = () => {
     }, []); // Executa apenas uma vez
     const isAdmin = user?.role === UserRole.ADMIN;
     const [currentView, setCurrentView] = useState<string>('welcome');
-    const [gestaoComprasOpen, setGestaoComprasOpen] = useState(false);
-    const [gestaoMetasOpen, setGestaoMetasOpen] = useState(false);
+    const [activeMenu, setActiveMenu] = useState<string | null>(null);
     const [isLoading, setIsLoading] = useState(true);
     const [permissionsLoaded, setPermissionsLoaded] = useState(false);
     const [isSidebarOpen, setIsSidebarOpen] = useState(false);
@@ -1222,10 +1221,10 @@ const App: React.FC = () => {
                                     { id: 'buy_order_quota', label: 'COTA DE COMPRA', icon: DollarSign, perm: 'MODULE_BUY_ORDERS', roles: ['admin', 'manager'] },
                                     { id: 'admin_quota_extra', label: 'APROVAÇÃO COTA EXTRA', icon: CheckCircle, perm: 'MODULE_BUY_ORDERS', roles: ['admin'] },
                                     { id: 'purchase_params', label: 'PARÂMETROS DE COMPRA', icon: Settings, perm: 'MODULE_PURCHASES', roles: ['admin'] },
-                                    { id: 'reports_dashboard', label: 'RELATÓRIOS EXECUTIVOS', icon: FileText, perm: 'MODULE_BUY_ORDERS', roles: ['admin'] },
                                     { id: 'buy_order_photos', label: 'FOTOS DO PEDIDO', icon: Camera, perm: 'MODULE_BUY_ORDERS', roles: ['admin', 'manager'] }
                                 ] 
                             },
+                            { id: 'reports_dashboard', label: 'Gestão de Relatórios', icon: BarChart3, perm: 'MODULE_BUY_ORDERS', roles: ['admin', 'manager'] },
                             { id: 'dre_accounts', label: 'Plano de Contas DRE', icon: ClipboardList, perm: 'MODULE_DRE_ACCOUNTS', roles: ['admin'] },
                             { id: 'metas', label: 'Metas', icon: Target, perm: 'MODULE_METAS', roles: ['admin'] },
                             { id: 'os_demandas', label: 'Chamado', icon: ClipboardList, perm: 'MODULE_DEMANDS' }
@@ -1282,12 +1281,8 @@ const App: React.FC = () => {
                                             <div key={item.id} className="space-y-1 mt-2">
                                                 <button
                                                     onClick={() => {
-                                                        if (item.id === 'gestao-metas') {
-                                                            setGestaoMetasOpen(!gestaoMetasOpen);
-                                                            setGestaoComprasOpen(false);
-                                                        } else {
-                                                            setGestaoComprasOpen(!gestaoComprasOpen);
-                                                            setGestaoMetasOpen(false);
+                                                        setActiveMenu(prev => prev === item.id ? null : item.id);
+                                                        if (item.id === 'gestao-compras') {
                                                             setCurrentView('buy_order_dashboard');
                                                         }
                                                         if (window.innerWidth < 768) setIsSidebarOpen(false);
@@ -1300,9 +1295,9 @@ const App: React.FC = () => {
                                                 >
                                                     <item.icon size={20} /> 
                                                     <span>{item.label}</span>
-                                                    <span className="ml-auto text-[8px]">{gestaoComprasOpen ? '▼' : '▶️'}</span>
+                                                    <span className="ml-auto text-[8px]">{activeMenu === item.id ? '▼' : '▶️'}</span>
                                                 </button>
-                                                {(item.id === 'gestao-metas' ? gestaoMetasOpen : gestaoComprasOpen) && (
+                                                {(activeMenu === item.id) && (
                                                     <div className="pl-6 space-y-1 mt-1 border-l-2 border-slate-200 dark:border-slate-700 ml-6">
                                                         {visibleSubItems.map((subItem: any) => (
                                                             <button
