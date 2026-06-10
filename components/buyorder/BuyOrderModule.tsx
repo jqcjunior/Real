@@ -527,6 +527,15 @@ export default function BuyOrderModule({ user }: { user?: User }) {
         query = query.eq('user_role', roleFilter);
       }
 
+      // Filtro de Status
+      if (statusFilter) {
+        if (statusFilter === "nao_exportado") {
+          query = query.neq("status", "exportado");
+        } else {
+          query = query.eq("status", statusFilter);
+        }
+      }
+
       // ✅ FILTRO CORRETO
       if (isManager) {
         // Gerente vê apenas seus próprios pedidos
@@ -553,14 +562,16 @@ export default function BuyOrderModule({ user }: { user?: User }) {
           );
           return todasLojas.includes(userStoreNumber!);
         });
-      } else if (isAdmin && selectedLoja) {
-        // Se Admin tiver um filtro de loja selecionado na interface
+      }
+
+      if (selectedLoja) {
+        // Se houver filtro de loja na interface (para Admin ou usuários com permissão)
         finalData = finalData.filter((order) => {
           const subOrders = order.buy_order_sub_orders || [];
           const todasLojas = subOrders.flatMap(
             (sub: any) => sub.lojas_numeros || [],
-          );
-          return todasLojas.includes(selectedLoja);
+          ).map(Number);
+          return todasLojas.includes(Number(selectedLoja));
         });
       }
 
@@ -1015,6 +1026,13 @@ export default function BuyOrderModule({ user }: { user?: User }) {
       window.URL.revokeObjectURL(url);
 
       toast.success("✅ Pedido exportado com sucesso!");
+
+      // Atualizar status para "exportado" no banco
+      await supabase
+        .from("buy_orders")
+        .update({ status: "exportado" })
+        .eq("id", orderId);
+
       fetchRecentOrders();
     } catch (err: any) {
       console.error("Erro:", err);
@@ -1365,7 +1383,7 @@ function gradesArrayToObject(grades: any): Record<string, Record<string, number>
 
     // 2. Filtro de Status
     if (statusFilter) {
-      const orderStatus = order.status || (order.exported_at ? "exportado" : "confirmado");
+      const orderStatus = order.exported_at ? "exportado" : (order.status || "confirmado");
       if (statusFilter === "nao_exportado") {
         if (orderStatus === "exportado") return false;
       } else {
@@ -1373,7 +1391,12 @@ function gradesArrayToObject(grades: any): Record<string, Record<string, number>
       }
     }
 
-    // 3. Filtro de Loja
+    // 3. Filtro de Papel
+    if (roleFilter) {
+      if (order.user_role !== roleFilter) return false;
+    }
+
+    // 4. Filtro de Loja
     if (selectedLoja) {
       const subOrders = order.buy_order_sub_orders || [];
       const todasLojas = subOrders.flatMap(

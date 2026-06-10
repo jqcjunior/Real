@@ -143,9 +143,29 @@ export const printOrder = async (order: any, supabase: SupabaseClient) => {
 
   // 6. Calculate Financial totals per sub-order and grand totals
   const desconto = Number(order.desconto) || 0;
+
+  const isAcessorio = (item: any): boolean => {
+    const modelo = (item.modelo || '').toUpperCase().trim();
+    const tipo   = (item.tipo   || '').toUpperCase().trim();
+    
+    const isAcesWord = (str: string) => {
+      return str === 'ACES' || str === 'ACESSÓRIO' || str === 'ACESSORIO' || str.includes('ACESS') ||
+             str === 'BOLSA' || str === 'CINTO' || str === 'CARTEIRA' || str === 'MOCHILA' ||
+             str === 'CROSSBODY' || str === 'CROOSBODY' || str === 'CAMERA BAG' || str === 'TIRACOLO' ||
+             str.includes('BOLSA') || str.includes('CINTO') || str.includes('CARTEIRA') || str.includes('MOCHILA') ||
+             str.includes('CROSSBODY') || str.includes('CROOSBODY') || str.includes('CAMERA BAG') || str.includes('TIRACOLO');
+    };
+
+    return isAcesWord(modelo) || isAcesWord(tipo);
+  };
+
+  const hasAcessorio = loadedItems.some(i => isAcessorio(i));
+  const hasCalcado = loadedItems.some(i => !isAcessorio(i));
   
   const subTotals = loadedSubOrders.map((sub: any) => {
     let subPares = 0;
+    let subParesOnly = 0;
+    let subUnidadesOnly = 0;
     let subBruto = 0;
     let subVenda = 0;
 
@@ -157,6 +177,11 @@ export const printOrder = async (order: any, supabase: SupabaseClient) => {
         if (gradeObj && gradeObj.tamanhos) {
           const qty: number = Object.values(gradeObj.tamanhos as Record<string, any>).reduce((s: number, v: any) => s + Number(v || 0), 0);
           subPares += qty;
+          if (isAcessorio(item)) {
+            subUnidadesOnly += qty;
+          } else {
+            subParesOnly += qty;
+          }
           subBruto += qty * (Number(item.custo) || 0);
           subVenda += qty * (Number(item.preco_venda || 0));
         }
@@ -169,6 +194,8 @@ export const printOrder = async (order: any, supabase: SupabaseClient) => {
     return {
       num: sub.sub_order_num,
       pares: subPares,
+      paresOnly: subParesOnly,
+      unidadesOnly: subUnidadesOnly,
       bruto: subBruto,
       liquido: subLiquido,
       venda: subVenda,
@@ -177,6 +204,8 @@ export const printOrder = async (order: any, supabase: SupabaseClient) => {
   });
 
   const grandPares = subTotals.reduce((sum, s) => sum + s.pares, 0);
+  const grandParesOnly = subTotals.reduce((sum, s) => sum + s.paresOnly, 0);
+  const grandUnidadesOnly = subTotals.reduce((sum, s) => sum + s.unidadesOnly, 0);
   const grandBruto = subTotals.reduce((sum, s) => sum + s.bruto, 0);
   const grandLiquido = subTotals.reduce((sum, s) => sum + s.liquido, 0);
   const grandVenda = subTotals.reduce((sum, s) => sum + s.venda, 0);
@@ -222,6 +251,38 @@ export const printOrder = async (order: any, supabase: SupabaseClient) => {
     if (startFormatted && endFormatted) return `${startFormatted} a ${endFormatted}`;
     return startFormatted || endFormatted || '—';
   };
+
+  let qtyRowsHtml = '';
+  if (hasAcessorio && hasCalcado) {
+    qtyRowsHtml = `
+      <tr>
+        <td><b>PARES</b></td>
+        ${subTotals.map(s => `<td>${s.paresOnly}</td>`).join('')}
+        <td class="financial-total-col"><b>${grandParesOnly}</b></td>
+      </tr>
+      <tr>
+        <td><b>UNIDADES</b></td>
+        ${subTotals.map(s => `<td>${s.unidadesOnly}</td>`).join('')}
+        <td class="financial-total-col"><b>${grandUnidadesOnly}</b></td>
+      </tr>
+    `;
+  } else if (hasAcessorio) {
+    qtyRowsHtml = `
+      <tr>
+        <td><b>UNIDADES</b></td>
+        ${subTotals.map(s => `<td>${s.pares}</td>`).join('')}
+        <td class="financial-total-col"><b>${grandPares}</b></td>
+      </tr>
+    `;
+  } else {
+    qtyRowsHtml = `
+      <tr>
+        <td><b>PARES</b></td>
+        ${subTotals.map(s => `<td>${s.pares}</td>`).join('')}
+        <td class="financial-total-col"><b>${grandPares}</b></td>
+      </tr>
+    `;
+  }
 
   const printWindow = window.open('', '_blank');
   if (!printWindow) return;
@@ -637,11 +698,7 @@ export const printOrder = async (order: any, supabase: SupabaseClient) => {
       </tr>
     </thead>
     <tbody>
-      <tr>
-        <td><b>PARES</b></td>
-        ${subTotals.map(s => `<td>${s.pares}</td>`).join('')}
-        <td class="financial-total-col"><b>${grandPares}</b></td>
-      </tr>
+      ${qtyRowsHtml}
       <tr>
         <td><b>VL. BRUTO</b></td>
         ${subTotals.map(s => `<td>${fmt(s.bruto)}</td>`).join('')}
