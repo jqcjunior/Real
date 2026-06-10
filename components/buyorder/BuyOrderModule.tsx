@@ -1231,7 +1231,8 @@ function gradesArrayToObject(grades: any): Record<string, Record<string, number>
       await supabase.rpc("set_user_session", { p_user_id: userId });
       
       const { data, error } = await supabase.rpc('delete_buy_order', {
-        p_order_id: orderId
+        p_order_id: orderId,
+        p_user_id: userId
       });
       
       if (error) {
