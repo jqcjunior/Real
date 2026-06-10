@@ -3635,7 +3635,37 @@ function StepItens({
         className="overflow-auto flex-1 animate-fadeIn" 
         style={{ paddingBottom: "80px" }}
       >
-        {isMobile ? (
+        {items.length === 0 ? (
+          <div style={{
+            display: 'flex',
+            flexDirection: 'column',
+            alignItems: 'center',
+            justifyContent: 'center',
+            padding: '80px 20px',
+            gap: 12,
+          }}>
+            <p style={{ color: '#9ca3af', fontSize: 14 }}>Nenhum item adicionado</p>
+            <button
+              onClick={openNew}
+              style={{
+                background: '#185FA5',
+                color: '#fff',
+                border: 'none',
+                borderRadius: 8,
+                padding: '12px 24px',
+                fontSize: 15,
+                fontWeight: 600,
+                cursor: 'pointer',
+                display: 'flex',
+                alignItems: 'center',
+                gap: 8,
+                animation: 'pulse 2s ease-in-out infinite',
+              }}
+            >
+              + Adicionar Primeiro Item
+            </button>
+          </div>
+        ) : isMobile ? (
           <div className="space-y-2 p-3">
             {items.map((item, idx) => {
               const cat = getCategoryBadge(item.modelo);
@@ -3949,23 +3979,25 @@ function StepItens({
       </div>
 
       {/* Floating Action Button (FAB) for adding new items */}
-      <div className="animate-fab-entrance group fixed md:bottom-[80px] bottom-[72px] md:right-[24px] right-[16px] z-50 flex items-center">
-        {/* Tooltip (visible on hover on desktop md or larger) */}
-        <span className="hidden md:block absolute right-[68px] opacity-0 group-hover:opacity-100 bg-slate-800 text-white text-xs px-2.5 py-1.5 rounded-lg shadow-lg whitespace-nowrap transition-all duration-200 pointer-events-none transform translate-x-2 group-hover:translate-x-0 font-medium z-50">
-          Adicionar item
-        </span>
-        
-        <button
-          onClick={() => {
-            openNew();
-          }}
-          className="w-12 h-12 md:w-14 md:h-14 rounded-full bg-[#185FA5] text-white flex items-center justify-center shadow-[0_4px_12px_rgba(0,0,0,0.25)] transition-all duration-200 hover:brightness-90 active:scale-95 cursor-pointer transform hover:scale-105 active:scale-95"
-          style={{ border: "none" }}
-          aria-label="Adicionar novo item ao pedido"
-        >
-          <Plus size={24} className="text-white" />
-        </button>
-      </div>
+      {items.length > 0 && (
+        <div className="animate-fab-entrance group fixed md:bottom-[80px] bottom-[72px] md:right-[24px] right-[16px] z-50 flex items-center">
+          {/* Tooltip (visible on hover on desktop md or larger) */}
+          <span className="hidden md:block absolute right-[68px] opacity-0 group-hover:opacity-100 bg-slate-800 text-white text-xs px-2.5 py-1.5 rounded-lg shadow-lg whitespace-nowrap transition-all duration-200 pointer-events-none transform translate-x-2 group-hover:translate-x-0 font-medium z-50">
+            Adicionar item
+          </span>
+          
+          <button
+            onClick={() => {
+              openNew();
+            }}
+            className="w-12 h-12 md:w-14 md:h-14 rounded-full bg-[#185FA5] text-white flex items-center justify-center shadow-[0_4px_12px_rgba(0,0,0,0.25)] transition-all duration-200 hover:brightness-90 active:scale-95 cursor-pointer transform hover:scale-105 active:scale-95"
+            style={{ border: "none" }}
+            aria-label="Adicionar novo item ao pedido"
+          >
+            <Plus size={24} className="text-white" />
+          </button>
+        </div>
+      )}
 
       <style>{`
         @keyframes fab-entrance {
@@ -3975,6 +4007,10 @@ function StepItens({
         }
         .animate-fab-entrance {
           animation: fab-entrance 0.35s cubic-bezier(0.34, 1.56, 0.64, 1) forwards;
+        }
+        @keyframes pulse {
+          0%, 100% { transform: scale(1); box-shadow: 0 0 0 0 rgba(24,95,165,0.4); }
+          50% { transform: scale(1.05); box-shadow: 0 0 0 10px rgba(24,95,165,0); }
         }
       `}</style>
 
@@ -3993,36 +4029,43 @@ function StepItens({
           style={{
             position: "fixed",
             inset: 0,
-            zIndex: 50,
+            zIndex: 9999,
             display: "flex",
-            alignItems: "center",
+            alignItems: isMobile ? "stretch" : "center",
             justifyContent: "center",
-            background: "rgba(0,0,0,0.4)",
-            padding: isMobile ? "24px 16px" : 16,
+            background: "rgba(0,0,0,0.5)",
+            padding: isMobile ? 0 : 16,
           }}
         >
           <div
             style={{
               width: "100%",
-              maxWidth: 500,
-              maxHeight: isMobile ? "70vh" : "80vh",
-              overflowY: "auto",
-              borderRadius: 12,
+              maxWidth: isMobile ? "100%" : 550,
+              height: isMobile ? "100%" : "auto",
+              maxHeight: isMobile ? "100%" : "90vh",
+              borderRadius: isMobile ? 0 : 12,
               background: "white",
               boxShadow: "0 10px 25px -5px rgba(0, 0, 0, 0.1), 0 8px 10px -6px rgba(0, 0, 0, 0.1)",
-              margin: isMobile ? "auto 16px" : "auto",
+              margin: isMobile ? 0 : "auto",
+              display: "flex",
+              flexDirection: "column",
+              overflow: "hidden",
             }}
           >
             <div
               style={{
-                padding: "10px 16px",
-                borderBottom: "0.5px solid #e5e7eb",
+                padding: "12px 16px",
+                borderBottom: "1px solid #e5e7eb",
                 display: "flex",
                 justifyContent: "space-between",
                 alignItems: "center",
+                position: "sticky",
+                top: 0,
+                background: "#fff",
+                zIndex: 10,
               }}
             >
-              <span style={{ fontSize: 13, fontWeight: 500 }}>
+              <span style={{ fontSize: 14, fontWeight: 700 }}>
                 {editIdx >= 0 ? `Editar item ${editIdx + 1}` : "Novo item"}
               </span>
               <button
@@ -4031,14 +4074,15 @@ function StepItens({
                   border: "none",
                   background: "transparent",
                   cursor: "pointer",
-                  fontSize: 16,
-                  color: "#6b7280",
+                  fontSize: 22,
+                  color: "#374151",
+                  padding: "4px 8px",
                 }}
               >
                 ✕
               </button>
             </div>
-            <div style={{ padding: 16 }}>
+            <div style={{ padding: 16, flex: 1, overflowY: "auto" }}>
               {/* LINHA 1: Referência ocupa linha inteira */}
               <div style={{ marginBottom: 10 }}>
                 <label
@@ -4507,7 +4551,7 @@ function StepItens({
                 position: "sticky",
                 bottom: 0,
                 background: "white",
-                padding: "12px 16px",
+                padding: "16px",
                 borderTop: "1px solid #e5e7eb",
                 display: "flex",
                 justifyContent: "flex-end",
@@ -4517,13 +4561,15 @@ function StepItens({
               <button
                 onClick={() => setShowPopup(false)}
                 style={{
-                  height: 28,
-                  padding: "0 14px",
-                  borderRadius: 5,
-                  fontSize: 12,
+                  height: isMobile ? 38 : 30,
+                  padding: "0 16px",
+                  borderRadius: 6,
+                  fontSize: 13,
                   cursor: "pointer",
-                  border: "0.5px solid #d1d5db",
+                  border: "1px solid #d1d5db",
                   background: "transparent",
+                  color: "#374151",
+                  flex: isMobile ? 1 : "initial",
                 }}
               >
                 Cancelar
@@ -4536,15 +4582,16 @@ function StepItens({
                 onClick={saveItem}
                 disabled={isCalculating}
                 style={{
-                  height: 28,
-                  padding: "0 14px",
-                  borderRadius: 5,
-                  fontSize: 12,
-                  fontWeight: 500,
+                  height: isMobile ? 38 : 30,
+                  padding: "0 16px",
+                  borderRadius: 6,
+                  fontSize: 13,
+                  fontWeight: 600,
                   cursor: "pointer",
                   border: "none",
                   background: isCalculating ? "#9ca3af" : "#185FA5",
                   color: "#fff",
+                  flex: isMobile ? 1 : "initial",
                 }}
               >
                 {isCalculating
