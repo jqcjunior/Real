@@ -440,6 +440,11 @@ const AdminSurveyManagement: React.FC<AdminSurveyManagementProps> = ({
                 </div>
 
                 <h3 className="font-semibold text-slate-900 dark:text-white leading-snug mb-1 line-clamp-2">
+                  {(survey as any).numero && (
+                    <span className="text-xs font-bold text-blue-600 mr-1.5">
+                      #{(survey as any).numero}
+                    </span>
+                  )}
                   {survey.title}
                 </h3>
                 <p className="text-xs text-slate-400 line-clamp-2">
