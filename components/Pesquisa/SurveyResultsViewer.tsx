@@ -13,7 +13,11 @@ import {
   MessageSquare,
   Star,
   ArrowLeft,
-  Loader2
+  Loader2,
+  Package,
+  ShoppingBag,
+  Check,
+  X
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 import { 
@@ -114,6 +118,56 @@ const SurveyResultsViewer: React.FC<SurveyResultsViewerProps> = ({ survey, curre
     const questionAnswers = responses
       .map(r => (r as any).responses?.[question.id])
       .filter(v => v !== undefined && v !== null);
+
+    if (question.question_type === 'product_item') {
+      const product = (question.options && typeof question.options === 'object' && !Array.isArray(question.options))
+        ? question.options as Record<string, any>
+        : {};
+      
+      let simCount = 0;
+      let naoCount = 0;
+      const gradeAgregada: Record<string, number> = {};
+      let totalPares = 0;
+      const motivos: string[] = [];
+
+      questionAnswers.forEach(v => {
+        if (typeof v === 'object' && v !== null) {
+          if (v.value === 'SIM') {
+            simCount++;
+            if (v.grade && typeof v.grade === 'object') {
+              Object.entries(v.grade).forEach(([tam, qty]) => {
+                gradeAgregada[tam] = (gradeAgregada[tam] || 0) + Number(qty);
+              });
+            }
+            totalPares += v.total_pares || 0;
+          } else {
+            naoCount++;
+            if (v.motivo) motivos.push(v.motivo);
+          }
+        } else if (v === 'SIM') {
+          simCount++;
+        } else if (v === 'NÃO') {
+          naoCount++;
+        }
+      });
+
+      const custardPares = product.preco_custo ? totalPares * Number(product.preco_custo) : 0;
+      const vendaPares = product.preco_venda ? totalPares * Number(product.preco_venda) : 0;
+
+      return {
+        type: 'product_item',
+        product,
+        simCount,
+        naoCount,
+        gradeAgregada,
+        totalPares,
+        custoPares: custardPares,
+        vendaPares,
+        motivos,
+        total: questionAnswers.length,
+      };
+    }
+
     if (question.question_type === 'rating') {
       const vals = questionAnswers.map(v => Number(v)).filter(n => !isNaN(n));
       const avg = vals.length > 0 ? vals.reduce((a, b) => a + b, 0) / vals.length : 0;
@@ -154,7 +208,13 @@ const SurveyResultsViewer: React.FC<SurveyResultsViewerProps> = ({ survey, curre
       ...Object.fromEntries(questions.map(q => {
         const v = (r as any).responses?.[q.id];
         if (!v) return [q.question_text, ''];
-        if (typeof v === 'object') return [q.question_text, `${v.value}${v.motivo ? ' - ' + v.motivo : ''}`];
+        if (typeof v === 'object') {
+          if (q.question_type === 'product_item') {
+            const grade = v.grade ? Object.entries(v.grade).map(([t, qty]) => `${t}:${qty}`).join(' ') : '';
+            return [q.question_text, `${v.value} | ${v.total_pares || 0} pares | ${grade}`];
+          }
+          return [q.question_text, `${v.value}${v.motivo ? ' - ' + v.motivo : ''}`];
+        }
         return [q.question_text, String(v)];
       }))
     }));
@@ -294,6 +354,140 @@ const SurveyResultsViewer: React.FC<SurveyResultsViewerProps> = ({ survey, curre
                       )}
                     </div>
                   )}
+
+                  {/* PRODUCT ITEM */}
+                  {q.question_type === 'product_item' && (stats as any).type === 'product_item' && (() => {
+                    const s = stats as any;
+                    const product = s.product || {};
+                    const pctSim = s.total > 0 ? Math.round((s.simCount / s.total) * 100) : 0;
+                    
+                    return (
+                      <div className="space-y-4">
+                        {/* Card do produto com foto */}
+                        <div className="flex gap-4 items-start">
+                          {product.image_url ? (
+                            <img 
+                              src={product.image_url} 
+                              alt={product.descricao || 'Produto'}
+                              className="w-24 h-24 object-contain bg-slate-50/50 rounded-xl border border-slate-100 dark:border-slate-800 flex-shrink-0"
+                              referrerPolicy="no-referrer"
+                            />
+                          ) : (
+                            <div className="w-24 h-24 bg-slate-50 dark:bg-slate-800 rounded-xl border border-slate-100 dark:border-slate-800 flex items-center justify-center flex-shrink-0">
+                              <Package size={24} className="text-slate-300" />
+                            </div>
+                          )}
+                          <div className="flex-1 min-w-0">
+                            <div className="flex items-center gap-2 flex-wrap">
+                              <p className="text-sm font-black text-slate-900 dark:text-white">{product.marca || '—'}</p>
+                              {product.categoria && (
+                                <span className={`text-[9px] font-bold px-2 py-0.5 rounded-md ${
+                                  product.categoria === 'masculino' ? 'bg-blue-50 text-blue-600 dark:bg-blue-950/40 dark:text-blue-400' :
+                                  product.categoria === 'feminino' ? 'bg-pink-50 text-pink-600 dark:bg-pink-950/40 dark:text-pink-400' :
+                                  product.categoria === 'infantil' ? 'bg-yellow-50 text-yellow-600 dark:bg-yellow-950/40 dark:text-yellow-400' :
+                                  'bg-purple-50 text-purple-600 dark:bg-purple-950/40 dark:text-purple-400'
+                                }`}>
+                                  {product.categoria.toUpperCase()}
+                                </span>
+                              )}
+                            </div>
+                            <p className="text-[10px] text-slate-400 mt-0.5">
+                              Ref: {product.referencia || '—'} · Cor: {product.cor || '—'}
+                            </p>
+                            {product.descricao && (
+                              <p className="text-xs text-slate-500 mt-1">{product.descricao}</p>
+                            )}
+                            <div className="flex items-center gap-3 mt-2">
+                              {product.preco_custo && (
+                                <span className="text-xs text-slate-400">
+                                  Custo: <span className="font-bold">R$ {Number(product.preco_custo).toFixed(2).replace('.', ',')}</span>
+                                </span>
+                              )}
+                              {product.preco_venda && (
+                                <span className="text-xs text-green-600">
+                                  Venda: <span className="font-bold">R$ {Number(product.preco_venda).toFixed(2).replace('.', ',')}</span>
+                                </span>
+                              )}
+                            </div>
+                          </div>
+                        </div>
+
+                        {/* Barra de aprovação SIM/NÃO */}
+                        <div className="bg-slate-50 dark:bg-slate-805/40 dark:bg-slate-800 rounded-xl p-4 space-y-3">
+                          <div className="flex items-center justify-between">
+                            <span className="text-[9px] font-black uppercase tracking-widest text-slate-400">Aprovação</span>
+                            <span className="text-xs font-bold text-slate-500">{s.total} resposta{s.total !== 1 ? 's' : ''}</span>
+                          </div>
+                          <div className="flex items-center gap-3">
+                            <div className="flex items-center gap-1.5">
+                              <span className="w-3 h-3 bg-green-500 rounded-full" />
+                              <span className="text-xs font-bold text-green-600">SIM {s.simCount}</span>
+                            </div>
+                            <div className="flex-1 h-3 bg-slate-200 dark:bg-slate-700 rounded-full overflow-hidden flex">
+                              <div className="h-full bg-green-500 rounded-l-full transition-all" style={{ width: `${pctSim}%` }} />
+                              <div className="h-full bg-red-400 rounded-r-full transition-all" style={{ width: `${100 - pctSim}%` }} />
+                            </div>
+                            <div className="flex items-center gap-1.5">
+                              <span className="text-xs font-bold text-red-500">NÃO {s.naoCount}</span>
+                              <span className="w-3 h-3 bg-red-400 rounded-full" />
+                            </div>
+                          </div>
+                        </div>
+
+                        {/* Grade agregada */}
+                        {Object.keys(s.gradeAgregada).length > 0 && (
+                          <div className="bg-slate-50 dark:bg-slate-800 rounded-xl p-4 space-y-3">
+                            <div className="flex items-center justify-between">
+                              <span className="text-[9px] font-black uppercase tracking-widest text-slate-400">Grade Solicitada</span>
+                              <span className="text-xs font-bold text-green-600 bg-green-50 dark:bg-green-950/40 px-2 py-0.5 rounded-md">
+                                {s.totalPares} {product.categoria === 'acessorio' ? 'unidades' : 'pares'}
+                              </span>
+                            </div>
+                            <div className="flex flex-wrap gap-2">
+                              {Object.entries(s.gradeAgregada)
+                                .sort(([a], [b]) => Number(a) - Number(b))
+                                .map(([tam, qty]) => (
+                                  <div key={tam} className="flex flex-col items-center bg-white dark:bg-slate-900 rounded-lg border border-slate-200 dark:border-slate-700 px-3 py-2 min-w-[48px]">
+                                    <span className="text-[10px] font-bold text-slate-400">{tam}</span>
+                                    <span className="text-sm font-black text-slate-900 dark:text-white">{qty as number}</span>
+                                  </div>
+                                ))}
+                            </div>
+                          </div>
+                        )}
+
+                        {/* Totais financeiros */}
+                        {(s.custoPares > 0 || s.vendaPares > 0) && (
+                          <div className="grid grid-cols-2 gap-3">
+                            <div className="bg-slate-50 dark:bg-slate-800 rounded-xl p-3 text-center">
+                              <p className="text-[9px] font-black uppercase tracking-widest text-slate-400 mb-1">Total Custo</p>
+                              <p className="text-lg font-black text-slate-600 dark:text-slate-300">
+                                R$ {s.custoPares.toFixed(2).replace('.', ',').replace(/\B(?=(\d{3})+(?!\d))/g, '.')}
+                              </p>
+                            </div>
+                            <div className="bg-green-50 dark:bg-green-900/20 rounded-xl p-3 text-center">
+                              <p className="text-[9px] font-black uppercase tracking-widest text-green-500 mb-1">Total Venda</p>
+                              <p className="text-lg font-black text-green-600">
+                                R$ {s.vendaPares.toFixed(2).replace('.', ',').replace(/\B(?=(\d{3})+(?!\d))/g, '.')}
+                              </p>
+                            </div>
+                          </div>
+                        )}
+
+                        {/* Motivos do NÃO */}
+                        {s.motivos.length > 0 && (
+                          <div className="pt-2 border-t border-slate-100 dark:border-slate-800">
+                            <p className="text-[9px] font-black uppercase tracking-widest text-slate-400 mb-2 flex items-center gap-1">
+                              <MessageSquare size={11} /> {s.motivos.length} motivo(s) da recusa
+                            </p>
+                            {s.motivos.map((m: string, i: number) => (
+                              <p key={i} className="text-xs text-slate-500 italic bg-slate-50 dark:bg-slate-800 rounded-lg px-3 py-2 mb-1">"{m}"</p>
+                            ))}
+                          </div>
+                        )}
+                      </div>
+                    );
+                  })()}
                 </div>
               );
             })}
@@ -324,7 +518,19 @@ const SurveyResultsViewer: React.FC<SurveyResultsViewerProps> = ({ survey, curre
                     <td className="p-3 text-slate-400">{new Date(r.created_at).toLocaleDateString('pt-BR')}</td>
                     {questions.map(q => {
                       const v = r.responses?.[q.id];
-                      const txt = !v ? '—' : typeof v === 'object' ? v.value : String(v);
+                      let txt = '—';
+                      if (v) {
+                        if (typeof v === 'object' && v !== null) {
+                          if (q.question_type === 'product_item') {
+                            const pares = v.total_pares || 0;
+                            txt = v.value === 'SIM' ? `✅ SIM (${pares}p)` : '❌ NÃO';
+                          } else {
+                            txt = v.value + (v.motivo ? ' — ' + v.motivo : '');
+                          }
+                        } else {
+                          txt = String(v);
+                        }
+                      }
                       return <td key={q.id} className="p-3 text-slate-500 truncate">{txt}</td>;
                     })}
                   </tr>

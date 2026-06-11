@@ -64,6 +64,22 @@ const SurveyPublicPage: React.FC<Props> = ({ token }) => {
     fetchSurvey();
   }, [token]);
 
+  useEffect(() => {
+    if (isCompleted) {
+      const timer = setTimeout(() => {
+        // Tenta voltar para a página da loja, senão fecha
+        const urlParams = new URLSearchParams(window.location.search);
+        const lojaNum = urlParams.get('loja');
+        if (lojaNum) {
+          window.location.href = '/loja/' + lojaNum;
+        } else {
+          window.location.href = '/';
+        }
+      }, 5000);
+      return () => clearTimeout(timer);
+    }
+  }, [isCompleted]);
+
   // ── LOADING ──────────────────────────────────────────────
   if (isLoading) {
     return (
@@ -119,6 +135,27 @@ const SurveyPublicPage: React.FC<Props> = ({ token }) => {
                 <MapPin size={10} /> {storeName}
               </p>
             )}
+          </div>
+
+          {/* Countdown + botão fechar */}
+          <div className="mt-6 flex flex-col items-center gap-3">
+            <button
+              onClick={() => {
+                const urlParams = new URLSearchParams(window.location.search);
+                const lojaNum = urlParams.get('loja');
+                if (lojaNum) {
+                  window.location.href = '/loja/' + lojaNum;
+                } else {
+                  window.location.href = '/';
+                }
+              }}
+              className="px-6 py-3 bg-blue-600 hover:bg-blue-700 text-white rounded-2xl text-sm font-semibold transition-all shadow-lg shadow-blue-200"
+            >
+              Fechar
+            </button>
+            <p className="text-xs text-slate-400">
+              Esta página fechará automaticamente em instantes
+            </p>
           </div>
         </div>
       </div>

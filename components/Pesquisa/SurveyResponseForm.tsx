@@ -25,12 +25,87 @@ interface SurveyResponseFormProps {
   onComplete: () => void;
 }
 
-const GRADE_TAMANHOS: Record<string, string[]> = {
-  masculino: ['37','38','39','40','41','42','43','44','45'],
-  feminino:  ['33','34','35','36','37','38','39','40'],
-  infantil:  ['17','18','19','20','21','22','23','24','25','26','27','28','29','30','31','32','33','34'],
-  acessorio: ['UNICO'],
-};
+const ACESSORIO_TAMANHOS = ['UN', 'P', 'M', 'G', 'GG'];
+
+const gradeTemplates = [
+  // Masculino
+  {
+    id: 'masc_a',
+    categoria: 'masculino',
+    letra: 'A',
+    nome: 'Grade Tradicional Masc',
+    total_pares: 12,
+    tamanhos: { '37': 1, '38': 1, '39': 2, '40': 2, '41': 2, '42': 2, '43': 1, '44': 1 }
+  },
+  {
+    id: 'masc_b',
+    categoria: 'masculino',
+    letra: 'B',
+    nome: 'Grade Altos Masc',
+    total_pares: 12,
+    tamanhos: { '39': 1, '40': 2, '41': 3, '42': 3, '43': 2, '44': 1 }
+  },
+  {
+    id: 'masc_c',
+    categoria: 'masculino',
+    letra: 'C',
+    nome: 'Grade Compacta Masc',
+    total_pares: 6,
+    tamanhos: { '38': 1, '39': 1, '40': 1, '41': 1, '42': 1, '43': 1 }
+  },
+
+  // Feminino
+  {
+    id: 'fem_a',
+    categoria: 'feminino',
+    letra: 'A',
+    nome: 'Grade Tradicional Fem',
+    total_pares: 12,
+    tamanhos: { '34': 1, '35': 2, '36': 3, '37': 3, '38': 2, '39': 1 }
+  },
+  {
+    id: 'fem_b',
+    categoria: 'feminino',
+    letra: 'B',
+    nome: 'Grade Baixos Fem',
+    total_pares: 12,
+    tamanhos: { '33': 1, '34': 2, '35': 3, '36': 3, '37': 2, '38': 1 }
+  },
+  {
+    id: 'fem_c',
+    categoria: 'feminino',
+    letra: 'C',
+    nome: 'Grade Compacta Fem',
+    total_pares: 6,
+    tamanhos: { '34': 1, '35': 1, '36': 1, '37': 1, '38': 1, '39': 1 }
+  },
+
+  // Infantil
+  {
+    id: 'inf_a',
+    categoria: 'infantil',
+    letra: 'A',
+    nome: 'Grade Infantil Peq',
+    total_pares: 10,
+    tamanhos: { '17': 1, '18': 1, '19': 2, '20': 2, '21': 2, '22': 1, '23': 1 }
+  },
+  {
+    id: 'inf_b',
+    categoria: 'infantil',
+    letra: 'B',
+    nome: 'Grade Infantil Med',
+    total_pares: 10,
+    tamanhos: { '24': 1, '25': 2, '26': 2, '27': 2, '28': 2, '29': 1 }
+  },
+  {
+    id: 'inf_c',
+    categoria: 'infantil',
+    letra: 'C',
+    nome: 'Grade Infantil Gde',
+    total_pares: 10,
+    tamanhos: { '30': 1, '31': 2, '32': 2, '33': 3, '34': 2 }
+  }
+];
 
 const SurveyResponseForm: React.FC<SurveyResponseFormProps> = ({
   survey,
@@ -42,7 +117,7 @@ const SurveyResponseForm: React.FC<SurveyResponseFormProps> = ({
   const [questions, setQuestions] = useState<SurveyQuestion[]>([]);
   const [answers, setAnswers] = useState<Record<string, any>>({});
   const [motivos, setMotivos] = useState<Record<string, string>>({});
-  const [grades, setGrades] = useState<Record<string, Record<string, number>>>({});
+  const [grades, setGrades] = useState<Record<string, any>>({});
   const [respondentInfo, setRespondentInfo] = useState({ name: '', email: '', phone: '' });
   const [isAnonymous, setIsAnonymous] = useState(false);
 
@@ -92,25 +167,6 @@ const SurveyResponseForm: React.FC<SurveyResponseFormProps> = ({
     }
   };
 
-  const handleGradeChange = (questionId: string, tamanho: string, delta: number) => {
-    setGrades(prev => {
-      const current = prev[questionId] || {};
-      const newQty = Math.max(0, (current[tamanho] || 0) + delta);
-      const updated = { ...current };
-      if (newQty === 0) {
-        delete updated[tamanho];
-      } else {
-        updated[tamanho] = newQty;
-      }
-      return { ...prev, [questionId]: updated };
-    });
-  };
-
-  const getTotalPares = (questionId: string): number => {
-    const g = grades[questionId] || {};
-    return Object.values(g).reduce((sum, qty) => sum + qty, 0);
-  };
-
   const handleChooseAnonymous = () => {
     setIsAnonymous(true);
     setRespondentInfo({ name: '', email: '', phone: '' });
@@ -143,10 +199,11 @@ const SurveyResponseForm: React.FC<SurveyResponseFormProps> = ({
         
         if (question?.question_type === 'product_item') {
           // Produto: salvar resposta + grade selecionada
+          const gradeInfo = grades[qId] || {};
           finalResponses[qId] = {
             value: val,
-            grade: val === 'SIM' ? (grades[qId] || {}) : {},
-            total_pares: val === 'SIM' ? getTotalPares(qId) : 0,
+            grade: val === 'SIM' ? (gradeInfo.tamanhos || {}) : {},
+            total_pares: val === 'SIM' ? (gradeInfo.total_pares || 0) : 0,
             ...(val === 'NÃO' && motivos[qId] ? { motivo: motivos[qId] } : {}),
           };
         } else if (val === 'NÃO' && motivos[qId]) {
@@ -604,7 +661,7 @@ const SurveyResponseForm: React.FC<SurveyResponseFormProps> = ({
                           ))}
                         </div>
 
-                        {/* Grade de tamanhos — aparece ao selecionar SIM */}
+                        {/* Grade — aparece ao selecionar SIM */}
                         <AnimatePresence>
                           {answers[currentQuestion.id] === 'SIM' && product.categoria && (
                             <motion.div
@@ -614,64 +671,132 @@ const SurveyResponseForm: React.FC<SurveyResponseFormProps> = ({
                               className="overflow-hidden"
                             >
                               <div className="mt-3 bg-white rounded-2xl border-2 border-green-100 p-4 space-y-3">
-                                <div className="flex items-center justify-between">
-                                  <p className="text-sm font-semibold text-slate-700">
-                                    Selecione a grade desejada
-                                  </p>
-                                  <span className="text-xs font-bold text-green-600 bg-green-50 px-2 py-1 rounded-lg">
-                                    {getTotalPares(currentQuestion.id)} {product.categoria === 'acessorio' ? 'un.' : 'pares'}
-                                  </span>
-                                </div>
-                                
-                                <div className={`grid gap-2 ${
-                                  product.categoria === 'acessorio' 
-                                    ? 'grid-cols-1' 
-                                    : product.categoria === 'infantil' 
-                                    ? 'grid-cols-6' 
-                                    : 'grid-cols-5'
-                                }`}>
-                                  {(GRADE_TAMANHOS[product.categoria] || GRADE_TAMANHOS['masculino']).map(tam => {
-                                    const qty = (grades[currentQuestion.id] || {})[tam] || 0;
-                                    return (
-                                      <div key={tam} className="flex flex-col items-center">
-                                        <span className={`text-[10px] font-semibold mb-1 ${
-                                          qty > 0 ? 'text-green-600' : 'text-slate-400'
-                                        }`}>
-                                          {tam}
-                                        </span>
-                                        <div className="flex items-center gap-0.5">
-                                          <button
-                                            type="button"
-                                            onClick={() => handleGradeChange(currentQuestion.id, tam, -1)}
-                                            disabled={qty === 0}
-                                            className="w-7 h-7 rounded-lg bg-slate-100 text-slate-400 hover:bg-red-50 hover:text-red-500 disabled:opacity-30 flex items-center justify-center text-sm font-bold transition-all"
-                                          >
-                                            −
-                                          </button>
-                                          <span className={`w-7 h-7 flex items-center justify-center text-xs font-bold rounded-lg ${
-                                            qty > 0 
-                                              ? 'bg-green-50 text-green-700 border border-green-200' 
-                                              : 'text-slate-300'
-                                          }`}>
-                                            {qty}
-                                          </span>
-                                          <button
-                                            type="button"
-                                            onClick={() => handleGradeChange(currentQuestion.id, tam, 1)}
-                                            className="w-7 h-7 rounded-lg bg-slate-100 text-slate-500 hover:bg-green-50 hover:text-green-600 flex items-center justify-center text-sm font-bold transition-all"
-                                          >
-                                            +
-                                          </button>
-                                        </div>
-                                      </div>
-                                    );
-                                  })}
-                                </div>
 
-                                {getTotalPares(currentQuestion.id) === 0 && (
-                                  <p className="text-[11px] text-amber-500 text-center">
-                                    Selecione ao menos 1 tamanho para confirmar
-                                  </p>
+                                {/* ── ACESSÓRIO: entrada manual ── */}
+                                {product.categoria === 'acessorio' ? (
+                                  <>
+                                    <div className="flex items-center justify-between">
+                                      <p className="text-sm font-semibold text-slate-700">
+                                        Informe a quantidade por tamanho
+                                      </p>
+                                      <span className="text-xs font-bold text-green-600 bg-green-50 px-2 py-1 rounded-lg">
+                                        {(Object.values(grades[currentQuestion.id]?.tamanhos || {}) as any[]).reduce((s: number, v: any) => s + Number(v || 0), 0)} un.
+                                      </span>
+                                    </div>
+                                    <div className="grid grid-cols-5 gap-2">
+                                      {ACESSORIO_TAMANHOS.map(tam => {
+                                        const qty = (grades[currentQuestion.id]?.tamanhos || {})[tam] || 0;
+                                        return (
+                                          <div key={tam} className="flex flex-col items-center gap-1">
+                                            <span className={`text-xs font-bold ${qty > 0 ? 'text-green-600' : 'text-slate-400'}`}>
+                                              {tam}
+                                            </span>
+                                            <div className="flex items-center gap-0.5">
+                                              <button
+                                                type="button"
+                                                onClick={() => {
+                                                  const current = grades[currentQuestion.id]?.tamanhos || {};
+                                                  const newQty = Math.max(0, (current[tam] || 0) - 1);
+                                                  const updated = { ...current };
+                                                  if (newQty === 0) delete updated[tam]; else updated[tam] = newQty;
+                                                  const total = Object.values(updated).reduce((s: number, v: any) => s + Number(v), 0);
+                                                  setGrades(prev => ({
+                                                    ...prev,
+                                                    [currentQuestion.id]: { tamanhos: updated, total_pares: total, letra: 'CUSTOM' }
+                                                  }));
+                                                }}
+                                                disabled={qty === 0}
+                                                className="w-8 h-8 rounded-lg bg-slate-100 text-slate-400 hover:bg-red-50 hover:text-red-500 disabled:opacity-30 flex items-center justify-center text-sm font-bold transition-all"
+                                              >−</button>
+                                              <span className={`w-8 h-8 flex items-center justify-center text-sm font-bold rounded-lg ${
+                                                qty > 0 ? 'bg-green-50 text-green-700 border border-green-200' : 'text-slate-300'
+                                              }`}>{qty}</span>
+                                              <button
+                                                type="button"
+                                                onClick={() => {
+                                                  const current = grades[currentQuestion.id]?.tamanhos || {};
+                                                  const updated = { ...current, [tam]: (current[tam] || 0) + 1 };
+                                                  const total = Object.values(updated).reduce((s: number, v: any) => s + Number(v), 0);
+                                                  setGrades(prev => ({
+                                                    ...prev,
+                                                    [currentQuestion.id]: { tamanhos: updated, total_pares: total, letra: 'CUSTOM' }
+                                                  }));
+                                                }}
+                                                className="w-8 h-8 rounded-lg bg-slate-100 text-slate-500 hover:bg-green-50 hover:text-green-600 flex items-center justify-center text-sm font-bold transition-all"
+                                              >+</button>
+                                            </div>
+                                          </div>
+                                        );
+                                      })}
+                                    </div>
+                                  </>
+                                ) : (
+                                  /* ── CALÇADO: grades pré-definidas (A, B, C...) ── */
+                                  <>
+                                    <p className="text-sm font-semibold text-slate-700">
+                                      Escolha a grade desejada
+                                    </p>
+                                    <div className="space-y-2">
+                                      {gradeTemplates
+                                        .filter(t => t.categoria === product.categoria)
+                                        .map(template => {
+                                          const isSelected = grades[currentQuestion.id]?.templateId === template.id;
+                                          const tamanhos = template.tamanhos || {};
+                                          const tamanhosList = Object.entries(tamanhos)
+                                            .sort(([a], [b]) => Number(a) - Number(b))
+                                            .map(([tam, qty]) => `${tam}(${qty})`)
+                                            .join('  ');
+                                          
+                                          return (
+                                            <button
+                                              key={template.id}
+                                              type="button"
+                                              onClick={() => {
+                                                setGrades(prev => ({
+                                                  ...prev,
+                                                  [currentQuestion.id]: {
+                                                    templateId: template.id,
+                                                    letra: template.letra,
+                                                    tamanhos: template.tamanhos,
+                                                    total_pares: template.total_pares,
+                                                  }
+                                                }));
+                                              }}
+                                              className={`w-full text-left p-4 rounded-xl border-2 transition-all ${
+                                                isSelected
+                                                  ? 'border-green-500 bg-green-50 shadow-md shadow-green-100'
+                                                  : 'border-slate-100 bg-white hover:border-slate-300'
+                                              }`}
+                                            >
+                                              <div className="flex items-center justify-between mb-1.5">
+                                                <div className="flex items-center gap-2">
+                                                  <span className={`w-8 h-8 rounded-lg flex items-center justify-center text-sm font-black ${
+                                                    isSelected ? 'bg-green-500 text-white' : 'bg-slate-100 text-slate-400'
+                                                  }`}>{template.letra}</span>
+                                                  <span className={`text-sm font-bold ${
+                                                    isSelected ? 'text-green-700' : 'text-slate-700'
+                                                  }`}>{template.nome}</span>
+                                                </div>
+                                                <span className={`text-xs font-bold px-2 py-1 rounded-lg ${
+                                                  isSelected ? 'bg-green-500 text-white' : 'bg-slate-100 text-slate-500'
+                                                }`}>{template.total_pares} pares</span>
+                                              </div>
+                                              <p className={`text-[11px] font-mono tracking-wide ${
+                                                isSelected ? 'text-green-600' : 'text-slate-400'
+                                              }`}>{tamanhosList}</p>
+                                            </button>
+                                          );
+                                        })}
+                                    </div>
+                                    {grades[currentQuestion.id]?.templateId && (
+                                      <div className="flex items-center gap-2 pt-2 border-t border-green-100">
+                                        <Check size={14} className="text-green-500" />
+                                        <span className="text-xs font-semibold text-green-600">
+                                          Grade {grades[currentQuestion.id]?.letra} selecionada — {grades[currentQuestion.id]?.total_pares} pares
+                                        </span>
+                                      </div>
+                                    )}
+                                  </>
                                 )}
                               </div>
                             </motion.div>
