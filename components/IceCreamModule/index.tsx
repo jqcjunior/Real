@@ -109,8 +109,8 @@ const IceCreamModule: React.FC<IceCreamModuleProps> = ({
     // ═══════════════════════════════════════════════════════════════
     // 🔄 LOAD DATA FOR THE USER PROFILE
     // ═══════════════════════════════════════════════════════════════
-    const loadIceCreamData = async () => {
-        setIsLoading(true);
+    const loadIceCreamData = async (silent = false) => {
+        if (!silent) setIsLoading(true);
         try {
             const now = new Date();
             const isSorveteRole = user?.role === UserRole.ICE_CREAM;
@@ -275,7 +275,7 @@ const IceCreamModule: React.FC<IceCreamModuleProps> = ({
         } catch (e) {
             console.error('❌ Erro carregando dados de Sorvete:', e);
         } finally {
-            setIsLoading(false);
+            if (!silent) setIsLoading(false);
         }
     };
 
@@ -285,8 +285,7 @@ const IceCreamModule: React.FC<IceCreamModuleProps> = ({
     }, [effectiveStoreId]);
 
     const fetchData = useCallback(async (silent = false) => {
-        if (!silent) setIsLoading(true);
-        await loadIceCreamData();
+        await loadIceCreamData(silent);
     }, [effectiveStoreId]);
 
     // ═══════════════════════════════════════════════════════════════
