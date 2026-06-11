@@ -6,7 +6,8 @@ import {
   Plus, Search, Edit3, Trash2, Link, BarChart3, X, Save,
   ChevronRight, ChevronLeft, Check, PlusCircle, Trash,
   GripVertical, ShieldAlert, UserCheck, Users, Smartphone,
-  Copy, ToggleLeft, ToggleRight, Eye, EyeOff, Loader2
+  Copy, ToggleLeft, ToggleRight, Eye, EyeOff, Loader2,
+  Camera, Upload, ImageIcon, Package
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 import NfcPagesManager from './NfcPagesManager';
@@ -26,6 +27,14 @@ const QUESTION_TYPES = [
   { value: 'rating',          label: 'Avaliação (1-5 estrelas)' },
   { value: 'yes_no',          label: 'Sim / Não' },
   { value: 'multiple_choice', label: 'Múltipla escolha' },
+  { value: 'product_item',    label: '📦 Pesquisa de Item' },
+];
+
+const PRODUCT_CATEGORIES = [
+  { value: 'masculino',  label: 'Masculino' },
+  { value: 'feminino',   label: 'Feminino' },
+  { value: 'infantil',   label: 'Infantil' },
+  { value: 'acessorio',  label: 'Acessório' },
 ];
 
 const generateToken = (): string => {
@@ -62,6 +71,7 @@ const AdminSurveyManagement: React.FC<AdminSurveyManagementProps> = ({
   const [duplicatingSurvey, setDuplicatingSurvey] = useState<Survey | null>(null);
   const [duplicateTargetStoreIds, setDuplicateTargetStoreIds] = useState<string[]>([]);
   const [isDuplicating, setIsDuplicating] = useState(false);
+  const [confirmDeleteId, setConfirmDeleteId] = useState<string | null>(null);
 
   useEffect(() => { fetchSurveys(); }, []);
 
@@ -86,15 +96,12 @@ const AdminSurveyManagement: React.FC<AdminSurveyManagementProps> = ({
   };
 
   const handleDelete = async (id: string) => {
-    if (!confirm('Excluir esta pesquisa?')) return;
     try {
       await ensureSession();
-      await supabase.from('survey_questions').delete().eq('survey_id', id);
-      await supabase.from('survey_responses').delete().eq('survey_id', id);
-      await supabase.from('survey_analytics').delete().eq('survey_id', id);
       const { error } = await supabase.from('surveys').delete().eq('id', id);
       if (error) throw error;
       toast.success('Pesquisa excluída');
+      setConfirmDeleteId(null);
       fetchSurveys();
     } catch (err: any) {
       toast.error('Erro ao excluir: ' + err.message);
@@ -455,13 +462,30 @@ const AdminSurveyManagement: React.FC<AdminSurveyManagementProps> = ({
                   >
                     <Copy size={15} />
                   </button>
-                  <button
-                    onClick={() => handleDelete(survey.id)}
-                    className="p-2 rounded-lg border border-slate-200 dark:border-slate-700 text-slate-500 hover:text-red-500 hover:border-red-200 transition-all"
-                    title="Excluir"
-                  >
-                    <Trash2 size={15} />
-                  </button>
+                  {confirmDeleteId === survey.id ? (
+                    <div className="flex items-center gap-1">
+                      <button
+                        onClick={() => handleDelete(survey.id)}
+                        className="px-2 py-1.5 rounded-lg bg-red-500 text-white text-[10px] font-bold hover:bg-red-600 transition-all"
+                      >
+                        Confirmar
+                      </button>
+                      <button
+                        onClick={() => setConfirmDeleteId(null)}
+                        className="px-2 py-1.5 rounded-lg border border-slate-200 dark:border-slate-700 text-slate-400 text-[10px] font-bold hover:bg-slate-50 dark:hover:bg-slate-800 transition-all"
+                      >
+                        Não
+                      </button>
+                    </div>
+                  ) : (
+                    <button
+                      onClick={() => setConfirmDeleteId(survey.id)}
+                      className="p-2 rounded-lg border border-slate-200 dark:border-slate-700 text-slate-500 hover:text-red-500 hover:border-red-200 transition-all"
+                      title="Excluir"
+                    >
+                      <Trash2 size={15} />
+                    </button>
+                  )}
                 </div>
                 <button
                   onClick={() => onShowResults && onShowResults(survey)}
@@ -594,6 +618,7 @@ const SurveyEditor: React.FC<SurveyEditorProps> = ({
 }) => {
   const [step, setStep] = useState(1);
   const [isSaving, setIsSaving] = useState(false);
+  const [savedSurveyId, setSavedSurveyId] = useState<string | null>(editingSurvey?.id || null);
 
   // Step 1
   const [title, setTitle] = useState(editingSurvey?.title || '');
@@ -620,6 +645,7 @@ const SurveyEditor: React.FC<SurveyEditorProps> = ({
   // Step 3
   const [questions, setQuestions] = useState<Partial<SurveyQuestion>[]>([]);
   const [questionsLoaded, setQuestionsLoaded] = useState(false);
+  const [uploadingPhotoIdx, setUploadingPhotoIdx] = useState<number | null>(null);
 
   useEffect(() => {
     if (editingSurvey && !questionsLoaded) {
@@ -670,8 +696,13 @@ const SurveyEditor: React.FC<SurveyEditorProps> = ({
     setQuestions(prev => {
       const next = [...prev];
       next[idx] = { ...next[idx], [field]: value };
-      if (field === 'question_type' && value !== 'multiple_choice') {
-        next[idx].options = [];
+      if (field === 'question_type') {
+        if (value === 'product_item') {
+          next[idx].options = {} as any;
+          next[idx].question_text = 'Deseja este produto?';
+        } else if (value !== 'multiple_choice') {
+          next[idx].options = [];
+        }
       }
       return next;
     });
@@ -684,6 +715,129 @@ const SurveyEditor: React.FC<SurveyEditorProps> = ({
       next.splice(idx + 1, 0, copy);
       return next;
     });
+  };
+
+  const autoSaveSurvey = async (): Promise<string | null> => {
+    if (savedSurveyId) return savedSurveyId;
+    
+    try {
+      await ensureSession();
+      const slug = (title || 'pesquisa-rascunho')
+        .toLowerCase()
+        .normalize('NFD')
+        .replace(/[\u0300-\u036f]/g, '')
+        .replace(/[^a-z0-9\s-]/g, '')
+        .trim()
+        .replace(/\s+/g, '-') + '-' + Date.now();
+
+      const { data, error } = await supabase
+        .from('surveys')
+        .insert([{
+          title: title || 'Pesquisa (rascunho)',
+          description,
+          is_active: false,
+          allow_anonymous: allowAnonymous,
+          target_type: targetType,
+          target_category: targetType === 'internal' ? targetCategory : null,
+          results_visible_to: resultsVisibleTo,
+          store_id: (currentUser as any).store_id || (currentUser as any).storeId || null,
+          target_store_ids: targetStoreIds.length > 0 ? targetStoreIds : null,
+          created_by: currentUser.id,
+          slug,
+          public_token: generateToken(),
+        }])
+        .select()
+        .single();
+
+      if (error) throw error;
+      setSavedSurveyId(data.id);
+      toast.success('Pesquisa salva como rascunho');
+      return data.id;
+    } catch (err: any) {
+      toast.error('Erro ao criar rascunho: ' + err.message);
+      return null;
+    }
+  };
+
+  const handleProductPhotoUpload = async (file: File, idx: number) => {
+    setUploadingPhotoIdx(idx);
+    try {
+      // Auto-salvar pesquisa se ainda não tem ID
+      const surveyId = await autoSaveSurvey();
+      if (!surveyId) {
+        toast.error('Não foi possível salvar a pesquisa');
+        setUploadingPhotoIdx(null);
+        return;
+      }
+      
+      await ensureSession();
+      const q = questions[idx];
+      const productData = q.options as any || {};
+      const ref = (productData.referencia || 'item').toLowerCase().replace(/\s+/g, '-');
+      const timestamp = Date.now();
+      const path = `${surveyId}/${timestamp}_${ref}.webp`;
+
+      // Converter para webp com resize
+      const bitmap = await createImageBitmap(file);
+      const maxW = 800;
+      const scale = bitmap.width > maxW ? maxW / bitmap.width : 1;
+      const canvas = document.createElement('canvas');
+      canvas.width = bitmap.width * scale;
+      canvas.height = bitmap.height * scale;
+      const ctx = canvas.getContext('2d')!;
+      ctx.drawImage(bitmap, 0, 0, canvas.width, canvas.height);
+      
+      const blob = await new Promise<Blob>((resolve) => {
+        canvas.toBlob(b => resolve(b!), 'image/webp', 0.8);
+      });
+
+      const { error: upErr } = await supabase.storage
+        .from('Pesquisa')
+        .upload(path, blob, { contentType: 'image/webp', upsert: true });
+      if (upErr) throw upErr;
+
+      const { data: urlData } = supabase.storage.from('Pesquisa').getPublicUrl(path);
+      const imageUrl = urlData.publicUrl;
+
+      // Salvar na tabela survey_photos
+      const { data: photoRow, error: phErr } = await supabase
+        .from('survey_photos')
+        .insert({
+          survey_id: surveyId,
+          marca: productData.marca || null,
+          referencia: productData.referencia || null,
+          cor: productData.cor || null,
+          descricao: productData.descricao || null,
+          preco_custo: productData.preco_custo ? parseFloat(productData.preco_custo) : null,
+          preco_venda: productData.preco_venda ? parseFloat(productData.preco_venda) : null,
+          image_url: imageUrl,
+          sort_order: idx,
+          created_by: currentUser.id,
+        })
+        .select()
+        .single();
+      if (phErr) throw phErr;
+
+      // Atualizar a question com a URL e photo_id no options
+      updateQuestion(idx, 'options', { ...productData, image_url: imageUrl, photo_id: photoRow.id });
+      
+      toast.success('Foto enviada!');
+    } catch (err: any) {
+      toast.error('Erro no upload: ' + err.message);
+    } finally {
+      setUploadingPhotoIdx(null);
+    }
+  };
+
+  const handleRemoveProductPhoto = async (idx: number) => {
+    const q = questions[idx];
+    const productData = q.options as any || {};
+    if (productData.photo_id) {
+      try {
+        await supabase.from('survey_photos').delete().eq('id', productData.photo_id);
+      } catch {}
+    }
+    updateQuestion(idx, 'options', { ...productData, image_url: null, photo_id: null });
   };
 
   const handleToggleQuestionActive = async (question: Partial<SurveyQuestion>, idx: number) => {
@@ -731,24 +885,21 @@ const SurveyEditor: React.FC<SurveyEditorProps> = ({
         allow_anonymous: allowAnonymous,
         target_type: targetType,
         target_category: targetType === 'internal' ? targetCategory : null,
+        target_store_ids: targetStoreIds.length > 0 ? targetStoreIds : null,
         results_visible_to: resultsVisibleTo,
         updated_at: new Date().toISOString(),
-        // target_store_ids e store_id só mudam na criação — nunca na edição
-        ...(editingSurvey ? {} : {
-          store_id: (currentUser as any).store_id || (currentUser as any).storeId || null,
-          target_store_ids: targetStoreIds.length > 0 ? targetStoreIds : null,
-          created_by: currentUser.id,
-        }),
-        // Na edição preservar os target_store_ids que o usuário selecionou no step 2
-        ...(editingSurvey ? {
-          target_store_ids: targetStoreIds.length > 0 ? targetStoreIds : editingSurvey.target_store_ids,
-        } : {}),
       };
 
-      let surveyId = editingSurvey?.id;
+      // Campos que só entram na criação (INSERT)
+      if (!savedSurveyId && !editingSurvey) {
+        surveyData.store_id = (currentUser as any).store_id || (currentUser as any).storeId || null;
+        surveyData.created_by = currentUser.id;
+      }
 
-      if (editingSurvey) {
-        const { error } = await supabase.from('surveys').update(surveyData).eq('id', editingSurvey.id);
+      let surveyId = savedSurveyId || editingSurvey?.id;
+
+      if (surveyId) {
+        const { error } = await supabase.from('surveys').update(surveyData).eq('id', surveyId);
         if (error) throw error;
       } else {
         const { data, error } = await supabase.from('surveys').insert([{ ...surveyData, slug, public_token: generateToken() }]).select().single();
@@ -766,6 +917,7 @@ const SurveyEditor: React.FC<SurveyEditorProps> = ({
         is_required: q.is_required ?? true,
         is_active: q.is_active !== false,
         sort_order: idx,
+        photo_id: (q.options as any)?.photo_id || null,  // ← ADICIONAR
       }));
       const { error: qError } = await supabase.from('survey_questions').insert(questionsToInsert);
       if (qError) throw qError;
@@ -973,6 +1125,7 @@ const SurveyEditor: React.FC<SurveyEditorProps> = ({
                         {stores.map(store => (
                           <button
                             key={store.id}
+                            type="button"
                             onClick={() => toggleStore(store.id)}
                             className={`px-3 py-2 rounded-lg border text-xs font-medium transition-all flex items-center justify-between gap-1 ${
                               targetStoreIds.includes(store.id)
@@ -1080,6 +1233,153 @@ const SurveyEditor: React.FC<SurveyEditorProps> = ({
                             </div>
                           )}
 
+                          {q.question_type === 'product_item' && (
+                            <div className="px-4 pb-4 pl-12 space-y-3">
+                              {/* Título automático */}
+                              {!q.question_text && (() => {
+                                // Auto-preencher a pergunta se vazio
+                                setTimeout(() => updateQuestion(idx, 'question_text', 'Deseja este produto?'), 0);
+                                return null;
+                              })()}
+
+                              {/* Linha 1: Marca + Referência + Cor */}
+                              <div className="grid grid-cols-3 gap-2">
+                                <input
+                                  type="text"
+                                  placeholder="Marca"
+                                  value={(q.options as any)?.marca || ''}
+                                  onChange={e => updateQuestion(idx, 'options', { ...(q.options as any || {}), marca: e.target.value })}
+                                  className="px-3 py-2 bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-lg text-xs text-slate-700 dark:text-slate-300 outline-none focus:border-blue-400"
+                                />
+                                <input
+                                  type="text"
+                                  placeholder="Referência"
+                                  value={(q.options as any)?.referencia || ''}
+                                  onChange={e => updateQuestion(idx, 'options', { ...(q.options as any || {}), referencia: e.target.value })}
+                                  className="px-3 py-2 bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-lg text-xs text-slate-700 dark:text-slate-300 outline-none focus:border-blue-400"
+                                />
+                                <input
+                                  type="text"
+                                  placeholder="Cor"
+                                  value={(q.options as any)?.cor || ''}
+                                  onChange={e => updateQuestion(idx, 'options', { ...(q.options as any || {}), cor: e.target.value })}
+                                  className="px-3 py-2 bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-lg text-xs text-slate-700 dark:text-slate-300 outline-none focus:border-blue-400"
+                                />
+                              </div>
+
+                              {/* Linha 2: Custo + Venda */}
+                              <div className="grid grid-cols-2 gap-2">
+                                <div className="relative">
+                                  <span className="absolute left-3 top-1/2 -translate-y-1/2 text-[10px] text-slate-400 font-medium">R$</span>
+                                  <input
+                                    type="number"
+                                    step="0.01"
+                                    placeholder="Custo"
+                                    value={(q.options as any)?.preco_custo || ''}
+                                    onChange={e => updateQuestion(idx, 'options', { ...(q.options as any || {}), preco_custo: e.target.value })}
+                                    className="w-full pl-8 pr-3 py-2 bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-lg text-xs text-slate-700 dark:text-slate-300 outline-none focus:border-blue-400"
+                                  />
+                                  <span className="absolute right-3 top-1/2 -translate-y-1/2 text-[10px] text-slate-400">custo</span>
+                                </div>
+                                <div className="relative">
+                                  <span className="absolute left-3 top-1/2 -translate-y-1/2 text-[10px] text-slate-400 font-medium">R$</span>
+                                  <input
+                                    type="number"
+                                    step="0.01"
+                                    placeholder="Venda"
+                                    value={(q.options as any)?.preco_venda || ''}
+                                    onChange={e => updateQuestion(idx, 'options', { ...(q.options as any || {}), preco_venda: e.target.value })}
+                                    className="w-full pl-8 pr-3 py-2 bg-green-50 dark:bg-green-900/20 border border-green-200 dark:border-green-800 rounded-lg text-xs text-green-700 dark:text-green-400 outline-none focus:border-green-400"
+                                  />
+                                  <span className="absolute right-3 top-1/2 -translate-y-1/2 text-[10px] text-green-500">venda</span>
+                                </div>
+                              </div>
+
+                              {/* Descrição */}
+                              <input
+                                type="text"
+                                placeholder="Descrição do item"
+                                value={(q.options as any)?.descricao || ''}
+                                onChange={e => updateQuestion(idx, 'options', { ...(q.options as any || {}), descricao: e.target.value })}
+                                className="w-full px-3 py-2 bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-lg text-xs text-slate-700 dark:text-slate-300 outline-none focus:border-blue-400"
+                              />
+
+                              {/* Categoria */}
+                              <div>
+                                <label className="text-[10px] font-semibold text-slate-400 mb-1 block">Categoria</label>
+                                <div className="flex gap-1.5 flex-wrap">
+                                  {PRODUCT_CATEGORIES.map(cat => (
+                                    <button
+                                      key={cat.value}
+                                      type="button"
+                                      onClick={() => updateQuestion(idx, 'options', { ...(q.options as any || {}), categoria: cat.value })}
+                                      className={`px-3 py-1.5 rounded-lg border text-xs font-medium transition-all ${
+                                        (q.options as any)?.categoria === cat.value
+                                          ? 'border-blue-600 bg-blue-50 text-blue-700 dark:bg-blue-900/30 dark:text-blue-400'
+                                          : 'border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-500 hover:border-slate-300'
+                                      }`}
+                                    >
+                                      {cat.label}
+                                    </button>
+                                  ))}
+                                </div>
+                              </div>
+
+                              {/* Upload de foto */}
+                              <div>
+                                <label className="text-[10px] font-semibold text-slate-400 mb-1 block">Foto do Produto</label>
+                                {(q.options as any)?.image_url ? (
+                                  <div className="relative inline-block">
+                                    <img
+                                      src={(q.options as any).image_url}
+                                      alt="Produto"
+                                      className="w-32 h-32 object-cover rounded-xl border border-slate-200 dark:border-slate-700"
+                                    />
+                                    <button
+                                      type="button"
+                                      onClick={() => handleRemoveProductPhoto(idx)}
+                                      className="absolute -top-2 -right-2 w-6 h-6 bg-red-500 text-white rounded-full flex items-center justify-center text-xs hover:bg-red-600 shadow-lg"
+                                    >
+                                      <X size={12} />
+                                    </button>
+                                  </div>
+                                ) : (
+                                  <label className={`flex flex-col items-center justify-center w-full h-28 border-2 border-dashed rounded-xl cursor-pointer transition-all ${
+                                    uploadingPhotoIdx === idx
+                                      ? 'border-blue-400 bg-blue-50 dark:bg-blue-900/20'
+                                      : 'border-slate-200 dark:border-slate-700 hover:border-blue-300 hover:bg-slate-50 dark:hover:bg-slate-800'
+                                  }`}>
+                                    {uploadingPhotoIdx === idx ? (
+                                      <div className="flex items-center gap-2 text-blue-500">
+                                        <Loader2 size={20} className="animate-spin" />
+                                        <span className="text-xs font-medium">Enviando...</span>
+                                      </div>
+                                    ) : (
+                                      <>
+                                        <Camera size={24} className="text-slate-400 mb-1" />
+                                        <span className="text-xs text-slate-400">Tirar foto ou escolher arquivo</span>
+                                      </>
+                                    )}
+                                    <input
+                                      type="file"
+                                      accept="image/*"
+                                      capture="environment"
+                                      className="hidden"
+                                      disabled={uploadingPhotoIdx === idx}
+                                      onChange={e => {
+                                        const file = e.target.files?.[0];
+                                        if (file) {
+                                          handleProductPhotoUpload(file, idx);
+                                        }
+                                        e.target.value = '';
+                                      }}
+                                    />
+                                  </label>
+                                )}
+                              </div>
+                            </div>
+                          )}
+
                           {/* Linha inferior */}
                           <div className="flex items-center justify-between px-4 py-2 border-t border-slate-100 dark:border-slate-800 bg-slate-50/50 dark:bg-slate-800/30">
                             <label className="flex items-center gap-2 cursor-pointer">
@@ -1096,15 +1396,15 @@ const SurveyEditor: React.FC<SurveyEditorProps> = ({
                               <button
                                 type="button"
                                 onClick={() => handleToggleQuestionActive(q, idx)}
-                                className={`relative w-11 h-6 rounded-full transition-colors duration-200 flex-shrink-0 ${
+                                className={`relative inline-flex items-center w-11 h-6 rounded-full transition-colors duration-200 flex-shrink-0 ${
                                   q.is_active !== false
                                     ? 'bg-green-500' 
                                     : 'bg-slate-300 dark:bg-slate-600'
                                 }`}
                                 title={q.is_active !== false ? 'Desativar pergunta' : 'Ativar pergunta'}
                               >
-                                <span className={`absolute top-0.5 w-5 h-5 bg-white rounded-full shadow-md transition-transform duration-200 ${
-                                  q.is_active !== false ? 'translate-x-5' : 'translate-x-0.5'
+                                <span className={`inline-block w-4 h-4 bg-white rounded-full shadow-md transform transition-transform duration-200 ${
+                                  q.is_active !== false ? 'translate-x-6' : 'translate-x-1'
                                 }`} />
                               </button>
 
@@ -1189,6 +1489,43 @@ const SurveyEditor: React.FC<SurveyEditorProps> = ({
                         {q.options.length > 3 && (
                           <p className="text-[10px] text-slate-400">+{q.options.length - 3} mais</p>
                         )}
+                      </div>
+                    )}
+
+                    {q.question_type === 'product_item' && (
+                      <div className="bg-white dark:bg-slate-700 border border-slate-200 dark:border-slate-600 rounded-lg p-2 space-y-1.5">
+                        {(q.options as any)?.image_url ? (
+                          <img src={(q.options as any).image_url} alt="" className="w-full h-20 object-cover rounded-md" />
+                        ) : (
+                          <div className="w-full h-16 bg-slate-100 dark:bg-slate-600 rounded-md flex items-center justify-center">
+                            <ImageIcon size={16} className="text-slate-400" />
+                          </div>
+                        )}
+                        <div className="flex items-center justify-between">
+                          <span className="text-[10px] font-semibold text-slate-600 dark:text-slate-300">
+                            {(q.options as any)?.marca || 'Marca'}
+                          </span>
+                          <div className="flex gap-2">
+                            {(q.options as any)?.preco_custo && (
+                              <span className="text-[10px] text-slate-400">
+                                C: R$ {(q.options as any).preco_custo}
+                              </span>
+                            )}
+                            {(q.options as any)?.preco_venda && (
+                              <span className="text-[10px] text-green-600 font-medium">
+                                V: R$ {(q.options as any).preco_venda}
+                              </span>
+                            )}
+                          </div>
+                        </div>
+                        <div className="flex gap-2">
+                          <span className="text-[10px] px-1.5 py-0.5 bg-blue-50 text-blue-600 dark:bg-slate-600 dark:text-blue-300 rounded">{(q.options as any)?.categoria || '...'}</span>
+                          <span className="text-[10px] text-slate-400 truncate">{(q.options as any)?.cor || ''}</span>
+                        </div>
+                        <div className="flex gap-2 mt-1">
+                          <span className="text-[10px] px-2 py-1 border border-slate-200 rounded-lg text-slate-400">Sim</span>
+                          <span className="text-[10px] px-2 py-1 border border-slate-200 rounded-lg text-slate-400">Não</span>
+                        </div>
                       </div>
                     )}
                   </div>

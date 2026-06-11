@@ -412,7 +412,7 @@ export interface AdminUser {
 ========================= */
 export type SurveyTargetType = 'internal' | 'external';
 export type SurveyTargetCategory = 'all_managers' | 'all_cashiers' | 'all_sellers' | 'all_ice_cream' | 'specific_stores' | 'specific_users' | 'all_employees';
-export type SurveyQuestionType = 'short_text' | 'rating' | 'multiple_choice' | 'yes_no';
+export type SurveyQuestionType = 'short_text' | 'rating' | 'multiple_choice' | 'yes_no' | 'product_item';
 export type SurveyResultVisibility = 'admin' | 'store_manager' | 'respondent';
 
 export interface Survey {
@@ -443,6 +443,7 @@ export interface SurveyQuestion {
   sort_order: number;
   is_active?: boolean;
   created_at: string;
+  photo_id?: string | null;
 }
 
 export interface SurveyResponse {
