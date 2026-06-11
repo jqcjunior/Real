@@ -10,7 +10,9 @@ import {
   Loader2,
   Check,
   UserX,
-  User
+  User,
+  Package,
+  ShoppingBag
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 import { Survey, SurveyQuestion, User as UserType } from '../../types';
@@ -23,6 +25,13 @@ interface SurveyResponseFormProps {
   onComplete: () => void;
 }
 
+const GRADE_TAMANHOS: Record<string, string[]> = {
+  masculino: ['37','38','39','40','41','42','43','44','45'],
+  feminino:  ['33','34','35','36','37','38','39','40'],
+  infantil:  ['17','18','19','20','21','22','23','24','25','26','27','28','29','30','31','32','33','34'],
+  acessorio: ['UNICO'],
+};
+
 const SurveyResponseForm: React.FC<SurveyResponseFormProps> = ({
   survey,
   user,
@@ -33,6 +42,7 @@ const SurveyResponseForm: React.FC<SurveyResponseFormProps> = ({
   const [questions, setQuestions] = useState<SurveyQuestion[]>([]);
   const [answers, setAnswers] = useState<Record<string, any>>({});
   const [motivos, setMotivos] = useState<Record<string, string>>({});
+  const [grades, setGrades] = useState<Record<string, Record<string, number>>>({});
   const [respondentInfo, setRespondentInfo] = useState({ name: '', email: '', phone: '' });
   const [isAnonymous, setIsAnonymous] = useState(false);
 
@@ -82,6 +92,25 @@ const SurveyResponseForm: React.FC<SurveyResponseFormProps> = ({
     }
   };
 
+  const handleGradeChange = (questionId: string, tamanho: string, delta: number) => {
+    setGrades(prev => {
+      const current = prev[questionId] || {};
+      const newQty = Math.max(0, (current[tamanho] || 0) + delta);
+      const updated = { ...current };
+      if (newQty === 0) {
+        delete updated[tamanho];
+      } else {
+        updated[tamanho] = newQty;
+      }
+      return { ...prev, [questionId]: updated };
+    });
+  };
+
+  const getTotalPares = (questionId: string): number => {
+    const g = grades[questionId] || {};
+    return Object.values(g).reduce((sum, qty) => sum + qty, 0);
+  };
+
   const handleChooseAnonymous = () => {
     setIsAnonymous(true);
     setRespondentInfo({ name: '', email: '', phone: '' });
@@ -110,7 +139,17 @@ const SurveyResponseForm: React.FC<SurveyResponseFormProps> = ({
     try {
       const finalResponses: Record<string, any> = {};
       Object.entries(answers).forEach(([qId, val]) => {
-        if (val === 'NÃO' && motivos[qId]) {
+        const question = questions.find(q => q.id === qId);
+        
+        if (question?.question_type === 'product_item') {
+          // Produto: salvar resposta + grade selecionada
+          finalResponses[qId] = {
+            value: val,
+            grade: val === 'SIM' ? (grades[qId] || {}) : {},
+            total_pares: val === 'SIM' ? getTotalPares(qId) : 0,
+            ...(val === 'NÃO' && motivos[qId] ? { motivo: motivos[qId] } : {}),
+          };
+        } else if (val === 'NÃO' && motivos[qId]) {
           finalResponses[qId] = { value: 'NÃO', motivo: motivos[qId] };
         } else if (typeof val === 'number' && val <= 3 && motivos[qId]) {
           finalResponses[qId] = { value: val, motivo: motivos[qId] };
@@ -462,6 +501,206 @@ const SurveyResponseForm: React.FC<SurveyResponseFormProps> = ({
                       </AnimatePresence>
                     </div>
                   )}
+
+                  {/* PRODUCT ITEM — Pesquisa de Item */}
+                  {currentQuestion.question_type === 'product_item' && (() => {
+                    const product = (currentQuestion.options && typeof currentQuestion.options === 'object' && !Array.isArray(currentQuestion.options))
+                      ? currentQuestion.options as Record<string, any>
+                      : {};
+                    
+                    return (
+                      <div className="space-y-4">
+                        {/* Card do produto */}
+                        <div className="bg-white rounded-2xl border-2 border-slate-100 overflow-hidden shadow-md shadow-slate-100">
+                          {/* Foto */}
+                          {product.image_url ? (
+                            <img 
+                              src={product.image_url} 
+                              alt={product.descricao || 'Produto'}
+                              className="w-full h-48 sm:h-64 object-contain bg-slate-50"
+                              referrerPolicy="no-referrer"
+                            />
+                          ) : (
+                            <div className="w-full h-40 bg-slate-50 flex items-center justify-center">
+                              <Package size={40} className="text-slate-300" />
+                            </div>
+                          )}
+                          
+                          {/* Dados do produto */}
+                          <div className="p-4 space-y-3">
+                            {/* Marca + Referência */}
+                            <div className="flex items-center justify-between gap-2">
+                              <div>
+                                <p className="text-lg font-bold text-slate-900">{product.marca || 'Sem marca'}</p>
+                                <p className="text-xs text-slate-400">Ref: {product.referencia || '—'}</p>
+                              </div>
+                              {product.categoria && (
+                                <span className={`text-[11px] font-bold px-2.5 py-1 rounded-lg ${
+                                  product.categoria === 'masculino' ? 'bg-blue-50 text-blue-600' :
+                                  product.categoria === 'feminino' ? 'bg-pink-50 text-pink-600' :
+                                  product.categoria === 'infantil' ? 'bg-yellow-50 text-yellow-600' :
+                                  'bg-purple-50 text-purple-600'
+                                }`}>
+                                  {product.categoria === 'masculino' ? 'Masculino' :
+                                   product.categoria === 'feminino' ? 'Feminino' :
+                                   product.categoria === 'infantil' ? 'Infantil' : 'Acessório'}
+                                </span>
+                              )}
+                            </div>
+
+                            {/* Descrição */}
+                            {product.descricao && (
+                              <p className="text-sm text-slate-600">{product.descricao}</p>
+                            )}
+
+                            {/* Cor */}
+                            {product.cor && (
+                              <div className="flex items-center gap-2">
+                                <span className="text-xs text-slate-400">Cor:</span>
+                                <span className="text-xs font-semibold text-slate-700 bg-slate-100 px-2 py-0.5 rounded-md">
+                                  {product.cor}
+                                </span>
+                              </div>
+                            )}
+
+                            {/* Preços */}
+                            <div className="flex items-center gap-3 pt-2 border-t border-slate-100">
+                              {product.preco_custo && (
+                                <div>
+                                  <p className="text-[10px] text-slate-400 uppercase tracking-wide">Custo</p>
+                                  <p className="text-sm font-semibold text-slate-500">
+                                    R$ {Number(product.preco_custo).toFixed(2).replace('.', ',')}
+                                  </p>
+                                </div>
+                              )}
+                              {product.preco_venda && (
+                                <div>
+                                  <p className="text-[10px] text-green-500 uppercase tracking-wide">Venda</p>
+                                  <p className="text-lg font-bold text-green-600">
+                                    R$ {Number(product.preco_venda).toFixed(2).replace('.', ',')}
+                                  </p>
+                                </div>
+                              )}
+                            </div>
+                          </div>
+                        </div>
+
+                        {/* Botões SIM / NÃO */}
+                        <div className="grid grid-cols-2 gap-3">
+                          {['SIM', 'NÃO'].map(val => (
+                            <button
+                              key={val}
+                              onClick={() => handleAnswerChange(currentQuestion.id, val)}
+                              className={`w-full py-6 rounded-2xl font-bold text-lg transition-all border-2 ${
+                                answers[currentQuestion.id] === val
+                                  ? val === 'SIM'
+                                    ? 'bg-green-600 border-green-600 text-white shadow-lg shadow-green-200 scale-105'
+                                    : 'bg-red-500 border-red-500 text-white shadow-lg shadow-red-200 scale-105'
+                                  : 'bg-white border-slate-100 text-slate-400 hover:border-slate-300'
+                              }`}
+                            >
+                              {val === 'SIM' ? '✅ SIM' : '❌ NÃO'}
+                            </button>
+                          ))}
+                        </div>
+
+                        {/* Grade de tamanhos — aparece ao selecionar SIM */}
+                        <AnimatePresence>
+                          {answers[currentQuestion.id] === 'SIM' && product.categoria && (
+                            <motion.div
+                              initial={{ opacity: 0, height: 0 }}
+                              animate={{ opacity: 1, height: 'auto' }}
+                              exit={{ opacity: 0, height: 0 }}
+                              className="overflow-hidden"
+                            >
+                              <div className="mt-3 bg-white rounded-2xl border-2 border-green-100 p-4 space-y-3">
+                                <div className="flex items-center justify-between">
+                                  <p className="text-sm font-semibold text-slate-700">
+                                    Selecione a grade desejada
+                                  </p>
+                                  <span className="text-xs font-bold text-green-600 bg-green-50 px-2 py-1 rounded-lg">
+                                    {getTotalPares(currentQuestion.id)} {product.categoria === 'acessorio' ? 'un.' : 'pares'}
+                                  </span>
+                                </div>
+                                
+                                <div className={`grid gap-2 ${
+                                  product.categoria === 'acessorio' 
+                                    ? 'grid-cols-1' 
+                                    : product.categoria === 'infantil' 
+                                    ? 'grid-cols-6' 
+                                    : 'grid-cols-5'
+                                }`}>
+                                  {(GRADE_TAMANHOS[product.categoria] || GRADE_TAMANHOS['masculino']).map(tam => {
+                                    const qty = (grades[currentQuestion.id] || {})[tam] || 0;
+                                    return (
+                                      <div key={tam} className="flex flex-col items-center">
+                                        <span className={`text-[10px] font-semibold mb-1 ${
+                                          qty > 0 ? 'text-green-600' : 'text-slate-400'
+                                        }`}>
+                                          {tam}
+                                        </span>
+                                        <div className="flex items-center gap-0.5">
+                                          <button
+                                            type="button"
+                                            onClick={() => handleGradeChange(currentQuestion.id, tam, -1)}
+                                            disabled={qty === 0}
+                                            className="w-7 h-7 rounded-lg bg-slate-100 text-slate-400 hover:bg-red-50 hover:text-red-500 disabled:opacity-30 flex items-center justify-center text-sm font-bold transition-all"
+                                          >
+                                            −
+                                          </button>
+                                          <span className={`w-7 h-7 flex items-center justify-center text-xs font-bold rounded-lg ${
+                                            qty > 0 
+                                              ? 'bg-green-50 text-green-700 border border-green-200' 
+                                              : 'text-slate-300'
+                                          }`}>
+                                            {qty}
+                                          </span>
+                                          <button
+                                            type="button"
+                                            onClick={() => handleGradeChange(currentQuestion.id, tam, 1)}
+                                            className="w-7 h-7 rounded-lg bg-slate-100 text-slate-500 hover:bg-green-50 hover:text-green-600 flex items-center justify-center text-sm font-bold transition-all"
+                                          >
+                                            +
+                                          </button>
+                                        </div>
+                                      </div>
+                                    );
+                                  })}
+                                </div>
+
+                                {getTotalPares(currentQuestion.id) === 0 && (
+                                  <p className="text-[11px] text-amber-500 text-center">
+                                    Selecione ao menos 1 tamanho para confirmar
+                                  </p>
+                                )}
+                              </div>
+                            </motion.div>
+                          )}
+                        </AnimatePresence>
+
+                        {/* Campo de motivo para NÃO */}
+                        <AnimatePresence>
+                          {answers[currentQuestion.id] === 'NÃO' && (
+                            <motion.div
+                              initial={{ opacity: 0, height: 0 }}
+                              animate={{ opacity: 1, height: 'auto' }}
+                              exit={{ opacity: 0, height: 0 }}
+                              className="overflow-hidden"
+                            >
+                              <textarea
+                                autoFocus
+                                value={motivos[currentQuestion.id] || ''}
+                                onChange={e => setMotivos({ ...motivos, [currentQuestion.id]: e.target.value })}
+                                placeholder="Conte-nos o motivo... (opcional)"
+                                rows={3}
+                                className="w-full mt-2 px-4 py-3 bg-white border-2 border-transparent focus:border-blue-600 rounded-2xl text-sm text-slate-900 outline-none shadow-md shadow-slate-100 transition-all resize-none"
+                              />
+                            </motion.div>
+                          )}
+                        </AnimatePresence>
+                      </div>
+                    );
+                  })()}
 
                 </div>
               </div>
