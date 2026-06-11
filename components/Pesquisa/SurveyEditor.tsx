@@ -42,6 +42,13 @@ const emptyQuestion = (order: number): Partial<SurveyQuestion> => ({
   options: [],
 });
 
+const calcPrecoVenda = (custo: number, markup: number): number => {
+  if (!custo || !markup || custo <= 0 || markup <= 0) return 0;
+  const valorBase = custo * markup;
+  const dezena = Math.floor(valorBase / 10) * 10;
+  return valorBase < dezena + 5 ? dezena + 9.99 : dezena + 19.99;
+};
+
 interface SurveyEditorProps {
   currentUser: User;
   stores: Store[];
@@ -703,8 +710,9 @@ const SurveyEditor: React.FC<SurveyEditorProps> = ({
                                 />
                               </div>
 
-                              {/* Linha 2: Custo + Venda */}
-                              <div className="grid grid-cols-2 gap-2">
+                              {/* Linha 2: Custo + Markup + Venda */}
+                              <div className="grid grid-cols-3 gap-2">
+                                {/* Custo */}
                                 <div className="relative">
                                   <span className="absolute left-3 top-1/2 -translate-y-1/2 text-[10px] text-slate-400 font-medium">R$</span>
                                   <input
@@ -712,20 +720,54 @@ const SurveyEditor: React.FC<SurveyEditorProps> = ({
                                     step="0.01"
                                     placeholder="Custo"
                                     value={(q.options as any)?.preco_custo || ''}
-                                    onChange={e => updateQuestion(idx, 'options', { ...(q.options as any || {}), preco_custo: e.target.value })}
+                                    onChange={e => {
+                                      const custo = parseFloat(e.target.value) || 0;
+                                      const markup = parseFloat((q.options as any)?.markup) || 0;
+                                      const venda = calcPrecoVenda(custo, markup);
+                                      updateQuestion(idx, 'options', { 
+                                        ...(q.options as any || {}), 
+                                        preco_custo: e.target.value,
+                                        ...(venda > 0 ? { preco_venda: venda.toFixed(2) } : {})
+                                      });
+                                    }}
                                     className="w-full pl-8 pr-3 py-2 bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-lg text-xs text-slate-700 dark:text-slate-300 outline-none focus:border-blue-400"
                                   />
                                   <span className="absolute right-3 top-1/2 -translate-y-1/2 text-[10px] text-slate-400">custo</span>
                                 </div>
+
+                                {/* Markup */}
                                 <div className="relative">
-                                  <span className="absolute left-3 top-1/2 -translate-y-1/2 text-[10px] text-slate-400 font-medium">R$</span>
+                                  <span className="absolute left-3 top-1/2 -translate-y-1/2 text-[10px] text-slate-400 font-medium">×</span>
+                                  <input
+                                    type="number"
+                                    step="0.01"
+                                    placeholder="Markup"
+                                    value={(q.options as any)?.markup || ''}
+                                    onChange={e => {
+                                      const markup = parseFloat(e.target.value) || 0;
+                                      const custo = parseFloat((q.options as any)?.preco_custo) || 0;
+                                      const venda = calcPrecoVenda(custo, markup);
+                                      updateQuestion(idx, 'options', { 
+                                        ...(q.options as any || {}), 
+                                        markup: e.target.value,
+                                        ...(venda > 0 ? { preco_venda: venda.toFixed(2) } : {})
+                                      });
+                                    }}
+                                    className="w-full pl-7 pr-3 py-2 bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-lg text-xs text-slate-700 dark:text-slate-300 outline-none focus:border-blue-400"
+                                  />
+                                  <span className="absolute right-3 top-1/2 -translate-y-1/2 text-[10px] text-slate-400">markup</span>
+                                </div>
+
+                                {/* Venda (auto-calculado, editável) */}
+                                <div className="relative">
+                                  <span className="absolute left-3 top-1/2 -translate-y-1/2 text-[10px] text-green-500 font-medium">R$</span>
                                   <input
                                     type="number"
                                     step="0.01"
                                     placeholder="Venda"
                                     value={(q.options as any)?.preco_venda || ''}
                                     onChange={e => updateQuestion(idx, 'options', { ...(q.options as any || {}), preco_venda: e.target.value })}
-                                    className="w-full pl-8 pr-3 py-2 bg-green-50 dark:bg-green-900/20 border border-green-200 dark:border-green-800 rounded-lg text-xs text-green-700 dark:text-green-400 outline-none focus:border-green-400"
+                                    className="w-full pl-8 pr-3 py-2 bg-green-50 dark:bg-green-900/20 border border-green-200 dark:border-green-800 rounded-lg text-xs text-green-700 dark:text-green-400 outline-none focus:border-green-400 font-bold"
                                   />
                                   <span className="absolute right-3 top-1/2 -translate-y-1/2 text-[10px] text-green-500">venda</span>
                                 </div>
