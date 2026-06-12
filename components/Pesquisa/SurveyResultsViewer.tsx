@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { supabase } from '../../services/supabaseClient';
 import { ensureSession } from '../../services/authService';
+import { toast } from 'sonner';
 import { 
   BarChart3, 
   Users, 
@@ -17,7 +18,8 @@ import {
   Package,
   ShoppingBag,
   Check,
-  X
+  X,
+  ShoppingCart
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 import { 
@@ -58,6 +60,48 @@ const SurveyResultsViewer: React.FC<SurveyResultsViewerProps> = ({ survey, curre
   const [activeTab, setActiveTab] = useState<'analise' | 'respondentes'>('analise');
   const [currentPage, setCurrentPage] = useState(1);
   const PAGE_SIZE = 10;
+
+  const [isGenerating, setIsGenerating] = useState(false);
+  const [generatedOrders, setGeneratedOrders] = useState<any[]>([]);
+
+  const handleGenerateOrders = async () => {
+    if (isGenerating) return;
+    
+    // Verificar se tem respostas
+    if (responses.length === 0) {
+      toast.error('Nenhuma resposta para gerar pedido');
+      return;
+    }
+    
+    setIsGenerating(true);
+    try {
+      await ensureSession();
+      
+      const { data, error } = await supabase.rpc('fn_generate_orders_from_survey', {
+        p_survey_id: survey.id,
+        p_user_id: currentUser.id,
+        p_user_name: currentUser.name || 'Admin',
+      });
+      
+      if (error) throw error;
+      
+      if (data?.error) {
+        toast.error(data.error);
+        return;
+      }
+      
+      if (data?.success) {
+        setGeneratedOrders(data.orders || []);
+        toast.success(
+          `${data.orders_created} pedido${data.orders_created > 1 ? 's' : ''} criado${data.orders_created > 1 ? 's' : ''} como rascunho!`
+        );
+      }
+    } catch (err: any) {
+      toast.error('Erro ao gerar pedido: ' + err.message);
+    } finally {
+      setIsGenerating(false);
+    }
+  };
 
   useEffect(() => {
     fetchData();
@@ -255,6 +299,30 @@ const SurveyResultsViewer: React.FC<SurveyResultsViewerProps> = ({ survey, curre
             className="flex items-center gap-2 px-4 py-2 bg-slate-900 text-white rounded-xl text-xs font-black uppercase tracking-widest hover:bg-blue-700 transition-all">
             <Download size={14} /> Exportar CSV
           </button>
+          {(survey as any).order_status !== 'generated' ? (
+            <button 
+              onClick={handleGenerateOrders}
+              disabled={isGenerating || responses.length === 0}
+              className="flex items-center gap-2 px-4 py-2 bg-green-600 hover:bg-green-700 disabled:opacity-50 disabled:cursor-not-allowed text-white rounded-xl text-xs font-black uppercase tracking-widest transition-all shadow-lg shadow-green-200 dark:shadow-none"
+            >
+              {isGenerating ? (
+                <>
+                  <Loader2 size={14} className="animate-spin" />
+                  Gerando...
+                </>
+              ) : (
+                <>
+                  <ShoppingCart size={14} />
+                  Gerar Pedido
+                </>
+              )}
+            </button>
+          ) : (
+            <div className="flex items-center gap-2 px-4 py-2 bg-green-50 border border-green-200 text-green-700 rounded-xl text-xs font-black uppercase tracking-widest">
+              <ShoppingCart size={14} />
+              Pedido Gerado
+            </div>
+          )}
         </div>
       </div>
 
@@ -272,6 +340,32 @@ const SurveyResultsViewer: React.FC<SurveyResultsViewerProps> = ({ survey, curre
           </div>
         ))}
       </div>
+
+      {generatedOrders.length > 0 && (
+        <div className="bg-green-50 dark:bg-green-900/20 border border-green-200 dark:border-green-800 rounded-2xl p-5 space-y-3">
+          <p className="text-[9px] font-black uppercase tracking-widest text-green-600">
+            Pedidos gerados com sucesso
+          </p>
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
+            {generatedOrders.map((order: any, i: number) => (
+              <div key={i} className="bg-white dark:bg-slate-900 rounded-xl p-4 border border-green-100 dark:border-green-900">
+                <p className="text-lg font-black text-slate-900 dark:text-white">
+                  PGD-{order.numero_pedido}
+                </p>
+                <p className="text-[10px] text-slate-400 mt-1">
+                  {order.lojas} loja{order.lojas > 1 ? 's' : ''} · {order.itens} ite{order.itens > 1 ? 'ns' : 'm'}
+                </p>
+                <p className="text-[10px] text-green-600 font-bold mt-1">
+                  Status: Rascunho
+                </p>
+              </div>
+            ))}
+          </div>
+          <p className="text-[10px] text-green-600">
+            Abra o módulo de Compras para completar os pedidos (prazos, faturamento).
+          </p>
+        </div>
+      )}
 
       {/* ABAS */}
       <div className="flex border-b border-slate-200 dark:border-slate-700 gap-0">
