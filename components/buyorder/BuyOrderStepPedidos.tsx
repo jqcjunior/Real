@@ -195,13 +195,14 @@ export default function StepPedidos({
   allowedStores = [],
   canViewAllStores = false,
 }: StepPedidosProps) {
-  const isGerente = user?.role === "MANAGER";
+  console.log("BuyOrderStepPedidos - user.role:", user?.role);
+  const isGerente = String(user?.role || "").toLowerCase() === "manager";
   const AVAILABLE_LOJAS = allowedStores.map((s) => parseInt(s.number));
   const [userStoreNumber, setUserStoreNumber] = useState<number | null>(null);
 
   useEffect(() => {
     async function fetchUserStoreNumber() {
-      if (user && user.role === "MANAGER" && user.storeId) {
+      if (user && String(user.role || "").toLowerCase() === "manager" && user.storeId) {
         const { data } = await supabase
           .from("stores")
           .select("number")
@@ -693,7 +694,8 @@ export default function StepPedidos({
       const numeroPedido = gerarNumeroPedido();
 
       // Se gerente/comprador e tem lojas sem cota, registrar solicitação
-      if (lojasFaltando.length > 0 && user?.role !== 'ADMIN' && motivo) {
+      const isUserAdmin = String(user?.role || "").toLowerCase() === "admin";
+      if (lojasFaltando.length > 0 && !isUserAdmin && motivo) {
         await Promise.all(
           lojasFaltando.map((r) =>
             supabase.rpc('request_quota_extra', {
@@ -736,7 +738,7 @@ export default function StepPedidos({
     if (lojasFaltando.length === 0) {
       // Todas as lojas têm cota — criar direto sem perguntar nada
       await executarCriacao();
-    } else if (user?.role === 'ADMIN') {
+    } else if (String(user?.role || "").toLowerCase() === 'admin') {
       // Admin: window.confirm e cria mesmo assim
       const totalFalta = lojasFaltando.reduce((s, r) => s + r.falta, 0);
       const ok = window.confirm(

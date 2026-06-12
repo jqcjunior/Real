@@ -29,9 +29,10 @@ export function BuyOrderModuleModal({
   onSave,
 }: BuyOrderModuleModalProps) {
   const user = apiService.getUser();
-  const userRole = String(user?.role || "").toUpperCase();
+  console.log("BuyOrderModuleModal - user.role raw:", user?.role);
+  const userRole = String(user?.role || "").toLowerCase();
   const podeEditarPreco =
-    (userRole === "ADMIN" || userRole === "SUPER_ADMIN" || userRole === "COMPRADOR") &&
+    (userRole === "admin" || userRole === "super_admin" || userRole === "comprador") &&
     String(order?.status || "").toLowerCase() !== "exportado";
 
   const [formData, setFormData] = useState({
