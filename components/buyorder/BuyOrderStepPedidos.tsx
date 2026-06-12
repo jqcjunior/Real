@@ -5,7 +5,7 @@ import React, {
   Dispatch,
   SetStateAction,
 } from "react";
-import { RefreshCw, Trash2 } from "lucide-react";
+import { RefreshCw, Trash2, Copy } from "lucide-react";
 import { toast } from "sonner"; // assume toast is available, but wait, usually it's imported or globally available. Actually, checking if there is toast.
 import { supabase } from "../../services/supabaseClient";
 import { User } from "../../types";
@@ -876,6 +876,41 @@ export default function StepPedidos({
     setDeletingTempItem(null);
   };
 
+  const handleReplicarGrades = (sourceIndex: number) => {
+    const sourceItems = pedidos[sourceIndex]?.itensComGrades;
+    
+    if (!sourceItems || sourceItems.length === 0) {
+      toast.warning('O pedido selecionado não tem grades configuradas.');
+      return;
+    }
+
+    if (tempPedidoItens.length > 0) {
+      const confirmar = window.confirm(
+        'Este rascunho de pedido já tem grades configuradas. Deseja substituir pelas grades do Pedido ' + (sourceIndex + 1) + '?'
+      );
+      if (!confirmar) return;
+    }
+
+    // Clonar os itens do pedido fonte (deep clone)
+    const clonedItems: ItemComGrades[] = sourceItems.map(item => ({
+      itemIdx: item.itemIdx,
+      grades: item.grades.map(g => ({
+        letter: g.letter,
+        cat: g.cat,
+        qtds: { ...g.qtds }
+      }))
+    }));
+
+    setStep2State((prev: any) => ({
+      ...prev,
+      tempPedidoItens: clonedItems
+    }));
+
+    toast.success(
+      `Replicado completo: ${clonedItems.length} referência(s) copiadas do Pedido ${sourceIndex + 1}`
+    );
+  };
+
   const handleCancelOrder = () => {
     setStep2State((prev: any) => ({
       ...prev,
@@ -1415,7 +1450,7 @@ export default function StepPedidos({
             </div>
 
             {/* RASCUNHO ATUAL */}
-            {tempPedidoItens.length > 0 && (
+            {(tempPedidoItens.length > 0 || pedidos.length > 0) && (
               <div className="flex flex-col border-b border-t border-slate-200 bg-slate-50 border-x-0 w-full shrink-0">
                 <div className="flex items-center justify-between p-3 border-b border-slate-200 bg-white">
                   <span className="text-[10px] font-black tracking-widest text-slate-700 uppercase flex items-center gap-2">
@@ -1431,58 +1466,103 @@ export default function StepPedidos({
                     </div>
                   </div>
                 </div>
-                <div className="p-2 space-y-1 bg-slate-50/50">
-                  {tempPedidoItens.map((icg, idx) => {
-                    const item = items[icg.itemIdx];
-                    if (!item) return null;
-                    const totalItem = icg.grades.reduce((s, g) => s + totPares(g.qtds), 0);
-                    const gradesLabel = icg.grades.map(g => `Gr ${g.letter}`).join(' · ');
-                    const isLong = item.ref.length > 10;
 
-                    return (
-                      <div
-                        key={idx}
-                        className="bg-white border border-amber-100 rounded-lg px-2 py-1.5 flex flex-col gap-0.5"
+                {/* Painel de Replicação de Grades */}
+                {pedidos.length > 0 && (
+                  <div className="p-2 border-b border-slate-200 bg-white flex flex-col gap-2 shrink-0">
+                    <div className="flex items-center gap-1.5 flex-wrap">
+                      <button
+                        onClick={() => handleReplicarGrades(0)}
+                        className="flex-1 flex items-center justify-center gap-1.5 px-3 py-1.5 bg-blue-600 hover:bg-blue-700 text-white rounded-lg text-[10px] font-black uppercase tracking-wider transition-all shadow-md shadow-blue-600/10 active:scale-95 cursor-pointer"
                       >
-                        {isLong ? (
-                          // Layout 2 linhas para ref longa
-                          <>
-                            <div className="flex items-center justify-between gap-1">
-                              <div className="flex items-center gap-1 min-w-0">
+                        <Copy size={12} />
+                        Replicar Grades do Pedido 1
+                      </button>
+
+                      {pedidos.length > 1 && (
+                        <select
+                          onChange={(e) => {
+                            if (e.target.value !== "") {
+                              handleReplicarGrades(Number(e.target.value));
+                              e.target.value = ""; // reset selection dropdown
+                            }
+                          }}
+                          defaultValue=""
+                          className="px-2 py-1.5 bg-slate-50 border border-slate-250 rounded-lg text-[10px] font-bold text-slate-650 outline-none focus:border-blue-400 cursor-pointer min-w-[124px]"
+                        >
+                          <option value="" disabled>Replicar de outro...</option>
+                          {pedidos.map((p, idx) => (
+                            <option key={idx} value={idx}>
+                              Pedido {p.num} ({p.itensComGrades.length} refs)
+                            </option>
+                          ))}
+                        </select>
+                      )}
+                    </div>
+                  </div>
+                )}
+
+                {tempPedidoItens.length > 0 ? (
+                  <div className="p-2 space-y-1 bg-slate-50/50">
+                    {tempPedidoItens.map((icg, idx) => {
+                      const item = items[icg.itemIdx];
+                      if (!item) return null;
+                      const totalItem = icg.grades.reduce((s, g) => s + totPares(g.qtds), 0);
+                      const gradesLabel = icg.grades.map(g => `Gr ${g.letter}`).join(' · ');
+                      const isLong = item.ref.length > 10;
+
+                      return (
+                        <div
+                          key={idx}
+                          className="bg-white border border-amber-100 rounded-lg px-2 py-1.5 flex flex-col gap-0.5"
+                        >
+                          {isLong ? (
+                            // Layout 2 linhas para ref longa
+                            <>
+                              <div className="flex items-center justify-between gap-1">
+                                <div className="flex items-center gap-1 min-w-0">
+                                  <span className="text-[8px] font-black text-slate-400 shrink-0">#{idx + 1}</span>
+                                  <span className="text-[9px] font-black text-slate-800 truncate">{item.ref}</span>
+                                </div>
+                                <div className="flex items-center gap-1 shrink-0">
+                                  <button onClick={() => setEditingTempItem(idx)} className="text-blue-500 hover:text-blue-700 text-[10px] leading-none" title="Editar">✏️</button>
+                                  <button onClick={() => setDeletingTempItem(idx)} className="text-red-400 hover:text-red-600 text-[10px] leading-none" title="Excluir">🗑️</button>
+                                </div>
+                              </div>
+                              <div className="flex items-center justify-between gap-1">
+                                <span className="text-[7px] text-slate-400 truncate">{item.tipo}</span>
+                                <div className="flex items-center gap-1 shrink-0">
+                                  <span className="text-[8px] font-bold text-blue-600">{gradesLabel}</span>
+                                  <span className="text-[8px] font-black text-slate-700 bg-slate-100 rounded px-1">{totalItem}p</span>
+                                </div>
+                              </div>
+                            </>
+                          ) : (
+                            // Layout 1 linha para ref curta
+                            <>
+                              <div className="flex items-center gap-1">
                                 <span className="text-[8px] font-black text-slate-400 shrink-0">#{idx + 1}</span>
-                                <span className="text-[9px] font-black text-slate-800 truncate">{item.ref}</span>
+                                <span className="text-[9px] font-black text-slate-800 truncate flex-1">{item.ref}</span>
+                                <span className="text-[8px] font-bold text-blue-600 shrink-0">{gradesLabel}</span>
+                                <span className="text-[8px] font-black text-slate-700 bg-slate-100 rounded px-1 shrink-0">{totalItem}p</span>
+                                <button onClick={() => setEditingTempItem(idx)} className="text-blue-500 hover:text-blue-700 text-[10px] leading-none shrink-0" title="Editar">✏️</button>
+                                <button onClick={() => setDeletingTempItem(idx)} className="text-red-400 hover:text-red-600 text-[10px] leading-none shrink-0" title="Excluir">🗑️</button>
                               </div>
-                              <div className="flex items-center gap-1 shrink-0">
-                                <button onClick={() => setEditingTempItem(idx)} className="text-blue-500 hover:text-blue-700 text-[10px] leading-none" title="Editar">✏️</button>
-                                <button onClick={() => setDeletingTempItem(idx)} className="text-red-400 hover:text-red-600 text-[10px] leading-none" title="Excluir">🗑️</button>
-                              </div>
-                            </div>
-                            <div className="flex items-center justify-between gap-1">
                               <span className="text-[7px] text-slate-400 truncate">{item.tipo}</span>
-                              <div className="flex items-center gap-1 shrink-0">
-                                <span className="text-[8px] font-bold text-blue-600">{gradesLabel}</span>
-                                <span className="text-[8px] font-black text-slate-700 bg-slate-100 rounded px-1">{totalItem}p</span>
-                              </div>
-                            </div>
-                          </>
-                        ) : (
-                          // Layout 1 linha para ref curta
-                          <>
-                            <div className="flex items-center gap-1">
-                              <span className="text-[8px] font-black text-slate-400 shrink-0">#{idx + 1}</span>
-                              <span className="text-[9px] font-black text-slate-800 truncate flex-1">{item.ref}</span>
-                              <span className="text-[8px] font-bold text-blue-600 shrink-0">{gradesLabel}</span>
-                              <span className="text-[8px] font-black text-slate-700 bg-slate-100 rounded px-1 shrink-0">{totalItem}p</span>
-                              <button onClick={() => setEditingTempItem(idx)} className="text-blue-500 hover:text-blue-700 text-[10px] leading-none shrink-0" title="Editar">✏️</button>
-                              <button onClick={() => setDeletingTempItem(idx)} className="text-red-400 hover:text-red-600 text-[10px] leading-none shrink-0" title="Excluir">🗑️</button>
-                            </div>
-                            <span className="text-[7px] text-slate-400 truncate">{item.tipo}</span>
-                          </>
-                        )}
-                      </div>
-                    );
-                  })}
-                </div>
+                            </>
+                          )}
+                        </div>
+                      );
+                    })}
+                  </div>
+                ) : (
+                  <div className="p-4 text-center bg-slate-50/20 text-slate-400 border-b border-slate-100">
+                    <p className="text-[10px] font-bold uppercase tracking-wider">Rascunho Vazio</p>
+                    <p className="text-[9px] text-slate-400/85 mt-1 leading-relaxed">
+                      Selecione itens e monte a grade, ou replique as grades de outro pedido acima.
+                    </p>
+                  </div>
+                )}
               </div>
             )}
 
