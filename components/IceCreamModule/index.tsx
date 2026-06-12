@@ -80,23 +80,36 @@ const IceCreamModule: React.FC<IceCreamModuleProps> = ({
     const LOJA_26_ID = '0eef2f53-4732-4824-84a5-2092234efaef';
 
     const [effectiveStoreId, setEffectiveStoreId] = useState(() => {
-        if (user?.storeId) return user.storeId;
+        if (user?.storeId && user.storeId !== "") return user.storeId;
         const loja26 = stores.find(s => s.id === LOJA_26_ID);
         if (loja26) return loja26.id;
         if (stores.length > 0) return stores[0].id;
         return '';
     });
 
+    // Quando stores carregam e effectiveStoreId está vazio, definir default
     useEffect(() => {
-        if (!effectiveStoreId && stores.length > 0) {
-            const loja26 = stores.find(s => s.id === LOJA_26_ID);
-            setEffectiveStoreId(loja26 ? loja26.id : stores[0].id);
+        if (stores && stores.length > 0 && !effectiveStoreId) {
+            // Ice cream stores IDs
+            const ICE_CREAM_STORES = [
+                '0eef2f53-4732-4824-84a5-2092234efaef', // Loja 26
+                'cbeeb1ea-911f-4d3a-87a9-3c38aafa0673'  // Loja 109
+            ];
+            
+            // Se admin sem storeId, default para Loja 26
+            const defaultStore = stores.find(s => s.id === ICE_CREAM_STORES[0]);
+            if (defaultStore) {
+                setEffectiveStoreId(defaultStore.id);
+            } else if (stores.length > 0) {
+                setEffectiveStoreId(stores[0].id);
+            }
         }
-    }, [stores]);
+    }, [stores, effectiveStoreId]);
 
-    const isAdmin = user?.role === UserRole.ADMIN;
+    const isAdmin = user?.role === UserRole.ADMIN || user?.role === UserRole.SUPER_ADMIN || String(user?.role).toUpperCase() === 'ADMIN' || String(user?.role).toUpperCase() === 'SUPER_ADMIN';
     const canManage = can('MODULE_ICECREAM_MANAGE');
     const isSorvete = user?.role === UserRole.ICE_CREAM;
+    const isGerente = user?.role === UserRole.MANAGER || String(user?.role).toUpperCase() === 'MANAGER' || String(user?.role).toUpperCase() === 'GERENTE';
 
     // ✅ FIX: Auto-selecionar loja para usuários SORVETE
     useEffect(() => {
@@ -153,10 +166,10 @@ const IceCreamModule: React.FC<IceCreamModuleProps> = ({
                 endDate = end.toISOString();
             }
 
-            // Filtro de loja para SORVETE
-            const storeFilter = isSorveteRole && user?.storeId 
-                ? [user.storeId] 
-                : ICE_CREAM_STORE_IDS;
+            // Filtro de loja para SORVETE - se as lojas estão selecionadas, use effectiveStoreId se disponível
+            const storeFilter = (isSorveteRole && user?.storeId)
+                ? [user.storeId]
+                : (effectiveStoreId && effectiveStoreId !== 'all' ? [effectiveStoreId] : ICE_CREAM_STORE_IDS);
 
             // TODAS as queries em PARALELO com Promise.all
             const [
@@ -1717,14 +1730,19 @@ const IceCreamModule: React.FC<IceCreamModuleProps> = ({
  
                         {/* Store Selector Mobile */}
                         <div className="md:hidden">
-                            {isAdmin ? (
+                            {(isAdmin || isGerente) ? (
                                 <select 
                                     value={effectiveStoreId} 
                                     onChange={e => setEffectiveStoreId(e.target.value)}
                                     className="bg-slate-100 border-none rounded-xl px-3 py-2 text-[9px] font-black uppercase text-slate-600 outline-none cursor-pointer"
                                 >
-                                    <option value="all">TODAS AS LOJAS</option>
-                                    {stores.map(s => <option key={s.id} value={s.id}>{s.name}</option>)}
+                                    {stores
+                                        .filter(s => [
+                                            '0eef2f53-4732-4824-84a5-2092234efaef',
+                                            'cbeeb1ea-911f-4d3a-87a9-3c38aafa0673'
+                                        ].includes(s.id))
+                                        .map(s => <option key={s.id} value={s.id}>{s.name}</option>)
+                                    }
                                 </select>
                             ) : (
                                 <div className="bg-slate-100 rounded-xl px-3 py-2 text-[9px] font-black uppercase text-slate-600 border border-slate-200">
@@ -1766,14 +1784,19 @@ const IceCreamModule: React.FC<IceCreamModuleProps> = ({
                         )}
                     </div>
                     <div className="hidden md:flex items-center gap-3">
-                        {isAdmin ? (
+                        {(isAdmin || isGerente) ? (
                             <select 
                                 value={effectiveStoreId} 
                                 onChange={e => setEffectiveStoreId(e.target.value)}
                                 className="bg-slate-100 border-none rounded-xl px-4 py-2.5 text-[10px] font-black uppercase text-slate-600 outline-none cursor-pointer hover:bg-slate-200 transition-all"
                             >
-                                <option value="all">TODAS AS LOJAS</option>
-                                {stores.map(s => <option key={s.id} value={s.id}>{s.name}</option>)}
+                                {stores
+                                    .filter(s => [
+                                        '0eef2f53-4732-4824-84a5-2092234efaef',
+                                        'cbeeb1ea-911f-4d3a-87a9-3c38aafa0673'
+                                    ].includes(s.id))
+                                    .map(s => <option key={s.id} value={s.id}>{s.name}</option>)
+                                }
                             </select>
                         ) : (
                             <div className="bg-slate-100 rounded-xl px-4 py-2.5 text-[10px] font-black uppercase text-slate-600 border border-slate-200">
