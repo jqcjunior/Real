@@ -396,6 +396,7 @@ export default function BuyOrderModule({ user }: { user?: User }) {
   const [totalPedidos, setTotalPedidos] = useState(0);
   const [roundBase, setRoundBase] = useState(15.5);
   const [loading, setLoading] = useState(false);
+  const [loadingRecent, setLoadingRecent] = useState(false);
   const [deletingOrder, setDeletingOrder] = useState<any | null>(null);
   const [copyingOrder, setCopyingOrder] = useState<any | null>(null);
   const [copiedFromPedido, setCopiedFromPedido] = useState<{ numero: number; marca: string } | null>(null);
@@ -487,6 +488,7 @@ export default function BuyOrderModule({ user }: { user?: User }) {
   } = useUserStorePermissions(user!, "buy_order_module");
 
   const fetchRecentOrders = useCallback(async () => {
+    setLoadingRecent(true);
     try {
       // ✅ 1. BUSCAR NÚMERO DA LOJA DO USUÁRIO
       let userStoreNumber: number | null = null;
@@ -581,6 +583,8 @@ export default function BuyOrderModule({ user }: { user?: User }) {
     } catch (error: any) {
       console.error("Erro ao buscar pedidos:", error);
       toast.error(`❌ ${error.message || "Erro ao carregar pedidos"}`);
+    } finally {
+      setLoadingRecent(false);
     }
   }, [searchTerm, selectedLoja, roleFilter, statusFilter, page, user, isManager, isAdmin]);
 
@@ -1794,20 +1798,21 @@ function gradesArrayToObject(grades: any): Record<string, Record<string, number>
             </span>
             <button
               onClick={fetchRecentOrders}
+              disabled={loadingRecent}
               style={{
                 background: "none",
                 border: "none",
-                color: "#185FA5",
+                color: loadingRecent ? "#9ca3af" : "#185FA5",
                 fontSize: 11,
-                cursor: "pointer",
+                cursor: loadingRecent ? "not-allowed" : "pointer",
                 fontWeight: 500,
                 display: "flex",
                 alignItems: "center",
                 gap: 4,
               }}
             >
-              <RefreshCw size={12} />
-              Atualizar
+              <RefreshCw className={loadingRecent ? "animate-spin" : ""} size={12} />
+              {loadingRecent ? "Atualizando..." : "Atualizar"}
             </button>
           </div>
 

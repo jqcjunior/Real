@@ -10,11 +10,28 @@ interface BuyOrderModuleModalProps {
   onSave: () => void;
 }
 
+function calcularPrecoVenda(
+  custo: number,
+  desconto: number,
+  markup: number,
+): number {
+  if (!custo || custo <= 0 || !markup || markup <= 0) return 0;
+  const custoLiquido = custo * (1 - (desconto || 0) / 100);
+  const valorBase = custoLiquido * markup;
+  const dezena = Math.floor(valorBase / 10) * 10;
+
+  return valorBase < dezena + 5 ? dezena + 9.99 : dezena + 19.99;
+}
+
 export function BuyOrderModuleModal({
   order,
   onClose,
   onSave,
 }: BuyOrderModuleModalProps) {
+  const user = apiService.getUser();
+  const userRole = String(user?.role || "").toUpperCase();
+  const isEditableRole = userRole === "ADMIN" || userRole === "SUPER_ADMIN" || userRole === "COMPRADOR";
+
   const [formData, setFormData] = useState({
     marca: order.marca || "",
     fornecedor: order.fornecedor || "",
@@ -127,7 +144,22 @@ export function BuyOrderModuleModal({
       field === "custo" ||
       field === "preco_venda"
     ) {
-      updated[index][field] = parseFloat(value) || 0;
+      const parsedVal = parseFloat(value) || 0;
+      updated[index][field] = parsedVal;
+
+      if (field === "preco_venda") {
+        updated[index]["precoManual"] = true;
+      }
+
+      if (field === "custo") {
+        if (!updated[index]["precoManual"]) {
+          updated[index]["preco_venda"] = calcularPrecoVenda(
+            parsedVal,
+            formData.desconto,
+            formData.markup
+          );
+        }
+      }
     } else {
       updated[index][field] = value;
     }
@@ -667,12 +699,26 @@ export function BuyOrderModuleModal({
                     max="100"
                     step="0.1"
                     value={formData.desconto}
-                    onChange={(e) =>
-                      setFormData({
-                        ...formData,
-                        desconto: parseFloat(e.target.value) || 0,
-                      })
-                    }
+                    onChange={(e) => {
+                      const discountVal = parseFloat(e.target.value) || 0;
+                      setFormData((prev) => {
+                        const newFormData = { ...prev, desconto: discountVal };
+                        setEditableItems((prevItems) =>
+                          prevItems.map((item) => {
+                            if (item.precoManual) return item;
+                            return {
+                              ...item,
+                              preco_venda: calcularPrecoVenda(
+                                item.custo || 0,
+                                newFormData.desconto,
+                                newFormData.markup
+                              )
+                            };
+                          })
+                        );
+                        return newFormData;
+                      });
+                    }}
                     style={{
                       width: "100%",
                       height: 36,
@@ -704,12 +750,26 @@ export function BuyOrderModuleModal({
                     max="10"
                     step="0.01"
                     value={formData.markup}
-                    onChange={(e) =>
-                      setFormData({
-                        ...formData,
-                        markup: parseFloat(e.target.value) || 0,
-                      })
-                    }
+                    onChange={(e) => {
+                      const markupVal = parseFloat(e.target.value) || 0;
+                      setFormData((prev) => {
+                        const newFormData = { ...prev, markup: markupVal };
+                        setEditableItems((prevItems) =>
+                          prevItems.map((item) => {
+                            if (item.precoManual) return item;
+                            return {
+                              ...item,
+                              preco_venda: calcularPrecoVenda(
+                                item.custo || 0,
+                                newFormData.desconto,
+                                newFormData.markup
+                              )
+                            };
+                          })
+                        );
+                        return newFormData;
+                      });
+                    }}
                     style={{
                       width: "100%",
                       height: 36,
@@ -969,10 +1029,17 @@ export function BuyOrderModuleModal({
                           onChange={(e) =>
                             handleItemChange(i, "preco_venda", e.target.value)
                           }
-                          onFocus={(e) =>
-                            (e.target.style.background = "#f0f9ff")
-                          }
-                          onBlur={(e) => (e.target.style.background = "#fff")}
+                          onFocus={(e) => {
+                            if (isEditableRole) {
+                              e.target.style.background = "#f0f9ff";
+                            }
+                          }}
+                          onBlur={(e) => {
+                            if (isEditableRole) {
+                              e.target.style.background = "#fff";
+                            }
+                          }}
+                          readOnly={!isEditableRole}
                           style={{
                             width: "100%",
                             padding: "4px 8px",
@@ -982,7 +1049,8 @@ export function BuyOrderModuleModal({
                             fontWeight: 600,
                             color: "#185FA5",
                             textAlign: "right",
-                            background: "#fff",
+                            background: isEditableRole ? "#fff" : "#f0f0f0",
+                            cursor: isEditableRole ? "text" : "not-allowed",
                           }}
                         />
                       </td>
