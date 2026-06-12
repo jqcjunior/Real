@@ -30,7 +30,9 @@ export function BuyOrderModuleModal({
 }: BuyOrderModuleModalProps) {
   const user = apiService.getUser();
   const userRole = String(user?.role || "").toUpperCase();
-  const isEditableRole = userRole === "ADMIN" || userRole === "SUPER_ADMIN" || userRole === "COMPRADOR";
+  const podeEditarPreco =
+    (userRole === "ADMIN" || userRole === "SUPER_ADMIN" || userRole === "COMPRADOR") &&
+    String(order?.status || "").toLowerCase() !== "exportado";
 
   const [formData, setFormData] = useState({
     marca: order.marca || "",
@@ -1030,16 +1032,16 @@ export function BuyOrderModuleModal({
                             handleItemChange(i, "preco_venda", e.target.value)
                           }
                           onFocus={(e) => {
-                            if (isEditableRole) {
+                            if (podeEditarPreco) {
                               e.target.style.background = "#f0f9ff";
                             }
                           }}
                           onBlur={(e) => {
-                            if (isEditableRole) {
+                            if (podeEditarPreco) {
                               e.target.style.background = "#fff";
                             }
                           }}
-                          readOnly={!isEditableRole}
+                          readOnly={!podeEditarPreco}
                           style={{
                             width: "100%",
                             padding: "4px 8px",
@@ -1049,8 +1051,8 @@ export function BuyOrderModuleModal({
                             fontWeight: 600,
                             color: "#185FA5",
                             textAlign: "right",
-                            background: isEditableRole ? "#fff" : "#f0f0f0",
-                            cursor: isEditableRole ? "text" : "not-allowed",
+                            background: podeEditarPreco ? "#fff" : "#f0f0f0",
+                            cursor: podeEditarPreco ? "text" : "not-allowed",
                           }}
                         />
                       </td>
