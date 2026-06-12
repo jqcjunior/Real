@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { supabase } from '../../services/supabaseClient';
+import { ensureSession } from '../../services/authService';
 import { 
   ClipboardList, 
   ChevronRight, 
@@ -30,6 +31,16 @@ const MySurveysComponent: React.FC<MySurveysComponentProps> = ({ user }) => {
   const fetchSurveys = async () => {
     setIsLoading(true);
     try {
+      await ensureSession();
+      
+      // Debug — remover depois de confirmar funcionamento
+      console.log('=== DEBUG MINHAS PESQUISAS ===');
+      console.log('User ID:', user.id);
+      console.log('User storeId:', user.storeId);
+      console.log('User store_id:', (user as any).store_id);
+      console.log('User role_level:', (user as any).role_level);
+      console.log('==============================');
+
       // 1. Buscar todas as pesquisas ativas do banco
       const { data, error } = await supabase
         .from('surveys')

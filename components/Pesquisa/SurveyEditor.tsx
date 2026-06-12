@@ -89,6 +89,33 @@ const SurveyEditor: React.FC<SurveyEditorProps> = ({
   const [questions, setQuestions] = useState<Partial<SurveyQuestion>[]>([]);
   const [questionsLoaded, setQuestionsLoaded] = useState(false);
   const [uploadingPhotoIdx, setUploadingPhotoIdx] = useState<number | null>(null);
+  const [tipoSuggestions, setTipoSuggestions] = useState<string[]>([]);
+  const [activeSuggestionIdx, setActiveSuggestionIdx] = useState<number | null>(null);
+
+  const searchTipos = async (term: string) => {
+    if (term.length < 2) {
+      setTipoSuggestions([]);
+      return;
+    }
+    try {
+      const { data } = await supabase
+        .from('buy_order_items')
+        .select('tipo')
+        .ilike('tipo', `%${term}%`)
+        .not('tipo', 'is', null)
+        .limit(50);
+      
+      if (data) {
+        const unique = [...new Set(data.map(d => d.tipo).filter(Boolean))] as string[];
+        unique.sort((a, b) => {
+          const aStarts = a.toLowerCase().startsWith(term.toLowerCase()) ? 0 : 1;
+          const bStarts = b.toLowerCase().startsWith(term.toLowerCase()) ? 0 : 1;
+          return aStarts - bStarts || a.localeCompare(b);
+        });
+        setTipoSuggestions(unique.slice(0, 8));
+      }
+    } catch {}
+  };
 
   useEffect(() => {
     if (editingSurvey && !questionsLoaded) {
@@ -685,8 +712,8 @@ const SurveyEditor: React.FC<SurveyEditorProps> = ({
                                 return null;
                               })()}
 
-                              {/* Linha 1: Marca + Referência + Cor */}
-                              <div className="grid grid-cols-3 gap-2">
+                              {/* Linha 1: Marca + Referência */}
+                              <div className="grid grid-cols-2 gap-2">
                                 <input
                                   type="text"
                                   placeholder="Marca"
@@ -701,16 +728,34 @@ const SurveyEditor: React.FC<SurveyEditorProps> = ({
                                   onChange={e => updateQuestion(idx, 'options', { ...(q.options as any || {}), referencia: e.target.value })}
                                   className="px-3 py-2 bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-lg text-xs text-slate-700 dark:text-slate-300 outline-none focus:border-blue-400"
                                 />
+                              </div>
+
+                              {/* Linha 2: Cor 1 + Cor 2 + Cor 3 */}
+                              <div className="grid grid-cols-3 gap-2">
                                 <input
                                   type="text"
-                                  placeholder="Cor"
-                                  value={(q.options as any)?.cor || ''}
-                                  onChange={e => updateQuestion(idx, 'options', { ...(q.options as any || {}), cor: e.target.value })}
+                                  placeholder="Cor 1 (principal)"
+                                  value={(q.options as any)?.cor1 || ''}
+                                  onChange={e => updateQuestion(idx, 'options', { ...(q.options as any || {}), cor1: e.target.value })}
+                                  className="px-3 py-2 bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-lg text-xs text-slate-700 dark:text-slate-300 outline-none focus:border-blue-400"
+                                />
+                                <input
+                                  type="text"
+                                  placeholder="Cor 2 (opcional)"
+                                  value={(q.options as any)?.cor2 || ''}
+                                  onChange={e => updateQuestion(idx, 'options', { ...(q.options as any || {}), cor2: e.target.value })}
+                                  className="px-3 py-2 bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-lg text-xs text-slate-700 dark:text-slate-300 outline-none focus:border-blue-400"
+                                />
+                                <input
+                                  type="text"
+                                  placeholder="Cor 3 (opcional)"
+                                  value={(q.options as any)?.cor3 || ''}
+                                  onChange={e => updateQuestion(idx, 'options', { ...(q.options as any || {}), cor3: e.target.value })}
                                   className="px-3 py-2 bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-lg text-xs text-slate-700 dark:text-slate-300 outline-none focus:border-blue-400"
                                 />
                               </div>
 
-                              {/* Linha 2: Custo + Markup + Venda */}
+                              {/* Linha 3: Custo + Markup + Venda (MANTER EXATAMENTE COMO ESTÁ) */}
                               <div className="grid grid-cols-3 gap-2">
                                 {/* Custo */}
                                 <div className="relative">
@@ -773,14 +818,52 @@ const SurveyEditor: React.FC<SurveyEditorProps> = ({
                                 </div>
                               </div>
 
-                              {/* Descrição */}
-                              <input
-                                type="text"
-                                placeholder="Descrição do item"
-                                value={(q.options as any)?.descricao || ''}
-                                onChange={e => updateQuestion(idx, 'options', { ...(q.options as any || {}), descricao: e.target.value })}
-                                className="w-full px-3 py-2 bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-lg text-xs text-slate-700 dark:text-slate-300 outline-none focus:border-blue-400"
-                              />
+                              {/* Linha 4: Descrição com autocomplete */}
+                              <div className="relative">
+                                <input
+                                  type="text"
+                                  placeholder="Descrição do item (ex: CHINELO MASCULINO)"
+                                  value={(q.options as any)?.descricao || ''}
+                                  onChange={e => {
+                                    updateQuestion(idx, 'options', { ...(q.options as any || {}), descricao: e.target.value });
+                                    setActiveSuggestionIdx(idx);
+                                    searchTipos(e.target.value);
+                                  }}
+                                  onFocus={() => {
+                                    const val = (q.options as any)?.descricao || '';
+                                    if (val.length >= 2) {
+                                      setActiveSuggestionIdx(idx);
+                                      searchTipos(val);
+                                    }
+                                  }}
+                                  onBlur={() => {
+                                    setTimeout(() => {
+                                      setActiveSuggestionIdx(null);
+                                      setTipoSuggestions([]);
+                                    }, 200);
+                                  }}
+                                  className="w-full px-3 py-2 bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-lg text-xs text-slate-700 dark:text-slate-300 outline-none focus:border-blue-400"
+                                />
+                                {activeSuggestionIdx === idx && tipoSuggestions.length > 0 && (
+                                  <div className="absolute z-50 top-full left-0 right-0 mt-1 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-lg shadow-xl max-h-48 overflow-y-auto">
+                                    {tipoSuggestions.map((sugestao, i) => (
+                                      <button
+                                        key={i}
+                                        type="button"
+                                        onMouseDown={e => {
+                                          e.preventDefault();
+                                          updateQuestion(idx, 'options', { ...(q.options as any || {}), descricao: sugestao });
+                                          setTipoSuggestions([]);
+                                          setActiveSuggestionIdx(null);
+                                        }}
+                                        className="w-full text-left px-3 py-2 text-xs text-slate-700 dark:text-slate-300 hover:bg-blue-50 dark:hover:bg-blue-900/20 hover:text-blue-700 transition-all border-b border-slate-50 dark:border-slate-800 last:border-0"
+                                      >
+                                        {sugestao}
+                                      </button>
+                                    ))}
+                                  </div>
+                                )}
+                              </div>
 
                               {/* Categoria */}
                               <div>
@@ -999,7 +1082,9 @@ const SurveyEditor: React.FC<SurveyEditorProps> = ({
                         </div>
                         <div className="flex gap-2">
                           <span className="text-[10px] px-1.5 py-0.5 bg-blue-50 text-blue-600 dark:bg-slate-600 dark:text-blue-300 rounded">{(q.options as any)?.categoria || '...'}</span>
-                          <span className="text-[10px] text-slate-400 truncate">{(q.options as any)?.cor || ''}</span>
+                          <span className="text-[10px] text-slate-400 truncate">
+                            {[(q.options as any)?.cor1 || (q.options as any)?.cor, (q.options as any)?.cor2, (q.options as any)?.cor3].filter(Boolean).join(' / ') || ''}
+                          </span>
                         </div>
                         <div className="flex gap-2 mt-1">
                           <span className="text-[10px] px-2 py-1 border border-slate-200 rounded-lg text-slate-400">Sim</span>

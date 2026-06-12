@@ -392,7 +392,7 @@ const SurveyResultsViewer: React.FC<SurveyResultsViewerProps> = ({ survey, curre
                               )}
                             </div>
                             <p className="text-[10px] text-slate-400 mt-0.5">
-                              Ref: {product.referencia || '—'} · Cor: {product.cor || '—'}
+                              Ref: {product.referencia || '—'} · Cor: {[product.cor1 || product.cor, product.cor2, product.cor3].filter(Boolean).join(' / ') || '—'}
                             </p>
                             {product.descricao && (
                               <p className="text-xs text-slate-500 mt-1">{product.descricao}</p>

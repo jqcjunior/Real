@@ -27,86 +27,6 @@ interface SurveyResponseFormProps {
 
 const ACESSORIO_TAMANHOS = ['UN', 'P', 'M', 'G', 'GG'];
 
-const gradeTemplates = [
-  // Masculino
-  {
-    id: 'masc_a',
-    categoria: 'masculino',
-    letra: 'A',
-    nome: 'Grade Tradicional Masc',
-    total_pares: 12,
-    tamanhos: { '37': 1, '38': 1, '39': 2, '40': 2, '41': 2, '42': 2, '43': 1, '44': 1 }
-  },
-  {
-    id: 'masc_b',
-    categoria: 'masculino',
-    letra: 'B',
-    nome: 'Grade Altos Masc',
-    total_pares: 12,
-    tamanhos: { '39': 1, '40': 2, '41': 3, '42': 3, '43': 2, '44': 1 }
-  },
-  {
-    id: 'masc_c',
-    categoria: 'masculino',
-    letra: 'C',
-    nome: 'Grade Compacta Masc',
-    total_pares: 6,
-    tamanhos: { '38': 1, '39': 1, '40': 1, '41': 1, '42': 1, '43': 1 }
-  },
-
-  // Feminino
-  {
-    id: 'fem_a',
-    categoria: 'feminino',
-    letra: 'A',
-    nome: 'Grade Tradicional Fem',
-    total_pares: 12,
-    tamanhos: { '34': 1, '35': 2, '36': 3, '37': 3, '38': 2, '39': 1 }
-  },
-  {
-    id: 'fem_b',
-    categoria: 'feminino',
-    letra: 'B',
-    nome: 'Grade Baixos Fem',
-    total_pares: 12,
-    tamanhos: { '33': 1, '34': 2, '35': 3, '36': 3, '37': 2, '38': 1 }
-  },
-  {
-    id: 'fem_c',
-    categoria: 'feminino',
-    letra: 'C',
-    nome: 'Grade Compacta Fem',
-    total_pares: 6,
-    tamanhos: { '34': 1, '35': 1, '36': 1, '37': 1, '38': 1, '39': 1 }
-  },
-
-  // Infantil
-  {
-    id: 'inf_a',
-    categoria: 'infantil',
-    letra: 'A',
-    nome: 'Grade Infantil Peq',
-    total_pares: 10,
-    tamanhos: { '17': 1, '18': 1, '19': 2, '20': 2, '21': 2, '22': 1, '23': 1 }
-  },
-  {
-    id: 'inf_b',
-    categoria: 'infantil',
-    letra: 'B',
-    nome: 'Grade Infantil Med',
-    total_pares: 10,
-    tamanhos: { '24': 1, '25': 2, '26': 2, '27': 2, '28': 2, '29': 1 }
-  },
-  {
-    id: 'inf_c',
-    categoria: 'infantil',
-    letra: 'C',
-    nome: 'Grade Infantil Gde',
-    total_pares: 10,
-    tamanhos: { '30': 1, '31': 2, '32': 2, '33': 3, '34': 2 }
-  }
-];
-
 const SurveyResponseForm: React.FC<SurveyResponseFormProps> = ({
   survey,
   user,
@@ -115,6 +35,7 @@ const SurveyResponseForm: React.FC<SurveyResponseFormProps> = ({
   onComplete,
 }) => {
   const [questions, setQuestions] = useState<SurveyQuestion[]>([]);
+  const [gradeTemplates, setGradeTemplates] = useState<any[]>([]);
   const [answers, setAnswers] = useState<Record<string, any>>({});
   const [motivos, setMotivos] = useState<Record<string, string>>({});
   const [grades, setGrades] = useState<Record<string, any>>({});
@@ -144,6 +65,13 @@ const SurveyResponseForm: React.FC<SurveyResponseFormProps> = ({
       if (error) throw error;
       const activeQuestions = (data || []).filter((q: any) => q.is_active !== false);
       setQuestions(activeQuestions);
+
+      const { data: tplData } = await supabase
+        .from('survey_grade_templates')
+        .select('*')
+        .eq('is_active', true)
+        .order('sort_order', { ascending: true });
+      if (tplData) setGradeTemplates(tplData);
     } catch (err) {
       console.error('Erro ao buscar perguntas:', err);
     } finally {
@@ -611,12 +539,14 @@ const SurveyResponseForm: React.FC<SurveyResponseFormProps> = ({
                             )}
 
                             {/* Cor */}
-                            {product.cor && (
-                              <div className="flex items-center gap-2">
+                            {(product.cor1 || product.cor) && (
+                              <div className="flex items-center gap-2 flex-wrap">
                                 <span className="text-xs text-slate-400">Cor:</span>
-                                <span className="text-xs font-semibold text-slate-700 bg-slate-100 px-2 py-0.5 rounded-md">
-                                  {product.cor}
-                                </span>
+                                {[product.cor1 || product.cor, product.cor2, product.cor3].filter(Boolean).map((c: string, i: number) => (
+                                  <span key={i} className="text-xs font-semibold text-slate-700 bg-slate-100 px-2 py-0.5 rounded-md">
+                                    {c}
+                                  </span>
+                                ))}
                               </div>
                             )}
 
