@@ -1510,6 +1510,9 @@ export default function StepPedidos({
                       const totalItem = icg.grades.reduce((s, g) => s + totPares(g.qtds), 0);
                       const gradesLabel = icg.grades.map(g => `Gr ${g.letter}`).join(' · ');
                       const isLong = item.ref.length > 10;
+                      const coresTexto = [item.cor1, item.cor2, item.cor3]
+                        .filter(Boolean)
+                        .join(' - ');
 
                       return (
                         <div
@@ -1530,7 +1533,9 @@ export default function StepPedidos({
                                 </div>
                               </div>
                               <div className="flex items-center justify-between gap-1">
-                                <span className="text-[7px] text-slate-400 truncate">{item.tipo}</span>
+                                <span className="text-[7px] text-slate-400 truncate">
+                                  {item.tipo}{coresTexto ? ` - ${coresTexto}` : ''}
+                                </span>
                                 <div className="flex items-center gap-1 shrink-0">
                                   <span className="text-[8px] font-bold text-blue-600">{gradesLabel}</span>
                                   <span className="text-[8px] font-black text-slate-700 bg-slate-100 rounded px-1">{totalItem}p</span>
@@ -1548,7 +1553,9 @@ export default function StepPedidos({
                                 <button onClick={() => setEditingTempItem(idx)} className="text-blue-500 hover:text-blue-700 text-[10px] leading-none shrink-0" title="Editar">✏️</button>
                                 <button onClick={() => setDeletingTempItem(idx)} className="text-red-400 hover:text-red-600 text-[10px] leading-none shrink-0" title="Excluir">🗑️</button>
                               </div>
-                              <span className="text-[7px] text-slate-400 truncate">{item.tipo}</span>
+                              <span className="text-[7px] text-slate-400 truncate">
+                                {item.tipo}{coresTexto ? ` - ${coresTexto}` : ''}
+                              </span>
                             </>
                           )}
                         </div>
@@ -2141,6 +2148,9 @@ function EditPedidoPopup({
                   (s, g) => s + totPares(g.qtds),
                   0,
                 );
+                const coresTexto = [item.cor1, item.cor2, item.cor3]
+                  .filter(Boolean)
+                  .join(' - ');
                 return (
                   <div
                     key={icg.itemIdx}
@@ -2151,7 +2161,7 @@ function EditPedidoPopup({
                         {item.ref}
                       </div>
                       <div className="text-xs text-slate-600 mb-2">
-                        {item.tipo}
+                        {item.tipo}{coresTexto ? ` - ${coresTexto}` : ''}
                       </div>
                       <div className="space-y-1">
                         {icg.grades.map((g) => (

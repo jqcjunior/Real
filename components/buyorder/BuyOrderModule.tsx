@@ -3683,7 +3683,15 @@ function StepItens({
                       {cat.label}
                     </span>
                   </div>
-                  <div className="text-[10px] text-slate-600 mb-1">{item.tipo}</div>
+                  <div className="text-[10px] text-slate-600 mb-1">
+                    {item.tipo}
+                    {(() => {
+                      const coresTexto = [item.cor1, item.cor2, item.cor3]
+                        .filter(Boolean)
+                        .join(' - ');
+                      return coresTexto ? ` - ${coresTexto}` : '';
+                    })()}
+                  </div>
                 <div className="grid grid-cols-2 gap-2 mb-1">
                   <div>
                     <label className="text-xs text-gray-500 block">Custo</label>
@@ -3915,6 +3923,16 @@ function StepItens({
                   </td>
                   <td className="text-[10px]" style={{ padding: "5px 4px", textAlign: "left" }}>
                     {it.tipo || "—"}
+                    {(() => {
+                      const coresTexto = [it.cor1, it.cor2, it.cor3]
+                        .filter(Boolean)
+                        .join(' - ');
+                      return coresTexto ? (
+                        <div style={{ fontSize: '9px', color: '#6b7280', fontWeight: 'bold', marginTop: '1px' }}>
+                          {coresTexto}
+                        </div>
+                      ) : null;
+                    })()}
                   </td>
                   <td className="text-[10px]" style={{ padding: "5px 4px", textAlign: "left" }}>
                     <span className={`px-2 py-0.5 rounded-full text-[10px] font-bold ${cat.color}`}>

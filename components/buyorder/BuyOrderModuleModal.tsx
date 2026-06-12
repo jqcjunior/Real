@@ -966,6 +966,16 @@ export function BuyOrderModuleModal({
                             background: "#fff",
                           }}
                         />
+                        {(() => {
+                          const coresTexto = [item.cor1, item.cor2, item.cor3]
+                            .filter(Boolean)
+                            .join(' - ');
+                          return coresTexto ? (
+                            <div style={{ fontSize: "9px", color: "#6b7280", marginTop: "2px", fontWeight: "bold" }}>
+                              {coresTexto}
+                            </div>
+                          ) : null;
+                        })()}
                       </td>
 
                       {/* Pares - Editável */}
