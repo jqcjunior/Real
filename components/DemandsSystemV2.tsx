@@ -516,7 +516,7 @@ const DemandsSystemV2: React.FC<DemandsSystemV2Props> = ({ user, stores, onUnrea
                 .from('attachments')
                 .upload(filePath, finalFile, {
                     cacheControl: '3600',
-                    upsert: false,
+                    upsert: true,
                     contentType: isCompressed ? 'image/jpeg' : (file.type || 'application/octet-stream')
                 });
 
