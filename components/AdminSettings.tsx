@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { Store } from '../types';
-import { Settings, Plus, Save, Trash2, CheckCircle, XCircle, IceCream, Building2, MapPin, Hash, Info, Loader2, AlertTriangle, X, Database, Download } from 'lucide-react';
+import { Settings, Plus, Save, Trash2, CheckCircle, XCircle, IceCream, Building2, MapPin, Hash, Info, Loader2, AlertTriangle, X, Database, Download, Lock, Unlock } from 'lucide-react';
 import { supabase } from '../services/supabaseClient';
 
 interface AdminSettingsProps {
@@ -95,6 +95,18 @@ const AdminSettings: React.FC<AdminSettingsProps> = ({ stores, onAddStore, onUpd
             await onUpdateStore({ id: store.id, has_gelateria: newValue });
         } catch (err) {
             alert("Erro ao atualizar status da Gelateria");
+        } finally {
+            setLoadingStoreId(null);
+        }
+    };
+
+    const toggleGerentePedido = async (store: Store) => {
+        setLoadingStoreId(store.id);
+        const newValue = store.gerente_pode_lancar_pedido === false ? true : false;
+        try {
+            await onUpdateStore({ id: store.id, gerente_pode_lancar_pedido: newValue });
+        } catch (err) {
+            alert("Erro ao atualizar permissão de lançamento de pedidos.");
         } finally {
             setLoadingStoreId(null);
         }
@@ -256,6 +268,14 @@ const AdminSettings: React.FC<AdminSettingsProps> = ({ stores, onAddStore, onUpd
                                 >
                                     <IceCream size={14} /> 
                                     {store.has_gelateria ? 'Gelateria Ativa' : 'Ativar Gelateria'}
+                                </button>
+
+                                <button 
+                                    onClick={() => toggleGerentePedido(store)}
+                                    className={`flex items-center gap-2 px-4 py-2.5 rounded-2xl text-[9px] font-black uppercase transition-all border-b-4 ${store.gerente_pode_lancar_pedido !== false ? 'bg-emerald-600 text-white border-emerald-900 shadow-lg' : 'bg-gray-100 text-gray-400 border-gray-300 active:scale-95'}`}
+                                >
+                                    {store.gerente_pode_lancar_pedido !== false ? <Unlock size={14} /> : <Lock size={14} />}
+                                    {store.gerente_pode_lancar_pedido !== false ? 'Pedidos Liberados' : 'Pedidos Bloqueados'}
                                 </button>
 
                                 <button 

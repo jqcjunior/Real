@@ -238,6 +238,7 @@ export interface Store {
   password?: string;
   passwordResetRequested?: boolean;
   has_gelateria?: boolean;
+  gerente_pode_lancar_pedido?: boolean;
   state?: string;
 }
 

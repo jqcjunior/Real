@@ -1203,7 +1203,7 @@ export default function StepPedidos({
                                 const qtd = gradeData.qtds[sz] || 0;
                                 return (
                                   <div key={sz} className="flex flex-col items-center">
-                                    <span className="text-[8px] font-black text-slate-300 mb-1">{sz}</span>
+                                    <span className="text-[9px] font-black text-slate-700 mb-1">{sz}</span>
                                     <input
                                       ref={(el) => { inputRefs.current[`${letter}-${sz}`] = el; }}
                                       type="number"
@@ -1306,7 +1306,7 @@ export default function StepPedidos({
                   const qtd = gradeData.qtds[sz] || 0;
                   return (
                     <div key={sz} className="flex flex-col items-center">
-                      <span className="text-[8px] font-black text-slate-300 mb-1">{sz}</span>
+                      <span className="text-[9px] font-black text-slate-700 mb-1">{sz}</span>
                       <input
                         ref={(el) => { inputRefs.current[`${letter}-${sz}`] = el; }}
                         type="number"

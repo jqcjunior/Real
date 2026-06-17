@@ -358,6 +358,7 @@ export default function BuyOrderModule({ user }: { user?: User }) {
   const [validationError, setValidationError] = useState<any>(null);
   const [error, setError] = useState("");
   const [userStoreNumber, setUserStoreNumber] = useState<string | null>(null);
+  const [gerentePedidosLiberado, setGerentePedidosLiberado] = useState<boolean | null>(null);
 
   useEffect(() => {
     async function fetchUserStoreNumber() {
@@ -365,16 +366,17 @@ export default function BuyOrderModule({ user }: { user?: User }) {
       if (user && !isAdmin && user.storeId) {
         const { data } = await supabase
           .from("stores")
-          .select("number")
+          .select("number, gerente_pode_lancar_pedido")
           .eq("id", user.storeId)
           .single();
         if (data?.number) {
           setUserStoreNumber(data.number);
+          setGerentePedidosLiberado(data.gerente_pode_lancar_pedido !== false);
         }
       }
     }
     fetchUserStoreNumber();
-  }, [user]);
+  } , [user]);
   const [numeroPedidoSalvo, setNumeroPedidoSalvo] = useState<number | null>(
     null,
   );
@@ -1412,6 +1414,21 @@ function gradesArrayToObject(grades: any): Record<string, Record<string, number>
 
     return true;
   });
+
+  const isGerenteReal = String(user?.role || "").toUpperCase() === "MANAGER";
+  if (isGerenteReal && gerentePedidosLiberado === false) {
+    return (
+      <div className="max-w-3xl mx-auto p-8">
+        <div className="bg-red-50 border border-red-200 rounded-3xl p-10 text-center">
+          <h2 className="text-lg font-black text-red-700 uppercase tracking-tight mb-3">Lançamento de Pedidos Desativado</h2>
+          <p className="text-sm text-red-600 leading-relaxed">
+            O administrador desativou temporariamente o lançamento de pedidos de compra para a sua loja.<br/>
+            Entre em contato com a administração para mais informações.
+          </p>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="max-w-5xl mx-auto p-4 md:p-6">
