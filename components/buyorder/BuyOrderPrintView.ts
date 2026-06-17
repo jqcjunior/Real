@@ -68,6 +68,27 @@ export const printOrder = async (order: any, supabase: SupabaseClient) => {
         }
       }
     });
+
+    const referencesSemFoto = references.filter(ref => !catalogMap.has(ref));
+    if (referencesSemFoto.length > 0) {
+      const { data: fallbackData } = await supabase
+        .from('product_catalog')
+        .select('referencia, image_url, cor1')
+        .in('referencia', referencesSemFoto)
+        .not('image_url', 'is', null);
+
+      (fallbackData || []).forEach((c: any) => {
+        if (c.image_url) {
+          const fullKey = `${c.referencia}_${(c.cor1 || '').toLowerCase()}`;
+          if (!catalogMap.has(fullKey)) {
+            catalogMap.set(fullKey, c.image_url);
+          }
+          if (!catalogMap.has(c.referencia)) {
+            catalogMap.set(c.referencia, c.image_url);
+          }
+        }
+      });
+    }
   }
 
   // 5. Gather unique sizes and build grades table values
