@@ -92,6 +92,47 @@ const SurveyEditor: React.FC<SurveyEditorProps> = ({
   const [tipoSuggestions, setTipoSuggestions] = useState<string[]>([]);
   const [activeSuggestionIdx, setActiveSuggestionIdx] = useState<number | null>(null);
 
+  // ── Lojas: fallback próprio se prop vier vazio ─────────────────────────────
+  const [localStores, setLocalStores] = useState<Store[]>([]);
+  const [loadingStores, setLoadingStores] = useState(false);
+
+  useEffect(() => {
+    if (!stores || stores.length === 0) {
+      fetchLocalStores();
+    }
+  }, []);
+
+  const fetchLocalStores = async () => {
+    setLoadingStores(true);
+    try {
+      await ensureSession();
+      const { data } = await supabase
+        .from('stores')
+        .select('id, number, name, city')
+        .order('number', { ascending: true });
+      if (data) setLocalStores(data as Store[]);
+    } catch (err) {
+      console.error('Erro ao buscar lojas:', err);
+    } finally {
+      setLoadingStores(false);
+    }
+  };
+
+  // Usa o prop se disponível, senão usa o fetch local
+  const effectiveStores = (stores && stores.length > 0) ? stores : localStores;
+
+  // Navegação Enter entre campos do produto
+  const focusNextProductField = (e: React.KeyboardEvent<HTMLInputElement>) => {
+    if (e.key !== 'Enter') return;
+    e.preventDefault();
+    const card = (e.currentTarget as HTMLElement).closest('[data-question-card]');
+    if (!card) return;
+    const fields = Array.from(card.querySelectorAll<HTMLElement>('[data-product-nav]'));
+    const currentIdx = fields.indexOf(e.currentTarget as HTMLElement);
+    const next = fields[currentIdx + 1];
+    if (next) next.focus();
+  };
+
   const searchTipos = async (term: string) => {
     if (term.length < 2) {
       setTipoSuggestions([]);
@@ -379,16 +420,29 @@ const SurveyEditor: React.FC<SurveyEditorProps> = ({
 
       // Salvar perguntas
       await supabase.from('survey_questions').delete().eq('survey_id', surveyId);
-      const questionsToInsert = questions.map((q, idx) => ({
-        survey_id: surveyId,
-        question_text: q.question_text,
-        question_type: q.question_type,
-        options: q.options || [],
-        is_required: q.is_required ?? true,
-        is_active: q.is_active !== false,
-        sort_order: idx,
-        photo_id: (q.options as any)?.photo_id || null,  // ← ADICIONAR
-      }));
+      const questionsToInsert = questions.map((q, idx) => {
+        // Busca photo_id da propriedade direta (carregada do DB) ou do options (após upload)
+        const rawPhotoId =
+          (q as any).photo_id ||
+          (q.question_type === 'product_item' ? (q.options as any)?.photo_id : null);
+
+        // Só inclui photo_id se for um UUID válido — nunca envia null para FK NOT NULL
+        const photoId =
+          rawPhotoId && typeof rawPhotoId === 'string' && rawPhotoId.trim().length === 36
+            ? rawPhotoId
+            : undefined;
+
+        return {
+          survey_id: surveyId,
+          question_text: q.question_text,
+          question_type: q.question_type,
+          options: q.options || [],
+          is_required: q.is_required ?? true,
+          is_active: q.is_active !== false,
+          sort_order: idx,
+          ...(photoId ? { photo_id: photoId } : {}),
+        };
+      });
       const { error: qError } = await supabase.from('survey_questions').insert(questionsToInsert);
       if (qError) throw qError;
 
@@ -583,31 +637,60 @@ const SurveyEditor: React.FC<SurveyEditorProps> = ({
                       </div>
                     )}
 
-                    {/* Lojas */}
+                    {/* Lojas alvo */}
                     <div>
                       <label className="block text-sm text-slate-600 dark:text-slate-400 mb-1">
                         Lojas alvo
                         <span className="text-xs text-slate-400 ml-2">
-                          {targetStoreIds.length === 0 ? '(todas as lojas)' : `(${targetStoreIds.length} selecionada${targetStoreIds.length > 1 ? 's' : ''})`}
+                          {targetStoreIds.length === 0
+                            ? '(todas as lojas)'
+                            : `(${targetStoreIds.length} selecionada${targetStoreIds.length > 1 ? 's' : ''})`}
                         </span>
                       </label>
-                      <div className="grid grid-cols-3 sm:grid-cols-4 gap-2 mt-2 max-h-44 overflow-y-auto pr-1">
-                        {stores.map(store => (
-                          <button
-                            key={store.id}
-                            type="button"
-                            onClick={() => toggleStore(store.id)}
-                            className={`px-3 py-2 rounded-lg border text-xs font-medium transition-all flex items-center justify-between gap-1 ${
-                              targetStoreIds.includes(store.id)
-                                ? 'border-blue-600 bg-blue-50 dark:bg-blue-900/20 text-blue-700 dark:text-blue-400'
-                                : 'border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 text-slate-500 hover:border-slate-300'
-                            }`}
-                          >
-                            Loja {store.number}
-                            {targetStoreIds.includes(store.id) && <Check size={11} />}
-                          </button>
-                        ))}
-                      </div>
+
+                      {loadingStores ? (
+                        <div className="flex items-center gap-2 mt-2 text-xs text-slate-400">
+                          <Loader2 size={13} className="animate-spin" /> Carregando lojas...
+                        </div>
+                      ) : effectiveStores.length === 0 ? (
+                        <p className="text-xs text-slate-400 mt-2">Nenhuma loja disponível.</p>
+                      ) : (
+                        <>
+                          {/* Botão Todas */}
+                          <div className="flex flex-wrap gap-2 mt-2">
+                            <button
+                              type="button"
+                              onClick={() => setTargetStoreIds([])}
+                              className={`px-3 py-2 rounded-lg border text-xs font-medium transition-all ${
+                                targetStoreIds.length === 0
+                                  ? 'border-blue-600 bg-blue-50 dark:bg-blue-900/20 text-blue-700 dark:text-blue-400'
+                                  : 'border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 text-slate-500 hover:border-slate-300'
+                              }`}
+                            >
+                              Todas
+                            </button>
+
+                            {/* Botões individuais por loja */}
+                            <div className="flex flex-wrap gap-2 max-h-44 overflow-y-auto pr-1">
+                              {effectiveStores.map(store => (
+                                <button
+                                  key={store.id}
+                                  type="button"
+                                  onClick={() => toggleStore(store.id)}
+                                  className={`px-3 py-2 rounded-lg border text-xs font-medium transition-all flex items-center gap-1 ${
+                                    targetStoreIds.includes(store.id)
+                                      ? 'border-blue-600 bg-blue-50 dark:bg-blue-900/20 text-blue-700 dark:text-blue-400'
+                                      : 'border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 text-slate-500 hover:border-slate-300'
+                                  }`}
+                                >
+                                  Loja {store.number}
+                                  {targetStoreIds.includes(store.id) && <Check size={11} />}
+                                </button>
+                              ))}
+                            </div>
+                          </div>
+                        </>
+                      )}
                     </div>
 
                     {/* Visibilidade */}
@@ -659,6 +742,7 @@ const SurveyEditor: React.FC<SurveyEditorProps> = ({
                       {questions.map((q, idx) => (
                         <motion.div
                           key={idx}
+                          data-question-card
                           initial={{ opacity: 0, y: 8 }}
                           animate={{ opacity: 1, y: 0 }}
                           exit={{ opacity: 0, y: -8 }}
@@ -715,6 +799,8 @@ const SurveyEditor: React.FC<SurveyEditorProps> = ({
                               {/* Linha 1: Marca + Referência */}
                               <div className="grid grid-cols-2 gap-2">
                                 <input
+                                  data-product-nav
+                                  onKeyDown={focusNextProductField}
                                   type="text"
                                   placeholder="Marca"
                                   value={(q.options as any)?.marca || ''}
@@ -722,6 +808,8 @@ const SurveyEditor: React.FC<SurveyEditorProps> = ({
                                   className="px-3 py-2 bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-lg text-xs text-slate-700 dark:text-slate-300 outline-none focus:border-blue-400"
                                 />
                                 <input
+                                  data-product-nav
+                                  onKeyDown={focusNextProductField}
                                   type="text"
                                   placeholder="Referência"
                                   value={(q.options as any)?.referencia || ''}
@@ -733,6 +821,8 @@ const SurveyEditor: React.FC<SurveyEditorProps> = ({
                               {/* Linha 2: Cor 1 + Cor 2 + Cor 3 */}
                               <div className="grid grid-cols-3 gap-2">
                                 <input
+                                  data-product-nav
+                                  onKeyDown={focusNextProductField}
                                   type="text"
                                   placeholder="Cor 1 (principal)"
                                   value={(q.options as any)?.cor1 || ''}
@@ -740,6 +830,8 @@ const SurveyEditor: React.FC<SurveyEditorProps> = ({
                                   className="px-3 py-2 bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-lg text-xs text-slate-700 dark:text-slate-300 outline-none focus:border-blue-400"
                                 />
                                 <input
+                                  data-product-nav
+                                  onKeyDown={focusNextProductField}
                                   type="text"
                                   placeholder="Cor 2 (opcional)"
                                   value={(q.options as any)?.cor2 || ''}
@@ -747,6 +839,8 @@ const SurveyEditor: React.FC<SurveyEditorProps> = ({
                                   className="px-3 py-2 bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-lg text-xs text-slate-700 dark:text-slate-300 outline-none focus:border-blue-400"
                                 />
                                 <input
+                                  data-product-nav
+                                  onKeyDown={focusNextProductField}
                                   type="text"
                                   placeholder="Cor 3 (opcional)"
                                   value={(q.options as any)?.cor3 || ''}
@@ -761,6 +855,8 @@ const SurveyEditor: React.FC<SurveyEditorProps> = ({
                                 <div className="relative">
                                   <span className="absolute left-3 top-1/2 -translate-y-1/2 text-[10px] text-slate-400 font-medium">R$</span>
                                   <input
+                                    data-product-nav
+                                    onKeyDown={focusNextProductField}
                                     type="number"
                                     step="0.01"
                                     placeholder="Custo"
@@ -784,6 +880,8 @@ const SurveyEditor: React.FC<SurveyEditorProps> = ({
                                 <div className="relative">
                                   <span className="absolute left-3 top-1/2 -translate-y-1/2 text-[10px] text-slate-400 font-medium">×</span>
                                   <input
+                                    data-product-nav
+                                    onKeyDown={focusNextProductField}
                                     type="number"
                                     step="0.01"
                                     placeholder="Markup"
@@ -807,6 +905,8 @@ const SurveyEditor: React.FC<SurveyEditorProps> = ({
                                 <div className="relative">
                                   <span className="absolute left-3 top-1/2 -translate-y-1/2 text-[10px] text-green-500 font-medium">R$</span>
                                   <input
+                                    data-product-nav
+                                    onKeyDown={focusNextProductField}
                                     type="number"
                                     step="0.01"
                                     placeholder="Venda"
@@ -821,6 +921,7 @@ const SurveyEditor: React.FC<SurveyEditorProps> = ({
                               {/* Linha 4: Descrição com autocomplete */}
                               <div className="relative">
                                 <input
+                                  data-product-nav
                                   type="text"
                                   placeholder="Descrição do item (ex: CHINELO MASCULINO)"
                                   value={(q.options as any)?.descricao || ''}
@@ -841,6 +942,23 @@ const SurveyEditor: React.FC<SurveyEditorProps> = ({
                                       setActiveSuggestionIdx(null);
                                       setTipoSuggestions([]);
                                     }, 200);
+                                  }}
+                                  onKeyDown={e => {
+                                    if (e.key === 'Enter') {
+                                      if (tipoSuggestions.length > 0 && activeSuggestionIdx === idx) {
+                                        // Seleciona primeira sugestão do autocomplete
+                                        e.preventDefault();
+                                        updateQuestion(idx, 'options', {
+                                          ...(q.options as any || {}),
+                                          descricao: tipoSuggestions[0],
+                                        });
+                                        setTipoSuggestions([]);
+                                        setActiveSuggestionIdx(null);
+                                      } else {
+                                        // Último campo — não navega mais
+                                        e.preventDefault();
+                                      }
+                                    }
                                   }}
                                   className="w-full px-3 py-2 bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-lg text-xs text-slate-700 dark:text-slate-300 outline-none focus:border-blue-400"
                                 />
