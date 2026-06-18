@@ -419,20 +419,13 @@ const SurveyEditor: React.FC<SurveyEditorProps> = ({
       }
 
       // Salvar perguntas
-      await supabase.from('survey_questions').delete().eq('survey_id', surveyId);
-      const questionsToInsert = questions.map((q, idx) => {
-        // Busca photo_id da propriedade direta (carregada do DB) ou do options (após upload)
-        const rawPhotoId =
-          (q as any).photo_id ||
-          (q.question_type === 'product_item' ? (q.options as any)?.photo_id : null);
+      const keptIds: string[] = [];
 
-        // Só inclui photo_id se for um UUID válido — nunca envia null para FK NOT NULL
-        const photoId =
-          rawPhotoId && typeof rawPhotoId === 'string' && rawPhotoId.trim().length === 36
-            ? rawPhotoId
-            : undefined;
+      for (const [idx, q] of questions.entries()) {
+        const rawPhotoId = (q as any).photo_id || (q.options as any)?.photo_id;
+        const photoId = rawPhotoId?.length === 36 ? rawPhotoId : undefined;
 
-        return {
+        const qData: any = {
           survey_id: surveyId,
           question_text: q.question_text,
           question_type: q.question_type,
@@ -442,9 +435,36 @@ const SurveyEditor: React.FC<SurveyEditorProps> = ({
           sort_order: idx,
           ...(photoId ? { photo_id: photoId } : {}),
         };
-      });
-      const { error: qError } = await supabase.from('survey_questions').insert(questionsToInsert);
-      if (qError) throw qError;
+
+        if ((q as any).id) {
+          // Pergunta existente → UPDATE (preserva FK da foto)
+          await supabase
+            .from('survey_questions')
+            .update(qData)
+            .eq('id', (q as any).id);
+          keptIds.push((q as any).id);
+        } else {
+          // Pergunta nova → INSERT
+          const { data: newQ, error: inErr } = await supabase
+            .from('survey_questions')
+            .insert(qData)
+            .select('id')
+            .single();
+          if (inErr) throw inErr;
+          if (newQ) keptIds.push(newQ.id);
+        }
+      }
+
+      // Deleta só as perguntas que o usuário removeu
+      if (keptIds.length > 0) {
+        await supabase
+          .from('survey_questions')
+          .delete()
+          .eq('survey_id', surveyId)
+          .not('id', 'in', `(${keptIds.join(',')})`);
+      } else {
+        await supabase.from('survey_questions').delete().eq('survey_id', surveyId);
+      }
 
       toast.success(editingSurvey ? 'Pesquisa atualizada!' : 'Pesquisa criada!');
       onClose();
