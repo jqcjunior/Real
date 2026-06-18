@@ -1,7 +1,9 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { Store } from '../types';
-import { Settings, Plus, Save, Trash2, CheckCircle, XCircle, IceCream, Building2, MapPin, Hash, Info, Loader2, AlertTriangle, X, Database, Download, Lock, Unlock } from 'lucide-react';
+import { Settings, Plus, Save, Trash2, CheckCircle, XCircle, IceCream, Building2, MapPin, Hash, Info, Loader2, AlertTriangle, X, Database, Download, Lock, Unlock, Users } from 'lucide-react';
 import { supabase } from '../services/supabaseClient';
+import apiService from '../services/apiService';
+import { toast } from 'sonner';
 
 interface AdminSettingsProps {
     stores: Store[];
@@ -16,6 +18,59 @@ const AdminSettings: React.FC<AdminSettingsProps> = ({ stores, onAddStore, onUpd
     const [loadingStoreId, setLoadingStoreId] = useState<string | null>(null);
     const [confirmDeleteId, setConfirmDeleteId] = useState<string | null>(null);
     const [isBackingUp, setIsBackingUp] = useState(false);
+
+    const [storesPermissionList, setStoresPermissionList] = useState<any[]>([]);
+    const [isLoadingPermissions, setIsLoadingPermissions] = useState(true);
+
+    const currentUserObj = apiService.getUser();
+    const isUserAdmin = String(currentUserObj?.role || "").toLowerCase() === 'admin';
+
+    useEffect(() => {
+        if (!isUserAdmin) return;
+        async function fetchPermissions() {
+            setIsLoadingPermissions(true);
+            try {
+                const { data, error } = await supabase
+                    .from('stores')
+                    .select('id, number, name, gerente_pode_lancar_pedido')
+                    .order('number', { ascending: true });
+                if (error) throw error;
+                setStoresPermissionList(data || []);
+            } catch (err) {
+                console.error("Erro ao carregar permissões das lojas:", err);
+            } finally {
+                setIsLoadingPermissions(false);
+            }
+        }
+        fetchPermissions();
+    }, [isUserAdmin, stores]);
+
+    const handleTogglePermission = async (store: any) => {
+        const currentValue = store.gerente_pode_lancar_pedido !== false;
+        const newValue = !currentValue;
+
+        // Otimista
+        setStoresPermissionList(prev => 
+            prev.map(s => s.id === store.id ? { ...s, gerente_pode_lancar_pedido: newValue } : s)
+        );
+
+        try {
+            const { error } = await supabase
+                .from('stores')
+                .update({ gerente_pode_lancar_pedido: newValue })
+                .eq('id', store.id);
+
+            if (error) throw error;
+            toast.success(`Pedido em ${newValue ? 'liberado' : 'bloqueado'} para a loja ${store.number}!`);
+        } catch (err: any) {
+            console.error("Erro ao atualizar permissão:", err);
+            toast.error("Erro ao atualizar permissão de lançamento de pedidos.");
+            // Revert
+            setStoresPermissionList(prev => 
+                prev.map(s => s.id === store.id ? { ...s, gerente_pode_lancar_pedido: currentValue } : s)
+            );
+        }
+    };
 
     const handleExportBackup = async () => {
         setIsBackingUp(true);
@@ -296,6 +351,66 @@ const AdminSettings: React.FC<AdminSettingsProps> = ({ stores, onAddStore, onUpd
                     </div>
                 )}
             </div>
+
+            {/* NOVO CARD: ACESSO DE GERENTES AOS PEDIDOS */}
+            {isUserAdmin && (
+                <div className="bg-white p-8 rounded-[40px] shadow-sm border border-gray-100">
+                    <div className="flex items-center gap-4 mb-8">
+                        <div className="p-4 bg-blue-50 text-blue-600 rounded-3xl">
+                            <Lock size={24} />
+                        </div>
+                        <div>
+                            <h3 className="text-lg font-black text-blue-950 uppercase italic tracking-tighter">Acesso de Gerentes aos Pedidos</h3>
+                            <p className="text-[10px] font-black text-gray-400 uppercase tracking-widest mt-1">Ative ou desative o lançamento de pedidos pelo gerente, por loja</p>
+                        </div>
+                    </div>
+
+                    {isLoadingPermissions ? (
+                        <div className="flex items-center justify-center py-8">
+                            <Loader2 className="animate-spin text-blue-600" size={24} />
+                            <span className="ml-2 font-black text-[10px] uppercase text-gray-400 tracking-wider">Carregando permissões...</span>
+                        </div>
+                    ) : (
+                        <div className="divide-y divide-gray-100 max-h-96 overflow-y-auto pr-2">
+                            {storesPermissionList.map(store => (
+                                <div key={store.id} className="flex justify-between items-center py-4">
+                                    <div className="flex items-center gap-3">
+                                        <div className="p-2.5 bg-gray-50 text-gray-600 rounded-xl border border-gray-100">
+                                            <Building2 size={16} />
+                                        </div>
+                                        <div>
+                                            <p className="text-xs font-black text-blue-950 uppercase italic tracking-tight">
+                                                LOJA {store.number} - {store.name}
+                                            </p>
+                                            <p className="text-[9px] font-bold text-gray-400 uppercase tracking-widest mt-0.5">
+                                                {store.gerente_pode_lancar_pedido !== false ? 'Lançamento Liberado' : 'Lançamento Bloqueado'}
+                                            </p>
+                                        </div>
+                                    </div>
+                                    
+                                    <button
+                                        type="button"
+                                        onClick={() => handleTogglePermission(store)}
+                                        className={`relative inline-flex h-6 w-11 shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-none ${
+                                            store.gerente_pode_lancar_pedido !== false ? 'bg-emerald-600' : 'bg-gray-200'
+                                        }`}
+                                    >
+                                        <span
+                                            aria-hidden="true"
+                                            className={`pointer-events-none inline-block h-5 w-5 transform rounded-full bg-white shadow ring-0 transition duration-200 ease-in-out ${
+                                                store.gerente_pode_lancar_pedido !== false ? 'translate-x-5' : 'translate-x-0'
+                                            }`}
+                                        />
+                                    </button>
+                                </div>
+                            ))}
+                            {storesPermissionList.length === 0 && (
+                                <p className="text-center text-[10px] font-black text-gray-400 uppercase tracking-widest py-6">Nenhuma loja encontrada.</p>
+                            )}
+                        </div>
+                    )}
+                </div>
+            )}
 
             {/* SEÇÃO DE BACKUP */}
             <div className="bg-white p-8 rounded-[40px] shadow-sm border border-gray-100">
