@@ -272,7 +272,7 @@ export const BuyOrderPhotos: React.FC = () => {
       const { data, error } = await supabase
         .from('buy_orders')
         .select('id, numero_pedido, fornecedor, marca, status, buy_order_items(id)')
-        .in('status', ['confirmado', 'stand_by', 'rascunho'])
+        .in('status', ['confirmado', 'stand_by', 'rascunho', 'exportado'])
         .order('numero_pedido', { ascending: false });
 
       if (error) throw error;
