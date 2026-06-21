@@ -326,8 +326,7 @@ export const BuyOrderPhotos: React.FC = () => {
       if (references.length > 0) {
         const { data: fotosData, error: fotosError } = await supabase
           .from('product_catalog')
-          .select('referencia, image_url, cor1')
-          .eq('marca', orderObj?.marca || orderObj?.fornecedor || '')
+          .select('referencia, image_url, cor1, marca')
           .in('referencia', references);
 
         if (fotosError) throw fotosError;
@@ -371,7 +370,7 @@ export const BuyOrderPhotos: React.FC = () => {
       const resizedBlob = await resizeImage(file, 800);
       const convertedFile = new File([resizedBlob], `${item.referencia}.webp`, { type: 'image/webp' });
 
-      const brandSlug = sanitizeSlug(pedidoSelecionado.fornecedor || pedidoSelecionado.marca || 'sem-marca');
+      const brandSlug = sanitizeSlug(pedidoSelecionado.marca || pedidoSelecionado.fornecedor || 'sem-marca');
       const corSlug = sanitizeSlug(item.cor1 || 'sem-cor');
       const fileName = `${item.referencia}_${corSlug}.webp`;
       const filePath = `catalogo/${brandSlug}/${fileName}`;
@@ -395,7 +394,7 @@ export const BuyOrderPhotos: React.FC = () => {
         .from('product_catalog')
         .upsert({
           referencia: item.referencia,
-          marca: pedidoSelecionado.fornecedor || pedidoSelecionado.marca || '',
+          marca: pedidoSelecionado.marca || pedidoSelecionado.fornecedor || '',
           tipo: item.tipo,
           modelo: item.modelo,
           cor1: item.cor1 || '',
@@ -427,7 +426,7 @@ export const BuyOrderPhotos: React.FC = () => {
     setUploadingIds(prev => ({ ...prev, [item.id]: true }));
 
     try {
-      const brandSlug = sanitizeSlug(pedidoSelecionado.fornecedor || pedidoSelecionado.marca || 'sem-marca');
+      const brandSlug = sanitizeSlug(pedidoSelecionado.marca || pedidoSelecionado.fornecedor || 'sem-marca');
       const corSlug = sanitizeSlug(item.cor1 || 'sem-cor');
       const filePath = `catalogo/${brandSlug}/${item.referencia}_${corSlug}.webp`;
 
@@ -439,7 +438,7 @@ export const BuyOrderPhotos: React.FC = () => {
         .from('product_catalog')
         .update({ image_url: null })
         .eq('referencia', item.referencia)
-        .eq('marca', pedidoSelecionado.fornecedor || pedidoSelecionado.marca || '')
+        .eq('marca', pedidoSelecionado.marca || pedidoSelecionado.fornecedor || '')
         .eq('cor1', item.cor1 || '');
 
       if (error) throw error;
