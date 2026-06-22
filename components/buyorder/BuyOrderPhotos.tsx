@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { Camera, Upload, Trash2, Loader2, ArrowRight, CheckCircle2 } from 'lucide-react';
 import { supabase } from '../../services/supabaseClient';
+import { User } from '../../types';
 
 // Helper to resize and convert image to WebP
 const resizeImage = (file: File, maxSize = 600): Promise<Blob> => {
@@ -74,7 +75,14 @@ interface BuyOrderItem {
   preco_venda: number;
 }
 
-export const BuyOrderPhotos: React.FC = () => {
+interface BuyOrderPhotosProps {
+  currentUser: User;
+}
+
+export const BuyOrderPhotos: React.FC<BuyOrderPhotosProps> = ({ currentUser }) => {
+  const isAdmin   = String(currentUser?.role || '').toUpperCase() === 'ADMIN';
+  const isGerente = String(currentUser?.role || '').toUpperCase() === 'MANAGER';
+
   const [pedidos, setPedidos] = useState<BuyOrder[]>([]);
   const [selectedOrderId, setSelectedOrderId] = useState<string>('');
   const [pedidoSelecionado, setPedidoSelecionado] = useState<BuyOrder | null>(null);
@@ -91,6 +99,15 @@ export const BuyOrderPhotos: React.FC = () => {
   const [highlightReference, setHighlightReference] = useState<string>('');
   const [showSuggestions, setShowSuggestions] = useState(false);
   const suggestionsContainerRef = useRef<HTMLDivElement>(null);
+
+  // Número da loja do gerente (ex: "50")
+  const [storeNumber, setStoreNumber] = useState<string | null>(null);
+
+  // Busca por referência — independente de pedido selecionado
+  const [refSearchTerm, setRefSearchTerm]       = useState('');
+  const [refSearchResults, setRefSearchResults] = useState<any[]>([]);
+  const [refSearchLoading, setRefSearchLoading] = useState(false);
+  const [refSearchDone, setRefSearchDone]       = useState(false);
 
   const getPedidoLabel = (p: BuyOrder) => {
     return `#${p.numero_pedido || 'S/N'} - ${p.marca || p.fornecedor || 'Sem Fornecedor'}`;
@@ -264,17 +281,61 @@ export const BuyOrderPhotos: React.FC = () => {
   const cameraInputRefs = useRef<Record<string, HTMLInputElement | null>>({});
   const fileInputRefs = useRef<Record<string, HTMLInputElement | null>>({});
 
+  useEffect(() => {
+    if (isGerente && currentUser?.storeId) {
+      fetchStoreNumber();
+    }
+  }, []);
+
+  const fetchStoreNumber = async () => {
+    try {
+      const { data } = await supabase
+        .from('stores')
+        .select('number')
+        .eq('id', currentUser.storeId)
+        .single();
+      if (data?.number) setStoreNumber(data.number);
+    } catch (err) {
+      console.error('Erro ao buscar número da loja:', err);
+    }
+  };
+
   // Fetch orders
   const loadOrders = async () => {
     setLoadingOrders(true);
     try {
-      // Query confirmed, stand_by or rascunho orders
-      const { data, error } = await supabase
+      let orderIds: string[] | null = null;
+
+      // GERENTE: filtrar apenas pedidos que contêm a loja dele
+      if (isGerente && storeNumber) {
+        const numericStore = parseInt(storeNumber, 10);
+        const { data: subOrders } = await supabase
+          .from('buy_order_sub_orders')
+          .select('order_id')
+          .contains('lojas_numeros', [numericStore]);
+
+        orderIds = [...new Set((subOrders || []).map((s: any) => s.order_id))];
+
+        if (orderIds.length === 0) {
+          setPedidos([]);
+          setLoadingOrders(false);
+          return;
+        }
+      }
+
+      // Montar query base
+      let query = supabase
         .from('buy_orders')
         .select('id, numero_pedido, fornecedor, marca, status, buy_order_items(id)')
         .in('status', ['confirmado', 'stand_by', 'rascunho', 'exportado'])
         .order('numero_pedido', { ascending: false });
 
+      // Aplicar filtro de IDs apenas para gerente
+      if (isGerente && orderIds) {
+        query = query.in('id', orderIds);
+      }
+
+      const { data, error } = await query;
       if (error) throw error;
 
       const formatted = (data || []).map((o: any) => ({
@@ -283,7 +344,7 @@ export const BuyOrderPhotos: React.FC = () => {
         fornecedor: o.fornecedor,
         marca: o.marca,
         status: o.status,
-        item_count: o.buy_order_items ? o.buy_order_items.length : 0
+        item_count: o.buy_order_items ? o.buy_order_items.length : 0,
       }));
 
       setPedidos(formatted);
@@ -298,8 +359,44 @@ export const BuyOrderPhotos: React.FC = () => {
   };
 
   useEffect(() => {
-    loadOrders();
-  }, []);
+    // Admin: carrega imediatamente
+    // Gerente: aguarda storeNumber ser resolvido
+    if (isAdmin) {
+      loadOrders();
+    } else if (isGerente && storeNumber !== null) {
+      loadOrders();
+    }
+  }, [storeNumber]);
+
+  const searchByReference = async () => {
+    const term = refSearchTerm.trim();
+    if (!term || term.length < 2) return;
+
+    setRefSearchLoading(true);
+    setRefSearchDone(false);
+    try {
+      const { data, error } = await supabase
+        .from('product_catalog')
+        .select('referencia, marca, cor1, tipo, modelo, image_url')
+        .ilike('referencia', `%${term}%`)
+        .order('referencia', { ascending: true })
+        .limit(24);
+
+      if (error) throw error;
+      setRefSearchResults(data || []);
+      setRefSearchDone(true);
+    } catch (err) {
+      console.error('Erro na busca por referência:', err);
+    } finally {
+      setRefSearchLoading(false);
+    }
+  };
+
+  const clearRefSearch = () => {
+    setRefSearchTerm('');
+    setRefSearchResults([]);
+    setRefSearchDone(false);
+  };
 
   // Fetch items for specific order
   const loadItemsAndCatalog = async (orderId: string) => {
@@ -495,88 +592,185 @@ export const BuyOrderPhotos: React.FC = () => {
         </div>
 
         {/* Action controls / Autocomplete Search Input */}
-        <div id="order-selector-container" className="flex flex-col gap-2 w-full md:w-80 relative select-none z-30">
-          <div className="flex items-center gap-2 w-full">
-            <span className="text-sm font-bold text-slate-600 dark:text-slate-300 shrink-0">
-              Pedido:
-            </span>
-            {loadingOrders ? (
-              <div className="flex items-center gap-2 text-sm text-slate-400">
-                <Loader2 className="animate-spin text-indigo-500" size={16} />
-                Buscando...
-              </div>
-            ) : (
-              <div ref={suggestionsContainerRef} className="relative flex-1">
-                <input
-                  type="text"
-                  placeholder="Nº Pedido, Fornecedor/Marca ou Referência..."
-                  className="w-full text-sm bg-slate-100 dark:bg-slate-700 text-slate-800 dark:text-white font-semibold py-2 px-3 pr-8 rounded-lg border border-slate-200 dark:border-slate-600 outline-none focus:ring-2 focus:ring-indigo-500 transition-all cursor-pointer"
-                  value={searchTerm}
-                  onChange={(e) => {
-                    setSearchTerm(e.target.value);
-                    setShowSuggestions(true);
-                  }}
-                  onFocus={() => setShowSuggestions(true)}
-                  onKeyDown={handleKeyDown}
-                />
-                <span className="absolute right-2.5 top-1/2 -translate-y-1/2 text-slate-400 dark:text-slate-500 pointer-events-none">
-                  🔍
-                </span>
-                
-                {/* Suggestions List */}
-                {showSuggestions && (
-                  <div className="absolute left-0 right-0 mt-1 bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 shadow-2xl rounded-xl max-h-64 overflow-y-auto z-40 py-1 divide-y divide-slate-100 dark:divide-slate-700">
-                    {filteredPedidos.length === 0 ? (
-                      <div className="p-3 text-xs text-slate-400 text-center">
-                        Nenhum pedido encontrado
-                      </div>
-                    ) : (
-                      filteredPedidos.map(p => (
-                        <div
-                          key={p.id}
-                          className={`p-2.5 hover:bg-slate-100 dark:hover:bg-slate-700/50 cursor-pointer transition-colors flex items-center justify-between text-xs font-semibold ${
-                            p.id === selectedOrderId ? 'bg-indigo-50/70 dark:bg-indigo-950/20 text-indigo-700 dark:text-indigo-400' : 'text-slate-700 dark:text-slate-200'
-                          }`}
-                          onClick={() => {
-                            setSelectedOrderId(p.id);
-                            setShowSuggestions(false);
-                            if (searchTerm.trim()) {
-                              setHighlightReference(searchTerm.trim());
-                            }
-                            setSearchTerm('');
-                          }}
-                        >
-                          <div className="flex flex-col text-left mr-2 min-w-0">
-                            <span className="truncate">
-                              {getPedidoLabelFull(p)}
+        <div className="flex flex-col md:flex-row gap-4 w-full md:w-auto items-start md:items-start z-30">
+          <div id="order-selector-container" className="flex flex-col gap-2 w-full md:w-80 relative select-none z-30">
+            <div className="flex items-center gap-2 w-full">
+              <span className="text-sm font-bold text-slate-600 dark:text-slate-300 shrink-0">
+                Pedido:
+              </span>
+              {loadingOrders ? (
+                <div className="flex items-center gap-2 text-sm text-slate-400">
+                  <Loader2 className="animate-spin text-indigo-500" size={16} />
+                  Buscando...
+                </div>
+              ) : (
+                <div ref={suggestionsContainerRef} className="relative flex-1">
+                  <input
+                    type="text"
+                    placeholder="Nº Pedido, Fornecedor/Marca ou Referência..."
+                    className="w-full text-sm bg-slate-100 dark:bg-slate-700 text-slate-800 dark:text-white font-semibold py-2 px-3 pr-8 rounded-lg border border-slate-200 dark:border-slate-600 outline-none focus:ring-2 focus:ring-indigo-500 transition-all cursor-pointer"
+                    value={searchTerm}
+                    onChange={(e) => {
+                      setSearchTerm(e.target.value);
+                      setShowSuggestions(true);
+                    }}
+                    onFocus={() => setShowSuggestions(true)}
+                    onKeyDown={handleKeyDown}
+                  />
+                  <span className="absolute right-2.5 top-1/2 -translate-y-1/2 text-slate-400 dark:text-slate-500 pointer-events-none">
+                    🔍
+                  </span>
+                  
+                  {/* Suggestions List */}
+                  {showSuggestions && (
+                    <div className="absolute left-0 right-0 mt-1 bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 shadow-2xl rounded-xl max-h-64 overflow-y-auto z-40 py-1 divide-y divide-slate-100 dark:divide-slate-700">
+                      {filteredPedidos.length === 0 ? (
+                        <div className="p-3 text-xs text-slate-400 text-center">
+                          Nenhum pedido encontrado
+                        </div>
+                      ) : (
+                        filteredPedidos.map(p => (
+                          <div
+                            key={p.id}
+                            className={`p-2.5 hover:bg-slate-100 dark:hover:bg-slate-700/50 cursor-pointer transition-colors flex items-center justify-between text-xs font-semibold ${
+                              p.id === selectedOrderId ? 'bg-indigo-50/70 dark:bg-indigo-950/20 text-indigo-700 dark:text-indigo-400' : 'text-slate-700 dark:text-slate-200'
+                            }`}
+                            onClick={() => {
+                              setSelectedOrderId(p.id);
+                              setShowSuggestions(false);
+                              if (searchTerm.trim()) {
+                                setHighlightReference(searchTerm.trim());
+                              }
+                              setSearchTerm('');
+                            }}
+                          >
+                            <div className="flex flex-col text-left mr-2 min-w-0">
+                              <span className="truncate">
+                                {getPedidoLabelFull(p)}
+                              </span>
+                            </div>
+                            <span className="bg-slate-200/60 dark:bg-slate-700/60 text-slate-600 dark:text-slate-400 px-2 py-0.5 rounded-full text-[9px] font-bold shrink-0">
+                              {p.item_count} itens
                             </span>
                           </div>
-                          <span className="bg-slate-200/60 dark:bg-slate-700/60 text-slate-600 dark:text-slate-400 px-2 py-0.5 rounded-full text-[9px] font-bold shrink-0">
-                            {p.item_count} itens
-                          </span>
-                        </div>
-                      ))
-                    )}
-                  </div>
-                )}
+                        ))
+                      )}
+                    </div>
+                  )}
+                </div>
+              )}
+            </div>
+            
+            {/* Badge indicator representing the current selected order, visible below the search */}
+            {pedidoSelecionado && (
+              <div className="flex items-center gap-1.5 self-start bg-indigo-50/70 dark:bg-indigo-950/30 border border-indigo-100 dark:border-indigo-900/40 text-indigo-700 dark:text-indigo-300 px-2.5 py-1 rounded-full text-[11px] font-bold shadow-xs">
+                <span className="w-1.5 h-1.5 bg-indigo-500 rounded-full animate-pulse" />
+                <span className="truncate max-w-[260px]" title={getPedidoLabel(pedidoSelecionado)}>
+                  Ativo: <strong>#{pedidoSelecionado.numero_pedido || 'S/N'}</strong> - {pedidoSelecionado.marca || pedidoSelecionado.fornecedor || 'Sem Fornecedor'}
+                </span>
               </div>
             )}
           </div>
-          
-          {/* Badge indicator representing the current selected order, visible below the search */}
-          {pedidoSelecionado && (
-            <div className="flex items-center gap-1.5 self-start bg-indigo-50/70 dark:bg-indigo-950/30 border border-indigo-100 dark:border-indigo-900/40 text-indigo-700 dark:text-indigo-300 px-2.5 py-1 rounded-full text-[11px] font-bold shadow-xs">
-              <span className="w-1.5 h-1.5 bg-indigo-500 rounded-full animate-pulse" />
-              <span className="truncate max-w-[260px]" title={getPedidoLabel(pedidoSelecionado)}>
-                Ativo: <strong>#{pedidoSelecionado.numero_pedido || 'S/N'}</strong> - {pedidoSelecionado.marca || pedidoSelecionado.fornecedor || 'Sem Fornecedor'}
-              </span>
+
+          {/* ── Busca por Referência ── */}
+          <div className="flex flex-col gap-1 w-full md:w-80">
+            <span className="text-sm font-bold text-slate-600 dark:text-slate-300">
+              Referência:
+              <span className="text-[10px] font-normal text-slate-400 ml-1">(busca global no catálogo)</span>
+            </span>
+            <div className="flex gap-2">
+              <div className="relative flex-1">
+                <input
+                  type="text"
+                  placeholder="Ex: CE356, KV881..."
+                  className="w-full text-sm bg-slate-100 dark:bg-slate-700 text-slate-800 dark:text-white font-semibold py-2 px-3 pr-8 rounded-lg border border-slate-200 dark:border-slate-600 outline-none focus:ring-2 focus:ring-indigo-500 transition-all cursor-pointer"
+                  value={refSearchTerm}
+                  onChange={(e) => setRefSearchTerm(e.target.value)}
+                  onKeyDown={(e) => { if (e.key === 'Enter') searchByReference(); }}
+                />
+                {refSearchTerm && (
+                  <button
+                    onClick={clearRefSearch}
+                    className="absolute right-2.5 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600"
+                  >
+                    ✕
+                  </button>
+                )}
+              </div>
+              <button
+                onClick={searchByReference}
+                disabled={refSearchLoading || refSearchTerm.trim().length < 2}
+                className="px-3 py-2 bg-indigo-600 hover:bg-indigo-700 disabled:opacity-40 text-white rounded-lg text-xs font-bold flex items-center gap-1 transition-all"
+              >
+                {refSearchLoading
+                  ? <Loader2 size={14} className="animate-spin" />
+                  : '🔍'}
+              </button>
             </div>
-          )}
+
+            {/* Badge da loja — exibido apenas para gerente */}
+            {isGerente && storeNumber && (
+              <div className="flex items-center gap-1.5 self-start bg-green-50 dark:bg-green-900/20 border border-green-200 dark:border-green-800 text-green-700 dark:text-green-400 px-2.5 py-1 rounded-full text-[10px] font-bold">
+                🏪 Loja {storeNumber} — Modo Gerente
+              </div>
+            )}
+          </div>
         </div>
       </header>
 
       {/* CONTENT & GRID VIEW */}
       <div className="flex-1 overflow-y-auto p-6 space-y-6">
+        {/* Resultados da busca por referência */}
+        {refSearchDone && (
+          <div className="bg-white dark:bg-slate-800 rounded-xl border border-slate-200 dark:border-slate-700 shadow-sm p-4">
+            <div className="flex items-center justify-between mb-3">
+              <span className="text-xs font-black uppercase text-slate-600 dark:text-slate-300 tracking-widest">
+                Resultado para "{refSearchTerm.trim()}" — {refSearchResults.length} {refSearchResults.length === 1 ? 'item encontrado' : 'itens encontrados'} no catálogo
+              </span>
+              <button
+                onClick={clearRefSearch}
+                className="text-[10px] text-slate-400 hover:text-red-500 font-bold uppercase transition-colors"
+              >
+                ✕ Limpar busca
+              </button>
+            </div>
+
+            {refSearchResults.length === 0 ? (
+              <div className="text-center py-8 text-slate-400">
+                <Camera size={32} className="mx-auto mb-2 opacity-30" />
+                <p className="text-xs font-semibold">Nenhuma foto cadastrada para esta referência no catálogo.</p>
+              </div>
+            ) : (
+              <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-6 gap-3">
+                {refSearchResults.map((item, idx) => (
+                  <div key={idx} className="flex flex-col bg-slate-50 dark:bg-slate-900 rounded-xl p-2 border border-slate-200 dark:border-slate-700">
+                    <div className="aspect-square w-full rounded-lg overflow-hidden bg-slate-100 dark:bg-slate-700 mb-2 flex items-center justify-center">
+                      {item.image_url ? (
+                        <img
+                          src={item.image_url}
+                          alt={item.referencia}
+                          className="w-full h-full object-contain"
+                          referrerPolicy="no-referrer"
+                        />
+                      ) : (
+                        <div className="flex flex-col items-center text-slate-300">
+                          <Camera size={24} strokeWidth={1.5} />
+                          <span className="text-[8px] mt-1 uppercase font-bold">Sem foto</span>
+                        </div>
+                      )}
+                    </div>
+                    <span className="text-[10px] font-black text-slate-800 dark:text-slate-100 select-all">
+                      {item.referencia}
+                    </span>
+                    <span className="text-[9px] text-slate-500 dark:text-slate-400 truncate">{item.marca}</span>
+                    <span className="text-[9px] text-slate-400 dark:text-slate-500 uppercase truncate">COR: {item.cor1 || '—'}</span>
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+        )}
+
         {!selectedOrderId ? (
           <div className="flex flex-col items-center justify-center p-12 bg-white dark:bg-slate-800 rounded-2xl border border-dashed border-slate-300 dark:border-slate-700 shadow-md max-w-sm mx-auto mt-12 text-center">
             <Camera className="w-12 h-12 text-slate-300 mb-3 animate-pulse" />
