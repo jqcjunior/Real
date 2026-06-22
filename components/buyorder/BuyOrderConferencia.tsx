@@ -88,6 +88,10 @@ export const BuyOrderConferencia: React.FC<BuyOrderConferenciaProps> = ({ curren
   const [printOrder, setPrintOrder]       = useState<ConferenciaOrder | null>(null);
   const [printItems, setPrintItems]       = useState<OrderItem[]>([]);
 
+  const [sending, setSending]     = useState(false);
+  const [lastLink, setLastLink]   = useState<string | null>(null);
+  const [sendResult, setSendResult] = useState<'success' | 'error' | null>(null);
+
   // Filters
   const [search, setSearch]                     = useState('');
   const [filterStatus, setFilterStatus]         = useState<CentralStatus | 'all'>('all');
@@ -169,6 +173,39 @@ export const BuyOrderConferencia: React.FC<BuyOrderConferenciaProps> = ({ curren
   }, [storeReady, storeNumber, isGerente]);
 
   useEffect(() => { loadOrders(); }, [loadOrders]);
+
+  const handleSendEmail = async () => {
+    if (!isAdmin) return;
+    setSending(true);
+    setSendResult(null);
+    try {
+      const { data: { session } } = await supabase.auth.getSession();
+      const res = await fetch(
+        'https://rwwomakjhmglgoowbmsl.supabase.co/functions/v1/send-conferencia-email',
+        {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({}),
+        }
+      );
+      const json = await res.json();
+      if (!res.ok || !json.success) throw new Error(json.error || 'Erro ao enviar');
+      setLastLink(json.link);
+      setSendResult('success');
+      await loadOrders(); // Atualizar lista
+    } catch (err: any) {
+      console.error('[Conferência] Erro ao enviar email:', err);
+      setSendResult('error');
+    } finally {
+      setSending(false);
+    }
+  };
+
+  const copyLink = () => {
+    if (!lastLink) return;
+    navigator.clipboard.writeText(lastLink);
+    alert('Link copiado!');
+  };
 
   // ── Carregar itens de um pedido sob demanda ─────────────────────────────────
   const loadItems = async (orderId: string) => {
@@ -351,6 +388,35 @@ export const BuyOrderConferencia: React.FC<BuyOrderConferenciaProps> = ({ curren
               </p>
             </div>
             <div className="flex items-center gap-2">
+              {/* Botão Enviar Email — somente admin */}
+              {isAdmin && (
+                <button
+                  onClick={handleSendEmail}
+                  disabled={sending || loading}
+                  className="flex items-center gap-1.5 px-3 py-2 bg-blue-600 hover:bg-blue-700 disabled:opacity-40 text-white rounded-lg text-xs font-black uppercase tracking-wider transition-all"
+                  title="Gerar link e enviar email para a central"
+                >
+                  {sending ? <Loader2 size={14} className="animate-spin" /> : '📧'}
+                  {sending ? 'Enviando...' : 'Enviar Email'}
+                </button>
+              )}
+
+              {/* Resultado do envio */}
+              {sendResult === 'success' && lastLink && (
+                <div className="flex items-center gap-2 bg-green-50 dark:bg-green-900/20 border border-green-200 dark:border-green-800 px-3 py-2 rounded-lg">
+                  <span className="text-[10px] font-bold text-green-700 dark:text-green-400">✅ Email enviado!</span>
+                  <button
+                    onClick={copyLink}
+                    className="text-[10px] font-black text-blue-600 dark:text-blue-400 underline"
+                  >
+                    Copiar link
+                  </button>
+                </div>
+              )}
+              {sendResult === 'error' && (
+                <span className="text-[10px] font-bold text-red-600 dark:text-red-400">❌ Erro ao enviar. Verifique os secrets.</span>
+              )}
+
               <button onClick={loadOrders} disabled={loading} className="p-2 bg-slate-100 dark:bg-slate-700 text-slate-500 dark:text-slate-300 rounded-lg hover:bg-slate-200 dark:hover:bg-slate-600 transition-all disabled:opacity-40" title="Atualizar">
                 <RefreshCw size={16} className={loading ? 'animate-spin' : ''} />
               </button>
