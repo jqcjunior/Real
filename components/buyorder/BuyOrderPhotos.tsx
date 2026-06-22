@@ -359,9 +359,9 @@ export const BuyOrderPhotos: React.FC<BuyOrderPhotosProps> = ({ currentUser }) =
   };
 
   useEffect(() => {
-    // Admin: carrega imediatamente
-    // Gerente: aguarda storeNumber ser resolvido
-    if (isAdmin) {
+    // Se NÃO é gerente (admin, comprador ou qualquer outro role): carrega tudo
+    // Se é gerente: aguarda o storeNumber ser resolvido primeiro
+    if (!isGerente) {
       loadOrders();
     } else if (isGerente && storeNumber !== null) {
       loadOrders();
