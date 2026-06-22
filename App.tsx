@@ -45,6 +45,7 @@ import BuyOrderDashboard from './components/buyorder/BuyOrderDashboard.tsx';
 import StockForecastDashboard from './components/StockForecastDashboard.tsx';
 import BuyOrderQuotaView from './components/buyorder/BuyOrderQuotaView.tsx';
 import { BuyOrderPhotos } from './components/buyorder/BuyOrderPhotos.tsx';
+import { BuyOrderConferencia } from './components/buyorder/BuyOrderConferencia.tsx';
 const ReportsPage = lazy(() => import('./components/ReportsPage'));
 const AdminQuotaExtraApprovals = lazy(() => import('./components/buyorder/AdminQuotaExtraApprovals'));
 const BuyOrderAnalytic = lazy(() => import('./components/buyorder/BuyOrderAnalytic'));
@@ -66,7 +67,7 @@ import { printReceipt } from './services/thermalPrinterService';
 import {
     LayoutDashboard, Target, ShoppingBag, Calculator, IceCream as IceCreamIcon,
     DollarSign, AlertCircle, Calendar, LogOut, Loader2, Menu, X, ClipboardList, Shield, UserCog, Users, ShieldAlert, Settings, FileSignature, FileText, Download, Lock,
-    Sun, Moon, Trophy, BarChart3, ArrowRight, TrendingUp, ShoppingCart, CheckCircle, Camera
+    Sun, Moon, Trophy, BarChart3, ArrowRight, TrendingUp, ShoppingCart, CheckCircle, Camera, ClipboardCheck
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 import { Toaster } from 'sonner';
@@ -1222,7 +1223,14 @@ const App: React.FC = () => {
                                     { id: 'buy_order_quota', label: 'COTA DE COMPRA', icon: DollarSign, perm: 'MODULE_BUY_ORDERS', roles: ['admin', 'manager'] },
                                     { id: 'admin_quota_extra', label: 'APROVAÇÃO COTA EXTRA', icon: CheckCircle, perm: 'MODULE_BUY_ORDERS', roles: ['admin'] },
                                     { id: 'purchase_params', label: 'PARÂMETROS DE COMPRA', icon: Settings, perm: 'MODULE_PURCHASES', roles: ['admin'] },
-                                    { id: 'buy_order_photos', label: 'FOTOS DO PEDIDO', icon: Camera, perm: 'MODULE_BUY_ORDERS', roles: ['admin', 'manager'] }
+                                    { id: 'buy_order_photos', label: 'FOTOS DO PEDIDO', icon: Camera, perm: 'MODULE_BUY_ORDERS', roles: ['admin', 'manager'] },
+                                    {
+                                        id: 'buy_order_conferencia',
+                                        label: 'CONFERÊNCIA DE PEDIDOS',
+                                        icon: ClipboardCheck,
+                                        perm: 'MODULE_BUY_ORDERS',
+                                        roles: ['admin', 'manager']
+                                    }
                                 ] 
                             },
                             { id: 'reports_dashboard', label: 'Gestão de Relatórios', icon: BarChart3, perm: 'relatorios_compras', roles: ['admin', 'manager'] },
@@ -1504,6 +1512,7 @@ const App: React.FC = () => {
                         if (currentView === 'metas' && can('MODULE_METAS')) return <GoalRegistration user={user!} stores={isAdmin ? stores : stores.filter(s => s.id === user?.storeId)} goalsData={goalsData} onRefresh={fetchData} onSaveGoals={async (data) => { for(const row of data) { await supabase.from('monthly_goals').upsert({ store_id: row.storeId, year: row.year, month: row.month, revenue_target: row.revenueTarget, pa_target: row.paTarget, pu_target: row.puTarget, ticket_target: row.ticketTarget, items_target: row.itemsTarget, business_days: row.businessDays, delinquency_target: row.delinquencyTarget, trend: row.trend }, { onConflict: 'store_id, year, month' }); } fetchData(); }} />;
                         if (currentView === 'dre_accounts' && can('MODULE_DRE_ACCOUNTS')) return <DREAccounts />;
                         if (currentView === 'buy_order_photos' && can('MODULE_BUY_ORDERS')) return <BuyOrderPhotos currentUser={user!} />;
+                        if (currentView === 'buy_order_conferencia' && can('MODULE_BUY_ORDERS')) return <BuyOrderConferencia currentUser={user!} stores={stores} />;
                         if (currentView === 'buy_order_dashboard') {
                             if (can('relatorios_compras')) {
                                 return <BuyOrderDashboard user={user!} />;
