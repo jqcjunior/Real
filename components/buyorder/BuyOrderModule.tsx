@@ -1416,19 +1416,7 @@ function gradesArrayToObject(grades: any): Record<string, Record<string, number>
   });
 
   const isGerenteReal = String(user?.role || "").toUpperCase() === "MANAGER";
-  if (isGerenteReal && gerentePedidosLiberado === false) {
-    return (
-      <div className="max-w-3xl mx-auto p-8">
-        <div className="bg-red-50 border border-red-200 rounded-3xl p-10 text-center">
-          <h2 className="text-lg font-black text-red-700 uppercase tracking-tight mb-3">Lançamento de Pedidos Desativado</h2>
-          <p className="text-sm text-red-600 leading-relaxed">
-            O administrador desativou temporariamente o lançamento de pedidos de compra para a sua loja.<br/>
-            Entre em contato com a administração para mais informações.
-          </p>
-        </div>
-      </div>
-    );
-  }
+  const gerenteBloqueadoCriacao = isGerenteReal && gerentePedidosLiberado === false;
 
   return (
     <div className="max-w-5xl mx-auto p-4 md:p-6">
@@ -1449,14 +1437,15 @@ function gradesArrayToObject(grades: any): Record<string, Record<string, number>
       </div>
 
       {/* Header */}
-      <div
-        style={{
-          background: "#fff",
-          border: "0.5px solid #e5e7eb",
-          borderRadius: 10,
-          overflow: "hidden",
-        }}
-      >
+      {!gerenteBloqueadoCriacao && (
+        <div
+          style={{
+            background: "#fff",
+            border: "0.5px solid #e5e7eb",
+            borderRadius: 10,
+            overflow: "hidden",
+          }}
+        >
         {/* Título + role */}
         <div className="p-4 md:p-6 border-b flex flex-col md:flex-row md:items-center md:justify-between gap-4">
           <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
@@ -1778,6 +1767,15 @@ function gradesArrayToObject(grades: any): Record<string, Record<string, number>
           </div>
         </div>
       </div>
+      )}
+
+      {gerenteBloqueadoCriacao && (
+        <div className="bg-amber-50 border border-amber-200 rounded-xl p-4 mb-2 text-center">
+          <p className="text-sm text-amber-700 font-medium">
+            ⚠️ O lançamento de novos pedidos está desativado para sua loja. Acompanhe os pedidos abaixo.
+          </p>
+        </div>
+      )}
 
       {/* Lista de Pedidos Recentes */}
       {step === 0 && (
