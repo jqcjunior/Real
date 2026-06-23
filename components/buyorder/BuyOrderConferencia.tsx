@@ -271,9 +271,60 @@ export const BuyOrderConferencia: React.FC<BuyOrderConferenciaProps> = ({ curren
         setLoadingItems(prev => ({ ...prev, [order.id]: false }));
       }
     }
-    setPrintOrder(order);
-    setPrintItems(items);
-    setTimeout(() => window.print(), 300);
+
+    const today = fmt.datetime(new Date().toISOString());
+    const ordersRows = items.map((item, i) => `
+      <tr style="background:${i % 2 === 0 ? '#f8f8f8' : '#fff'}">
+        <td style="padding:4px 8px;font-weight:700">${item.referencia}</td>
+        <td style="padding:4px 8px">${item.tipo}</td>
+        <td style="padding:4px 8px">${[item.cor1, item.cor2, item.cor3].filter(Boolean).join(' / ')}</td>
+        <td style="padding:4px 8px">${item.modelo}</td>
+        <td style="padding:4px 8px">${fmt.currency(item.custo)}</td>
+        <td style="padding:4px 8px">${fmt.currency(item.preco_venda)}</td>
+        <td style="padding:4px 8px;font-weight:700">${item.total_pares}</td>
+      </tr>`).join('');
+
+    const html = `<!DOCTYPE html><html><head><meta charset="UTF-8">
+      <title>Pedido #${order.numero_pedido}</title>
+      <style>
+        body { font-family: Arial, sans-serif; padding: 24px; color: #000; font-size: 12px; }
+        h1 { font-size: 18px; font-weight: 900; margin: 0; text-align: center; }
+        h2 { font-size: 14px; font-weight: 700; margin: 4px 0; text-align: center; }
+        p { margin: 2px 0; text-align: center; font-size: 11px; }
+        hr { margin: 12px 0; border: none; border-top: 1px solid #ccc; }
+        table { width: 100%; border-collapse: collapse; margin-bottom: 12px; }
+        th { background: #1e3a5f; color: #fff; padding: 6px 8px; text-align: left; font-size: 11px; }
+        td { padding: 4px 8px; font-size: 11px; }
+        .info-label { font-weight: 700; width: 130px; }
+        .footer { margin-top: 24px; border-top: 1px solid #ccc; padding-top: 12px; font-size: 10px; color: #666; text-align: center; }
+        tfoot td { background: #1e3a5f; color: #fff; font-weight: 900; }
+      </style>
+    </head><body>
+      <h1>REAL CALÇADOS</h1>
+      <h2>PEDIDO DE COMPRA Nº ${order.numero_pedido}</h2>
+      <p>Emitido em: ${today}</p>
+      <hr/>
+      <table>
+        <tr><td class="info-label">Marca:</td><td>${order.marca}</td><td class="info-label">Fornecedor:</td><td>${order.fornecedor}</td></tr>
+        <tr><td class="info-label">Representante:</td><td>${order.representante}</td><td class="info-label">Prazos:</td><td>${order.prazos.join(' / ')} dias</td></tr>
+        <tr><td class="info-label">Faturamento:</td><td>${fmt.date(order.fat_inicio)} a ${fmt.date(order.fat_fim)}</td><td class="info-label">Lojas:</td><td>${order.lojas.map(n => 'Loja ' + n).join(', ')}</td></tr>
+        <tr><td class="info-label">Total Pares:</td><td>${order.total_pares}</td><td class="info-label">Valor Total:</td><td><strong>${fmt.currency(order.valor_total)}</strong></td></tr>
+      </table>
+      <hr/>
+      <table>
+        <thead><tr><th>Ref.</th><th>Tipo</th><th>Cor</th><th>Modelo</th><th>Custo</th><th>Venda</th><th>Pares</th></tr></thead>
+        <tbody>${ordersRows}</tbody>
+        <tfoot><tr><td colspan="6" style="text-align:right;padding:6px 8px">TOTAL PARES:</td><td style="padding:6px 8px">${order.total_pares}</td></tr></tfoot>
+      </table>
+      <div class="footer">Real Calçados — Sistema Real Admin — ${today}</div>
+    </body></html>`;
+
+    const printWindow = window.open('', '_blank', 'width=900,height=700');
+    if (!printWindow) { alert('Permita popups para usar a impressão.'); return; }
+    printWindow.document.write(html);
+    printWindow.document.close();
+    printWindow.focus();
+    setTimeout(() => { printWindow.print(); printWindow.close(); }, 600);
   };
 
   // ── Filtros aplicados ───────────────────────────────────────────────────────
@@ -311,67 +362,6 @@ export const BuyOrderConferencia: React.FC<BuyOrderConferenciaProps> = ({ curren
 
   return (
     <>
-      {/* ── Print styles (oculto em tela, visível só ao imprimir) ── */}
-      <style>{`
-        @media print {
-          body > * { display: none !important; }
-          #conferencia-print { display: block !important; }
-        }
-        #conferencia-print { display: none; }
-      `}</style>
-
-      {/* ── Print View ── */}
-      {printOrder && (
-        <div id="conferencia-print" style={{ fontFamily: 'Arial, sans-serif', padding: 24, color: '#000' }}>
-          <div style={{ textAlign: 'center', marginBottom: 16 }}>
-            <h1 style={{ fontSize: 18, fontWeight: 900, margin: 0 }}>REAL CALÇADOS</h1>
-            <h2 style={{ fontSize: 14, fontWeight: 700, margin: '4px 0' }}>PEDIDO DE COMPRA Nº {printOrder.numero_pedido}</h2>
-            <p style={{ fontSize: 11, margin: 0 }}>Emitido em: {fmt.datetime(new Date().toISOString())}</p>
-          </div>
-          <hr style={{ margin: '12px 0' }} />
-          <table style={{ width: '100%', fontSize: 11, borderCollapse: 'collapse', marginBottom: 12 }}>
-            <tbody>
-              <tr><td style={{ fontWeight: 700, padding: '2px 8px 2px 0', width: 140 }}>Marca:</td><td>{printOrder.marca}</td><td style={{ fontWeight: 700, padding: '2px 8px 2px 0', width: 140 }}>Fornecedor:</td><td>{printOrder.fornecedor}</td></tr>
-              <tr><td style={{ fontWeight: 700, padding: '2px 8px 2px 0' }}>Representante:</td><td>{printOrder.representante}</td><td style={{ fontWeight: 700, padding: '2px 8px 2px 0' }}>Prazos:</td><td>{printOrder.prazos.join(' / ')} dias</td></tr>
-              <tr><td style={{ fontWeight: 700, padding: '2px 8px 2px 0' }}>Faturamento:</td><td>{fmt.date(printOrder.fat_inicio)} a {fmt.date(printOrder.fat_fim)}</td><td style={{ fontWeight: 700, padding: '2px 8px 2px 0' }}>Lojas:</td><td>{printOrder.lojas.map(n => `Loja ${n}`).join(', ')}</td></tr>
-              <tr><td style={{ fontWeight: 700, padding: '2px 8px 2px 0' }}>Total Pares:</td><td>{printOrder.total_pares}</td><td style={{ fontWeight: 700, padding: '2px 8px 2px 0' }}>Valor Total:</td><td style={{ fontWeight: 900 }}>{fmt.currency(printOrder.valor_total)}</td></tr>
-            </tbody>
-          </table>
-          <hr style={{ margin: '12px 0' }} />
-          <table style={{ width: '100%', fontSize: 10, borderCollapse: 'collapse' }}>
-            <thead>
-              <tr style={{ backgroundColor: '#1e3a5f', color: '#fff' }}>
-                {['Ref.', 'Tipo', 'Cor', 'Modelo', 'Custo', 'Venda', 'Pares'].map(h => (
-                  <th key={h} style={{ padding: '4px 6px', textAlign: 'left', fontWeight: 700 }}>{h}</th>
-                ))}
-              </tr>
-            </thead>
-            <tbody>
-              {printItems.map((item, i) => (
-                <tr key={item.id} style={{ backgroundColor: i % 2 === 0 ? '#f8f8f8' : '#fff' }}>
-                  <td style={{ padding: '3px 6px', fontWeight: 700 }}>{item.referencia}</td>
-                  <td style={{ padding: '3px 6px' }}>{item.tipo}</td>
-                  <td style={{ padding: '3px 6px' }}>{[item.cor1, item.cor2, item.cor3].filter(Boolean).join(' / ')}</td>
-                  <td style={{ padding: '3px 6px' }}>{item.modelo}</td>
-                  <td style={{ padding: '3px 6px' }}>{fmt.currency(item.custo)}</td>
-                  <td style={{ padding: '3px 6px' }}>{fmt.currency(item.preco_venda)}</td>
-                  <td style={{ padding: '3px 6px', fontWeight: 700 }}>{item.total_pares}</td>
-                </tr>
-              ))}
-            </tbody>
-            <tfoot>
-              <tr style={{ backgroundColor: '#1e3a5f', color: '#fff', fontWeight: 900 }}>
-                <td colSpan={6} style={{ padding: '4px 6px', textAlign: 'right' }}>TOTAL PARES:</td>
-                <td style={{ padding: '4px 6px' }}>{printOrder.total_pares}</td>
-              </tr>
-            </tfoot>
-          </table>
-          <div style={{ marginTop: 24, borderTop: '1px solid #ccc', paddingTop: 12, fontSize: 10, color: '#666', textAlign: 'center' }}>
-            Real Calçados — Sistema Real Admin — Documento gerado em {fmt.datetime(new Date().toISOString())}
-          </div>
-        </div>
-      )}
-
       {/* ── Tela principal ── */}
       <div className="flex flex-col h-full bg-slate-50 dark:bg-slate-900 overflow-hidden">
 
@@ -437,15 +427,38 @@ export const BuyOrderConferencia: React.FC<BuyOrderConferenciaProps> = ({ curren
               </div>
               {isAdmin && (
                 <>
-                  <div className="flex items-center gap-1.5 bg-green-100 dark:bg-green-900/20 px-3 py-1.5 rounded-lg text-xs font-bold text-green-700 dark:text-green-400">
+                  <button
+                    onClick={() => setFilterStatus(filterStatus === 'cadastrado' ? 'all' : 'cadastrado')}
+                    className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-bold transition-all border-2 ${
+                      filterStatus === 'cadastrado'
+                        ? 'bg-green-600 text-white border-green-600 shadow-md'
+                        : 'bg-green-100 dark:bg-green-900/20 text-green-700 dark:text-green-400 border-green-200 dark:border-green-800 hover:border-green-400'
+                    }`}
+                  >
                     <span className="w-2 h-2 rounded-full bg-green-500 inline-block" /> {countVerde} cadastrados
-                  </div>
-                  <div className="flex items-center gap-1.5 bg-yellow-100 dark:bg-yellow-900/20 px-3 py-1.5 rounded-lg text-xs font-bold text-yellow-700 dark:text-yellow-400">
+                  </button>
+
+                  <button
+                    onClick={() => setFilterStatus(filterStatus === 'exportado' ? 'all' : 'exportado')}
+                    className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-bold transition-all border-2 ${
+                      filterStatus === 'exportado'
+                        ? 'bg-yellow-500 text-white border-yellow-500 shadow-md'
+                        : 'bg-yellow-100 dark:bg-yellow-900/20 text-yellow-700 dark:text-yellow-400 border-yellow-200 dark:border-yellow-800 hover:border-yellow-400'
+                    }`}
+                  >
                     <span className="w-2 h-2 rounded-full bg-yellow-500 inline-block" /> {countAmarelo} enviados
-                  </div>
-                  <div className="flex items-center gap-1.5 bg-red-100 dark:bg-red-900/20 px-3 py-1.5 rounded-lg text-xs font-bold text-red-700 dark:text-red-400">
+                  </button>
+
+                  <button
+                    onClick={() => setFilterStatus(filterStatus === 'pendente' ? 'all' : 'pendente')}
+                    className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-bold transition-all border-2 ${
+                      filterStatus === 'pendente'
+                        ? 'bg-red-600 text-white border-red-600 shadow-md'
+                        : 'bg-red-100 dark:bg-red-900/20 text-red-700 dark:text-red-400 border-red-200 dark:border-red-800 hover:border-red-400'
+                    }`}
+                  >
                     <span className="w-2 h-2 rounded-full bg-red-500 inline-block" /> {countVermelho} pendentes
-                  </div>
+                  </button>
                 </>
               )}
             </div>
@@ -541,83 +554,78 @@ export const BuyOrderConferencia: React.FC<BuyOrderConferenciaProps> = ({ curren
                   key={order.id}
                   className={`bg-white dark:bg-slate-800 rounded-xl border transition-all duration-200 ${isExpanded ? 'border-blue-300 dark:border-blue-700 shadow-md' : 'border-slate-200 dark:border-slate-700 hover:border-slate-300 dark:hover:border-slate-600 hover:shadow-sm'}`}
                 >
-                  {/* Row principal */}
-                  <div className="flex flex-col sm:flex-row sm:items-center gap-3 p-4">
-
-                    {/* Semáforo — só admin */}
-                    {isAdmin && (
-                      <div className={`flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg border text-[10px] font-black uppercase tracking-widest shrink-0 ${sem.bg} ${sem.text} ${sem.border}`}>
-                        <span className={`w-2 h-2 rounded-full ${sem.dot}`} />
-                        {sem.label}
-                      </div>
-                    )}
-
-                    {/* Número e marca */}
-                    <div className="flex items-center gap-3 min-w-0 flex-1">
-                      <span className="text-lg font-black text-blue-600 dark:text-blue-400 shrink-0">
-                        #{order.numero_pedido}
-                      </span>
-                      <div className="min-w-0">
+                  {/* Row principal — responsivo mobile */}
+                  <div className="p-3 md:p-4">
+                    {/* Linha 1: semáforo + número + marca + ações */}
+                    <div className="flex items-start gap-2 mb-2">
+                      {isAdmin && (
+                        <div className={`flex items-center gap-1 px-2 py-1 rounded-lg border text-[9px] font-black uppercase tracking-widest shrink-0 ${sem.bg} ${sem.text} ${sem.border}`}>
+                          <span className={`w-1.5 h-1.5 rounded-full ${sem.dot}`} />
+                          <span className="hidden sm:inline">{sem.label}</span>
+                        </div>
+                      )}
+                      <span className="text-base md:text-lg font-black text-blue-600 dark:text-blue-400 shrink-0">#{order.numero_pedido}</span>
+                      <div className="min-w-0 flex-1">
                         <p className="text-sm font-black text-slate-800 dark:text-slate-100 truncate">{order.marca}</p>
                         <p className="text-[10px] text-slate-500 dark:text-slate-400 truncate">{order.fornecedor} · {order.representante}</p>
                       </div>
-                    </div>
-
-                    {/* Fat. e prazos */}
-                    <div className="hidden md:flex flex-col text-right shrink-0">
-                      <span className="text-[10px] font-bold text-slate-500 dark:text-slate-400 uppercase">Faturamento</span>
-                      <span className="text-xs font-bold text-slate-700 dark:text-slate-200">{fmt.date(order.fat_inicio)} → {fmt.date(order.fat_fim)}</span>
-                      <span className="text-[10px] text-slate-400">{order.prazos.join('/')} dias</span>
-                    </div>
-
-                    {/* Lojas */}
-                    <div className="hidden lg:flex flex-wrap gap-1 shrink-0 max-w-[180px]">
-                      {order.lojas.map(n => (
-                        <span key={n} className="text-[9px] font-bold bg-slate-100 dark:bg-slate-700 text-slate-600 dark:text-slate-300 px-1.5 py-0.5 rounded">
-                          Lj {n}
-                        </span>
-                      ))}
-                    </div>
-
-                    {/* Valores */}
-                    <div className="flex flex-col items-end shrink-0">
-                      <span className="text-sm font-black text-emerald-600 dark:text-emerald-400">{fmt.currency(order.valor_total)}</span>
-                      <span className="text-[10px] text-slate-400">{order.total_pares} pares</span>
-                    </div>
-
-                    {/* Ações */}
-                    <div className="flex items-center gap-1.5 shrink-0">
-                      {/* Botão verde — somente admin e quando não está cadastrado */}
-                      {isAdmin && order.central_status !== 'cadastrado' && (
+                      {/* Ações sempre visíveis */}
+                      <div className="flex items-center gap-1 shrink-0">
+                        {isAdmin && order.central_status !== 'cadastrado' && (
+                          <button
+                            onClick={() => markAsCadastrado(order)}
+                            disabled={isUpdating}
+                            className="flex items-center gap-1 px-2 py-1.5 bg-green-600 hover:bg-green-700 disabled:opacity-50 text-white rounded-lg text-[10px] font-black uppercase transition-all"
+                          >
+                            {isUpdating ? <Loader2 size={11} className="animate-spin" /> : <CheckCircle2 size={11} />}
+                            OK
+                          </button>
+                        )}
                         <button
-                          onClick={() => markAsCadastrado(order)}
-                          disabled={isUpdating}
-                          className="flex items-center gap-1 px-2.5 py-1.5 bg-green-600 hover:bg-green-700 disabled:opacity-50 text-white rounded-lg text-[10px] font-black uppercase tracking-wider transition-all"
-                          title="Marcar como cadastrado na central"
+                          onClick={() => handlePrint(order)}
+                          disabled={loadingItems[order.id]}
+                          className="p-1.5 bg-slate-100 dark:bg-slate-700 hover:bg-slate-200 dark:hover:bg-slate-600 text-slate-600 dark:text-slate-300 rounded-lg transition-all disabled:opacity-40"
                         >
-                          {isUpdating ? <Loader2 size={11} className="animate-spin" /> : <CheckCircle2 size={11} />}
-                          OK
+                          {loadingItems[order.id] ? <Loader2 size={13} className="animate-spin" /> : <Printer size={13} />}
                         </button>
+                        <button
+                          onClick={() => toggleExpand(order.id)}
+                          className="p-1.5 bg-slate-100 dark:bg-slate-700 hover:bg-slate-200 dark:hover:bg-slate-600 text-slate-600 dark:text-slate-300 rounded-lg transition-all"
+                        >
+                          {isExpanded ? <ChevronUp size={13} /> : <ChevronDown size={13} />}
+                        </button>
+                      </div>
+                    </div>
+
+                    {/* Linha 2: faturamento + valor + pares — sempre visível */}
+                    <div className="flex flex-wrap items-center gap-2 md:gap-4 mt-1">
+                      <div className="flex flex-col">
+                        <span className="text-[9px] font-bold text-slate-400 uppercase">Faturamento</span>
+                        <span className="text-[10px] font-bold text-slate-700 dark:text-slate-200">{fmt.date(order.fat_inicio)} → {fmt.date(order.fat_fim)}</span>
+                        <span className="text-[9px] text-slate-400">{order.prazos.join('/')} dias</span>
+                      </div>
+                      <div className="flex flex-col ml-auto md:ml-0">
+                        <span className="text-sm font-black text-emerald-600 dark:text-emerald-400">{fmt.currency(order.valor_total)}</span>
+                        <span className="text-[9px] text-slate-400">{order.total_pares} pares</span>
+                      </div>
+
+                      {/* Lojas — grid compacto */}
+                      {order.lojas.length > 0 && (
+                        <div className="w-full mt-1">
+                          <div className="flex flex-wrap gap-1" style={{ maxHeight: '52px', overflow: 'hidden' }}>
+                            {order.lojas.map(n => (
+                              <span key={n} className="flex items-center justify-center w-9 h-6 text-[9px] font-black bg-slate-100 dark:bg-slate-700 text-slate-600 dark:text-slate-300 rounded border border-slate-200 dark:border-slate-600 shrink-0">
+                                {n}
+                              </span>
+                            ))}
+                            {order.lojas.length > 16 && (
+                              <span className="flex items-center justify-center px-2 h-6 text-[9px] font-bold text-slate-400 bg-slate-50 dark:bg-slate-800 rounded border border-slate-200 dark:border-slate-600">
+                                +{order.lojas.length - 16}
+                              </span>
+                            )}
+                          </div>
+                        </div>
                       )}
-
-                      {/* Imprimir */}
-                      <button
-                        onClick={() => handlePrint(order)}
-                        disabled={loadingItems[order.id]}
-                        className="p-1.5 bg-slate-100 dark:bg-slate-700 hover:bg-slate-200 dark:hover:bg-slate-600 text-slate-600 dark:text-slate-300 rounded-lg transition-all disabled:opacity-40"
-                        title="Imprimir / Salvar PDF"
-                      >
-                        {loadingItems[order.id] ? <Loader2 size={14} className="animate-spin" /> : <Printer size={14} />}
-                      </button>
-
-                      {/* Expandir */}
-                      <button
-                        onClick={() => toggleExpand(order.id)}
-                        className="p-1.5 bg-slate-100 dark:bg-slate-700 hover:bg-slate-200 dark:hover:bg-slate-600 text-slate-600 dark:text-slate-300 rounded-lg transition-all"
-                        title={isExpanded ? 'Recolher itens' : 'Ver itens'}
-                      >
-                        {isExpanded ? <ChevronUp size={14} /> : <ChevronDown size={14} />}
-                      </button>
                     </div>
                   </div>
 
