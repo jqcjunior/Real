@@ -19,6 +19,13 @@ interface StoreInfo {
   city: string;
 }
 
+interface SubOrder {
+  num: number;
+  lojas: number[];
+  total_pares: number;
+  valor_bruto: number;
+}
+
 interface ConferenciaOrder {
   id: string;
   numero_pedido: number;
@@ -35,6 +42,7 @@ interface ConferenciaOrder {
   total_pares: number;
   valor_total: number;
   lojas: number[];
+  subOrders: SubOrder[];
 }
 
 interface OrderItem {
@@ -68,6 +76,128 @@ const fmt = {
   currency: (v: number) => `R$ ${v.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`,
   date: (d: string) => d ? new Date(d + 'T00:00:00').toLocaleDateString('pt-BR') : '—',
   datetime: (d: string) => d ? new Date(d).toLocaleString('pt-BR', { day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit' }) : '—',
+};
+
+// ─── Sub-Pedidos Helpers ──────────────────────────────────────────────────────
+
+interface SubOrdersSectionProps {
+  order: ConferenciaOrder;
+  isGerente: boolean;
+  storeNumber: number | null;
+}
+
+const SubOrdersSection: React.FC<SubOrdersSectionProps> = ({ order, isGerente, storeNumber }) => {
+  // Gerente: mostrar apenas sub-pedidos que contêm sua loja
+  const visibleSubs = isGerente && storeNumber !== null
+    ? order.subOrders.filter(s => s.lojas.includes(storeNumber))
+    : order.subOrders;
+
+  if (!visibleSubs || visibleSubs.length === 0) return null;
+
+  // Modo pills: até 6 sub-pedidos
+  if (visibleSubs.length <= 6) {
+    return (
+      <div className="w-full mt-2 overflow-x-auto pb-1">
+        <div className="flex gap-2 min-w-min">
+          {visibleSubs.map(sub => (
+            <div
+              key={sub.num}
+              className={`flex flex-col items-center px-2 py-1.5 rounded-lg border shrink-0 min-w-[58px] gap-0.5 ${
+                isGerente
+                  ? 'bg-emerald-50 dark:bg-emerald-900/20 border-emerald-200 dark:border-emerald-800'
+                  : 'bg-blue-50 dark:bg-blue-900/20 border-blue-200 dark:border-blue-800'
+              }`}
+            >
+              <span className={`text-[9px] font-black uppercase tracking-wider ${isGerente ? 'text-emerald-700 dark:text-emerald-400' : 'text-blue-700 dark:text-blue-400'}`}>
+                Ped {sub.num}
+              </span>
+              <span className="text-[10px] font-black text-slate-800 dark:text-slate-100">
+                {fmt.currency(sub.valor_bruto).replace('R$ ', 'R$\u00a0')}
+              </span>
+              <span className="text-[9px] text-slate-500 dark:text-slate-400">
+                {sub.total_pares}p
+              </span>
+              <div className="flex flex-wrap gap-0.5 justify-center mt-0.5">
+                {sub.lojas.map(n => (
+                  <span
+                    key={n}
+                    className={`text-[8px] font-black px-1 py-0 rounded ${
+                      isGerente
+                        ? 'bg-emerald-100 dark:bg-emerald-900/40 text-emerald-800 dark:text-emerald-300'
+                        : 'bg-blue-100 dark:bg-blue-900/40 text-blue-800 dark:text-blue-300'
+                    }`}
+                  >
+                    {n}
+                  </span>
+                ))}
+              </div>
+            </div>
+          ))}
+        </div>
+      </div>
+    );
+  }
+
+  // Modo tabela: 7 ou mais sub-pedidos
+  return <SubOrdersTable visibleSubs={visibleSubs} isGerente={isGerente} />;
+};
+
+interface SubOrdersTableProps {
+  visibleSubs: SubOrder[];
+  isGerente: boolean;
+}
+
+const SubOrdersTable: React.FC<SubOrdersTableProps> = ({ visibleSubs, isGerente }) => {
+  const TABLE_MAX = 8;
+  const [showAllSubs, setShowAllSubs] = useState(false);
+  const displayedSubs = showAllSubs ? visibleSubs : visibleSubs.slice(0, TABLE_MAX);
+
+  return (
+    <div className="w-full mt-2 border-t border-slate-100 dark:border-slate-700 overflow-x-auto">
+      <table className="w-full text-left min-w-[340px]">
+        <thead>
+          <tr className="bg-slate-50 dark:bg-slate-700/50">
+            <th className="px-2 py-1.5 text-[9px] font-black uppercase tracking-wider text-slate-400 whitespace-nowrap">Sub-pedido</th>
+            <th className="px-2 py-1.5 text-[9px] font-black uppercase tracking-wider text-slate-400">Lojas</th>
+            <th className="px-2 py-1.5 text-[9px] font-black uppercase tracking-wider text-slate-400 text-right whitespace-nowrap">Valor</th>
+            <th className="px-2 py-1.5 text-[9px] font-black uppercase tracking-wider text-slate-400 text-right whitespace-nowrap">Pares</th>
+          </tr>
+        </thead>
+        <tbody className="divide-y divide-slate-50 dark:divide-slate-700/30">
+          {displayedSubs.map(sub => (
+            <tr key={sub.num} className="hover:bg-slate-50 dark:hover:bg-slate-700/20 transition-colors">
+              <td className="px-2 py-1.5 text-[10px] font-black text-blue-600 dark:text-blue-400 whitespace-nowrap">
+                Ped {sub.num}
+              </td>
+              <td className="px-2 py-1.5">
+                <div className="flex flex-wrap gap-1">
+                  {sub.lojas.map(n => (
+                    <span key={n} className="text-[8px] font-black px-1.5 py-0.5 bg-slate-100 dark:bg-slate-700 text-slate-600 dark:text-slate-300 rounded border border-slate-200 dark:border-slate-600">
+                      {n}
+                    </span>
+                  ))}
+                </div>
+              </td>
+              <td className="px-2 py-1.5 text-[10px] font-black text-emerald-600 dark:text-emerald-400 text-right whitespace-nowrap">
+                {fmt.currency(sub.valor_bruto)}
+              </td>
+              <td className="px-2 py-1.5 text-[10px] font-black text-slate-700 dark:text-slate-200 text-right whitespace-nowrap">
+                {sub.total_pares}p
+              </td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
+      {visibleSubs.length > TABLE_MAX && (
+        <button
+          onClick={e => { e.stopPropagation(); setShowAllSubs(v => !v); }}
+          className="w-full py-1.5 text-[10px] font-black text-blue-600 dark:text-blue-400 bg-slate-50 dark:bg-slate-800 hover:bg-slate-100 dark:hover:bg-slate-700 border-t border-slate-100 dark:border-slate-700 transition-colors text-center"
+        >
+          {showAllSubs ? '▲ Mostrar menos' : `▼ Ver todos os ${visibleSubs.length} sub-pedidos`}
+        </button>
+      )}
+    </div>
+  );
 };
 
 // ─── Component ────────────────────────────────────────────────────────────────
@@ -129,7 +259,7 @@ export const BuyOrderConferencia: React.FC<BuyOrderConferenciaProps> = ({ curren
           id, numero_pedido, marca, fornecedor, representante,
           fat_inicio, fat_fim, prazos, status, central_status,
           created_at, exported_at,
-          buy_order_sub_orders ( lojas_numeros, total_pares, valor_bruto )
+          buy_order_sub_orders ( sub_order_num, lojas_numeros, total_pares, valor_bruto )
         `)
         .in('status', ['exportado', 'confirmado', 'stand_by', 'rascunho'])
         .order('numero_pedido', { ascending: false });
@@ -139,6 +269,17 @@ export const BuyOrderConferencia: React.FC<BuyOrderConferenciaProps> = ({ curren
       let mapped: ConferenciaOrder[] = (data || []).map((o: any) => {
         const subs = (o.buy_order_sub_orders || []) as any[];
         const allLojas = [...new Set(subs.flatMap((s: any) => s.lojas_numeros || []))].sort((a, b) => a - b);
+
+        // Montar subOrders ordenados por sub_order_num
+        const subOrders: SubOrder[] = subs
+          .sort((a: any, b: any) => (a.sub_order_num || 0) - (b.sub_order_num || 0))
+          .map((s: any) => ({
+            num: s.sub_order_num || 0,
+            lojas: (s.lojas_numeros || []).sort((a: number, b: number) => a - b),
+            total_pares: s.total_pares || 0,
+            valor_bruto: Number(s.valor_bruto || 0),
+          }));
+
         return {
           id: o.id,
           numero_pedido: o.numero_pedido,
@@ -155,6 +296,7 @@ export const BuyOrderConferencia: React.FC<BuyOrderConferenciaProps> = ({ curren
           total_pares: subs.reduce((s: number, x: any) => s + (x.total_pares || 0), 0),
           valor_total: subs.reduce((s: number, x: any) => s + Number(x.valor_bruto || 0), 0),
           lojas: allLojas,
+          subOrders,
         };
       });
 
@@ -548,23 +690,8 @@ export const BuyOrderConferencia: React.FC<BuyOrderConferenciaProps> = ({ curren
                         <span className="text-[9px] text-slate-400">{order.total_pares} pares</span>
                       </div>
 
-                      {/* Lojas — grid compacto */}
-                      {order.lojas.length > 0 && (
-                        <div className="w-full mt-1">
-                          <div className="flex flex-wrap gap-1" style={{ maxHeight: '52px', overflow: 'hidden' }}>
-                            {order.lojas.map(n => (
-                              <span key={n} className="flex items-center justify-center w-9 h-6 text-[9px] font-black bg-slate-100 dark:bg-slate-700 text-slate-600 dark:text-slate-300 rounded border border-slate-200 dark:border-slate-600 shrink-0">
-                                {n}
-                              </span>
-                            ))}
-                            {order.lojas.length > 16 && (
-                              <span className="flex items-center justify-center px-2 h-6 text-[9px] font-bold text-slate-400 bg-slate-50 dark:bg-slate-800 rounded border border-slate-200 dark:border-slate-600">
-                                +{order.lojas.length - 16}
-                              </span>
-                            )}
-                          </div>
-                        </div>
-                      )}
+                      {/* Sub-pedidos */}
+                      <SubOrdersSection order={order} isGerente={isGerente} storeNumber={storeNumber} />
                     </div>
                   </div>
 
