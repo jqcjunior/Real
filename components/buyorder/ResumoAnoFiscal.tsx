@@ -55,13 +55,7 @@ const fmtDate = (d: string | null | undefined): string => {
   return p.length === 3 ? `${p[2]}/${p[1]}/${p[0].slice(2)}` : d;
 };
 
-const addMonths = (mes: number, ano: number, delta: number) => {
-  let m = mes + delta;
-  let y = ano;
-  while (m > 12) { m -= 12; y += 1; }
-  while (m < 1)  { m += 12; y -= 1; }
-  return { mes: m, ano: y };
-};
+
 
 // ─── Semáforo ─────────────────────────────────────────────────────────────────
 //  🟢 Verde   = exportado + central_status: cadastrado  → na central
@@ -248,12 +242,12 @@ export const ResumoAnoFiscal: React.FC<ResumoAnoFiscalProps> = ({ user, stores, 
   // ── Matriz mensal 90/120/150 ──────────────────────────────────────────────────
   const matriz = useMemo(() =>
     rollingMonths.map(({ mes, ano }) => {
-      let cota = 0, real = 0, prev = 0;
-      [3,4,5].forEach(off => {
-        const t = addMonths(mes, ano, off);
-        const m = painelData.find(i => i.mes === t.mes && i.ano === t.ano);
-        if (m) { cota += toNumber(m.valor_cota); real += toNumber(m.pedidos_real); prev += toNumber(m.pedidos_previsao); }
-      });
+      // Cada linha = dados diretos do mês de referência
+      // A RPC já calcula as parcelas por mês internamente
+      const m = painelData.find(i => i.mes === mes && i.ano === ano);
+      const cota = toNumber(m?.valor_cota);
+      const real = toNumber(m?.pedidos_real);
+      const prev = toNumber(m?.pedidos_previsao);
       const comp = real + prev;
       const saldo = cota - comp;
       const pct = cota > 0 ? Math.round((comp / cota) * 100) : 0;
