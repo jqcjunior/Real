@@ -1036,7 +1036,7 @@ export default function BuyOrderModule({ user }: { user?: User }) {
       // Atualizar status para "exportado" no banco
       await supabase
         .from("buy_orders")
-        .update({ status: "exportado" })
+        .update({ status: "exportado", central_status: "exportado" })
         .eq("id", orderId);
 
       fetchRecentOrders();
