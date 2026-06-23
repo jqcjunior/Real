@@ -6,6 +6,7 @@ import {
 } from 'lucide-react';
 import { supabase } from '../../services/supabaseClient';
 import { User } from '../../types';
+import { printOrder } from './BuyOrderPrintView';
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -85,8 +86,6 @@ export const BuyOrderConferencia: React.FC<BuyOrderConferenciaProps> = ({ curren
   const [loadingItems, setLoadingItems]   = useState<Record<string, boolean>>({});
   const [storeNumber, setStoreNumber]     = useState<number | null>(null);
   const [storeReady, setStoreReady]       = useState(false);
-  const [printOrder, setPrintOrder]       = useState<ConferenciaOrder | null>(null);
-  const [printItems, setPrintItems]       = useState<OrderItem[]>([]);
 
   const [sending, setSending]     = useState(false);
   const [lastLink, setLastLink]   = useState<string | null>(null);
@@ -256,75 +255,15 @@ export const BuyOrderConferencia: React.FC<BuyOrderConferenciaProps> = ({ curren
 
   // ── Imprimir pedido ─────────────────────────────────────────────────────────
   const handlePrint = async (order: ConferenciaOrder) => {
-    let items = itemsMap[order.id];
-    if (!items) {
-      setLoadingItems(prev => ({ ...prev, [order.id]: true }));
-      try {
-        const { data } = await supabase
-          .from('buy_order_items')
-          .select('id, referencia, tipo, cor1, cor2, cor3, modelo, custo, preco_venda, total_pares, grades')
-          .eq('order_id', order.id)
-          .order('item_order', { ascending: true });
-        items = data || [];
-        setItemsMap(prev => ({ ...prev, [order.id]: items! }));
-      } finally {
-        setLoadingItems(prev => ({ ...prev, [order.id]: false }));
-      }
+    setLoadingItems(prev => ({ ...prev, [order.id]: true }));
+    try {
+      await printOrder(order, supabase);
+    } catch (err) {
+      console.error('[Conferência] Erro ao imprimir:', err);
+      alert('Erro ao gerar impressão. Tente novamente.');
+    } finally {
+      setLoadingItems(prev => ({ ...prev, [order.id]: false }));
     }
-
-    const today = fmt.datetime(new Date().toISOString());
-    const ordersRows = items.map((item, i) => `
-      <tr style="background:${i % 2 === 0 ? '#f8f8f8' : '#fff'}">
-        <td style="padding:4px 8px;font-weight:700">${item.referencia}</td>
-        <td style="padding:4px 8px">${item.tipo}</td>
-        <td style="padding:4px 8px">${[item.cor1, item.cor2, item.cor3].filter(Boolean).join(' / ')}</td>
-        <td style="padding:4px 8px">${item.modelo}</td>
-        <td style="padding:4px 8px">${fmt.currency(item.custo)}</td>
-        <td style="padding:4px 8px">${fmt.currency(item.preco_venda)}</td>
-        <td style="padding:4px 8px;font-weight:700">${item.total_pares}</td>
-      </tr>`).join('');
-
-    const html = `<!DOCTYPE html><html><head><meta charset="UTF-8">
-      <title>Pedido #${order.numero_pedido}</title>
-      <style>
-        body { font-family: Arial, sans-serif; padding: 24px; color: #000; font-size: 12px; }
-        h1 { font-size: 18px; font-weight: 900; margin: 0; text-align: center; }
-        h2 { font-size: 14px; font-weight: 700; margin: 4px 0; text-align: center; }
-        p { margin: 2px 0; text-align: center; font-size: 11px; }
-        hr { margin: 12px 0; border: none; border-top: 1px solid #ccc; }
-        table { width: 100%; border-collapse: collapse; margin-bottom: 12px; }
-        th { background: #1e3a5f; color: #fff; padding: 6px 8px; text-align: left; font-size: 11px; }
-        td { padding: 4px 8px; font-size: 11px; }
-        .info-label { font-weight: 700; width: 130px; }
-        .footer { margin-top: 24px; border-top: 1px solid #ccc; padding-top: 12px; font-size: 10px; color: #666; text-align: center; }
-        tfoot td { background: #1e3a5f; color: #fff; font-weight: 900; }
-      </style>
-    </head><body>
-      <h1>REAL CALÇADOS</h1>
-      <h2>PEDIDO DE COMPRA Nº ${order.numero_pedido}</h2>
-      <p>Emitido em: ${today}</p>
-      <hr/>
-      <table>
-        <tr><td class="info-label">Marca:</td><td>${order.marca}</td><td class="info-label">Fornecedor:</td><td>${order.fornecedor}</td></tr>
-        <tr><td class="info-label">Representante:</td><td>${order.representante}</td><td class="info-label">Prazos:</td><td>${order.prazos.join(' / ')} dias</td></tr>
-        <tr><td class="info-label">Faturamento:</td><td>${fmt.date(order.fat_inicio)} a ${fmt.date(order.fat_fim)}</td><td class="info-label">Lojas:</td><td>${order.lojas.map(n => 'Loja ' + n).join(', ')}</td></tr>
-        <tr><td class="info-label">Total Pares:</td><td>${order.total_pares}</td><td class="info-label">Valor Total:</td><td><strong>${fmt.currency(order.valor_total)}</strong></td></tr>
-      </table>
-      <hr/>
-      <table>
-        <thead><tr><th>Ref.</th><th>Tipo</th><th>Cor</th><th>Modelo</th><th>Custo</th><th>Venda</th><th>Pares</th></tr></thead>
-        <tbody>${ordersRows}</tbody>
-        <tfoot><tr><td colspan="6" style="text-align:right;padding:6px 8px">TOTAL PARES:</td><td style="padding:6px 8px">${order.total_pares}</td></tr></tfoot>
-      </table>
-      <div class="footer">Real Calçados — Sistema Real Admin — ${today}</div>
-    </body></html>`;
-
-    const printWindow = window.open('', '_blank', 'width=900,height=700');
-    if (!printWindow) { alert('Permita popups para usar a impressão.'); return; }
-    printWindow.document.write(html);
-    printWindow.document.close();
-    printWindow.focus();
-    setTimeout(() => { printWindow.print(); printWindow.close(); }, 600);
   };
 
   // ── Filtros aplicados ───────────────────────────────────────────────────────
