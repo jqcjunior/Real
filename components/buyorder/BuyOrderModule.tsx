@@ -1190,29 +1190,38 @@ function gradesArrayToObject(grades: any): Record<string, Record<string, number>
     });
 
     // 3. Mapear as SubOrders para a Coluna 4
-    const loadedSubOrders = (order.buy_order_sub_orders || []).map((sub: any) => ({
-      num: sub.sub_order_num,
-      pedido_numero: sub.pedido_numero,
-      lojas: isCopy ? [] : (sub.lojas_numeros || []),
-      itensComGrades: (order.buy_order_items || [])
-        .filter((item: any) => 
-          item.buy_order_item_suborder_grades?.some((g: any) => g.sub_order_num === sub.sub_order_num)
-        )
-        .map((item: any) => {
-          const itemIdx = loadedItems.findIndex((i: any) => i.ref === item.referencia);
-          const gradesObj = gradesArrayToObject(item.grades);
-          return {
-            itemIdx,
-            grades: item.buy_order_item_suborder_grades
-              .filter((g: any) => g.sub_order_num === sub.sub_order_num)
-              .map((g: any) => ({
-                letter: g.grade_letra,
-                cat: item.modelo,
-                qtds: gradesObj[g.grade_letra] || {}
-              }))
-          };
-        })
-    }));
+    // Na cópia: janelas em branco (lojas e itens zerados, grades globais preservadas)
+    // Na edição: carrega tudo do original
+    const loadedSubOrders = isCopy
+      ? (order.buy_order_sub_orders || []).map((sub: any) => ({
+          num: sub.sub_order_num,
+          pedido_numero: null,
+          lojas: [],
+          itensComGrades: []
+        }))
+      : (order.buy_order_sub_orders || []).map((sub: any) => ({
+          num: sub.sub_order_num,
+          pedido_numero: sub.pedido_numero,
+          lojas: sub.lojas_numeros || [],
+          itensComGrades: (order.buy_order_items || [])
+            .filter((item: any) =>
+              item.buy_order_item_suborder_grades?.some((g: any) => g.sub_order_num === sub.sub_order_num)
+            )
+            .map((item: any) => {
+              const itemIdx = loadedItems.findIndex((i: any) => i.ref === item.referencia);
+              const gradesObj = gradesArrayToObject(item.grades);
+              return {
+                itemIdx,
+                grades: item.buy_order_item_suborder_grades
+                  .filter((g: any) => g.sub_order_num === sub.sub_order_num)
+                  .map((g: any) => ({
+                    letter: g.grade_letra,
+                    cat: item.modelo,
+                    qtds: gradesObj[g.grade_letra] || {}
+                  }))
+              };
+            })
+        }));
 
     setPedidos(loadedSubOrders);
     console.log("✅ Pedidos carregados:", loadedSubOrders);

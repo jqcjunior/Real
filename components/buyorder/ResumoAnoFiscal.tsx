@@ -112,7 +112,7 @@ export const ResumoAnoFiscal: React.FC<ResumoAnoFiscalProps> = ({ user, stores, 
 
   // Rola permissão: gerente fica preso na própria loja
   const isAdmin = useMemo(() =>
-    ['admin','super_admin','comprador'].includes(user?.role || ''), [user]);
+    ['admin','super_admin','comprador'].includes((user?.role || '').toLowerCase()), [user]);
 
   // Lojas disponíveis: usa TODAS_LOJAS, mas cruza com stores prop se disponível para pegar status
   const lojas = useMemo(() => {
