@@ -1,4 +1,4 @@
-import React, {
+successfully downloaded text file (SHA: d1269c2c05eb6b23412715f9ddeec904a0d70aaa)import React, {
   useState,
   useEffect,
   useRef,
@@ -1113,8 +1113,8 @@ function gradesArrayToObject(grades: any): Record<string, Record<string, number>
   return result;
 }
 
-  const loadOrderIntoSteps = async (order: any) => {
-    console.log("📦 Carregando pedido para edição:", order);
+  const loadOrderIntoSteps = async (order: any, isCopy = false) => {
+    console.log(`📦 Carregando pedido para ${isCopy ? "cópia" : "edição"}:`, order);
 
     // 1. Preencher Cabeçalho
     setCab({
@@ -1193,7 +1193,7 @@ function gradesArrayToObject(grades: any): Record<string, Record<string, number>
     const loadedSubOrders = (order.buy_order_sub_orders || []).map((sub: any) => ({
       num: sub.sub_order_num,
       pedido_numero: sub.pedido_numero,
-      lojas: sub.lojas_numeros || [],
+      lojas: isCopy ? [] : (sub.lojas_numeros || []),
       itensComGrades: (order.buy_order_items || [])
         .filter((item: any) => 
           item.buy_order_item_suborder_grades?.some((g: any) => g.sub_order_num === sub.sub_order_num)
@@ -1298,7 +1298,7 @@ function gradesArrayToObject(grades: any): Record<string, Record<string, number>
       if (error) throw error;
 
       // 2. Carregar nos steps do wizard como se fosse uma nova criação
-      await loadOrderIntoSteps(data);
+      await loadOrderIntoSteps(data, true);
 
       // 3. Modificar estados para forçar criação de NOVO registro ao salvar (sem IDs do banco)
       setEditingOrderId(null);
