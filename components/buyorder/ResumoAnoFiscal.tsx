@@ -79,6 +79,7 @@ const getSem = (status: string, cs: string): Sem => {
 interface PainelItem {
   mes: number; ano: number; store_number: string;
   valor_cota: number; pedidos_real: number; pedidos_previsao: number;
+  despesas_legacy: number;
 }
 
 interface Pedido {
@@ -245,13 +246,14 @@ export const ResumoAnoFiscal: React.FC<ResumoAnoFiscalProps> = ({ user, stores, 
       // Cada linha = dados diretos do mês de referência
       // A RPC já calcula as parcelas por mês internamente
       const m = painelData.find(i => i.mes === mes && i.ano === ano);
-      const cota = toNumber(m?.valor_cota);
-      const real = toNumber(m?.pedidos_real);
-      const prev = toNumber(m?.pedidos_previsao);
-      const comp = real + prev;
-      const saldo = cota - comp;
-      const pct = cota > 0 ? Math.round((comp / cota) * 100) : 0;
-      return { mes, ano, cota, real, prev, comp, saldo, pct };
+      const cota    = toNumber(m?.valor_cota);
+      const desp    = toNumber(m?.despesas_legacy);
+      const real    = toNumber(m?.pedidos_real);
+      const prev    = toNumber(m?.pedidos_previsao);
+      const comp    = desp + real + prev;
+      const saldo   = cota - comp;
+      const pct     = cota > 0 ? Math.round((comp / cota) * 100) : 0;
+      return { mes, ano, cota, desp, real, prev, comp, saldo, pct };
     }),
   [rollingMonths, painelData]);
 
@@ -412,7 +414,7 @@ export const ResumoAnoFiscal: React.FC<ResumoAnoFiscalProps> = ({ user, stores, 
                 <thead>
                   <tr className="border-b border-slate-100 bg-slate-50/50">
                     {[
-                      'Mês Ref.','Cota Disponível','Cota Real',
+                      'Mês Ref.','Cota Mensal','Despesas Legacy','Cota Real',
                       'Cota Previsão','Total Comprometido','Saldo','Utilização'
                     ].map(h => (
                       <th key={h} className="px-4 py-2.5 text-[9px] font-black uppercase tracking-widest text-slate-400 whitespace-nowrap">
@@ -450,6 +452,11 @@ export const ResumoAnoFiscal: React.FC<ResumoAnoFiscalProps> = ({ user, stores, 
                         {/* Cota */}
                         <td className={`px-4 py-3.5 font-mono font-semibold ${cur?'text-slate-300':'text-slate-600'}`}>
                           {fmtK(row.cota)}
+                        </td>
+
+                        {/* Despesas Legacy */}
+                        <td className={`px-4 py-3.5 font-mono font-semibold ${cur?'text-orange-300':'text-orange-500'}`}>
+                          {row.desp > 0 ? fmtK(row.desp) : <span className={cur?'text-slate-600':'text-slate-300'}>—</span>}
                         </td>
 
                         {/* Real */}

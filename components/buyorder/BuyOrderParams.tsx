@@ -711,13 +711,7 @@ export default function BuyOrderParams({ user }: { user: any }) {
     month: number;
     cotaTotal: number;
     despesas: number;
-    cota_gerente_valor?: number;
-    cota_comprador_valor?: number;
     cota_disponivel?: number;
-    usar_cota_fixa: boolean;
-    cota_gerente_fixa: number | null;
-    saldo_reserva_gerente?: number;
-    saldo_reserva_comprador?: number;
   }
 
   const [monthlyData, setMonthlyData] = useState<MonthlyData[]>(
@@ -725,10 +719,6 @@ export default function BuyOrderParams({ user }: { user: any }) {
       month: i + 1,
       cotaTotal: 0,
       despesas: 0,
-      cota_gerente_valor: 0,
-      cota_comprador_valor: 0,
-      usar_cota_fixa: false,
-      cota_gerente_fixa: null,
     })),
   );
 
@@ -896,27 +886,14 @@ export default function BuyOrderParams({ user }: { user: any }) {
               month: fiscal.month,
               cotaTotal: 0,
               despesas: 0,
-              cota_gerente_valor: 0,
-              cota_comprador_valor: 0,
-              usar_cota_fixa: false,
-              cota_gerente_fixa: null
             };
           }
           
           return {
             month: fiscal.month,
-            cotaTotal: Number(q.cota_bruta || 0),
+            cotaTotal: Number(q.cota_bruta || q.cota_valor || 0),
             despesas: Number(q.despesas_comprometidas || 0),
-            
-            // Valores calculados pela VIEW
-            cota_gerente_valor: Number(q.cota_gerente || 0),
-            cota_comprador_valor: Number(q.cota_comprador || 0),
-            cota_disponivel: Number(q.cota_maio_livre || 0),
-            saldo_reserva_gerente: Number(q.saldo_reserva_gerente || 0),
-            saldo_reserva_comprador: Number(q.saldo_reserva_comprador || 0),
-            
-            usar_cota_fixa: true,
-            cota_gerente_fixa: Number(q.cota_gerente || 0)
+            cota_disponivel: Number(q.cota_maio_livre || q.disponivel_real || 0),
           };
         });
         setMonthlyData(newMonthly);
@@ -937,17 +914,7 @@ export default function BuyOrderParams({ user }: { user: any }) {
   ) => {
     setMonthlyData((prev) => {
       const newArray = [...prev];
-      const updatedItem = { ...newArray[monthIndex], [field]: value };
-
-      // Recalcular comprador sempre que mudar cota total, despesas ou valor gerente
-      const cotaLimpa = toNumber(updatedItem.cotaTotal) - toNumber(updatedItem.despesas);
-      const valorGerente = toNumber(updatedItem.cota_gerente_fixa);
-      
-      updatedItem.cota_gerente_valor = valorGerente;
-      updatedItem.cota_comprador_valor = cotaLimpa - valorGerente;
-      updatedItem.usar_cota_fixa = (valorGerente > 0);
-
-      newArray[monthIndex] = updatedItem;
+      newArray[monthIndex] = { ...newArray[monthIndex], [field]: value };
       return newArray;
     });
   };
@@ -974,19 +941,17 @@ export default function BuyOrderParams({ user }: { user: any }) {
         
         return {
           store_number: selectedStore.store_number,
-          year: fiscal.year,      // ✅ Ano real (pode ser 2026 ou 2027)
-          month: fiscal.month,    // ✅ Mês real (1-12)
+          year: fiscal.year,
+          month: fiscal.month,
           feminino_pct: feminino,
           infantil_menina_pct: infMenina,
           infantil_menino_pct: infMenino,
           masculino_pct: masculino,
           acessorio_pct: acessorio,
           cota_valor: m.cotaTotal,
-          // despesas_comprometidas não é mais salvo — calculado automaticamente pela view
-          // despesas_comprometidas: m.despesas,
           usa_parametros_customizados: true,
-          usar_cota_fixa: m.usar_cota_fixa,
-          cota_gerente_fixa: m.cota_gerente_fixa,
+          usar_cota_fixa: false,
+          cota_gerente_fixa: null,
         };
       });
 
@@ -1086,101 +1051,101 @@ export default function BuyOrderParams({ user }: { user: any }) {
   const totalMetas = feminino + infMenina + infMenino + masculino + acessorio;
   const isMetasValid = Math.abs(totalMetas - 100) < 0.01;
 
+  // Estado mobile: mostrar lista ou edição
+  const [mobileView, setMobileView] = React.useState<'list' | 'edit'>('list');
+
+  const handleOpenStoreMobile = async (store: Store) => {
+    await handleOpenStore(store);
+    setMobileView('edit');
+  };
+
   return (
-    <div className="w-full max-w-5xl mx-auto h-[80vh] flex flex-col overflow-hidden bg-white dark:bg-slate-900 rounded-3xl shadow-sm border border-slate-200 dark:border-slate-800">
-      {/* Header */}
-      <div className="flex flex-col sm:flex-row sm:items-center justify-between p-6 border-b border-slate-200 dark:border-slate-800 gap-4">
+    <div className="w-full max-w-5xl mx-auto flex flex-col bg-white dark:bg-slate-900 rounded-3xl shadow-sm border border-slate-200 dark:border-slate-800 overflow-hidden">
+
+      {/* ── HEADER ── */}
+      <div className="flex items-center justify-between px-4 py-3 border-b border-slate-200 dark:border-slate-800 gap-3 flex-wrap">
         <div className="flex items-center gap-3">
-          <div className="p-2.5 bg-orange-100 dark:bg-orange-900/30 rounded-xl">
-            <Settings
-              size={20}
-              className="text-orange-600 dark:text-orange-400"
-            />
+          {/* Botão voltar — só mobile quando está editando */}
+          {selectedStore && (
+            <button
+              onClick={() => { setMobileView('list'); setSelectedStore(null); }}
+              className="sm:hidden p-1.5 rounded-lg bg-slate-100 dark:bg-slate-800 text-slate-500"
+            >
+              ←
+            </button>
+          )}
+          <div className="p-2 bg-orange-100 dark:bg-orange-900/30 rounded-xl">
+            <Settings size={18} className="text-orange-600 dark:text-orange-400" />
           </div>
           <div>
-            <h2 className="text-lg font-black text-slate-900 dark:text-white uppercase italic">
-              Parâmetros de Compra
+            <h2 className="text-sm font-black text-slate-900 dark:text-white uppercase">
+              {selectedStore && mobileView === 'edit'
+                ? `Loja ${selectedStore.store_number} · ${selectedStore.city}`
+                : 'Parâmetros de Compra'}
             </h2>
-            <p className="text-xs font-bold text-slate-400 uppercase tracking-widest">
+            <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest hidden sm:block">
               Clique em uma loja para editar
             </p>
           </div>
         </div>
-
-        <div className="flex items-center gap-3">
-          <div className="flex items-center gap-2 bg-slate-50 dark:bg-slate-800 px-3 py-2 rounded-xl border border-slate-200 dark:border-slate-700">
-            <Calendar size={16} className="text-slate-400" />
-            <select
-              value={selectedYear}
-              onChange={(e) => setSelectedYear(Number(e.target.value))}
-              className="bg-transparent text-sm font-black text-slate-700 dark:text-slate-300 outline-none uppercase cursor-pointer"
-            >
-              {[2025, 2026, 2027, 2028].map((y) => (
-                <option key={y} value={y}>
-                  {y}
-                </option>
-              ))}
-            </select>
-          </div>
+        <div className="flex items-center gap-2 bg-slate-50 dark:bg-slate-800 px-3 py-2 rounded-xl border border-slate-200 dark:border-slate-700">
+          <Calendar size={14} className="text-slate-400" />
+          <select
+            value={selectedYear}
+            onChange={(e) => setSelectedYear(Number(e.target.value))}
+            className="bg-transparent text-sm font-black text-slate-700 dark:text-slate-300 outline-none cursor-pointer"
+          >
+            {[2025, 2026, 2027, 2028].map((y) => (
+              <option key={y} value={y}>{y}</option>
+            ))}
+          </select>
         </div>
       </div>
 
-      <div className="flex flex-1 overflow-hidden">
-        {/* Lista de Lojas */}
-        <div className="w-64 border-r border-slate-200 dark:border-slate-800 flex flex-col flex-shrink-0">
-          <div className="p-4 border-b border-slate-200 dark:border-slate-800">
+      {/* ── BODY: lado a lado desktop, abas mobile ── */}
+      <div className="flex flex-1 min-h-0">
+
+        {/* Lista de lojas — sempre visível no desktop, só visível no mobile quando mobileView=list */}
+        <div className={`
+          w-full sm:w-64 sm:flex flex-col border-r border-slate-200 dark:border-slate-800 flex-shrink-0
+          ${mobileView === 'edit' ? 'hidden sm:flex' : 'flex'}
+        `}>
+          <div className="p-3 border-b border-slate-200 dark:border-slate-800">
             <div className="relative">
-              <Search
-                size={14}
-                className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400"
-              />
+              <Search size={13} className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
               <input
                 type="text"
                 placeholder="Buscar loja..."
                 value={searchTerm}
                 onChange={(e) => setSearchTerm(e.target.value)}
-                className="w-full bg-slate-50 dark:bg-slate-800 border-none rounded-lg pl-9 pr-4 py-2.5 text-xs font-bold text-slate-900 dark:text-white outline-none focus:ring-2 focus:ring-orange-500/50 transition-all"
+                className="w-full bg-slate-50 dark:bg-slate-800 border-none rounded-lg pl-8 pr-3 py-2 text-xs font-bold text-slate-900 dark:text-white outline-none focus:ring-2 focus:ring-orange-500/50"
               />
             </div>
           </div>
-
-          <div className="flex-1 overflow-y-auto">
+          <div className="flex-1 overflow-y-auto max-h-[60vh] sm:max-h-none">
             {filteredStores.map((store) => {
-              const isSelected =
-                selectedStore?.store_number === store.store_number;
+              const isSel = selectedStore?.store_number === store.store_number;
               return (
                 <button
                   key={store.store_number}
-                  onClick={() => handleOpenStore(store)}
-                  className={`w-full text-left px-4 py-3 flex items-center justify-between gap-2 transition-all border-b border-slate-100 dark:border-slate-800 ${
-                    isSelected
-                      ? "bg-orange-50 dark:bg-orange-900/20 border-l-4 border-l-orange-500"
-                      : "hover:bg-slate-50 dark:hover:bg-slate-800 border-l-4 border-l-transparent"
+                  onClick={() => handleOpenStoreMobile(store)}
+                  className={`w-full text-left px-4 py-3 flex items-center justify-between gap-2 transition-all border-b border-slate-100 dark:border-slate-800 border-l-4 ${
+                    isSel
+                      ? 'bg-orange-50 dark:bg-orange-900/20 border-l-orange-500'
+                      : 'hover:bg-slate-50 dark:hover:bg-slate-800 border-l-transparent'
                   }`}
                 >
                   <div className="min-w-0">
-                    <p
-                      className={`text-xs font-black uppercase truncate ${isSelected ? "text-orange-600 dark:text-orange-400" : "text-slate-700 dark:text-slate-300"}`}
-                    >
+                    <p className={`text-xs font-black uppercase truncate ${isSel ? 'text-orange-600' : 'text-slate-700 dark:text-slate-300'}`}>
                       Loja {store.store_number}
                     </p>
-                    <p className="text-[10px] font-bold text-slate-400 truncate">
-                      {store.city}
-                    </p>
+                    <p className="text-[10px] font-bold text-slate-400 truncate">{store.city}</p>
                   </div>
                   <div className="flex items-center gap-1 flex-shrink-0">
                     {store.tem_parametros_customizados && (
-                      <div
-                        className="w-2 h-2 rounded-full bg-emerald-400"
-                        title="Configurado"
-                      />
+                      <div className="w-2 h-2 rounded-full bg-emerald-400" />
                     )}
-                    <ChevronRight
-                      size={14}
-                      className={
-                        isSelected ? "text-orange-500" : "text-slate-300"
-                      }
-                    />
+                    <ChevronRight size={13} className={isSel ? 'text-orange-500' : 'text-slate-300'} />
                   </div>
                 </button>
               );
@@ -1188,340 +1153,154 @@ export default function BuyOrderParams({ user }: { user: any }) {
           </div>
         </div>
 
-        {/* Painel de Edição */}
-        <div className="flex-1 overflow-y-auto p-6 bg-slate-50/50 dark:bg-slate-900/50">
+        {/* Painel de edição — sempre visível no desktop, só visível no mobile quando mobileView=edit */}
+        <div className={`
+          flex-1 overflow-y-auto p-4 sm:p-6 bg-slate-50/50 dark:bg-slate-900/50
+          ${mobileView === 'list' ? 'hidden sm:block' : 'block'}
+        `}>
           {!selectedStore ? (
-            <div className="flex flex-col items-center justify-center h-full text-center gap-4 py-12">
-              <div className="p-6 bg-white dark:bg-slate-800 shadow-sm border border-slate-200 dark:border-slate-700 rounded-3xl">
-                <Settings
-                  size={40}
-                  className="text-slate-300 dark:text-slate-600"
-                />
-              </div>
-              <p className="text-sm font-black text-slate-400 uppercase italic">
-                Selecione uma loja ao lado
-              </p>
-              <p className="text-xs font-bold text-slate-400">
-                Para configurar metas, cotas e percentuais
-              </p>
+            <div className="flex flex-col items-center justify-center h-48 text-center gap-3">
+              <Settings size={32} className="text-slate-300 dark:text-slate-600" />
+              <p className="text-sm font-black text-slate-400 uppercase italic">Selecione uma loja</p>
             </div>
           ) : (
-            <div className="space-y-6 max-w-2xl mx-auto pb-12">
-              <div>
+            <div className="space-y-5 max-w-2xl mx-auto pb-16">
+
+              {/* Título loja — só desktop (mobile está no header) */}
+              <div className="hidden sm:block">
                 <h3 className="text-base font-black text-slate-900 dark:text-white uppercase italic">
                   Loja {selectedStore.store_number} — {selectedStore.store_name}
                 </h3>
                 <p className="text-xs font-bold text-slate-400 mt-0.5">
-                  {selectedStore.city.toUpperCase()} • ANO INTERCALAR:{" "}
-                  {selectedYear}
+                  {selectedStore.city.toUpperCase()} · {selectedYear}
                 </p>
               </div>
 
               {/* Metas por Categoria */}
-              <div className="bg-white dark:bg-slate-800 rounded-2xl p-5 border border-slate-200 dark:border-slate-700 shadow-sm">
-                <h4 className="text-xs font-black text-slate-900 dark:text-white uppercase tracking-widest mb-4 flex items-center gap-2">
-                  <span>📊</span> METAS POR CATEGORIA (%)
+              <div className="bg-white dark:bg-slate-800 rounded-2xl p-4 border border-slate-200 dark:border-slate-700 shadow-sm">
+                <h4 className="text-[10px] font-black text-slate-900 dark:text-white uppercase tracking-widest mb-4 flex items-center gap-2">
+                  📊 METAS POR CATEGORIA (%)
                 </h4>
-
-                <div className="space-y-4">
-                  {/* Linha 1: FEMININO | MASCULINO */}
-                  <div className="grid grid-cols-2 gap-4">
-                    <div>
-                      <label className="text-[10px] font-black text-slate-500 uppercase tracking-widest mb-1.5 block">
-                        Feminino
-                      </label>
-                      <input
-                        type="number"
-                        step="0.1"
-                        min="0"
-                        max="100"
-                        value={feminino || ""}
-                        onChange={(e) =>
-                          setFeminino(
-                            e.target.value === "" ? 0 : Number(e.target.value),
-                          )
-                        }
-                        className="w-full bg-slate-50 dark:bg-slate-900 border-2 border-slate-200 dark:border-slate-700 focus:border-orange-400 rounded-xl px-4 py-2.5 text-sm font-black text-slate-900 dark:text-white outline-none transition-all"
-                      />
-                    </div>
-                    <div>
-                      <label className="text-[10px] font-black text-slate-500 uppercase tracking-widest mb-1.5 block">
-                        Masculino
-                      </label>
-                      <input
-                        type="number"
-                        step="0.1"
-                        min="0"
-                        max="100"
-                        value={masculino || ""}
-                        onChange={(e) =>
-                          setMasculino(
-                            e.target.value === "" ? 0 : Number(e.target.value),
-                          )
-                        }
-                        className="w-full bg-slate-50 dark:bg-slate-900 border-2 border-slate-200 dark:border-slate-700 focus:border-orange-400 rounded-xl px-4 py-2.5 text-sm font-black text-slate-900 dark:text-white outline-none transition-all"
-                      />
-                    </div>
-                  </div>
-
-                  {/* Linha 2: INF. MENINA | INF. MENINO */}
-                  <div className="grid grid-cols-2 gap-4">
-                    <div>
-                      <label className="text-[10px] font-black text-slate-500 uppercase tracking-widest mb-1.5 block">
-                        Inf. Menina
-                      </label>
-                      <input
-                        type="number"
-                        step="0.1"
-                        min="0"
-                        max="100"
-                        value={infMenina || ""}
-                        onChange={(e) =>
-                          setInfMenina(
-                            e.target.value === "" ? 0 : Number(e.target.value),
-                          )
-                        }
-                        className="w-full bg-slate-50 dark:bg-slate-900 border-2 border-slate-200 dark:border-slate-700 focus:border-orange-400 rounded-xl px-4 py-2.5 text-sm font-black text-slate-900 dark:text-white outline-none transition-all"
-                      />
-                    </div>
-                    <div>
-                      <label className="text-[10px] font-black text-slate-500 uppercase tracking-widest mb-1.5 block">
-                        Inf. Menino
-                      </label>
-                      <input
-                        type="number"
-                        step="0.1"
-                        min="0"
-                        max="100"
-                        value={infMenino || ""}
-                        onChange={(e) =>
-                          setInfMenino(
-                            e.target.value === "" ? 0 : Number(e.target.value),
-                          )
-                        }
-                        className="w-full bg-slate-50 dark:bg-slate-900 border-2 border-slate-200 dark:border-slate-700 focus:border-orange-400 rounded-xl px-4 py-2.5 text-sm font-black text-slate-900 dark:text-white outline-none transition-all"
-                      />
-                    </div>
-                  </div>
-
-                  {/* Linha 3: ACESSÓRIOS | TOTAL */}
-                  <div className="grid grid-cols-2 gap-4">
-                    <div>
-                      <label className="text-[10px] font-black text-slate-500 uppercase tracking-widest mb-1.5 block">
-                        Acessórios
-                      </label>
-                      <input
-                        type="number"
-                        step="0.1"
-                        min="0"
-                        max="100"
-                        value={acessorio || ""}
-                        onChange={(e) =>
-                          setAcessorio(
-                            e.target.value === "" ? 0 : Number(e.target.value),
-                          )
-                        }
-                        className="w-full bg-slate-50 dark:bg-slate-900 border-2 border-slate-200 dark:border-slate-700 focus:border-orange-400 rounded-xl px-4 py-2.5 text-sm font-black text-slate-900 dark:text-white outline-none transition-all"
-                      />
-                    </div>
-                    <div>
-                      <label className="text-[10px] font-black text-slate-500 uppercase tracking-widest mb-1.5 block">
-                        Total
-                      </label>
-                      <div
-                        className={`w-full border-2 rounded-xl px-4 py-2.5 text-sm font-black flex items-center justify-center ${
-                          isMetasValid
-                            ? "bg-emerald-50 border-emerald-200 text-emerald-700"
-                            : "bg-red-50 border-red-200 text-red-700"
-                        }`}
-                      >
-                        {totalMetas.toFixed(1)}%
+                <div className="grid grid-cols-2 gap-3">
+                  {[
+                    { label: 'Feminino',    val: feminino,   set: setFeminino },
+                    { label: 'Masculino',   val: masculino,  set: setMasculino },
+                    { label: 'Inf. Menina', val: infMenina,  set: setInfMenina },
+                    { label: 'Inf. Menino', val: infMenino,  set: setInfMenino },
+                    { label: 'Acessórios',  val: acessorio,  set: setAcessorio },
+                    { label: 'Total',       val: null,       set: null },
+                  ].map((f) =>
+                    f.val === null ? (
+                      <div key="total">
+                        <label className="text-[9px] font-black text-slate-400 uppercase mb-1 block">Total</label>
+                        <div className={`w-full border-2 rounded-xl px-3 py-2.5 text-sm font-black text-center ${isMetasValid ? 'bg-emerald-50 border-emerald-200 text-emerald-700' : 'bg-red-50 border-red-200 text-red-700'}`}>
+                          {totalMetas.toFixed(1)}%
+                        </div>
                       </div>
-                    </div>
-                  </div>
+                    ) : (
+                      <div key={f.label}>
+                        <label className="text-[9px] font-black text-slate-400 uppercase mb-1 block">{f.label}</label>
+                        <input
+                          type="number" inputMode="decimal" step="0.1" min="0" max="100"
+                          value={f.val || ''}
+                          onChange={(e) => f.set!(e.target.value === '' ? 0 : Number(e.target.value))}
+                          className="w-full bg-slate-50 dark:bg-slate-900 border-2 border-slate-200 dark:border-slate-700 focus:border-orange-400 rounded-xl px-3 py-2.5 text-sm font-black text-slate-900 dark:text-white outline-none transition-all"
+                        />
+                      </div>
+                    )
+                  )}
                 </div>
               </div>
 
-              {/* Estrutura Cota Mensal e Divisão */}
-              <div className="bg-white dark:bg-slate-800 rounded-2xl p-5 border border-slate-200 dark:border-slate-700 shadow-sm space-y-4">
-                <div className="pt-4">
-                  {/* ✅ REMOVIDO: indicador de swipe mobile (não precisa mais) */}
-                  
-                  {/* ✅ NOVA ESTRUTURA: SEM overflow-x-auto, SEM min-w */}
-                    <div className="overflow-visible">
-                      <table className="w-full border-collapse table-fixed">
-                        <thead>
-                        <tr className="border-b-2 border-slate-200 dark:border-slate-700">
-                          {/* ✅ HEADERS COM ALINHAMENTOS ESPECÍFICOS */}
-                          <th className="text-[9px] font-black text-slate-500 uppercase tracking-widest p-2 text-left w-[18%]">
-                            Mês
-                          </th>
-                          <th className="text-[10px] font-black text-slate-500 uppercase tracking-widest p-2 text-center w-[16%]">
-                            Cota Total (R$)
-                          </th>
-                          <th className="text-[10px] font-black text-slate-500 uppercase tracking-widest p-2 text-center w-[16%]">
-                            Despesas (R$)
-                          </th>
-                          <th className="text-[10px] font-black text-slate-500 uppercase tracking-widest p-2 text-center w-[17%]">
-                            Cota Limpa
-                          </th>
-                          <th className="text-[10px] font-black text-slate-500 uppercase tracking-widest p-2 text-center w-[16%]">
-                            Cota Gerente
-                          </th>
-                          <th className="text-[10px] font-black text-slate-500 uppercase tracking-widest p-2 text-center w-[17%]">
-                            Cota Comprador
-                          </th>
-                        </tr>
-                      </thead>
-                      <tbody>
-                        {monthlyData.map((data, index) => {
-                          const cotaLimpa = toNumber(data.cotaTotal) - toNumber(data.despesas);
-  
-                          return (
-                            <tr
-                              key={index}
-                              className="border-b border-slate-100 dark:border-slate-800/50 hover:bg-slate-50/80 dark:hover:bg-slate-800/50 transition-colors"
-                            >
-                              {/* ✅ COLUNA MÊS: ALINHADA À ESQUERDA, NEGRITO, MENOR */}
-                              <td className="p-2 text-left bg-slate-50/30 dark:bg-slate-900/10">
-                                <span className="text-[10px] font-bold text-slate-700 dark:text-slate-300 uppercase whitespace-nowrap">
-                                  {(() => {
-                                    const fiscal = getFiscalYearMonth(index);
-                                    return `${monthNames[fiscal.month - 1]}/${fiscal.year}`;
-                                  })()}
-                                </span>
-                              </td>
-                              
-                              {/* ✅ COTA TOTAL: INPUT CENTRALIZADO */}
-                              <td className="p-2">
-                                <input
-                                  type="number"
-                                  inputMode="decimal"
-                                  step="1000"
-                                  min="0"
-                                  value={data.cotaTotal || ""}
-                                  onChange={(e) =>
-                                    handleUpdateMonth(
-                                      index,
-                                      "cotaTotal",
-                                      e.target.value === ""
-                                        ? 0
-                                        : Number(e.target.value),
-                                    )
-                                  }
-                                  className="w-full bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-lg px-2 py-1.5 text-[11px] font-black outline-none focus:border-orange-400 transition-all text-slate-900 dark:text-white text-center"
-                                />
-                              </td>
-                              
-                              {/* ✅ DESPESAS: INPUT CENTRALIZADO */}
-                              <td className="p-2">
-                                <div className="w-full bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-lg px-2 py-1.5 text-[11px] font-black text-slate-600 dark:text-slate-400 text-center">
-                                  {data.despesas > 0 ? formatarMoeda(data.despesas) : '—'}
-                                </div>
-                              </td>
-                              
-                              {/* ✅ COTA LIMPA: READONLY CENTRALIZADO COM FUNDO AZUL CLARO */}
-                              <td className="p-2 bg-blue-50/20 dark:bg-blue-900/5">
-                                <div className="w-full bg-white dark:bg-slate-900 border border-blue-200 dark:border-blue-800 rounded-lg px-1 py-1.5 text-[10px] font-black text-blue-700 dark:text-blue-300 text-center truncate">
-                                  {formatarMoeda(cotaLimpa)}
-                                </div>
-                              </td>
-                              
-                              {/* ✅ COTA GERENTE: INPUT CENTRALIZADO COM FUNDO VERDE CLARO */}
-                              <td className="p-2 bg-emerald-50/20 dark:bg-emerald-900/5">
-                                <input
-                                  type="number"
-                                  inputMode="decimal"
-                                  placeholder="0"
-                                  value={data.cota_gerente_fixa || ""}
-                                  onChange={(e) =>
-                                    handleUpdateMonth(
-                                      index,
-                                      "cota_gerente_fixa",
-                                      e.target.value === ""
-                                        ? 0
-                                        : Number(e.target.value),
-                                    )
-                                  }
-                                  className="w-full bg-white dark:bg-slate-900 border border-emerald-200 dark:border-emerald-800 rounded-lg px-1 py-1.5 text-[11px] font-black outline-none focus:border-emerald-400 text-emerald-700 dark:text-emerald-300 text-center"
-                                />
-                              </td>
-                              
-                              <td className="p-2">
-                                <div className="space-y-1">
-                                  {/* SALDO RESERVA COMPRADOR */}
-                                  <div className={`w-full rounded-lg px-2 py-1.5 text-xs font-bold text-center ${
-                                    (data.saldo_reserva_comprador || 0) < 0
-                                      ? "bg-red-100 text-red-700" 
-                                      : "bg-blue-100 text-blue-700"
-                                  }`}>
-                                    {formatarMoeda(data.saldo_reserva_comprador || 0)}
-                                    {(data.saldo_reserva_comprador || 0) < 0 && (
-                                      <span className="block text-[8px] font-black uppercase mt-0.5 text-red-600">
-                                        ⚠️ Negativo
-                                      </span>
-                                    )}
-                                  </div>
-                                  
-                                  {/* COTA TOTAL DISPONÍVEL (OTB) */}
-                                  {(data.cota_comprador_valor || 0) > 0 && (
-                                    <div className="w-full bg-emerald-50 rounded-lg px-2 py-1 text-[9px] font-bold text-emerald-700 text-center">
-                                      💰 Cota: {formatarMoeda(data.cota_comprador_valor)}
-                                    </div>
-                                  )}
-                                </div>
-                              </td>
-                            </tr>
-                          );
-                        })}
-                      </tbody>
-                    </table>
-                  </div>
+              {/* Cotas Mensais */}
+              <div className="bg-white dark:bg-slate-800 rounded-2xl border border-slate-200 dark:border-slate-700 shadow-sm overflow-hidden">
+                <div className="px-4 py-3 border-b border-slate-100 dark:border-slate-700">
+                  <h4 className="text-[10px] font-black text-slate-900 dark:text-white uppercase tracking-widest">
+                    💰 COTAS MENSAIS
+                  </h4>
+                </div>
+                <div className="overflow-x-auto">
+                  <table className="w-full border-collapse" style={{ minWidth: '340px' }}>
+                    <thead>
+                      <tr className="border-b border-slate-100 dark:border-slate-700 bg-slate-50 dark:bg-slate-800/50">
+                        <th className="text-[9px] font-black text-slate-400 uppercase tracking-wider px-3 py-2 text-left">Mês</th>
+                        <th className="text-[9px] font-black text-slate-400 uppercase tracking-wider px-3 py-2 text-right">Cota Total</th>
+                        <th className="text-[9px] font-black text-slate-400 uppercase tracking-wider px-3 py-2 text-right">Despesas</th>
+                        <th className="text-[9px] font-black text-slate-400 uppercase tracking-wider px-3 py-2 text-right">Disponível</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {monthlyData.map((data, index) => {
+                        const fiscal = getFiscalYearMonth(index);
+                        const disponivel = data.cota_disponivel ?? (toNumber(data.cotaTotal) - toNumber(data.despesas));
+                        const isNeg = disponivel < 0;
+                        return (
+                          <tr key={index} className="border-b border-slate-50 dark:border-slate-800/50 hover:bg-slate-50/60 dark:hover:bg-slate-800/30 transition-colors">
+                            <td className="px-3 py-2">
+                              <span className="text-[11px] font-black text-slate-700 dark:text-slate-300 uppercase whitespace-nowrap">
+                                {monthNames[fiscal.month - 1].slice(0,3)}/{String(fiscal.year).slice(-2)}
+                              </span>
+                            </td>
+                            <td className="px-3 py-2">
+                              <input
+                                type="number" inputMode="decimal" step="1000" min="0"
+                                value={data.cotaTotal || ''}
+                                onChange={(e) => handleUpdateMonth(index, 'cotaTotal', e.target.value === '' ? 0 : Number(e.target.value))}
+                                className="w-full bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-lg px-2 py-1.5 text-[11px] font-black outline-none focus:border-orange-400 text-slate-900 dark:text-white text-right"
+                              />
+                            </td>
+                            <td className="px-3 py-2">
+                              <div className="w-full bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-lg px-2 py-1.5 text-[11px] font-black text-slate-500 text-right whitespace-nowrap">
+                                {data.despesas > 0 ? formatarMoeda(data.despesas) : '—'}
+                              </div>
+                            </td>
+                            <td className="px-3 py-2">
+                              <div className={`w-full rounded-lg px-2 py-1.5 text-[11px] font-black text-right whitespace-nowrap border ${
+                                isNeg
+                                  ? 'bg-red-50 border-red-200 text-red-700 dark:bg-red-900/20 dark:border-red-800 dark:text-red-300'
+                                  : 'bg-emerald-50 border-emerald-200 text-emerald-700 dark:bg-emerald-900/20 dark:border-emerald-800 dark:text-emerald-300'
+                              }`}>
+                                {formatarMoeda(disponivel)}
+                                {isNeg && <span className="block text-[8px] font-black uppercase">⚠️ Estourado</span>}
+                              </div>
+                            </td>
+                          </tr>
+                        );
+                      })}
+                    </tbody>
+                  </table>
                 </div>
               </div>
 
-            {/* Administração de Alertas */}
-              <div className="bg-white dark:bg-slate-800 rounded-2xl p-5 border border-slate-200 dark:border-slate-700 shadow-sm space-y-4">
-                <h4 className="text-xs font-black text-slate-900 dark:text-white uppercase tracking-widest flex items-center gap-2 border-b border-slate-100 dark:border-slate-700 pb-3">
-                  <span>🔔</span> ADMINISTRAÇÃO DE ALERTAS
+              {/* Alertas */}
+              <div className="bg-white dark:bg-slate-800 rounded-2xl p-4 border border-slate-200 dark:border-slate-700 shadow-sm space-y-4">
+                <h4 className="text-[10px] font-black text-slate-900 dark:text-white uppercase tracking-widest border-b border-slate-100 dark:border-slate-700 pb-3">
+                  🔔 ADMINISTRAÇÃO DE ALERTAS
                 </h4>
-
-                <div className="space-y-6">
-                  {/* Requisitos de Grade por Loja */}
-                  <AlertasGradePorLoja
-                    storeNumber={selectedStore.store_number}
-                  />
-
-                  {/* Restrições de Marca */}
+                <div className="space-y-5">
+                  <AlertasGradePorLoja storeNumber={selectedStore.store_number} />
                   <AlertasMarcaGlobal />
-
-                  {/* Restrições de Produto */}
                   <AlertasProdutoGlobal />
                 </div>
               </div>
 
               {/* Ações */}
-              <div className="flex gap-4 pt-2">
+              <div className="flex gap-3">
                 <button
                   onClick={handleResetToGlobal}
-                  className="flex-1 py-4 bg-white dark:bg-slate-800 text-slate-600 dark:text-slate-300 font-black uppercase text-xs rounded-2xl border-2 border-slate-200 dark:border-slate-700 hover:bg-slate-50 dark:hover:bg-slate-700 transition-all active:scale-95"
+                  className="flex-1 py-3.5 bg-white dark:bg-slate-800 text-slate-600 dark:text-slate-300 font-black uppercase text-xs rounded-2xl border-2 border-slate-200 dark:border-slate-700 hover:bg-slate-50 transition-all active:scale-95"
                 >
                   Restaurar Padrão
                 </button>
                 <button
                   onClick={handleSave}
                   disabled={saving}
-                  className="flex-[2] flex items-center justify-center gap-2 py-4 bg-orange-600 hover:bg-orange-700 text-white font-black uppercase text-xs rounded-2xl border-b-4 border-orange-800 transition-all active:scale-95 disabled:opacity-50"
+                  className="flex-[2] flex items-center justify-center gap-2 py-3.5 bg-orange-600 hover:bg-orange-700 text-white font-black uppercase text-xs rounded-2xl border-b-4 border-orange-800 transition-all active:scale-95 disabled:opacity-50"
                 >
-                  {saving ? (
-                    <Loader2 size={18} className="animate-spin" />
-                  ) : (
-                    <>
-                      <Check size={18} /> Salvar Parâmetros
-                    </>
-                  )}
+                  {saving ? <Loader2 size={16} className="animate-spin" /> : <><Check size={16} /> Salvar Parâmetros</>}
                 </button>
               </div>
+
             </div>
           )}
         </div>
