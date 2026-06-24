@@ -696,6 +696,9 @@ export default function BuyOrderParams({ user }: { user: any }) {
   const [masculino, setMasculino] = useState(20);
   const [acessorio, setAcessorio] = useState(20);
 
+  // Estado mobile: mostrar lista ou edição
+  const [mobileView, setMobileView] = useState<'list' | 'edit'>('list');
+
   // Calcular ano fiscal rolling (12 meses a partir do mês atual)
   const currentMonth = new Date().getMonth() + 1; // 1-12
 
@@ -1050,9 +1053,6 @@ export default function BuyOrderParams({ user }: { user: any }) {
 
   const totalMetas = feminino + infMenina + infMenino + masculino + acessorio;
   const isMetasValid = Math.abs(totalMetas - 100) < 0.01;
-
-  // Estado mobile: mostrar lista ou edição
-  const [mobileView, setMobileView] = React.useState<'list' | 'edit'>('list');
 
   const handleOpenStoreMobile = async (store: Store) => {
     await handleOpenStore(store);
