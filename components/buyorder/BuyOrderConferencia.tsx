@@ -217,9 +217,11 @@ export const BuyOrderConferencia: React.FC<BuyOrderConferenciaProps> = ({ curren
   const [storeNumber, setStoreNumber]     = useState<number | null>(null);
   const [storeReady, setStoreReady]       = useState(false);
 
-  const [sending, setSending]     = useState(false);
-  const [lastLink, setLastLink]   = useState<string | null>(null);
-  const [sendResult, setSendResult] = useState<'success' | 'error' | null>(null);
+  const [sending, setSending]       = useState(false);
+  const [lastLink, setLastLink]     = useState<string | null>(null);
+  const [sendResult, setSendResult] = useState<'success' | 'error' | 'no_orders' | null>(null);
+  const [sendMsg, setSendMsg]       = useState<string | null>(null);
+  const [sendingTest, setSendingTest] = useState(false);
 
   // Filters
   const [search, setSearch]                     = useState('');
@@ -315,30 +317,53 @@ export const BuyOrderConferencia: React.FC<BuyOrderConferenciaProps> = ({ curren
 
   useEffect(() => { loadOrders(); }, [loadOrders]);
 
+  const callEmailFunction = async (body: Record<string, any>) => {
+    const res = await fetch(
+      'https://rwwomakjhmglgoowbmsl.supabase.co/functions/v1/send-conferencia-email',
+      { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) }
+    );
+    const json = await res.json();
+    if (!res.ok || !json.success) throw new Error(json.error || 'Erro ao enviar');
+    return json;
+  };
+
   const handleSendEmail = async () => {
     if (!isAdmin) return;
     setSending(true);
     setSendResult(null);
+    setSendMsg(null);
     try {
-      const { data: { session } } = await supabase.auth.getSession();
-      const res = await fetch(
-        'https://rwwomakjhmglgoowbmsl.supabase.co/functions/v1/send-conferencia-email',
-        {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({}),
-        }
-      );
-      const json = await res.json();
-      if (!res.ok || !json.success) throw new Error(json.error || 'Erro ao enviar');
-      setLastLink(json.link);
-      setSendResult('success');
-      await loadOrders(); // Atualizar lista
+      const json = await callEmailFunction({});
+      if (json.orders_count === 0) {
+        setSendResult('no_orders');
+        setSendMsg(json.message || 'Todos os pedidos já estão cadastrados.');
+      } else {
+        setLastLink(json.link);
+        setSendResult('success');
+        setSendMsg(`Email enviado para ${json.sent_to} com ${json.orders_count} pedido(s).`);
+        await loadOrders();
+      }
     } catch (err: any) {
       console.error('[Conferência] Erro ao enviar email:', err);
       setSendResult('error');
+      setSendMsg(err.message || 'Erro ao enviar. Verifique os secrets.');
     } finally {
       setSending(false);
+    }
+  };
+
+  const handleSendTestEmail = async () => {
+    if (!isAdmin) return;
+    const email = prompt('E-mail para teste:', 'juniorcardoso@me.com');
+    if (!email) return;
+    setSendingTest(true);
+    try {
+      await callEmailFunction({ test_email: email });
+      alert(`✅ E-mail de teste enviado para ${email}`);
+    } catch (err: any) {
+      alert(`❌ Erro: ${err.message}`);
+    } finally {
+      setSendingTest(false);
     }
   };
 
@@ -459,33 +484,50 @@ export const BuyOrderConferencia: React.FC<BuyOrderConferenciaProps> = ({ curren
               </p>
             </div>
             <div className="flex items-center gap-2">
-              {/* Botão Enviar Email — somente admin */}
+              {/* Botões de email — somente admin */}
               {isAdmin && (
-                <button
-                  onClick={handleSendEmail}
-                  disabled={sending || loading}
-                  className="flex items-center gap-1.5 px-3 py-2 bg-blue-600 hover:bg-blue-700 disabled:opacity-40 text-white rounded-lg text-xs font-black uppercase tracking-wider transition-all"
-                  title="Gerar link e enviar email para a central"
-                >
-                  {sending ? <Loader2 size={14} className="animate-spin" /> : '📧'}
-                  {sending ? 'Enviando...' : 'Enviar Email'}
-                </button>
+                <>
+                  <button
+                    onClick={handleSendEmail}
+                    disabled={sending || loading}
+                    className="flex items-center gap-1.5 px-3 py-2 bg-blue-600 hover:bg-blue-700 disabled:opacity-40 text-white rounded-lg text-xs font-black uppercase tracking-wider transition-all"
+                    title="Gerar link e enviar email para a central"
+                  >
+                    {sending ? <Loader2 size={14} className="animate-spin" /> : '📧'}
+                    {sending ? 'Enviando...' : 'Enviar Email'}
+                  </button>
+                  <button
+                    onClick={handleSendTestEmail}
+                    disabled={sendingTest || loading}
+                    className="flex items-center gap-1.5 px-3 py-2 bg-slate-500 hover:bg-slate-600 disabled:opacity-40 text-white rounded-lg text-xs font-black uppercase tracking-wider transition-all"
+                    title="Enviar e-mail de teste"
+                  >
+                    {sendingTest ? <Loader2 size={14} className="animate-spin" /> : '🧪'}
+                    Teste
+                  </button>
+                </>
               )}
 
-              {/* Resultado do envio */}
-              {sendResult === 'success' && lastLink && (
+              {/* Feedback do envio */}
+              {sendResult === 'success' && (
                 <div className="flex items-center gap-2 bg-green-50 dark:bg-green-900/20 border border-green-200 dark:border-green-800 px-3 py-2 rounded-lg">
-                  <span className="text-[10px] font-bold text-green-700 dark:text-green-400">✅ Email enviado!</span>
-                  <button
-                    onClick={copyLink}
-                    className="text-[10px] font-black text-blue-600 dark:text-blue-400 underline"
-                  >
-                    Copiar link
-                  </button>
+                  <span className="text-[10px] font-bold text-green-700 dark:text-green-400">✅ {sendMsg}</span>
+                  {lastLink && (
+                    <button onClick={copyLink} className="text-[10px] font-black text-blue-600 dark:text-blue-400 underline">
+                      Copiar link
+                    </button>
+                  )}
+                </div>
+              )}
+              {sendResult === 'no_orders' && (
+                <div className="flex items-center gap-2 bg-yellow-50 dark:bg-yellow-900/20 border border-yellow-200 dark:border-yellow-800 px-3 py-2 rounded-lg">
+                  <span className="text-[10px] font-bold text-yellow-700 dark:text-yellow-400">✅ {sendMsg}</span>
                 </div>
               )}
               {sendResult === 'error' && (
-                <span className="text-[10px] font-bold text-red-600 dark:text-red-400">❌ Erro ao enviar. Verifique os secrets.</span>
+                <div className="flex items-center gap-2 bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800 px-3 py-2 rounded-lg">
+                  <span className="text-[10px] font-bold text-red-600 dark:text-red-400">❌ {sendMsg}</span>
+                </div>
               )}
 
               <button onClick={loadOrders} disabled={loading} className="p-2 bg-slate-100 dark:bg-slate-700 text-slate-500 dark:text-slate-300 rounded-lg hover:bg-slate-200 dark:hover:bg-slate-600 transition-all disabled:opacity-40" title="Atualizar">
