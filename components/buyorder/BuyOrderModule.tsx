@@ -1617,6 +1617,7 @@ function gradesArrayToObject(grades: any): Record<string, Record<string, number>
             setNumeroPedidoSalvo={setNumeroPedidoSalvo}
             roundBase={roundBase}
             isMobile={isMobile}
+            user={user}
           />
         )}
         {step === 1 && (
@@ -2446,27 +2447,25 @@ function gradesArrayToObject(grades: any): Record<string, Record<string, number>
                         {/* Botão de Pesquisa (Votar / Progresso) */}
                         {o.status === "aguardando_pesquisa" && (
                           isAdmin ? (
-                            <button
-                              onClick={() => setSurveyProgressOrder({ orderId: o.id, numero: o.numero_pedido, marca: o.marca })}
-                              title="Ver Progresso da Pesquisa"
-                              style={{
-                                height: 28,
-                                padding: "0 10px",
-                                display: "flex",
-                                alignItems: "center",
-                                justifyContent: "center",
-                                background: "#c084fc",
-                                color: "#fff",
-                                border: "none",
-                                borderRadius: 6,
-                                cursor: "pointer",
-                                transition: "all 0.2s",
-                                fontSize: "11px",
-                                fontWeight: "bold"
-                              }}
-                            >
-                              📊 Progresso
-                            </button>
+                            <>
+                              <button
+                                onClick={() => {
+                                  const link = `${window.location.origin}/pesquisa-compra/${o.id}`;
+                                  navigator.clipboard.writeText(link);
+                                  alert(`✅ Link copiado!\n\n${link}\n\nEnvie para os gerentes via WhatsApp ou e-mail.`);
+                                }}
+                                className="flex items-center gap-1 px-2 py-1.5 bg-slate-600 hover:bg-slate-700 text-white rounded-lg text-[10px] font-black uppercase transition-all"
+                                title="Copiar link para enviar aos gerentes"
+                              >
+                                🔗 Copiar Link
+                              </button>
+                              <button
+                                onClick={() => setSurveyProgressOrder({ orderId: o.id, numero: o.numero_pedido, marca: o.marca })}
+                                className="flex items-center gap-1 px-2 py-1.5 bg-purple-600 hover:bg-purple-700 text-white rounded-lg text-[10px] font-black uppercase transition-all"
+                              >
+                                📊 Progresso
+                              </button>
+                            </>
                           ) : (
                             <button
                               onClick={() => {
@@ -2926,6 +2925,7 @@ function StepCabecalho({
   setNumeroPedidoSalvo,
   roundBase,
   isMobile,
+  user,
 }: {
   cab: Cabecalho;
   setCab: Dispatch<SetStateAction<Cabecalho>>;
@@ -2935,6 +2935,7 @@ function StepCabecalho({
   setNumeroPedidoSalvo: (n: number | null) => void;
   roundBase: number;
   isMobile?: boolean;
+  user?: any;
 }) {
   const { fetchAndFillBrand, isLoading } = useBrandAutocomplete();
   const [brands, setBrands] = useState<Brand[]>([]);
@@ -3347,36 +3348,39 @@ function StepCabecalho({
         </div>
       </div>
 
-      {/* Toggle Modo Pesquisa */}
-      <div className="p-4 md:p-6 border-b border-slate-200">
-        <div
-          onClick={() => setCab((prev) => ({ ...prev, modo_pesquisa: !prev.modo_pesquisa }))}
-          className={`flex items-center justify-between p-4 rounded-xl border-2 cursor-pointer transition-all select-none ${
-            cab.modo_pesquisa
-              ? "border-blue-500 bg-blue-50 dark:bg-blue-900/20"
-              : "border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 hover:border-slate-300"
-          }`}
-        >
-          <div className="flex items-center gap-3">
-            <span className="text-xl">🔬</span>
-            <div>
-              <p className={`text-sm font-black ${cab.modo_pesquisa ? "text-blue-800 dark:text-blue-300" : "text-slate-700 dark:text-slate-300"}`}>
-                Modo Pesquisa
-              </p>
-              <p className="text-[11px] text-slate-400">
-                Gerentes votam nos itens e escolhem as grades
-              </p>
+      {/* Toggle Modo Pesquisa — somente admin/comprador */}
+      {(String(user?.role || '').toLowerCase() === 'admin' ||
+        String(user?.role || '').toLowerCase() === 'comprador') && (
+        <div className="p-4 md:p-6 border-b border-slate-200">
+          <div
+            onClick={() => setCab((prev) => ({ ...prev, modo_pesquisa: !prev.modo_pesquisa }))}
+            className={`flex items-center justify-between p-4 rounded-xl border-2 cursor-pointer transition-all select-none ${
+              cab.modo_pesquisa
+                ? "border-blue-500 bg-blue-50 dark:bg-blue-900/20"
+                : "border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 hover:border-slate-300"
+            }`}
+          >
+            <div className="flex items-center gap-3">
+              <span className="text-xl">🔬</span>
+              <div>
+                <p className={`text-sm font-black ${cab.modo_pesquisa ? "text-blue-800 dark:text-blue-300" : "text-slate-700 dark:text-slate-300"}`}>
+                  Modo Pesquisa
+                </p>
+                <p className="text-[11px] text-slate-400">
+                  Gerentes votam nos itens e escolhem as grades
+                </p>
+              </div>
+            </div>
+            <div className={`w-12 h-6 rounded-full transition-all relative ${
+              cab.modo_pesquisa ? "bg-blue-600" : "bg-slate-300 dark:bg-slate-600"
+            }`}>
+              <div className={`absolute top-1 w-4 h-4 bg-white rounded-full shadow transition-all ${
+                cab.modo_pesquisa ? "left-7" : "left-1"
+              }`} />
             </div>
           </div>
-          <div className={`w-12 h-6 rounded-full transition-all relative ${
-            cab.modo_pesquisa ? "bg-blue-600" : "bg-slate-300 dark:bg-slate-600"
-          }`}>
-            <div className={`absolute top-1 w-4 h-4 bg-white rounded-full shadow transition-all ${
-              cab.modo_pesquisa ? "left-7" : "left-1"
-            }`} />
-          </div>
         </div>
-      </div>
+      )}
     </div>
   );
 }

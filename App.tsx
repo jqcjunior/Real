@@ -47,6 +47,7 @@ import BuyOrderQuotaView from './components/buyorder/BuyOrderQuotaView.tsx';
 import { BuyOrderPhotos } from './components/buyorder/BuyOrderPhotos.tsx';
 import { BuyOrderConferencia } from './components/buyorder/BuyOrderConferencia.tsx';
 import { BuyOrderCentralConfirm } from './components/buyorder/BuyOrderCentralConfirm.tsx';
+import SurveyVotingPage from './components/buyorder/SurveyVotingPage';
 const ReportsPage = lazy(() => import('./components/ReportsPage'));
 const AdminQuotaExtraApprovals = lazy(() => import('./components/buyorder/AdminQuotaExtraApprovals'));
 const BuyOrderAnalytic = lazy(() => import('./components/buyorder/BuyOrderAnalytic'));
@@ -1947,6 +1948,9 @@ const AppRouter: React.FC = () => {
     }
     if (pathParts[1] === 'conferencia' && pathParts[2]) {
         return <BuyOrderCentralConfirm token={pathParts[2]} />;
+    }
+    if (pathParts[1] === 'pesquisa-compra' && pathParts[2]) {
+        return <SurveyVotingPage orderId={pathParts[2]} />;
     }
     return <App />;
 };
