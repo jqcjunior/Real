@@ -965,6 +965,14 @@ export default function BuyOrderModule({ user }: { user?: User }) {
 
       // Agora lidar com o fluxo de acordo com a AÇÃO escolhida
 
+      // MODO PESQUISA: independente do botão clicado, status já está
+      // correto (aguardando_pesquisa) — não sobrescrever
+      if (cab.modo_pesquisa) {
+        toast.success(`✅ Pesquisa #${numeroPedidoLocal ?? numeroPedidoSalvo} criada! Copie o link na lista de pedidos e envie aos gerentes.`);
+        resetStateAndFetch();
+        return;
+      }
+
       if (targetAction === "rascunho") {
         toast.success(`Rascunho salvo com sucesso! Nº será gerado em breve.`);
         resetStateAndFetch();
