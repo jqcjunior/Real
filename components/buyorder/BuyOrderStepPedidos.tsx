@@ -771,6 +771,46 @@ export default function StepPedidos({
     }
   }
 
+  async function criarPedidoSurvey() {
+    if (selectedLojas.length === 0) {
+      alert('Selecione ao menos uma loja para este sub-pedido.');
+      return;
+    }
+    if (pedidos.length >= 5) {
+      alert('Limite máximo de 5 sub-pedidos atingido.');
+      return;
+    }
+    const lojaJaUsada = selectedLojas.filter((l) =>
+      pedidos.some((p) => p.lojas.includes(l))
+    );
+    if (lojaJaUsada.length > 0) {
+      const ok = window.confirm(
+        `As lojas ${lojaJaUsada.join(', ')} já estão em outro sub-pedido. Deseja continuar?`
+      );
+      if (!ok) return;
+    }
+    const allItems: ItemComGrades[] = items.map((_, idx) => ({
+      itemIdx: idx,
+      grades: [],
+    }));
+    const numeroPedido = gerarNumeroPedido();
+    setPedidos((ps: SubOrder[]) => [
+      ...ps,
+      {
+        num: ps.length + 1,
+        pedido_numero: numeroPedido,
+        itensComGrades: allItems,
+        lojas: [...selectedLojas].sort((a, b) => a - b),
+        lojaMode: lojaMode,
+      },
+    ]);
+    setStep2State((prev: any) => ({
+      ...prev,
+      selectedLojas: [],
+      lojaMode: null,
+    }));
+  }
+
   function delPedido(idx: number) {
     setPedidos((ps) =>
       ps.filter((_, i) => i !== idx).map((p, i) => ({ ...p, num: i + 1 })),
@@ -1368,12 +1408,28 @@ export default function StepPedidos({
             </div>
             </>
             ) : (
-              <SurveyParamsConfig
-                subOrders={pedidos}
-                surveyParams={cab.survey_params}
-                onUpdate={(params) => onUpdateCab({ survey_params: params })}
-                items={items}
-              />
+              <div className="flex flex-col h-full">
+                {pedidos.length === 0 && (
+                  <div className="m-3 p-3 bg-purple-50 border border-purple-200 rounded-xl">
+                    <p className="text-[11px] font-black text-purple-800 mb-1">
+                      🔬 Modo Pesquisa Ativo
+                    </p>
+                    <p className="text-[10px] text-purple-600 leading-relaxed">
+                      <strong>1.</strong> Selecione as lojas na coluna à direita (SUBGRUPO ou TODAS)<br/>
+                      <strong>2.</strong> Clique em <strong>ADICIONAR SUB-PEDIDO</strong><br/>
+                      <strong>3.</strong> Repita para cada grupo de lojas (máx. 5)<br/>
+                      <strong>4.</strong> Configure os parâmetros abaixo<br/>
+                      <strong>5.</strong> Salve o pedido — gerentes receberão o link para votar
+                    </p>
+                  </div>
+                )}
+                <SurveyParamsConfig
+                  subOrders={pedidos}
+                  surveyParams={cab.survey_params}
+                  onUpdate={(params) => onUpdateCab({ survey_params: params })}
+                  items={items}
+                />
+              </div>
             )}
             
             {/* Rascunho Rápido was moved to Col3 */}
@@ -1462,16 +1518,29 @@ export default function StepPedidos({
                     })}
                   </div>
 
-                  {tempPedidoItens.length > 0 && selectedLojas.length > 0 && (
-                    <button
-                      onClick={criarPedido}
-                      disabled={isSubmitting}
-                      className="w-full py-3 bg-green-600 hover:bg-green-700 text-white rounded-2xl text-[11px] font-black tracking-[0.1em] shadow-xl shadow-green-600/20 active:scale-95 transition-all flex items-center justify-center gap-3 disabled:opacity-50 disabled:cursor-not-allowed"
-                    >
-                      <span>{isSubmitting ? 'Salvando...' : '✓ FINALIZAR PEDIDO'}</span>
-                      <div className="h-4 w-px bg-white/20" />
-                      <span className="bg-white/20 px-3 rounded-full py-0.5">{selectedLojas.length} LOJAS</span>
-                    </button>
+                  {isSurveyMode ? (
+                    selectedLojas.length > 0 && pedidos.length < 5 && (
+                      <button
+                        onClick={criarPedidoSurvey}
+                        className="w-full py-3 bg-purple-600 hover:bg-purple-700 text-white rounded-2xl text-[11px] font-black tracking-[0.1em] shadow-xl shadow-purple-600/20 active:scale-95 transition-all flex items-center justify-center gap-3"
+                      >
+                        <span>🔬 ADICIONAR SUB-PEDIDO {pedidos.length + 1}</span>
+                        <div className="h-4 w-px bg-white/20" />
+                        <span className="bg-white/20 px-3 rounded-full py-0.5">{selectedLojas.length} LOJAS</span>
+                      </button>
+                    )
+                  ) : (
+                    tempPedidoItens.length > 0 && selectedLojas.length > 0 && (
+                      <button
+                        onClick={criarPedido}
+                        disabled={isSubmitting}
+                        className="w-full py-3 bg-green-600 hover:bg-green-700 text-white rounded-2xl text-[11px] font-black tracking-[0.1em] shadow-xl shadow-green-600/20 active:scale-95 transition-all flex items-center justify-center gap-3 disabled:opacity-50 disabled:cursor-not-allowed"
+                      >
+                        <span>{isSubmitting ? 'Salvando...' : '✓ FINALIZAR PEDIDO'}</span>
+                        <div className="h-4 w-px bg-white/20" />
+                        <span className="bg-white/20 px-3 rounded-full py-0.5">{selectedLojas.length} LOJAS</span>
+                      </button>
+                    )
                   )}
                 </div>
               )}
