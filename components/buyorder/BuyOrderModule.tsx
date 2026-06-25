@@ -328,6 +328,8 @@ export default function BuyOrderModule({ user }: { user?: User }) {
     prazos: [],
     markup: 2.6,
     desconto: 0,
+    modo_pesquisa: false,
+    survey_params: null,
   });
 
   useEffect(() => {
@@ -758,7 +760,9 @@ export default function BuyOrderModule({ user }: { user?: User }) {
           vencimentos,
           desconto: cab.desconto,
           markup: cab.markup,
-          status: "rascunho", // Volta para rascunho se foi alterado
+          modo_pesquisa: cab.modo_pesquisa || false,
+          survey_params: cab.survey_params || null,
+          status: cab.modo_pesquisa ? "aguardando_pesquisa" : "rascunho", // Volta para rascunho se foi alterado
           edited_at: new Date().toISOString(),
         });
 
@@ -796,7 +800,9 @@ export default function BuyOrderModule({ user }: { user?: User }) {
             vencimentos,
             desconto: cab.desconto,
             markup: cab.markup,
-            status: "rascunho", // Sempre salva inicialmente como rascunho
+            modo_pesquisa: cab.modo_pesquisa || false,
+            survey_params: cab.survey_params || null,
+            status: cab.modo_pesquisa ? "aguardando_pesquisa" : "rascunho", // Sempre salva inicialmente como rascunho
           })
           .select("id, numero_pedido")
           .single();
@@ -982,6 +988,8 @@ export default function BuyOrderModule({ user }: { user?: User }) {
       prazos: [],
       markup: 2.6,
       desconto: 0,
+      modo_pesquisa: false,
+      survey_params: null,
     });
     setItems([]);
     setPedidos([]);
@@ -1130,6 +1138,8 @@ function gradesArrayToObject(grades: any): Record<string, Record<string, number>
       prazos: order.prazos || [],
       markup: order.markup || 2.6,
       desconto: order.desconto || 0,
+      modo_pesquisa: order.modo_pesquisa || false,
+      survey_params: order.survey_params || null,
     });
 
     setPrazosRaw(order.prazos ? order.prazos.join("/") : "");
@@ -1624,6 +1634,7 @@ function gradesArrayToObject(grades: any): Record<string, Record<string, number>
             setPedidos={setPedidos}
             user={user}
             cab={cab}
+            onUpdateCab={(updates) => setCab((prev) => ({ ...prev, ...updates }))}
             step2State={step2State}
             setStep2State={setStep2State}
             allowedStores={allowedStores}
@@ -3230,6 +3241,37 @@ function StepCabecalho({
             <div className="text-[10px] text-slate-400 mt-1 italic text-right">
               Marcação do markup e desconto estimado
             </div>
+          </div>
+        </div>
+      </div>
+
+      {/* Toggle Modo Pesquisa */}
+      <div className="p-4 md:p-6 border-b border-slate-200">
+        <div
+          onClick={() => setCab((prev) => ({ ...prev, modo_pesquisa: !prev.modo_pesquisa }))}
+          className={`flex items-center justify-between p-4 rounded-xl border-2 cursor-pointer transition-all select-none ${
+            cab.modo_pesquisa
+              ? "border-blue-500 bg-blue-50 dark:bg-blue-900/20"
+              : "border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 hover:border-slate-300"
+          }`}
+        >
+          <div className="flex items-center gap-3">
+            <span className="text-xl">🔬</span>
+            <div>
+              <p className={`text-sm font-black ${cab.modo_pesquisa ? "text-blue-800 dark:text-blue-300" : "text-slate-700 dark:text-slate-300"}`}>
+                Modo Pesquisa
+              </p>
+              <p className="text-[11px] text-slate-400">
+                Gerentes votam nos itens e escolhem as grades
+              </p>
+            </div>
+          </div>
+          <div className={`w-12 h-6 rounded-full transition-all relative ${
+            cab.modo_pesquisa ? "bg-blue-600" : "bg-slate-300 dark:bg-slate-600"
+          }`}>
+            <div className={`absolute top-1 w-4 h-4 bg-white rounded-full shadow transition-all ${
+              cab.modo_pesquisa ? "left-7" : "left-1"
+            }`} />
           </div>
         </div>
       </div>

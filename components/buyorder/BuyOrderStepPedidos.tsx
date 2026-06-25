@@ -156,6 +156,18 @@ export interface Cabecalho {
   prazos: number[];
   markup: number;
   desconto: number;
+  modo_pesquisa: boolean;
+  survey_params: {
+    prazo_horas: number;
+    sub_orders: Array<{
+      num: number;
+      tipo_limite: 'valor' | 'pares' | 'itens' | 'nenhum';
+      limite: number;
+      itens_minimos: number;
+      prazo_horas: number;
+      itens_obrigatorios: string[];
+    }>;
+  } | null;
 }
 
 interface StepPedidosProps {
@@ -165,6 +177,7 @@ interface StepPedidosProps {
   user?: User;
   brandId?: string; // Receber brandId do cabeçalho para evitar erro RLS
   cab: Cabecalho;
+  onUpdateCab: (updates: Partial<Cabecalho>) => void;
   step2State: {
     selectedItems: Set<number>;
     tempPedidoItens: ItemComGrades[];
@@ -190,12 +203,14 @@ export default function StepPedidos({
   user,
   brandId,
   cab,
+  onUpdateCab,
   step2State,
   setStep2State,
   allowedStores = [],
   canViewAllStores = false,
 }: StepPedidosProps) {
   console.log("BuyOrderStepPedidos - user.role:", user?.role);
+  const isSurveyMode = cab?.modo_pesquisa === true;
   const isGerente = String(user?.role || "").toLowerCase() === "manager";
   const AVAILABLE_LOJAS = allowedStores.map((s) => parseInt(s.number));
   const [userStoreNumber, setUserStoreNumber] = useState<number | null>(null);
@@ -1060,7 +1075,9 @@ export default function StepPedidos({
 
           {/* COLUNA 2: GRADES (Sem scroll horizontal) */}
           <div className="border-r border-slate-100 flex flex-col bg-white overflow-hidden">
-            <div className="p-3 border-b border-slate-100 flex items-center justify-between bg-white shrink-0">
+            {!isSurveyMode ? (
+              <>
+                <div className="p-3 border-b border-slate-100 flex items-center justify-between bg-white shrink-0">
               <div className="flex items-center gap-2">
                 <span className="bg-blue-600 text-white w-5 h-5 rounded-full flex items-center justify-center text-[10px] font-black shadow-sm">2</span>
                 <h4 className="text-[10px] font-black text-slate-700 uppercase tracking-widest">Montagem</h4>
@@ -1349,6 +1366,15 @@ export default function StepPedidos({
                 </>
               )}
             </div>
+            </>
+            ) : (
+              <SurveyParamsConfig
+                subOrders={pedidos}
+                surveyParams={cab.survey_params}
+                onUpdate={(params) => onUpdateCab({ survey_params: params })}
+                items={items}
+              />
+            )}
             
             {/* Rascunho Rápido was moved to Col3 */}
           </div>
@@ -2284,6 +2310,216 @@ function EditPedidoPopup({
             </button>
           </div>
         </div>
+      </div>
+    </div>
+  );
+}
+
+interface SurveyParamsConfigProps {
+  subOrders: SubOrder[];
+  surveyParams: any;
+  onUpdate: (params: any) => void;
+  items: OrderItem[];
+}
+
+export function SurveyParamsConfig({
+  subOrders,
+  surveyParams,
+  onUpdate,
+  items,
+}: SurveyParamsConfigProps) {
+  const defaultParams = React.useMemo(() => {
+    const defaultSubOrders = subOrders.map(sub => {
+      const existing = surveyParams?.sub_orders?.find((o: any) => o.num === sub.num);
+      return {
+        num: sub.num,
+        tipo_limite: existing?.tipo_limite || 'nenhum',
+        limite: existing?.limite || 0,
+        itens_minimos: existing?.itens_minimos || 0,
+        prazo_horas: existing?.prazo_horas || 24,
+        itens_obrigatorios: existing?.itens_obrigatorios || [],
+      };
+    });
+
+    return {
+      prazo_horas: surveyParams?.prazo_horas || 24,
+      sub_orders: defaultSubOrders,
+    };
+  }, [subOrders, surveyParams]);
+
+  React.useEffect(() => {
+    if (!surveyParams || surveyParams.sub_orders?.length !== subOrders.length) {
+      onUpdate(defaultParams);
+    }
+  }, [defaultParams, surveyParams, subOrders, onUpdate]);
+
+  const currentParams = surveyParams || defaultParams;
+
+  const updateSubOrderParam = (num: number, field: string, value: any) => {
+    const updatedSubOrders = currentParams.sub_orders.map((sub: any) => {
+      if (sub.num === num) {
+        return { ...sub, [field]: value };
+      }
+      return sub;
+    });
+    onUpdate({ ...currentParams, sub_orders: updatedSubOrders });
+  };
+
+  return (
+    <div className="flex flex-col h-full bg-slate-50/50">
+      <div className="p-3 border-b border-slate-200 bg-white shrink-0">
+        <div className="flex items-center gap-2 mb-3">
+          <span className="bg-blue-600 text-white w-5 h-5 rounded-full flex items-center justify-center text-[10px] font-black shadow-sm">2</span>
+          <h4 className="text-[10px] font-black text-slate-700 uppercase tracking-widest">Parâmetros da Pesquisa</h4>
+        </div>
+
+        {/* Prazo Geral */}
+        <div className="bg-blue-50/50 border border-blue-100 rounded-xl p-3 flex items-center justify-between gap-4">
+          <div className="flex items-center gap-2">
+            <span className="text-lg">⏱️</span>
+            <div>
+              <p className="text-xs font-black text-blue-900">Prazo Geral de Votação</p>
+              <p className="text-[10px] text-slate-400">Tempo limite para encerramento automático</p>
+            </div>
+          </div>
+          <div className="flex items-center gap-2">
+            <input
+              type="number"
+              min={1}
+              value={currentParams.prazo_horas}
+              onChange={(e) => onUpdate({ ...currentParams, prazo_horas: parseInt(e.target.value) || 24 })}
+              className="w-16 h-8 px-2 text-center font-bold text-blue-600 border border-blue-200 bg-white rounded-lg text-xs focus:ring-2 focus:ring-blue-500 outline-none"
+            />
+            <span className="text-xs font-bold text-blue-700">horas</span>
+          </div>
+        </div>
+      </div>
+
+      <div className="flex-1 overflow-y-auto p-3 space-y-3 custom-scrollbar">
+        {currentParams.sub_orders?.map((sub: any) => {
+          const matchedSub = subOrders.find(o => o.num === sub.num);
+          const lojasStr = matchedSub?.lojas?.join(', ') || 'Sem lojas';
+
+          return (
+            <div key={sub.num} className="border border-slate-200 rounded-xl bg-white shadow-sm overflow-hidden p-3 space-y-3 text-left">
+              {/* Suborder title & stores */}
+              <div className="flex justify-between items-start border-b border-slate-100 pb-2">
+                <div>
+                  <h5 className="text-[11px] font-black text-slate-800 uppercase tracking-tight">Sub-Pedido #{sub.num}</h5>
+                  <p className="text-[10px] text-slate-400 font-medium mt-0.5 truncate max-w-[180px]">
+                    Lojas: {lojasStr}
+                  </p>
+                </div>
+                <span className="text-[9px] bg-slate-100 text-slate-600 px-2 py-0.5 rounded-md font-bold uppercase">
+                  {matchedSub?.pedido_numero || 'Pendente'}
+                </span>
+              </div>
+
+              {/* Deadline & Limit Type */}
+              <div className="grid grid-cols-2 gap-2">
+                <div>
+                  <label className="text-[10px] font-bold text-slate-500 uppercase block mb-1">Prazo Votação</label>
+                  <div className="flex items-center gap-1.5">
+                    <input
+                      type="number"
+                      min={1}
+                      value={sub.prazo_horas}
+                      onChange={(e) => updateSubOrderParam(sub.num, 'prazo_horas', parseInt(e.target.value) || 24)}
+                      className="w-full h-8 px-2 text-center font-semibold text-slate-700 border border-slate-200 rounded-lg text-xs outline-none focus:ring-2 focus:ring-blue-500"
+                    />
+                    <span className="text-[10px] text-slate-400 font-bold">h</span>
+                  </div>
+                </div>
+
+                <div>
+                  <label className="text-[10px] font-bold text-slate-500 uppercase block mb-1">Tipo de Limite</label>
+                  <select
+                    value={sub.tipo_limite}
+                    onChange={(e) => updateSubOrderParam(sub.num, 'tipo_limite', e.target.value)}
+                    className="w-full h-8 px-2 text-xs font-bold text-slate-700 border border-slate-200 rounded-lg outline-none focus:ring-2 focus:ring-blue-500 bg-white"
+                  >
+                    <option value="nenhum">NENHUM</option>
+                    <option value="valor">VALOR (R$)</option>
+                    <option value="pares">PARES</option>
+                    <option value="itens">ITENS</option>
+                  </select>
+                </div>
+              </div>
+
+              {/* Config fields based on limit type */}
+              {sub.tipo_limite !== 'nenhum' && (
+                <div className="grid grid-cols-2 gap-2 p-2 bg-slate-50 border border-slate-100 rounded-lg">
+                  <div>
+                    <label className="text-[9px] font-black text-slate-500 uppercase block mb-1">
+                      {sub.tipo_limite === 'valor' ? 'Limite R$' : sub.tipo_limite === 'pares' ? 'Limite Pares' : 'Limite Itens'}
+                    </label>
+                    <input
+                      type="number"
+                      min={0}
+                      value={sub.limite}
+                      onChange={(e) => updateSubOrderParam(sub.num, 'limite', parseFloat(e.target.value) || 0)}
+                      className="w-full h-8 px-2 font-bold text-slate-700 border border-slate-200 rounded-lg text-xs outline-none focus:ring-2 focus:ring-blue-500 bg-white"
+                    />
+                  </div>
+                  <div>
+                    <label className="text-[9px] font-black text-slate-500 uppercase block mb-1">Mínimo Itens</label>
+                    <input
+                      type="number"
+                      min={0}
+                      value={sub.itens_minimos}
+                      onChange={(e) => updateSubOrderParam(sub.num, 'itens_minimos', parseInt(e.target.value) || 0)}
+                      className="w-full h-8 px-2 font-bold text-slate-700 border border-slate-200 rounded-lg text-xs outline-none focus:ring-2 focus:ring-blue-500 bg-white"
+                    />
+                  </div>
+                </div>
+              )}
+
+              {/* Mandatory Items Select */}
+              <div className="space-y-1">
+                <label className="text-[10px] font-bold text-slate-500 uppercase block">Itens Obrigatórios</label>
+                <div className="flex flex-wrap gap-1 border border-slate-200 rounded-lg p-1.5 min-h-[32px] bg-slate-50/50">
+                  {sub.itens_obrigatorios?.length === 0 ? (
+                    <span className="text-[10px] text-slate-400 italic px-1">Nenhum item selecionado</span>
+                  ) : (
+                    sub.itens_obrigatorios?.map((ref: string) => (
+                      <span key={ref} className="inline-flex items-center gap-1 px-1.5 py-0.5 bg-blue-100 dark:bg-blue-900/30 text-blue-700 dark:text-blue-400 rounded text-[9px] font-bold border border-blue-200/50">
+                        {ref}
+                        <button
+                          type="button"
+                          onClick={() => {
+                            const filtered = sub.itens_obrigatorios.filter((r: string) => r !== ref);
+                            updateSubOrderParam(sub.num, 'itens_obrigatorios', filtered);
+                          }}
+                          className="text-blue-500 hover:text-red-500 font-black"
+                        >
+                          ×
+                        </button>
+                      </span>
+                    ))
+                  )}
+                </div>
+
+                <select
+                  value=""
+                  onChange={(e) => {
+                    const ref = e.target.value;
+                    if (ref && !sub.itens_obrigatorios?.includes(ref)) {
+                      updateSubOrderParam(sub.num, 'itens_obrigatorios', [...(sub.itens_obrigatorios || []), ref]);
+                    }
+                  }}
+                  className="w-full h-8 px-2 text-[10px] font-bold text-slate-600 border border-slate-200 rounded-lg outline-none focus:ring-2 focus:ring-blue-500 bg-white"
+                >
+                  <option value="">+ Adicionar Item Obrigatório</option>
+                  {items.map((item) => (
+                    <option key={item.ref} value={item.ref}>
+                      {item.ref} ({item.modelo || 'Sem modelo'})
+                    </option>
+                  ))}
+                </select>
+              </div>
+            </div>
+          );
+        })}
       </div>
     </div>
   );

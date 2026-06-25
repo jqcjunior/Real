@@ -179,6 +179,8 @@ class ApiService {
     confirmed_at?: string;
     edited_by?: string;
     edited_at?: string;
+    modo_pesquisa?: boolean;
+    survey_params?: any;
   }) {
     try {
       await this.ensureRLS();
