@@ -2531,7 +2531,9 @@ export function SurveyParamsConfig({
                     />
                   </div>
                   <div>
-                    <label className="text-[9px] font-black text-slate-500 uppercase block mb-1">Mínimo Itens</label>
+                    <label className="text-[9px] font-black text-slate-500 uppercase block mb-1">
+                      {sub.tipo_limite === 'valor' ? 'Mínimo Valor' : sub.tipo_limite === 'pares' ? 'Mínimo Pares' : 'Mínimo Itens'}
+                    </label>
                     <input
                       type="number"
                       min={0}
@@ -2586,6 +2588,19 @@ export function SurveyParamsConfig({
                   ))}
                 </select>
               </div>
+
+              {/* Indicador de status da configuração */}
+              <div className="flex items-center justify-between pt-2 border-t border-slate-100 mt-1">
+                <span className="text-[9px] text-slate-400 italic">Parâmetros atualizados automaticamente</span>
+                <span className={`text-[9px] font-black flex items-center gap-1 px-2 py-0.5 rounded-full border ${
+                  sub.tipo_limite !== 'nenhum' && sub.limite > 0
+                    ? 'bg-emerald-50 text-emerald-700 border-emerald-200'
+                    : 'bg-amber-50 text-amber-600 border-amber-200'
+                }`}>
+                  {sub.tipo_limite !== 'nenhum' && sub.limite > 0 ? '✓ Configurado' : '⚠ Incompleto'}
+                </span>
+              </div>
+
             </div>
           );
         })}
