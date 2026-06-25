@@ -657,7 +657,9 @@ export default function BuyOrderModule({ user }: { user?: User }) {
       }
 
       // ✅ VALIDAÇÃO 2: Verificar se há PEDIDOS (sub-orders com itens vinculados)
-      if (pedidos.length === 0 || pedidos.every(p => p.itensComGrades.length === 0)) {
+      // Em modo pesquisa, grades ainda não existem — sub-orders com lojas são suficientes
+      const needsGrades = !cab.modo_pesquisa;
+      if (pedidos.length === 0 || (needsGrades && pedidos.every(p => p.itensComGrades.length === 0))) {
         throw new Error('Vincule ao menos um item com grade e crie um pedido antes de salvar');
       }
 
@@ -819,71 +821,96 @@ export default function BuyOrderModule({ user }: { user?: User }) {
 
       // 4. Insert buy_order_items
       if (items.length > 0) {
-        const itemInputs: BuyOrderItemInput[] = items
-          .map((it, idx) => {
-            const itemGradesObj: Record<string, any> = {};
-            let totalParesItem = 0;
-            pedidos.forEach((ped) => {
-              const icg = ped.itensComGrades.find((x) => x.itemIdx === idx);
-              if (icg) {
-                icg.grades.forEach((g) => {
-                  itemGradesObj[g.letter] = g.qtds;
-                  totalParesItem += totPares(g.qtds) * ped.lojas.length;
+        if (cab.modo_pesquisa) {
+          // MODO PESQUISA: salvar itens sem grades — grades virão dos votos dos gerentes
+          const surveyItemRows = items.map((it, idx) => ({
+            order_id: orderId,
+            item_order: idx + 1,
+            referencia: String(it.ref || '').trim(),
+            tipo: String(it.tipo || '').trim().toUpperCase(),
+            cor1: String(it.cor1 || '').trim().toUpperCase(),
+            cor2: it.cor2 ? String(it.cor2).trim().toUpperCase() : null,
+            cor3: it.cor3 ? String(it.cor3).trim().toUpperCase() : null,
+            modelo: (it.modelo as any) || tipoParaModelo(String(it.tipo || '')),
+            custo: it.custo,
+            preco_venda: it.preco_venda,
+            grades: [],
+            total_pares: 0,
+            markup_aplicado: cab.markup || null,
+          }));
+          const { error: siErr } = await supabase
+            .from('buy_order_items')
+            .insert(surveyItemRows);
+          if (siErr) throw new Error(`Erro ao salvar itens da pesquisa: ${siErr.message}`);
+          // Não insere buy_order_item_suborder_grades — não há grades ainda
+        } else {
+          // MODO NORMAL: fluxo existente com grades obrigatórias
+          const itemInputs: BuyOrderItemInput[] = items
+            .map((it, idx) => {
+              const itemGradesObj: Record<string, any> = {};
+              let totalParesItem = 0;
+              pedidos.forEach((ped) => {
+                const icg = ped.itensComGrades.find((x) => x.itemIdx === idx);
+                if (icg) {
+                  icg.grades.forEach((g) => {
+                    itemGradesObj[g.letter] = g.qtds;
+                    totalParesItem += totPares(g.qtds) * ped.lojas.length;
+                  });
+                }
+              });
+              // Retorna null se item não tem grade vinculada
+              if (Object.keys(itemGradesObj).length === 0) return null;
+              return {
+                order_id: orderId,
+                item_order: idx + 1,
+                referencia: it.ref,
+                tipo: it.tipo || "",
+                cor1: it.cor1,
+                cor2: it.cor2 || null,
+                cor3: it.cor3 || null,
+                modelo: (it.modelo as any) || tipoParaModelo(it.tipo),
+                custo: it.custo,
+                preco_venda: it.preco_venda,
+                grades: itemGradesObj,
+                total_pares: totalParesItem,
+                markup_aplicado: cab.markup,
+              } as BuyOrderItemInput;
+            })
+            .filter((item): item is BuyOrderItemInput => item !== null);
+
+          const result = await insertBuyOrderItems(itemInputs);
+          if (!result.success) {
+            throw new Error("Erro ao salvar itens. Verifique os dados.");
+          }
+
+          const insertedItems = result.data!;
+
+          // Salvar qual grade o item usa em cada sub-pedido
+          const gradesSubPedidos: any[] = [];
+
+          pedidos.forEach((ped) => {
+            ped.itensComGrades.forEach((icg) => {
+              const insertedItem = insertedItems.find(
+                (i) => i.item_order === icg.itemIdx + 1,
+              );
+              if (!insertedItem) return;
+
+              icg.grades.forEach((g) => {
+                gradesSubPedidos.push({
+                  item_id: insertedItem.id,
+                  sub_order_num: ped.num,
+                  grade_letra: g.letter,
                 });
-              }
-            });
-            // Retorna null se item não tem grade vinculada
-            if (Object.keys(itemGradesObj).length === 0) return null;
-            return {
-              order_id: orderId,
-              item_order: idx + 1,
-              referencia: it.ref,
-              tipo: it.tipo || "",
-              cor1: it.cor1,
-              cor2: it.cor2 || null,
-              cor3: it.cor3 || null,
-              modelo: (it.modelo as any) || tipoParaModelo(it.tipo),
-              custo: it.custo,
-              preco_venda: it.preco_venda,
-              grades: itemGradesObj,
-              total_pares: totalParesItem,
-              markup_aplicado: cab.markup,
-            } as BuyOrderItemInput;
-          })
-          .filter((item): item is BuyOrderItemInput => item !== null);
-
-        const result = await insertBuyOrderItems(itemInputs);
-        if (!result.success) {
-          throw new Error("Erro ao salvar itens. Verifique os dados.");
-        }
-
-        const insertedItems = result.data!;
-
-        // Salvar qual grade o item usa em cada sub-pedido
-        const gradesSubPedidos: any[] = [];
-
-        pedidos.forEach((ped) => {
-          ped.itensComGrades.forEach((icg) => {
-            const insertedItem = insertedItems.find(
-              (i) => i.item_order === icg.itemIdx + 1,
-            );
-            if (!insertedItem) return;
-
-            icg.grades.forEach((g) => {
-              gradesSubPedidos.push({
-                item_id: insertedItem.id,
-                sub_order_num: ped.num,
-                grade_letra: g.letter,
               });
             });
           });
-        });
 
-        if (gradesSubPedidos.length > 0) {
-          const { error: gsErr } = await supabase
-            .from("buy_order_item_suborder_grades")
-            .insert(gradesSubPedidos);
-          if (gsErr) throw gsErr;
+          if (gradesSubPedidos.length > 0) {
+            const { error: gsErr } = await supabase
+              .from("buy_order_item_suborder_grades")
+              .insert(gradesSubPedidos);
+            if (gsErr) throw gsErr;
+          }
         }
       }
 
@@ -1704,7 +1731,7 @@ function gradesArrayToObject(grades: any): Record<string, Record<string, number>
               {items.length > 0 && `${items.length} itens`}
             </span>
 
-            {step === STEPS.length - 1 && (pedidos.length === 0 || pedidos.every(p => p.itensComGrades.length === 0)) ? (
+            {step === STEPS.length - 1 && (pedidos.length === 0 || (!cab.modo_pesquisa && pedidos.every(p => p.itensComGrades.length === 0))) ? (
               <div className="text-xs text-amber-600 bg-amber-50 border border-amber-300 rounded-lg px-3 py-1 flex items-center h-8">
                 ⚠️ Crie ao menos um pedido
               </div>
@@ -1714,7 +1741,7 @@ function gradesArrayToObject(grades: any): Record<string, Record<string, number>
               <>
                 <button
                   onClick={() => handleSave("rascunho")}
-                  disabled={saving || !isHeaderValid || items.length === 0 || pedidos.length === 0 || pedidos.every(p => p.itensComGrades.length === 0)}
+                  disabled={saving || !isHeaderValid || items.length === 0 || pedidos.length === 0 || (!cab.modo_pesquisa && pedidos.every(p => p.itensComGrades.length === 0))}
                   style={{
                     height: 32,
                     padding: "0 16px",
@@ -1725,7 +1752,7 @@ function gradesArrayToObject(grades: any): Record<string, Record<string, number>
                     border: "1px solid #94a3b8",
                     background: "#f8fafc",
                     color: "#475569",
-                    opacity: (saving || !isHeaderValid || items.length === 0 || pedidos.length === 0 || pedidos.every(p => p.itensComGrades.length === 0)) ? 0.7 : 1,
+                    opacity: (saving || !isHeaderValid || items.length === 0 || pedidos.length === 0 || (!cab.modo_pesquisa && pedidos.every(p => p.itensComGrades.length === 0))) ? 0.7 : 1,
                   }}
                 >
                   Salvar Rascunho
@@ -1734,7 +1761,7 @@ function gradesArrayToObject(grades: any): Record<string, Record<string, number>
                   onClick={() => {
                     handleSave("rascunho_then_standby");
                   }}
-                  disabled={saving || !isHeaderValid || items.length === 0 || pedidos.length === 0 || pedidos.every(p => p.itensComGrades.length === 0)}
+                  disabled={saving || !isHeaderValid || items.length === 0 || pedidos.length === 0 || (!cab.modo_pesquisa && pedidos.every(p => p.itensComGrades.length === 0))}
                   style={{
                     height: 32,
                     padding: "0 16px",
@@ -1745,14 +1772,14 @@ function gradesArrayToObject(grades: any): Record<string, Record<string, number>
                     border: "1px solid #d97706",
                     background: "#fffbeb",
                     color: "#b45309",
-                    opacity: (saving || !isHeaderValid || items.length === 0 || pedidos.length === 0 || pedidos.every(p => p.itensComGrades.length === 0)) ? 0.7 : 1,
+                    opacity: (saving || !isHeaderValid || items.length === 0 || pedidos.length === 0 || (!cab.modo_pesquisa && pedidos.every(p => p.itensComGrades.length === 0))) ? 0.7 : 1,
                   }}
                 >
                   Salvar em Stand By
                 </button>
                 <button
                   onClick={() => handleSave("confirmado")}
-                  disabled={saving || !isHeaderValid || items.length === 0 || pedidos.length === 0 || pedidos.every(p => p.itensComGrades.length === 0)}
+                  disabled={saving || !isHeaderValid || items.length === 0 || pedidos.length === 0 || (!cab.modo_pesquisa && pedidos.every(p => p.itensComGrades.length === 0))}
                   style={{
                     height: 32,
                     padding: "0 16px",
@@ -1763,7 +1790,7 @@ function gradesArrayToObject(grades: any): Record<string, Record<string, number>
                     border: "transparent",
                     background: "#16a34a",
                     color: "#fff",
-                    opacity: (saving || !isHeaderValid || items.length === 0 || pedidos.length === 0 || pedidos.every(p => p.itensComGrades.length === 0)) ? 0.7 : 1,
+                    opacity: (saving || !isHeaderValid || items.length === 0 || pedidos.length === 0 || (!cab.modo_pesquisa && pedidos.every(p => p.itensComGrades.length === 0))) ? 0.7 : 1,
                   }}
                 >
                   {saving ? "Aguarde..." : "Confirmar Pedido"}
