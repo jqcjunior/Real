@@ -36,6 +36,8 @@ import { StandByModal } from "./StandByModal";
 import { QuotaInsufficientModal } from "../QuotaInsufficientModal";
 import StandByDashboard from "./StandByDashboard";
 import SolicitarCotaExtraModal from "../SolicitarCotaExtraModal";
+import SurveyVotingScreen from "./SurveyVotingScreen";
+import SurveyProgressModal from "./SurveyProgressModal";
 
 // ... AlertasCardSticky component ...
 interface Alerta {
@@ -638,6 +640,8 @@ export default function BuyOrderModule({ user }: { user?: User }) {
   const [showStandByModalForOrderId, setShowStandByModalForOrderId] = useState<
     string | null
   >(null);
+  const [surveyVotingOrder, setSurveyVotingOrder] = useState<{ orderId: string; subOrderNum: number; storeId: string; numero: number; marca: string } | null>(null);
+  const [surveyProgressOrder, setSurveyProgressOrder] = useState<{ orderId: string; numero: number; marca: string } | null>(null);
   const [quotaModalData, setQuotaModalData] = useState<any | null>(null);
 
   async function handleSave(
@@ -2307,6 +2311,22 @@ function gradesArrayToObject(grades: any): Record<string, Record<string, number>
                               Exportado
                             </span>
                           );
+                        if (status === "aguardando_pesquisa")
+                          return (
+                            <span
+                              style={{
+                                fontSize: 9,
+                                color: "#6b21a8",
+                                background: "#f3e8ff",
+                                padding: "2px 6px",
+                                borderRadius: 10,
+                                border: "0.5px solid #e9d5ff",
+                                fontWeight: 600,
+                              }}
+                            >
+                              Pesquisa em Aberto
+                            </span>
+                          );
                         if (status === "confirmado")
                           return (
                             <span
@@ -2422,6 +2442,58 @@ function gradesArrayToObject(grades: any): Record<string, Record<string, number>
                               <Pencil size={14} />
                             </button>
                           )}
+
+                        {/* Botão de Pesquisa (Votar / Progresso) */}
+                        {o.status === "aguardando_pesquisa" && (
+                          isAdmin ? (
+                            <button
+                              onClick={() => setSurveyProgressOrder({ orderId: o.id, numero: o.numero_pedido, marca: o.marca })}
+                              title="Ver Progresso da Pesquisa"
+                              style={{
+                                height: 28,
+                                padding: "0 10px",
+                                display: "flex",
+                                alignItems: "center",
+                                justifyContent: "center",
+                                background: "#c084fc",
+                                color: "#fff",
+                                border: "none",
+                                borderRadius: 6,
+                                cursor: "pointer",
+                                transition: "all 0.2s",
+                                fontSize: "11px",
+                                fontWeight: "bold"
+                              }}
+                            >
+                              📊 Progresso
+                            </button>
+                          ) : (
+                            <button
+                              onClick={() => {
+                                const storeId = user?.storeId || '';
+                                setSurveyVotingOrder({ orderId: o.id, subOrderNum: 1, storeId, numero: o.numero_pedido, marca: o.marca });
+                              }}
+                              title="Votar na Pesquisa"
+                              style={{
+                                height: 28,
+                                padding: "0 10px",
+                                display: "flex",
+                                alignItems: "center",
+                                justifyContent: "center",
+                                background: "#a855f7",
+                                color: "#fff",
+                                border: "none",
+                                borderRadius: 6,
+                                cursor: "pointer",
+                                transition: "all 0.2s",
+                                fontSize: "11px",
+                                fontWeight: "bold"
+                              }}
+                            >
+                              🗳️ Votar
+                            </button>
+                          )
+                        )}
 
                         {/* Botão Imprimir */}
                         <button
@@ -2788,6 +2860,36 @@ function gradesArrayToObject(grades: any): Record<string, Record<string, number>
           deficit={quotaModalData.deficit}
           buyerType={quotaModalData.buyerType}
           onClose={() => setQuotaModalData(null)}
+        />
+      )}
+
+      {/* Survey Voting Screen */}
+      {surveyVotingOrder && (
+        <SurveyVotingScreen
+          user={user}
+          orderId={surveyVotingOrder.orderId}
+          subOrderNum={surveyVotingOrder.subOrderNum}
+          storeId={surveyVotingOrder.storeId}
+          onClose={() => setSurveyVotingOrder(null)}
+          onComplete={() => {
+            setSurveyVotingOrder(null);
+            resetStateAndFetch();
+          }}
+        />
+      )}
+
+      {/* Survey Progress Modal */}
+      {surveyProgressOrder && (
+        <SurveyProgressModal
+          orderId={surveyProgressOrder.orderId}
+          numeroPedido={surveyProgressOrder.numero}
+          marca={surveyProgressOrder.marca}
+          user={user}
+          onClose={() => setSurveyProgressOrder(null)}
+          onFinalized={() => {
+            setSurveyProgressOrder(null);
+            resetStateAndFetch();
+          }}
         />
       )}
 
