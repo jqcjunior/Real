@@ -192,94 +192,143 @@ export default function SurveyProgressModal({
   // Handle final consolidation and closure of survey
   const handleFinalize = async () => {
     if (votesList.length === 0) {
-      const confirmNoVotes = window.confirm('Nenhuma loja votou ainda. Deseja realmente finalizar a pesquisa sem votos?');
-      if (!confirmNoVotes) return;
+      const ok = window.confirm('Nenhuma loja votou ainda. Deseja realmente finalizar sem votos?');
+      if (!ok) return;
     } else {
-      const confirmClose = window.confirm('Deseja realmente encerrar a pesquisa? O pedido voltará ao status de rascunho com os votos consolidados.');
-      if (!confirmClose) return;
+      const ok = window.confirm('Deseja encerrar a pesquisa e consolidar os votos? Lojas que não votaram serão removidas do pedido.');
+      if (!ok) return;
     }
 
     setFinalizing(true);
     try {
-      // 1. Delete existing sub-order grades to prevent duplication
-      const itemIds = items.map(i => i.id);
+      const GRADE_LETTERS = ['A','B','C','D','E','F','G','H'];
+
+      // ─── 1. Mapear quais lojas votaram ───────────────────────────────
+      const votedStoreNumbers = new Set(
+        votesList.map((v: any) => String(v.store_number))
+      );
+
+      // ─── 2. Para cada sub-order: remover lojas que não votaram ───────
+      const lojasFora: string[] = [];
+      const updatedSubOrders: any[] = [];
+
+      for (const sub of subOrders) {
+        const original = (sub.lojas_numeros || []).map(String);
+        const remaining = original.filter((n: string) => votedStoreNumbers.has(n));
+        const removed   = original.filter((n: string) => !votedStoreNumbers.has(n));
+        removed.forEach((n: string) => {
+          if (!lojasFora.includes(n)) lojasFora.push(n);
+        });
+        updatedSubOrders.push({ ...sub, lojas_numeros: remaining.map(Number) });
+      }
+
+      // ─── 3. Atualizar lojas_numeros de cada sub-order no banco ───────
+      for (const sub of updatedSubOrders) {
+        const { error } = await supabase
+          .from('buy_order_sub_orders')
+          .update({ lojas_numeros: sub.lojas_numeros })
+          .eq('order_id', orderId)
+          .eq('sub_order_num', sub.sub_order_num);
+        if (error) throw error;
+      }
+
+      // ─── 4. Consolidar grades por sub-order + item ───────────────────
+      // Deletar grades antigas
+      const itemIds = items.map((i: any) => i.id);
       if (itemIds.length > 0) {
-        const { error: delErr } = await supabase
+        const { error } = await supabase
           .from('buy_order_item_suborder_grades')
           .delete()
           .in('item_id', itemIds);
-        if (delErr) throw delErr;
+        if (error) throw error;
       }
 
-      // 2. Compute majority grade for each suborder and item
+      // Para cada item: consolidar grades das lojas que votaram SIM por sub-order
+      const consolidatedItemGrades: Record<string, Record<string, Record<string, number>>> = {};
+      // estrutura: { item_id: { gradeLetter: { size: qty } } }
+
       const gradesToInsert: any[] = [];
-      
-      subOrders.forEach((sub: any) => {
+
+      updatedSubOrders.forEach((sub: any, subIdx: number) => {
+        const gradeLetter = GRADE_LETTERS[subIdx] || String(subIdx + 1);
         const storeNumsInSub = (sub.lojas_numeros || []).map(String);
 
         items.forEach((item: any) => {
-          // Track votes for grade choices from stores belonging to this sub-order
-          const gradeCounts: Record<string, number> = {};
-          
+          // Agregar qtds de todos os votos SIM desta loja para este item
+          const aggregated: Record<string, number> = {};
+
           votesList.forEach((vote: any) => {
-            if (storeNumsInSub.includes(String(vote.store_number))) {
-              const itemVote = vote.itens?.find((vi: any) => vi.ref === item.referencia);
-              if (itemVote && itemVote.voto && itemVote.grade_letra) {
-                gradeCounts[itemVote.grade_letra] = (gradeCounts[itemVote.grade_letra] || 0) + 1;
-              }
+            if (!storeNumsInSub.includes(String(vote.store_number))) return;
+            const itemVote = vote.itens?.find((vi: any) => vi.ref === item.referencia);
+            if (!itemVote?.voto) return;
+
+            // Novo sistema: itemVote.grades = { A: {38:2,...}, B:{...} }
+            const customGrades = itemVote.grades;
+            if (customGrades && typeof customGrades === 'object') {
+              Object.values(customGrades).forEach((qtds: any) => {
+                if (typeof qtds !== 'object') return;
+                Object.entries(qtds).forEach(([size, qty]: [string, any]) => {
+                  aggregated[size] = (aggregated[size] || 0) + (Number(qty) || 0);
+                });
+              });
             }
           });
 
-          // Find grade letter with majority votes
-          let chosenGrade = '';
-          let maxVotes = 0;
-          Object.entries(gradeCounts).forEach(([grade, count]) => {
-            if (count > maxVotes) {
-              maxVotes = count;
-              chosenGrade = grade;
-            }
+          const totalPares = Object.values(aggregated).reduce((s: number, v: any) => s + v, 0);
+          if (totalPares === 0) return; // Nenhuma loja votou SIM neste item neste sub-order
+
+          // Acumular grade no mapa do item
+          if (!consolidatedItemGrades[item.id]) consolidatedItemGrades[item.id] = {};
+          consolidatedItemGrades[item.id][gradeLetter] = aggregated;
+
+          gradesToInsert.push({
+            item_id: item.id,
+            sub_order_num: sub.sub_order_num,
+            grade_letra: gradeLetter,
           });
-
-          // Fallback: If no vote, take first grade from item.grades if available
-          if (!chosenGrade && item.grades) {
-            const gradesObj = gradesArrayToObject(item.grades);
-            const letters = Object.keys(gradesObj);
-            if (letters.length > 0) {
-              chosenGrade = letters[0];
-            }
-          }
-
-          if (chosenGrade) {
-            gradesToInsert.push({
-              item_id: item.id,
-              sub_order_num: sub.sub_order_num,
-              grade_letra: chosenGrade,
-            });
-          }
         });
       });
 
-      // 3. Save consolidated grades to DB
-      if (gradesToInsert.length > 0) {
-        const { error: insErr } = await supabase
-          .from('buy_order_item_suborder_grades')
-          .insert(gradesToInsert);
-        if (insErr) throw insErr;
+      // ─── 5. Atualizar buy_order_items.grades com as grades consolidadas ─
+      for (const [itemId, gradesObj] of Object.entries(consolidatedItemGrades)) {
+        const { error } = await supabase
+          .from('buy_order_items')
+          .update({ grades: gradesObj })
+          .eq('id', itemId);
+        if (error) throw error;
       }
 
-      // 4. Update the order status to "rascunho"
+      // ─── 6. Inserir buy_order_item_suborder_grades ────────────────────
+      if (gradesToInsert.length > 0) {
+        const { error } = await supabase
+          .from('buy_order_item_suborder_grades')
+          .insert(gradesToInsert);
+        if (error) throw error;
+      }
+
+      // ─── 7. Montar observações sobre lojas fora do pedido ─────────────
+      let observacoes = '';
+      if (lojasFora.length > 0) {
+        const lojasOrdenadas = lojasFora.sort((a, b) => Number(a) - Number(b));
+        observacoes = `Lojas fora do pedido por não responder a pesquisa: ${lojasOrdenadas.map(n => `Loja ${n}`).join(', ')}.`;
+      }
+
+      // ─── 8. Finalizar pedido: status rascunho + observações ──────────
+      const updatePayload: any = { status: 'rascunho' };
+      if (observacoes) updatePayload.observacoes = observacoes;
+
       const { error: updErr } = await supabase
         .from('buy_orders')
-        .update({ status: 'rascunho' })
+        .update(updatePayload)
         .eq('id', orderId);
-
       if (updErr) throw updErr;
 
-      toast.success('Pesquisa encerrada e consolidada com sucesso!');
+      toast.success('✅ Pesquisa encerrada e consolidada com sucesso!');
       onFinalized();
+
     } catch (err: any) {
-      console.error('Error closing survey:', err);
-      toast.error(err?.message || 'Erro ao encerrar a pesquisa');
+      console.error('Erro ao finalizar pesquisa:', err);
+      toast.error(`Erro ao finalizar: ${err.message || 'Erro desconhecido'}`);
     } finally {
       setFinalizing(false);
     }

@@ -191,6 +191,8 @@ const App: React.FC = () => {
     const checkUnreadDemands = async () => {
         if (!user) return;
         try {
+            await ensureSession();
+            
             let query = supabase
                 .from('demands_v2')
                 .select('unread_count')
@@ -198,9 +200,18 @@ const App: React.FC = () => {
                 .eq('is_archived', false);
             
             // @ts-ignore
+            const rawRole = String(user.role || user.role_level || '').toUpperCase().trim();
+            const isAdminOrTecnico = rawRole === 'ADMIN' || rawRole === 'SUPER_ADMIN' || rawRole === 'SUPER' || rawRole === 'TÉCNICO';
+            
+            // @ts-ignore
             const userStoreId = user.store_id || user.storeId;
-            if (user?.role !== UserRole.ADMIN && userStoreId) {
-                query = query.eq('store_id', userStoreId);
+            if (!isAdminOrTecnico) {
+                if (userStoreId) {
+                    query = query.eq('store_id', userStoreId);
+                } else {
+                    setHasUnreadDemands(false);
+                    return;
+                }
             }
 
             const { data, error } = await query;

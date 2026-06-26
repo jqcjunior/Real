@@ -115,6 +115,11 @@ export async function exportBuyOrderToExcel(orderId: string) {
         setVal('N4', (order.fornecedor || '').toUpperCase());
         setVal('AA4', (order.email_representante || order.email || '').toLowerCase());
 
+        // Observações na célula mesclada B11:AQ11
+        if (order.observacoes) {
+          setVal('B11', order.observacoes);
+        }
+
         // ✅ CORREÇÃO 1: PRAZOS E VENCIMENTOS SEPARADOS
         const prazosArray = Array.isArray(order.prazos) 
             ? order.prazos 

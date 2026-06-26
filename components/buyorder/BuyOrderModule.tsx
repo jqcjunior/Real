@@ -2034,20 +2034,42 @@ function gradesArrayToObject(grades: any): Record<string, Record<string, number>
                     </div>
                     {/* Botões de ação em linha */}
                     <div style={{ display: 'flex', gap: '8px', marginTop: '8px', paddingTop: '12px', borderTop: '1px solid #f1f5f9' }}>
-                      <button 
-                        onClick={() => handleExportExcel(order.id)}
-                        disabled={exportando === order.id}
-                        className="flex-1 flex items-center justify-center gap-2 py-2 bg-blue-600 text-white rounded-lg text-[11px] font-medium hover:bg-blue-700 disabled:opacity-50"
-                      >
-                        <Download size={14} /> {exportando === order.id ? 'Exp...' : 'Exportar'}
-                      </button>
-                      
-                      <button
-                        onClick={() => printOrder(order, supabase)}
-                        className="flex-1 flex items-center justify-center gap-2 py-2 bg-blue-100 text-blue-700 rounded-lg text-[11px] font-medium hover:bg-blue-200"
-                      >
-                        <Printer size={14} /> Imprimir
-                      </button>
+                      {status === 'aguardando_pesquisa' ? (
+                        <>
+                          <button
+                            onClick={() => {
+                              const link = `${window.location.origin}/pesquisa-compra/${order.id}`;
+                              navigator.clipboard.writeText(link);
+                              toast.success('✅ Link copiado!');
+                            }}
+                            className="flex-1 flex items-center justify-center gap-1.5 py-2 bg-purple-600 text-white rounded-lg text-[11px] font-medium hover:bg-purple-700"
+                          >
+                            🔗 Copiar Link
+                          </button>
+                          <button
+                            onClick={() => setSurveyProgressOrder({ orderId: order.id, numero: order.numero_pedido, marca: order.marca })}
+                            className="flex-1 flex items-center justify-center gap-1.5 py-2 bg-purple-100 text-purple-700 rounded-lg text-[11px] font-medium hover:bg-purple-200"
+                          >
+                            📊 Progresso
+                          </button>
+                        </>
+                      ) : (
+                        <>
+                          <button 
+                            onClick={() => handleExportExcel(order.id)}
+                            disabled={exportando === order.id}
+                            className="flex-1 flex items-center justify-center gap-2 py-2 bg-blue-600 text-white rounded-lg text-[11px] font-medium hover:bg-blue-700 disabled:opacity-50"
+                          >
+                            <Download size={14} /> {exportando === order.id ? 'Exp...' : 'Exportar'}
+                          </button>
+                          <button
+                            onClick={() => printOrder(order, supabase)}
+                            className="flex-1 flex items-center justify-center gap-2 py-2 bg-blue-100 text-blue-700 rounded-lg text-[11px] font-medium hover:bg-blue-200"
+                          >
+                            <Printer size={14} /> Imprimir
+                          </button>
+                        </>
+                      )}
 
                       <button
                         onClick={() => setCopyingOrder(order)}
