@@ -2431,7 +2431,12 @@ export function SurveyParamsConfig({
       }
       return sub;
     });
-    onUpdate({ ...currentParams, sub_orders: updatedSubOrders });
+    // Se prazo_horas mudou, sincronizar o campo geral também
+    const updatedParams = { ...currentParams, sub_orders: updatedSubOrders };
+    if (field === 'prazo_horas') {
+      updatedParams.prazo_horas = value;
+    }
+    onUpdate(updatedParams);
   };
 
   return (

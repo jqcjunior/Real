@@ -32,7 +32,11 @@ export default function SurveyProgressModal({
 
   useEffect(() => {
     if (!order) return;
-    const prazoHoras = order.survey_params?.prazo_horas || 24;
+    // Usa prazo do sub-pedido da loja como primário, fallback para o geral
+    const subOrderPrazo = order.survey_params?.sub_orders?.find(
+      (s: any) => s.prazo_horas && s.prazo_horas > 0
+    )?.prazo_horas;
+    const prazoHoras = subOrderPrazo || order.survey_params?.prazo_horas || 24;
     const deadline = new Date(order.created_at).getTime() + prazoHoras * 60 * 60 * 1000;
     function tick() {
       const remaining = deadline - Date.now();
