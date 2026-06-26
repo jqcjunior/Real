@@ -27,6 +27,33 @@ export default function SurveyProgressModal({
   const [items, setItems] = useState<any[]>([]);
   const [activeTab, setActiveTab] = useState<'progress' | 'results'>('progress');
   const [expandedStoreRef, setExpandedStoreRef] = useState<string | null>(null);
+  const [timeLeft, setTimeLeft] = useState<number | null>(null);
+  const [isExpired, setIsExpired] = useState(false);
+
+  useEffect(() => {
+    if (!order) return;
+    const prazoHoras = order.survey_params?.prazo_horas || 24;
+    const deadline = new Date(order.created_at).getTime() + prazoHoras * 60 * 60 * 1000;
+    function tick() {
+      const remaining = deadline - Date.now();
+      if (remaining <= 0) { setTimeLeft(0); setIsExpired(true); }
+      else { setTimeLeft(remaining); setIsExpired(false); }
+    }
+    tick();
+    const interval = setInterval(tick, 1000);
+    return () => clearInterval(interval);
+  }, [order]);
+
+  function formatCountdown(ms: number): string {
+    if (ms <= 0) return 'ENCERRADO';
+    const totalSecs = Math.floor(ms / 1000);
+    const h = Math.floor(totalSecs / 3600);
+    const m = Math.floor((totalSecs % 3600) / 60);
+    const s = totalSecs % 60;
+    if (h > 0) return `${h}h ${String(m).padStart(2,'0')}m ${String(s).padStart(2,'0')}s`;
+    if (m > 0) return `${m}m ${String(s).padStart(2,'0')}s`;
+    return `${s}s`;
+  }
 
   useEffect(() => {
     async function loadData() {
@@ -312,7 +339,19 @@ export default function SurveyProgressModal({
             </div>
           </div>
 
-          <div className="flex justify-end">
+          <div className="flex flex-col items-end gap-2">
+            {timeLeft !== null && (
+              <div className={`flex items-center gap-2 px-3 py-1.5 rounded-xl border text-[10px] font-black uppercase ${
+                isExpired
+                  ? 'bg-red-50 border-red-300 text-red-700'
+                  : timeLeft < 3600000
+                    ? 'bg-amber-50 border-amber-300 text-amber-700 animate-pulse'
+                    : 'bg-purple-50 border-purple-200 text-purple-700'
+              }`}>
+                <Clock size={12} />
+                <span>{isExpired ? '⏰ Prazo encerrado' : `Encerra em ${formatCountdown(timeLeft)}`}</span>
+              </div>
+            )}
             <button
               onClick={handleFinalize}
               disabled={finalizing}
