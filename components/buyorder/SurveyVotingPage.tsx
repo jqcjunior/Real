@@ -94,7 +94,7 @@ export default function SurveyVotingPage({ orderId }: SurveyVotingPageProps) {
 
         const { data, error } = await supabase
           .from('buy_orders')
-          .select('id, numero_pedido, marca, status, created_at')
+          .select('id, numero_pedido, marca, status, created_at, survey_params')
           .eq('id', orderId)
           .maybeSingle();
 
@@ -108,6 +108,15 @@ export default function SurveyVotingPage({ orderId }: SurveyVotingPageProps) {
 
         if (data.status !== 'aguardando_pesquisa') {
           setOrderError(`Esta pesquisa já foi encerrada ou o pedido mudou de status (Status atual: ${data.status.replace('_', ' ').toUpperCase()}).`);
+          return;
+        }
+
+        // Verificar prazo expirado
+        const prazoHoras = data.survey_params?.prazo_horas || 24;
+        const createdAt = new Date(data.created_at).getTime();
+        const deadline = createdAt + prazoHoras * 60 * 60 * 1000;
+        if (Date.now() > deadline) {
+          setOrderError(`O prazo desta pesquisa encerrou. Duração: ${prazoHoras}h a partir de ${new Date(createdAt).toLocaleString('pt-BR')}. Entre em contato com o comprador.`);
           return;
         }
 

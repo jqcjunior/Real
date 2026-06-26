@@ -67,6 +67,41 @@ export default function SurveyVotingScreen({
   }>>({});
 
   const [zoomedPhoto, setZoomedPhoto] = useState<string | null>(null);
+  const [timeLeft, setTimeLeft] = useState<number | null>(null);
+  const [isExpired, setIsExpired] = useState(false);
+
+  // Countdown baseado em order.created_at + survey_params.prazo_horas
+  useEffect(() => {
+    if (!order) return;
+    const prazoHoras = order.survey_params?.prazo_horas || 24;
+    const deadline = new Date(order.created_at).getTime() + prazoHoras * 60 * 60 * 1000;
+
+    function tick() {
+      const remaining = deadline - Date.now();
+      if (remaining <= 0) {
+        setTimeLeft(0);
+        setIsExpired(true);
+      } else {
+        setTimeLeft(remaining);
+        setIsExpired(false);
+      }
+    }
+
+    tick();
+    const interval = setInterval(tick, 1000);
+    return () => clearInterval(interval);
+  }, [order]);
+
+  function formatCountdown(ms: number): string {
+    if (ms <= 0) return 'ENCERRADO';
+    const totalSecs = Math.floor(ms / 1000);
+    const h = Math.floor(totalSecs / 3600);
+    const m = Math.floor((totalSecs % 3600) / 60);
+    const s = totalSecs % 60;
+    if (h > 0) return `${h}h ${String(m).padStart(2,'0')}m ${String(s).padStart(2,'0')}s`;
+    if (m > 0) return `${m}m ${String(s).padStart(2,'0')}s`;
+    return `${s}s`;
+  }
 
   function addGrade(ref: string, tipo: string) {
     setVotes(prev => {
@@ -445,13 +480,43 @@ export default function SurveyVotingScreen({
               </h3>
             </div>
           </div>
-          <button 
-            onClick={onClose}
-            className="text-purple-200 hover:text-white transition-colors p-1.5 rounded-lg hover:bg-white/10"
-          >
-            <X size={20} />
-          </button>
+          <div className="flex items-center gap-3">
+            {/* Countdown */}
+            {timeLeft !== null && (
+              <div className={`flex flex-col items-center px-3 py-1.5 rounded-xl border text-center ${
+                isExpired
+                  ? 'bg-red-600 border-red-500 text-white'
+                  : timeLeft < 3600000
+                    ? 'bg-amber-500 border-amber-400 text-white animate-pulse'
+                    : 'bg-purple-700/60 border-purple-600 text-purple-100'
+              }`}>
+                <span className="text-[8px] font-black uppercase tracking-widest opacity-80">
+                  {isExpired ? 'Prazo' : 'Restante'}
+                </span>
+                <span className="text-[11px] font-black leading-none mt-0.5">
+                  {isExpired ? 'ENCERRADO' : formatCountdown(timeLeft)}
+                </span>
+              </div>
+            )}
+            <button
+              onClick={onClose}
+              className="text-purple-200 hover:text-white transition-colors p-1.5 rounded-lg hover:bg-white/10"
+            >
+              <X size={20} />
+            </button>
+          </div>
         </div>
+
+        {/* Banner de prazo encerrado */}
+        {isExpired && (
+          <div className="bg-red-600 text-white px-6 py-3 flex items-center gap-3 shrink-0">
+            <span className="text-lg">⏰</span>
+            <div>
+              <p className="text-xs font-black uppercase tracking-wider">Prazo de votação encerrado</p>
+              <p className="text-[10px] opacity-80">O período para envio dos votos foi encerrado. Você não pode mais confirmar sua votação.</p>
+            </div>
+          </div>
+        )}
 
         {/* Info & Limits Alert Banner */}
         <div className="bg-purple-50 border-b border-purple-100 p-4 shrink-0 grid grid-cols-1 md:grid-cols-2 gap-4 items-center">
@@ -759,13 +824,15 @@ export default function SurveyVotingScreen({
             <button
               type="button"
               onClick={handleSave}
-              disabled={saving || !validation.isValid}
+              disabled={saving || !validation.isValid || isExpired}
               className={`px-6 py-3 text-white rounded-xl text-xs font-black uppercase tracking-wider shadow-md transition-all flex items-center gap-2 ${
-                !validation.isValid
-                  ? 'bg-slate-300 cursor-not-allowed text-slate-400'
-                  : saving
-                    ? 'bg-purple-400 cursor-wait'
-                    : 'bg-purple-600 hover:bg-purple-700 hover:shadow-lg'
+                isExpired
+                  ? 'bg-red-400 cursor-not-allowed text-white opacity-60'
+                  : !validation.isValid
+                    ? 'bg-slate-300 cursor-not-allowed text-slate-400'
+                    : saving
+                      ? 'bg-purple-400 cursor-wait'
+                      : 'bg-purple-600 hover:bg-purple-700 hover:shadow-lg'
               }`}
             >
               {saving ? (
