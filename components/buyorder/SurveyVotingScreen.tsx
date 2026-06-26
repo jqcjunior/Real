@@ -3,6 +3,34 @@ import { toast } from 'sonner';
 import { supabase } from '../../services/supabaseClient';
 import { X, Check, AlertCircle, Info, HelpCircle } from 'lucide-react';
 
+const GRADE_LETTERS = ['A','B','C','D','E','F','G','H'];
+
+const CATS: Record<string, { sizes: string[] }> = {
+  MASC: { sizes: [37,38,39,40,41,42,43,44,45,46,47,48].map(String) },
+  FEM:  { sizes: [33,34,35,36,37,38,39,40,41,42].map(String) },
+  INF:  { sizes: [16,17,18,19,20,21,22,23,24,25,26,27,28,29,30,31,32,33,34,35,36].map(String) },
+  ACES: { sizes: ['UN','P','M','G','GG'] },
+};
+
+const CATS_INFO: Record<string, { label: string; color: string; bg: string; border: string }> = {
+  MASC: { label: 'ADULTO MASCULINO', color: 'text-blue-800',   bg: 'bg-blue-50',   border: 'border-blue-300' },
+  FEM:  { label: 'ADULTO FEMININO',  color: 'text-pink-800',   bg: 'bg-pink-50',   border: 'border-pink-300' },
+  INF:  { label: 'INFANTIL',         color: 'text-orange-800', bg: 'bg-orange-50', border: 'border-orange-400' },
+  ACES: { label: 'ACESSÓRIO',        color: 'text-slate-700',  bg: 'bg-slate-100', border: 'border-slate-300' },
+};
+
+function getItemTipo(item: any): string {
+  const t = (item.tipo || '').toUpperCase();
+  if (t === 'FEM')  return 'FEM';
+  if (t === 'INF')  return 'INF';
+  if (t === 'ACES') return 'ACES';
+  return 'MASC';
+}
+
+function totParesQtds(qtds: Record<string, number>): number {
+  return Object.values(qtds || {}).reduce((s, v) => s + (v || 0), 0);
+}
+
 interface SurveyVotingScreenProps {
   user: any;
   orderId: string;
@@ -29,8 +57,75 @@ export default function SurveyVotingScreen({
   const [storeName, setStoreName] = useState<string>('');
   const [resolvedSubOrderNum, setResolvedSubOrderNum] = useState<number>(passedSubOrderNum);
 
-  // Voting state: map of item reference -> { voted: boolean, gradeLetter: string }
-  const [votes, setVotes] = useState<Record<string, { voted: boolean; gradeLetter: string }>>({});
+  // Voting state: ref → { voted, grades: { A: {38:2,...}, B:{...} }, expandedGrade }
+  const [votes, setVotes] = useState<Record<string, {
+    voted: boolean;
+    grades: Record<string, Record<string, number>>;
+    expandedGrade: string | null;
+  }>>({});
+
+  function addGrade(ref: string, tipo: string) {
+    setVotes(prev => {
+      const cur = prev[ref];
+      if (!cur) return prev;
+      const used = Object.keys(cur.grades);
+      if (used.length >= 8) return prev;
+      const next = GRADE_LETTERS.find(l => !used.includes(l))!;
+      return { ...prev, [ref]: { ...cur, grades: { ...cur.grades, [next]: {} }, expandedGrade: next } };
+    });
+  }
+
+  function deleteGrade(ref: string, letter: string) {
+    setVotes(prev => {
+      const cur = prev[ref];
+      if (!cur) return prev;
+      const newGrades = { ...cur.grades };
+      delete newGrades[letter];
+      const letters = Object.keys(newGrades);
+      const newExpanded = cur.expandedGrade === letter ? (letters[0] ?? null) : cur.expandedGrade;
+      return { ...prev, [ref]: { ...cur, grades: newGrades, expandedGrade: newExpanded } };
+    });
+  }
+
+  function clearGrade(ref: string, letter: string) {
+    setVotes(prev => ({
+      ...prev,
+      [ref]: { ...prev[ref], grades: { ...prev[ref].grades, [letter]: {} } },
+    }));
+  }
+
+  function setGradeQtd(ref: string, letter: string, size: string, qtd: number) {
+    setVotes(prev => ({
+      ...prev,
+      [ref]: {
+        ...prev[ref],
+        grades: {
+          ...prev[ref].grades,
+          [letter]: { ...prev[ref].grades[letter], [size]: Math.max(0, qtd) },
+        },
+      },
+    }));
+  }
+
+  function toggleExpandGrade(ref: string, letter: string) {
+    setVotes(prev => ({
+      ...prev,
+      [ref]: { ...prev[ref], expandedGrade: prev[ref].expandedGrade === letter ? null : letter },
+    }));
+  }
+
+  function toggleItemVoteSurvey(ref: string, tipo: string, isMandatory: boolean) {
+    setVotes(prev => {
+      const cur = prev[ref];
+      if (!cur) return prev;
+      if (cur.voted && isMandatory) return prev;
+      if (cur.voted) {
+        return { ...prev, [ref]: { voted: false, grades: {}, expandedGrade: null } };
+      } else {
+        return { ...prev, [ref]: { voted: true, grades: { A: {} }, expandedGrade: 'A' } };
+      }
+    });
+  }
 
   useEffect(() => {
     async function loadData() {
@@ -117,36 +212,24 @@ export default function SurveyVotingScreen({
           String(v.store_id) === String(storeId) || (storeNum !== null && parseInt(v.store_number) === storeNum)
         );
 
-        const initialVotes: Record<string, { voted: boolean; gradeLetter: string }> = {};
+        const initialVotes: Record<string, { voted: boolean; grades: Record<string, Record<string, number>>; expandedGrade: string | null }> = {};
         
-        // Setup initial default votes
-        itemsWithImages.forEach((item: any) => {
-          // Check if item has grades
-          let defaultGrade = '';
-          if (item.grades) {
-            const gradesObj = gradesArrayToObject(item.grades);
-            const letters = Object.keys(gradesObj);
-            if (letters.length > 0) {
-              defaultGrade = letters[0]; // Take the first available grade as default
-            }
-          }
+        for (const item of itemsWithImages) {
+          initialVotes[item.referencia] = { voted: false, grades: {}, expandedGrade: null };
+        }
 
-          initialVotes[item.referencia] = {
-            voted: false,
-            gradeLetter: defaultGrade,
-          };
-        });
-
-        // Overlay existing vote data if any
+        // Overlay existing vote data if available (novo formato)
         if (myVote && Array.isArray(myVote.itens)) {
-          myVote.itens.forEach((vItem: any) => {
-            if (initialVotes[vItem.ref]) {
+          for (const vItem of myVote.itens) {
+            if (initialVotes[vItem.ref] !== undefined && vItem.voto && vItem.grades && typeof vItem.grades === 'object') {
+              const letters = Object.keys(vItem.grades);
               initialVotes[vItem.ref] = {
-                voted: !!vItem.voto,
-                gradeLetter: vItem.grade_letra || initialVotes[vItem.ref].gradeLetter,
+                voted: true,
+                grades: vItem.grades,
+                expandedGrade: letters[0] ?? null,
               };
             }
-          });
+          }
         }
 
         setVotes(initialVotes);
@@ -195,36 +278,20 @@ export default function SurveyVotingScreen({
 
   // Calculations for current selection
   const selectionMetrics = useMemo(() => {
-    let totalItems = 0;
-    let totalPairs = 0;
-    let totalCost = 0;
+    let totalItems = 0, totalPairs = 0, totalCost = 0;
     const selectedRefs: string[] = [];
-
-    items.forEach((item: any) => {
+    for (const item of items) {
       const vote = votes[item.referencia];
-      if (vote && vote.voted) {
-        totalItems += 1;
-        selectedRefs.push(item.referencia);
-
-        // Find grade details
-        if (item.grades) {
-          const gradesObj = gradesArrayToObject(item.grades);
-          const gradeTamanhos = gradesObj[vote.gradeLetter];
-          if (gradeTamanhos) {
-            const pairs = getGradePairsCount(gradeTamanhos);
-            totalPairs += pairs;
-            totalCost += pairs * (Number(item.custo) || 0);
-          }
-        }
+      if (!vote?.voted) continue;
+      totalItems++;
+      selectedRefs.push(item.referencia);
+      for (const qtds of Object.values(vote.grades || {})) {
+        const pairs = totParesQtds(qtds);
+        totalPairs += pairs;
+        totalCost += pairs * (Number(item.custo) || 0);
       }
-    });
-
-    return {
-      totalItems,
-      totalPairs,
-      totalCost,
-      selectedRefs,
-    };
+    }
+    return { totalItems, totalPairs, totalCost, selectedRefs };
   }, [items, votes]);
 
   // Validation logic
@@ -264,32 +331,6 @@ export default function SurveyVotingScreen({
     };
   }, [currentSubOrderParams, selectionMetrics]);
 
-  const toggleItemVote = (ref: string) => {
-    setVotes((prev) => {
-      const current = prev[ref];
-      return {
-        ...prev,
-        [ref]: {
-          ...current,
-          voted: !current.voted,
-        },
-      };
-    });
-  };
-
-  const changeItemGrade = (ref: string, gradeLetter: string) => {
-    setVotes((prev) => {
-      const current = prev[ref];
-      return {
-        ...prev,
-        [ref]: {
-          ...current,
-          gradeLetter,
-        },
-      };
-    });
-  };
-
   const handleSave = async () => {
     if (!validation.isValid) {
       toast.error('Corrija as pendências antes de salvar.');
@@ -315,19 +356,18 @@ export default function SurveyVotingScreen({
         .map((item: any) => {
           const vote = votes[item.referencia];
           if (!vote) return null;
-          
-          let pairs = 0;
-          if (vote.voted && item.grades) {
-            const gradesObj = gradesArrayToObject(item.grades);
-            pairs = getGradePairsCount(gradesObj[vote.gradeLetter]);
+          let totalPares = 0;
+          if (vote.voted) {
+            for (const qtds of Object.values(vote.grades || {})) {
+              totalPares += totParesQtds(qtds);
+            }
           }
-
           return {
             ref: item.referencia,
             voto: vote.voted,
-            grade_letra: vote.gradeLetter,
-            total_pares: pairs,
-            valor: pairs * (Number(item.custo) || 0),
+            grades: vote.voted ? vote.grades : {},
+            total_pares: totalPares,
+            valor: totalPares * (Number(item.custo) || 0),
           };
         })
         .filter(Boolean);
@@ -479,109 +519,171 @@ export default function SurveyVotingScreen({
           ) : (
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
               {items.map((item: any) => {
+                const tipo = getItemTipo(item);
+                const catInfo = CATS_INFO[tipo];
+                const sizes = CATS[tipo]?.sizes || [];
                 const isMandatory = currentSubOrderParams?.itens_obrigatorios?.includes(item.referencia);
-                const vote = votes[item.referencia] || { voted: false, gradeLetter: '' };
-                const gradesObj = gradesArrayToObject(item.grades);
-                const gradeLetters = Object.keys(gradesObj);
+                const vote = votes[item.referencia] || { voted: false, grades: {}, expandedGrade: null };
+                const gradeLetters = Object.keys(vote.grades || {});
 
-                // Calculate selected grade metrics
-                const selectedGradeTamanhos = gradesObj[vote.gradeLetter];
-                const selectedGradePairs = getGradePairsCount(selectedGradeTamanhos);
-                const selectedGradeValue = selectedGradePairs * (Number(item.custo) || 0);
+                // Totais do item
+                let itemTotalPares = 0;
+                for (const qtds of Object.values(vote.grades || {})) {
+                  itemTotalPares += totParesQtds(qtds);
+                }
+                const itemTotalValor = itemTotalPares * (Number(item.custo) || 0);
 
                 return (
-                  <div 
-                    key={item.referencia} 
-                    className={`border rounded-xl transition-all p-4 bg-white shadow-sm flex flex-col justify-between ${
-                      vote.voted 
-                        ? 'border-purple-500 ring-1 ring-purple-100' 
-                        : 'border-slate-200 hover:border-slate-300'
+                  <div
+                    key={item.referencia}
+                    className={`border rounded-xl transition-all bg-white shadow-sm flex flex-col ${
+                      vote.voted ? 'border-purple-400 ring-1 ring-purple-100' : 'border-slate-200 hover:border-slate-300'
                     }`}
                   >
-                    {/* Item Card Body */}
-                    <div className="flex gap-4">
-                      {/* Image Thumbnail */}
+                    {/* Topo do Card */}
+                    <div className="p-4 flex gap-3">
+                      {/* Foto */}
                       <div className="w-16 h-16 rounded-lg bg-slate-100 flex items-center justify-center shrink-0 overflow-hidden border border-slate-100">
                         {item._imageUrl ? (
-                          <img 
-                            src={item._imageUrl} 
-                            alt={item.referencia} 
-                            className="w-full h-full object-cover" 
-                            referrerPolicy="no-referrer"
-                          />
+                          <img src={item._imageUrl} alt={item.referencia} className="w-full h-full object-cover" referrerPolicy="no-referrer" />
                         ) : (
-                          <span className="text-[10px] text-slate-400 font-bold uppercase">Sem foto</span>
+                          <span className="text-[9px] text-slate-400 font-bold uppercase text-center leading-tight px-1">Sem foto</span>
                         )}
                       </div>
 
-                      {/* Info */}
-                      <div className="flex-1 min-w-0 text-left">
-                        <div className="flex items-center gap-1.5 flex-wrap">
-                          <h4 className="text-xs font-black text-slate-800 tracking-tight uppercase truncate">
-                            REF {item.referencia}
-                          </h4>
+                      {/* Informações */}
+                      <div className="flex-1 min-w-0">
+                        <div className="flex flex-wrap items-center gap-1 mb-1">
+                          {/* Badge de Categoria */}
+                          <span className={`text-[8px] font-black uppercase px-2 py-0.5 rounded-full border ${catInfo.bg} ${catInfo.color} ${catInfo.border}`}>
+                            {catInfo.label}
+                          </span>
                           {isMandatory && (
-                            <span className="bg-amber-100 text-amber-800 border border-amber-200 text-[8px] font-black uppercase px-1.5 py-0.2 rounded-md">
-                              ⭐️ Obrigatório
+                            <span className="text-[8px] font-black uppercase px-1.5 py-0.5 rounded-full bg-amber-100 text-amber-800 border border-amber-300">
+                              ⭐ Obrigatório
                             </span>
                           )}
                         </div>
-                        <p className="text-[10px] text-slate-400 mt-0.5 uppercase truncate font-semibold">
-                          {item.tipo || 'Modelo'} / {item.modelo || 'FEM'}
+                        <h4 className="text-xs font-black text-slate-800 uppercase tracking-tight">
+                          REF {item.referencia}
+                        </h4>
+                        <p className="text-[9px] text-slate-400 uppercase font-semibold mt-0.5 truncate">
+                          {item.modelo || item.tipo}
                         </p>
-                        <div className="flex items-center gap-2 mt-1">
-                          <span className="text-[10px] font-bold text-slate-600 bg-slate-100 px-1.5 py-0.5 rounded-md">
-                            Custo: R$ {Number(item.custo || 0).toLocaleString('pt-BR', { minimumFractionDigits: 2 })}
+                        <div className="flex items-center gap-2 mt-1.5 flex-wrap">
+                          <span className="text-[9px] font-bold bg-slate-100 text-slate-700 px-1.5 py-0.5 rounded-md">
+                            C R$ {Number(item.custo || 0).toLocaleString('pt-BR', { minimumFractionDigits: 2 })}
                           </span>
-                          <span className="text-[10px] font-bold text-slate-500">
-                            Venda: R$ {Number(item.preco_venda || 0).toLocaleString('pt-BR', { minimumFractionDigits: 2 })}
+                          <span className="text-[9px] font-bold text-green-700 bg-green-50 border border-green-200 px-1.5 py-0.5 rounded-md">
+                            V R$ {Number(item.preco_venda || 0).toLocaleString('pt-BR', { minimumFractionDigits: 2 })}
                           </span>
                         </div>
                       </div>
                     </div>
 
-                    {/* Voted Content (Grade Selector) */}
-                    {vote.voted && gradeLetters.length > 0 && (
-                      <div className="mt-4 pt-3 border-t border-slate-100 flex flex-col gap-2">
-                        <label className="text-[9px] font-black text-slate-400 uppercase text-left tracking-wider">
-                          Selecione a Grade de Tamanhos:
-                        </label>
-                        <div className="flex flex-wrap gap-1.5">
-                          {gradeLetters.map((letter) => {
-                            const sizeObj = gradesObj[letter] || {};
-                            const pairs = getGradePairsCount(sizeObj);
-                            const val = pairs * (Number(item.custo) || 0);
-
+                    {/* Editor de Grades (visível quando votado SIM) */}
+                    {vote.voted && (
+                      <div className="px-4 pb-3 border-t border-slate-100 pt-3">
+                        {/* Abas de Grades */}
+                        <div className="flex flex-wrap items-center gap-1 mb-2">
+                          {gradeLetters.map(letter => {
+                            const pares = totParesQtds(vote.grades[letter] || {});
+                            const isExp = vote.expandedGrade === letter;
                             return (
-                              <button
-                                type="button"
-                                key={letter}
-                                onClick={() => changeItemGrade(item.referencia, letter)}
-                                className={`px-2.5 py-1.5 rounded-lg border text-[10px] font-black uppercase transition-all flex flex-col items-center ${
-                                  vote.gradeLetter === letter
-                                    ? 'bg-purple-100 border-purple-400 text-purple-800 shadow-sm'
-                                    : 'bg-slate-50 border-slate-200 text-slate-600 hover:bg-slate-100'
-                                }`}
-                              >
-                                <span className="text-xs font-black">Grade {letter}</span>
-                                <span className="text-[8px] text-slate-400 font-semibold mt-0.5">
-                                  {pairs} pares / R$ {val.toLocaleString('pt-BR', { maximumFractionDigits: 0 })}
-                                </span>
-                              </button>
+                              <div key={letter} className="flex items-center">
+                                <button
+                                  type="button"
+                                  onClick={() => toggleExpandGrade(item.referencia, letter)}
+                                  className={`px-2 py-1 rounded-l-lg text-[10px] font-black border-y border-l transition-all ${
+                                    isExp
+                                      ? 'bg-purple-600 text-white border-purple-600'
+                                      : pares > 0
+                                        ? 'bg-purple-50 text-purple-700 border-purple-200'
+                                        : 'bg-slate-50 text-slate-500 border-slate-200'
+                                  }`}
+                                >
+                                  {letter} · {pares}p
+                                </button>
+                                <button
+                                  type="button"
+                                  onClick={() => deleteGrade(item.referencia, letter)}
+                                  className={`px-1.5 py-1 rounded-r-lg text-[10px] font-black border transition-all ${
+                                    isExp ? 'bg-purple-700 text-purple-200 border-purple-600 hover:bg-red-600 hover:border-red-600 hover:text-white' : 'bg-slate-100 text-slate-400 border-slate-200 hover:bg-red-50 hover:text-red-500 hover:border-red-200'
+                                  }`}
+                                >
+                                  ×
+                                </button>
+                              </div>
                             );
                           })}
+                          {gradeLetters.length < 8 && (
+                            <button
+                              type="button"
+                              onClick={() => addGrade(item.referencia, tipo)}
+                              className="px-2 py-1 rounded-lg text-[10px] font-black border border-dashed border-slate-300 text-slate-400 hover:border-purple-400 hover:text-purple-600 transition-all"
+                            >
+                              + GRADE
+                            </button>
+                          )}
                         </div>
+
+                        {/* Grid de tamanhos da grade expandida */}
+                        {vote.expandedGrade && vote.grades[vote.expandedGrade] !== undefined && (() => {
+                          const letter = vote.expandedGrade;
+                          const qtds = vote.grades[letter] || {};
+                          return (
+                            <div className="bg-slate-50 rounded-xl p-3 border border-slate-100">
+                              <div className="flex items-center justify-between mb-2">
+                                <span className="text-[9px] font-black text-slate-500 uppercase tracking-widest">
+                                  Grade {letter}
+                                </span>
+                                <button
+                                  type="button"
+                                  onClick={() => clearGrade(item.referencia, letter)}
+                                  className="text-[9px] font-black text-amber-600 hover:text-amber-800 transition-colors"
+                                >
+                                  🔄 Limpar
+                                </button>
+                              </div>
+                              <div className="grid grid-cols-6 gap-1">
+                                {sizes.map(sz => {
+                                  const qtd = qtds[sz] || 0;
+                                  return (
+                                    <div key={sz} className="flex flex-col items-center">
+                                      <span className="text-[8px] font-black text-slate-500 mb-0.5">{sz}</span>
+                                      <input
+                                        type="number"
+                                        min={0}
+                                        inputMode="numeric"
+                                        value={qtd > 0 ? qtd : ''}
+                                        onChange={e => setGradeQtd(item.referencia, letter, sz, parseInt(e.target.value) || 0)}
+                                        className={`w-full h-8 text-center text-[11px] font-black border rounded-lg outline-none transition-all ${
+                                          qtd > 0
+                                            ? 'bg-purple-600 text-white border-purple-600'
+                                            : 'bg-white border-slate-200 focus:border-purple-400 focus:bg-purple-50'
+                                        }`}
+                                      />
+                                    </div>
+                                  );
+                                })}
+                              </div>
+                              <p className="text-[9px] text-slate-400 text-right mt-1.5 font-bold">
+                                {totParesQtds(qtds)} pares · R$ {(totParesQtds(qtds) * (Number(item.custo) || 0)).toLocaleString('pt-BR', { minimumFractionDigits: 2 })}
+                              </p>
+                            </div>
+                          );
+                        })()}
                       </div>
                     )}
 
-                    {/* Footer Controls of Item Card */}
-                    <div className="mt-4 pt-3 border-t border-slate-100 flex justify-between items-center shrink-0">
+                    {/* Rodapé do Card */}
+                    <div className="px-4 pb-4 pt-2 border-t border-slate-100 flex justify-between items-center">
                       <div>
                         {vote.voted ? (
-                          <div className="text-left">
-                            <p className="text-[9px] font-bold text-purple-600 uppercase">Selecionado</p>
+                          <div>
+                            <p className="text-[9px] font-black text-purple-600 uppercase">Selecionado</p>
                             <p className="text-[11px] font-black text-slate-700">
-                              {selectedGradePairs} pares • R$ {selectedGradeValue.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}
+                              {itemTotalPares} pares · R$ {itemTotalValor.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}
                             </p>
                           </div>
                         ) : (
@@ -591,20 +693,17 @@ export default function SurveyVotingScreen({
 
                       <button
                         type="button"
-                        onClick={() => toggleItemVote(item.referencia)}
-                        disabled={isMandatory && vote.voted} // Prevent deselecting mandatory items once they are voted (or always disable deselect if mandatory)
-                        className={`px-3 py-1.5 rounded-lg text-xs font-black uppercase tracking-wider transition-all flex items-center gap-1 ${
+                        onClick={() => toggleItemVoteSurvey(item.referencia, tipo, !!isMandatory)}
+                        className={`px-3 py-2 rounded-xl text-xs font-black uppercase tracking-wider transition-all flex items-center gap-1.5 ${
                           vote.voted
-                            ? isMandatory 
+                            ? isMandatory
                               ? 'bg-amber-100 text-amber-800 border border-amber-200 cursor-not-allowed opacity-80'
                               : 'bg-rose-50 text-rose-700 hover:bg-rose-100 border border-rose-200'
-                            : 'bg-purple-600 hover:bg-purple-700 text-white shadow'
+                            : 'bg-purple-600 hover:bg-purple-700 text-white shadow-md shadow-purple-600/20'
                         }`}
                       >
                         {vote.voted ? (
-                          <>
-                            <Check size={12} className="stroke-[3]" /> Selected
-                          </>
+                          <><Check size={13} className="stroke-[3]" /> Selecionado</>
                         ) : (
                           '🗳️ Quero Receber'
                         )}
