@@ -20,10 +20,12 @@ const CATS_INFO: Record<string, { label: string; color: string; bg: string; bord
 };
 
 function getItemTipo(item: any): string {
-  const t = (item.tipo || '').toUpperCase();
-  if (t === 'FEM')  return 'FEM';
-  if (t === 'INF')  return 'INF';
-  if (t === 'ACES') return 'ACES';
+  // item.modelo = 'MASC' | 'FEM' | 'INF' | 'ACES'
+  // item.tipo   = descrição completa ex: 'CHINELO MASCULINO'
+  const t = (item.modelo || item.tipo || '').toUpperCase();
+  if (t === 'FEM'  || t.includes('FEMININO'))  return 'FEM';
+  if (t === 'INF'  || t.includes('INFANTIL'))  return 'INF';
+  if (t === 'ACES' || t.includes('ACESS'))     return 'ACES';
   return 'MASC';
 }
 
@@ -63,6 +65,8 @@ export default function SurveyVotingScreen({
     grades: Record<string, Record<string, number>>;
     expandedGrade: string | null;
   }>>({});
+
+  const [zoomedPhoto, setZoomedPhoto] = useState<string | null>(null);
 
   function addGrade(ref: string, tipo: string) {
     setVotes(prev => {
@@ -542,8 +546,11 @@ export default function SurveyVotingScreen({
                   >
                     {/* Topo do Card */}
                     <div className="p-4 flex gap-3">
-                      {/* Foto */}
-                      <div className="w-16 h-16 rounded-lg bg-slate-100 flex items-center justify-center shrink-0 overflow-hidden border border-slate-100">
+                      {/* Foto clicável */}
+                      <div
+                        className={`w-20 h-20 rounded-xl bg-slate-100 flex items-center justify-center shrink-0 overflow-hidden border border-slate-100 transition-all ${item._imageUrl ? 'cursor-zoom-in hover:border-purple-300 hover:shadow-md' : ''}`}
+                        onClick={() => item._imageUrl && setZoomedPhoto(item._imageUrl)}
+                      >
                         {item._imageUrl ? (
                           <img src={item._imageUrl} alt={item.referencia} className="w-full h-full object-cover" referrerPolicy="no-referrer" />
                         ) : (
@@ -774,6 +781,21 @@ export default function SurveyVotingScreen({
         </div>
 
       </div>
+
+      {/* Modal de zoom de foto */}
+      {zoomedPhoto && (
+        <div
+          className="fixed inset-0 bg-black/80 z-[200] flex items-center justify-center p-6 cursor-zoom-out"
+          onClick={() => setZoomedPhoto(null)}
+        >
+          <img
+            src={zoomedPhoto}
+            alt="Foto ampliada"
+            className="max-w-full max-h-full rounded-2xl shadow-2xl object-contain"
+            referrerPolicy="no-referrer"
+          />
+        </div>
+      )}
     </div>
   );
 }
