@@ -93,12 +93,12 @@ export default function SurveyVotingScreen({
     async function load() {
       setLoading(true);
       try {
-        const [itemsRes, templatesRes] = await Promise.all([
-          supabase
-            .from('buy_order_items')
-            .select('*')
-            .eq('order_id', orderId)
-            .order('item_order'),
+        const [rpcRes, templatesRes] = await Promise.all([
+          supabase.rpc('fn_get_survey_items_for_gerente', {
+            p_order_id:      orderId,
+            p_sub_order_num: subOrderNum,
+            p_store_id:      storeId,
+          }),
           supabase
             .from('survey_grade_templates')
             .select('*')
@@ -107,32 +107,26 @@ export default function SurveyVotingScreen({
             .order('sort_order'),
         ]);
 
-        if (itemsRes.error) throw itemsRes.error;
+        if (rpcRes.error) throw rpcRes.error;
         if (templatesRes.error) throw templatesRes.error;
 
-        // Buscar fotos do catálogo pela referência
-        const refs = (itemsRes.data ?? [])
-          .map(i => i.referencia)
-          .filter(Boolean);
-
-        let photoMap: Record<string, string> = {};
-        if (refs.length > 0) {
-          const { data: photos } = await supabase
-            .from('product_catalog')
-            .select('referencia, image_url')
-            .in('referencia', refs);
-          (photos || []).forEach(p => {
-            if (p.image_url) photoMap[p.referencia] = p.image_url;
-          });
-        }
-
-        // Mesclar foto_url nos itens
-        const itemsWithPhotos = (itemsRes.data ?? []).map(item => ({
-          ...item,
-          foto_url: photoMap[item.referencia] || null,
+        // Mapear os itens vindos da RPC
+        const itens = (rpcRes.data?.itens ?? []).map((i: any) => ({
+          id:               i.item_id,
+          item_order:       i.item_order,
+          referencia:       i.referencia,
+          tipo:             i.tipo,
+          cor1:             i.cor1,
+          cor2:             i.cor2,
+          cor3:             i.cor3,
+          modelo:           i.modelo,
+          custo:            i.custo,
+          preco_venda:      i.preco_venda,
+          markup_aplicado:  i.markup_aplicado ?? 1,
+          foto_url:         i.image_url ?? null,   // ← foto vem do product_catalog
         }));
 
-        setItems(itemsWithPhotos);
+        setItems(itens);
         setTemplates(templatesRes.data ?? []);
 
         // Fetch store name and number if storeId is provided
@@ -236,7 +230,7 @@ export default function SurveyVotingScreen({
           resposta:    v.resposta,
           grade_letra: v.grade_letra,
           total_pares: v.total_pares,
-          valor:       v.valor,
+          valor_item:  v.valor,
         }));
 
         const { error: upsertError } = await supabase
