@@ -1222,7 +1222,7 @@ const SurveyEditor: React.FC<SurveyEditorProps> = ({
                         {['😢','😕','😐','😊','😄'].map((emoji, i) => (
                           <div key={i} className="flex flex-col items-center gap-1">
                             <span className="text-xl">{emoji}</span>
-                            <span className="text-[9px] text-slate-400">{['Péssimo','Pouco','Normal','Muito','Excelente'][i]}</span>
+                            <span className="text-[9px] text-slate-400">{['Péssimo','Ruim','Normal','Bom','Ótimo'][i]}</span>
                           </div>
                         ))}
                       </div>

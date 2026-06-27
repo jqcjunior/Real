@@ -552,10 +552,10 @@ const SurveyResponseForm: React.FC<SurveyResponseFormProps> = ({
                     <div className="flex justify-between gap-2">
                       {[
                         { emoji: '😢', label: 'Péssimo',   value: 1 },
-                        { emoji: '😕', label: 'Pouco',     value: 2 },
+                        { emoji: '😕', label: 'Ruim',      value: 2 },
                         { emoji: '😐', label: 'Normal',    value: 3 },
-                        { emoji: '😊', label: 'Muito',     value: 4 },
-                        { emoji: '😄', label: 'Excelente', value: 5 },
+                        { emoji: '😊', label: 'Bom',       value: 4 },
+                        { emoji: '😄', label: 'Ótimo',     value: 5 },
                       ].map(opt => (
                         <button
                           key={opt.value}
