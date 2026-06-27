@@ -388,6 +388,8 @@ export default function BuyOrderModule({ user }: { user?: User }) {
   const [searchTerm, setSearchTerm] = useState("");
   const [roleFilter, setRoleFilter] = useState<string>("");
   const [statusFilter, setStatusFilter] = useState<string>("");
+  const [dataInicio, setDataInicio] = useState<string>("");
+  const [dataFim, setDataFim] = useState<string>("");
   const PAGE_SIZE = 20;
   const [page, setPage] = useState(0);
   const [hasMore, setHasMore] = useState(false);
@@ -396,7 +398,7 @@ export default function BuyOrderModule({ user }: { user?: User }) {
 
   useEffect(() => {
     setPage(0);
-  }, [searchTerm, roleFilter, selectedLoja, statusFilter]);
+  }, [searchTerm, roleFilter, selectedLoja, statusFilter, dataInicio, dataFim]);
 
   const [limitPedidos, setLimitPedidos] = useState(5);
   const [totalPedidos, setTotalPedidos] = useState(0);
@@ -535,6 +537,14 @@ export default function BuyOrderModule({ user }: { user?: User }) {
         query = query.eq('user_role', roleFilter);
       }
 
+      // Filtro de Data (Server-Side)
+      if (dataInicio) {
+        query = query.gte('created_at', dataInicio + 'T00:00:00');
+      }
+      if (dataFim) {
+        query = query.lte('created_at', dataFim + 'T23:59:59');
+      }
+
       // Filtro de Status
       if (statusFilter) {
         if (statusFilter === "nao_exportado") {
@@ -592,7 +602,7 @@ export default function BuyOrderModule({ user }: { user?: User }) {
     } finally {
       setLoadingRecent(false);
     }
-  }, [searchTerm, selectedLoja, roleFilter, statusFilter, page, user, isManager, isAdmin]);
+  }, [searchTerm, selectedLoja, roleFilter, statusFilter, dataInicio, dataFim, page, user, isManager, isAdmin]);
 
   useEffect(() => {
     fetchRecentOrders();
@@ -1461,6 +1471,16 @@ function gradesArrayToObject(grades: any): Record<string, Record<string, number>
       if (order.user_role !== roleFilter) return false;
     }
 
+    // Filtro de Data
+    if (dataInicio) {
+      const ini = new Date(dataInicio + "T00:00:00");
+      if (new Date(order.created_at) < ini) return false;
+    }
+    if (dataFim) {
+      const fim = new Date(dataFim + "T23:59:59");
+      if (new Date(order.created_at) > fim) return false;
+    }
+
     // 4. Filtro de Loja
     if (selectedLoja) {
       const subOrders = order.buy_order_sub_orders || [];
@@ -1908,6 +1928,53 @@ function gradesArrayToObject(grades: any): Record<string, Record<string, number>
                 fontSize: 11,
               }}
             />
+
+            {/* Data inicial */}
+            <input
+              type="date"
+              value={dataInicio}
+              onChange={(e) => setDataInicio(e.target.value)}
+              style={{
+                padding: "6px 10px",
+                border: "1px solid #d1d5db",
+                borderRadius: 6,
+                fontSize: 11,
+                minWidth: 120,
+              }}
+            />
+
+            {/* Data final */}
+            <input
+              type="date"
+              value={dataFim}
+              onChange={(e) => setDataFim(e.target.value)}
+              style={{
+                padding: "6px 10px",
+                border: "1px solid #d1d5db",
+                borderRadius: 6,
+                fontSize: 11,
+                minWidth: 120,
+              }}
+            />
+
+            {/* Limpar datas - mostrar só se alguma data está preenchida */}
+            {(dataInicio || dataFim) && (
+              <button
+                type="button"
+                onClick={() => { setDataInicio(""); setDataFim(""); }}
+                style={{
+                  padding: "6px 8px",
+                  border: "1px solid #fca5a5",
+                  borderRadius: 6,
+                  fontSize: 11,
+                  color: "#dc2626",
+                  background: "transparent",
+                  cursor: "pointer",
+                }}
+              >
+                ✕
+              </button>
+            )}
 
             {/* Seletor de Status (Todos) */}
             <select

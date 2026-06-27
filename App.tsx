@@ -891,6 +891,10 @@ const App: React.FC = () => {
 
                             if (survey.target_type === 'internal') {
                                 const roleLevel = (user as any).role_level;
+                                // all_employees = todos os funcionários, sem restrição de cargo
+                                if (survey.target_category === 'all_employees') {
+                                    // sem filtro — qualquer funcionário tem acesso
+                                }
                                 if (survey.target_category === 'all_managers') {
                                     if (roleLevel !== 'manager') return false;
                                 }

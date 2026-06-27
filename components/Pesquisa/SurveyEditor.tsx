@@ -650,8 +650,8 @@ const SurveyEditor: React.FC<SurveyEditorProps> = ({
                           onChange={e => setTargetCategory(e.target.value as SurveyTargetCategory)}
                           className="w-full px-4 py-3 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 focus:border-blue-500 rounded-xl text-sm text-slate-900 dark:text-white outline-none transition-all"
                         >
+                          <option value="all_employees">Todos (todos os funcionários)</option>
                           <option value="all_managers">Gerentes</option>
-                          <option value="all_employees">Funcionários</option>
                           <option value="all_cashiers">Caixas</option>
                         </select>
                       </div>
