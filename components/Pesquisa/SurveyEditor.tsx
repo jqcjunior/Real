@@ -71,6 +71,9 @@ const SurveyEditor: React.FC<SurveyEditorProps> = ({
   const [allowAnonymous, setAllowAnonymous] = useState<boolean>(
     (editingSurvey as any)?.allow_anonymous ?? true
   );
+  const [collectRespondentData, setCollectRespondentData] = useState<boolean>(
+    (editingSurvey as any)?.collect_respondent_data ?? true
+  );
   const [showWelcomeMessage, setShowWelcomeMessage] = useState<boolean>(
     !!(editingSurvey as any)?.welcome_message
   );
@@ -260,6 +263,7 @@ const SurveyEditor: React.FC<SurveyEditorProps> = ({
           logo_url: logoUrl.trim() || null,
           is_active: false,
           allow_anonymous: allowAnonymous,
+          collect_respondent_data: collectRespondentData,
           welcome_message: showWelcomeMessage ? welcomeMessage.trim() || null : null,
           target_type: targetType,
           target_category: targetType === 'internal' ? targetCategory : null,
@@ -430,6 +434,7 @@ const SurveyEditor: React.FC<SurveyEditorProps> = ({
         logo_url: logoUrl.trim() || null,
         is_active: isActive,
         allow_anonymous: allowAnonymous,
+        collect_respondent_data: collectRespondentData,
         welcome_message: showWelcomeMessage ? welcomeMessage.trim() || null : null,
         target_type: targetType,
         target_category: targetType === 'internal' ? targetCategory : null,
@@ -684,11 +689,19 @@ const SurveyEditor: React.FC<SurveyEditorProps> = ({
                         onChange={setIsActive}
                       />
                       <ToggleRow
-                        label="Permitir resposta anônima"
-                        description="O respondente pode optar por não se identificar"
-                        value={allowAnonymous}
-                        onChange={setAllowAnonymous}
+                        label="Coletar dados do respondente"
+                        description="Pergunta nome, cargo, telefone e email antes das perguntas"
+                        value={collectRespondentData}
+                        onChange={setCollectRespondentData}
                       />
+                      {collectRespondentData && (
+                        <ToggleRow
+                          label="Permitir resposta anônima"
+                          description="O respondente pode optar por não se identificar (só para clientes)"
+                          value={allowAnonymous}
+                          onChange={setAllowAnonymous}
+                        />
+                      )}
                       <ToggleRow
                         label="Mensagem de boas-vindas"
                         description="Exibe uma tela de introdução antes da pesquisa começar"

@@ -54,6 +54,10 @@ const SurveyResponseForm: React.FC<SurveyResponseFormProps> = ({
   // -2 = dados do participante (nome, cargo, tel, email)
   // 0+ = virtualSteps[currentStep] → pergunta ou comentário de seção
 
+  const collectData = (survey as any).collect_respondent_data !== false;
+  const isInternal = survey.target_type === 'internal';
+  const showAnonymousOption = !!(survey as any).allow_anonymous;
+
   const startStep = -3;
   const [currentStep, setCurrentStep] = useState(startStep);
   const [isSubmitting, setIsSubmitting] = useState(false);
@@ -211,7 +215,13 @@ const SurveyResponseForm: React.FC<SurveyResponseFormProps> = ({
   };
 
   const canAdvanceFromParticipantInfo = () => {
-    return respondentInfo.name.trim().length > 0 && respondentRole.trim().length > 0;
+    if (isAnonymous) return true; // anônimo sempre pode avançar
+    if (isInternal) {
+      // Funcionários: nome + cargo obrigatórios
+      return respondentInfo.name.trim().length > 0 && respondentRole.trim().length > 0;
+    }
+    // Clientes: tudo opcional, sempre pode avançar
+    return true;
   };
 
   const handleSubmit = async () => {
@@ -263,10 +273,10 @@ const SurveyResponseForm: React.FC<SurveyResponseFormProps> = ({
           user_id: user?.id || null,
           store_id: user?.storeId || null,
           responses: finalResponses,
-          respondent_name: respondentInfo.name || null,
-          respondent_email: respondentInfo.email || null,
-          respondent_phone: respondentInfo.phone || null,
-          respondent_role: respondentRole || null,
+          respondent_name: isAnonymous ? null : (respondentInfo.name || null),
+          respondent_email: isAnonymous ? null : (respondentInfo.email || null),
+          respondent_phone: isAnonymous ? null : (respondentInfo.phone || null),
+          respondent_role: isAnonymous ? null : (respondentRole || null),
         }]);
 
       if (rError) throw rError;
@@ -328,7 +338,14 @@ const SurveyResponseForm: React.FC<SurveyResponseFormProps> = ({
         <div className="flex items-center gap-3 min-w-0">
           {currentStep >= -2 && (
             <button
-              onClick={currentStep === -2 ? () => setCurrentStep(-3) : () => setCurrentStep(prev => prev === 0 ? -2 : prev - 1)}
+              onClick={
+                currentStep === -2
+                  ? () => setCurrentStep(-3)
+                  : () => setCurrentStep(prev => {
+                      if (prev === 0) return collectData ? -2 : -3;
+                      return prev - 1;
+                    })
+              }
               className="p-2 text-slate-400 hover:text-slate-700 hover:bg-slate-100 rounded-xl transition-all flex-shrink-0"
               aria-label="Voltar"
             >
@@ -445,7 +462,7 @@ const SurveyResponseForm: React.FC<SurveyResponseFormProps> = ({
                   </div>
 
                   <button
-                    onClick={() => setCurrentStep(-2)}
+                    onClick={() => setCurrentStep(collectData ? -2 : 0)}
                     className="w-full max-w-xs py-4 bg-blue-600 hover:bg-blue-700 active:scale-95 text-white text-base font-bold rounded-2xl shadow-lg shadow-blue-200 transition-all"
                   >
                     Participar →
@@ -464,59 +481,109 @@ const SurveyResponseForm: React.FC<SurveyResponseFormProps> = ({
             {currentStep === -2 && (
               <div className="space-y-6">
                 <div>
-                  <h2 className="text-xl font-bold text-slate-900">Seus dados</h2>
+                  <h2 className="text-xl font-bold text-slate-900">
+                    {isInternal ? 'Seus dados' : 'Identificação'}
+                  </h2>
                   <p className="text-sm text-slate-400 mt-1">
-                    Preencha para que possamos identificar sua resposta.
+                    {isInternal
+                      ? 'Preencha para que possamos identificar sua resposta.'
+                      : 'Opcional — você pode responder de forma anônima.'}
                   </p>
                 </div>
 
-                <div className="space-y-3">
-                  {/* Cargo — obrigatório */}
-                  <select
-                    value={respondentRole}
-                    onChange={e => setRespondentRole(e.target.value)}
-                    className={`w-full px-4 py-3.5 bg-white border-2 rounded-2xl text-sm outline-none transition-all ${
-                      respondentRole ? 'border-blue-500 text-slate-900' : 'border-slate-200 text-slate-400'
-                    }`}
-                  >
-                    <option value="">Cargo *</option>
-                    <option value="Caixa">Caixa</option>
-                    <option value="Cobrança">Cobrança</option>
-                    <option value="Estoquista">Estoquista</option>
-                    <option value="Gerente">Gerente</option>
-                    <option value="Indenização">Indenização</option>
-                    <option value="Limpeza">Limpeza</option>
-                    <option value="Vendedor">Vendedor</option>
-                  </select>
+                {/* Botão anônimo — só para clientes com allow_anonymous */}
+                {showAnonymousOption && (
+                  <>
+                    <button
+                      onClick={() => {
+                        setIsAnonymous(true);
+                        setRespondentInfo({ name: '', email: '', phone: '' });
+                        setRespondentRole('');
+                        setCurrentStep(0);
+                      }}
+                      className={`w-full flex items-center gap-4 p-4 rounded-2xl border-2 transition-all text-left ${
+                        isAnonymous
+                          ? 'border-blue-600 bg-blue-50'
+                          : 'border-slate-200 bg-white hover:border-slate-300'
+                      }`}
+                    >
+                      <div className={`w-10 h-10 rounded-xl flex items-center justify-center flex-shrink-0 ${
+                        isAnonymous ? 'bg-blue-600 text-white' : 'bg-slate-100 text-slate-400'
+                      }`}>
+                        <UserX size={20} />
+                      </div>
+                      <div>
+                        <p className={`font-semibold text-sm ${isAnonymous ? 'text-blue-700' : 'text-slate-700'}`}>
+                          Prefiro não me identificar
+                        </p>
+                        <p className="text-xs text-slate-400 mt-0.5">
+                          Sua resposta será registrada de forma anônima
+                        </p>
+                      </div>
+                      {isAnonymous && <Check size={18} className="text-blue-600 ml-auto flex-shrink-0" />}
+                    </button>
 
-                  {/* Nome — obrigatório */}
+                    <div className="flex items-center gap-3">
+                      <div className="flex-1 h-px bg-slate-200" />
+                      <span className="text-xs text-slate-400">ou</span>
+                      <div className="flex-1 h-px bg-slate-200" />
+                    </div>
+                  </>
+                )}
+
+                {/* Formulário de dados */}
+                <div
+                  className={`space-y-3 transition-opacity ${isAnonymous ? 'opacity-40 pointer-events-none' : 'opacity-100'}`}
+                  onClick={() => isAnonymous && setIsAnonymous(false)}
+                >
+                  {/* Cargo — só para funcionários (internal) */}
+                  {isInternal && (
+                    <select
+                      value={respondentRole}
+                      onChange={e => { setIsAnonymous(false); setRespondentRole(e.target.value); }}
+                      className={`w-full px-4 py-3.5 bg-white border-2 rounded-2xl text-sm outline-none transition-all ${
+                        respondentRole ? 'border-blue-500 text-slate-900' : 'border-slate-200 text-slate-400'
+                      }`}
+                    >
+                      <option value="">Cargo *</option>
+                      <option value="Caixa">Caixa</option>
+                      <option value="Cobrança">Cobrança</option>
+                      <option value="Estoquista">Estoquista</option>
+                      <option value="Gerente">Gerente</option>
+                      <option value="Indenização">Indenização</option>
+                      <option value="Limpeza">Limpeza</option>
+                      <option value="Vendedor">Vendedor</option>
+                    </select>
+                  )}
+
+                  {/* Nome */}
                   <input
                     type="text"
-                    placeholder="Nome completo *"
+                    placeholder={isInternal ? 'Nome completo *' : 'Nome (opcional)'}
                     value={respondentInfo.name}
-                    onChange={e => setRespondentInfo({ ...respondentInfo, name: e.target.value })}
+                    onChange={e => { setIsAnonymous(false); setRespondentInfo({ ...respondentInfo, name: e.target.value }); }}
                     className="w-full px-4 py-3.5 bg-white border-2 border-slate-200 focus:border-blue-500 rounded-2xl text-sm text-slate-900 outline-none transition-all"
                   />
 
-                  {/* Telefone — opcional */}
+                  {/* Telefone */}
                   <input
                     type="tel"
                     placeholder="Telefone (opcional)"
                     value={respondentInfo.phone}
-                    onChange={e => setRespondentInfo({ ...respondentInfo, phone: e.target.value })}
+                    onChange={e => { setIsAnonymous(false); setRespondentInfo({ ...respondentInfo, phone: e.target.value }); }}
                     className="w-full px-4 py-3.5 bg-white border-2 border-slate-200 focus:border-blue-500 rounded-2xl text-sm text-slate-900 outline-none transition-all"
                   />
 
-                  {/* Email — opcional */}
+                  {/* Email */}
                   <input
                     type="email"
                     placeholder="E-mail (opcional)"
                     value={respondentInfo.email}
-                    onChange={e => setRespondentInfo({ ...respondentInfo, email: e.target.value })}
+                    onChange={e => { setIsAnonymous(false); setRespondentInfo({ ...respondentInfo, email: e.target.value }); }}
                     className="w-full px-4 py-3.5 bg-white border-2 border-slate-200 focus:border-blue-500 rounded-2xl text-sm text-slate-900 outline-none transition-all"
                   />
 
-                  {!canAdvanceFromParticipantInfo() && (
+                  {isInternal && !canAdvanceFromParticipantInfo() && !isAnonymous && (
                     <p className="text-xs text-slate-400 text-center pt-1">
                       * Cargo e nome são obrigatórios
                     </p>
@@ -1077,7 +1144,10 @@ const SurveyResponseForm: React.FC<SurveyResponseFormProps> = ({
             {currentStep >= 0 && (
               <div className="flex gap-3">
                 <button
-                  onClick={() => setCurrentStep(prev => prev === 0 ? -2 : prev - 1)}
+                  onClick={() => setCurrentStep(prev => {
+                    if (prev === 0) return collectData ? -2 : -3;
+                    return prev - 1;
+                  })}
                   className="w-12 h-12 flex items-center justify-center rounded-2xl border-2 border-slate-200 text-slate-500 hover:border-slate-300 transition-all flex-shrink-0"
                 >
                   <ChevronLeft size={20} />
