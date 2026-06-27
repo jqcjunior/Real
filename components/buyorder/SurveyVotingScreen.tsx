@@ -110,7 +110,29 @@ export default function SurveyVotingScreen({
         if (itemsRes.error) throw itemsRes.error;
         if (templatesRes.error) throw templatesRes.error;
 
-        setItems(itemsRes.data ?? []);
+        // Buscar fotos do catálogo pela referência
+        const refs = (itemsRes.data ?? [])
+          .map(i => i.referencia)
+          .filter(Boolean);
+
+        let photoMap: Record<string, string> = {};
+        if (refs.length > 0) {
+          const { data: photos } = await supabase
+            .from('product_catalog')
+            .select('referencia, image_url')
+            .in('referencia', refs);
+          (photos || []).forEach(p => {
+            if (p.image_url) photoMap[p.referencia] = p.image_url;
+          });
+        }
+
+        // Mesclar foto_url nos itens
+        const itemsWithPhotos = (itemsRes.data ?? []).map(item => ({
+          ...item,
+          foto_url: photoMap[item.referencia] || null,
+        }));
+
+        setItems(itemsWithPhotos);
         setTemplates(templatesRes.data ?? []);
 
         // Fetch store name and number if storeId is provided

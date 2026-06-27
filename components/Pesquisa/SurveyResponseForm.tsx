@@ -15,7 +15,7 @@ import {
   ShoppingBag
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
-import { Survey, SurveyQuestion, User as UserType } from '../../types';
+import { Survey, SurveyQuestion, SurveySection, User as UserType } from '../../types';
 
 interface SurveyResponseFormProps {
   survey: Survey;
@@ -35,6 +35,7 @@ const SurveyResponseForm: React.FC<SurveyResponseFormProps> = ({
   onComplete,
 }) => {
   const [questions, setQuestions] = useState<SurveyQuestion[]>([]);
+  const [sections, setSections] = useState<SurveySection[]>([]);
   const [gradeTemplates, setGradeTemplates] = useState<any[]>([]);
   const [answers, setAnswers] = useState<Record<string, any>>({});
   const [motivos, setMotivos] = useState<Record<string, string>>({});
@@ -46,7 +47,7 @@ const SurveyResponseForm: React.FC<SurveyResponseFormProps> = ({
 
   // Refs e novos estados para melhorias de UX
   const autoAdvanceTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
-  const [sectionTransition, setSectionTransition] = useState<{ name: string; count: number } | null>(null);
+  const [sectionTransition, setSectionTransition] = useState<{ name: string; count: number; description?: string | null; image_url?: string | null } | null>(null);
   const [validationError, setValidationError] = useState('');
 
   // Sistema de steps:
@@ -103,6 +104,7 @@ const SurveyResponseForm: React.FC<SurveyResponseFormProps> = ({
   const fetchQuestions = async () => {
     setIsLoading(true);
     try {
+      // Buscar perguntas
       const { data, error } = await supabase
         .from('survey_questions')
         .select('*')
@@ -112,6 +114,15 @@ const SurveyResponseForm: React.FC<SurveyResponseFormProps> = ({
       const activeQuestions = (data || []).filter((q: any) => q.is_active !== false);
       setQuestions(activeQuestions);
 
+      // Buscar seções
+      const { data: secData, error: secError } = await supabase
+        .from('survey_sections')
+        .select('*')
+        .eq('survey_id', survey.id)
+        .order('sort_order', { ascending: true });
+      if (secError) throw secError;
+      setSections(secData || []);
+
       const { data: tplData } = await supabase
         .from('survey_grade_templates')
         .select('*')
@@ -119,7 +130,7 @@ const SurveyResponseForm: React.FC<SurveyResponseFormProps> = ({
         .order('sort_order', { ascending: true });
       if (tplData) setGradeTemplates(tplData);
     } catch (err) {
-      console.error('Erro ao buscar perguntas:', err);
+      console.error('Erro ao buscar perguntas/seções:', err);
     } finally {
       setIsLoading(false);
     }
@@ -129,11 +140,13 @@ const SurveyResponseForm: React.FC<SurveyResponseFormProps> = ({
   const buildVirtualSteps = (qs: SurveyQuestion[]) => {
     const steps: Array<{ type: 'question'; index: number } | { type: 'section_comment'; section: string }> = [];
     qs.forEach((q, idx) => {
-      const sec = (q as any).section as string | null;
+      const sec = q.section_id || (q as any).section || null;
       steps.push({ type: 'question', index: idx });
-      const nextSec = idx < qs.length - 1 ? (qs[idx + 1] as any).section as string | null : undefined;
+      const nextSec = idx < qs.length - 1 ? (qs[idx + 1].section_id || (qs[idx + 1] as any).section || null) : null;
       if (sec && nextSec !== sec) {
-        steps.push({ type: 'section_comment', section: sec });
+        const sectionMeta = sections.find(s => s.id === sec || s.name === sec);
+        const secName = sectionMeta ? sectionMeta.name : sec;
+        steps.push({ type: 'section_comment', section: secName });
       }
     });
     return steps;
@@ -189,6 +202,24 @@ const SurveyResponseForm: React.FC<SurveyResponseFormProps> = ({
 
   const handleNext = () => {
     if (currentStep === -2 && canAdvanceFromParticipantInfo()) {
+      const firstVirtual = virtualSteps[0];
+      if (firstVirtual) {
+        const firstSec = firstVirtual.type === 'question'
+          ? (questions[firstVirtual.index].section_id || (questions[firstVirtual.index] as any).section)
+          : null;
+        if (firstSec) {
+          const secMeta = sections.find(s => s.id === firstSec || s.name === firstSec);
+          const secName = secMeta ? secMeta.name : firstSec;
+          const count = questions.filter(q => (q.section_id || (q as any).section) === firstSec).length;
+          setSectionTransition({ 
+            name: secName, 
+            count,
+            description: secMeta?.description,
+            image_url: secMeta?.image_url 
+          });
+          return;
+        }
+      }
       setCurrentStep(0);
       return;
     }
@@ -197,16 +228,23 @@ const SurveyResponseForm: React.FC<SurveyResponseFormProps> = ({
       if (nextIdx < virtualSteps.length) {
         const nextVirtual = virtualSteps[nextIdx];
         const currentSec = currentVirtual?.type === 'question' 
-          ? (questions[currentVirtual.index] as any).section 
-          : (currentVirtual?.type === 'section_comment' ? currentVirtual.section : null);
+          ? (questions[currentVirtual.index].section_id || (questions[currentVirtual.index] as any).section) 
+          : null;
         const nextSec = nextVirtual?.type === 'question' 
-          ? (questions[nextVirtual.index] as any).section 
-          : (nextVirtual?.type === 'section_comment' ? nextVirtual.section : null);
+          ? (questions[nextVirtual.index].section_id || (questions[nextVirtual.index] as any).section) 
+          : null;
 
         // Detectar mudança de seção
         if (nextSec && nextSec !== currentSec) {
-          const count = questions.filter(q => (q as any).section === nextSec).length;
-          setSectionTransition({ name: nextSec, count });
+          const count = questions.filter(q => (q.section_id || (q as any).section) === nextSec).length;
+          const secMeta = sections.find(s => s.id === nextSec || s.name === nextSec);
+          const secName = secMeta ? secMeta.name : nextSec;
+          setSectionTransition({ 
+            name: secName, 
+            count,
+            description: secMeta?.description,
+            image_url: secMeta?.image_url
+          });
           return;
         }
       }
@@ -393,30 +431,65 @@ const SurveyResponseForm: React.FC<SurveyResponseFormProps> = ({
               initial={{ opacity: 0, scale: 0.95 }}
               animate={{ opacity: 1, scale: 1 }}
               exit={{ opacity: 0, scale: 0.95 }}
-              className="w-full max-w-lg flex flex-col items-center text-center space-y-6 py-8"
+              className="w-full max-w-xl flex flex-col items-center bg-white border border-slate-200 rounded-3xl overflow-hidden shadow-xl"
             >
-              <div className="w-16 h-16 rounded-2xl bg-blue-600 flex items-center justify-center shadow-lg shadow-blue-200">
-                <span className="text-2xl">🧩</span>
-              </div>
-              <div>
-                <p className="text-xs font-bold uppercase tracking-widest text-blue-400 mb-2">
-                  Próximo bloco
-                </p>
-                <h2 className="text-2xl font-black text-slate-900">{sectionTransition.name}</h2>
-                <p className="text-sm text-slate-400 mt-2">
+              {sectionTransition.image_url ? (
+                <div className="w-full h-56 relative overflow-hidden">
+                  <img
+                    src={sectionTransition.image_url}
+                    alt={sectionTransition.name}
+                    className="w-full h-full object-cover"
+                    referrerPolicy="no-referrer"
+                  />
+                  <div className="absolute inset-0 bg-gradient-to-t from-black/60 via-black/20 to-transparent" />
+                  <div className="absolute bottom-4 left-6">
+                    <span className="px-3 py-1 bg-blue-600 text-white font-bold text-[10px] uppercase tracking-wider rounded-full">
+                      Tópico {sections.findIndex(s => s.name === sectionTransition.name) + 1 !== 0 ? sections.findIndex(s => s.name === sectionTransition.name) + 1 : 1}
+                    </span>
+                  </div>
+                </div>
+              ) : (
+                <div className="w-full h-28 bg-gradient-to-r from-blue-500 to-indigo-600 flex items-center justify-between px-6 relative overflow-hidden">
+                  <div className="absolute -right-6 -bottom-6 text-9xl text-white/10 select-none font-bold">
+                    🧩
+                  </div>
+                  <div>
+                    <span className="px-3 py-1 bg-white/20 text-white font-bold text-[10px] uppercase tracking-wider rounded-full">
+                      Próxima Seção
+                    </span>
+                  </div>
+                </div>
+              )}
+
+              <div className="p-6 sm:p-8 text-center space-y-4 w-full">
+                <h2 className="text-2xl font-black text-slate-900 leading-tight">
+                  {sectionTransition.name}
+                </h2>
+                
+                {sectionTransition.description && (
+                  <p className="text-sm text-slate-500 max-w-md mx-auto leading-relaxed">
+                    {sectionTransition.description}
+                  </p>
+                )}
+
+                <div className="flex items-center justify-center gap-2 text-slate-400 text-xs font-semibold">
+                  <span className="w-2 h-2 rounded-full bg-blue-500 animate-pulse" />
                   {sectionTransition.count} {sectionTransition.count === 1 ? 'pergunta' : 'perguntas'} neste bloco
-                </p>
+                </div>
+
+                <div className="pt-4">
+                  <button
+                    onClick={() => {
+                      const nextIdx = currentStep + 1;
+                      setSectionTransition(null);
+                      setCurrentStep(nextIdx === 0 ? 0 : nextIdx);
+                    }}
+                    className="w-full sm:w-auto px-10 py-3 bg-blue-600 hover:bg-blue-700 active:scale-95 text-white font-bold rounded-2xl shadow-lg shadow-blue-500/20 transition-all text-sm"
+                  >
+                    Iniciar Bloco →
+                  </button>
+                </div>
               </div>
-              <button
-                onClick={() => {
-                  const nextIdx = currentStep + 1;
-                  setSectionTransition(null);
-                  setCurrentStep(nextIdx);
-                }}
-                className="px-8 py-4 bg-blue-600 hover:bg-blue-700 active:scale-95 text-white font-bold rounded-2xl shadow-lg shadow-blue-200 transition-all"
-              >
-                Continuar →
-              </button>
             </motion.div>
           ) : (
             <motion.div
@@ -1132,7 +1205,7 @@ const SurveyResponseForm: React.FC<SurveyResponseFormProps> = ({
             {/* Step -2: botão Continuar */}
             {currentStep === -2 && (
               <button
-                onClick={() => setCurrentStep(0)}
+                onClick={handleNext}
                 disabled={!canAdvanceFromParticipantInfo()}
                 className="w-full py-4 bg-blue-600 hover:bg-blue-700 disabled:bg-slate-200 disabled:text-slate-400 active:scale-95 text-white text-sm font-semibold rounded-2xl transition-all"
               >

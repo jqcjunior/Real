@@ -437,11 +437,22 @@ export interface Survey {
   thank_you_message?: string;
 }
 
+export interface SurveySection {
+  id: string;
+  survey_id: string;
+  name: string;
+  description?: string | null;
+  image_url?: string | null;
+  sort_order: number;
+  created_at?: string;
+}
+
 export interface SurveyQuestion {
   id: string;
   survey_id: string;
   question_text: string;
   section?: string | null;
+  section_id?: string | null;
   question_type: SurveyQuestionType;
   options: string[];
   is_required: boolean;

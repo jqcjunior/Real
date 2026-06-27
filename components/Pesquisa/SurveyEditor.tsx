@@ -9,7 +9,7 @@ import {
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 import {
-  Survey, SurveyQuestion, SurveyTargetType, SurveyTargetCategory,
+  Survey, SurveyQuestion, SurveySection, SurveyTargetType, SurveyTargetCategory,
   SurveyResultVisibility, Store, User
 } from '../../types';
 
@@ -102,6 +102,9 @@ const SurveyEditor: React.FC<SurveyEditorProps> = ({
   // Step 3
   const [questions, setQuestions] = useState<Partial<SurveyQuestion>[]>([]);
   const [questionsLoaded, setQuestionsLoaded] = useState(false);
+  const [sections, setSections] = useState<SurveySection[]>([]);
+  const [sectionsLoaded, setSectionsLoaded] = useState(false);
+  const [uploadingSectionId, setUploadingSectionId] = useState<string | null>(null);
   const [uploadingPhotoIdx, setUploadingPhotoIdx] = useState<number | null>(null);
   const [tipoSuggestions, setTipoSuggestions] = useState<string[]>([]);
   const [activeSuggestionIdx, setActiveSuggestionIdx] = useState<number | null>(null);
@@ -173,13 +176,14 @@ const SurveyEditor: React.FC<SurveyEditorProps> = ({
   };
 
   useEffect(() => {
-    if (editingSurvey && !questionsLoaded) {
+    if (editingSurvey?.id) {
       loadQuestions(editingSurvey.id);
-    } else if (!editingSurvey && !questionsLoaded) {
-      setQuestions([emptyQuestion(0)]);
+      loadSections(editingSurvey.id);
+    } else {
       setQuestionsLoaded(true);
+      setSectionsLoaded(true);
     }
-  }, [editingSurvey]);
+  }, [editingSurvey?.id]);
 
   const loadQuestions = async (surveyId: string) => {
     try {
@@ -193,6 +197,94 @@ const SurveyEditor: React.FC<SurveyEditorProps> = ({
       setQuestions([emptyQuestion(0)]);
     } finally {
       setQuestionsLoaded(true);
+    }
+  };
+
+  const loadSections = async (surveyId: string) => {
+    try {
+      const { data, error } = await supabase
+        .from('survey_sections')
+        .select('*')
+        .eq('survey_id', surveyId)
+        .order('sort_order', { ascending: true });
+      if (error) throw error;
+      setSections(data || []);
+    } catch (err) {
+      console.error('Erro ao carregar seções:', err);
+    } finally {
+      setSectionsLoaded(true);
+    }
+  };
+
+  const addSection = () => {
+    const newSection: SurveySection = {
+      id: crypto.randomUUID(),
+      survey_id: savedSurveyId || editingSurvey?.id || '',
+      name: '',
+      description: null,
+      image_url: null,
+      sort_order: sections.length,
+    };
+    setSections(prev => [...prev, newSection]);
+  };
+
+  const updateSection = (id: string, field: keyof SurveySection, value: any) => {
+    setSections(prev => prev.map(s => s.id === id ? { ...s, [field]: value } : s));
+  };
+
+  const deleteSection = (id: string) => {
+    setSections(prev => prev.filter(s => s.id !== id));
+    // Desagrupar perguntas desta seção
+    setQuestions(prev => prev.map(q =>
+      (q as any).section_id === id
+        ? { ...q, section_id: null, section: null }
+        : q
+    ));
+  };
+
+  const moveSection = (idx: number, dir: 'up' | 'down') => {
+    const newSecs = [...sections];
+    const target = dir === 'up' ? idx - 1 : idx + 1;
+    if (target < 0 || target >= newSecs.length) return;
+    [newSecs[idx], newSecs[target]] = [newSecs[target], newSecs[idx]];
+    setSections(newSecs.map((s, i) => ({ ...s, sort_order: i })));
+  };
+
+  const addQuestionToSection = (sectionId: string) => {
+    const order = questions.length;
+    const newQ: Partial<SurveyQuestion> & { section_id: string } = {
+      question_text: '',
+      question_type: 'short_text',
+      is_required: true,
+      sort_order: order,
+      options: [],
+      section_id: sectionId,
+      section: sections.find(s => s.id === sectionId)?.name || null,
+    };
+    setQuestions(prev => [...prev, newQ as any]);
+  };
+
+  const handleSectionImageUpload = async (file: File, sectionId: string) => {
+    if (!file) return;
+    setUploadingSectionId(sectionId);
+    try {
+      const surveyId = await autoSaveSurvey();
+      if (!surveyId) throw new Error('Não foi possível salvar a pesquisa');
+      const ext = file.name.split('.').pop();
+      const path = `sections/${surveyId}/${sectionId}.${ext}`;
+      const { error: upErr } = await supabase.storage
+        .from('survey-images')
+        .upload(path, file, { upsert: true });
+      if (upErr) throw upErr;
+      const { data: urlData } = supabase.storage
+        .from('survey-images')
+        .getPublicUrl(path);
+      updateSection(sectionId, 'image_url', urlData.publicUrl);
+      toast.success('Imagem do tópico carregada');
+    } catch (err: any) {
+      toast.error('Erro ao carregar imagem: ' + err.message);
+    } finally {
+      setUploadingSectionId(null);
     }
   };
 
@@ -410,7 +502,7 @@ const SurveyEditor: React.FC<SurveyEditorProps> = ({
   const canGoNext = () => {
     if (step === 1) return title.trim().length > 0;
     if (step === 2) return true;
-    if (step === 3) return questions.length > 0 && questions.every(q => q.question_text?.trim());
+    if (step === 3) return sections.length > 0 && sections.every(s => s.name.trim());
     return false;
   };
 
@@ -460,6 +552,43 @@ const SurveyEditor: React.FC<SurveyEditorProps> = ({
         surveyId = data.id;
       }
 
+      // ── Salvar seções ──────────────────────────────────
+      if (sections.length > 0) {
+        const sectionsToSave = sections.map((s, i) => ({
+          id: s.id,
+          survey_id: surveyId,
+          name: s.name || 'Tópico sem nome',
+          description: s.description || null,
+          image_url: s.image_url || null,
+          sort_order: i,
+        }));
+
+        const { error: secErr } = await supabase
+          .from('survey_sections')
+          .upsert(sectionsToSave, { onConflict: 'id' });
+
+        if (secErr) throw secErr;
+
+        // Deletar seções removidas
+        const { data: dbSections } = await supabase
+          .from('survey_sections')
+          .select('id')
+          .eq('survey_id', surveyId);
+
+        const savedIds = new Set(sectionsToSave.map(s => s.id));
+        const toDelete = (dbSections || [])
+          .filter(s => !savedIds.has(s.id))
+          .map(s => s.id);
+
+        if (toDelete.length > 0) {
+          await supabase
+            .from('survey_sections')
+            .delete()
+            .in('id', toDelete);
+        }
+      }
+      // ──────────────────────────────────────────────────
+
       // Salvar perguntas
       const keptIds: string[] = [];
 
@@ -472,6 +601,7 @@ const SurveyEditor: React.FC<SurveyEditorProps> = ({
           question_text: q.question_text,
           question_type: q.question_type,
           section: (q as any).section || null,
+          section_id: (q as any).section_id || null,
           options: q.options || [],
           is_required: q.is_required ?? true,
           is_active: q.is_active !== false,
@@ -868,407 +998,291 @@ const SurveyEditor: React.FC<SurveyEditorProps> = ({
               {/* ── STEP 3: PERGUNTAS ── */}
               {step === 3 && (
                 <>
-                  <div className="flex items-center justify-between">
+                  <div className="flex items-center justify-between mb-6">
                     <div>
-                      <h2 className="text-lg font-semibold text-slate-900 dark:text-white">Perguntas</h2>
-                      <p className="text-sm text-slate-500 mt-1">{questions.length} pergunta{questions.length !== 1 ? 's' : ''}</p>
+                      <h2 className="text-lg font-semibold text-slate-900 dark:text-white">
+                        Tópicos & Perguntas
+                      </h2>
+                      <p className="text-sm text-slate-400 mt-0.5">
+                        Crie tópicos e adicione perguntas em cada um
+                      </p>
                     </div>
                     <button
-                      onClick={addQuestion}
-                      className="flex items-center gap-1.5 px-3 py-2 text-blue-600 hover:bg-blue-50 dark:hover:bg-blue-900/20 rounded-lg text-sm font-medium transition-all border border-blue-200 dark:border-blue-800"
+                      onClick={addSection}
+                      className="flex items-center gap-2 px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white text-sm font-semibold rounded-xl transition-all shadow-sm"
                     >
-                      <Plus size={15} /> Nova pergunta
+                      <Plus size={16} /> Novo tópico
                     </button>
                   </div>
 
-                  <div className="space-y-3">
+                  {/* Perguntas sem seção (legado / órfãs) */}
+                  {questions.filter(q => !(q as any).section_id).length > 0 && (
+                    <div className="mb-4 p-4 bg-amber-50 dark:bg-amber-900/20 border border-amber-200 dark:border-amber-700 rounded-xl">
+                      <p className="text-xs font-semibold text-amber-700 dark:text-amber-400 mb-3">
+                        ⚠️ Perguntas sem tópico — arraste para um tópico ou delete
+                      </p>
+                      <div className="space-y-2">
+                        {questions
+                          .filter(q => !(q as any).section_id)
+                          .map((q, qIdx) => {
+                            const realIdx = questions.indexOf(q);
+                            return (
+                              <div key={realIdx} className="flex items-center gap-2 bg-white dark:bg-slate-900 rounded-lg p-3 border border-amber-100">
+                                <input
+                                  type="text"
+                                  value={q.question_text || ''}
+                                  onChange={e => updateQuestion(realIdx, 'question_text', e.target.value)}
+                                  placeholder="Texto da pergunta..."
+                                  className="flex-1 text-sm bg-transparent outline-none text-slate-700 dark:text-slate-300"
+                                />
+                                <button
+                                  onClick={() => setQuestions(prev => prev.filter((_, i) => i !== realIdx))}
+                                  className="p-1 text-slate-300 hover:text-red-400 transition-colors"
+                                >
+                                  <Trash size={14} />
+                                </button>
+                              </div>
+                            );
+                          })}
+                      </div>
+                    </div>
+                  )}
+
+                  {/* Lista de tópicos */}
+                  {sections.length === 0 && sectionsLoaded && (
+                    <div className="flex flex-col items-center justify-center py-16 text-center">
+                      <div className="w-16 h-16 rounded-2xl bg-slate-100 dark:bg-slate-800 flex items-center justify-center mb-4">
+                        <span className="text-3xl">🧩</span>
+                      </div>
+                      <p className="text-slate-500 font-medium">Nenhum tópico criado ainda</p>
+                      <p className="text-slate-400 text-sm mt-1">
+                        Clique em "Novo tópico" para começar
+                      </p>
+                    </div>
+                  )}
+
+                  <div className="space-y-4">
                     <AnimatePresence>
-                      {questions.map((q, idx) => (
-                        <motion.div
-                          key={idx}
-                          data-question-card
-                          initial={{ opacity: 0, y: 8 }}
-                          animate={{ opacity: 1, y: 0 }}
-                          exit={{ opacity: 0, y: -8 }}
-                          className={`bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-xl overflow-hidden group hover:border-blue-300 dark:hover:border-blue-700 transition-all ${
-                            q.is_active === false ? 'opacity-50' : ''
-                          }`}
-                        >
-                          {/* Linha superior */}
-                          <div className="flex items-start gap-3 p-4">
-                            <span className="text-xs text-slate-400 font-medium mt-1 w-5 flex-shrink-0 text-center">{idx + 1}</span>
-                            <div className="flex-1 min-w-0">
-                              <input
-                                type="text"
-                                value={q.question_text || ''}
-                                onChange={e => updateQuestion(idx, 'question_text', e.target.value)}
-                                placeholder="Digite a pergunta..."
-                                className={`w-full bg-transparent text-sm text-slate-900 dark:text-white outline-none placeholder:text-slate-400 min-w-0 ${
-                                  q.is_active === false ? 'line-through text-slate-400' : ''
-                                }`}
-                              />
-                              <input
-                                type="text"
-                                value={(q as any).section || ''}
-                                onChange={e => updateQuestion(idx, 'section', e.target.value || null)}
-                                placeholder="Seção (ex: Atendimento, Produtos...)"
-                                className="w-full mt-1 pl-8 bg-transparent text-xs text-blue-500 dark:text-blue-400 outline-none placeholder:text-slate-300 dark:placeholder:text-slate-600 border-b border-dashed border-slate-200 dark:border-slate-700 pb-1 focus:border-blue-400 transition-all"
-                              />
-                            </div>
-                            <select
-                              value={q.question_type || 'short_text'}
-                              onChange={e => updateQuestion(idx, 'question_type', e.target.value)}
-                              className="flex-shrink-0 text-xs px-2 py-1.5 bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-lg text-slate-600 dark:text-slate-400 outline-none cursor-pointer"
-                            >
-                              {QUESTION_TYPES.map(t => (
-                                <option key={t.value} value={t.value}>{t.label}</option>
-                              ))}
-                            </select>
-                          </div>
+                      {sections.map((section, sIdx) => {
+                        const sectionQuestions = questions.filter(
+                          q => (q as any).section_id === section.id
+                        );
 
-                          {/* Opções múltipla escolha */}
-                          {q.question_type === 'multiple_choice' && (
-                            <div className="px-4 pb-3 pl-12">
-                              <input
-                                type="text"
-                                value={Array.isArray(q.options) ? q.options.join(', ') : ''}
-                                onChange={e => updateQuestion(idx, 'options', e.target.value.split(',').map(s => s.trim()).filter(Boolean))}
-                                placeholder="Opção 1, Opção 2, Opção 3..."
-                                className="w-full px-3 py-2 bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-lg text-xs text-slate-600 dark:text-slate-400 outline-none focus:border-blue-400 transition-all"
-                              />
-                              <p className="text-[10px] text-slate-400 mt-1">Separe as opções por vírgula</p>
-                            </div>
-                          )}
+                        return (
+                          <motion.div
+                            key={section.id}
+                            initial={{ opacity: 0, y: 12 }}
+                            animate={{ opacity: 1, y: 0 }}
+                            exit={{ opacity: 0, y: -8, scale: 0.98 }}
+                            className="border-2 border-slate-200 dark:border-slate-700 rounded-2xl overflow-hidden bg-white dark:bg-slate-900"
+                          >
+                            {/* ── Cabeçalho do tópico ── */}
+                            <div className="bg-slate-50 dark:bg-slate-800 border-b border-slate-200 dark:border-slate-700 p-4">
+                              <div className="flex items-start gap-4">
 
-                          {q.question_type === 'product_item' && (
-                            <div className="px-4 pb-4 pl-12 space-y-3">
-                              {/* Título automático */}
-                              {!q.question_text && (() => {
-                                // Auto-preencher a pergunta se vazio
-                                setTimeout(() => updateQuestion(idx, 'question_text', 'Deseja este produto?'), 0);
-                                return null;
-                              })()}
-
-                              {/* Linha 1: Marca + Referência */}
-                              <div className="grid grid-cols-2 gap-2">
-                                <input
-                                  data-product-nav
-                                  onKeyDown={focusNextProductField}
-                                  type="text"
-                                  placeholder="Marca"
-                                  value={(q.options as any)?.marca || ''}
-                                  onChange={e => updateQuestion(idx, 'options', { ...(q.options as any || {}), marca: e.target.value })}
-                                  className="px-3 py-2 bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-lg text-xs text-slate-700 dark:text-slate-300 outline-none focus:border-blue-400"
-                                />
-                                <input
-                                  data-product-nav
-                                  onKeyDown={focusNextProductField}
-                                  type="text"
-                                  placeholder="Referência"
-                                  value={(q.options as any)?.referencia || ''}
-                                  onChange={e => updateQuestion(idx, 'options', { ...(q.options as any || {}), referencia: e.target.value })}
-                                  className="px-3 py-2 bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-lg text-xs text-slate-700 dark:text-slate-300 outline-none focus:border-blue-400"
-                                />
-                              </div>
-
-                              {/* Linha 2: Cor 1 + Cor 2 + Cor 3 */}
-                              <div className="grid grid-cols-3 gap-2">
-                                <input
-                                  data-product-nav
-                                  onKeyDown={focusNextProductField}
-                                  type="text"
-                                  placeholder="Cor 1 (principal)"
-                                  value={(q.options as any)?.cor1 || ''}
-                                  onChange={e => updateQuestion(idx, 'options', { ...(q.options as any || {}), cor1: e.target.value })}
-                                  className="px-3 py-2 bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-lg text-xs text-slate-700 dark:text-slate-300 outline-none focus:border-blue-400"
-                                />
-                                <input
-                                  data-product-nav
-                                  onKeyDown={focusNextProductField}
-                                  type="text"
-                                  placeholder="Cor 2 (opcional)"
-                                  value={(q.options as any)?.cor2 || ''}
-                                  onChange={e => updateQuestion(idx, 'options', { ...(q.options as any || {}), cor2: e.target.value })}
-                                  className="px-3 py-2 bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-lg text-xs text-slate-700 dark:text-slate-300 outline-none focus:border-blue-400"
-                                />
-                                <input
-                                  data-product-nav
-                                  onKeyDown={focusNextProductField}
-                                  type="text"
-                                  placeholder="Cor 3 (opcional)"
-                                  value={(q.options as any)?.cor3 || ''}
-                                  onChange={e => updateQuestion(idx, 'options', { ...(q.options as any || {}), cor3: e.target.value })}
-                                  className="px-3 py-2 bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-lg text-xs text-slate-700 dark:text-slate-300 outline-none focus:border-blue-400"
-                                />
-                              </div>
-
-                              {/* Linha 3: Custo + Markup + Venda (MANTER EXATAMENTE COMO ESTÁ) */}
-                              <div className="grid grid-cols-3 gap-2">
-                                {/* Custo */}
-                                <div className="relative">
-                                  <span className="absolute left-3 top-1/2 -translate-y-1/2 text-[10px] text-slate-400 font-medium">R$</span>
-                                  <input
-                                    data-product-nav
-                                    onKeyDown={focusNextProductField}
-                                    type="number"
-                                    step="0.01"
-                                    placeholder="Custo"
-                                    value={(q.options as any)?.preco_custo || ''}
-                                    onChange={e => {
-                                      const custo = parseFloat(e.target.value) || 0;
-                                      const markup = parseFloat((q.options as any)?.markup) || 0;
-                                      const venda = calcPrecoVenda(custo, markup);
-                                      updateQuestion(idx, 'options', { 
-                                        ...(q.options as any || {}), 
-                                        preco_custo: e.target.value,
-                                        ...(venda > 0 ? { preco_venda: venda.toFixed(2) } : {})
-                                      });
-                                    }}
-                                    className="w-full pl-8 pr-3 py-2 bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-lg text-xs text-slate-700 dark:text-slate-300 outline-none focus:border-blue-400"
-                                  />
-                                  <span className="absolute right-3 top-1/2 -translate-y-1/2 text-[10px] text-slate-400">custo</span>
-                                </div>
-
-                                {/* Markup */}
-                                <div className="relative">
-                                  <span className="absolute left-3 top-1/2 -translate-y-1/2 text-[10px] text-slate-400 font-medium">×</span>
-                                  <input
-                                    data-product-nav
-                                    onKeyDown={focusNextProductField}
-                                    type="number"
-                                    step="0.01"
-                                    placeholder="Markup"
-                                    value={(q.options as any)?.markup || ''}
-                                    onChange={e => {
-                                      const markup = parseFloat(e.target.value) || 0;
-                                      const custo = parseFloat((q.options as any)?.preco_custo) || 0;
-                                      const venda = calcPrecoVenda(custo, markup);
-                                      updateQuestion(idx, 'options', { 
-                                        ...(q.options as any || {}), 
-                                        markup: e.target.value,
-                                        ...(venda > 0 ? { preco_venda: venda.toFixed(2) } : {})
-                                      });
-                                    }}
-                                    className="w-full pl-7 pr-3 py-2 bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-lg text-xs text-slate-700 dark:text-slate-300 outline-none focus:border-blue-400"
-                                  />
-                                  <span className="absolute right-3 top-1/2 -translate-y-1/2 text-[10px] text-slate-400">markup</span>
-                                </div>
-
-                                {/* Venda (auto-calculado, editável) */}
-                                <div className="relative">
-                                  <span className="absolute left-3 top-1/2 -translate-y-1/2 text-[10px] text-green-500 font-medium">R$</span>
-                                  <input
-                                    data-product-nav
-                                    onKeyDown={focusNextProductField}
-                                    type="number"
-                                    step="0.01"
-                                    placeholder="Venda"
-                                    value={(q.options as any)?.preco_venda || ''}
-                                    onChange={e => updateQuestion(idx, 'options', { ...(q.options as any || {}), preco_venda: e.target.value })}
-                                    className="w-full pl-8 pr-3 py-2 bg-green-50 dark:bg-green-900/20 border border-green-200 dark:border-green-800 rounded-lg text-xs text-green-700 dark:text-green-400 outline-none focus:border-green-400 font-bold"
-                                  />
-                                  <span className="absolute right-3 top-1/2 -translate-y-1/2 text-[10px] text-green-500">venda</span>
-                                </div>
-                              </div>
-
-                              {/* Linha 4: Descrição com autocomplete */}
-                              <div className="relative">
-                                <input
-                                  data-product-nav
-                                  type="text"
-                                  placeholder="Descrição do item (ex: CHINELO MASCULINO)"
-                                  value={(q.options as any)?.descricao || ''}
-                                  onChange={e => {
-                                    updateQuestion(idx, 'options', { ...(q.options as any || {}), descricao: e.target.value });
-                                    setActiveSuggestionIdx(idx);
-                                    searchTipos(e.target.value);
-                                  }}
-                                  onFocus={() => {
-                                    const val = (q.options as any)?.descricao || '';
-                                    if (val.length >= 2) {
-                                      setActiveSuggestionIdx(idx);
-                                      searchTipos(val);
-                                    }
-                                  }}
-                                  onBlur={() => {
-                                    setTimeout(() => {
-                                      setActiveSuggestionIdx(null);
-                                      setTipoSuggestions([]);
-                                    }, 200);
-                                  }}
-                                  onKeyDown={e => {
-                                    if (e.key === 'Enter') {
-                                      if (tipoSuggestions.length > 0 && activeSuggestionIdx === idx) {
-                                        // Seleciona primeira sugestão do autocomplete
-                                        e.preventDefault();
-                                        updateQuestion(idx, 'options', {
-                                          ...(q.options as any || {}),
-                                          descricao: tipoSuggestions[0],
-                                        });
-                                        setTipoSuggestions([]);
-                                        setActiveSuggestionIdx(null);
-                                      } else {
-                                        // Último campo — não navega mais
-                                        e.preventDefault();
-                                      }
-                                    }
-                                  }}
-                                  className="w-full px-3 py-2 bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-lg text-xs text-slate-700 dark:text-slate-300 outline-none focus:border-blue-400"
-                                />
-                                {activeSuggestionIdx === idx && tipoSuggestions.length > 0 && (
-                                  <div className="absolute z-50 top-full left-0 right-0 mt-1 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-lg shadow-xl max-h-48 overflow-y-auto">
-                                    {tipoSuggestions.map((sugestao, i) => (
-                                      <button
-                                        key={i}
-                                        type="button"
-                                        onMouseDown={e => {
-                                          e.preventDefault();
-                                          updateQuestion(idx, 'options', { ...(q.options as any || {}), descricao: sugestao });
-                                          setTipoSuggestions([]);
-                                          setActiveSuggestionIdx(null);
+                                {/* Imagem do tópico */}
+                                <div className="flex-shrink-0">
+                                  {section.image_url ? (
+                                    <div className="relative group w-20 h-20">
+                                      <img
+                                        src={section.image_url}
+                                        alt={section.name}
+                                        className="w-20 h-20 object-cover rounded-xl border border-slate-200"
+                                        referrerPolicy="no-referrer"
+                                      />
+                                      <label className="absolute inset-0 rounded-xl bg-black/40 opacity-0 group-hover:opacity-100 flex items-center justify-center cursor-pointer transition-opacity">
+                                        <Camera size={18} className="text-white" />
+                                        <input
+                                          type="file"
+                                          accept="image/*"
+                                          className="hidden"
+                                          onChange={e => {
+                                            const f = e.target.files?.[0];
+                                            if (f) handleSectionImageUpload(f, section.id);
+                                          }}
+                                        />
+                                      </label>
+                                      {uploadingSectionId === section.id && (
+                                        <div className="absolute inset-0 rounded-xl bg-white/80 flex items-center justify-center">
+                                          <Loader2 size={20} className="animate-spin text-blue-500" />
+                                        </div>
+                                      )}
+                                    </div>
+                                  ) : (
+                                    <label className={`w-20 h-20 rounded-xl border-2 border-dashed flex flex-col items-center justify-center cursor-pointer transition-all gap-1 ${
+                                      uploadingSectionId === section.id
+                                        ? 'border-blue-400 bg-blue-50'
+                                        : 'border-slate-300 dark:border-slate-600 hover:border-blue-400 dark:hover:border-blue-500 bg-slate-100 dark:bg-slate-700'
+                                    }`}>
+                                      {uploadingSectionId === section.id ? (
+                                        <Loader2 size={20} className="animate-spin text-blue-500" />
+                                      ) : (
+                                        <>
+                                          <ImageIcon size={20} className="text-slate-400" />
+                                          <span className="text-[10px] text-slate-400 text-center leading-tight">
+                                            Adicionar<br />imagem
+                                          </span>
+                                        </>
+                                      )}
+                                      <input
+                                        type="file"
+                                        accept="image/*"
+                                        className="hidden"
+                                        disabled={!!uploadingSectionId}
+                                        onChange={e => {
+                                          const f = e.target.files?.[0];
+                                          if (f) handleSectionImageUpload(f, section.id);
                                         }}
-                                        className="w-full text-left px-3 py-2 text-xs text-slate-700 dark:text-slate-300 hover:bg-blue-50 dark:hover:bg-blue-900/20 hover:text-blue-700 transition-all border-b border-slate-50 dark:border-slate-800 last:border-0"
-                                      >
-                                        {sugestao}
-                                      </button>
-                                    ))}
-                                  </div>
-                                )}
-                              </div>
+                                      />
+                                    </label>
+                                  )}
+                                </div>
 
-                              {/* Categoria */}
-                              <div>
-                                <label className="text-[10px] font-semibold text-slate-400 mb-1 block">Categoria</label>
-                                <div className="flex gap-1.5 flex-wrap">
-                                  {PRODUCT_CATEGORIES.map(cat => (
-                                    <button
-                                      key={cat.value}
-                                      type="button"
-                                      onClick={() => updateQuestion(idx, 'options', { ...(q.options as any || {}), categoria: cat.value })}
-                                      className={`px-3 py-1.5 rounded-lg border text-xs font-medium transition-all ${
-                                        (q.options as any)?.categoria === cat.value
-                                          ? 'border-blue-600 bg-blue-50 text-blue-700 dark:bg-blue-900/30 dark:text-blue-400'
-                                          : 'border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-500 hover:border-slate-300'
+                                {/* Nome + descrição */}
+                                <div className="flex-1 min-w-0 space-y-2">
+                                  <input
+                                    type="text"
+                                    value={section.name}
+                                    onChange={e => updateSection(section.id, 'name', e.target.value)}
+                                    placeholder="Nome do tópico (ex: Atendimento)"
+                                    className="w-full font-bold text-base bg-transparent text-slate-900 dark:text-white outline-none placeholder:text-slate-300 border-b-2 border-transparent focus:border-blue-400 pb-0.5 transition-all"
+                                  />
+                                  <textarea
+                                    value={section.description || ''}
+                                    onChange={e => updateSection(section.id, 'description', e.target.value || null)}
+                                    placeholder="Descrição para o respondente (ex: O que pode nos dizer sobre o atendimento da Real Calçados?)"
+                                    rows={2}
+                                    className="w-full text-sm bg-transparent text-slate-500 dark:text-slate-400 outline-none placeholder:text-slate-300 resize-none leading-relaxed"
+                                  />
+                                </div>
+
+                                {/* Ações do tópico */}
+                                <div className="flex items-center gap-1 flex-shrink-0">
+                                  <button
+                                    onClick={() => moveSection(sIdx, 'up')}
+                                    disabled={sIdx === 0}
+                                    className="p-1.5 text-slate-400 hover:text-slate-700 dark:hover:text-slate-200 disabled:opacity-20 transition-colors rounded-lg hover:bg-slate-200 dark:hover:bg-slate-700"
+                                    title="Mover para cima"
+                                  >
+                                    <ChevronLeft size={16} className="rotate-90" />
+                                  </button>
+                                  <button
+                                    onClick={() => moveSection(sIdx, 'down')}
+                                    disabled={sIdx === sections.length - 1}
+                                    className="p-1.5 text-slate-400 hover:text-slate-700 dark:hover:text-slate-200 disabled:opacity-20 transition-colors rounded-lg hover:bg-slate-200 dark:hover:bg-slate-700"
+                                    title="Mover para baixo"
+                                  >
+                                    <ChevronRight size={16} className="rotate-90" />
+                                  </button>
+                                  <button
+                                    onClick={() => deleteSection(section.id)}
+                                    className="p-1.5 text-slate-300 hover:text-red-500 transition-colors rounded-lg hover:bg-red-50 dark:hover:bg-red-900/20"
+                                    title="Excluir tópico"
+                                  >
+                                    <Trash size={15} />
+                                  </button>
+                                </div>
+                              </div>
+                            </div>
+
+                            {/* ── Perguntas do tópico ── */}
+                            <div className="p-4 space-y-2">
+                              {sectionQuestions.length === 0 && (
+                                <p className="text-xs text-slate-400 text-center py-3 italic">
+                                  Nenhuma pergunta neste tópico ainda
+                                </p>
+                              )}
+
+                              <AnimatePresence>
+                                {sectionQuestions.map(q => {
+                                  const realIdx = questions.indexOf(q);
+                                  return (
+                                    <motion.div
+                                      key={realIdx}
+                                      initial={{ opacity: 0, y: 4 }}
+                                      animate={{ opacity: 1, y: 0 }}
+                                      exit={{ opacity: 0, height: 0 }}
+                                      className={`border border-slate-100 dark:border-slate-700 rounded-xl overflow-hidden group hover:border-blue-200 dark:hover:border-blue-700 transition-all bg-white dark:bg-slate-900 ${
+                                        q.is_active === false ? 'opacity-40' : ''
                                       }`}
                                     >
-                                      {cat.label}
-                                    </button>
-                                  ))}
-                                </div>
-                              </div>
-
-                              {/* Upload de foto */}
-                              <div>
-                                <label className="text-[10px] font-semibold text-slate-400 mb-1 block">Foto do Produto</label>
-                                {(q.options as any)?.image_url ? (
-                                  <div className="relative inline-block">
-                                    <img
-                                      src={(q.options as any).image_url}
-                                      alt="Produto"
-                                      className="w-32 h-32 object-cover rounded-xl border border-slate-200 dark:border-slate-700"
-                                      referrerPolicy="no-referrer"
-                                    />
-                                    <button
-                                      type="button"
-                                      onClick={() => handleRemoveProductPhoto(idx)}
-                                      className="absolute -top-2 -right-2 w-6 h-6 bg-red-500 text-white rounded-full flex items-center justify-center text-xs hover:bg-red-600 shadow-lg"
-                                    >
-                                      <X size={12} />
-                                    </button>
-                                  </div>
-                                ) : (
-                                  <label className={`flex flex-col items-center justify-center w-full h-28 border-2 border-dashed rounded-xl cursor-pointer transition-all ${
-                                    uploadingPhotoIdx === idx
-                                      ? 'border-blue-400 bg-blue-50 dark:bg-blue-900/20'
-                                      : 'border-slate-200 dark:border-slate-700 hover:border-blue-300 hover:bg-slate-50 dark:hover:bg-slate-800'
-                                  }`}>
-                                    {uploadingPhotoIdx === idx ? (
-                                      <div className="flex items-center gap-2 text-blue-500">
-                                        <Loader2 size={20} className="animate-spin" />
-                                        <span className="text-xs font-medium">Enviando...</span>
+                                      <div className="flex items-start gap-3 p-3">
+                                        <span className="text-[11px] text-slate-300 font-bold mt-1 w-5 text-center flex-shrink-0">
+                                          {realIdx + 1}
+                                        </span>
+                                        <input
+                                          type="text"
+                                          value={q.question_text || ''}
+                                          onChange={e => updateQuestion(realIdx, 'question_text', e.target.value)}
+                                          placeholder="Digite a pergunta..."
+                                          className="flex-1 bg-transparent text-sm text-slate-900 dark:text-white outline-none placeholder:text-slate-300 min-w-0"
+                                        />
+                                        <select
+                                          value={q.question_type || 'short_text'}
+                                          onChange={e => updateQuestion(realIdx, 'question_type', e.target.value)}
+                                          className="flex-shrink-0 text-xs px-2 py-1.5 bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-lg text-slate-600 dark:text-slate-400 outline-none cursor-pointer"
+                                        >
+                                          {QUESTION_TYPES.map(t => (
+                                            <option key={t.value} value={t.value}>{t.label}</option>
+                                          ))}
+                                        </select>
+                                        <button
+                                          onClick={() => setQuestions(prev => prev.filter((_, i) => i !== realIdx))}
+                                          className="p-1 text-slate-200 hover:text-red-400 transition-colors flex-shrink-0"
+                                        >
+                                          <Trash size={14} />
+                                        </button>
                                       </div>
-                                    ) : (
-                                      <>
-                                        <Camera size={24} className="text-slate-400 mb-1" />
-                                        <span className="text-xs text-slate-400">Tirar foto ou escolher arquivo</span>
-                                      </>
-                                    )}
-                                    <input
-                                      type="file"
-                                      accept="image/*"
-                                      capture="environment"
-                                      className="hidden"
-                                      disabled={uploadingPhotoIdx === idx}
-                                      onChange={e => {
-                                        const file = e.target.files?.[0];
-                                        if (file) {
-                                          handleProductPhotoUpload(file, idx);
-                                        }
-                                        e.target.value = '';
-                                      }}
-                                    />
-                                  </label>
-                                )}
-                              </div>
-                            </div>
-                          )}
 
-                          {/* Linha inferior */}
-                          <div className="flex items-center justify-between px-4 py-2 border-t border-slate-100 dark:border-slate-800 bg-slate-50/50 dark:bg-slate-800/30">
-                            <label className="flex items-center gap-2 cursor-pointer">
-                              <input
-                                type="checkbox"
-                                checked={q.is_required ?? true}
-                                onChange={e => updateQuestion(idx, 'is_required', e.target.checked)}
-                                className="rounded border-slate-300 text-blue-600 focus:ring-blue-500 w-3.5 h-3.5"
-                              />
-                              <span className="text-xs text-slate-500">Obrigatória</span>
-                            </label>
-                            <div className="flex items-center gap-2">
-                              {/* Toggle Ativo/Inativo */}
-                              <button
-                                type="button"
-                                onClick={() => handleToggleQuestionActive(q, idx)}
-                                className={`relative inline-flex items-center w-11 h-6 rounded-full transition-colors duration-200 flex-shrink-0 ${
-                                  q.is_active !== false
-                                    ? 'bg-green-500' 
-                                    : 'bg-slate-300 dark:bg-slate-600'
-                                }`}
-                                title={q.is_active !== false ? 'Desativar pergunta' : 'Ativar pergunta'}
-                              >
-                                <span className={`inline-block w-4 h-4 bg-white rounded-full shadow-md transform transition-transform duration-200 ${
-                                  q.is_active !== false ? 'translate-x-6' : 'translate-x-1'
-                                }`} />
-                              </button>
+                                      {/* Opções de múltipla escolha */}
+                                      {q.question_type === 'multiple_choice' && (
+                                        <div className="px-3 pb-3 pl-9">
+                                          <input
+                                            type="text"
+                                            value={Array.isArray(q.options) ? q.options.join(', ') : ''}
+                                            onChange={e => updateQuestion(realIdx, 'options', e.target.value.split(',').map(s => s.trim()).filter(Boolean))}
+                                            placeholder="Opção 1, Opção 2, Opção 3..."
+                                            className="w-full px-3 py-2 bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-lg text-xs text-slate-600 dark:text-slate-400 outline-none"
+                                          />
+                                        </div>
+                                      )}
+
+                                      {/* Obrigatória toggle */}
+                                      <div className="px-3 pb-2 pl-9 flex items-center gap-2">
+                                        <button
+                                          onClick={() => updateQuestion(realIdx, 'is_required', !q.is_required)}
+                                          className={`text-[11px] px-2 py-0.5 rounded-md font-medium transition-colors ${
+                                            q.is_required
+                                              ? 'bg-red-50 text-red-500 dark:bg-red-900/20 dark:text-red-400'
+                                              : 'bg-slate-50 text-slate-400 dark:bg-slate-800'
+                                          }`}
+                                        >
+                                          {q.is_required ? '* obrigatória' : 'opcional'}
+                                        </button>
+                                      </div>
+                                    </motion.div>
+                                  );
+                                })}
+                              </AnimatePresence>
 
                               <button
-                                onClick={() => duplicateQuestion(idx)}
-                                className="p-1.5 rounded-lg text-slate-400 hover:text-slate-600 hover:bg-slate-100 dark:hover:bg-slate-700 transition-all"
-                                title="Duplicar"
+                                onClick={() => addQuestionToSection(section.id)}
+                                className="w-full mt-2 py-2.5 border-2 border-dashed border-slate-200 dark:border-slate-700 rounded-xl text-sm text-slate-400 hover:border-blue-300 hover:text-blue-500 dark:hover:border-blue-600 dark:hover:text-blue-400 transition-all flex items-center justify-center gap-2"
                               >
-                                <Copy size={13} />
-                              </button>
-                              <button
-                                onClick={() => removeQuestion(idx)}
-                                disabled={questions.length === 1}
-                                className="p-1.5 rounded-lg text-slate-400 hover:text-red-500 hover:bg-red-50 dark:hover:bg-red-900/20 transition-all disabled:opacity-30"
-                                title="Remover"
-                              >
-                                <Trash size={13} />
+                                <Plus size={15} /> Adicionar pergunta
                               </button>
                             </div>
-                          </div>
-                        </motion.div>
-                      ))}
+
+                            {/* Rodapé: contagem */}
+                            <div className="px-4 py-2 bg-slate-50 dark:bg-slate-800/50 border-t border-slate-100 dark:border-slate-700">
+                              <span className="text-[11px] text-slate-400">
+                                {sectionQuestions.length} {sectionQuestions.length === 1 ? 'pergunta' : 'perguntas'} neste tópico
+                              </span>
+                            </div>
+                          </motion.div>
+                        );
+                      })}
                     </AnimatePresence>
-
-                    {/* Botão adicionar grande */}
-                    <button
-                      onClick={addQuestion}
-                      className="w-full py-3 border-2 border-dashed border-slate-200 dark:border-slate-700 rounded-xl text-sm text-slate-400 hover:border-blue-300 hover:text-blue-500 dark:hover:border-blue-700 transition-all flex items-center justify-center gap-2"
-                    >
-                      <Plus size={16} /> Adicionar pergunta
-                    </button>
                   </div>
                 </>
               )}
