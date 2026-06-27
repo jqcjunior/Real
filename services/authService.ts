@@ -68,7 +68,7 @@ export async function ensureSession() {
     });
 
     if (error) {
-      console.error('❌ Erro ao reestabelecer sessão:', error);
+      console.warn('⚠️ Erro ao reestabelecer sessão (não bloqueante):', error);
       // Não limpa o localStorage aqui - pode ser erro temporário
     } else {
       console.log('✅ Sessão reestabelecida para:', userId);

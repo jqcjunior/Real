@@ -431,6 +431,8 @@ export interface Survey {
   created_at: string;
   updated_at: string;
   public_token?: string;
+  logo_url?: string | null;
+  cover_image_url?: string | null;
   welcome_message?: string | null;
   thank_you_message?: string;
 }

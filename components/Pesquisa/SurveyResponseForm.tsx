@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { supabase } from '../../services/supabaseClient';
 import { 
   X, 
@@ -42,11 +42,19 @@ const SurveyResponseForm: React.FC<SurveyResponseFormProps> = ({
   const [respondentInfo, setRespondentInfo] = useState({ name: '', email: '', phone: '' });
   const [respondentRole, setRespondentRole] = useState<string>('');
   const [isAnonymous, setIsAnonymous] = useState(false);
+  const [sectionComments, setSectionComments] = useState<Record<string, string>>({});
 
-  // Para pesquisa externa começa em -1 (tela de identificação)
-  // Para pesquisa interna começa em 0 (primeira pergunta)
-  const hasWelcome = !!(survey as any).welcome_message;
-  const startStep = hasWelcome ? -2 : (survey.target_type === 'external' ? -1 : 0);
+  // Refs e novos estados para melhorias de UX
+  const autoAdvanceTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const [sectionTransition, setSectionTransition] = useState<{ name: string; count: number } | null>(null);
+  const [validationError, setValidationError] = useState('');
+
+  // Sistema de steps:
+  // -3 = landing (logo + título + descrição)
+  // -2 = dados do participante (nome, cargo, tel, email)
+  // 0+ = virtualSteps[currentStep] → pergunta ou comentário de seção
+
+  const startStep = -3;
   const [currentStep, setCurrentStep] = useState(startStep);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [isCompleted, setIsCompleted] = useState(false);
@@ -55,6 +63,38 @@ const SurveyResponseForm: React.FC<SurveyResponseFormProps> = ({
   useEffect(() => {
     fetchQuestions();
   }, [survey.id]);
+
+  // Limpar erro de validação ao mudar de step
+  useEffect(() => {
+    setValidationError('');
+  }, [currentStep]);
+
+  // Limpar timer ao desmontar
+  useEffect(() => {
+    return () => {
+      if (autoAdvanceTimer.current) clearTimeout(autoAdvanceTimer.current);
+    };
+  }, []);
+
+  // Restaurar respostas do localStorage
+  useEffect(() => {
+    const key = `survey_draft_${survey.id}`;
+    const saved = localStorage.getItem(key);
+    if (saved) {
+      try {
+        const parsed = JSON.parse(saved);
+        if (parsed.answers) setAnswers(parsed.answers);
+        if (parsed.motivos) setMotivos(parsed.motivos);
+      } catch {}
+    }
+  }, [survey.id]);
+
+  // Salvar automaticamente a cada mudança
+  useEffect(() => {
+    if (Object.keys(answers).length === 0) return;
+    const key = `survey_draft_${survey.id}`;
+    localStorage.setItem(key, JSON.stringify({ answers, motivos }));
+  }, [answers, motivos, survey.id]);
 
   const fetchQuestions = async () => {
     setIsLoading(true);
@@ -81,43 +121,107 @@ const SurveyResponseForm: React.FC<SurveyResponseFormProps> = ({
     }
   };
 
+  // Constrói array virtual de steps intercalando perguntas e comentários de seção
+  const buildVirtualSteps = (qs: SurveyQuestion[]) => {
+    const steps: Array<{ type: 'question'; index: number } | { type: 'section_comment'; section: string }> = [];
+    qs.forEach((q, idx) => {
+      const sec = (q as any).section as string | null;
+      steps.push({ type: 'question', index: idx });
+      const nextSec = idx < qs.length - 1 ? (qs[idx + 1] as any).section as string | null : undefined;
+      if (sec && nextSec !== sec) {
+        steps.push({ type: 'section_comment', section: sec });
+      }
+    });
+    return steps;
+  };
+
+  const virtualSteps = buildVirtualSteps(questions);
+  const currentVirtual = currentStep >= 0 ? virtualSteps[currentStep] : null;
+  const currentQuestion = currentVirtual?.type === 'question' ? questions[currentVirtual.index] : null;
+  const isLastVirtualStep = currentStep === virtualSteps.length - 1;
+  const totalQuestions = questions.length;
+  const answeredQuestions = currentVirtual?.type === 'question' ? currentVirtual.index + 1 : (currentVirtual?.type === 'section_comment' ? totalQuestions : 0);
+  const progress = currentStep >= 0 ? (answeredQuestions / totalQuestions) * 100 : 0;
+
   const handleAnswerChange = (questionId: string, value: any) => {
-    setAnswers({ ...answers, [questionId]: value });
-    // Limpar motivo se mudou para SIM
-    if (value === 'SIM') {
-      const newMotivos = { ...motivos };
-      delete newMotivos[questionId];
-      setMotivos(newMotivos);
+    setAnswers(prev => ({ ...prev, [questionId]: value }));
+    setValidationError('');
+
+    // Limpar motivos
+    if (value === 'SIM' || (typeof value === 'number' && value > 3)) {
+      setMotivos(prev => {
+        const n = { ...prev };
+        delete n[questionId];
+        return n;
+      });
     }
-    // Limpar motivo de rating se nota subiu acima de 3
-    if (typeof value === 'number' && value > 3) {
-      const newMotivos = { ...motivos };
-      delete newMotivos[questionId];
-      setMotivos(newMotivos);
+
+    // Auto-avanço para tipos de seleção imediata (não dispara na última pergunta do virtualSteps)
+    const q = questions.find(q => q.id === questionId);
+    const autoAdvanceTypes = ['yes_no', 'multiple_choice', 'emoji_scale'];
+    if (q && autoAdvanceTypes.includes(q.question_type) && !isLastVirtualStep) {
+      if (autoAdvanceTimer.current) clearTimeout(autoAdvanceTimer.current);
+      autoAdvanceTimer.current = setTimeout(() => {
+        setCurrentStep(prev => {
+          const next = prev + 1;
+          if (next < virtualSteps.length) return next;
+          return prev;
+        });
+      }, 350);
     }
   };
 
-  const handleChooseAnonymous = () => {
-    setIsAnonymous(true);
-    setRespondentInfo({ name: '', email: '', phone: '' });
-    setCurrentStep(0);
+  const getTimeEstimate = () => {
+    if (!questions.length) return null;
+    const seconds = questions.reduce((acc, q) => {
+      if (q.question_type === 'short_text') return acc + 30;
+      if (q.question_type === 'product_item') return acc + 20;
+      if (q.question_type === 'multiple_choice') return acc + 15;
+      return acc + 10; // rating, yes_no, emoji_scale
+    }, 0);
+    const minutes = Math.max(1, Math.ceil(seconds / 60));
+    return `${questions.length} pergunta${questions.length > 1 ? 's' : ''} · ~${minutes} min`;
   };
 
-  const handleChooseIdentified = () => {
-    setIsAnonymous(false);
-    // Não avança ainda — usuário preenche o form
+  const handleNext = () => {
+    if (currentStep === -2 && canAdvanceFromParticipantInfo()) {
+      setCurrentStep(0);
+      return;
+    }
+    if (currentStep >= 0) {
+      const nextIdx = currentStep + 1;
+      if (nextIdx < virtualSteps.length) {
+        const nextVirtual = virtualSteps[nextIdx];
+        const currentSec = currentVirtual?.type === 'question' 
+          ? (questions[currentVirtual.index] as any).section 
+          : (currentVirtual?.type === 'section_comment' ? currentVirtual.section : null);
+        const nextSec = nextVirtual?.type === 'question' 
+          ? (questions[nextVirtual.index] as any).section 
+          : (nextVirtual?.type === 'section_comment' ? nextVirtual.section : null);
+
+        // Detectar mudança de seção
+        if (nextSec && nextSec !== currentSec) {
+          const count = questions.filter(q => (q as any).section === nextSec).length;
+          setSectionTransition({ name: nextSec, count });
+          return;
+        }
+      }
+      setCurrentStep(nextIdx);
+    }
   };
 
-  const canAdvanceFromIdentification = () => {
-    if (isAnonymous) return true;
-    // Se não anônimo exige pelo menos o nome
-    return respondentInfo.name.trim().length > 0;
+  const canAdvanceFromParticipantInfo = () => {
+    return respondentInfo.name.trim().length > 0 && respondentRole.trim().length > 0;
   };
 
   const handleSubmit = async () => {
     const missingRequired = questions.filter(q => q.is_required && !answers[q.id]);
     if (missingRequired.length > 0) {
-      alert('Por favor, responda todas as perguntas obrigatórias.');
+      const firstMissingVirtualIdx = virtualSteps.findIndex(
+        vs => vs.type === 'question' && questions[vs.index].id === missingRequired[0].id
+      );
+      if (firstMissingVirtualIdx >= 0) setCurrentStep(firstMissingVirtualIdx);
+      setValidationError('Esta pergunta é obrigatória.');
       return;
     }
 
@@ -145,6 +249,13 @@ const SurveyResponseForm: React.FC<SurveyResponseFormProps> = ({
         }
       });
 
+      // Incluir comentários de seção nas respostas
+      Object.entries(sectionComments).forEach(([section, comment]) => {
+        if (comment.trim()) {
+          finalResponses[`__comment_${section}`] = comment.trim();
+        }
+      });
+
       const { error: rError } = await supabase
         .from('survey_responses')
         .insert([{
@@ -152,15 +263,16 @@ const SurveyResponseForm: React.FC<SurveyResponseFormProps> = ({
           user_id: user?.id || null,
           store_id: user?.storeId || null,
           responses: finalResponses,
-          respondent_name: isAnonymous ? null : (respondentInfo.name || null),
-          respondent_email: isAnonymous ? null : (respondentInfo.email || null),
-          respondent_phone: isAnonymous ? null : (respondentInfo.phone || null),
+          respondent_name: respondentInfo.name || null,
+          respondent_email: respondentInfo.email || null,
+          respondent_phone: respondentInfo.phone || null,
           respondent_role: respondentRole || null,
         }]);
 
       if (rError) throw rError;
 
       setIsCompleted(true);
+      localStorage.removeItem(`survey_draft_${survey.id}`);
       setTimeout(() => { onComplete(); }, 3000);
     } catch (err: any) {
       console.error('Erro ao enviar resposta:', err);
@@ -191,7 +303,11 @@ const SurveyResponseForm: React.FC<SurveyResponseFormProps> = ({
           <div className="w-20 h-20 bg-green-50 text-green-500 rounded-full flex items-center justify-center mx-auto">
             <CheckCircle2 size={44} />
           </div>
-          <h2 className="text-2xl font-bold text-slate-900">Obrigado por participar!</h2>
+          <h2 className="text-2xl font-bold text-slate-900">
+            {respondentInfo.name
+              ? `Obrigado, ${respondentInfo.name.split(' ')[0]}! 🎉`
+              : 'Obrigado por participar! 🎉'}
+          </h2>
           <p className="text-slate-500 text-sm leading-relaxed">
             {survey.thank_you_message || 'Sua resposta foi registrada com sucesso e será analisada pela nossa equipe.'}
           </p>
@@ -204,37 +320,37 @@ const SurveyResponseForm: React.FC<SurveyResponseFormProps> = ({
     );
   }
 
-  const currentQuestion = currentStep >= 0 ? questions[currentStep] : null;
-  const progress = currentStep >= 0 ? ((currentStep + 1) / questions.length) * 100 : 0;
-  const isLastStep = currentStep === questions.length - 1;
-  const isFirstStep = currentStep === startStep;
-
   return (
     <div className="fixed inset-0 z-[1100] bg-slate-50 flex flex-col overflow-hidden">
 
       {/* ── HEADER ── */}
       <header className="bg-white border-b border-slate-200 px-4 py-3 flex items-center justify-between shrink-0 gap-3">
         <div className="flex items-center gap-3 min-w-0">
-          <button
-            onClick={onClose}
-            className="p-2 text-slate-400 hover:text-slate-700 hover:bg-slate-100 rounded-xl transition-all flex-shrink-0"
-            aria-label="Fechar"
-          >
-            <X size={20} />
-          </button>
+          {currentStep >= -2 && (
+            <button
+              onClick={currentStep === -2 ? () => setCurrentStep(-3) : () => setCurrentStep(prev => prev === 0 ? -2 : prev - 1)}
+              className="p-2 text-slate-400 hover:text-slate-700 hover:bg-slate-100 rounded-xl transition-all flex-shrink-0"
+              aria-label="Voltar"
+            >
+              <ChevronLeft size={20} />
+            </button>
+          )}
+          {currentStep === -3 && (
+            <button onClick={onClose} className="p-2 text-slate-400 hover:text-slate-700 hover:bg-slate-100 rounded-xl transition-all flex-shrink-0">
+              <X size={20} />
+            </button>
+          )}
           <div className="min-w-0">
             <h1 className="text-sm font-semibold text-slate-900 truncate leading-tight">{survey.title}</h1>
             <p className="text-xs text-slate-400 mt-0.5">
-              {currentStep === -2
-                ? 'Boas-vindas'
-                : currentStep >= 0
-                  ? `Pergunta ${currentStep + 1} de ${questions.length}`
-                  : 'Identificação'}
+              {currentStep === -3 ? 'Apresentação'
+               : currentStep === -2 ? 'Seus dados'
+               : currentVirtual?.type === 'section_comment' ? `Comentário · ${(currentVirtual as any).section}`
+               : currentQuestion ? `Pergunta ${(currentVirtual as any).index + 1} de ${totalQuestions}`
+               : ''}
             </p>
           </div>
         </div>
-
-        {/* Barra de progresso — só durante perguntas */}
         {currentStep >= 0 && (
           <div className="flex items-center gap-2 flex-shrink-0">
             <div className="w-24 sm:w-36 h-1.5 bg-slate-100 rounded-full overflow-hidden">
@@ -254,188 +370,213 @@ const SurveyResponseForm: React.FC<SurveyResponseFormProps> = ({
       {/* ── CONTEÚDO ── */}
       <main className="flex-1 overflow-y-auto px-4 py-6 sm:px-6 sm:py-10 flex items-start justify-center">
         <AnimatePresence mode="wait">
-          <motion.div
-            key={currentStep}
-            initial={{ opacity: 0, x: 20 }}
-            animate={{ opacity: 1, x: 0 }}
-            exit={{ opacity: 0, x: -20 }}
-            transition={{ duration: 0.2 }}
-            className="w-full max-w-lg"
-          >
-
-            {/* ── STEP -2: BOAS-VINDAS ── */}
-            {currentStep === -2 && (
-              <div className="space-y-8">
-                <div>
-                  <h2 className="text-2xl sm:text-3xl font-bold text-slate-900 dark:text-white leading-tight">
-                    {survey.title}
-                  </h2>
-                  {survey.description && (
-                    <p className="text-sm text-slate-400 mt-1">{survey.description}</p>
-                  )}
-                  <p className="text-base text-slate-700 dark:text-slate-300 mt-4 leading-relaxed whitespace-pre-line">
-                    {(survey as any).welcome_message}
-                  </p>
-                </div>
-                <button
-                  onClick={() => setCurrentStep(survey.target_type === 'external' ? -1 : 0)}
-                  className="w-full py-4 bg-blue-600 hover:bg-blue-700 active:scale-95 text-white text-sm font-semibold rounded-2xl transition-all"
-                >
-                  Começar →
-                </button>
+          {sectionTransition ? (
+            <motion.div
+              key="section-transition"
+              initial={{ opacity: 0, scale: 0.95 }}
+              animate={{ opacity: 1, scale: 1 }}
+              exit={{ opacity: 0, scale: 0.95 }}
+              className="w-full max-w-lg flex flex-col items-center text-center space-y-6 py-8"
+            >
+              <div className="w-16 h-16 rounded-2xl bg-blue-600 flex items-center justify-center shadow-lg shadow-blue-200">
+                <span className="text-2xl">🧩</span>
               </div>
-            )}
+              <div>
+                <p className="text-xs font-bold uppercase tracking-widest text-blue-400 mb-2">
+                  Próximo bloco
+                </p>
+                <h2 className="text-2xl font-black text-slate-900">{sectionTransition.name}</h2>
+                <p className="text-sm text-slate-400 mt-2">
+                  {sectionTransition.count} {sectionTransition.count === 1 ? 'pergunta' : 'perguntas'} neste bloco
+                </p>
+              </div>
+              <button
+                onClick={() => {
+                  const nextIdx = currentStep + 1;
+                  setSectionTransition(null);
+                  setCurrentStep(nextIdx);
+                }}
+                className="px-8 py-4 bg-blue-600 hover:bg-blue-700 active:scale-95 text-white font-bold rounded-2xl shadow-lg shadow-blue-200 transition-all"
+              >
+                Continuar →
+              </button>
+            </motion.div>
+          ) : (
+            <motion.div
+              key={currentStep}
+              initial={{ opacity: 0, x: 20 }}
+              animate={{ opacity: 1, x: 0 }}
+              exit={{ opacity: 0, x: -20 }}
+              transition={{ duration: 0.2 }}
+              className="w-full max-w-lg"
+            >
 
-            {/* ── STEP -1: IDENTIFICAÇÃO ── */}
-            {currentStep === -1 && (
+              {/* ── STEP -3: LANDING ── */}
+              {currentStep === -3 && (
+                <div className="flex flex-col items-center text-center space-y-6 py-4">
+                  {/* Logo */}
+                  {(survey as any).logo_url ? (
+                    <img
+                      src={(survey as any).logo_url}
+                      alt="Logo"
+                      className="w-32 h-32 sm:w-40 sm:h-40 object-contain rounded-2xl shadow-md"
+                      referrerPolicy="no-referrer"
+                    />
+                  ) : (
+                    <div className="w-24 h-24 rounded-2xl bg-blue-600 flex items-center justify-center shadow-lg">
+                      <span className="text-white text-3xl font-black">R</span>
+                    </div>
+                  )}
+
+                  <div className="space-y-3">
+                    <h1 className="text-2xl sm:text-3xl font-black text-slate-900 leading-tight">
+                      {survey.title}
+                    </h1>
+                    {survey.description && (
+                      <p className="text-base text-slate-600 leading-relaxed whitespace-pre-line">
+                        {survey.description}
+                      </p>
+                    )}
+                    {(survey as any).welcome_message && (
+                      <p className="text-sm text-slate-400 leading-relaxed whitespace-pre-line mt-2">
+                        {(survey as any).welcome_message}
+                      </p>
+                    )}
+                  </div>
+
+                  <button
+                    onClick={() => setCurrentStep(-2)}
+                    className="w-full max-w-xs py-4 bg-blue-600 hover:bg-blue-700 active:scale-95 text-white text-base font-bold rounded-2xl shadow-lg shadow-blue-200 transition-all"
+                  >
+                    Participar →
+                  </button>
+                  {getTimeEstimate() ? (
+                    <p className="text-xs text-slate-400 flex items-center justify-center gap-1">
+                      <span>⏱</span> {getTimeEstimate()}
+                    </p>
+                  ) : (
+                    <p className="text-xs text-slate-400">Leva apenas alguns minutos</p>
+                  )}
+                </div>
+              )}
+
+            {/* ── STEP -2: DADOS DO PARTICIPANTE ── */}
+            {currentStep === -2 && (
               <div className="space-y-6">
                 <div>
-                  <h2 className="text-xl sm:text-2xl font-bold text-slate-900 dark:text-white leading-tight">
-                    {survey.title}
-                  </h2>
-                  {survey.description && (
-                    <p className="text-sm text-slate-500 mt-1">{survey.description}</p>
-                  )}
-                  <p className="text-sm text-slate-400 mt-3">Preencha os dados abaixo para participar.</p>
+                  <h2 className="text-xl font-bold text-slate-900">Seus dados</h2>
+                  <p className="text-sm text-slate-400 mt-1">
+                    Preencha para que possamos identificar sua resposta.
+                  </p>
                 </div>
 
-                {/* Botão anônimo */}
-                {(survey as any).allow_anonymous !== false && (
-                  <button
-                    onClick={handleChooseAnonymous}
-                    className={`w-full flex items-center gap-4 p-4 rounded-2xl border-2 transition-all text-left ${
-                      isAnonymous
-                        ? 'border-blue-600 bg-blue-50'
-                        : 'border-slate-200 bg-white hover:border-slate-300'
-                    }`}
-                  >
-                    <div className={`w-10 h-10 rounded-xl flex items-center justify-center flex-shrink-0 ${
-                      isAnonymous ? 'bg-blue-600 text-white' : 'bg-slate-100 text-slate-400'
-                    }`}>
-                      <UserX size={20} />
-                    </div>
-                    <div>
-                      <p className={`font-semibold text-sm ${isAnonymous ? 'text-blue-700' : 'text-slate-700'}`}>
-                        Prefiro não me identificar
-                      </p>
-                      <p className="text-xs text-slate-400 mt-0.5">
-                        Sua resposta será registrada de forma anônima
-                      </p>
-                    </div>
-                    {isAnonymous && (
-                      <Check size={18} className="text-blue-600 ml-auto flex-shrink-0" />
-                    )}
-                  </button>
-                )}
-
-                {/* Separador */}
-                {(survey as any).allow_anonymous !== false && (
-                  <div className="flex items-center gap-3">
-                    <div className="flex-1 h-px bg-slate-200" />
-                    <span className="text-xs text-slate-400">ou</span>
-                    <div className="flex-1 h-px bg-slate-200" />
-                  </div>
-                )}
-
-                {/* Form de identificação */}
-                <div
-                  className={`space-y-3 transition-opacity ${isAnonymous ? 'opacity-40 pointer-events-none' : 'opacity-100'}`}
-                  onClick={() => isAnonymous && setIsAnonymous(false)}
-                >
-                  <div className="flex items-center gap-2 mb-1">
-                    <User size={14} className="text-slate-400" />
-                    <span className="text-sm text-slate-500">Identificar-me</span>
-                  </div>
-                  {/* Cargo */}
+                <div className="space-y-3">
+                  {/* Cargo — obrigatório */}
                   <select
                     value={respondentRole}
-                    onChange={e => {
-                      setIsAnonymous(false);
-                      setRespondentRole(e.target.value);
-                    }}
-                    className="w-full px-4 py-3 bg-white border border-slate-200 focus:border-blue-500 rounded-2xl text-sm text-slate-900 outline-none transition-all"
+                    onChange={e => setRespondentRole(e.target.value)}
+                    className={`w-full px-4 py-3.5 bg-white border-2 rounded-2xl text-sm outline-none transition-all ${
+                      respondentRole ? 'border-blue-500 text-slate-900' : 'border-slate-200 text-slate-400'
+                    }`}
                   >
-                    <option value="">Cargo (opcional)</option>
+                    <option value="">Cargo *</option>
                     <option value="Caixa">Caixa</option>
                     <option value="Cobrança">Cobrança</option>
                     <option value="Estoquista">Estoquista</option>
                     <option value="Gerente">Gerente</option>
                     <option value="Indenização">Indenização</option>
+                    <option value="Limpeza">Limpeza</option>
                     <option value="Vendedor">Vendedor</option>
                   </select>
+
+                  {/* Nome — obrigatório */}
                   <input
                     type="text"
-                    placeholder="Nome completo"
+                    placeholder="Nome completo *"
                     value={respondentInfo.name}
-                    onChange={e => {
-                      setIsAnonymous(false);
-                      setRespondentInfo({ ...respondentInfo, name: e.target.value });
-                    }}
-                    className="w-full px-4 py-3 bg-white border border-slate-200 focus:border-blue-500 rounded-2xl text-sm text-slate-900 outline-none transition-all"
+                    onChange={e => setRespondentInfo({ ...respondentInfo, name: e.target.value })}
+                    className="w-full px-4 py-3.5 bg-white border-2 border-slate-200 focus:border-blue-500 rounded-2xl text-sm text-slate-900 outline-none transition-all"
                   />
-                  <input
-                    type="email"
-                    placeholder="E-mail (opcional)"
-                    value={respondentInfo.email}
-                    onChange={e => {
-                      setIsAnonymous(false);
-                      setRespondentInfo({ ...respondentInfo, email: e.target.value });
-                    }}
-                    className="w-full px-4 py-3 bg-white border border-slate-200 focus:border-blue-500 rounded-2xl text-sm text-slate-900 outline-none transition-all"
-                  />
+
+                  {/* Telefone — opcional */}
                   <input
                     type="tel"
                     placeholder="Telefone (opcional)"
                     value={respondentInfo.phone}
-                    onChange={e => {
-                      setIsAnonymous(false);
-                      setRespondentInfo({ ...respondentInfo, phone: e.target.value });
-                    }}
-                    className="w-full px-4 py-3 bg-white border border-slate-200 focus:border-blue-500 rounded-2xl text-sm text-slate-900 outline-none transition-all"
+                    onChange={e => setRespondentInfo({ ...respondentInfo, phone: e.target.value })}
+                    className="w-full px-4 py-3.5 bg-white border-2 border-slate-200 focus:border-blue-500 rounded-2xl text-sm text-slate-900 outline-none transition-all"
                   />
+
+                  {/* Email — opcional */}
+                  <input
+                    type="email"
+                    placeholder="E-mail (opcional)"
+                    value={respondentInfo.email}
+                    onChange={e => setRespondentInfo({ ...respondentInfo, email: e.target.value })}
+                    className="w-full px-4 py-3.5 bg-white border-2 border-slate-200 focus:border-blue-500 rounded-2xl text-sm text-slate-900 outline-none transition-all"
+                  />
+
+                  {!canAdvanceFromParticipantInfo() && (
+                    <p className="text-xs text-slate-400 text-center pt-1">
+                      * Cargo e nome são obrigatórios
+                    </p>
+                  )}
                 </div>
               </div>
             )}
 
-            {/* ── PERGUNTAS ── */}
-            {currentStep >= 0 && currentQuestion && (
-              <div className="space-y-8">
-                {/* Cabeçalho de seção — só aparece quando a seção muda */}
-                {(currentQuestion as any).section &&
-                 (currentStep === 0 ||
-                  (currentQuestion as any).section !== (questions[currentStep - 1] as any)?.section
-                 ) && (
-                  <div className="flex items-center gap-3 mb-2">
-                    <div className="h-px flex-1 bg-blue-100 dark:bg-blue-900" />
-                    <span className="text-xs font-bold uppercase tracking-widest text-blue-500 dark:text-blue-400 px-2">
-                      {(currentQuestion as any).section}
-                    </span>
-                    <div className="h-px flex-1 bg-blue-100 dark:bg-blue-900" />
-                  </div>
-                )}
+            {/* ── STEPS 0+: PERGUNTAS E COMENTÁRIOS DE SEÇÃO ── */}
+            {currentStep >= 0 && currentVirtual && (
+              <>
+                {/* PERGUNTA */}
+                {currentVirtual.type === 'question' && currentQuestion && (
+                  <div className={`space-y-8 rounded-3xl transition-all ${
+                    validationError && currentQuestion?.is_required && !answers[currentQuestion.id]
+                      ? 'ring-2 ring-red-200 ring-offset-4'
+                      : ''
+                  }`}>
+                    {/* Cabeçalho de seção — só quando muda */}
+                    {(currentQuestion as any).section && (
+                      (currentVirtual.index === 0 ||
+                      (questions[(currentVirtual.index) - 1] as any)?.section !== (currentQuestion as any).section)
+                    ) && (
+                      <div className="flex items-center gap-3">
+                        <div className="h-px flex-1 bg-blue-100" />
+                        <span className="text-xs font-bold uppercase tracking-widest text-blue-500 px-2">
+                          {(currentQuestion as any).section}
+                        </span>
+                        <div className="h-px flex-1 bg-blue-100" />
+                      </div>
+                    )}
 
-                <div className="flex items-start gap-3">
-                  <span className="w-8 h-8 bg-blue-600 text-white rounded-xl flex items-center justify-center font-bold text-sm flex-shrink-0 mt-0.5 shadow-md shadow-blue-200">
-                    {currentStep + 1}
-                  </span>
-                  <h2 className="text-lg sm:text-2xl font-bold text-slate-900 leading-snug">
-                    {currentQuestion.question_text}
-                    {currentQuestion.is_required && <span className="text-red-500 ml-1">*</span>}
-                  </h2>
-                </div>
+                    <div className="flex items-start gap-3">
+                      <span className="w-8 h-8 bg-blue-600 text-white rounded-xl flex items-center justify-center font-bold text-sm flex-shrink-0 mt-0.5 shadow-md shadow-blue-200">
+                        {currentVirtual.index + 1}
+                      </span>
+                      <h2 className="text-lg sm:text-2xl font-bold text-slate-900 leading-snug">
+                        {currentQuestion.question_text}
+                        {currentQuestion.is_required && <span className="text-red-500 ml-1">*</span>}
+                      </h2>
+                    </div>
 
-                <div className="space-y-4">
+                    <div className="space-y-4">
 
                   {/* TEXTO */}
                   {currentQuestion.question_type === 'short_text' && (
-                    <textarea
-                      autoFocus
-                      value={answers[currentQuestion.id] || ''}
-                      onChange={e => handleAnswerChange(currentQuestion.id, e.target.value)}
-                      placeholder="Digite sua resposta aqui..."
-                      rows={4}
-                      className="w-full px-4 py-3 sm:px-6 sm:py-4 bg-white border-2 border-transparent focus:border-blue-600 rounded-2xl text-sm sm:text-base text-slate-900 outline-none shadow-md shadow-slate-100 transition-all resize-none"
-                    />
+                    <div className="relative">
+                      <textarea
+                        autoFocus
+                        value={answers[currentQuestion.id] || ''}
+                        onChange={e => handleAnswerChange(currentQuestion.id, e.target.value)}
+                        placeholder="Digite sua resposta aqui..."
+                        rows={4}
+                        maxLength={500}
+                        className="w-full px-4 py-3 sm:px-6 sm:py-4 bg-white border-2 border-transparent focus:border-blue-600 rounded-2xl text-sm sm:text-base text-slate-900 outline-none shadow-md shadow-slate-100 transition-all resize-none"
+                      />
+                      <span className="absolute bottom-3 right-4 text-[11px] text-slate-300 font-mono">
+                        {(answers[currentQuestion.id] || '').length}/500
+                      </span>
+                    </div>
                   )}
 
                   {/* RATING */}
@@ -459,6 +600,21 @@ const SurveyResponseForm: React.FC<SurveyResponseFormProps> = ({
                             />
                             <span className="text-base sm:text-xl font-bold">{val}</span>
                           </button>
+                        ))}
+                      </div>
+
+                      <div className="flex justify-between px-1">
+                        {['Péssimo', 'Ruim', 'Regular', 'Bom', 'Excelente'].map((label, i) => (
+                          <span
+                            key={i}
+                            className={`text-[10px] sm:text-xs text-center flex-1 transition-colors ${
+                              answers[currentQuestion.id] === i + 1
+                                ? 'text-blue-600 font-bold'
+                                : 'text-slate-300'
+                            }`}
+                          >
+                            {label}
+                          </span>
                         ))}
                       </div>
 
@@ -847,69 +1003,107 @@ const SurveyResponseForm: React.FC<SurveyResponseFormProps> = ({
                     );
                   })()}
 
-                </div>
-              </div>
+                    </div>
+
+                    {validationError && currentQuestion?.is_required && !answers[currentQuestion.id] && (
+                      <motion.p
+                        initial={{ opacity: 0, y: -4 }}
+                        animate={{ opacity: 1, y: 0 }}
+                        className="text-sm text-red-500 font-medium flex items-center gap-1.5 mt-2"
+                      >
+                        <span>⚠️</span> {validationError}
+                      </motion.p>
+                    )}
+                  </div>
+                )}
+
+                {/* COMENTÁRIO DE SEÇÃO */}
+                {currentVirtual.type === 'section_comment' && (
+                  <div className="space-y-6">
+                    <div>
+                      <div className="flex items-center gap-3 mb-4">
+                        <div className="h-px flex-1 bg-blue-100" />
+                        <span className="text-xs font-bold uppercase tracking-widest text-blue-500 px-2">
+                          {currentVirtual.section}
+                        </span>
+                        <div className="h-px flex-1 bg-blue-100" />
+                      </div>
+                      <h2 className="text-xl font-bold text-slate-900">
+                        Comentário sobre {currentVirtual.section}
+                      </h2>
+                      <p className="text-sm text-slate-400 mt-1">
+                        Deixe uma mensagem, sugestão ou observação sobre este bloco (opcional).
+                      </p>
+                    </div>
+                    <textarea
+                      value={sectionComments[currentVirtual.section] || ''}
+                      onChange={e => setSectionComments(prev => ({
+                        ...prev,
+                        [currentVirtual.section]: e.target.value,
+                      }))}
+                      placeholder={`Escreva aqui sobre ${currentVirtual.section}...`}
+                      rows={5}
+                      className="w-full px-4 py-4 bg-white border-2 border-slate-200 focus:border-blue-500 rounded-2xl text-sm text-slate-900 outline-none transition-all resize-none shadow-sm"
+                    />
+                    <p className="text-xs text-slate-400 text-center">
+                      Campo opcional — clique em {isLastVirtualStep ? '"Enviar"' : '"Próximo"'} para continuar
+                    </p>
+                  </div>
+                )}
+              </>
             )}
           </motion.div>
+          )}
         </AnimatePresence>
       </main>
 
       {/* ── FOOTER ── */}
-      {currentStep !== -2 && (
-        <footer className="bg-white border-t border-slate-200 px-4 py-3 sm:px-6 sm:py-4 flex items-center justify-between shrink-0 gap-3">
+      {!sectionTransition && (
+        <footer className="bg-white border-t border-slate-100 px-4 py-4 shrink-0">
+          <div className="max-w-lg mx-auto">
 
-          {/* Voltar */}
-          <button
-            disabled={isFirstStep}
-            onClick={() => setCurrentStep(currentStep - 1)}
-            className={`flex items-center gap-1.5 px-3 py-2.5 rounded-xl font-medium text-sm transition-all ${
-              isFirstStep
-                ? 'text-slate-200 cursor-not-allowed'
-                : 'text-slate-500 hover:text-slate-900 hover:bg-slate-100'
-            }`}
-          >
-            <ChevronLeft size={18} /> Voltar
-          </button>
+            {/* Step -2: botão Continuar */}
+            {currentStep === -2 && (
+              <button
+                onClick={() => setCurrentStep(0)}
+                disabled={!canAdvanceFromParticipantInfo()}
+                className="w-full py-4 bg-blue-600 hover:bg-blue-700 disabled:bg-slate-200 disabled:text-slate-400 active:scale-95 text-white text-sm font-semibold rounded-2xl transition-all"
+              >
+                Continuar →
+              </button>
+            )}
 
-          {/* Finalizar ou Próxima */}
-          {isLastStep ? (
-            <button
-              onClick={handleSubmit}
-              disabled={isSubmitting || !!(currentQuestion?.is_required && !answers[currentQuestion.id])}
-              className={`flex items-center gap-2 bg-green-600 hover:bg-green-700 text-white px-6 py-3 rounded-2xl font-semibold text-sm shadow-lg shadow-green-200 transition-all active:scale-95 ${
-                isSubmitting || (currentQuestion?.is_required && !answers[currentQuestion?.id])
-                  ? 'opacity-50 cursor-not-allowed'
-                  : ''
-              }`}
-            >
-              {isSubmitting
-                ? <Loader2 className="animate-spin" size={18} />
-                : <Send size={18} />}
-              Enviar resposta
-            </button>
-          ) : (
-            <button
-              onClick={() => {
-                if (currentStep === -1 && canAdvanceFromIdentification()) {
-                  setCurrentStep(0);
-                } else if (currentStep >= 0) {
-                  setCurrentStep(currentStep + 1);
-                }
-              }}
-              disabled={
-                (currentStep === -1 && !canAdvanceFromIdentification()) ||
-                (currentStep >= 0 && !!(currentQuestion?.is_required && !answers[currentQuestion?.id]))
-              }
-              className={`flex items-center gap-2 bg-blue-600 hover:bg-blue-700 text-white px-6 py-3 rounded-2xl font-semibold text-sm shadow-lg shadow-blue-200 transition-all active:scale-95 ${
-                (currentStep === -1 && !canAdvanceFromIdentification()) ||
-                (currentStep >= 0 && currentQuestion?.is_required && !answers[currentQuestion?.id])
-                  ? 'opacity-50 cursor-not-allowed'
-                  : ''
-              }`}
-            >
-              Próxima <ChevronRight size={18} />
-            </button>
-          )}
+            {/* Steps 0+: navegação */}
+            {currentStep >= 0 && (
+              <div className="flex gap-3">
+                <button
+                  onClick={() => setCurrentStep(prev => prev === 0 ? -2 : prev - 1)}
+                  className="w-12 h-12 flex items-center justify-center rounded-2xl border-2 border-slate-200 text-slate-500 hover:border-slate-300 transition-all flex-shrink-0"
+                >
+                  <ChevronLeft size={20} />
+                </button>
+
+                {isLastVirtualStep ? (
+                  <button
+                    onClick={handleSubmit}
+                    disabled={isSubmitting || !!(currentQuestion?.is_required && !answers[currentQuestion.id])}
+                    className="flex-1 py-4 bg-blue-600 hover:bg-blue-700 disabled:bg-slate-200 disabled:text-slate-400 active:scale-95 text-white text-sm font-semibold rounded-2xl transition-all flex items-center justify-center gap-2"
+                  >
+                    {isSubmitting ? <Loader2 size={18} className="animate-spin" /> : <Send size={18} />}
+                    {isSubmitting ? 'Enviando...' : 'Enviar respostas'}
+                  </button>
+                ) : (
+                  <button
+                    onClick={handleNext}
+                    disabled={!!(currentQuestion?.is_required && !answers[currentQuestion.id])}
+                    className="flex-1 py-4 bg-blue-600 hover:bg-blue-700 disabled:bg-slate-200 disabled:text-slate-400 active:scale-95 text-white text-sm font-semibold rounded-2xl transition-all"
+                  >
+                    Próximo →
+                  </button>
+                )}
+              </div>
+            )}
+          </div>
         </footer>
       )}
     </div>

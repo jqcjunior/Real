@@ -77,6 +77,10 @@ const SurveyEditor: React.FC<SurveyEditorProps> = ({
   const [welcomeMessage, setWelcomeMessage] = useState<string>(
     (editingSurvey as any)?.welcome_message || ''
   );
+  const [logoUrl, setLogoUrl] = useState<string>(
+    (editingSurvey as any)?.logo_url || ''
+  );
+  const [uploadingLogo, setUploadingLogo] = useState(false);
 
   // Step 2
   const [targetType, setTargetType] = useState<SurveyTargetType>(
@@ -253,6 +257,7 @@ const SurveyEditor: React.FC<SurveyEditorProps> = ({
         .insert([{
           title: title || 'Pesquisa (rascunho)',
           description,
+          logo_url: logoUrl.trim() || null,
           is_active: false,
           allow_anonymous: allowAnonymous,
           welcome_message: showWelcomeMessage ? welcomeMessage.trim() || null : null,
@@ -275,6 +280,28 @@ const SurveyEditor: React.FC<SurveyEditorProps> = ({
     } catch (err: any) {
       toast.error('Erro ao criar rascunho: ' + err.message);
       return null;
+    }
+  };
+
+  const handleLogoUpload = async (file: File) => {
+    if (!file) return;
+    setUploadingLogo(true);
+    try {
+      const ext = file.name.split('.').pop();
+      const path = `logos/${Date.now()}.${ext}`;
+      const { error: upErr } = await supabase.storage
+        .from('survey-images')
+        .upload(path, file, { upsert: true });
+      if (upErr) throw upErr;
+      const { data: urlData } = supabase.storage
+        .from('survey-images')
+        .getPublicUrl(path);
+      setLogoUrl(urlData.publicUrl);
+      toast.success('Logo carregada com sucesso');
+    } catch (err: any) {
+      toast.error('Erro ao carregar logo: ' + err.message);
+    } finally {
+      setUploadingLogo(false);
     }
   };
 
@@ -400,6 +427,7 @@ const SurveyEditor: React.FC<SurveyEditorProps> = ({
       const surveyData: any = {
         title,
         description,
+        logo_url: logoUrl.trim() || null,
         is_active: isActive,
         allow_anonymous: allowAnonymous,
         welcome_message: showWelcomeMessage ? welcomeMessage.trim() || null : null,
@@ -595,6 +623,56 @@ const SurveyEditor: React.FC<SurveyEditorProps> = ({
                         rows={3}
                         className="w-full px-4 py-3 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 focus:border-blue-500 rounded-xl text-sm text-slate-900 dark:text-white outline-none transition-all resize-none"
                       />
+                    </div>
+
+                    {/* Logo / Imagem da Pesquisa */}
+                    <div>
+                      <label className="block text-sm text-slate-600 dark:text-slate-400 mb-2">
+                        Logo ou imagem de capa <span className="text-slate-400 text-xs">(opcional)</span>
+                      </label>
+                      <div className="flex items-start gap-3 mb-4">
+                        {/* Preview */}
+                        {logoUrl && (
+                          <div className="w-16 h-16 rounded-xl border border-slate-200 dark:border-slate-700 overflow-hidden flex-shrink-0">
+                            <img src={logoUrl} alt="Logo" className="w-full h-full object-contain bg-white p-1" referrerPolicy="no-referrer" />
+                          </div>
+                        )}
+                        <div className="flex-1 space-y-2">
+                          <input
+                            type="text"
+                            value={logoUrl}
+                            onChange={e => setLogoUrl(e.target.value)}
+                            placeholder="Cole a URL da imagem ou faça upload →"
+                            className="w-full px-3 py-2 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 focus:border-blue-500 rounded-xl text-xs text-slate-700 dark:text-slate-300 outline-none transition-all"
+                          />
+                          <label className="flex items-center gap-2 px-3 py-2 bg-slate-50 dark:bg-slate-800 border border-dashed border-slate-300 dark:border-slate-600 rounded-xl text-xs text-slate-500 cursor-pointer hover:border-blue-400 transition-all">
+                            {uploadingLogo ? (
+                              <Loader2 size={14} className="animate-spin text-blue-500" />
+                            ) : (
+                              <ImageIcon size={14} />
+                            )}
+                            {uploadingLogo ? 'Enviando...' : 'Carregar imagem do computador'}
+                            <input
+                              type="file"
+                              accept="image/*"
+                              className="hidden"
+                              disabled={uploadingLogo}
+                              onChange={e => {
+                                const f = e.target.files?.[0];
+                                if (f) handleLogoUpload(f);
+                              }}
+                            />
+                          </label>
+                          {logoUrl && (
+                            <button
+                              onClick={() => setLogoUrl('')}
+                              className="text-xs text-red-400 hover:text-red-600 transition-colors"
+                            >
+                              ✕ Remover logo
+                            </button>
+                          )}
+                        </div>
+                      </div>
                     </div>
 
                     {/* Toggles */}
