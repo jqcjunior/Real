@@ -40,11 +40,13 @@ const SurveyResponseForm: React.FC<SurveyResponseFormProps> = ({
   const [motivos, setMotivos] = useState<Record<string, string>>({});
   const [grades, setGrades] = useState<Record<string, any>>({});
   const [respondentInfo, setRespondentInfo] = useState({ name: '', email: '', phone: '' });
+  const [respondentRole, setRespondentRole] = useState<string>('');
   const [isAnonymous, setIsAnonymous] = useState(false);
 
   // Para pesquisa externa começa em -1 (tela de identificação)
   // Para pesquisa interna começa em 0 (primeira pergunta)
-  const startStep = survey.target_type === 'external' ? -1 : 0;
+  const hasWelcome = !!(survey as any).welcome_message;
+  const startStep = hasWelcome ? -2 : (survey.target_type === 'external' ? -1 : 0);
   const [currentStep, setCurrentStep] = useState(startStep);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [isCompleted, setIsCompleted] = useState(false);
@@ -153,6 +155,7 @@ const SurveyResponseForm: React.FC<SurveyResponseFormProps> = ({
           respondent_name: isAnonymous ? null : (respondentInfo.name || null),
           respondent_email: isAnonymous ? null : (respondentInfo.email || null),
           respondent_phone: isAnonymous ? null : (respondentInfo.phone || null),
+          respondent_role: respondentRole || null,
         }]);
 
       if (rError) throw rError;
@@ -222,9 +225,11 @@ const SurveyResponseForm: React.FC<SurveyResponseFormProps> = ({
           <div className="min-w-0">
             <h1 className="text-sm font-semibold text-slate-900 truncate leading-tight">{survey.title}</h1>
             <p className="text-xs text-slate-400 mt-0.5">
-              {currentStep >= 0
-                ? `Pergunta ${currentStep + 1} de ${questions.length}`
-                : 'Identificação'}
+              {currentStep === -2
+                ? 'Boas-vindas'
+                : currentStep >= 0
+                  ? `Pergunta ${currentStep + 1} de ${questions.length}`
+                  : 'Identificação'}
             </p>
           </div>
         </div>
@@ -258,16 +263,40 @@ const SurveyResponseForm: React.FC<SurveyResponseFormProps> = ({
             className="w-full max-w-lg"
           >
 
+            {/* ── STEP -2: BOAS-VINDAS ── */}
+            {currentStep === -2 && (
+              <div className="space-y-8">
+                <div>
+                  <h2 className="text-2xl sm:text-3xl font-bold text-slate-900 dark:text-white leading-tight">
+                    {survey.title}
+                  </h2>
+                  {survey.description && (
+                    <p className="text-sm text-slate-400 mt-1">{survey.description}</p>
+                  )}
+                  <p className="text-base text-slate-700 dark:text-slate-300 mt-4 leading-relaxed whitespace-pre-line">
+                    {(survey as any).welcome_message}
+                  </p>
+                </div>
+                <button
+                  onClick={() => setCurrentStep(survey.target_type === 'external' ? -1 : 0)}
+                  className="w-full py-4 bg-blue-600 hover:bg-blue-700 active:scale-95 text-white text-sm font-semibold rounded-2xl transition-all"
+                >
+                  Começar →
+                </button>
+              </div>
+            )}
+
             {/* ── STEP -1: IDENTIFICAÇÃO ── */}
             {currentStep === -1 && (
               <div className="space-y-6">
                 <div>
-                  <h2 className="text-xl sm:text-2xl font-bold text-slate-900 leading-tight">
-                    Como você quer participar?
+                  <h2 className="text-xl sm:text-2xl font-bold text-slate-900 dark:text-white leading-tight">
+                    {survey.title}
                   </h2>
-                  <p className="text-sm text-slate-500 mt-1">
-                    Você pode se identificar ou responder de forma anônima.
-                  </p>
+                  {survey.description && (
+                    <p className="text-sm text-slate-500 mt-1">{survey.description}</p>
+                  )}
+                  <p className="text-sm text-slate-400 mt-3">Preencha os dados abaixo para participar.</p>
                 </div>
 
                 {/* Botão anônimo */}
@@ -317,6 +346,23 @@ const SurveyResponseForm: React.FC<SurveyResponseFormProps> = ({
                     <User size={14} className="text-slate-400" />
                     <span className="text-sm text-slate-500">Identificar-me</span>
                   </div>
+                  {/* Cargo */}
+                  <select
+                    value={respondentRole}
+                    onChange={e => {
+                      setIsAnonymous(false);
+                      setRespondentRole(e.target.value);
+                    }}
+                    className="w-full px-4 py-3 bg-white border border-slate-200 focus:border-blue-500 rounded-2xl text-sm text-slate-900 outline-none transition-all"
+                  >
+                    <option value="">Cargo (opcional)</option>
+                    <option value="Caixa">Caixa</option>
+                    <option value="Cobrança">Cobrança</option>
+                    <option value="Estoquista">Estoquista</option>
+                    <option value="Gerente">Gerente</option>
+                    <option value="Indenização">Indenização</option>
+                    <option value="Vendedor">Vendedor</option>
+                  </select>
                   <input
                     type="text"
                     placeholder="Nome completo"
@@ -354,6 +400,20 @@ const SurveyResponseForm: React.FC<SurveyResponseFormProps> = ({
             {/* ── PERGUNTAS ── */}
             {currentStep >= 0 && currentQuestion && (
               <div className="space-y-8">
+                {/* Cabeçalho de seção — só aparece quando a seção muda */}
+                {(currentQuestion as any).section &&
+                 (currentStep === 0 ||
+                  (currentQuestion as any).section !== (questions[currentStep - 1] as any)?.section
+                 ) && (
+                  <div className="flex items-center gap-3 mb-2">
+                    <div className="h-px flex-1 bg-blue-100 dark:bg-blue-900" />
+                    <span className="text-xs font-bold uppercase tracking-widest text-blue-500 dark:text-blue-400 px-2">
+                      {(currentQuestion as any).section}
+                    </span>
+                    <div className="h-px flex-1 bg-blue-100 dark:bg-blue-900" />
+                  </div>
+                )}
+
                 <div className="flex items-start gap-3">
                   <span className="w-8 h-8 bg-blue-600 text-white rounded-xl flex items-center justify-center font-bold text-sm flex-shrink-0 mt-0.5 shadow-md shadow-blue-200">
                     {currentStep + 1}
@@ -484,6 +544,36 @@ const SurveyResponseForm: React.FC<SurveyResponseFormProps> = ({
                           </motion.div>
                         )}
                       </AnimatePresence>
+                    </div>
+                  )}
+
+                  {/* ESCALA DE CARINHAS */}
+                  {currentQuestion.question_type === 'emoji_scale' && (
+                    <div className="flex justify-between gap-2">
+                      {[
+                        { emoji: '😢', label: 'Péssimo',   value: 1 },
+                        { emoji: '😕', label: 'Pouco',     value: 2 },
+                        { emoji: '😐', label: 'Normal',    value: 3 },
+                        { emoji: '😊', label: 'Muito',     value: 4 },
+                        { emoji: '😄', label: 'Excelente', value: 5 },
+                      ].map(opt => (
+                        <button
+                          key={opt.value}
+                          onClick={() => handleAnswerChange(currentQuestion.id, opt.value)}
+                          className={`flex-1 py-5 sm:py-7 rounded-2xl flex flex-col items-center justify-center gap-2 transition-all border-2 ${
+                            answers[currentQuestion.id] === opt.value
+                              ? 'bg-blue-50 border-blue-500 scale-105 shadow-lg shadow-blue-100'
+                              : 'bg-white border-slate-100 hover:border-blue-200'
+                          }`}
+                        >
+                          <span className="text-3xl sm:text-4xl">{opt.emoji}</span>
+                          <span className={`text-[10px] sm:text-xs font-semibold ${
+                            answers[currentQuestion.id] === opt.value ? 'text-blue-600' : 'text-slate-400'
+                          }`}>
+                            {opt.label}
+                          </span>
+                        </button>
+                      ))}
                     </div>
                   )}
 
@@ -765,61 +855,63 @@ const SurveyResponseForm: React.FC<SurveyResponseFormProps> = ({
       </main>
 
       {/* ── FOOTER ── */}
-      <footer className="bg-white border-t border-slate-200 px-4 py-3 sm:px-6 sm:py-4 flex items-center justify-between shrink-0 gap-3">
+      {currentStep !== -2 && (
+        <footer className="bg-white border-t border-slate-200 px-4 py-3 sm:px-6 sm:py-4 flex items-center justify-between shrink-0 gap-3">
 
-        {/* Voltar */}
-        <button
-          disabled={isFirstStep}
-          onClick={() => setCurrentStep(currentStep - 1)}
-          className={`flex items-center gap-1.5 px-3 py-2.5 rounded-xl font-medium text-sm transition-all ${
-            isFirstStep
-              ? 'text-slate-200 cursor-not-allowed'
-              : 'text-slate-500 hover:text-slate-900 hover:bg-slate-100'
-          }`}
-        >
-          <ChevronLeft size={18} /> Voltar
-        </button>
-
-        {/* Finalizar ou Próxima */}
-        {isLastStep ? (
+          {/* Voltar */}
           <button
-            onClick={handleSubmit}
-            disabled={isSubmitting || !!(currentQuestion?.is_required && !answers[currentQuestion.id])}
-            className={`flex items-center gap-2 bg-green-600 hover:bg-green-700 text-white px-6 py-3 rounded-2xl font-semibold text-sm shadow-lg shadow-green-200 transition-all active:scale-95 ${
-              isSubmitting || (currentQuestion?.is_required && !answers[currentQuestion?.id])
-                ? 'opacity-50 cursor-not-allowed'
-                : ''
+            disabled={isFirstStep}
+            onClick={() => setCurrentStep(currentStep - 1)}
+            className={`flex items-center gap-1.5 px-3 py-2.5 rounded-xl font-medium text-sm transition-all ${
+              isFirstStep
+                ? 'text-slate-200 cursor-not-allowed'
+                : 'text-slate-500 hover:text-slate-900 hover:bg-slate-100'
             }`}
           >
-            {isSubmitting
-              ? <Loader2 className="animate-spin" size={18} />
-              : <Send size={18} />}
-            Enviar resposta
+            <ChevronLeft size={18} /> Voltar
           </button>
-        ) : (
-          <button
-            onClick={() => {
-              if (currentStep === -1 && canAdvanceFromIdentification()) {
-                setCurrentStep(0);
-              } else if (currentStep >= 0) {
-                setCurrentStep(currentStep + 1);
+
+          {/* Finalizar ou Próxima */}
+          {isLastStep ? (
+            <button
+              onClick={handleSubmit}
+              disabled={isSubmitting || !!(currentQuestion?.is_required && !answers[currentQuestion.id])}
+              className={`flex items-center gap-2 bg-green-600 hover:bg-green-700 text-white px-6 py-3 rounded-2xl font-semibold text-sm shadow-lg shadow-green-200 transition-all active:scale-95 ${
+                isSubmitting || (currentQuestion?.is_required && !answers[currentQuestion?.id])
+                  ? 'opacity-50 cursor-not-allowed'
+                  : ''
+              }`}
+            >
+              {isSubmitting
+                ? <Loader2 className="animate-spin" size={18} />
+                : <Send size={18} />}
+              Enviar resposta
+            </button>
+          ) : (
+            <button
+              onClick={() => {
+                if (currentStep === -1 && canAdvanceFromIdentification()) {
+                  setCurrentStep(0);
+                } else if (currentStep >= 0) {
+                  setCurrentStep(currentStep + 1);
+                }
+              }}
+              disabled={
+                (currentStep === -1 && !canAdvanceFromIdentification()) ||
+                (currentStep >= 0 && !!(currentQuestion?.is_required && !answers[currentQuestion?.id]))
               }
-            }}
-            disabled={
-              (currentStep === -1 && !canAdvanceFromIdentification()) ||
-              (currentStep >= 0 && !!(currentQuestion?.is_required && !answers[currentQuestion?.id]))
-            }
-            className={`flex items-center gap-2 bg-blue-600 hover:bg-blue-700 text-white px-6 py-3 rounded-2xl font-semibold text-sm shadow-lg shadow-blue-200 transition-all active:scale-95 ${
-              (currentStep === -1 && !canAdvanceFromIdentification()) ||
-              (currentStep >= 0 && currentQuestion?.is_required && !answers[currentQuestion?.id])
-                ? 'opacity-50 cursor-not-allowed'
-                : ''
-            }`}
-          >
-            Próxima <ChevronRight size={18} />
-          </button>
-        )}
-      </footer>
+              className={`flex items-center gap-2 bg-blue-600 hover:bg-blue-700 text-white px-6 py-3 rounded-2xl font-semibold text-sm shadow-lg shadow-blue-200 transition-all active:scale-95 ${
+                (currentStep === -1 && !canAdvanceFromIdentification()) ||
+                (currentStep >= 0 && currentQuestion?.is_required && !answers[currentQuestion?.id])
+                  ? 'opacity-50 cursor-not-allowed'
+                  : ''
+              }`}
+            >
+              Próxima <ChevronRight size={18} />
+            </button>
+          )}
+        </footer>
+      )}
     </div>
   );
 };

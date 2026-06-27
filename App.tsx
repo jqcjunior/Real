@@ -901,6 +901,15 @@ const App: React.FC = () => {
                                 if (survey.target_category === 'all_cashiers') {
                                     if (roleLevel !== 'cashier') return false;
                                 }
+                                if (survey.target_category === 'all_sellers') {
+                                    if (roleLevel !== 'seller') return false;
+                                }
+                                if (survey.target_category === 'all_estoquistas') {
+                                    if (roleLevel !== 'estoquista') return false;
+                                }
+                                if (survey.target_category === 'all_cobranca') {
+                                    if (roleLevel !== 'cobranca') return false;
+                                }
                                 if (survey.target_category === 'specific_users') {
                                     if (!survey.target_user_ids?.includes(user.id)) return false;
                                 }

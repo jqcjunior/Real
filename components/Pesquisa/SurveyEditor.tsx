@@ -16,6 +16,7 @@ import {
 const QUESTION_TYPES = [
   { value: 'short_text',      label: 'Texto livre' },
   { value: 'rating',          label: 'Avaliação (1-5 estrelas)' },
+  { value: 'emoji_scale',     label: '😊 Escala de carinhas' },
   { value: 'yes_no',          label: 'Sim / Não' },
   { value: 'multiple_choice', label: 'Múltipla escolha' },
   { value: 'product_item',    label: '📦 Pesquisa de Item' },
@@ -69,6 +70,12 @@ const SurveyEditor: React.FC<SurveyEditorProps> = ({
   const [isActive, setIsActive] = useState(editingSurvey?.is_active ?? true);
   const [allowAnonymous, setAllowAnonymous] = useState<boolean>(
     (editingSurvey as any)?.allow_anonymous ?? true
+  );
+  const [showWelcomeMessage, setShowWelcomeMessage] = useState<boolean>(
+    !!(editingSurvey as any)?.welcome_message
+  );
+  const [welcomeMessage, setWelcomeMessage] = useState<string>(
+    (editingSurvey as any)?.welcome_message || ''
   );
 
   // Step 2
@@ -248,6 +255,7 @@ const SurveyEditor: React.FC<SurveyEditorProps> = ({
           description,
           is_active: false,
           allow_anonymous: allowAnonymous,
+          welcome_message: showWelcomeMessage ? welcomeMessage.trim() || null : null,
           target_type: targetType,
           target_category: targetType === 'internal' ? targetCategory : null,
           results_visible_to: resultsVisibleTo,
@@ -394,6 +402,7 @@ const SurveyEditor: React.FC<SurveyEditorProps> = ({
         description,
         is_active: isActive,
         allow_anonymous: allowAnonymous,
+        welcome_message: showWelcomeMessage ? welcomeMessage.trim() || null : null,
         target_type: targetType,
         target_category: targetType === 'internal' ? targetCategory : null,
         target_store_ids: targetStoreIds.length > 0 ? targetStoreIds : null,
@@ -429,6 +438,7 @@ const SurveyEditor: React.FC<SurveyEditorProps> = ({
           survey_id: surveyId,
           question_text: q.question_text,
           question_type: q.question_type,
+          section: (q as any).section || null,
           options: q.options || [],
           is_required: q.is_required ?? true,
           is_active: q.is_active !== false,
@@ -601,6 +611,26 @@ const SurveyEditor: React.FC<SurveyEditorProps> = ({
                         value={allowAnonymous}
                         onChange={setAllowAnonymous}
                       />
+                      <ToggleRow
+                        label="Mensagem de boas-vindas"
+                        description="Exibe uma tela de introdução antes da pesquisa começar"
+                        value={showWelcomeMessage}
+                        onChange={(v) => { setShowWelcomeMessage(v); if (!v) setWelcomeMessage(''); }}
+                      />
+                      {showWelcomeMessage && (
+                        <div className="px-4 pb-4 -mt-2 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-xl">
+                          <label className="block text-sm text-slate-600 dark:text-slate-400 mb-2 pt-3">
+                            Mensagem inicial
+                          </label>
+                          <textarea
+                            value={welcomeMessage}
+                            onChange={e => setWelcomeMessage(e.target.value)}
+                            placeholder="Ex: Olá! Esta pesquisa leva apenas 2 minutos. Sua opinião é muito importante para nós."
+                            rows={3}
+                            className="w-full px-4 py-3 bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 focus:border-blue-500 rounded-xl text-sm text-slate-900 dark:text-white outline-none transition-all resize-none"
+                          />
+                        </div>
+                      )}
                     </div>
                   </div>
                 </>
@@ -652,7 +682,10 @@ const SurveyEditor: React.FC<SurveyEditorProps> = ({
                         >
                           <option value="all_employees">Todos (todos os funcionários)</option>
                           <option value="all_managers">Gerentes</option>
+                          <option value="all_sellers">Vendedores</option>
                           <option value="all_cashiers">Caixas</option>
+                          <option value="all_estoquistas">Estoquistas</option>
+                          <option value="all_cobranca">Cobrança</option>
                         </select>
                       </div>
                     )}
@@ -773,15 +806,24 @@ const SurveyEditor: React.FC<SurveyEditorProps> = ({
                           {/* Linha superior */}
                           <div className="flex items-start gap-3 p-4">
                             <span className="text-xs text-slate-400 font-medium mt-1 w-5 flex-shrink-0 text-center">{idx + 1}</span>
-                            <input
-                              type="text"
-                              value={q.question_text || ''}
-                              onChange={e => updateQuestion(idx, 'question_text', e.target.value)}
-                              placeholder="Digite a pergunta..."
-                              className={`flex-1 bg-transparent text-sm text-slate-900 dark:text-white outline-none placeholder:text-slate-400 min-w-0 ${
-                                q.is_active === false ? 'line-through text-slate-400' : ''
-                              }`}
-                            />
+                            <div className="flex-1 min-w-0">
+                              <input
+                                type="text"
+                                value={q.question_text || ''}
+                                onChange={e => updateQuestion(idx, 'question_text', e.target.value)}
+                                placeholder="Digite a pergunta..."
+                                className={`w-full bg-transparent text-sm text-slate-900 dark:text-white outline-none placeholder:text-slate-400 min-w-0 ${
+                                  q.is_active === false ? 'line-through text-slate-400' : ''
+                                }`}
+                              />
+                              <input
+                                type="text"
+                                value={(q as any).section || ''}
+                                onChange={e => updateQuestion(idx, 'section', e.target.value || null)}
+                                placeholder="Seção (ex: Atendimento, Produtos...)"
+                                className="w-full mt-1 pl-8 bg-transparent text-xs text-blue-500 dark:text-blue-400 outline-none placeholder:text-slate-300 dark:placeholder:text-slate-600 border-b border-dashed border-slate-200 dark:border-slate-700 pb-1 focus:border-blue-400 transition-all"
+                              />
+                            </div>
                             <select
                               value={q.question_type || 'short_text'}
                               onChange={e => updateQuestion(idx, 'question_type', e.target.value)}
@@ -1173,6 +1215,16 @@ const SurveyEditor: React.FC<SurveyEditorProps> = ({
                       <div className="flex gap-2">
                         <span className="text-xs px-2 py-1 border border-slate-200 rounded-lg text-slate-400">Sim</span>
                         <span className="text-xs px-2 py-1 border border-slate-200 rounded-lg text-slate-400">Não</span>
+                      </div>
+                    )}
+                    {q.question_type === 'emoji_scale' && (
+                      <div className="flex gap-2 mt-2 pl-8">
+                        {['😢','😕','😐','😊','😄'].map((emoji, i) => (
+                          <div key={i} className="flex flex-col items-center gap-1">
+                            <span className="text-xl">{emoji}</span>
+                            <span className="text-[9px] text-slate-400">{['Péssimo','Pouco','Normal','Muito','Excelente'][i]}</span>
+                          </div>
+                        ))}
                       </div>
                     )}
                     {q.question_type === 'short_text' && (

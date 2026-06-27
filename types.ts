@@ -394,7 +394,7 @@ export interface PixSale {
   createdAt?: string;
 }
 
-export type AdminRoleLevel = 'admin' | 'manager' | 'cashier' | 'sorvete';
+export type AdminRoleLevel = 'admin' | 'manager' | 'cashier' | 'sorvete' | 'seller' | 'estoquista' | 'cobranca';
 
 export interface AdminUser {
   id: string;
@@ -412,8 +412,8 @@ export interface AdminUser {
    🔹 SISTEMA DE PESQUISAS
 ========================= */
 export type SurveyTargetType = 'internal' | 'external';
-export type SurveyTargetCategory = 'all_managers' | 'all_cashiers' | 'all_sellers' | 'all_ice_cream' | 'specific_stores' | 'specific_users' | 'all_employees';
-export type SurveyQuestionType = 'short_text' | 'rating' | 'multiple_choice' | 'yes_no' | 'product_item';
+export type SurveyTargetCategory = 'all_managers' | 'all_cashiers' | 'all_sellers' | 'all_estoquistas' | 'all_cobranca' | 'all_ice_cream' | 'specific_stores' | 'specific_users' | 'all_employees';
+export type SurveyQuestionType = 'short_text' | 'rating' | 'multiple_choice' | 'yes_no' | 'product_item' | 'emoji_scale';
 export type SurveyResultVisibility = 'admin' | 'store_manager' | 'respondent';
 
 export interface Survey {
@@ -431,6 +431,7 @@ export interface Survey {
   created_at: string;
   updated_at: string;
   public_token?: string;
+  welcome_message?: string | null;
   thank_you_message?: string;
 }
 
@@ -438,6 +439,7 @@ export interface SurveyQuestion {
   id: string;
   survey_id: string;
   question_text: string;
+  section?: string | null;
   question_type: SurveyQuestionType;
   options: string[];
   is_required: boolean;
