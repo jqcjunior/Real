@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import { supabase } from '../../services/supabaseClient';
 import { ensureSession } from '../../services/authService';
 import { toast } from 'sonner';
@@ -275,6 +275,31 @@ const SurveyResultsViewer: React.FC<SurveyResultsViewerProps> = ({ survey, curre
     URL.revokeObjectURL(url);
   };
 
+  // Agrupar perguntas por seção
+  const groupedQuestions = useMemo(() => {
+    const groups: { section: string | null; questions: typeof questions }[] = [];
+    const seen = new Map<string, typeof questions>();
+
+    questions.forEach(q => {
+      const sec = (q as any).section || null;
+      const key = sec ?? '__geral__';
+      if (!seen.has(key)) {
+        seen.set(key, []);
+        groups.push({ section: sec, questions: seen.get(key)! });
+      }
+      seen.get(key)!.push(q);
+    });
+
+    return groups;
+  }, [questions]);
+
+  // Índice global da pergunta (para manter numeração)
+  const questionIndex = useMemo(() => {
+    const map = new Map<string, number>();
+    questions.forEach((q, i) => map.set(q.id, i + 1));
+    return map;
+  }, [questions]);
+
   return (
     <div className="p-4 md:p-8 max-w-6xl mx-auto space-y-6">
 
@@ -387,204 +412,252 @@ const SurveyResultsViewer: React.FC<SurveyResultsViewerProps> = ({ survey, curre
             <p className="text-sm font-black uppercase text-slate-400 tracking-widest">Nenhuma resposta ainda</p>
           </div>
         ) : (
-          <div className="space-y-4">
-            {questions.map((q, idx) => {
-              const stats = calculateStats(q);
-              const COLORS = ['#378ADD', '#639922', '#BA7517', '#E24B4A', '#7F77DD', '#D4537E'];
-              return (
-                <div key={q.id} className="bg-white dark:bg-slate-900 rounded-2xl border border-slate-100 dark:border-slate-800 p-5">
-                  <div className="flex items-start gap-3 mb-4">
-                    <span className="w-6 h-6 bg-blue-50 dark:bg-blue-900/20 text-blue-600 rounded-lg flex items-center justify-center text-xs font-black flex-shrink-0">{idx + 1}</span>
-                    <p className="text-sm font-black uppercase tracking-tight text-slate-900 dark:text-white leading-snug line-clamp-2">{q.question_text}</p>
+          <div className="space-y-6">
+            {groupedQuestions.map(({ section, questions: sectionQs }) => (
+              <div key={section ?? '__geral__'} className="space-y-3">
+
+                {/* Cabeçalho da seção */}
+                {section && (
+                  <div className="flex items-center gap-3 pt-2">
+                    <div className="h-px flex-1 bg-blue-100 dark:bg-blue-900/30" />
+                    <span className="text-[10px] font-black uppercase tracking-widest text-blue-500 px-3
+                      py-1 bg-blue-50 dark:bg-blue-900/20 rounded-full">
+                      {section}
+                    </span>
+                    <div className="h-px flex-1 bg-blue-100 dark:bg-blue-900/30" />
                   </div>
+                )}
 
-                  {/* RATING */}
-                  {q.question_type === 'rating' && (
-                    <div className="flex items-center gap-4">
-                      <p className="text-4xl font-black text-blue-600">{(stats as any).avg}</p>
-                      <div>
-                        <div className="flex gap-1">
-                          {[1,2,3,4,5].map(i => <Star key={i} size={14} fill={i <= Math.round(Number((stats as any).avg)) ? '#378ADD' : 'none'} className="text-blue-400" />)}
-                        </div>
-                        <p className="text-[10px] text-slate-400 mt-1">{(stats as any).total} avaliações</p>
+                {/* Perguntas da seção */}
+                {sectionQs.map(q => {
+                  const stats = calculateStats(q);
+                  const idx = (questionIndex.get(q.id) ?? 1) - 1;
+                  const COLORS = ['#378ADD', '#639922', '#BA7517', '#E24B4A', '#7F77DD', '#D4537E'];
+                  return (
+                    <div key={q.id} className="bg-white dark:bg-slate-900 rounded-2xl border border-slate-100 dark:border-slate-800 p-5">
+                      <div className="flex items-start gap-3 mb-4">
+                        <span className="w-6 h-6 bg-blue-50 dark:bg-blue-900/20 text-blue-600 rounded-lg flex items-center justify-center text-xs font-black flex-shrink-0">
+                          {questionIndex.get(q.id)}
+                        </span>
+                        <p className="text-sm font-black uppercase tracking-tight text-slate-900 dark:text-white leading-snug">
+                          {q.question_text}
+                        </p>
                       </div>
-                    </div>
-                  )}
 
-                  {/* MULTIPLE CHOICE / BOOLEAN — BARRAS HORIZONTAIS CSS */}
-                  {(q.question_type === 'multiple_choice' || q.question_type === 'yes_no') && (
-                    <div className="space-y-2">
-                      {((stats as any).stats as {name: string, value: number}[]).map((item, i) => {
-                        const pct = responses.length > 0 ? Math.round((item.value / responses.length) * 100) : 0;
-                        return (
-                          <div key={i} className="flex items-center gap-3">
-                            <span className="text-xs font-bold text-slate-500 w-36 truncate flex-shrink-0">{item.name}</span>
-                            <div className="flex-1 h-2 bg-slate-100 dark:bg-slate-700 rounded-full overflow-hidden">
-                              <div className="h-full rounded-full transition-all" style={{ width: `${pct}%`, background: COLORS[i % COLORS.length] }} />
+                      {/* RATING */}
+                      {q.question_type === 'rating' && (
+                        <div className="flex items-center gap-4">
+                          <p className="text-4xl font-black text-blue-600">{(stats as any).avg}</p>
+                          <div>
+                            <div className="flex gap-1">
+                              {[1,2,3,4,5].map(i => <Star key={i} size={14} fill={i <= Math.round(Number((stats as any).avg)) ? '#378ADD' : 'none'} className="text-blue-400" />)}
                             </div>
-                            <span className="text-[10px] font-bold text-slate-400 w-12 text-right flex-shrink-0">{item.value} · {pct}%</span>
+                            <p className="text-[10px] text-slate-400 mt-1">{(stats as any).total} avaliações</p>
                           </div>
-                        );
-                      })}
-                      {q.question_type === 'yes_no' && (stats as any).motivos?.length > 0 && (
-                        <div className="mt-3 pt-3 border-t border-slate-100 dark:border-slate-800">
-                          <p className="text-[9px] font-black uppercase tracking-widest text-slate-400 mb-2 flex items-center gap-1"><MessageSquare size={11} /> {(stats as any).motivos.length} motivo(s) do não</p>
-                          {((stats as any).motivos as string[]).map((m, i) => (
-                            <p key={i} className="text-xs text-slate-500 italic bg-slate-50 dark:bg-slate-800 rounded-lg px-3 py-2 mb-1">"{m}"</p>
-                          ))}
                         </div>
                       )}
-                    </div>
-                  )}
 
-                  {/* TEXT */}
-                  {q.question_type === 'short_text' && (
-                    <div className="space-y-2">
-                      {((stats as string[]).slice(0, 3)).map((text, i) => (
-                        <p key={i} className="text-xs text-slate-500 italic bg-slate-50 dark:bg-slate-800 rounded-lg px-3 py-2">"{text}"</p>
-                      ))}
-                      {(stats as string[]).length > 3 && (
-                        <p className="text-xs text-blue-600 font-bold">+ {(stats as string[]).length - 3} respostas</p>
-                      )}
-                    </div>
-                  )}
-
-                  {/* PRODUCT ITEM */}
-                  {q.question_type === 'product_item' && (stats as any).type === 'product_item' && (() => {
-                    const s = stats as any;
-                    const product = s.product || {};
-                    const pctSim = s.total > 0 ? Math.round((s.simCount / s.total) * 100) : 0;
-                    
-                    return (
-                      <div className="space-y-4">
-                        {/* Card do produto com foto */}
-                        <div className="flex gap-4 items-start">
-                          {product.image_url ? (
-                            <img 
-                              src={product.image_url} 
-                              alt={product.descricao || 'Produto'}
-                              className="w-24 h-24 object-contain bg-slate-50/50 rounded-xl border border-slate-100 dark:border-slate-800 flex-shrink-0"
-                              referrerPolicy="no-referrer"
-                            />
-                          ) : (
-                            <div className="w-24 h-24 bg-slate-50 dark:bg-slate-800 rounded-xl border border-slate-100 dark:border-slate-800 flex items-center justify-center flex-shrink-0">
-                              <Package size={24} className="text-slate-300" />
+                      {/* MULTIPLE CHOICE / BOOLEAN — BARRAS HORIZONTAIS CSS */}
+                      {(q.question_type === 'multiple_choice' || q.question_type === 'yes_no') && (
+                        <div className="space-y-2">
+                          {((stats as any).stats as {name: string, value: number}[]).map((item, i) => {
+                            const pct = responses.length > 0 ? Math.round((item.value / responses.length) * 100) : 0;
+                            return (
+                              <div key={i} className="flex items-center gap-3">
+                                <span className="text-xs font-bold text-slate-500 w-36 truncate flex-shrink-0">{item.name}</span>
+                                <div className="flex-1 h-2 bg-slate-100 dark:bg-slate-700 rounded-full overflow-hidden">
+                                  <div className="h-full rounded-full transition-all" style={{ width: `${pct}%`, background: COLORS[i % COLORS.length] }} />
+                                </div>
+                                <span className="text-[10px] font-bold text-slate-400 w-12 text-right flex-shrink-0">{item.value} · {pct}%</span>
+                              </div>
+                            );
+                          })}
+                          {q.question_type === 'yes_no' && (stats as any).motivos?.length > 0 && (
+                            <div className="mt-3 pt-3 border-t border-slate-100 dark:border-slate-800">
+                              <p className="text-[9px] font-black uppercase tracking-widest text-slate-400 mb-2 flex items-center gap-1"><MessageSquare size={11} /> {(stats as any).motivos.length} motivo(s) do não</p>
+                              {((stats as any).motivos as string[]).map((m, i) => (
+                                <p key={i} className="text-xs text-slate-500 italic bg-slate-50 dark:bg-slate-800 rounded-lg px-3 py-2 mb-1">"{m}"</p>
+                              ))}
                             </div>
                           )}
-                          <div className="flex-1 min-w-0">
-                            <div className="flex items-center gap-2 flex-wrap">
-                              <p className="text-sm font-black text-slate-900 dark:text-white">{product.marca || '—'}</p>
-                              {product.categoria && (
-                                <span className={`text-[9px] font-bold px-2 py-0.5 rounded-md ${
-                                  product.categoria === 'masculino' ? 'bg-blue-50 text-blue-600 dark:bg-blue-950/40 dark:text-blue-400' :
-                                  product.categoria === 'feminino' ? 'bg-pink-50 text-pink-600 dark:bg-pink-950/40 dark:text-pink-400' :
-                                  product.categoria === 'infantil' ? 'bg-yellow-50 text-yellow-600 dark:bg-yellow-950/40 dark:text-yellow-400' :
-                                  'bg-purple-50 text-purple-600 dark:bg-purple-950/40 dark:text-purple-400'
-                                }`}>
-                                  {product.categoria.toUpperCase()}
-                                </span>
+                        </div>
+                      )}
+
+                      {/* TEXT */}
+                      {q.question_type === 'short_text' && (
+                        <div className="space-y-2">
+                          {((stats as string[]).slice(0, 3)).map((text, i) => (
+                            <p key={i} className="text-xs text-slate-500 italic bg-slate-50 dark:bg-slate-800 rounded-lg px-3 py-2">"{text}"</p>
+                          ))}
+                          {(stats as string[]).length > 3 && (
+                            <p className="text-xs text-blue-600 font-bold">+ {(stats as string[]).length - 3} respostas</p>
+                          )}
+                        </div>
+                      )}
+
+                      {/* PRODUCT ITEM */}
+                      {q.question_type === 'product_item' && (stats as any).type === 'product_item' && (() => {
+                        const s = stats as any;
+                        const product = s.product || {};
+                        const pctSim = s.total > 0 ? Math.round((s.simCount / s.total) * 100) : 0;
+                        
+                        return (
+                          <div className="space-y-4">
+                            {/* Card do produto com foto */}
+                            <div className="flex gap-4 items-start">
+                              {product.image_url ? (
+                                <img 
+                                  src={product.image_url} 
+                                  alt={product.descricao || 'Produto'}
+                                  className="w-24 h-24 object-contain bg-slate-50/50 rounded-xl border border-slate-100 dark:border-slate-800 flex-shrink-0"
+                                  referrerPolicy="no-referrer"
+                                />
+                              ) : (
+                                <div className="w-24 h-24 bg-slate-50 dark:bg-slate-800 rounded-xl border border-slate-100 dark:border-slate-800 flex items-center justify-center flex-shrink-0">
+                                  <Package size={24} className="text-slate-300" />
+                                </div>
                               )}
+                              <div className="flex-1 min-w-0">
+                                <div className="flex items-center gap-2 flex-wrap">
+                                  <p className="text-sm font-black text-slate-900 dark:text-white">{product.marca || '—'}</p>
+                                  {product.categoria && (
+                                    <span className={`text-[9px] font-bold px-2 py-0.5 rounded-md ${
+                                      product.categoria === 'masculino' ? 'bg-blue-50 text-blue-600 dark:bg-blue-950/40 dark:text-blue-400' :
+                                      product.categoria === 'feminino' ? 'bg-pink-50 text-pink-600 dark:bg-pink-950/40 dark:text-pink-400' :
+                                      product.categoria === 'infantil' ? 'bg-yellow-50 text-yellow-600 dark:bg-yellow-950/40 dark:text-yellow-400' :
+                                      'bg-purple-50 text-purple-600 dark:bg-purple-950/40 dark:text-purple-400'
+                                    }`}>
+                                      {product.categoria.toUpperCase()}
+                                    </span>
+                                  )}
+                                </div>
+                                <p className="text-[10px] text-slate-400 mt-0.5">
+                                  Ref: {product.referencia || '—'} · Cor: {[product.cor1 || product.cor, product.cor2, product.cor3].filter(Boolean).join(' / ') || '—'}
+                                </p>
+                                {product.descricao && (
+                                  <p className="text-xs text-slate-500 mt-1">{product.descricao}</p>
+                                )}
+                                <div className="flex items-center gap-3 mt-2">
+                                  {product.preco_custo && (
+                                    <span className="text-xs text-slate-400">
+                                      Custo: <span className="font-bold">R$ {Number(product.preco_custo).toFixed(2).replace('.', ',')}</span>
+                                    </span>
+                                  )}
+                                  {product.preco_venda && (
+                                    <span className="text-xs text-green-600">
+                                      Venda: <span className="font-bold">R$ {Number(product.preco_venda).toFixed(2).replace('.', ',')}</span>
+                                    </span>
+                                  )}
+                                </div>
+                              </div>
                             </div>
-                            <p className="text-[10px] text-slate-400 mt-0.5">
-                              Ref: {product.referencia || '—'} · Cor: {[product.cor1 || product.cor, product.cor2, product.cor3].filter(Boolean).join(' / ') || '—'}
-                            </p>
-                            {product.descricao && (
-                              <p className="text-xs text-slate-500 mt-1">{product.descricao}</p>
+
+                            {/* Barra de aprovação SIM/NÃO */}
+                            <div className="bg-slate-50 dark:bg-slate-805/40 dark:bg-slate-800 rounded-xl p-4 space-y-3">
+                              <div className="flex items-center justify-between">
+                                <span className="text-[9px] font-black uppercase tracking-widest text-slate-400">Aprovação</span>
+                                <span className="text-xs font-bold text-slate-500">{s.total} resposta{s.total !== 1 ? 's' : ''}</span>
+                              </div>
+                              <div className="flex items-center gap-3">
+                                <div className="flex items-center gap-1.5">
+                                  <span className="w-3 h-3 bg-green-500 rounded-full" />
+                                  <span className="text-xs font-bold text-green-600">SIM {s.simCount}</span>
+                                </div>
+                                <div className="flex-1 h-3 bg-slate-200 dark:bg-slate-700 rounded-full overflow-hidden flex">
+                                  <div className="h-full bg-green-500 rounded-l-full transition-all" style={{ width: `${pctSim}%` }} />
+                                  <div className="h-full bg-red-400 rounded-r-full transition-all" style={{ width: `${100 - pctSim}%` }} />
+                                </div>
+                                <div className="flex items-center gap-1.5">
+                                  <span className="text-xs font-bold text-red-500">NÃO {s.naoCount}</span>
+                                  <span className="w-3 h-3 bg-red-400 rounded-full" />
+                                </div>
+                              </div>
+                            </div>
+
+                            {/* Grade agregada */}
+                            {Object.keys(s.gradeAgregada).length > 0 && (
+                              <div className="bg-slate-50 dark:bg-slate-800 rounded-xl p-4 space-y-3">
+                                <div className="flex items-center justify-between">
+                                  <span className="text-[9px] font-black uppercase tracking-widest text-slate-400">Grade Solicitada</span>
+                                  <span className="text-xs font-bold text-green-600 bg-green-50 dark:bg-green-950/40 px-2 py-0.5 rounded-md">
+                                    {s.totalPares} {product.categoria === 'acessorio' ? 'unidades' : 'pares'}
+                                  </span>
+                                </div>
+                                <div className="flex flex-wrap gap-2">
+                                  {Object.entries(s.gradeAgregada)
+                                    .sort(([a], [b]) => Number(a) - Number(b))
+                                    .map(([tam, qty]) => (
+                                      <div key={tam} className="flex flex-col items-center bg-white dark:bg-slate-900 rounded-lg border border-slate-200 dark:border-slate-700 px-3 py-2 min-w-[48px]">
+                                        <span className="text-[10px] font-bold text-slate-400">{tam}</span>
+                                        <span className="text-sm font-black text-slate-900 dark:text-white">{qty as number}</span>
+                                      </div>
+                                    ))}
+                                </div>
+                              </div>
                             )}
-                            <div className="flex items-center gap-3 mt-2">
-                              {product.preco_custo && (
-                                <span className="text-xs text-slate-400">
-                                  Custo: <span className="font-bold">R$ {Number(product.preco_custo).toFixed(2).replace('.', ',')}</span>
-                                </span>
-                              )}
-                              {product.preco_venda && (
-                                <span className="text-xs text-green-600">
-                                  Venda: <span className="font-bold">R$ {Number(product.preco_venda).toFixed(2).replace('.', ',')}</span>
-                                </span>
-                              )}
-                            </div>
-                          </div>
-                        </div>
 
-                        {/* Barra de aprovação SIM/NÃO */}
-                        <div className="bg-slate-50 dark:bg-slate-805/40 dark:bg-slate-800 rounded-xl p-4 space-y-3">
-                          <div className="flex items-center justify-between">
-                            <span className="text-[9px] font-black uppercase tracking-widest text-slate-400">Aprovação</span>
-                            <span className="text-xs font-bold text-slate-500">{s.total} resposta{s.total !== 1 ? 's' : ''}</span>
-                          </div>
-                          <div className="flex items-center gap-3">
-                            <div className="flex items-center gap-1.5">
-                              <span className="w-3 h-3 bg-green-500 rounded-full" />
-                              <span className="text-xs font-bold text-green-600">SIM {s.simCount}</span>
-                            </div>
-                            <div className="flex-1 h-3 bg-slate-200 dark:bg-slate-700 rounded-full overflow-hidden flex">
-                              <div className="h-full bg-green-500 rounded-l-full transition-all" style={{ width: `${pctSim}%` }} />
-                              <div className="h-full bg-red-400 rounded-r-full transition-all" style={{ width: `${100 - pctSim}%` }} />
-                            </div>
-                            <div className="flex items-center gap-1.5">
-                              <span className="text-xs font-bold text-red-500">NÃO {s.naoCount}</span>
-                              <span className="w-3 h-3 bg-red-400 rounded-full" />
-                            </div>
-                          </div>
-                        </div>
+                            {/* Totais financeiros */}
+                            {(s.custoPares > 0 || s.vendaPares > 0) && (
+                              <div className="grid grid-cols-2 gap-3">
+                                <div className="bg-slate-50 dark:bg-slate-800 rounded-xl p-3 text-center">
+                                  <p className="text-[9px] font-black uppercase tracking-widest text-slate-400 mb-1">Total Custo</p>
+                                  <p className="text-lg font-black text-slate-600 dark:text-slate-300">
+                                    R$ {s.custoPares.toFixed(2).replace('.', ',').replace(/\B(?=(\d{3})+(?!\d))/g, '.')}
+                                  </p>
+                                </div>
+                                <div className="bg-green-50 dark:bg-green-900/20 rounded-xl p-3 text-center">
+                                  <p className="text-[9px] font-black uppercase tracking-widest text-green-500 mb-1">Total Venda</p>
+                                  <p className="text-lg font-black text-green-600">
+                                    R$ {s.vendaPares.toFixed(2).replace('.', ',').replace(/\B(?=(\d{3})+(?!\d))/g, '.')}
+                                  </p>
+                                </div>
+                              </div>
+                            )}
 
-                        {/* Grade agregada */}
-                        {Object.keys(s.gradeAgregada).length > 0 && (
-                          <div className="bg-slate-50 dark:bg-slate-800 rounded-xl p-4 space-y-3">
-                            <div className="flex items-center justify-between">
-                              <span className="text-[9px] font-black uppercase tracking-widest text-slate-400">Grade Solicitada</span>
-                              <span className="text-xs font-bold text-green-600 bg-green-50 dark:bg-green-950/40 px-2 py-0.5 rounded-md">
-                                {s.totalPares} {product.categoria === 'acessorio' ? 'unidades' : 'pares'}
-                              </span>
-                            </div>
-                            <div className="flex flex-wrap gap-2">
-                              {Object.entries(s.gradeAgregada)
-                                .sort(([a], [b]) => Number(a) - Number(b))
-                                .map(([tam, qty]) => (
-                                  <div key={tam} className="flex flex-col items-center bg-white dark:bg-slate-900 rounded-lg border border-slate-200 dark:border-slate-700 px-3 py-2 min-w-[48px]">
-                                    <span className="text-[10px] font-bold text-slate-400">{tam}</span>
-                                    <span className="text-sm font-black text-slate-900 dark:text-white">{qty as number}</span>
-                                  </div>
+                            {/* Motivos do NÃO */}
+                            {s.motivos.length > 0 && (
+                              <div className="pt-2 border-t border-slate-100 dark:border-slate-800">
+                                <p className="text-[9px] font-black uppercase tracking-widest text-slate-400 mb-2 flex items-center gap-1">
+                                  <MessageSquare size={11} /> {s.motivos.length} motivo(s) da recusa
+                                </p>
+                                {s.motivos.map((m: string, i: number) => (
+                                  <p key={i} className="text-xs text-slate-500 italic bg-slate-50 dark:bg-slate-800 rounded-lg px-3 py-2 mb-1">"{m}"</p>
                                 ))}
-                            </div>
+                              </div>
+                            )}
                           </div>
-                        )}
+                        );
+                      })()}
+                    </div>
+                  );
+                })}
 
-                        {/* Totais financeiros */}
-                        {(s.custoPares > 0 || s.vendaPares > 0) && (
-                          <div className="grid grid-cols-2 gap-3">
-                            <div className="bg-slate-50 dark:bg-slate-800 rounded-xl p-3 text-center">
-                              <p className="text-[9px] font-black uppercase tracking-widest text-slate-400 mb-1">Total Custo</p>
-                              <p className="text-lg font-black text-slate-600 dark:text-slate-300">
-                                R$ {s.custoPares.toFixed(2).replace('.', ',').replace(/\B(?=(\d{3})+(?!\d))/g, '.')}
-                              </p>
-                            </div>
-                            <div className="bg-green-50 dark:bg-green-900/20 rounded-xl p-3 text-center">
-                              <p className="text-[9px] font-black uppercase tracking-widest text-green-500 mb-1">Total Venda</p>
-                              <p className="text-lg font-black text-green-600">
-                                R$ {s.vendaPares.toFixed(2).replace('.', ',').replace(/\B(?=(\d{3})+(?!\d))/g, '.')}
-                              </p>
-                            </div>
-                          </div>
-                        )}
-
-                        {/* Motivos do NÃO */}
-                        {s.motivos.length > 0 && (
-                          <div className="pt-2 border-t border-slate-100 dark:border-slate-800">
-                            <p className="text-[9px] font-black uppercase tracking-widest text-slate-400 mb-2 flex items-center gap-1">
-                              <MessageSquare size={11} /> {s.motivos.length} motivo(s) da recusa
-                            </p>
-                            {s.motivos.map((m: string, i: number) => (
-                              <p key={i} className="text-xs text-slate-500 italic bg-slate-50 dark:bg-slate-800 rounded-lg px-3 py-2 mb-1">"{m}"</p>
-                            ))}
-                          </div>
-                        )}
+                {/* Comentários de bloco da seção */}
+                {section && responses.length > 0 && (() => {
+                  const key = `__comment_${section}`;
+                  const comentarios = responses
+                    .map((r: any) => r.responses?.[key])
+                    .filter(Boolean) as string[];
+                  if (comentarios.length === 0) return null;
+                  return (
+                    <div className="bg-slate-50 dark:bg-slate-800/50 rounded-2xl border border-dashed border-slate-200 dark:border-slate-700 p-4">
+                      <p className="text-[10px] font-black uppercase tracking-widest text-slate-400 mb-3 flex items-center gap-1.5">
+                        <MessageSquare size={12} />
+                        {comentarios.length} comentário(s) sobre {section}
+                      </p>
+                      <div className="space-y-2">
+                        {comentarios.map((c, i) => (
+                          <p key={i} className="text-xs text-slate-600 dark:text-slate-400 italic bg-white dark:bg-slate-900 rounded-xl px-4 py-3 border border-slate-100 dark:border-slate-800">
+                            "{c}"
+                          </p>
+                        ))}
                       </div>
-                    );
-                  })()}
-                </div>
-              );
-            })}
+                    </div>
+                  );
+                })()}
+
+              </div>
+            ))}
           </div>
         )
       )}
@@ -592,46 +665,83 @@ const SurveyResultsViewer: React.FC<SurveyResultsViewerProps> = ({ survey, curre
       {/* ABA RESPONDENTES */}
       {activeTab === 'respondentes' && (
         <div className="space-y-4">
-          <div className="bg-white dark:bg-slate-900 rounded-2xl border border-slate-100 dark:border-slate-800 overflow-hidden">
-            <table className="w-full text-xs" style={{ tableLayout: 'fixed' }}>
-              <thead>
-                <tr className="border-b border-slate-100 dark:border-slate-800">
-                  <th className="text-left p-3 font-black uppercase tracking-widest text-slate-400 text-[9px] w-32">Nome</th>
-                  <th className="text-left p-3 font-black uppercase tracking-widest text-slate-400 text-[9px] w-28">Telefone</th>
-                  <th className="text-left p-3 font-black uppercase tracking-widest text-slate-400 text-[9px] w-20">Data</th>
-                  {questions.map((q, i) => (
-                    <th key={q.id} className="text-left p-3 font-black uppercase tracking-widest text-slate-400 text-[9px]">P{i + 1}</th>
-                  ))}
-                </tr>
-              </thead>
-              <tbody>
-                {responses.slice((currentPage - 1) * PAGE_SIZE, currentPage * PAGE_SIZE).map((r: any, i) => (
-                  <tr key={r.id} className="border-b border-slate-50 dark:border-slate-800 hover:bg-slate-50 dark:hover:bg-slate-800 transition-colors">
-                    <td className="p-3 font-bold text-slate-700 dark:text-slate-300 truncate">{r.respondent_name || '—'}</td>
-                    <td className="p-3 text-slate-500 truncate">{r.respondent_phone || '—'}</td>
-                    <td className="p-3 text-slate-400">{new Date(r.created_at).toLocaleDateString('pt-BR')}</td>
-                    {questions.map(q => {
+          <div className="grid grid-cols-1 gap-6">
+            {responses.slice((currentPage - 1) * PAGE_SIZE, currentPage * PAGE_SIZE).map((r: any) => (
+              <div key={r.id} className="bg-white dark:bg-slate-900 rounded-2xl border border-slate-100 dark:border-slate-800 p-6 space-y-4">
+                
+                {/* Topo do respondente */}
+                <div className="flex flex-col md:flex-row md:items-center justify-between border-b border-slate-100 dark:border-slate-800 pb-4 gap-2">
+                  <div>
+                    <h4 className="text-sm font-black text-slate-800 dark:text-white uppercase tracking-tight">
+                      {r.respondent_name || 'Anônimo'}
+                    </h4>
+                    {r.respondent_role && (
+                      <p className="text-xs text-blue-500 font-bold mt-0.5">{r.respondent_role}</p>
+                    )}
+                  </div>
+                  <div className="flex flex-col md:items-end text-[10px] text-slate-400 font-bold uppercase tracking-widest gap-0.5">
+                    {r.respondent_phone && <p>Contato: {r.respondent_phone}</p>}
+                    <p>Enviado em: {new Date(r.created_at).toLocaleDateString('pt-BR')}</p>
+                  </div>
+                </div>
+
+                {/* Respostas agrupadas por tópico */}
+                <div className="space-y-4">
+                  {groupedQuestions.map(({ section, questions: sectionQs }) => {
+                    // Filtrar apenas se houver pelo menos uma resposta preenchida nessa seção
+                    const sectionAnswers = sectionQs.map(q => {
                       const v = r.responses?.[q.id];
-                      let txt = '—';
-                      if (v) {
-                        if (typeof v === 'object' && v !== null) {
-                          if (q.question_type === 'product_item') {
-                            const pares = v.total_pares || 0;
-                            txt = v.value === 'SIM' ? `✅ SIM (${pares}p)` : '❌ NÃO';
-                          } else {
-                            txt = v.value + (v.motivo ? ' — ' + v.motivo : '');
-                          }
+                      if (v === undefined || v === null) return null;
+                      let txt = '';
+                      if (typeof v === 'object' && v !== null) {
+                        if (q.question_type === 'product_item') {
+                          const pares = v.total_pares || 0;
+                          txt = v.value === 'SIM' ? `✅ SIM (${pares}p)` : '❌ NÃO';
                         } else {
-                          txt = String(v);
+                          txt = v.value + (v.motivo ? ' — ' + v.motivo : '');
                         }
+                      } else {
+                        txt = String(v);
                       }
-                      return <td key={q.id} className="p-3 text-slate-500 truncate">{txt}</td>;
-                    })}
-                  </tr>
-                ))}
-              </tbody>
-            </table>
+                      return {
+                        qText: q.question_text,
+                        qNum: questionIndex.get(q.id),
+                        answer: txt
+                      };
+                    }).filter(Boolean);
+
+                    if (sectionAnswers.length === 0) return null;
+
+                    return (
+                      <div key={section ?? '__geral__'} className="space-y-2">
+                        <div className="flex items-center gap-2">
+                          <span className="text-[9px] font-black uppercase tracking-widest text-slate-400">
+                            {section ?? 'Geral'}
+                          </span>
+                          <div className="h-px flex-1 bg-slate-100 dark:bg-slate-800" />
+                        </div>
+                        <div className="space-y-2.5">
+                          {sectionAnswers.map((item: any, idx: number) => (
+                            <div key={idx} className="flex flex-col gap-1 pl-2 border-l border-slate-100 dark:border-slate-800">
+                              <p className="text-xs text-slate-400 font-bold">
+                                {item.qNum}. {item.qText}
+                              </p>
+                              <p className="text-xs font-black text-slate-700 dark:text-slate-300">
+                                {item.answer}
+                              </p>
+                            </div>
+                          ))}
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+
+              </div>
+            ))}
           </div>
+
+          {/* Paginação */}
           <div className="flex items-center justify-between">
             <p className="text-[10px] text-slate-400 font-bold uppercase tracking-widest">
               {Math.min((currentPage - 1) * PAGE_SIZE + 1, responses.length)}–{Math.min(currentPage * PAGE_SIZE, responses.length)} de {responses.length}
