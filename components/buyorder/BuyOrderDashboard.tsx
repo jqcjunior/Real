@@ -327,12 +327,13 @@ export default function BuyOrderDashboard({ user }: { user: any }) {
 
             const valorPerStore = qtdPerStore * Number(item.custo || 0) * fatorDesconto;
 
+            // Acumula o total do item 1x por sub-pedido (fora do loop de lojas)
+            itemTotalParesOfDraft += qtdPerStore;
+            itemTotalValorOfDraft += valorPerStore;
+
             for (const loja of lojas) {
               storeParesMap.set(loja, (storeParesMap.get(loja) || 0) + qtdPerStore);
               storeValorMap.set(loja, (storeValorMap.get(loja) || 0) + valorPerStore);
-
-              itemTotalParesOfDraft += qtdPerStore;
-              itemTotalValorOfDraft += valorPerStore;
             }
           }
 
