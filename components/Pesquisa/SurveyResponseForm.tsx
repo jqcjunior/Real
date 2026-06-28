@@ -328,13 +328,7 @@ const SurveyResponseForm: React.FC<SurveyResponseFormProps> = ({
   };
 
   const canAdvanceFromParticipantInfo = () => {
-    if (isAnonymous) return true; // anônimo sempre pode avançar
-    if (isInternal) {
-      // Funcionários: nome + cargo obrigatórios
-      return respondentInfo.name.trim().length > 0 && respondentRole.trim().length > 0;
-    }
-    // Clientes: tudo opcional, sempre pode avançar
-    return true;
+    return true; // todos os campos são opcionais
   };
 
   const handleSubmit = async () => {
@@ -699,7 +693,7 @@ const SurveyResponseForm: React.FC<SurveyResponseFormProps> = ({
                         respondentRole ? 'border-blue-500 text-slate-900' : 'border-slate-200 text-slate-400'
                       }`}
                     >
-                      <option value="">Cargo *</option>
+                      <option value="">Cargo (opcional)</option>
                       <option value="Caixa">Caixa</option>
                       <option value="Cobrança">Cobrança</option>
                       <option value="Estoquista">Estoquista</option>
@@ -713,7 +707,7 @@ const SurveyResponseForm: React.FC<SurveyResponseFormProps> = ({
                   {/* Nome */}
                   <input
                     type="text"
-                    placeholder={isInternal ? 'Nome completo *' : 'Nome (opcional)'}
+                    placeholder="Nome completo (opcional)"
                     value={respondentInfo.name}
                     onChange={e => { setIsAnonymous(false); setRespondentInfo({ ...respondentInfo, name: e.target.value }); }}
                     className="w-full px-4 py-3.5 bg-white border-2 border-slate-200 focus:border-blue-500 rounded-2xl text-sm text-slate-900 outline-none transition-all"
@@ -737,11 +731,7 @@ const SurveyResponseForm: React.FC<SurveyResponseFormProps> = ({
                     className="w-full px-4 py-3.5 bg-white border-2 border-slate-200 focus:border-blue-500 rounded-2xl text-sm text-slate-900 outline-none transition-all"
                   />
 
-                  {isInternal && !canAdvanceFromParticipantInfo() && !isAnonymous && (
-                    <p className="text-xs text-slate-400 text-center pt-1">
-                      * Cargo e nome são obrigatórios
-                    </p>
-                  )}
+
                 </div>
               </div>
             )}
