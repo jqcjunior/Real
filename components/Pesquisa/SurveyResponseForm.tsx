@@ -198,6 +198,10 @@ const SurveyResponseForm: React.FC<SurveyResponseFormProps> = ({
     ? (currentVirtual as any).indexes.map((i: number) => questions[i])
     : [];
 
+  const getSectionMeta = (sectionIdentifier: string) => {
+    return sections.find(s => s.id === sectionIdentifier || s.name === sectionIdentifier);
+  };
+
   const isLastVirtualStep = currentStep === virtualSteps.length - 1;
 
   const totalQuestions = questions.length;
@@ -1237,6 +1241,21 @@ const SurveyResponseForm: React.FC<SurveyResponseFormProps> = ({
                 {/* TODAS AS PERGUNTAS DO TÓPICO JUNTAS */}
                 {currentVirtual.type === 'section_page' && (
                   <div className="space-y-6">
+
+                    {/* Imagem do tópico — se existir */}
+                    {(() => {
+                      const meta = getSectionMeta((currentVirtual as any).section);
+                      return meta?.image_url ? (
+                        <div className="w-full h-44 rounded-2xl overflow-hidden -mx-0">
+                          <img
+                            src={meta.image_url}
+                            alt={(currentVirtual as any).section}
+                            className="w-full h-full object-cover"
+                            referrerPolicy="no-referrer"
+                          />
+                        </div>
+                      ) : null;
+                    })()}
 
                     {/* Cabeçalho da seção */}
                     <div className="flex items-center gap-3">

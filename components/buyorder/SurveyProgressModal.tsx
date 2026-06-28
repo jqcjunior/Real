@@ -291,9 +291,15 @@ export default function SurveyProgressModal({
 
       // ─── 5. Atualizar buy_order_items.grades com as grades consolidadas ─
       for (const [itemId, gradesObj] of Object.entries(consolidatedItemGrades)) {
+        // Converter { "D": { "38": 2, ... } } → [{ "letra": "D", "tamanhos": { "38": 2, ... } }]
+        const gradesArray = Object.entries(gradesObj).map(([letra, tamanhos]) => ({
+          letra,
+          tamanhos,
+        }));
+
         const { error } = await supabase
           .from('buy_order_items')
-          .update({ grades: gradesObj })
+          .update({ grades: gradesArray })
           .eq('id', itemId);
         if (error) throw error;
       }
@@ -313,8 +319,11 @@ export default function SurveyProgressModal({
         observacoes = `Lojas fora do pedido por não responder a pesquisa: ${lojasOrdenadas.map(n => `Loja ${n}`).join(', ')}.`;
       }
 
-      // ─── 8. Finalizar pedido: status rascunho + observações ──────────
-      const updatePayload: any = { status: 'rascunho' };
+      // ─── 8. Finalizar pedido: status confirmado + observações ──────────
+      const updatePayload: any = {
+        status: 'confirmado',
+        confirmed_at: new Date().toISOString(),
+      };
       if (observacoes) updatePayload.observacoes = observacoes;
 
       const { error: updErr } = await supabase
