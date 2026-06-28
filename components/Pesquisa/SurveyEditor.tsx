@@ -560,6 +560,7 @@ const SurveyEditor: React.FC<SurveyEditorProps> = ({
           name: s.name || 'Tópico sem nome',
           description: s.description || null,
           image_url: s.image_url || null,
+          display_mode: s.display_mode ?? 'one_by_one',
           sort_order: i,
         }));
 
@@ -1274,10 +1275,36 @@ const SurveyEditor: React.FC<SurveyEditorProps> = ({
                             </div>
 
                             {/* Rodapé: contagem */}
-                            <div className="px-4 py-2 bg-slate-50 dark:bg-slate-800/50 border-t border-slate-100 dark:border-slate-700">
+                            <div className="px-4 py-2.5 bg-slate-50 dark:bg-slate-800/50 border-t border-slate-100 dark:border-slate-700 flex items-center justify-between">
                               <span className="text-[11px] text-slate-400">
                                 {sectionQuestions.length} {sectionQuestions.length === 1 ? 'pergunta' : 'perguntas'} neste tópico
                               </span>
+
+                              {/* Seletor de modo de exibição */}
+                              <div className="flex items-center gap-1 bg-slate-100 dark:bg-slate-700 rounded-lg p-0.5">
+                                <button
+                                  onClick={() => updateSection(section.id, 'display_mode', 'one_by_one')}
+                                  className={`flex items-center gap-1.5 px-2.5 py-1 rounded-md text-[11px] font-semibold transition-all ${
+                                    (section.display_mode ?? 'one_by_one') === 'one_by_one'
+                                      ? 'bg-white dark:bg-slate-900 text-blue-600 shadow-sm'
+                                      : 'text-slate-400 hover:text-slate-600 dark:hover:text-slate-300'
+                                  }`}
+                                  title="Uma pergunta por tela"
+                                >
+                                  <span>▶</span> Uma por vez
+                                </button>
+                                <button
+                                  onClick={() => updateSection(section.id, 'display_mode', 'all_at_once')}
+                                  className={`flex items-center gap-1.5 px-2.5 py-1 rounded-md text-[11px] font-semibold transition-all ${
+                                    (section.display_mode ?? 'one_by_one') === 'all_at_once'
+                                      ? 'bg-white dark:bg-slate-900 text-blue-600 shadow-sm'
+                                      : 'text-slate-400 hover:text-slate-600 dark:hover:text-slate-300'
+                                  }`}
+                                  title="Todas as perguntas numa página"
+                                >
+                                  <span>☰</span> Todas juntas
+                                </button>
+                              </div>
                             </div>
                           </motion.div>
                         );

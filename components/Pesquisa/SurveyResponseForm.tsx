@@ -137,28 +137,78 @@ const SurveyResponseForm: React.FC<SurveyResponseFormProps> = ({
   };
 
   // Constrói array virtual de steps intercalando perguntas e comentários de seção
-  const buildVirtualSteps = (qs: SurveyQuestion[]) => {
-    const steps: Array<{ type: 'question'; index: number } | { type: 'section_comment'; section: string }> = [];
+  const buildVirtualSteps = (qs: SurveyQuestion[], secs: any[]) => {
+    type VStep =
+      | { type: 'question'; index: number }
+      | { type: 'section_page'; section: string; indexes: number[] }
+      | { type: 'section_comment'; section: string };
+
+    const steps: VStep[] = [];
+    const processed = new Set<number>();
+
     qs.forEach((q, idx) => {
+      if (processed.has(idx)) return;
+
       const sec = q.section_id || (q as any).section || null;
-      steps.push({ type: 'question', index: idx });
-      const nextSec = idx < qs.length - 1 ? (qs[idx + 1].section_id || (qs[idx + 1] as any).section || null) : null;
-      if (sec && nextSec !== sec) {
-        const sectionMeta = sections.find(s => s.id === sec || s.name === sec);
-        const secName = sectionMeta ? sectionMeta.name : sec;
+      if (!sec) {
+        steps.push({ type: 'question', index: idx });
+        return;
+      }
+
+      const secMeta = secs.find(s => s.id === sec || s.name === sec);
+      const secName = secMeta ? secMeta.name : sec;
+      const mode = secMeta?.display_mode ?? 'one_by_one';
+
+      if (mode === 'all_at_once') {
+        // Agrupar todas as perguntas desta seção num único step
+        const indexes = qs
+          .map((qq, i) => {
+            const qqSec = qq.section_id || (qq as any).section || null;
+            return qqSec === sec ? i : -1;
+          })
+          .filter(i => i >= 0);
+        indexes.forEach(i => processed.add(i));
+        steps.push({ type: 'section_page', section: secName, indexes });
+        // Comentário ao final da seção
         steps.push({ type: 'section_comment', section: secName });
+      } else {
+        steps.push({ type: 'question', index: idx });
+        // Verificar se é a última pergunta da seção (one_by_one)
+        const nextQ = qs[idx + 1];
+        const nextSec = nextQ ? (nextQ.section_id || (nextQ as any).section || null) : null;
+        if (nextSec !== sec) {
+          steps.push({ type: 'section_comment', section: secName });
+        }
       }
     });
+
     return steps;
   };
 
-  const virtualSteps = buildVirtualSteps(questions);
+  const virtualSteps = buildVirtualSteps(questions, sections);
   const currentVirtual = currentStep >= 0 ? virtualSteps[currentStep] : null;
-  const currentQuestion = currentVirtual?.type === 'question' ? questions[currentVirtual.index] : null;
+
+  // currentQuestion só existe para steps do tipo 'question'
+  const currentQuestion = currentVirtual?.type === 'question'
+    ? questions[currentVirtual.index]
+    : null;
+
+  // Para section_page: array de perguntas da página
+  const currentPageQuestions = currentVirtual?.type === 'section_page'
+    ? (currentVirtual as any).indexes.map((i: number) => questions[i])
+    : [];
+
   const isLastVirtualStep = currentStep === virtualSteps.length - 1;
+
   const totalQuestions = questions.length;
-  const answeredQuestions = currentVirtual?.type === 'question' ? currentVirtual.index + 1 : (currentVirtual?.type === 'section_comment' ? totalQuestions : 0);
-  const progress = currentStep >= 0 ? (answeredQuestions / totalQuestions) * 100 : 0;
+  const answeredQuestions =
+    currentVirtual?.type === 'question' ? (currentVirtual.index + 1) :
+    currentVirtual?.type === 'section_page' ? ((currentVirtual as any).indexes.slice(-1)[0] + 1) :
+    totalQuestions;
+
+  const progress = currentStep >= 0
+    ? (answeredQuestions / totalQuestions) * 100
+    : 0;
 
   const handleAnswerChange = (questionId: string, value: any) => {
     setAnswers(prev => ({ ...prev, [questionId]: value }));
@@ -173,10 +223,10 @@ const SurveyResponseForm: React.FC<SurveyResponseFormProps> = ({
       });
     }
 
-    // Auto-avanço para tipos de seleção imediata (não dispara na última pergunta do virtualSteps)
+    // Auto-avanço para tipos de seleção imediata (não dispara na última pergunta do virtualSteps ou em section_page)
     const q = questions.find(q => q.id === questionId);
     const autoAdvanceTypes = ['yes_no', 'multiple_choice', 'emoji_scale'];
-    if (q && autoAdvanceTypes.includes(q.question_type) && !isLastVirtualStep) {
+    if (q && autoAdvanceTypes.includes(q.question_type) && !isLastVirtualStep && currentVirtual?.type !== 'section_page') {
       if (autoAdvanceTimer.current) clearTimeout(autoAdvanceTimer.current);
       autoAdvanceTimer.current = setTimeout(() => {
         setCurrentStep(prev => {
@@ -204,13 +254,16 @@ const SurveyResponseForm: React.FC<SurveyResponseFormProps> = ({
     if (currentStep === -2 && canAdvanceFromParticipantInfo()) {
       const firstVirtual = virtualSteps[0];
       if (firstVirtual) {
-        const firstSec = firstVirtual.type === 'question'
+        const firstSecRaw = firstVirtual.type === 'question'
           ? (questions[firstVirtual.index].section_id || (questions[firstVirtual.index] as any).section)
-          : null;
-        if (firstSec) {
-          const secMeta = sections.find(s => s.id === firstSec || s.name === firstSec);
-          const secName = secMeta ? secMeta.name : firstSec;
-          const count = questions.filter(q => (q.section_id || (q as any).section) === firstSec).length;
+          : (firstVirtual.type === 'section_page' ? firstVirtual.section : null);
+        if (firstSecRaw) {
+          const secMeta = sections.find(s => s.id === firstSecRaw || s.name === firstSecRaw);
+          const secName = secMeta ? secMeta.name : firstSecRaw;
+          const count = questions.filter(q => {
+            const qSec = q.section_id || (q as any).section || null;
+            return qSec === firstSecRaw || (secMeta && qSec === secMeta.name);
+          }).length;
           setSectionTransition({ 
             name: secName, 
             count,
@@ -224,26 +277,44 @@ const SurveyResponseForm: React.FC<SurveyResponseFormProps> = ({
       return;
     }
     if (currentStep >= 0) {
+      if (currentVirtual?.type === 'section_page') {
+        const missing = currentPageQuestions.filter(
+          q => q?.is_required && !answers[q.id]
+        );
+        if (missing.length > 0) {
+          setValidationError('Responda todas as perguntas obrigatórias antes de continuar.');
+          return;
+        }
+      }
+
       const nextIdx = currentStep + 1;
       if (nextIdx < virtualSteps.length) {
         const nextVirtual = virtualSteps[nextIdx];
-        const currentSec = currentVirtual?.type === 'question' 
-          ? (questions[currentVirtual.index].section_id || (questions[currentVirtual.index] as any).section) 
-          : null;
-        const nextSec = nextVirtual?.type === 'question' 
-          ? (questions[nextVirtual.index].section_id || (questions[nextVirtual.index] as any).section) 
-          : null;
+
+        const currentSecRaw = currentVirtual?.type === 'question'
+          ? (questions[currentVirtual.index].section_id || (questions[currentVirtual.index] as any).section || null)
+          : (currentVirtual?.type === 'section_page' ? currentVirtual.section : null);
+        const currentSecMeta = sections.find(s => s.id === currentSecRaw || s.name === currentSecRaw);
+        const currentSecId = currentSecMeta ? currentSecMeta.id : currentSecRaw;
+
+        const nextSecRaw = nextVirtual?.type === 'question'
+          ? (questions[nextVirtual.index].section_id || (questions[nextVirtual.index] as any).section || null)
+          : (nextVirtual?.type === 'section_page' ? nextVirtual.section : null);
+        const nextSecMeta = sections.find(s => s.id === nextSecRaw || s.name === nextSecRaw);
+        const nextSecId = nextSecMeta ? nextSecMeta.id : nextSecRaw;
 
         // Detectar mudança de seção
-        if (nextSec && nextSec !== currentSec) {
-          const count = questions.filter(q => (q.section_id || (q as any).section) === nextSec).length;
-          const secMeta = sections.find(s => s.id === nextSec || s.name === nextSec);
-          const secName = secMeta ? secMeta.name : nextSec;
+        if (nextSecId && nextSecId !== currentSecId) {
+          const count = questions.filter(q => {
+            const qSec = q.section_id || (q as any).section || null;
+            return qSec === nextSecId || (nextSecMeta && qSec === nextSecMeta.name);
+          }).length;
+          const secName = nextSecMeta ? nextSecMeta.name : nextSecRaw;
           setSectionTransition({ 
             name: secName, 
             count,
-            description: secMeta?.description,
-            image_url: secMeta?.image_url
+            description: nextSecMeta?.description,
+            image_url: nextSecMeta?.image_url
           });
           return;
         }
@@ -265,9 +336,14 @@ const SurveyResponseForm: React.FC<SurveyResponseFormProps> = ({
   const handleSubmit = async () => {
     const missingRequired = questions.filter(q => q.is_required && !answers[q.id]);
     if (missingRequired.length > 0) {
-      const firstMissingVirtualIdx = virtualSteps.findIndex(
-        vs => vs.type === 'question' && questions[vs.index].id === missingRequired[0].id
-      );
+      const firstMissingVirtualIdx = virtualSteps.findIndex(vs => {
+        if (vs.type === 'question') {
+          return questions[vs.index].id === missingRequired[0].id;
+        } else if (vs.type === 'section_page') {
+          return vs.indexes.some(idx => questions[idx].id === missingRequired[0].id);
+        }
+        return false;
+      });
       if (firstMissingVirtualIdx >= 0) setCurrentStep(firstMissingVirtualIdx);
       setValidationError('Esta pergunta é obrigatória.');
       return;
@@ -401,6 +477,7 @@ const SurveyResponseForm: React.FC<SurveyResponseFormProps> = ({
               {currentStep === -3 ? 'Apresentação'
                : currentStep === -2 ? 'Seus dados'
                : currentVirtual?.type === 'section_comment' ? `Comentário · ${(currentVirtual as any).section}`
+               : currentVirtual?.type === 'section_page' ? `${(currentVirtual as any).section}`
                : currentQuestion ? `Pergunta ${(currentVirtual as any).index + 1} de ${totalQuestions}`
                : ''}
             </p>
@@ -1154,6 +1231,184 @@ const SurveyResponseForm: React.FC<SurveyResponseFormProps> = ({
                         <span>⚠️</span> {validationError}
                       </motion.p>
                     )}
+                  </div>
+                )}
+
+                {/* TODAS AS PERGUNTAS DO TÓPICO JUNTAS */}
+                {currentVirtual.type === 'section_page' && (
+                  <div className="space-y-6">
+
+                    {/* Cabeçalho da seção */}
+                    <div className="flex items-center gap-3">
+                      <div className="h-px flex-1 bg-blue-100" />
+                      <span className="text-xs font-bold uppercase tracking-widest text-blue-500 px-2">
+                        {(currentVirtual as any).section}
+                      </span>
+                      <div className="h-px flex-1 bg-blue-100" />
+                    </div>
+
+                    {/* Erro de validação */}
+                    {validationError && (
+                      <motion.p
+                        initial={{ opacity: 0, y: -4 }}
+                        animate={{ opacity: 1, y: 0 }}
+                        className="text-sm text-red-500 font-medium flex items-center gap-1.5 px-1"
+                      >
+                        <span>⚠️</span> {validationError}
+                      </motion.p>
+                    )}
+
+                    {/* Perguntas da página */}
+                    {currentPageQuestions.map((q, pIdx) => {
+                      if (!q) return null;
+                      const isAnswered = !!answers[q.id];
+                      const isRequired = q.is_required;
+                      const showError = validationError && isRequired && !isAnswered;
+
+                      return (
+                        <div
+                          key={q.id}
+                          className={`bg-white rounded-2xl border-2 p-5 space-y-4 transition-all ${
+                            showError
+                              ? 'border-red-200 ring-2 ring-red-100'
+                              : isAnswered
+                                ? 'border-blue-100'
+                                : 'border-slate-100'
+                          }`}
+                        >
+                          {/* Número + texto da pergunta */}
+                          <div className="flex items-start gap-3">
+                            <span className={`w-7 h-7 rounded-lg flex items-center justify-center font-bold text-xs flex-shrink-0 mt-0.5 ${
+                              isAnswered
+                                ? 'bg-blue-600 text-white'
+                                : 'bg-slate-100 text-slate-400'
+                            }`}>
+                              {pIdx + 1}
+                            </span>
+                            <h3 className="text-base font-semibold text-slate-900 leading-snug">
+                              {q.question_text}
+                              {q.is_required && <span className="text-red-400 ml-1 text-sm">*</span>}
+                            </h3>
+                          </div>
+
+                          {/* Resposta — short_text */}
+                          {q.question_type === 'short_text' && (
+                            <div className="relative pl-10">
+                              <textarea
+                                value={answers[q.id] || ''}
+                                onChange={e => handleAnswerChange(q.id, e.target.value)}
+                                placeholder="Digite sua resposta..."
+                                rows={3}
+                                maxLength={500}
+                                className="w-full px-4 py-3 bg-slate-50 border-2 border-transparent focus:border-blue-400 rounded-xl text-sm text-slate-900 outline-none resize-none transition-all"
+                              />
+                              <span className="absolute bottom-3 right-3 text-[10px] text-slate-300 font-mono">
+                                {(answers[q.id] || '').length}/500
+                              </span>
+                            </div>
+                          )}
+
+                          {/* Resposta — rating */}
+                          {q.question_type === 'rating' && (
+                            <div className="pl-10 space-y-2">
+                              <div className="flex gap-2">
+                                {[1, 2, 3, 4, 5].map(val => (
+                                  <button
+                                    key={val}
+                                    onClick={() => handleAnswerChange(q.id, val)}
+                                    className={`flex-1 py-3 rounded-xl flex flex-col items-center gap-1 border-2 transition-all text-sm font-bold ${
+                                      answers[q.id] === val
+                                        ? 'bg-blue-600 border-blue-600 text-white scale-105'
+                                        : 'bg-white border-slate-100 text-slate-400 hover:border-blue-200'
+                                    }`}
+                                  >
+                                    <Star size={16} fill={answers[q.id] === val ? 'currentColor' : 'none'} />
+                                    {val}
+                                  </button>
+                                ))}
+                              </div>
+                              <div className="flex justify-between px-1">
+                                {['Péssimo','Ruim','Regular','Bom','Excelente'].map((label, i) => (
+                                  <span key={i} className={`text-[10px] flex-1 text-center transition-colors ${
+                                    answers[q.id] === i + 1 ? 'text-blue-600 font-bold' : 'text-slate-300'
+                                  }`}>{label}</span>
+                                ))}
+                              </div>
+                            </div>
+                          )}
+
+                          {/* Resposta — emoji_scale */}
+                          {q.question_type === 'emoji_scale' && (
+                            <div className="pl-10 flex gap-2">
+                              {[
+                                { emoji: '😢', label: 'Péssimo', value: 1 },
+                                { emoji: '😕', label: 'Ruim',    value: 2 },
+                                { emoji: '😐', label: 'Normal',  value: 3 },
+                                { emoji: '😊', label: 'Bom',     value: 4 },
+                                { emoji: '😄', label: 'Ótimo',   value: 5 },
+                              ].map(opt => (
+                                <button
+                                  key={opt.value}
+                                  onClick={() => handleAnswerChange(q.id, opt.value)}
+                                  className={`flex-1 py-3 rounded-xl flex flex-col items-center gap-1 border-2 transition-all ${
+                                    answers[q.id] === opt.value
+                                      ? 'bg-blue-50 border-blue-500 scale-105'
+                                      : 'bg-white border-slate-100 hover:border-blue-200'
+                                  }`}
+                                >
+                                  <span className="text-xl">{opt.emoji}</span>
+                                  <span className={`text-[9px] font-semibold ${
+                                    answers[q.id] === opt.value ? 'text-blue-600' : 'text-slate-300'
+                                  }`}>{opt.label}</span>
+                                </button>
+                              ))}
+                            </div>
+                          )}
+
+                          {/* Resposta — yes_no */}
+                          {q.question_type === 'yes_no' && (
+                            <div className="pl-10 grid grid-cols-2 gap-2">
+                              {['SIM', 'NÃO'].map(val => (
+                                <button
+                                  key={val}
+                                  onClick={() => handleAnswerChange(q.id, val)}
+                                  className={`py-4 rounded-xl font-bold text-base border-2 transition-all ${
+                                    answers[q.id] === val
+                                      ? val === 'SIM'
+                                        ? 'bg-green-600 border-green-600 text-white'
+                                        : 'bg-red-500 border-red-500 text-white'
+                                      : 'bg-white border-slate-100 text-slate-400 hover:border-slate-300'
+                                  }`}
+                                >
+                                  {val === 'SIM' ? '✅ SIM' : '❌ NÃO'}
+                                </button>
+                              ))}
+                            </div>
+                          )}
+
+                          {/* Resposta — multiple_choice */}
+                          {q.question_type === 'multiple_choice' && (
+                            <div className="pl-10 space-y-2">
+                              {(Array.isArray(q.options) ? q.options : []).map((opt: string, oi: number) => (
+                                <button
+                                  key={oi}
+                                  onClick={() => handleAnswerChange(q.id, opt)}
+                                  className={`w-full px-4 py-3 rounded-xl text-left text-sm font-medium border-2 flex items-center justify-between transition-all ${
+                                    answers[q.id] === opt
+                                      ? 'bg-blue-600 border-blue-600 text-white'
+                                      : 'bg-white border-slate-100 text-slate-600 hover:border-blue-200'
+                                  }`}
+                                >
+                                  {opt}
+                                  {answers[q.id] === opt && <Check size={16} />}
+                                </button>
+                              ))}
+                            </div>
+                          )}
+
+                        </div>
+                      );
+                    })}
                   </div>
                 )}
 

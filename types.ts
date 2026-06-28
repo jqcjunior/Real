@@ -444,6 +444,7 @@ export interface SurveySection {
   description?: string | null;
   image_url?: string | null;
   sort_order: number;
+  display_mode?: 'one_by_one' | 'all_at_once' | null;
   created_at?: string;
 }
 
