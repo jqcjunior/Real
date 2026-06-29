@@ -916,6 +916,12 @@ export default function BuyOrderModule({ user }: { user?: User }) {
           });
 
           if (gradesSubPedidos.length > 0) {
+            const itemIdsToDelete = [...new Set(gradesSubPedidos.map((g) => g.item_id))];
+            await supabase
+              .from("buy_order_item_suborder_grades")
+              .delete()
+              .in("item_id", itemIdsToDelete);
+
             const { error: gsErr } = await supabase
               .from("buy_order_item_suborder_grades")
               .insert(gradesSubPedidos);
