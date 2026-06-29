@@ -661,6 +661,7 @@ export default function BuyOrderModule({ user }: { user?: User }) {
     setError("");
     let numeroPedidoLocal: number | null = null;
     try {
+      const order = editingOrder;
       // ✅ VALIDAÇÃO 1: Verificar se há ITENS
       if (items.length === 0) {
         throw new Error('Adicione ao menos um item antes de salvar');
@@ -778,20 +779,37 @@ export default function BuyOrderModule({ user }: { user?: User }) {
           markup: cab.markup,
           modo_pesquisa: cab.modo_pesquisa || false,
           survey_params: cab.survey_params || null,
-          status: cab.modo_pesquisa ? "aguardando_pesquisa" : "rascunho", // Volta para rascunho se foi alterado
+          status: cab.modo_pesquisa 
+            ? "aguardando_pesquisa" 
+            : (["stand_by", "confirmado", "exportado"].includes(order?.status || "") 
+                ? order.status 
+                : "rascunho"),
           edited_at: new Date().toISOString(),
         });
 
-        // Excluir os velhos relacionamentos para recriar
-        
-        // 1. Buscar os items_ids do pedido para deletar os vinculos das grades primeiro
-        const { data: items_data } = await supabase.from("buy_order_items").select("id").eq("order_id", orderId);
-        if (items_data && items_data.length > 0) {
-          const itemIds = items_data.map(i => i.id);
-          await supabase.from("buy_order_item_suborder_grades").delete().in("item_id", itemIds);
+        // Buscar IDs atuais dos itens do pedido
+        const { data: items_data } = await supabase
+          .from("buy_order_items")
+          .select("id")
+          .eq("order_id", orderId);
+
+        const existingItemIds = items_data?.map(i => i.id) || [];
+
+        // Deletar grades e itens SOMENTE dos itens que serão recriados
+        // (preserva itens que não foram alterados pelo usuário)
+        if (existingItemIds.length > 0) {
+          await supabase
+            .from("buy_order_item_suborder_grades")
+            .delete()
+            .in("item_id", existingItemIds);
+          
+          await supabase
+            .from("buy_order_items")
+            .delete()
+            .eq("order_id", orderId);
         }
 
-        await supabase.from("buy_order_items").delete().eq("order_id", orderId);
+        // Deletar sub-orders para recriar com as lojas novas/removidas
         await supabase
           .from("buy_order_sub_orders")
           .delete()
@@ -916,15 +934,9 @@ export default function BuyOrderModule({ user }: { user?: User }) {
           });
 
           if (gradesSubPedidos.length > 0) {
-            const itemIdsToDelete = [...new Set(gradesSubPedidos.map((g) => g.item_id))];
-            await supabase
-              .from("buy_order_item_suborder_grades")
-              .delete()
-              .in("item_id", itemIdsToDelete);
-
             const { error: gsErr } = await supabase
               .from("buy_order_item_suborder_grades")
-              .insert(gradesSubPedidos);
+              .upsert(gradesSubPedidos, { onConflict: "item_id,sub_order_num,grade_letra" });
             if (gsErr) throw gsErr;
           }
         }
@@ -1027,6 +1039,7 @@ export default function BuyOrderModule({ user }: { user?: User }) {
 
   function resetStateAndFetch() {
     setEditingOrderId(null);
+    setEditingOrder(null);
     setNumeroPedidoSalvo(null);
     setCopiedFromPedido(null);
     setStep(0);
@@ -1112,6 +1125,7 @@ export default function BuyOrderModule({ user }: { user?: User }) {
   }
 
   const [editingOrderId, setEditingOrderId] = useState<string | null>(null);
+  const [editingOrder, setEditingOrder] = useState<any>(null);
 
   const handleEditOrder = async (orderId: string) => {
     setLoading(true); // Usa o loading geral
@@ -1178,6 +1192,12 @@ function gradesArrayToObject(grades: any): Record<string, Record<string, number>
 
   const loadOrderIntoSteps = async (order: any, isCopy = false) => {
     console.log(`📦 Carregando pedido para ${isCopy ? "cópia" : "edição"}:`, order);
+
+    if (!isCopy) {
+      setEditingOrder(order);
+    } else {
+      setEditingOrder(null);
+    }
 
     // 1. Preencher Cabeçalho
     setCab({
