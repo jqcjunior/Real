@@ -91,75 +91,88 @@ export const printOrder = async (order: any, supabase: SupabaseClient) => {
     }
   }
 
-  // 5. Gather unique sizes and build grades table values
-  const gradesByLetter: Record<string, Record<string, number>> = {};
-  const allLetters = new Set<string>();
+  // 5. Grades Únicas — 1 template por (letra × categoria), sem acumulação entre itens
+  const getCat = (tipo: string, modelo: string): 'MASC' | 'FEM' | 'INF' => {
+    const t = (tipo || '').toUpperCase();
+    const m = (modelo || '').toUpperCase();
+    if (t.includes('INFANT') || m === 'INFANTIL') return 'INF';
+    if (t.includes('FEMININ') || m === 'FEMININO') return 'FEM';
+    return 'MASC';
+  };
+
+  type CatKey = 'MASC' | 'FEM' | 'INF';
+  const CAT_LABELS: Record<CatKey, string> = { MASC: 'Masculino', FEM: 'Feminino', INF: 'Infantil' };
+
+  // { cat → { letra → { tamanho → qty } } } — usa primeiro template encontrado por (cat, letra)
+  const templateByCatLetter = new Map<string, Record<string, number>>();
+  const catLetters = new Map<CatKey, Set<string>>();
+  const catSizes   = new Map<CatKey, Set<string>>();
+
+  const sortNum = (a: string, b: string) => (parseFloat(a) || 0) - (parseFloat(b) || 0);
 
   loadedItems.forEach((item: any) => {
-    if (Array.isArray(item.grades)) {
-      item.grades.forEach((g: any) => {
-        const letra = g.letra || 'A';
-        allLetters.add(letra);
-        if (!gradesByLetter[letra]) {
-          gradesByLetter[letra] = {};
-        }
-        const tamanhos = g.tamanhos || {};
-        Object.entries(tamanhos).forEach(([size, qty]) => {
-          const qtyNum = Number(qty) || 0;
-          if (qtyNum > 0) {
-            // Keep first valid sizes configuration mapped
-            if (!gradesByLetter[letra][size]) {
-              gradesByLetter[letra][size] = qtyNum;
-            }
-          }
-        });
+    if (!Array.isArray(item.grades)) return;
+    const cat = getCat(item.tipo || '', item.modelo || '');
+    item.grades.forEach((g: any) => {
+      const letra = (g.letra || 'A') as string;
+      const key   = `${cat}__${letra}`;
+      if (templateByCatLetter.has(key)) return;   // já tem template para (cat, letra) — pula
+      const tams: Record<string, number> = {};
+      Object.entries(g.tamanhos || {}).forEach(([sz, qty]) => {
+        const q = Number(qty) || 0;
+        if (q > 0) tams[sz] = q;
       });
-    }
-  });
-
-  const sortedLetters = Array.from(allLetters).sort();
-  const uniqueSizes = new Set<string>();
-  sortedLetters.forEach(letra => {
-    Object.keys(gradesByLetter[letra] || {}).forEach(sz => uniqueSizes.add(sz));
-  });
-
-  const sortedSizes = Array.from(uniqueSizes).sort((a, b) => {
-    const numA = parseFloat(a.replace(/[^0-9.]/g, '')) || 0;
-    const numB = parseFloat(b.replace(/[^0-9.]/g, '')) || 0;
-    return numA - numB;
-  });
-
-  // Render Grade table HTML
-  let gradesTableHtml = '';
-  if (sortedLetters.length > 0) {
-    gradesTableHtml += `
-      <table class="grades-tbl">
-        <thead>
-          <tr>
-            <th>GRADE</th>
-            ${sortedSizes.map(sz => `<th>${sz}</th>`).join('')}
-            <th>TOT</th>
-          </tr>
-        </thead>
-        <tbody>
-    `;
-    sortedLetters.forEach(letra => {
-      const sizes = gradesByLetter[letra] || {};
-      const totalParesGrade = Object.values(sizes).reduce((s, q) => s + q, 0);
-      gradesTableHtml += `
-        <tr>
-          <td class="grade-cell-letter"><b>${letra}</b></td>
-          ${sortedSizes.map(sz => `<td>${sizes[sz] !== undefined ? sizes[sz] : ''}</td>`).join('')}
-          <td class="grade-cell-tot"><b>${totalParesGrade}</b></td>
-        </tr>
-      `;
+      if (Object.keys(tams).length === 0) return;
+      templateByCatLetter.set(key, tams);
+      if (!catLetters.has(cat)) { catLetters.set(cat, new Set()); catSizes.set(cat, new Set()); }
+      catLetters.get(cat)!.add(letra);
+      Object.keys(tams).forEach(sz => catSizes.get(cat)!.add(sz));
     });
-    gradesTableHtml += `
-        </tbody>
-      </table>
-    `;
+  });
+
+  const catsPresentes = (['MASC', 'FEM', 'INF'] as CatKey[]).filter(c => catLetters.has(c));
+
+  let gradesTableHtml = '';
+  if (catsPresentes.length === 0) {
+    gradesTableHtml = `<p style="font-size:9px;color:#888;text-align:center;padding:12px 0;">Nenhuma grade configurada no pedido.</p>`;
   } else {
-    gradesTableHtml = `<p style="font-size: 9px; color: #888; text-align: center; padding: 12px 0;">Nenhuma grade configurada no pedido.</p>`;
+    catsPresentes.forEach((cat, ci) => {
+      const letters = Array.from(catLetters.get(cat)!).sort();
+      const sizes   = Array.from(catSizes.get(cat)!).sort(sortNum);
+      const showHeader = catsPresentes.length > 1;
+
+      if (showHeader) {
+        gradesTableHtml += `
+          <div style="font-size:8px;font-weight:700;color:#475569;text-transform:uppercase;
+                      letter-spacing:0.5px;margin:${ci > 0 ? '8px' : '0'} 0 3px;">
+            ${CAT_LABELS[cat]}
+          </div>`;
+      }
+
+      gradesTableHtml += `
+        <table class="grades-tbl">
+          <thead>
+            <tr>
+              <th>GRADE</th>
+              ${sizes.map(sz => `<th>${sz}</th>`).join('')}
+              <th>TOT</th>
+            </tr>
+          </thead>
+          <tbody>`;
+
+      letters.forEach(letra => {
+        const tams = templateByCatLetter.get(`${cat}__${letra}`) || {};
+        const tot  = Object.values(tams).reduce((s, q) => s + q, 0);
+        gradesTableHtml += `
+          <tr>
+            <td class="grade-cell-letter"><b>${letra}</b></td>
+            ${sizes.map(sz => `<td>${tams[sz] !== undefined ? tams[sz] : ''}</td>`).join('')}
+            <td class="grade-cell-tot"><b>${tot}</b></td>
+          </tr>`;
+      });
+
+      gradesTableHtml += `</tbody></table>`;
+    });
   }
 
   // 6. Calculate Financial totals per sub-order and grand totals

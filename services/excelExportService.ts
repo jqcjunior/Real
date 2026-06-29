@@ -215,33 +215,40 @@ export async function exportBuyOrderToExcel(orderId: string) {
             '46': 39, '47': 40, '48': 41
         };
 
-        // Consolidar grades únicas — pegar a definição de cada grade do primeiro item que a contém
+        // Consolidar grades únicas — 1 template por letra, prioridade MASC > FEM > INF
         const items = order.buy_order_items || [];
+
+        const _getCat = (tipo: string, modelo: string): number => {
+            const t = (tipo || '').toUpperCase();
+            const m = (modelo || '').toUpperCase();
+            if (t.includes('INFANT') || m === 'INFANTIL') return 2;
+            if (t.includes('FEMININ') || m === 'FEMININO') return 1;
+            return 0;
+        };
+
+        const sortedItems = [...items].sort((a: any, b: any) =>
+            _getCat(a.tipo || '', a.modelo || '') - _getCat(b.tipo || '', b.modelo || '')
+        );
+
         const gradesUnicas: Record<string, Record<string, number>> = {};
 
-        items.forEach((item: any) => {
+        sortedItems.forEach((item: any) => {
             const gradesArray = item.grades || [];
             if (!Array.isArray(gradesArray)) return;
 
             gradesArray.forEach((gradeObj: any) => {
                 const letra = gradeObj.letra;
-                const tamanhos = gradeObj.tamanhos || {};
-
                 if (!letra || !GRADE_MAP[letra]) return;
+                if (gradesUnicas[letra]) return; // já tem template para esta letra — pula
 
-                // ✅ CORREÇÃO: inicializar a grade se não existe ainda
-                if (!gradesUnicas[letra]) {
-                    gradesUnicas[letra] = {};
-                }
-
-                // ✅ CORREÇÃO: preencher tamanhos que ainda não foram preenchidos
-                // (a grade tem sempre os mesmos tamanhos para todos os itens)
-                Object.entries(tamanhos).forEach(([tamanho, qtd]: any) => {
-                    const qtdNum = Number(qtd) || 0;
-                    if (qtdNum > 0 && !gradesUnicas[letra][tamanho]) {
-                        gradesUnicas[letra][tamanho] = qtdNum;
-                    }
+                const tamanhos: Record<string, number> = {};
+                Object.entries(gradeObj.tamanhos || {}).forEach(([sz, qty]: any) => {
+                    const q = Number(qty) || 0;
+                    if (q > 0) tamanhos[sz] = q;
                 });
+                if (Object.keys(tamanhos).length > 0) {
+                    gradesUnicas[letra] = tamanhos;
+                }
             });
         });
 
@@ -317,6 +324,13 @@ export async function exportBuyOrderToExcel(orderId: string) {
             'ACES': 'ACESSÓRIO',
         };
 
+        // Mapear sub_order_num → posição 1-based (para evitar shift quando não há sub_order 1)
+        const sortedSubOrders = [...subOrders].sort((a: any, b: any) => a.sub_order_num - b.sub_order_num);
+        const subNumToPosition = new Map<number, number>();
+        sortedSubOrders.forEach((sub: any, idx: number) => {
+            subNumToPosition.set(sub.sub_order_num, idx + 1);
+        });
+
         // 6. PREENCHER ITENS (A partir da linha 36)
         console.log('[Export] Preenchendo itens...');
         const START_ROW = 36;
@@ -341,9 +355,10 @@ export async function exportBuyOrderToExcel(orderId: string) {
             const gradesPorSub = itemGradeMap.get(item.id);
             if (gradesPorSub) {
                 gradesPorSub.forEach((gradeInfo, subNum) => {
-                    const cols = SUB_ORDER_COLS[subNum];
+                    const position = subNumToPosition.get(subNum);
+                    if (!position) return;
+                    const cols = SUB_ORDER_COLS[position];
                     if (!cols) return;
-                    // ✅ Usar pares da grade específica, não total_pares do item
                     sheet.row(row).cell(cols.pares).value(gradeInfo.pares);
                     sheet.row(row).cell(cols.grade).value(gradeInfo.letra);
                 });
