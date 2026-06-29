@@ -215,41 +215,47 @@ export async function exportBuyOrderToExcel(orderId: string) {
             '46': 39, '47': 40, '48': 41
         };
 
-        // Consolidar grades únicas — 1 template por letra, prioridade MASC > FEM > INF
+        // Consolidar grades únicas — 1 template por letra, priorizando a definição mais comum
         const items = order.buy_order_items || [];
+        const gradeOccurrences: Map<string, Map<string, { tamanhos: Record<string, number>, count: number }>> = new Map();
 
-        const _getCat = (tipo: string, modelo: string): number => {
-            const t = (tipo || '').toUpperCase();
-            const m = (modelo || '').toUpperCase();
-            if (t.includes('INFANT') || m === 'INFANTIL') return 2;
-            if (t.includes('FEMININ') || m === 'FEMININO') return 1;
-            return 0;
-        };
+        for (const item of items) {
+            const gradesArray = item.grades || [];
+            if (!Array.isArray(gradesArray)) continue;
+            for (const g of gradesArray) {
+                if (!g.letra) continue;
+                const key = JSON.stringify(g.tamanhos || {}); // fingerprint da configuração
+                if (!gradeOccurrences.has(g.letra)) gradeOccurrences.set(g.letra, new Map());
+                const variants = gradeOccurrences.get(g.letra)!;
+                if (!variants.has(key)) variants.set(key, { tamanhos: g.tamanhos || {}, count: 0 });
+                variants.get(key)!.count++;
+            }
+        }
 
-        const sortedItems = [...items].sort((a: any, b: any) =>
-            _getCat(a.tipo || '', a.modelo || '') - _getCat(b.tipo || '', b.modelo || '')
-        );
+        // 2. Para cada letra, pegar a definição mais comum
+        const uniqueGrades: { letra: string, tamanhos: Record<string, number> }[] = [];
+        for (const [letra, variants] of gradeOccurrences) {
+            let best = { tamanhos: {} as Record<string, number>, count: 0 };
+            for (const v of variants.values()) {
+                if (v.count > best.count) best = v;
+            }
+            const filteredTams: Record<string, number> = {};
+            Object.entries(best.tamanhos || {}).forEach(([sz, qty]) => {
+                const q = Number(qty) || 0;
+                if (q > 0) filteredTams[sz] = q;
+            });
+            if (Object.keys(filteredTams).length > 0) {
+                uniqueGrades.push({ letra, tamanhos: filteredTams });
+            }
+        }
+
+        // 3. Ordenar por letra e limitar a 8
+        uniqueGrades.sort((a, b) => a.letra.localeCompare(b.letra));
+        const gradesToShow = uniqueGrades.slice(0, 8);
 
         const gradesUnicas: Record<string, Record<string, number>> = {};
-
-        sortedItems.forEach((item: any) => {
-            const gradesArray = item.grades || [];
-            if (!Array.isArray(gradesArray)) return;
-
-            gradesArray.forEach((gradeObj: any) => {
-                const letra = gradeObj.letra;
-                if (!letra || !GRADE_MAP[letra]) return;
-                if (gradesUnicas[letra]) return; // já tem template para esta letra — pula
-
-                const tamanhos: Record<string, number> = {};
-                Object.entries(gradeObj.tamanhos || {}).forEach(([sz, qty]: any) => {
-                    const q = Number(qty) || 0;
-                    if (q > 0) tamanhos[sz] = q;
-                });
-                if (Object.keys(tamanhos).length > 0) {
-                    gradesUnicas[letra] = tamanhos;
-                }
-            });
+        gradesToShow.forEach(g => {
+            gradesUnicas[g.letra] = g.tamanhos;
         });
 
         // Preencher quantidades no Excel (SEM modificar layout)

@@ -91,88 +91,79 @@ export const printOrder = async (order: any, supabase: SupabaseClient) => {
     }
   }
 
-  // 5. Grades Únicas — 1 template por (letra × categoria), sem acumulação entre itens
-  const getCat = (tipo: string, modelo: string): 'MASC' | 'FEM' | 'INF' => {
-    const t = (tipo || '').toUpperCase();
-    const m = (modelo || '').toUpperCase();
-    if (t.includes('INFANT') || m === 'INFANTIL') return 'INF';
-    if (t.includes('FEMININ') || m === 'FEMININO') return 'FEM';
-    return 'MASC';
-  };
+  // 5. Grades Únicas — 1 template por letra, sem acumulação entre itens, priorizando a definição mais comum
+  const printItems = loadedItems || [];
+  const gradeOccurrences: Map<string, Map<string, { tamanhos: Record<string, number>, count: number }>> = new Map();
 
-  type CatKey = 'MASC' | 'FEM' | 'INF';
-  const CAT_LABELS: Record<CatKey, string> = { MASC: 'Masculino', FEM: 'Feminino', INF: 'Infantil' };
+  for (const item of printItems) {
+    if (!Array.isArray(item.grades)) continue;
+    for (const g of item.grades) {
+      if (!g.letra) continue;
+      const key = JSON.stringify(g.tamanhos || {}); // fingerprint da configuração
+      if (!gradeOccurrences.has(g.letra)) gradeOccurrences.set(g.letra, new Map());
+      const variants = gradeOccurrences.get(g.letra)!;
+      if (!variants.has(key)) variants.set(key, { tamanhos: g.tamanhos || {}, count: 0 });
+      variants.get(key)!.count++;
+    }
+  }
 
-  // { cat → { letra → { tamanho → qty } } } — usa primeiro template encontrado por (cat, letra)
-  const templateByCatLetter = new Map<string, Record<string, number>>();
-  const catLetters = new Map<CatKey, Set<string>>();
-  const catSizes   = new Map<CatKey, Set<string>>();
-
-  const sortNum = (a: string, b: string) => (parseFloat(a) || 0) - (parseFloat(b) || 0);
-
-  loadedItems.forEach((item: any) => {
-    if (!Array.isArray(item.grades)) return;
-    const cat = getCat(item.tipo || '', item.modelo || '');
-    item.grades.forEach((g: any) => {
-      const letra = (g.letra || 'A') as string;
-      const key   = `${cat}__${letra}`;
-      if (templateByCatLetter.has(key)) return;   // já tem template para (cat, letra) — pula
-      const tams: Record<string, number> = {};
-      Object.entries(g.tamanhos || {}).forEach(([sz, qty]) => {
-        const q = Number(qty) || 0;
-        if (q > 0) tams[sz] = q;
-      });
-      if (Object.keys(tams).length === 0) return;
-      templateByCatLetter.set(key, tams);
-      if (!catLetters.has(cat)) { catLetters.set(cat, new Set()); catSizes.set(cat, new Set()); }
-      catLetters.get(cat)!.add(letra);
-      Object.keys(tams).forEach(sz => catSizes.get(cat)!.add(sz));
+  // 2. Para cada letra, pegar a definição mais comum
+  const uniqueGrades: { letra: string, tamanhos: Record<string, number> }[] = [];
+  for (const [letra, variants] of gradeOccurrences) {
+    let best = { tamanhos: {} as Record<string, number>, count: 0 };
+    for (const v of variants.values()) {
+      if (v.count > best.count) best = v;
+    }
+    // Filtrar tamanhos para manter apenas os com quantidade > 0
+    const filteredTams: Record<string, number> = {};
+    Object.entries(best.tamanhos || {}).forEach(([sz, qty]) => {
+      const q = Number(qty) || 0;
+      if (q > 0) filteredTams[sz] = q;
     });
+    if (Object.keys(filteredTams).length > 0) {
+      uniqueGrades.push({ letra, tamanhos: filteredTams });
+    }
+  }
+
+  // 3. Ordenar por letra e limitar a 8
+  uniqueGrades.sort((a, b) => a.letra.localeCompare(b.letra));
+  const gradesToShow = uniqueGrades.slice(0, 8);
+
+  const allSizesSet = new Set<string>();
+  gradesToShow.forEach(g => {
+    Object.keys(g.tamanhos).forEach(sz => allSizesSet.add(sz));
   });
 
-  const catsPresentes = (['MASC', 'FEM', 'INF'] as CatKey[]).filter(c => catLetters.has(c));
+  const sortNum = (a: string, b: string) => (parseFloat(a) || 0) - (parseFloat(b) || 0);
+  const sortedSizes = Array.from(allSizesSet).sort(sortNum);
 
   let gradesTableHtml = '';
-  if (catsPresentes.length === 0) {
+  if (gradesToShow.length === 0) {
     gradesTableHtml = `<p style="font-size:9px;color:#888;text-align:center;padding:12px 0;">Nenhuma grade configurada no pedido.</p>`;
   } else {
-    catsPresentes.forEach((cat, ci) => {
-      const letters = Array.from(catLetters.get(cat)!).sort();
-      const sizes   = Array.from(catSizes.get(cat)!).sort(sortNum);
-      const showHeader = catsPresentes.length > 1;
-
-      if (showHeader) {
-        gradesTableHtml += `
-          <div style="font-size:8px;font-weight:700;color:#475569;text-transform:uppercase;
-                      letter-spacing:0.5px;margin:${ci > 0 ? '8px' : '0'} 0 3px;">
-            ${CAT_LABELS[cat]}
-          </div>`;
-      }
-
-      gradesTableHtml += `
-        <table class="grades-tbl">
-          <thead>
-            <tr>
-              <th>GRADE</th>
-              ${sizes.map(sz => `<th>${sz}</th>`).join('')}
-              <th>TOT</th>
-            </tr>
-          </thead>
-          <tbody>`;
-
-      letters.forEach(letra => {
-        const tams = templateByCatLetter.get(`${cat}__${letra}`) || {};
-        const tot  = Object.values(tams).reduce((s, q) => s + q, 0);
-        gradesTableHtml += `
+    gradesTableHtml += `
+      <table class="grades-tbl">
+        <thead>
           <tr>
-            <td class="grade-cell-letter"><b>${letra}</b></td>
-            ${sizes.map(sz => `<td>${tams[sz] !== undefined ? tams[sz] : ''}</td>`).join('')}
-            <td class="grade-cell-tot"><b>${tot}</b></td>
-          </tr>`;
-      });
+            <th>GRADE</th>
+            ${sortedSizes.map(sz => `<th>${sz}</th>`).join('')}
+            <th>TOT</th>
+          </tr>
+        </thead>
+        <tbody>`;
 
-      gradesTableHtml += `</tbody></table>`;
+    gradesToShow.forEach(g => {
+      const tams = g.tamanhos;
+      const tot  = Object.values(tams).reduce((s, q) => s + q, 0);
+      gradesTableHtml += `
+        <tr>
+          <td class="grade-cell-letter"><b>${g.letra}</b></td>
+          ${sortedSizes.map(sz => `<td>${tams[sz] !== undefined ? tams[sz] : ''}</td>`).join('')}
+          <td class="grade-cell-tot"><b>${tot}</b></td>
+        </tr>`;
     });
+
+    gradesTableHtml += `</tbody></table>`;
   }
 
   // 6. Calculate Financial totals per sub-order and grand totals
