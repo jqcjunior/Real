@@ -39,6 +39,7 @@ interface SurveyVotingScreenProps {
   user: any;
   orderId: string;
   subOrderNum: number;
+  gradesPredefinidas?: string[];
   storeId: string;
   onClose: () => void;
   onComplete: () => void;
@@ -53,7 +54,7 @@ const MODELO_CATEGORIA: Record<string, string> = {
   ACES: 'acessorio',
 };
 
-const GRADE_LETRAS = ['A', 'B', 'C', 'D'];
+const TODAS_GRADE_LETRAS = ['A', 'B', 'C', 'D', 'E', 'F', 'G', 'H'];
 
 function totalPares(tamanhos: Record<string, number>): number {
   return Object.values(tamanhos).reduce((a, b) => a + b, 0);
@@ -69,6 +70,7 @@ export default function SurveyVotingScreen({
   user,
   orderId,
   subOrderNum,
+  gradesPredefinidas = ['A', 'B', 'C', 'D'],
   storeId,
   onClose,
   onComplete,
@@ -103,7 +105,7 @@ export default function SurveyVotingScreen({
             .from('survey_grade_templates')
             .select('*')
             .eq('is_active', true)
-            .in('letra', GRADE_LETRAS)
+            .in('letra', TODAS_GRADE_LETRAS)
             .order('sort_order'),
         ]);
 
@@ -171,6 +173,7 @@ export default function SurveyVotingScreen({
   const availableTemplates = currentItem
     ? templates.filter(
         t => t.categoria === MODELO_CATEGORIA[currentItem.modelo]
+          && gradesPredefinidas.includes(t.letra)
       )
     : [];
 
@@ -409,6 +412,7 @@ export default function SurveyVotingScreen({
           const isSelected = selectedGrade === tpl.letra;
           const pares = totalPares(tpl.tamanhos);
           const entries = Object.entries(tpl.tamanhos);
+          const sizesText = entries.map(([sz, qty]) => `${sz}×${qty}`).join(' · ');
 
           return (
             <button
@@ -419,42 +423,38 @@ export default function SurveyVotingScreen({
                 ...(isSelected ? styles.gradeRowSelected : {}),
               }}
             >
-              {/* Badge */}
+              {/* Badge da letra */}
               <div style={{
                 ...styles.gradeBadge,
                 ...(isSelected ? styles.gradeBadgeSelected : {}),
+                minWidth: 32,
               }}>
-                G{tpl.letra}
+                {tpl.letra}
               </div>
 
-              {/* Sizes horizontal */}
-              <div style={styles.sizesWrapper}>
-                <div style={styles.sizesRow}>
-                  {entries.map(([sz, qty]) => (
-                    <div key={sz} style={styles.sizeCol}>
-                      <span style={{
-                        ...styles.sizeNum,
-                        ...(isSelected ? styles.sizeNumSelected : {}),
-                      }}>{sz}</span>
-                      <span style={{
-                        ...styles.sizeQty,
-                        ...(isSelected ? styles.sizeQtySelected : {}),
-                      }}>{qty}</span>
-                    </div>
-                  ))}
-                </div>
+              {/* Tamanhos inline: 37×1 · 38×2 · ... */}
+              <div style={{ flex: 1, overflow: 'hidden', padding: '0 8px' }}>
+                <span style={{
+                  fontSize: 11,
+                  color: isSelected ? '#1d4ed8' : '#64748b',
+                  fontWeight: isSelected ? 600 : 400,
+                  whiteSpace: 'nowrap',
+                  overflow: 'hidden',
+                  textOverflow: 'ellipsis',
+                  display: 'block',
+                }}>
+                  {sizesText}
+                </span>
               </div>
 
-              {/* Total */}
-              <div style={styles.gradeTotal}>
-                <div style={{
-                  ...styles.totalNum,
-                  ...(isSelected ? styles.totalNumSelected : {}),
-                }}>{pares}</div>
-                <div style={{
-                  ...styles.totalLabel,
-                  ...(isSelected ? styles.totalLabelSelected : {}),
-                }}>pares</div>
+              {/* Total pares */}
+              <div style={{
+                display: 'flex', alignItems: 'center', gap: 3,
+                paddingRight: 8, whiteSpace: 'nowrap',
+                color: isSelected ? '#1d4ed8' : '#64748b',
+              }}>
+                <span style={{ fontWeight: 700, fontSize: 13 }}>{pares}</span>
+                <span style={{ fontSize: 10 }}>pares</span>
               </div>
 
               {/* Check */}

@@ -418,6 +418,7 @@ export default function SurveyVotingPage({ orderId }: SurveyVotingPageProps) {
           orderId={orderId} 
           subOrderNum={subOrderNum} 
           storeId={user.storeId} 
+          gradesPredefinidas={order?.survey_params?.gradesPredefinidas || ['A','B','C','D']}
           onClose={handleLogout} 
           onComplete={() => setHasCompleted(true)} 
         />

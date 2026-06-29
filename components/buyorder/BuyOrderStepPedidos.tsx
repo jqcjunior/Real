@@ -2412,6 +2412,7 @@ export function SurveyParamsConfig({
 
     return {
       prazo_horas: surveyParams?.prazo_horas || 24,
+      gradesPredefinidas: surveyParams?.gradesPredefinidas || ['A', 'B', 'C', 'D'],
       sub_orders: defaultSubOrders,
     };
   }, [subOrders, surveyParams]);
@@ -2466,6 +2467,46 @@ export function SurveyParamsConfig({
             />
             <span className="text-xs font-bold text-blue-700">horas</span>
           </div>
+        </div>
+
+        {/* Grades Predefinidas */}
+        <div className="mt-3 bg-indigo-50/50 border border-indigo-100 rounded-xl p-3">
+          <div className="flex items-center gap-2 mb-2">
+            <span className="text-lg">🎯</span>
+            <div>
+              <p className="text-xs font-black text-indigo-900">Grades Disponíveis para Seleção</p>
+              <p className="text-[10px] text-slate-400">Gerentes só poderão escolher as grades marcadas abaixo (máx. 8)</p>
+            </div>
+          </div>
+          <div className="flex flex-wrap gap-2 mt-2">
+            {['A', 'B', 'C', 'D', 'E', 'F', 'G', 'H'].map(letra => {
+              const ativas = currentParams.gradesPredefinidas || [];
+              const isAtiva = ativas.includes(letra);
+              return (
+                <button
+                  key={letra}
+                  type="button"
+                  onClick={() => {
+                    const atuais: string[] = currentParams.gradesPredefinidas || [];
+                    const novas = isAtiva
+                      ? atuais.filter((g: string) => g !== letra)
+                      : atuais.length < 8 ? [...atuais, letra].sort() : atuais;
+                    onUpdate({ ...currentParams, gradesPredefinidas: novas });
+                  }}
+                  className={`w-9 h-9 rounded-lg text-sm font-black border-2 transition-all ${
+                    isAtiva
+                      ? 'bg-indigo-600 border-indigo-600 text-white shadow-sm'
+                      : 'bg-white border-slate-200 text-slate-400 hover:border-indigo-300'
+                  }`}
+                >
+                  {letra}
+                </button>
+              );
+            })}
+          </div>
+          <p className="text-[10px] text-indigo-500 font-medium mt-2">
+            {(currentParams.gradesPredefinidas || []).length}/8 grades selecionadas
+          </p>
         </div>
       </div>
 
