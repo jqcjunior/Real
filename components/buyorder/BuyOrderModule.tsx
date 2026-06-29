@@ -1458,7 +1458,7 @@ function gradesArrayToObject(grades: any): Record<string, Record<string, number>
 
     // 2. Filtro de Status
     if (statusFilter) {
-      const orderStatus = order.exported_at ? "exportado" : (order.status || "confirmado");
+      const orderStatus = order.status || "confirmado";
       if (statusFilter === "nao_exportado") {
         if (orderStatus === "exportado") return false;
       } else {
@@ -2068,7 +2068,7 @@ function gradesArrayToObject(grades: any): Record<string, Record<string, number>
                   (sub: any) => sub.lojas_numeros || []
                 ) as number[];
                 const lojasUnicas = [...new Set(todasLojas)].sort((a, b) => a - b);
-                const status = order.status || (order.exported_at ? "exportado" : "confirmado");
+                const status = order.status || "confirmado";
 
                 return (
                   <div key={order.id} className="bg-white border border-slate-200 rounded-xl p-3 shadow-sm">
@@ -2401,9 +2401,7 @@ function gradesArrayToObject(grades: any): Record<string, Record<string, number>
                     {/* Status */}
                     <td style={{ padding: "10px 12px" }}>
                       {(() => {
-                        const status =
-                          o.status ||
-                          (o.exported_at ? "exportado" : "confirmado");
+                        const status = o.status || "confirmado";
                         if (status === "cancelado")
                           return (
                             <span
@@ -2420,7 +2418,7 @@ function gradesArrayToObject(grades: any): Record<string, Record<string, number>
                               Cancelado
                             </span>
                           );
-                        if (status === "exportado" || o.exported_at)
+                        if (status === "exportado")
                           return (
                             <span
                               style={{
