@@ -375,10 +375,19 @@ const IceCreamModule: React.FC<IceCreamModuleProps> = ({
     
     // Detecta mudança de data e busca dados extras se necessário
     useEffect(() => {
-        if (!displayDate || !effectiveStoreId) return;
-    
+        if (!effectiveStoreId) return;
+
+        // Se a aba ativa for DRE Mensal, o mês de referência vem do seletor 
+        // selectedMonth/selectedYear. Nas outras abas (DRE Diário, Auditoria), 
+        // o mês de referência vem de displayDate.
+        const referenceDate = activeTab === 'dre_mensal'
+            ? new Date(Number(selectedYear), Number(selectedMonth) - 1, 1)
+            : (displayDate ? new Date(displayDate + 'T00:00:00') : null);
+
+        if (!referenceDate) return;
+
         const now = new Date();
-        const selected = new Date(displayDate + 'T00:00:00');
+        const selected = referenceDate;
         const selectedMonthStart = new Date(selected.getFullYear(), selected.getMonth(), 1).getTime();
         const currentMonthStart = new Date(now.getFullYear(), now.getMonth(), 1).getTime();
     
@@ -498,7 +507,7 @@ const IceCreamModule: React.FC<IceCreamModuleProps> = ({
         };
     
         fetchOnDemandData();
-    }, [displayDate, effectiveStoreId]);
+    }, [displayDate, effectiveStoreId, activeTab, selectedMonth, selectedYear]);
 
     // ✅ Sync displayDate with audit date when tab is audit
     useEffect(() => {
