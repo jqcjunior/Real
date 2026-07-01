@@ -269,7 +269,7 @@ export default function StandByDashboard({
                )}
                
                <span className="text-[8px] text-amber-700/50 font-black uppercase">
-                 {order.colocado_em_standby_por.split(' ')[0]}
+                 {(order.colocado_em_standby_por || '').split(' ')[0]}
                </span>
             </div>
           </div>
