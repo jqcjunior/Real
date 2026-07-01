@@ -111,27 +111,29 @@ const DashboardPAGerente: React.FC<DashboardPAGerenteProps> = ({ user, store }) 
   const [loadingRanking, setLoadingRanking] = useState(false);
  
   useEffect(() => {
-    loadInitialData();
-  }, [selectedMonth, selectedYear]);
+    if (store && user) {
+      loadInitialData();
+    }
+  }, [selectedMonth, selectedYear, store?.id, user?.id]);
  
   useEffect(() => {
-    if (selectedWeek) {
+    if (selectedWeek && store && user) {
       loadSales(selectedWeek);
     }
-  }, [selectedWeek]);
+  }, [selectedWeek, store?.id, user?.id]);
 
   useEffect(() => {
-    if (selectedWeek) {
+    if (selectedWeek && store && user) {
       dashboardPAService.getParameters(store.id, selectedMonth, selectedYear, selectedWeek).then(setParams);
     }
-  }, [selectedWeek]);
+  }, [selectedWeek, store?.id, user?.id]);
  
   // 🆕 Carregar ranking quando mudar para aba ranking
   useEffect(() => {
-    if (activeTab === 'ranking') {
+    if (activeTab === 'ranking' && store && user) {
       loadStoresRanking();
     }
-  }, [activeTab, selectedMonth, selectedYear]);
+  }, [activeTab, selectedMonth, selectedYear, store?.id, user?.id]);
  
   const showToast = (message: string, type: 'success' | 'error') => {
     setToast({ message, type });
@@ -139,6 +141,7 @@ const DashboardPAGerente: React.FC<DashboardPAGerenteProps> = ({ user, store }) 
   };
  
   const loadInitialData = async () => {
+    if (!store || !user) return;
     try {
       setLoading(true);
       const weeksData = await dashboardPAService.getWeeks(store.id, selectedYear, selectedMonth);
@@ -198,6 +201,7 @@ const DashboardPAGerente: React.FC<DashboardPAGerenteProps> = ({ user, store }) 
  
   // 🆕 Carregar ranking de lojas
   const loadStoresRanking = async () => {
+    if (!store || !user) return;
     setLoadingRanking(true);
     try {
       // Buscar todas as lojas
@@ -277,6 +281,7 @@ const DashboardPAGerente: React.FC<DashboardPAGerenteProps> = ({ user, store }) 
   };
  
   const loadSales = async (weekId: string) => {
+    if (!store || !user) return;
     try {
       setLoadingSales(true);
       const salesData = await dashboardPAService.getStoreSales(weekId, store.id);
@@ -670,6 +675,23 @@ const DashboardPAGerente: React.FC<DashboardPAGerenteProps> = ({ user, store }) 
     `;
   };
  
+  if (!user || !store) {
+    return (
+      <div className="flex items-center justify-center h-screen bg-slate-50 dark:bg-slate-950">
+        <div className="text-center space-y-4">
+          <motion.div 
+            animate={{ rotate: 360 }}
+            transition={{ duration: 1, repeat: Infinity, ease: "linear" }}
+            className="w-12 h-12 border-4 border-orange-500 border-t-transparent rounded-full mx-auto"
+          />
+          <p className="text-slate-500 dark:text-slate-400 font-black italic uppercase tracking-tighter text-sm">
+            Carregando dados do usuário e da loja...
+          </p>
+        </div>
+      </div>
+    );
+  }
+
   const totalStoreSales = sales.reduce((acc, curr) => acc + (curr.total_vendas || 0), 0);
   const totalAwards = sales.reduce((acc, curr) => acc + (curr.valor_premio || 0), 0);
   const avgPA = sales.length > 0 ? sales.reduce((acc, curr) => acc + (curr.pa || 0), 0) / sales.length : 0;
