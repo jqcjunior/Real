@@ -92,6 +92,7 @@ export interface IceCreamSangria {
 export interface IceCreamDailySale {
   id: string;
   sale_id?: string;
+  saleId?: string;
   storeId: string;
   itemId: string;
   productName: string;
