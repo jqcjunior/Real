@@ -3,7 +3,20 @@ import { PAParameters, PAWeek, PASale, PAStoreSummary } from '../types/pa';
 
 export const dashboardPAService = {
   // Parameters
-  async getParameters(storeId: string, mesRef?: number, anoRef?: number): Promise<PAParameters | null> {
+  async getParameters(storeId: string, mesRef?: number, anoRef?: number, semanaId?: string): Promise<PAParameters | null> {
+    if (semanaId) {
+      // Try specifically for the week first
+      const { data: weekData, error: weekError } = await supabase
+        .from('Dashboard_PA_Parametros')
+        .select('*')
+        .eq('store_id', storeId)
+        .eq('semana_id', semanaId);
+      
+      if (!weekError && weekData && weekData.length > 0) {
+        return weekData[0];
+      }
+    }
+
     let query = supabase
       .from('Dashboard_PA_Parametros')
       .select('*')
@@ -16,10 +29,10 @@ export const dashboardPAService = {
       query = query.eq('ano_ref', anoRef);
     }
     
-    const { data, error } = await query.maybeSingle();
+    const { data, error } = await query;
     
     if (error) throw error;
-    return data;
+    return data && data.length > 0 ? data[0] : null;
   },
 
   async upsertParameters(params: PAParameters): Promise<void> {
@@ -139,7 +152,7 @@ export const dashboardPAService = {
       throw new Error('Não foi possível obter o mês e ano de referência da semana sendo calculada.');
     }
 
-    const params = await this.getParameters(storeId, week.mes_ref, week.ano_ref);
+    const params = await this.getParameters(storeId, week.mes_ref, week.ano_ref, weekId);
     if (!params) {
       throw new Error(`Parâmetros do P.A. não configurados para esta loja para o período ${week.mes_ref}/${week.ano_ref}.`);
     }

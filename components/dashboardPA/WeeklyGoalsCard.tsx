@@ -9,6 +9,7 @@ interface WeeklyGoalsCardProps {
   storeNumber: string;
   selectedMonth?: number;
   selectedYear?: number;
+  semanaId?: string;
 }
 
 interface GoalParameters {
@@ -31,13 +32,13 @@ interface GoalParameters {
   incremento_valor: number;
 }
 
-const WeeklyGoalsCard: React.FC<WeeklyGoalsCardProps> = ({ storeId, storeName, storeNumber, selectedMonth, selectedYear }) => {
+const WeeklyGoalsCard: React.FC<WeeklyGoalsCardProps> = ({ storeId, storeName, storeNumber, selectedMonth, selectedYear, semanaId }) => {
   const [params, setParams] = useState<GoalParameters | null>(null);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
     fetchParameters();
-  }, [storeId, selectedMonth, selectedYear]);
+  }, [storeId, selectedMonth, selectedYear, semanaId]);
 
   const fetchParameters = async () => {
     try {
@@ -47,32 +48,39 @@ const WeeklyGoalsCard: React.FC<WeeklyGoalsCardProps> = ({ storeId, storeName, s
         .select('*')
         .eq('store_id', storeId);
 
-      if (selectedMonth) {
-        query = query.eq('mes_ref', selectedMonth);
-      }
-      if (selectedYear) {
-        query = query.eq('ano_ref', selectedYear);
+      if (semanaId) {
+        query = query.eq('semana_id', semanaId);
+      } else {
+        if (selectedMonth) {
+          query = query.eq('mes_ref', selectedMonth);
+        }
+        if (selectedYear) {
+          query = query.eq('ano_ref', selectedYear);
+        }
       }
 
-      const { data, error } = await query.maybeSingle();
+      const { data, error } = await query;
 
       if (error) throw error;
 
-      if (data) {
+      if (data && data.length > 0) {
+        const row = data[0];
         setParams({
-          vendas_minimo: data.vendas_minimo,
-          vendas_valor_base: data.vendas_valor_base,
-          vendas_incremento: data.vendas_incremento,
-          vendas_inc_valor: data.vendas_inc_valor,
-          ticket_minimo: data.ticket_minimo,
-          ticket_valor_base: data.ticket_valor_base,
-          ticket_incremento: data.ticket_incremento,
-          ticket_inc_valor: data.ticket_inc_valor,
-          pa_inicial: Number(data.pa_inicial),
-          valor_base: Number(data.valor_base),
-          incremento_pa: Number(data.incremento_pa),
-          incremento_valor: Number(data.incremento_valor),
+          vendas_minimo: row.vendas_minimo,
+          vendas_valor_base: row.vendas_valor_base,
+          vendas_incremento: row.vendas_incremento,
+          vendas_inc_valor: row.vendas_inc_valor,
+          ticket_minimo: row.ticket_minimo,
+          ticket_valor_base: row.ticket_valor_base,
+          ticket_incremento: row.ticket_incremento,
+          ticket_inc_valor: row.ticket_inc_valor,
+          pa_inicial: Number(row.pa_inicial),
+          valor_base: Number(row.valor_base),
+          incremento_pa: Number(row.incremento_pa),
+          incremento_valor: Number(row.incremento_valor),
         });
+      } else {
+        setParams(null);
       }
     } catch (err) {
       console.error('Erro ao carregar parâmetros:', err);

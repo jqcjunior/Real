@@ -833,6 +833,7 @@ const DashboardPAGerente: React.FC<DashboardPAGerenteProps> = ({ user, store }) 
             storeNumber={store.number}
             selectedMonth={selectedMonth}
             selectedYear={selectedYear}
+            semanaId={selectedWeek || undefined}
           />
           
           {/* Active Week Info */}
