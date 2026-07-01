@@ -116,12 +116,18 @@ export const useDREStats = ({
                 else if (method === 'fiado') {
                     monthMethods.fiado += valP;
                     monthMethodsCount.fiado++;
+
+                    const saleItems = (sales ?? []).filter(item => item.sale_id === sale.id);
+                    const productLabel = saleItems.length > 0
+                        ? saleItems.map(item => `${item.productName} (${item.unitsSold}x)`).join(', ')
+                        : 'Venda Diversa';
+
                     monthFiadoDetails.push({
                         buyer_name: sale.buyer_name || 'NÃO INFORMADO',
                         totalValue: p.amount,
                         saleCode: sale.sale_code || '---',
                         createdAt: p.created_at,
-                        productName: 'Venda Diversa'
+                        productName: productLabel
                     });
                 }
             });
