@@ -119,6 +119,12 @@ const DashboardPAGerente: React.FC<DashboardPAGerenteProps> = ({ user, store }) 
       loadSales(selectedWeek);
     }
   }, [selectedWeek]);
+
+  useEffect(() => {
+    if (selectedWeek) {
+      dashboardPAService.getParameters(store.id, selectedMonth, selectedYear, selectedWeek).then(setParams);
+    }
+  }, [selectedWeek]);
  
   // 🆕 Carregar ranking quando mudar para aba ranking
   useEffect(() => {
@@ -135,13 +141,18 @@ const DashboardPAGerente: React.FC<DashboardPAGerenteProps> = ({ user, store }) 
   const loadInitialData = async () => {
     try {
       setLoading(true);
-      const [paramsData, weeksData] = await Promise.all([
-        dashboardPAService.getParameters(store.id, selectedMonth, selectedYear),
-        dashboardPAService.getWeeks(store.id, selectedYear, selectedMonth)
-      ]);
+      const weeksData = await dashboardPAService.getWeeks(store.id, selectedYear, selectedMonth);
+      setWeeks(weeksData);
+
+      const activeWeek = weeksData.length > 0
+        ? (weeksData.find(w => w.status === 'aberta') || weeksData[0])
+        : null;
+
+      const paramsData = activeWeek
+        ? await dashboardPAService.getParameters(store.id, selectedMonth, selectedYear, activeWeek.id)
+        : null;
       
       setParams(paramsData);
-      setWeeks(weeksData);
  
       const { data: goalData } = await supabase
         .from('monthly_goals')
@@ -172,8 +183,7 @@ const DashboardPAGerente: React.FC<DashboardPAGerenteProps> = ({ user, store }) 
       }));
       setWeeksSalesCache(cache);
       
-      if (weeksData.length > 0) {
-        const activeWeek = weeksData.find(w => w.status === 'aberta') || weeksData[0];
+      if (activeWeek) {
         setSelectedWeek(activeWeek.id);
       } else {
         setSelectedWeek(null);
@@ -215,7 +225,7 @@ const DashboardPAGerente: React.FC<DashboardPAGerenteProps> = ({ user, store }) 
       // Buscar vendas e parâmetros de TODAS as lojas
       const [salesData, paramsData] = await Promise.all([
         supabase.from('Dashboard_PA_Vendas').select('store_id, pa, total_vendas').in('semana_id', weekIds),
-        supabase.from('Dashboard_PA_Parametros').select('store_id, pa_inicial')
+        supabase.from('Dashboard_PA_Parametros').select('store_id, pa_inicial').in('semana_id', weekIds)
       ]);
  
       // Calcular ranking
