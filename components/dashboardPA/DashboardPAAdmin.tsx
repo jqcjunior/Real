@@ -11,6 +11,7 @@ import { ptBR } from 'date-fns/locale';
 import { autoGenerateWeeksIfNeeded } from './WeeklyPASystem';
 import { MonthlyPrizesReport } from './MonthlyPrizesReport';
 import { WeeklyParametersModal } from './WeeklyParametersModal';
+import { MonthlyWeeklyBreakdown } from './MonthlyWeeklyBreakdown';
  
 interface DashboardPAAdminProps {
   user: User;
@@ -64,6 +65,16 @@ interface StoreWeekPerformance {
   valorPremioCalc: number;
   score: number;
   params: PAParametros | null;
+  weeklyBreakdown?: {
+    semanaId: string;
+    dataInicio: string;
+    dataFim: string;
+    pa: number;
+    vendas: number;
+    ticket: number;
+    premioCalc: number;
+    paMeta: number;
+  }[];
 }
  
 type ViewMode = 'semana' | 'mes';
@@ -120,6 +131,14 @@ const DashboardPAAdmin: React.FC<DashboardPAAdminProps> = ({ user, stores, onRef
   const [showMonthlyReport, setShowMonthlyReport] = useState(false);
   const [reopeningId, setReopeningId] = useState<string | null>(null);
   const [toast, setToast] = useState<{ message: string; type: 'success' | 'error' } | null>(null);
+  const [expandedStores, setExpandedStores] = useState<Record<string, boolean>>({});
+
+  const toggleStoreExpanded = (storeId: string) => {
+    setExpandedStores(prev => ({
+      ...prev,
+      [storeId]: !prev[storeId]
+    }));
+  };
  
   const showToast = (message: string, type: 'success' | 'error') => {
     setToast({ message, type });
@@ -276,42 +295,85 @@ const DashboardPAAdmin: React.FC<DashboardPAAdminProps> = ({ user, stores, onRef
     setLoading(true);
     try {
       const { data: monthWeeks } = await supabase
-        .from('Dashboard_PA_Semanas').select('id, store_id')
+        .from('Dashboard_PA_Semanas').select('*')
         .gte('data_inicio', `${selectedYear}-${String(selectedMonth).padStart(2, '0')}-01`)
         .lt('data_inicio', `${selectedYear}-${String(selectedMonth + 1).padStart(2, '0')}-01`);
  
       if (!monthWeeks || monthWeeks.length === 0) { setPerformance([]); return; }
       const weekIds = monthWeeks.map(w => w.id);
  
-      const { data: salesData } = await supabase.from('Dashboard_PA_Vendas').select('store_id, pa, total_vendas, qtde_vendas').in('semana_id', weekIds);
-      const { data: premiosData } = await supabase.from('Dashboard_PA_Premiacoes').select('store_id, valor_premio, atingiu_meta').in('semana_id', weekIds);
-      const { data: paramsData } = await supabase.from('Dashboard_PA_Parametros').select('*');
+      const { data: salesData } = await supabase.from('Dashboard_PA_Vendas').select('*').in('semana_id', weekIds);
+      const { data: premiosData } = await supabase.from('Dashboard_PA_Premiacoes').select('*').in('semana_id', weekIds);
+      const { data: paramsData } = await supabase.from('Dashboard_PA_Parametros').select('*').in('semana_id', weekIds);
  
       const storesPerformance: StoreWeekPerformance[] = stores
         .filter(store => selectedStoreId === 'all' || store.id === selectedStoreId)
         .map(store => {
-          const storeSales = salesData?.filter(s => s.store_id === store.id) || [];
+          const storeWeeks = monthWeeks.filter(w => w.store_id === store.id);
           const storePremios = premiosData?.filter(p => p.store_id === store.id) || [];
-          const storeParams = paramsData?.find(p => p.store_id === store.id) || null;
           
-          const totalVendas = storeSales.reduce((acc, s) => acc + (s.total_vendas || 0), 0);
-          
-          // 🔧 CORREÇÃO 2: Cálculo correto do PA médio (média aritmética simples)
-          const avgPA = storeSales.length > 0 
-            ? storeSales.reduce((acc, s) => acc + (s.pa || 0), 0) / storeSales.length 
-            : 0;
+          let totalVendas = 0;
+          let totalPremioCalc = 0;
+          let sumPAs = 0;
+          let sumPAMetas = 0;
+          let weeksWithSalesCount = 0;
+          const weeklyBreakdown: any[] = [];
 
-          const avgTicket = storeSales.length > 0
-            ? storeSales.reduce((acc, s) => acc + (s.total_vendas || 0), 0) / storeSales.reduce((acc, s) => acc + (s.qtde_vendas || 0), 1)
-            : 0;
-          
-          const paMeta = storeParams?.pa_inicial || 1.6;
+          storeWeeks.forEach(w => {
+            const storeSalesForWeek = salesData?.filter(s => s.semana_id === w.id && s.store_id === store.id) || [];
+            const storeParamsForWeek = paramsData?.find(p => p.semana_id === w.id && p.store_id === store.id) || null;
+            const paMeta = storeParamsForWeek?.pa_inicial || 1.6;
+
+            if (storeSalesForWeek.length > 0) {
+              const totalVendasSemanal = storeSalesForWeek.reduce((acc, s) => acc + (s.total_vendas || 0), 0);
+              const avgPA = storeSalesForWeek.reduce((acc, s) => acc + (s.pa || 0), 0) / storeSalesForWeek.length;
+              const avgTicket = storeSalesForWeek.reduce((acc, s) => acc + (s.total_vendas || 0), 0) / 
+                storeSalesForWeek.reduce((acc, s) => acc + (s.qtde_vendas || 0), 1);
+
+              const premioCalcSemanal = storeParamsForWeek 
+                ? calcularPremioTotal({ pa: avgPA, vendas: totalVendasSemanal, ticket: avgTicket }, storeParamsForWeek as PAParametros) 
+                : 0;
+
+              totalVendas += totalVendasSemanal;
+              totalPremioCalc += premioCalcSemanal;
+              sumPAs += avgPA;
+              sumPAMetas += paMeta;
+              weeksWithSalesCount++;
+
+              weeklyBreakdown.push({
+                semanaId: w.id,
+                dataInicio: w.data_inicio,
+                dataFim: w.data_fim,
+                pa: avgPA,
+                vendas: totalVendasSemanal,
+                ticket: avgTicket,
+                premioCalc: premioCalcSemanal,
+                paMeta
+              });
+            } else {
+              weeklyBreakdown.push({
+                semanaId: w.id,
+                dataInicio: w.data_inicio,
+                dataFim: w.data_fim,
+                pa: 0,
+                vendas: 0,
+                ticket: 0,
+                premioCalc: 0,
+                paMeta
+              });
+            }
+          });
+
+          const finalPAAtingido = weeksWithSalesCount > 0 ? (sumPAs / weeksWithSalesCount) : 0;
+          const finalPAMeta = weeksWithSalesCount > 0 ? (sumPAMetas / weeksWithSalesCount) : 1.6;
+
+          const scoreVendas = totalVendas > 0 ? Math.min((totalVendas / 200000) * 100, 100) : 0;
+          const scorePA = finalPAMeta > 0 ? Math.min((finalPAAtingido / finalPAMeta) * 100, 100) : 0;
+          const score = (scoreVendas * 0.3) + (scorePA * 0.7);
+
+          const totalVendedores = salesData?.filter(s => s.store_id === store.id).length || 0;
           const qtdePremiados = storePremios.filter(p => p.atingiu_meta).length;
           const totalPremios = storePremios.reduce((acc, p) => acc + (p.valor_premio || 0), 0);
-          const valorPremioCalc = storeParams ? calcularPremioTotal({ pa: avgPA, vendas: totalVendas, ticket: avgTicket }, storeParams as PAParametros) : 0;
-          const scoreVendas = totalVendas > 0 ? Math.min((totalVendas / 200000) * 100, 100) : 0;
-          const scorePA = paMeta > 0 ? Math.min((avgPA / paMeta) * 100, 100) : 0;
-          const score = (scoreVendas * 0.3) + (scorePA * 0.7);
           
           return { 
             storeId: store.id, 
@@ -319,14 +381,15 @@ const DashboardPAAdmin: React.FC<DashboardPAAdminProps> = ({ user, stores, onRef
             storeName: store.name, 
             city: store.city, 
             totalVendas, 
-            paAtingido: avgPA, 
-            paMeta, 
-            qtdeVendedores: storeSales.length, 
+            paAtingido: finalPAAtingido, 
+            paMeta: finalPAMeta, 
+            qtdeVendedores: totalVendedores, 
             qtdePremiados, 
             totalPremios, 
-            valorPremioCalc, 
+            valorPremioCalc: totalPremioCalc, 
             score, 
-            params: storeParams as PAParametros | null 
+            params: (paramsData?.find(p => p.store_id === store.id) || null) as PAParametros | null,
+            weeklyBreakdown
           };
         });
  
@@ -364,8 +427,8 @@ const DashboardPAAdmin: React.FC<DashboardPAAdminProps> = ({ user, stores, onRef
       {showParamsModal && (
         <WeeklyParametersModal
           stores={stores}
-          selectedMonth={selectedMonth}
-          selectedYear={selectedYear}
+          selectedWeek={weeks.find(w => w.id === selectedWeek) || weeks[0]}
+          allWeeks={weeks}
           onClose={() => setShowParamsModal(false)}
           onSaved={() => {
             if (viewMode === 'semana' && selectedWeek) loadWeekPerformance();
@@ -601,6 +664,22 @@ const DashboardPAAdmin: React.FC<DashboardPAAdminProps> = ({ user, stores, onRef
                       </div>
                     </div>
                   </div>
+
+                  {viewMode === 'mes' && store.weeklyBreakdown && (
+                    <div className="mt-4 border-t border-dashed border-slate-200 dark:border-slate-800 pt-3">
+                      <button
+                        onClick={() => toggleStoreExpanded(store.storeId)}
+                        className="flex items-center gap-1 text-[11px] font-black uppercase text-slate-500 hover:text-orange-600 transition-colors bg-white dark:bg-slate-800 hover:bg-orange-50 dark:hover:bg-orange-950/20 px-3 py-1.5 rounded-xl border border-slate-200 dark:border-slate-700 shadow-sm"
+                      >
+                        {expandedStores[store.storeId] ? 'Ocultar Detalhes Semanais' : 'Ver Detalhes Semanais'}
+                        <ChevronRight size={14} className={`transform transition-transform ${expandedStores[store.storeId] ? 'rotate-90' : ''}`} />
+                      </button>
+                      
+                      {expandedStores[store.storeId] && (
+                        <MonthlyWeeklyBreakdown weeklyBreakdown={store.weeklyBreakdown} />
+                      )}
+                    </div>
+                  )}
                 </div>
               );
             })}

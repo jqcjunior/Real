@@ -84,16 +84,17 @@ const RelatorioPAImprimivel: React.FC<RelatorioProps> = ({ storeId, storeName, s
   }, [storeId]);
 
   useEffect(() => {
+    if (!semanaSelecionada) return;
     const fetchParametros = async () => {
       const { data } = await supabase
         .from('Dashboard_PA_Parametros')
         .select('*')
-        .eq('store_id', storeId)
-        .single();
+        .eq('semana_id', semanaSelecionada)
+        .maybeSingle();
       if (data) setParametros(data);
     };
     fetchParametros();
-  }, [storeId]);
+  }, [semanaSelecionada]);
 
   useEffect(() => {
     if (!semanaSelecionada) return;

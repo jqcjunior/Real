@@ -7,11 +7,21 @@ import React, { useState, useEffect } from 'react';
 import { X, Check, ChevronRight, Loader2, Settings, Trophy, Zap, Copy } from 'lucide-react';
 import { supabase } from '../../services/supabaseClient';
 import { Store } from '../../types';
+import { format } from 'date-fns';
+
+interface WeekData {
+  id: string;
+  data_inicio: string;
+  data_fim: string;
+  mes_ref?: number;
+  ano_ref?: number;
+  store_id?: string;
+  status?: string;
+}
 
 interface PAParametros {
   store_id: string;
-  mes_ref?: number;
-  ano_ref?: number;
+  semana_id?: string;
   pa_inicial: number;
   incremento_pa: number;
   valor_base: number;
@@ -30,9 +40,14 @@ interface WeeklyParametersModalProps {
   stores: Store[];
   onClose: () => void;
   onSaved: () => void;
-  selectedMonth: number;
-  selectedYear: number;
+  selectedWeek: WeekData;
+  allWeeks: WeekData[];
 }
+
+const parseLocalDate = (dateStr: string): Date => {
+  const [year, month, day] = dateStr.split('-').map(Number);
+  return new Date(year, month - 1, day);
+};
 
 function calcularPremioTotal(performance: { pa: number; vendas: number; ticket: number }, params: PAParametros): number {
   if (!params) return 0;
@@ -70,7 +85,7 @@ function calcularPremioTotal(performance: { pa: number; vendas: number; ticket: 
   return total;
 }
 
-export const WeeklyParametersModal: React.FC<WeeklyParametersModalProps> = ({ stores, onClose, onSaved, selectedMonth, selectedYear }) => {
+export const WeeklyParametersModal: React.FC<WeeklyParametersModalProps> = ({ stores, onClose, onSaved, selectedWeek, allWeeks }) => {
   const [localStores, setLocalStores] = useState<Store[]>(stores || []);
   const [params, setParams] = useState<Record<string, PAParametros>>({});
   const [selectedStoreId, setSelectedStoreId] = useState<string | null>(null);
@@ -80,20 +95,13 @@ export const WeeklyParametersModal: React.FC<WeeklyParametersModalProps> = ({ st
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [toast, setToast] = useState<{ message: string; type: 'success' | 'error' } | null>(null);
+  const [periodWeeks, setPeriodWeeks] = useState<any[]>([]);
 
   useEffect(() => {
     if (stores && stores.length > 0) {
       setLocalStores(stores);
     }
   }, [stores]);
-
-  const getMonthName = (month: number) => {
-    const months = [
-      'Janeiro', 'Fevereiro', 'Março', 'Abril', 'Maio', 'Junho',
-      'Julho', 'Agosto', 'Setembro', 'Outubro', 'Novembro', 'Dezembro'
-    ];
-    return months[month - 1] || '';
-  };
 
   useEffect(() => {
     const fetchParams = async () => {
@@ -125,11 +133,21 @@ export const WeeklyParametersModal: React.FC<WeeklyParametersModalProps> = ({ st
           setLocalStores(activeStores);
         }
 
+        // Buscar as semanas de todas as lojas para este mesmo período
+        const { data: weeksData, error: weeksError } = await supabase
+          .from('Dashboard_PA_Semanas')
+          .select('*')
+          .eq('data_inicio', selectedWeek.data_inicio);
+
+        if (weeksError) throw weeksError;
+        setPeriodWeeks(weeksData || []);
+
+        const weekIds = weeksData ? weeksData.map((w: any) => w.id) : [];
+
         const { data, error: fetchError } = await supabase
           .from('Dashboard_PA_Parametros')
           .select(`*`)
-          .eq('mes_ref', selectedMonth)
-          .eq('ano_ref', selectedYear);
+          .in('semana_id', weekIds);
         
         if (fetchError) {
           setError(`Erro ao carregar parâmetros: ${fetchError.message}`);
@@ -142,8 +160,7 @@ export const WeeklyParametersModal: React.FC<WeeklyParametersModalProps> = ({ st
           data.forEach((p: any) => { 
             map[p.store_id] = {
               store_id: p.store_id,
-              mes_ref: p.mes_ref,
-              ano_ref: p.ano_ref,
+              semana_id: p.semana_id,
               pa_inicial: p.pa_inicial !== null ? Number(p.pa_inicial) : 1.60,
               incremento_pa: p.incremento_pa !== null ? Number(p.incremento_pa) : 0.05,
               valor_base: p.valor_base !== null ? Number(p.valor_base) : 50,
@@ -168,7 +185,7 @@ export const WeeklyParametersModal: React.FC<WeeklyParametersModalProps> = ({ st
     };
     
     fetchParams();
-  }, [stores, selectedMonth, selectedYear]);
+  }, [stores, selectedWeek]);
 
   const handleSelectStore = (storeId: string) => {
     setSelectedStoreId(storeId);
@@ -181,8 +198,6 @@ export const WeeklyParametersModal: React.FC<WeeklyParametersModalProps> = ({ st
     } else {
       setDraft({
         store_id: storeId,
-        mes_ref: selectedMonth,
-        ano_ref: selectedYear,
         pa_inicial: 1.60,
         incremento_pa: 0.05,
         valor_base: 50,
@@ -199,53 +214,69 @@ export const WeeklyParametersModal: React.FC<WeeklyParametersModalProps> = ({ st
     }
   };
 
-  const handleCopyFromPreviousMonth = async () => {
+  const handleCopyFromPreviousWeek = async () => {
     setLoading(true);
     setError(null);
     try {
-      const prevMonth = selectedMonth === 1 ? 12 : selectedMonth - 1;
-      const prevYear = selectedMonth === 1 ? selectedYear - 1 : selectedYear;
+      const sortedWeeks = [...allWeeks].sort((a, b) => a.data_inicio.localeCompare(b.data_inicio));
+      const currentIndex = sortedWeeks.findIndex(w => w.data_inicio === selectedWeek.data_inicio);
+      const prevWeek = currentIndex > 0 ? sortedWeeks[currentIndex - 1] : null;
 
-      const { data: prevData, error: prevError } = await supabase
-        .from('Dashboard_PA_Parametros')
-        .select('*')
-        .eq('mes_ref', prevMonth)
-        .eq('ano_ref', prevYear);
-
-      if (prevError) {
-        throw new Error(`Erro ao ler parâmetros do mês anterior: ${prevError.message}`);
-      }
-
-      if (!prevData || prevData.length === 0) {
-        setToast({ message: 'Nenhum parâmetro encontrado no mês anterior para copiar.', type: 'error' });
+      if (!prevWeek) {
+        setToast({ message: 'Nenhuma semana anterior encontrada para copiar.', type: 'error' });
         setTimeout(() => setToast(null), 4000);
         return;
       }
 
-      const copyPayload = prevData.map((item: any) => ({
-        store_id: item.store_id,
-        mes_ref: selectedMonth,
-        ano_ref: selectedYear,
-        pa_inicial: item.pa_inicial,
-        incremento_pa: item.incremento_pa,
-        valor_base: item.valor_base,
-        incremento_valor: item.incremento_valor,
-        vendas_minimo: item.vendas_minimo,
-        vendas_incremento: item.vendas_incremento,
-        vendas_valor_base: item.vendas_valor_base,
-        vendas_inc_valor: item.vendas_inc_valor,
-        ticket_minimo: item.ticket_minimo,
-        ticket_incremento: item.ticket_incremento,
-        ticket_valor_base: item.ticket_valor_base,
-        ticket_inc_valor: item.ticket_inc_valor,
-        criado_por_role: item.criado_por_role,
-        criado_por_id: item.criado_por_id,
-        updated_at: new Date().toISOString()
-      }));
+      // Fetch all week rows for previous period across all stores
+      const { data: prevPeriodWeeks, error: prevWeeksErr } = await supabase
+        .from('Dashboard_PA_Semanas')
+        .select('*')
+        .eq('data_inicio', prevWeek.data_inicio);
+
+      if (prevWeeksErr) throw prevWeeksErr;
+
+      const prevWeekIds = prevPeriodWeeks ? prevPeriodWeeks.map((w: any) => w.id) : [];
+
+      // Fetch parameters for those week rows
+      const { data: prevParams, error: prevParamsErr } = await supabase
+        .from('Dashboard_PA_Parametros')
+        .select('*')
+        .in('semana_id', prevWeekIds);
+
+      if (prevParamsErr) throw prevParamsErr;
+
+      if (!prevParams || prevParams.length === 0) {
+        setToast({ message: 'Nenhum parâmetro encontrado na semana anterior para copiar.', type: 'error' });
+        setTimeout(() => setToast(null), 4000);
+        return;
+      }
+
+      // Prepare payload to current week rows
+      const copyPayload = prevParams.map((item: any) => {
+        const storeWeek = periodWeeks.find((w: any) => w.store_id === item.store_id);
+        return {
+          store_id: item.store_id,
+          semana_id: storeWeek?.id || selectedWeek.id,
+          pa_inicial: item.pa_inicial,
+          incremento_pa: item.incremento_pa,
+          valor_base: item.valor_base,
+          incremento_valor: item.incremento_valor,
+          vendas_minimo: item.vendas_minimo,
+          vendas_incremento: item.vendas_incremento,
+          vendas_valor_base: item.vendas_valor_base,
+          vendas_inc_valor: item.vendas_inc_valor,
+          ticket_minimo: item.ticket_minimo,
+          ticket_incremento: item.ticket_incremento,
+          ticket_valor_base: item.ticket_valor_base,
+          ticket_inc_valor: item.ticket_inc_valor,
+          updated_at: new Date().toISOString()
+        };
+      });
 
       const { error: copyUpsertError } = await supabase
         .from('Dashboard_PA_Parametros')
-        .upsert(copyPayload, { onConflict: 'store_id,mes_ref,ano_ref' });
+        .upsert(copyPayload, { onConflict: 'store_id,semana_id' });
 
       if (copyUpsertError) {
         throw new Error(`Erro ao salvar parâmetros copiados: ${copyUpsertError.message}`);
@@ -255,8 +286,7 @@ export const WeeklyParametersModal: React.FC<WeeklyParametersModalProps> = ({ st
       copyPayload.forEach((p: any) => {
         map[p.store_id] = {
           store_id: p.store_id,
-          mes_ref: p.mes_ref,
-          ano_ref: p.ano_ref,
+          semana_id: p.semana_id,
           pa_inicial: p.pa_inicial !== null ? Number(p.pa_inicial) : 1.60,
           incremento_pa: p.incremento_pa !== null ? Number(p.incremento_pa) : 0.05,
           valor_base: p.valor_base !== null ? Number(p.valor_base) : 50,
@@ -273,7 +303,8 @@ export const WeeklyParametersModal: React.FC<WeeklyParametersModalProps> = ({ st
       });
 
       setParams(map);
-      setToast({ message: `Parâmetros copiados de ${getMonthName(prevMonth)}/${prevYear}!`, type: 'success' });
+      const formattedPrevWeek = format(parseLocalDate(prevWeek.data_inicio), 'dd/MM');
+      setToast({ message: `Parâmetros copiados da semana anterior (${formattedPrevWeek})!`, type: 'success' });
       setTimeout(() => setToast(null), 4000);
       onSaved();
     } catch (err: any) {
@@ -283,16 +314,72 @@ export const WeeklyParametersModal: React.FC<WeeklyParametersModalProps> = ({ st
     }
   };
 
+  const handleApplyToAllWeeksOfMonth = async () => {
+    if (!draft || !selectedStoreId) return;
+    setSaving(true);
+    try {
+      // Fetch all week rows for this store for the same month/year
+      const { data: storeWeeks, error: storeWeeksErr } = await supabase
+        .from('Dashboard_PA_Semanas')
+        .select('*')
+        .eq('store_id', selectedStoreId)
+        .eq('mes_ref', selectedWeek.mes_ref)
+        .eq('ano_ref', selectedWeek.ano_ref);
+
+      if (storeWeeksErr) throw storeWeeksErr;
+
+      if (!storeWeeks || storeWeeks.length === 0) {
+        setToast({ message: 'Nenhuma semana encontrada para esta loja neste mês.', type: 'error' });
+        setTimeout(() => setToast(null), 4000);
+        return;
+      }
+
+      const payload = storeWeeks.map((sw: any) => ({
+        store_id: selectedStoreId,
+        semana_id: sw.id,
+        pa_inicial: draft.pa_inicial !== null ? Number(draft.pa_inicial) : 0,
+        incremento_pa: draft.incremento_pa !== null ? Number(draft.incremento_pa) : 1,
+        valor_base: draft.valor_base !== null ? Number(draft.valor_base) : 0,
+        incremento_valor: draft.incremento_valor !== null ? Number(draft.incremento_valor) : 0,
+        vendas_minimo: (draft.vendas_minimo !== null && draft.vendas_minimo !== undefined && String(draft.vendas_minimo) !== '') ? Number(draft.vendas_minimo) : null,
+        vendas_incremento: (draft.vendas_incremento !== null && draft.vendas_incremento !== undefined && String(draft.vendas_incremento) !== '') ? Number(draft.vendas_incremento) : null,
+        vendas_valor_base: (draft.vendas_valor_base !== null && draft.vendas_valor_base !== undefined && String(draft.vendas_valor_base) !== '') ? Number(draft.vendas_valor_base) : null,
+        vendas_inc_valor: (draft.vendas_inc_valor !== null && draft.vendas_inc_valor !== undefined && String(draft.vendas_inc_valor) !== '') ? Number(draft.vendas_inc_valor) : null,
+        ticket_minimo: (draft.ticket_minimo !== null && draft.ticket_minimo !== undefined && String(draft.ticket_minimo) !== '') ? Number(draft.ticket_minimo) : null,
+        ticket_incremento: (draft.ticket_incremento !== null && draft.ticket_incremento !== undefined && String(draft.ticket_incremento) !== '') ? Number(draft.ticket_incremento) : null,
+        ticket_valor_base: (draft.ticket_valor_base !== null && draft.ticket_valor_base !== undefined && String(draft.ticket_valor_base) !== '') ? Number(draft.ticket_valor_base) : null,
+        ticket_inc_valor: (draft.ticket_inc_valor !== null && draft.ticket_inc_valor !== undefined && String(draft.ticket_inc_valor) !== '') ? Number(draft.ticket_inc_valor) : null,
+        updated_at: new Date().toISOString()
+      }));
+
+      const { error: applyError } = await supabase
+        .from('Dashboard_PA_Parametros')
+        .upsert(payload, { onConflict: 'store_id,semana_id' });
+
+      if (applyError) throw applyError;
+
+      setToast({ message: 'Metas aplicadas a todas as semanas do mês com sucesso! 🎉', type: 'success' });
+      setTimeout(() => setToast(null), 4000);
+      onSaved();
+    } catch (err: any) {
+      alert('Erro ao aplicar a todas as semanas: ' + err.message);
+    } finally {
+      setSaving(false);
+    }
+  };
+
   const handleSave = async () => {
     if (!draft || !selectedStoreId) return;
     
     setSaving(true);
     
     try {
+      const storeWeek = periodWeeks?.find((w: any) => w.store_id === selectedStoreId);
+      const semanaId = storeWeek?.id || selectedWeek.id;
+
       const payload = {
         store_id: selectedStoreId,
-        mes_ref: selectedMonth,
-        ano_ref: selectedYear,
+        semana_id: semanaId,
         pa_inicial: draft.pa_inicial !== null ? Number(draft.pa_inicial) : 0,
         incremento_pa: draft.incremento_pa !== null ? Number(draft.incremento_pa) : 1,
         valor_base: draft.valor_base !== null ? Number(draft.valor_base) : 0,
@@ -312,12 +399,12 @@ export const WeeklyParametersModal: React.FC<WeeklyParametersModalProps> = ({ st
 
       const { error: saveError } = await supabase
         .from('Dashboard_PA_Parametros')
-        .upsert(payload, { onConflict: 'store_id,mes_ref,ano_ref' });
+        .upsert(payload, { onConflict: 'store_id,semana_id' });
 
       if (saveError) throw saveError;
 
       const cleanedDraftToStore = draftCleaned ? { ...draftCleaned } : draft;
-      setParams(prev => ({ ...prev, [selectedStoreId]: { ...cleanedDraftToStore, mes_ref: selectedMonth, ano_ref: selectedYear } }));
+      setParams(prev => ({ ...prev, [selectedStoreId]: cleanedDraftToStore }));
       setSaved(true);
       onSaved();
       
@@ -371,11 +458,21 @@ export const WeeklyParametersModal: React.FC<WeeklyParametersModalProps> = ({ st
     ticket: (draftCleaned.ticket_minimo || 0) + (draftCleaned.ticket_incremento || 0) 
   }, draftCleaned) : 0;
 
+  const formatPeriod = (week: WeekData) => {
+    try {
+      const dInicio = parseLocalDate(week.data_inicio);
+      const dFim = parseLocalDate(week.data_fim);
+      return `${format(dInicio, 'dd/MM')} a ${format(dFim, 'dd/MM')}`;
+    } catch {
+      return '';
+    }
+  };
+
   return (
     <div className="fixed inset-0 z-[200] flex items-center justify-center p-2 sm:p-4 bg-slate-900/60 backdrop-blur-sm">
       <div className="bg-white dark:bg-slate-900 rounded-2xl shadow-2xl border border-slate-200 dark:border-slate-800 w-full max-w-4xl max-h-[95vh] sm:max-h-[90vh] flex flex-col overflow-hidden leading-tight">
         
-        {/* Header Compacto com Filtros do Mês e Botão de Copiar */}
+        {/* Header Compacto */}
         <div className="flex flex-col sm:flex-row sm:items-center justify-between px-4 py-3 sm:px-6 sm:py-4 border-b border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 gap-3 z-10">
           <div className="flex items-center gap-3">
             <div className="p-2 bg-orange-50 dark:bg-orange-900/20 rounded-lg">
@@ -383,7 +480,7 @@ export const WeeklyParametersModal: React.FC<WeeklyParametersModalProps> = ({ st
             </div>
             <div>
               <h2 className="text-sm sm:text-base font-black text-slate-900 dark:text-white uppercase italic tracking-tight">
-                Configurar Metas — {getMonthName(selectedMonth).toUpperCase()} {selectedYear}
+                Configurar Metas — {formatPeriod(selectedWeek)}
               </h2>
               <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest leading-none">
                 {loading ? 'Carregando...' : `${localStores.length} LOJAS ATIVAS`}
@@ -393,13 +490,13 @@ export const WeeklyParametersModal: React.FC<WeeklyParametersModalProps> = ({ st
           
           <div className="flex items-center gap-2 self-end sm:self-auto">
             <button
-              onClick={handleCopyFromPreviousMonth}
+              onClick={handleCopyFromPreviousWeek}
               disabled={loading || saving}
               className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-[9px] sm:text-[10px] font-black uppercase tracking-wider bg-slate-100 hover:bg-slate-200 dark:bg-slate-800 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-300 border border-slate-200 dark:border-slate-700 transition-all disabled:opacity-50"
-              title="Copiar dados do mês anterior para este mês"
+              title="Copiar dados da semana anterior para esta"
             >
               <Copy size={12} className="text-orange-500" />
-              COPIAR DO MÊS ANTERIOR
+              COPIAR DA SEMANA ANTERIOR
             </button>
             <button
               onClick={onClose}
@@ -427,7 +524,7 @@ export const WeeklyParametersModal: React.FC<WeeklyParametersModalProps> = ({ st
         )}
 
         <div className="flex flex-1 overflow-hidden flex-col sm:flex-row">
-          {/* Lista de Lojas - Com Bolinha verde se possui metas no mês, cinza senão */}
+          {/* Lista de Lojas */}
           <div className="w-full sm:w-48 md:w-56 border-b sm:border-b-0 sm:border-r border-slate-200 dark:border-slate-800 overflow-y-auto bg-slate-50/30 dark:bg-slate-900/30 max-h-[120px] sm:max-h-full">
             {loading ? (
               <div className="flex items-center justify-center py-8">
@@ -461,7 +558,7 @@ export const WeeklyParametersModal: React.FC<WeeklyParametersModalProps> = ({ st
                               ? 'bg-emerald-500 shadow-sm shadow-emerald-500/50' 
                               : 'bg-slate-300 dark:bg-slate-750'
                           }`}
-                          title={hasParams ? 'Parâmetros configurados para este mês' : 'Parâmetros pendentes para este mês'}
+                          title={hasParams ? 'Parâmetros configurados para esta semana' : 'Parâmetros pendentes para esta semana'}
                         />
                         <ChevronRight size={12} className={isSelected ? 'text-orange-500' : 'text-slate-300'} />
                       </div>
@@ -472,7 +569,7 @@ export const WeeklyParametersModal: React.FC<WeeklyParametersModalProps> = ({ st
             )}
           </div>
 
-          {/* Painel de Edição - Conteúdo Ajustado */}
+          {/* Painel de Edição */}
           <div className="flex-1 overflow-y-auto p-4 sm:p-6 md:p-8 bg-white dark:bg-slate-900">
             {!selectedStoreId ? (
               <div className="flex flex-col items-center justify-center h-full text-center gap-4 py-12">
@@ -493,8 +590,18 @@ export const WeeklyParametersModal: React.FC<WeeklyParametersModalProps> = ({ st
                     </h3>
                     <p className="text-[9px] font-bold text-slate-400 uppercase tracking-tighter truncate">{selectedStore?.name}</p>
                   </div>
-                  <div className={`px-3 py-1 rounded-lg text-[9px] font-black uppercase italic ${params[selectedStoreId] ? 'bg-emerald-100 text-emerald-700 dark:bg-emerald-900/20 dark:text-emerald-400' : 'bg-slate-200 text-slate-500 dark:bg-slate-700 dark:text-slate-400'}`}>
-                    {params[selectedStoreId] ? 'Configurado' : 'Pendente'}
+                  <div className="flex items-center gap-2">
+                    <button
+                      type="button"
+                      onClick={handleApplyToAllWeeksOfMonth}
+                      disabled={saving}
+                      className="px-3 py-1.5 bg-blue-100 text-blue-700 hover:bg-blue-200 dark:bg-blue-900/30 dark:text-blue-400 rounded-lg text-[10px] font-black uppercase tracking-wider transition-all"
+                    >
+                      Aplicar a todo o mês
+                    </button>
+                    <div className={`px-3 py-1.5 rounded-lg text-[9px] font-black uppercase italic ${params[selectedStoreId] ? 'bg-emerald-100 text-emerald-700 dark:bg-emerald-900/20 dark:text-emerald-400' : 'bg-slate-200 text-slate-500 dark:bg-slate-700 dark:text-slate-400'}`}>
+                      {params[selectedStoreId] ? 'Configurado' : 'Pendente'}
+                    </div>
                   </div>
                 </div>
 
@@ -654,7 +761,7 @@ export const WeeklyParametersModal: React.FC<WeeklyParametersModalProps> = ({ st
                   </div>
                 </section>
 
-                {/* Preview e Botão Compactados */}
+                {/* Preview e Botão */}
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-4 pt-4">
                   <div className="bg-slate-50 dark:bg-slate-800/40 p-3 rounded-xl border border-slate-200 dark:border-slate-800 flex items-center justify-between">
                     <div>
