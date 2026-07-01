@@ -1582,7 +1582,7 @@ const App: React.FC = () => {
                             }
                         }
                         if ((currentView === 'pdv_sorveteria' || currentView === 'ice_cream') && can('MODULE_ICECREAM')) return <IceCreamModule
-                            user={user!} stores={isAdmin ? stores : stores.filter(s => s.id === user?.storeId)} items={iceCreamItems} sales={iceCreamSales} salesHeaders={sales} salePayments={salePayments}
+                            user={user!} stores={stores} items={iceCreamItems} sales={iceCreamSales} salesHeaders={sales} salePayments={salePayments}
                             stock={iceCreamStock} promissories={icPromissories} can={can}
                             sangriaCategories={icSangriaCategories}
                             sangrias={icSangrias}
