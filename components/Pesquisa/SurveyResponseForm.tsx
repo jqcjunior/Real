@@ -1,5 +1,6 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { supabase } from '../../services/supabaseClient';
+import { getDeviceId } from '../../services/deviceId';
 import { 
   X, 
   ChevronLeft, 
@@ -384,6 +385,7 @@ const SurveyResponseForm: React.FC<SurveyResponseFormProps> = ({
           survey_id: survey.id,
           user_id: user?.id || null,
           store_id: user?.storeId || null,
+          device_id: getDeviceId(),
           responses: finalResponses,
           respondent_name: isAnonymous ? null : (respondentInfo.name || null),
           respondent_email: isAnonymous ? null : (respondentInfo.email || null),
@@ -398,7 +400,14 @@ const SurveyResponseForm: React.FC<SurveyResponseFormProps> = ({
       setTimeout(() => { onComplete(); }, 3000);
     } catch (err: any) {
       console.error('Erro ao enviar resposta:', err);
-      alert('Erro ao enviar resposta: ' + (err.message || 'Erro desconhecido'));
+      const isDuplicate = err?.message?.includes('DEVICE_ALREADY_RESPONDED') || err?.code === 'DEVICE_ALREADY_RESPONDED';
+      if (isDuplicate) {
+        alert('Parece que você já respondeu esta pesquisa neste aparelho.');
+        localStorage.removeItem(`survey_draft_${survey.id}`);
+        onComplete();
+      } else {
+        alert('Erro ao enviar resposta: ' + (err.message || 'Erro desconhecido'));
+      }
     } finally {
       setIsSubmitting(false);
     }

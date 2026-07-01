@@ -74,6 +74,9 @@ const SurveyEditor: React.FC<SurveyEditorProps> = ({
   const [collectRespondentData, setCollectRespondentData] = useState<boolean>(
     (editingSurvey as any)?.collect_respondent_data ?? true
   );
+  const [allowMultipleResponses, setAllowMultipleResponses] = useState<boolean>(
+    (editingSurvey as any)?.allow_multiple_responses ?? false
+  );
   const [showWelcomeMessage, setShowWelcomeMessage] = useState<boolean>(
     !!(editingSurvey as any)?.welcome_message
   );
@@ -95,6 +98,14 @@ const SurveyEditor: React.FC<SurveyEditorProps> = ({
   const [targetStoreIds, setTargetStoreIds] = useState<string[]>(
     editingSurvey?.target_store_ids || []
   );
+  const [targetUserIds, setTargetUserIds] = useState<string[]>(
+    (editingSurvey as any)?.target_user_ids || []
+  );
+  const [notifyPending, setNotifyPending] = useState<boolean>(
+    (editingSurvey as any)?.notify_pending ?? false
+  );
+  const [adminUsers, setAdminUsers] = useState<{ id: string; name: string; role_level: string }[]>([]);
+  const [loadingAdminUsers, setLoadingAdminUsers] = useState(false);
   const [resultsVisibleTo, setResultsVisibleTo] = useState<SurveyResultVisibility[]>(
     editingSurvey?.results_visible_to || ['admin']
   );
@@ -133,6 +144,41 @@ const SurveyEditor: React.FC<SurveyEditorProps> = ({
     } finally {
       setLoadingStores(false);
     }
+  };
+
+  useEffect(() => {
+    fetchAdminUsers();
+  }, []);
+
+  const fetchAdminUsers = async () => {
+    setLoadingAdminUsers(true);
+    try {
+      await ensureSession();
+      const { data } = await supabase
+        .from('admin_users')
+        .select('id, name, role_level')
+        .eq('status', 'active')
+        .order('name', { ascending: true });
+      if (data) setAdminUsers(data as any);
+    } catch (err) {
+      console.error('Erro ao buscar usuários:', err);
+    } finally {
+      setLoadingAdminUsers(false);
+    }
+  };
+
+  useEffect(() => {
+    if (targetType === 'external') {
+      setNotifyPending(false);
+    }
+  }, [targetType]);
+
+  const toggleUser = (userId: string) => {
+    setTargetUserIds(prev =>
+      prev.includes(userId)
+        ? prev.filter(id => id !== userId)
+        : [...prev, userId]
+    );
   };
 
   // Usa o prop se disponível, senão usa o fetch local
@@ -356,9 +402,12 @@ const SurveyEditor: React.FC<SurveyEditorProps> = ({
           is_active: false,
           allow_anonymous: allowAnonymous,
           collect_respondent_data: collectRespondentData,
+          allow_multiple_responses: allowMultipleResponses,
+          notify_pending: notifyPending,
           welcome_message: showWelcomeMessage ? welcomeMessage.trim() || null : null,
           target_type: targetType,
           target_category: targetType === 'internal' ? targetCategory : null,
+          target_user_ids: targetType === 'internal' && targetCategory === 'specific_users' ? targetUserIds : null,
           results_visible_to: resultsVisibleTo,
           store_id: (currentUser as any).store_id || (currentUser as any).storeId || null,
           target_store_ids: targetStoreIds.length > 0 ? targetStoreIds : null,
@@ -527,9 +576,12 @@ const SurveyEditor: React.FC<SurveyEditorProps> = ({
         is_active: isActive,
         allow_anonymous: allowAnonymous,
         collect_respondent_data: collectRespondentData,
+        allow_multiple_responses: allowMultipleResponses,
+        notify_pending: notifyPending,
         welcome_message: showWelcomeMessage ? welcomeMessage.trim() || null : null,
         target_type: targetType,
         target_category: targetType === 'internal' ? targetCategory : null,
+        target_user_ids: targetType === 'internal' && targetCategory === 'specific_users' ? targetUserIds : null,
         target_store_ids: targetStoreIds.length > 0 ? targetStoreIds : null,
         results_visible_to: resultsVisibleTo,
         updated_at: new Date().toISOString(),
@@ -825,6 +877,12 @@ const SurveyEditor: React.FC<SurveyEditorProps> = ({
                         value={collectRespondentData}
                         onChange={setCollectRespondentData}
                       />
+                      <ToggleRow
+                        label="Permitir múltiplas respostas do mesmo aparelho"
+                        description="Quando desativado, cada celular/computador só pode responder esta pesquisa uma vez"
+                        value={allowMultipleResponses}
+                        onChange={setAllowMultipleResponses}
+                      />
                       {collectRespondentData && (
                         <ToggleRow
                           label="Permitir resposta anônima"
@@ -895,20 +953,72 @@ const SurveyEditor: React.FC<SurveyEditorProps> = ({
 
                     {/* Categoria (só interno) */}
                     {targetType === 'internal' && (
-                      <div>
-                        <label className="block text-sm text-slate-600 dark:text-slate-400 mb-2">Categoria</label>
-                        <select
-                          value={targetCategory}
-                          onChange={e => setTargetCategory(e.target.value as SurveyTargetCategory)}
-                          className="w-full px-4 py-3 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 focus:border-blue-500 rounded-xl text-sm text-slate-900 dark:text-white outline-none transition-all"
-                        >
-                          <option value="all_employees">Todos (todos os funcionários)</option>
-                          <option value="all_managers">Gerentes</option>
-                          <option value="all_sellers">Vendedores</option>
-                          <option value="all_cashiers">Caixas</option>
-                          <option value="all_estoquistas">Estoquistas</option>
-                          <option value="all_cobranca">Cobrança</option>
-                        </select>
+                      <div className="space-y-4">
+                        <div>
+                          <label className="block text-sm text-slate-600 dark:text-slate-400 mb-2">Categoria</label>
+                          <select
+                            value={targetCategory}
+                            onChange={e => setTargetCategory(e.target.value as SurveyTargetCategory)}
+                            className="w-full px-4 py-3 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 focus:border-blue-500 rounded-xl text-sm text-slate-900 dark:text-white outline-none transition-all"
+                          >
+                            <option value="all_employees">Todos (todos os funcionários)</option>
+                            <option value="all_managers">Gerentes</option>
+                            <option value="all_sellers">Vendedores</option>
+                            <option value="all_cashiers">Caixas</option>
+                            <option value="all_estoquistas">Estoquistas</option>
+                            <option value="all_cobranca">Cobrança</option>
+                            <option value="specific_users">Usuários específicos</option>
+                          </select>
+                        </div>
+
+                        {/* Seletor de usuários específicos */}
+                        {targetCategory === 'specific_users' && (
+                          <div>
+                            <label className="block text-sm text-slate-600 dark:text-slate-400 mb-1">
+                              Usuários específicos
+                              <span className="text-xs text-slate-400 ml-2">
+                                {targetUserIds.length === 0
+                                  ? '(nenhum selecionado)'
+                                  : `(${targetUserIds.length} selecionado${targetUserIds.length > 1 ? 's' : ''})`}
+                              </span>
+                            </label>
+                            {loadingAdminUsers ? (
+                              <div className="flex items-center gap-2 mt-2 text-xs text-slate-400">
+                                <Loader2 size={13} className="animate-spin" /> Carregando usuários...
+                              </div>
+                            ) : adminUsers.length === 0 ? (
+                              <p className="text-xs text-slate-400 mt-2">Nenhum usuário ativo encontrado.</p>
+                            ) : (
+                              <div className="flex flex-wrap gap-2 mt-2 max-h-44 overflow-y-auto pr-1 border border-slate-100 dark:border-slate-800 p-2 rounded-xl">
+                                {adminUsers.map(u => (
+                                  <button
+                                    key={u.id}
+                                    type="button"
+                                    onClick={() => toggleUser(u.id)}
+                                    className={`px-3 py-2 rounded-lg border text-xs font-medium transition-all flex items-center gap-1 ${
+                                      targetUserIds.includes(u.id)
+                                        ? 'border-blue-600 bg-blue-50 dark:bg-blue-900/20 text-blue-700 dark:text-blue-400'
+                                        : 'border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 text-slate-500 hover:border-slate-300'
+                                    }`}
+                                  >
+                                    {u.name} ({u.role_level})
+                                    {targetUserIds.includes(u.id) && <Check size={11} />}
+                                  </button>
+                                ))}
+                              </div>
+                            )}
+                          </div>
+                        )}
+
+                        {/* Ativar notificação (sempre para pesquisas internas) */}
+                        <div className="pt-2 border-t border-slate-100 dark:border-slate-800">
+                          <ToggleRow
+                            label="Ativar notificação"
+                            description="Avisa no sino de notificações do painel até a pessoa responder"
+                            value={notifyPending}
+                            onChange={setNotifyPending}
+                          />
+                        </div>
                       </div>
                     )}
 

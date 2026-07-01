@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useMemo } from 'react';
-import { Bell, UserPlus, Calendar, CheckCircle, X, ChevronRight, AlertCircle, MessageSquare } from 'lucide-react';
-import { Store, AgendaItem, User } from '../types';
+import { Bell, UserPlus, Calendar, CheckCircle, X, ChevronRight, AlertCircle, MessageSquare, ClipboardList } from 'lucide-react';
+import { Store, AgendaItem, User, Survey } from '../types';
 import { supabase } from '../services/supabaseClient'; // Importação necessária para o Real-time
 
 interface NotificationHeaderProps {
@@ -14,6 +14,7 @@ interface NotificationHeaderProps {
 const NotificationHeader: React.FC<NotificationHeaderProps> = ({ user, stores, agenda, onNavigate, can }) => {
     const [isOpen, setIsOpen] = useState(false);
     const [demandNotifications, setDemandNotifications] = useState<any[]>([]);
+    const [pendingSurveys, setPendingSurveys] = useState<Survey[]>([]);
 
     // 1. Efeito para carregar e ouvir notificações de demandas em tempo real
     useEffect(() => {
@@ -53,6 +54,63 @@ const NotificationHeader: React.FC<NotificationHeaderProps> = ({ user, stores, a
         };
     }, [user.id]);
 
+    useEffect(() => {
+        const fetchPendingSurveys = async () => {
+            try {
+                const { data: surveysData, error: sError } = await supabase
+                    .from('surveys')
+                    .select('*')
+                    .eq('is_active', true)
+                    .eq('target_type', 'internal')
+                    .eq('notify_pending', true);
+
+                if (sError) throw sError;
+
+                let surveysVisiveis = surveysData || [];
+
+                if ((user as any).role_level !== 'admin') {
+                    surveysVisiveis = surveysVisiveis.filter(survey => {
+                        const semRestricaoLoja = !survey.target_store_ids || survey.target_store_ids.length === 0;
+                        const userStoreId = user.storeId || (user as any).store_id;
+                        const lojaDoUsuario = survey.target_store_ids?.includes(userStoreId || '');
+                        if (!semRestricaoLoja && !lojaDoUsuario) return false;
+
+                        const roleLevel = (user as any).role_level;
+                        if (survey.target_category === 'all_managers') {
+                            if (roleLevel !== 'manager') return false;
+                        }
+                        if (survey.target_category === 'all_cashiers') {
+                            if (roleLevel !== 'cashier') return false;
+                        }
+                        if (survey.target_category === 'all_sellers') {
+                            if (roleLevel !== 'seller' && roleLevel !== 'vendedor') return false;
+                        }
+                        if (survey.target_category === 'specific_users') {
+                            if (!survey.target_user_ids?.includes(user.id)) return false;
+                        }
+                        return true;
+                    });
+                }
+
+                const { data: responses, error: rError } = await supabase
+                    .from('survey_responses')
+                    .select('survey_id')
+                    .eq('user_id', user.id);
+
+                if (rError) throw rError;
+
+                const respondedSurveyIds = responses?.map(r => r.survey_id) || [];
+                const finalPending = surveysVisiveis.filter(s => !respondedSurveyIds.includes(s.id));
+
+                setPendingSurveys(finalPending);
+            } catch (err) {
+                console.error('Erro ao buscar pesquisas pendentes para notificação:', err);
+            }
+        };
+
+        fetchPendingSurveys();
+    }, [user.id, user.storeId, (user as any).store_id, (user as any).role_level]);
+
     const pendingAccessRequests = useMemo(() => {
         if (!can('ALWAYS')) return [];
         return stores.filter(s => s.status === 'pending');
@@ -63,7 +121,7 @@ const NotificationHeader: React.FC<NotificationHeaderProps> = ({ user, stores, a
     }, [agenda]);
 
     // 2. Contador Global Atualizado
-    const totalNotifications = pendingAccessRequests.length + pendingTasks.length + demandNotifications.length;
+    const totalNotifications = pendingAccessRequests.length + pendingTasks.length + demandNotifications.length + pendingSurveys.length;
 
     const handleMarkAsRead = async (notificationId: string) => {
         await supabase
@@ -154,6 +212,34 @@ const NotificationHeader: React.FC<NotificationHeaderProps> = ({ user, stores, a
                                                     <p className="text-[9px] font-bold text-gray-400 uppercase truncate">Loja {store.number}</p>
                                                 </div>
                                                 <ChevronRight size={14} className="text-gray-300 group-hover:text-blue-600" />
+                                            </button>
+                                        ))}
+                                    </div>
+                                </div>
+                            )}
+
+                            {/* SEÇÃO: PESQUISAS PENDENTES */}
+                            {pendingSurveys.length > 0 && (
+                                <div className="p-4 border-b border-gray-50 bg-purple-50/30">
+                                    <h4 className="text-[9px] font-black text-purple-600 uppercase tracking-widest mb-3 px-2">Pesquisas Pendentes ({pendingSurveys.length})</h4>
+                                    <div className="space-y-2">
+                                        {pendingSurveys.map(survey => (
+                                            <button 
+                                                key={survey.id}
+                                                onClick={() => {
+                                                    onNavigate('my_surveys');
+                                                    setIsOpen(false);
+                                                }}
+                                                className="w-full text-left p-3 rounded-2xl bg-white hover:bg-purple-50 transition-all group flex items-center gap-3 border border-purple-100 shadow-sm"
+                                            >
+                                                <div className="p-2 bg-purple-600 text-white rounded-xl">
+                                                    <ClipboardList size={16} />
+                                                </div>
+                                                <div className="flex-1 min-w-0">
+                                                    <p className="text-[10px] font-black text-blue-950 uppercase truncate">{survey.title}</p>
+                                                    <p className="text-[9px] font-bold text-gray-400 uppercase truncate line-clamp-1">{survey.description || 'Por favor, responda esta pesquisa'}</p>
+                                                </div>
+                                                <ChevronRight size={14} className="text-gray-300 group-hover:text-purple-600" />
                                             </button>
                                         ))}
                                     </div>

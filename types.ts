@@ -427,6 +427,8 @@ export interface Survey {
   results_visible_to: SurveyResultVisibility[];
   is_active: boolean;
   allow_anonymous?: boolean;
+  allow_multiple_responses?: boolean;
+  notify_pending?: boolean;
   created_by: string;
   created_at: string;
   updated_at: string;
