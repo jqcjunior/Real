@@ -1741,6 +1741,7 @@ const IceCreamModule: React.FC<IceCreamModuleProps> = ({
                         <div className="md:hidden">
                             {(isAdmin || isGerente) ? (
                                 <select 
+                                    key={`store-select-mobile-${stores.length}`}
                                     value={effectiveStoreId} 
                                     onChange={e => setEffectiveStoreId(e.target.value)}
                                     className="bg-slate-100 border-none rounded-xl px-3 py-2 text-[9px] font-black uppercase text-slate-600 outline-none cursor-pointer"
@@ -1795,6 +1796,7 @@ const IceCreamModule: React.FC<IceCreamModuleProps> = ({
                     <div className="hidden md:flex items-center gap-3">
                         {(isAdmin || isGerente) ? (
                             <select 
+                                key={`store-select-desktop-${stores.length}`}
                                 value={effectiveStoreId} 
                                 onChange={e => setEffectiveStoreId(e.target.value)}
                                 className="bg-slate-100 border-none rounded-xl px-4 py-2.5 text-[10px] font-black uppercase text-slate-600 outline-none cursor-pointer hover:bg-slate-200 transition-all"
