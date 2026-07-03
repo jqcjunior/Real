@@ -455,6 +455,7 @@ const DREMensalTab: React.FC<DREMensalTabProps> = ({
                                 <tr>
                                     <th className="px-4 sm:px-8 py-4">Código / Data</th>
                                     <th className="px-4 sm:px-8 py-4">Cancelado Por</th>
+                                    <th className="px-4 sm:px-8 py-4">Item</th>
                                     <th className="px-4 sm:px-8 py-4">Motivo</th>
                                     <th className="px-4 sm:px-8 py-4 text-right">Valor Estornado</th>
                                 </tr>
@@ -469,6 +470,9 @@ const DREMensalTab: React.FC<DREMensalTabProps> = ({
                                             </span>
                                         </td>
                                         <td className="px-4 sm:px-8 py-4 uppercase text-gray-600">{c.canceledBy}</td>
+                                        <td className="px-4 sm:px-8 py-4 uppercase text-blue-950 italic font-black max-w-[220px]">
+                                            {c.itemsSummary || 'Item não identificado'}
+                                        </td>
                                         <td className="px-4 sm:px-8 py-4 uppercase text-gray-400 italic max-w-xs truncate">
                                             {c.cancelReason}
                                         </td>
@@ -479,7 +483,7 @@ const DREMensalTab: React.FC<DREMensalTabProps> = ({
                                 ))}
                                 {dreStats.monthCanceledDetails.length === 0 && (
                                     <tr>
-                                        <td colSpan={4} className="px-8 py-10 text-center text-gray-400 uppercase italic text-[9px]">
+                                        <td colSpan={5} className="px-8 py-10 text-center text-gray-400 uppercase italic text-[9px]">
                                             Nenhum cancelamento registrado
                                         </td>
                                     </tr>
