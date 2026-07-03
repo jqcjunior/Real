@@ -210,8 +210,13 @@ export const useDREStats = ({
             if (!d.due_date) return false;
             const date = new Date(d.due_date + 'T12:00:00');
             const matchesStore = effectiveStoreId === 'all' || d.store_id === effectiveStoreId;
-            return date >= monthStart && date < monthEnd && matchesStore && d.status !== 'paid';
-        }).reduce((acc, d) => acc + Number(d.installment_amount || 0), 0);
+            return date >= monthStart && date < monthEnd && matchesStore;
+        }).reduce((acc, d: any) => {
+            const value = d.status === 'paid' && d.paid_amount != null
+                ? Number(d.paid_amount)
+                : Number(d.installment_amount || 0);
+            return acc + value;
+        }, 0);
 
         const monthSangrias = (sangrias ?? []).filter(s => {
             if (!s.transaction_date && !s.created_at) return false;

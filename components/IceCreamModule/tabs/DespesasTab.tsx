@@ -2,7 +2,7 @@ import React, { useState, useMemo } from 'react';
 import { 
     DollarSign, Calendar, Plus, Filter, Search, 
     TrendingDown, Clock, Settings, Trash2, PencilLine, 
-    CheckCircle2, Printer, ChevronDown, ChevronUp, AlertCircle
+    CheckCircle2, Printer, ChevronDown, ChevronUp, AlertCircle, RotateCcw
 } from 'lucide-react';
 import { 
     IceCreamSangria, IceCreamSangriaCategory, IceCreamFutureDebt, 
@@ -25,7 +25,8 @@ interface DespesasTabProps {
     sangriaCategories: IceCreamSangriaCategory[];
     onAddSangria: (sangria: any) => Promise<void>;
     onAddFutureDebt: (debt: any) => Promise<void>;
-    onPayFutureDebt: (debtId: string, paymentDate: string, paymentMethod: string) => Promise<void>;
+    onPayFutureDebt: (debtId: string, paymentDate: string, paymentMethod: string, paymentNotes?: string, paidAmount?: number) => Promise<void>;
+    onUndoPayFutureDebt: (debtId: string) => Promise<void>;
     onUpdateFutureDebt: (id: string, data: any) => Promise<void>;
     onDeleteFutureDebt: (id: string) => Promise<void>;
     onDeleteSangria: (id: string) => Promise<void>;
@@ -47,6 +48,7 @@ const DespesasTab: React.FC<DespesasTabProps> = ({
     onAddSangria,
     onAddFutureDebt,
     onPayFutureDebt,
+    onUndoPayFutureDebt,
     onUpdateFutureDebt,
     onDeleteFutureDebt,
     onDeleteSangria,
@@ -101,7 +103,9 @@ const DespesasTab: React.FC<DespesasTabProps> = ({
     const [payingDebt, setPayingDebt] = useState<IceCreamFutureDebt | null>(null);
     const [payDebtForm, setPayDebtForm] = useState({
         payment_date: new Date().toISOString().split('T')[0],
-        payment_method: ''
+        payment_method: '',
+        payment_notes: '',
+        paid_amount: ''
     });
     const [debtStatusFilter, setDebtStatusFilter] = useState<'pending' | 'overdue' | 'paid' | 'all'>('pending');
     const [debtSearchTerm, setDebtSearchTerm] = useState('');
@@ -341,7 +345,9 @@ const DespesasTab: React.FC<DespesasTabProps> = ({
         setPayingDebt(debt);
         setPayDebtForm({
             payment_date: new Date().toISOString().split('T')[0],
-            payment_method: ''
+            payment_method: '',
+            payment_notes: '',
+            paid_amount: debt.installment_amount.toString()
         });
         setShowPayDebtModal(true);
     };
@@ -350,7 +356,8 @@ const DespesasTab: React.FC<DespesasTabProps> = ({
         if (!payingDebt) return;
         setIsSubmitting(true);
         try {
-            await onPayFutureDebt(payingDebt.id, payDebtForm.payment_date, payDebtForm.payment_method);
+            const paidAmountNum = parseFloat(payDebtForm.paid_amount.replace(',', '.')) || Number(payingDebt.installment_amount);
+            await onPayFutureDebt(payingDebt.id, payDebtForm.payment_date, payDebtForm.payment_method, payDebtForm.payment_notes, paidAmountNum);
             setShowPayDebtModal(false);
             setPayingDebt(null);
             if (fetchData) await fetchData();
@@ -358,6 +365,16 @@ const DespesasTab: React.FC<DespesasTabProps> = ({
             alert("Erro ao confirmar pagamento: " + e.message);
         } finally {
             setIsSubmitting(false);
+        }
+    };
+
+    const handleUndoPayDebt = async (debt: IceCreamFutureDebt) => {
+        if (!confirm(`Desfazer o pagamento de "${debt.supplier_name}"? A conta voltará para pendente.`)) return;
+        try {
+            await onUndoPayFutureDebt(debt.id);
+            if (fetchData) await fetchData();
+        } catch (e: any) {
+            alert("Erro ao desfazer pagamento: " + e.message);
         }
     };
 
@@ -766,7 +783,20 @@ const DespesasTab: React.FC<DespesasTabProps> = ({
                                                 <td className="px-6 py-4">
                                                     <div className="font-black text-blue-950">{new Date(debt.due_date + 'T12:00:00').toLocaleDateString('pt-BR')}</div>
                                                     {debt.status === 'paid' && debt.payment_date && (
-                                                        <div className="text-[8px] text-emerald-600 uppercase mt-0.5">Pago em: {new Date(debt.payment_date + 'T12:00:00').toLocaleDateString('pt-BR')}</div>
+                                                        <div className="text-[8px] text-emerald-600 uppercase mt-0.5">
+                                                            Pago em {new Date(debt.payment_date + 'T12:00:00').toLocaleDateString('pt-BR')}
+                                                            {(debt as any).payment_method && ` · ${(debt as any).payment_method}`}
+                                                        </div>
+                                                    )}
+                                                    {debt.status === 'paid' && (debt as any).paid_amount != null && Number((debt as any).paid_amount) !== Number(debt.installment_amount) && (
+                                                        <div className="text-[8px] text-amber-600 font-black uppercase mt-0.5">
+                                                            Pago: {formatCurrency(Number((debt as any).paid_amount))}
+                                                        </div>
+                                                    )}
+                                                    {debt.status === 'paid' && (debt as any).payment_notes && (
+                                                        <div className="text-[8px] text-gray-400 italic mt-0.5 max-w-[160px] truncate" title={(debt as any).payment_notes}>
+                                                            {(debt as any).payment_notes}
+                                                        </div>
                                                     )}
                                                 </td>
                                                 <td className="px-6 py-4">
@@ -791,13 +821,21 @@ const DespesasTab: React.FC<DespesasTabProps> = ({
                                                 </td>
                                                 <td className="px-6 py-4">
                                                     <div className="flex justify-center gap-1.5 opacity-0 group-hover:opacity-100 transition-opacity">
-                                                        {debt.status !== 'paid' && (
+                                                        {debt.status !== 'paid' ? (
                                                             <button 
                                                                 onClick={() => handleOpenPayModal(debt)}
                                                                 className="p-2 text-emerald-600 hover:bg-emerald-50 rounded-xl transition-all"
                                                                 title="Marcar como Pago"
                                                             >
-                                                                <CheckCircle2 size={16} />
+                                                                 <CheckCircle2 size={16} />
+                                                            </button>
+                                                        ) : (
+                                                            <button 
+                                                                onClick={() => handleUndoPayDebt(debt)}
+                                                                className="p-2 text-amber-600 hover:bg-amber-50 rounded-xl transition-all"
+                                                                title="Desfazer Pagamento"
+                                                            >
+                                                                <RotateCcw size={16} />
                                                             </button>
                                                         )}
                                                         <button 

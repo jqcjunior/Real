@@ -689,11 +689,27 @@ const IceCreamModule: React.FC<IceCreamModuleProps> = ({
         await fetchData();
     };
 
-    const onPayFutureDebt = async (debtId: string, paymentDate: string, paymentMethod: string) => {
+    const onPayFutureDebt = async (debtId: string, paymentDate: string, paymentMethod: string, paymentNotes?: string, paidAmount?: number) => {
         const { error } = await supabase.from('ice_cream_future_debts').update({
             status: 'paid',
             payment_date: paymentDate,
-            payment_method: paymentMethod
+            payment_method: paymentMethod || null,
+            payment_notes: paymentNotes || null,
+            paid_amount: paidAmount ?? null,
+            paid_by: user?.id ?? null
+        }).eq('id', debtId);
+        if (error) throw error;
+        await fetchData();
+    };
+
+    const onUndoPayFutureDebt = async (debtId: string) => {
+        const { error } = await supabase.from('ice_cream_future_debts').update({
+            status: 'pending',
+            payment_date: null,
+            payment_method: null,
+            payment_notes: null,
+            paid_amount: null,
+            paid_by: null
         }).eq('id', debtId);
         if (error) throw error;
         await fetchData();
@@ -1768,6 +1784,7 @@ const IceCreamModule: React.FC<IceCreamModuleProps> = ({
                             onAddSangria={onAddSangria}
                             onAddFutureDebt={onAddFutureDebt}
                             onPayFutureDebt={onPayFutureDebt}
+                            onUndoPayFutureDebt={onUndoPayFutureDebt}
                             onUpdateFutureDebt={onUpdateFutureDebt}
                             onDeleteFutureDebt={onDeleteFutureDebt}
                             onDeleteSangria={handleDeleteSangria}
