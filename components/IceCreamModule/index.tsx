@@ -1357,13 +1357,13 @@ const IceCreamModule: React.FC<IceCreamModuleProps> = ({
                     <div class="rp-section-title">Resumo financeiro</div>
                     <div class="rp-kpi-row"><span>Faturamento bruto (+)</span><span class="rp-mono" style="color:#173404">${formatCurrency(dreStats.monthIn)}</span></div>
                     <div class="rp-kpi-row"><span>Sangrias (-)</span><span class="rp-mono" style="color:#791F1F">${formatCurrency(dreStats.monthSangriaTotal)}</span></div>
-                    <div class="rp-kpi-row"><span>Contas a pagar do mês (-)</span><span class="rp-mono" style="color:#3C3489">${formatCurrency(dreStats.monthFutureDebts)}</span></div>
+                    <div class="rp-kpi-row"><span>Contas a pagar pagas no mês (-)</span><span class="rp-mono" style="color:#3C3489">${formatCurrency(dreStats.monthFutureDebts)}</span></div>
                     <div class="rp-kpi-row total"><span>Lucro líquido (=)</span><span class="rp-mono">${formatCurrency(dreStats.profit)}</span></div>
                 </div>
                 <div class="rp-section">
                     <div class="rp-section-title">Resumo operacional do período</div>
                     <div class="rp-kpi-row"><span>Total de sangrias</span><span class="rp-mono">${formatCurrency(dreStats.monthSangriaTotal)}</span></div>
-                    <div class="rp-kpi-row"><span>Contas a pagar (mês)</span><span class="rp-mono">${formatCurrency(dreStats.monthFutureDebts)}</span></div>
+                    <div class="rp-kpi-row"><span>Contas a pagar pagas</span><span class="rp-mono">${formatCurrency(dreStats.monthFutureDebts)}</span></div>
                     <div class="rp-kpi-row"><span>Total de avarias</span><span class="rp-mono">${dreStats.monthWastageTotal.toFixed(2)}</span></div>
                     <div class="rp-kpi-row"><span>Vendas canceladas</span><span class="rp-mono">${formatCurrency(dreStats.monthCanceledTotal)}</span></div>
                     <div class="rp-kpi-row"><span>Margem líquida</span><span class="rp-mono">${dreStats.monthIn > 0 ? ((dreStats.profit / dreStats.monthIn) * 100).toFixed(1) : '0.0'}%</span></div>

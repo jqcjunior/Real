@@ -196,7 +196,7 @@ const DREMensalTab: React.FC<DREMensalTabProps> = ({
                         </div>
                         <div className="flex justify-between items-center pb-4 border-b px-2 -mx-2">
                             <span className="font-bold text-gray-600 uppercase text-xs">
-                                Contas a Pagar do Mês (-)
+                                Contas a Pagar Pagas no Mês (-)
                             </span>
                             <span className="font-black text-purple-600 text-lg md:text-xl">{formatCurrency(dreStats.monthFutureDebts)}</span>
                         </div>
@@ -259,7 +259,7 @@ const DREMensalTab: React.FC<DREMensalTabProps> = ({
                         <p className="text-xl font-black text-gray-600 italic">{formatCurrency(dreStats.monthCanceledTotal)}</p>
                     </div>
                     <div className="p-4 bg-purple-50 rounded-2xl border border-purple-100">
-                        <p className="text-[9px] font-black text-purple-400 uppercase">Contas a Pagar (Mês)</p>
+                        <p className="text-[9px] font-black text-purple-400 uppercase">Contas a Pagar Pagas</p>
                         <p className="text-xl font-black text-purple-600 italic">{formatCurrency(dreStats.monthFutureDebts)}</p>
                     </div>
                     <div className="p-4 bg-blue-950 rounded-2xl border border-blue-900 text-white">

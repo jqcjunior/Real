@@ -206,15 +206,13 @@ export const useDREStats = ({
             monthSalesDetail.push({ productName, ...data });
         });
 
-        const monthFutureDebts = (futureDebts ?? []).filter(d => {
-            if (!d.due_date) return false;
-            const date = new Date(d.due_date + 'T12:00:00');
+        const monthFutureDebts = (futureDebts ?? []).filter((d: any) => {
+            if (d.status !== 'paid' || !d.payment_date) return false;
+            const date = new Date(d.payment_date + 'T12:00:00');
             const matchesStore = effectiveStoreId === 'all' || d.store_id === effectiveStoreId;
             return date >= monthStart && date < monthEnd && matchesStore;
         }).reduce((acc, d: any) => {
-            const value = d.status === 'paid' && d.paid_amount != null
-                ? Number(d.paid_amount)
-                : Number(d.installment_amount || 0);
+            const value = d.paid_amount != null ? Number(d.paid_amount) : Number(d.installment_amount || 0);
             return acc + value;
         }, 0);
 
