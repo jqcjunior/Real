@@ -1711,6 +1711,7 @@ function gradesArrayToObject(grades: any): Record<string, Record<string, number>
             isMobile={isMobile}
             setStep2State={setStep2State}
             setPedidos={setPedidos}
+            user={user}
           />
         )}
         {step === 2 && (
@@ -3589,6 +3590,7 @@ function StepItens({
   isMobile,
   setStep2State,
   setPedidos,
+  user,
 }: {
   items: OrderItem[];
   setItems: Dispatch<SetStateAction<OrderItem[]>>;
@@ -3598,7 +3600,9 @@ function StepItens({
   isMobile?: boolean;
   setStep2State?: Dispatch<SetStateAction<any>>;
   setPedidos?: Dispatch<SetStateAction<any[]>>;
+  user?: any;
 }) {
+  const isAdmin = String(user?.role || "").toUpperCase() === "ADMIN";
   const [showPopup, setShowPopup] = useState(false);
   const [editIdx, setEditIdx] = useState(-1);
   const [form, setForm] = useState({
@@ -3609,6 +3613,8 @@ function StepItens({
     cor3: "",
     modelo: "",
     custo: "",
+    vendaManual: "",
+    vendaEditadaManualmente: false,
   });
   const [showAutoFilledMessage, setShowAutoFilledMessage] = useState(false);
 
@@ -3633,6 +3639,8 @@ function StepItens({
         cor3: "",
         modelo: existente.modelo || "",
         custo: existente.custo !== undefined ? String(existente.custo) : "",
+        vendaManual: "",
+        vendaEditadaManualmente: false,
       });
       setCor2Manual(false);
       setCor3Manual(false);
@@ -3811,6 +3819,8 @@ function StepItens({
       cor3: "",
       modelo: "",
       custo: "",
+      vendaManual: "",
+      vendaEditadaManualmente: false,
     });
     setEditIdx(-1);
     setCor2Manual(false);
@@ -3832,6 +3842,8 @@ function StepItens({
       cor3: it.cor3,
       modelo: initialModelo,
       custo: String(it.custo),
+      vendaManual: isAdmin ? String(it.preco_venda) : "",
+      vendaEditadaManualmente: isAdmin ? true : false,
     });
     setEditIdx(i);
     setCor2Manual(!!it.cor2);
@@ -3856,7 +3868,9 @@ function StepItens({
   async function saveItem() {
     setIsCalculating(true);
     const custo = parseFloat(form.custo) || 0;
-    const preco_venda = estVenda;
+    const preco_venda = (isAdmin && form.vendaEditadaManualmente && form.vendaManual !== "") 
+      ? parseFloat(form.vendaManual) 
+      : estVenda;
 
     const savedTipo = (form.tipo || "").trim().toUpperCase();
 
@@ -4872,16 +4886,49 @@ function StepItens({
                   display: "flex",
                   alignItems: "center",
                   gap: 10,
+                  flexWrap: "wrap",
                 }}
               >
                 <span style={{ fontSize: 11, color: "#6b7280" }}>
                   Desconto {cab.desconto}% → Markup {cab.markup}x → Venda:
                 </span>
-                <span
-                  className={`text-[15px] font-medium ${historicPrice && estVenda > historicPrice ? "text-emerald-600 animate-pulse" : historicPrice && estVenda < historicPrice ? "text-amber-500 animate-pulse" : "text-[#185FA5]"}`}
-                >
-                  {form.custo ? fmtBRL(estVenda) : "—"}
-                </span>
+                {isAdmin ? (
+                  <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
+                    <input
+                      type="number"
+                      step="0.01"
+                      value={form.vendaEditadaManualmente ? form.vendaManual : (form.custo ? String(estVenda) : "")}
+                      onChange={(e) => {
+                        setForm((f) => ({
+                          ...f,
+                          vendaManual: e.target.value,
+                          vendaEditadaManualmente: true,
+                        }));
+                      }}
+                      placeholder="0,00"
+                      style={{
+                        height: 30,
+                        width: 100,
+                        padding: "0 8px",
+                        border: "0.5px solid #d1d5db",
+                        borderRadius: 5,
+                        fontSize: 12,
+                        outline: "none",
+                        fontWeight: "bold",
+                        color: "#185FA5",
+                      }}
+                    />
+                    <span style={{ fontSize: 10, color: "#9ca3af" }}>
+                      Sugestão: {form.custo ? fmtBRL(estVenda) : "—"}
+                    </span>
+                  </div>
+                ) : (
+                  <span
+                    className={`text-[15px] font-medium ${historicPrice && estVenda > historicPrice ? "text-emerald-600 animate-pulse" : historicPrice && estVenda < historicPrice ? "text-amber-500 animate-pulse" : "text-[#185FA5]"}`}
+                  >
+                    {form.custo ? fmtBRL(estVenda) : "—"}
+                  </span>
+                )}
                 {historicPrice && form.custo && (
                   <span className="text-[10px] text-slate-400 ml-auto italic">
                     Último: {fmtBRL(historicPrice)}
