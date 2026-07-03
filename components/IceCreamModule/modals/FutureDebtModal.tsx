@@ -43,7 +43,7 @@ const FutureDebtModal: React.FC<FutureDebtModalProps> = ({
             <div className="bg-white rounded-[40px] w-full max-w-lg shadow-2xl overflow-hidden border-t-8 border-purple-600 animate-in zoom-in duration-300">
                 <div className="p-6 border-b flex justify-between items-center bg-gray-50/50">
                     <h3 className="text-lg font-black uppercase italic text-purple-950 flex items-center gap-3">
-                        <DollarSign size={20} className="text-purple-600" /> Lançar <span className="text-purple-600">Despesa</span>
+                        <DollarSign size={20} className="text-purple-600" /> Nova <span className="text-purple-600">Conta a Pagar</span>
                     </h3>
                     <button onClick={onClose} className="text-gray-400 hover:text-red-600 transition-colors">
                         <X size={24} />

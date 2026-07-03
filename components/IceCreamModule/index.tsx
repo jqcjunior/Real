@@ -688,10 +688,11 @@ const IceCreamModule: React.FC<IceCreamModuleProps> = ({
         await fetchData();
     };
 
-    const onPayFutureDebt = async (debtId: string, paymentDate: string) => {
+    const onPayFutureDebt = async (debtId: string, paymentDate: string, paymentMethod: string) => {
         const { error } = await supabase.from('ice_cream_future_debts').update({
             status: 'paid',
-            payment_date: paymentDate
+            payment_date: paymentDate,
+            payment_method: paymentMethod
         }).eq('id', debtId);
         if (error) throw error;
         await fetchData();
@@ -925,6 +926,15 @@ const IceCreamModule: React.FC<IceCreamModuleProps> = ({
     const filteredPartners = useMemo(() => {
         return partners.filter(p => p.store_id === effectiveStoreId);
     }, [partners, effectiveStoreId]);
+
+    const overdueDebtsCount = useMemo(() => {
+        const todayStr = getTodayBrazil();
+        return futureDebts.filter(d => 
+            d.store_id === effectiveStoreId && 
+            d.status !== 'paid' && 
+            d.due_date < todayStr
+        ).length;
+    }, [futureDebts, effectiveStoreId]);
 
     // DRE Stats Hook
     const dreStats = useDREStats({
@@ -1401,13 +1411,15 @@ const IceCreamModule: React.FC<IceCreamModuleProps> = ({
                 <div class="section">
                     <div class="section-title">Resumo Financeiro</div>
                     <div class="kpi"><span>Faturamento Bruto (+)</span> <span style="color:#059669">${formatCurrency(dreStats.monthIn)}</span></div>
-                    <div class="kpi"><span>Sangrias / Saídas (-)</span> <span style="color:#dc2626">${formatCurrency(dreStats.monthSangriaTotal)}</span></div>
+                    <div class="kpi"><span>Sangrias (-)</span> <span style="color:#dc2626">${formatCurrency(dreStats.monthSangriaTotal)}</span></div>
+                    <div class="kpi"><span>Contas a Pagar do Mês (-)</span> <span style="color:#7c3aed">${formatCurrency(dreStats.monthFutureDebts)}</span></div>
                     <div class="kpi total-row"><span>LUCRO LÍQUIDO (=)</span> <span>${formatCurrency(dreStats.profit)}</span></div>
                 </div>
     
                 <div class="section">
                     <div class="section-title">RESUMO OPERACIONAL DO PERÍODO</div>
                     <div class="kpi"><span>Total de Sangrias</span> <span>${formatCurrency(dreStats.monthSangriaTotal)}</span></div>
+                    <div class="kpi"><span>Contas a Pagar (Mês)</span> <span>${formatCurrency(dreStats.monthFutureDebts)}</span></div>
                     <div class="kpi"><span>Total de Avarias</span> <span>${dreStats.monthWastageTotal.toFixed(2)}</span></div>
                     <div class="kpi"><span>Vendas Canceladas</span> <span>${formatCurrency(dreStats.monthCanceledTotal)}</span></div>
                     <div class="kpi"><span>Margem Líquida (%)</span> <span>${dreStats.monthIn > 0 ? ((dreStats.profit / dreStats.monthIn) * 100).toFixed(1) : '0.0'}%</span></div>
@@ -1703,22 +1715,6 @@ const IceCreamModule: React.FC<IceCreamModuleProps> = ({
         }
     };
 
-    const handlePayFutureDebt = async (debtId: string) => {
-        const hoje = getTodayBrazil();
-        const input = window.prompt(
-            'Data do pagamento (AAAA-MM-DD):\nDeixe a data de hoje ou altere para uma data retroativa.',
-            hoje
-        );
-        if (input === null) return; // cancelou
-        const paymentDate = input.trim() || hoje;
-        try {
-            await onPayFutureDebt(debtId, paymentDate);
-            if (fetchData) await fetchData();
-        } catch (e: any) {
-            alert("Erro ao pagar dívida: " + e.message);
-        }
-    };
-
     const handleAddSangriaCategory = async (name: string, storeId: string) => {
         try {
             await onAddSangriaCategory({ name, store_id: storeId, is_active: true });
@@ -1793,8 +1789,13 @@ const IceCreamModule: React.FC<IceCreamModuleProps> = ({
                             </button>
                         )}
                         {canManage && can('MODULE_ICECREAM_DESPESAS') && (
-                            <button onClick={() => setActiveTab('despesas')} className={`px-3 py-2.5 rounded-xl text-[10px] font-black uppercase transition-all flex items-center gap-2 whitespace-nowrap shrink-0 ${activeTab === 'despesas' ? 'bg-white text-red-600 shadow-md ring-1 ring-slate-200/50' : 'text-slate-500 hover:text-slate-700 hover:bg-white/50'}`}>
+                            <button onClick={() => setActiveTab('despesas')} className={`relative px-3 py-2.5 rounded-xl text-[10px] font-black uppercase transition-all flex items-center gap-2 whitespace-nowrap shrink-0 ${activeTab === 'despesas' ? 'bg-white text-red-600 shadow-md ring-1 ring-slate-200/50' : 'text-slate-500 hover:text-slate-700 hover:bg-white/50'}`}>
                                 <DollarSign size={15} /> Despesas
+                                {overdueDebtsCount > 0 && (
+                                    <span className="absolute -top-1 -right-1 min-w-[16px] h-4 px-1 bg-red-600 text-white text-[8px] font-black rounded-full flex items-center justify-center animate-pulse">
+                                        {overdueDebtsCount}
+                                    </span>
+                                )}
                             </button>
                         )}
                         <button onClick={() => setActiveTab('stock')} className={`px-3 py-2.5 rounded-xl text-[10px] font-black uppercase transition-all flex items-center gap-2 whitespace-nowrap shrink-0 ${activeTab === 'stock' ? 'bg-white text-blue-600 shadow-md ring-1 ring-slate-200/50' : 'text-slate-500 hover:text-slate-700 hover:bg-white/50'}`}>
@@ -1915,7 +1916,7 @@ const IceCreamModule: React.FC<IceCreamModuleProps> = ({
                             sangriaCategories={sangriaCategories}
                             onAddSangria={onAddSangria}
                             onAddFutureDebt={onAddFutureDebt}
-                            onPayFutureDebt={handlePayFutureDebt}
+                            onPayFutureDebt={onPayFutureDebt}
                             onUpdateFutureDebt={onUpdateFutureDebt}
                             onDeleteFutureDebt={onDeleteFutureDebt}
                             onDeleteSangria={handleDeleteSangria}

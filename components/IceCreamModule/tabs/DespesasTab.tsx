@@ -14,6 +14,7 @@ import SangriaModal from '../modals/SangriaModal';
 import FutureDebtModal from '../modals/FutureDebtModal';
 import EditSangriaModal from '../modals/EditSangriaModal';
 import EditFutureDebtModal from '../modals/EditFutureDebtModal';
+import PayFutureDebtModal from '../modals/PayFutureDebtModal';
 import CategoryManager from '../modals/CategoryManager';
 import { printSangriasReport } from '../services/printService';
 
@@ -23,7 +24,7 @@ interface DespesasTabProps {
     sangriaCategories: IceCreamSangriaCategory[];
     onAddSangria: (sangria: any) => Promise<void>;
     onAddFutureDebt: (debt: any) => Promise<void>;
-    onPayFutureDebt: (debtId: string) => Promise<void>;
+    onPayFutureDebt: (debtId: string, paymentDate: string, paymentMethod: string) => Promise<void>;
     onUpdateFutureDebt: (id: string, data: any) => Promise<void>;
     onDeleteFutureDebt: (id: string) => Promise<void>;
     onDeleteSangria: (id: string) => Promise<void>;
@@ -93,6 +94,12 @@ const DespesasTab: React.FC<DespesasTabProps> = ({
     const [editingDebt, setEditingDebt] = useState<IceCreamFutureDebt | null>(null);
     const [editDebtForm, setEditDebtForm] = useState({
         supplier_name: '', installment_amount: '', due_date: '', categoryId: '', description: ''
+    });
+    const [showPayDebtModal, setShowPayDebtModal] = useState(false);
+    const [payingDebt, setPayingDebt] = useState<IceCreamFutureDebt | null>(null);
+    const [payDebtForm, setPayDebtForm] = useState({
+        payment_date: new Date().toISOString().split('T')[0],
+        payment_method: ''
     });
     const [debtStatusFilter, setDebtStatusFilter] = useState<'pending' | 'overdue' | 'paid' | 'all'>('pending');
     const [debtSearchTerm, setDebtSearchTerm] = useState('');
@@ -321,6 +328,30 @@ const DespesasTab: React.FC<DespesasTabProps> = ({
         }
     };
 
+    const handleOpenPayModal = (debt: IceCreamFutureDebt) => {
+        setPayingDebt(debt);
+        setPayDebtForm({
+            payment_date: new Date().toISOString().split('T')[0],
+            payment_method: ''
+        });
+        setShowPayDebtModal(true);
+    };
+
+    const handleConfirmPayDebt = async () => {
+        if (!payingDebt) return;
+        setIsSubmitting(true);
+        try {
+            await onPayFutureDebt(payingDebt.id, payDebtForm.payment_date, payDebtForm.payment_method);
+            setShowPayDebtModal(false);
+            setPayingDebt(null);
+            if (fetchData) await fetchData();
+        } catch (e: any) {
+            alert("Erro ao confirmar pagamento: " + e.message);
+        } finally {
+            setIsSubmitting(false);
+        }
+    };
+
     const handleEditSangria = (sangria: IceCreamSangria) => {
         setEditingSangria(sangria);
         setEditSangriaForm({
@@ -438,7 +469,7 @@ const DespesasTab: React.FC<DespesasTabProps> = ({
                         onClick={() => setShowFutureDebtModal(true)}
                         className="px-4 md:px-6 py-3 md:py-4 bg-purple-600 text-white rounded-xl md:rounded-2xl font-black uppercase text-[10px] md:text-xs shadow-lg shadow-purple-100 hover:bg-purple-700 transition-all flex items-center justify-center gap-2 border-b-4 border-purple-900 active:scale-95"
                     >
-                        <Clock size={16} /> <span className="truncate">Lançar Despesa</span>
+                        <Clock size={16} /> <span className="truncate">Nova Conta a Pagar</span>
                     </button>
                 </div>
             </div>
@@ -677,7 +708,7 @@ const DespesasTab: React.FC<DespesasTabProps> = ({
                                                     <div className="flex justify-center gap-1.5 opacity-0 group-hover:opacity-100 transition-opacity">
                                                         {debt.status !== 'paid' && (
                                                             <button 
-                                                                onClick={() => onPayFutureDebt(debt.id)}
+                                                                onClick={() => handleOpenPayModal(debt)}
                                                                 className="p-2 text-emerald-600 hover:bg-emerald-50 rounded-xl transition-all"
                                                                 title="Marcar como Pago"
                                                             >
@@ -807,6 +838,16 @@ const DespesasTab: React.FC<DespesasTabProps> = ({
                 categories={sangriaCategories}
                 isSubmitting={isSubmitting}
                 onSubmit={handleSaveEditFutureDebt}
+            />
+
+            <PayFutureDebtModal 
+                isOpen={showPayDebtModal}
+                onClose={() => setShowPayDebtModal(false)}
+                debtInfo={payingDebt ? { supplier_name: payingDebt.supplier_name, installment_amount: Number(payingDebt.installment_amount) } : null}
+                form={payDebtForm}
+                setForm={setPayDebtForm}
+                isSubmitting={isSubmitting}
+                onSubmit={handleConfirmPayDebt}
             />
         </div>
     );
