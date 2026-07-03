@@ -697,6 +697,24 @@ const IceCreamModule: React.FC<IceCreamModuleProps> = ({
         await fetchData();
     };
 
+    const onUpdateFutureDebt = async (id: string, data: Partial<IceCreamFutureDebt>) => {
+        const { error } = await supabase.from('ice_cream_future_debts').update({
+            supplier_name: data.supplier_name,
+            installment_amount: data.installment_amount,
+            due_date: data.due_date,
+            category_id: data.category_id,
+            description: data.description
+        }).eq('id', id);
+        if (error) throw error;
+        await fetchData();
+    };
+
+    const onDeleteFutureDebt = async (id: string) => {
+        const { error } = await supabase.from('ice_cream_future_debts').delete().eq('id', id);
+        if (error) throw error;
+        await fetchData();
+    };
+
     const onAddSales = async (s: IceCreamDailySale[]) => {
         await supabase.from('ice_cream_daily_sales').insert(s.map(x => ({
             store_id: x.storeId,
@@ -1898,6 +1916,8 @@ const IceCreamModule: React.FC<IceCreamModuleProps> = ({
                             onAddSangria={onAddSangria}
                             onAddFutureDebt={onAddFutureDebt}
                             onPayFutureDebt={handlePayFutureDebt}
+                            onUpdateFutureDebt={onUpdateFutureDebt}
+                            onDeleteFutureDebt={onDeleteFutureDebt}
                             onDeleteSangria={handleDeleteSangria}
                             onUpdateSangria={handleUpdateSangria}
                             onAddSangriaCategory={handleAddSangriaCategory}

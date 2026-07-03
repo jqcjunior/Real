@@ -13,6 +13,7 @@ import { MONTHS } from '../constants';
 import SangriaModal from '../modals/SangriaModal';
 import FutureDebtModal from '../modals/FutureDebtModal';
 import EditSangriaModal from '../modals/EditSangriaModal';
+import EditFutureDebtModal from '../modals/EditFutureDebtModal';
 import CategoryManager from '../modals/CategoryManager';
 import { printSangriasReport } from '../services/printService';
 
@@ -23,6 +24,8 @@ interface DespesasTabProps {
     onAddSangria: (sangria: any) => Promise<void>;
     onAddFutureDebt: (debt: any) => Promise<void>;
     onPayFutureDebt: (debtId: string) => Promise<void>;
+    onUpdateFutureDebt: (id: string, data: any) => Promise<void>;
+    onDeleteFutureDebt: (id: string) => Promise<void>;
     onDeleteSangria: (id: string) => Promise<void>;
     onUpdateSangria: (id: string, data: any) => Promise<void>;
     onAddSangriaCategory: (name: string, storeId: string) => Promise<void>;
@@ -42,6 +45,8 @@ const DespesasTab: React.FC<DespesasTabProps> = ({
     onAddSangria,
     onAddFutureDebt,
     onPayFutureDebt,
+    onUpdateFutureDebt,
+    onDeleteFutureDebt,
     onDeleteSangria,
     onUpdateSangria,
     onAddSangriaCategory,
@@ -62,6 +67,7 @@ const DespesasTab: React.FC<DespesasTabProps> = ({
     const [showSangriaModal, setShowSangriaModal] = useState(false);
     const [showFutureDebtModal, setShowFutureDebtModal] = useState(false);
     const [showEditSangriaModal, setShowEditSangriaModal] = useState(false);
+    const [showEditFutureDebtModal, setShowEditFutureDebtModal] = useState(false);
     const [showCategoryManager, setShowCategoryManager] = useState(false);
     
     // Forms State
@@ -84,6 +90,12 @@ const DespesasTab: React.FC<DespesasTabProps> = ({
         transactionDate: '',
         notes: ''
     });
+    const [editingDebt, setEditingDebt] = useState<IceCreamFutureDebt | null>(null);
+    const [editDebtForm, setEditDebtForm] = useState({
+        supplier_name: '', installment_amount: '', due_date: '', categoryId: '', description: ''
+    });
+    const [debtStatusFilter, setDebtStatusFilter] = useState<'pending' | 'overdue' | 'paid' | 'all'>('pending');
+    const [debtSearchTerm, setDebtSearchTerm] = useState('');
     const [newCategoryName, setNewCategoryName] = useState('');
     const [isSubmitting, setIsSubmitting] = useState(false);
 
@@ -108,14 +120,83 @@ const DespesasTab: React.FC<DespesasTabProps> = ({
         });
     }, [sangrias, selectedMonth, selectedYear, effectiveStoreId, searchTerm, sangriaCategories]);
 
+    const todayStr = new Date().toISOString().split('T')[0];
+    const in7DaysStr = new Date(Date.now() + 7 * 24 * 60 * 60 * 1000).toISOString().split('T')[0];
+
+    const debtsWithStatus = useMemo(() => {
+        return futureDebts
+            .filter(d => d.store_id === effectiveStoreId)
+            .map(d => {
+                const isPaid = d.status === 'paid';
+                const isOverdue = !isPaid && d.due_date < todayStr;
+                const isDueSoon = !isPaid && !isOverdue && d.due_date <= in7DaysStr;
+                const computedStatus: 'paid' | 'overdue' | 'due_soon' | 'ok' =
+                    isPaid ? 'paid' : isOverdue ? 'overdue' : isDueSoon ? 'due_soon' : 'ok';
+                return { ...d, computedStatus };
+            });
+    }, [futureDebts, effectiveStoreId, todayStr, in7DaysStr]);
+
     const filteredFutureDebts = useMemo(() => {
-        return futureDebts.filter(d => d.store_id === effectiveStoreId && d.status !== 'paid')
-            .sort((a, b) => new Date(a.due_date).getTime() - new Date(b.due_date).getTime());
-    }, [futureDebts, effectiveStoreId]);
+        const monthStart = new Date(selectedYear, selectedMonth - 1, 1);
+        const monthEnd = new Date(selectedYear, selectedMonth, 1);
+
+        return debtsWithStatus.filter(d => {
+            const dDate = new Date(d.due_date + 'T12:00:00');
+            const inSelectedMonth = dDate >= monthStart && dDate < monthEnd;
+            const isOverdueAlways = d.computedStatus === 'overdue';
+
+            // Vencidos sempre aparecem, independente do mês selecionado
+            const passesMonthFilter = inSelectedMonth || isOverdueAlways;
+
+            const passesStatusFilter =
+                debtStatusFilter === 'all' ? true :
+                debtStatusFilter === 'paid' ? d.computedStatus === 'paid' :
+                debtStatusFilter === 'overdue' ? d.computedStatus === 'overdue' :
+                d.computedStatus !== 'paid'; // 'pending' = tudo que não está pago
+
+            const term = debtSearchTerm.toLowerCase();
+            const passesSearch = !term ||
+                d.supplier_name?.toLowerCase().includes(term) ||
+                d.description?.toLowerCase().includes(term) ||
+                sangriaCategories.find(c => c.id === d.category_id)?.name.toLowerCase().includes(term);
+
+            return passesMonthFilter && passesStatusFilter && passesSearch;
+        }).sort((a, b) => new Date(a.due_date).getTime() - new Date(b.due_date).getTime());
+    }, [debtsWithStatus, selectedMonth, selectedYear, debtStatusFilter, debtSearchTerm, sangriaCategories]);
 
     // Totals
     const totalSangriasMonth = useMemo(() => filteredSangrias.reduce((acc, s) => acc + Number(s.amount), 0), [filteredSangrias]);
-    const totalFutureDebts = useMemo(() => filteredFutureDebts.reduce((acc, d) => acc + Number(d.installment_amount), 0), [filteredFutureDebts]);
+    
+    const totalVencido = useMemo(() =>
+        debtsWithStatus.filter(d => d.computedStatus === 'overdue').reduce((s, d) => s + Number(d.installment_amount), 0),
+        [debtsWithStatus]
+    );
+    const totalAVencer7d = useMemo(() =>
+        debtsWithStatus.filter(d => d.computedStatus === 'due_soon').reduce((s, d) => s + Number(d.installment_amount), 0),
+        [debtsWithStatus]
+    );
+    const totalMesAtual = useMemo(() => {
+        const monthStart = new Date(selectedYear, selectedMonth - 1, 1);
+        const monthEnd = new Date(selectedYear, selectedMonth, 1);
+        return debtsWithStatus
+            .filter(d => d.computedStatus !== 'paid')
+            .filter(d => {
+                const dDate = new Date(d.due_date + 'T12:00:00');
+                return dDate >= monthStart && dDate < monthEnd;
+            })
+            .reduce((s, d) => s + Number(d.installment_amount), 0);
+    }, [debtsWithStatus, selectedMonth, selectedYear]);
+    const totalPagoMes = useMemo(() => {
+        const monthStart = new Date(selectedYear, selectedMonth - 1, 1);
+        const monthEnd = new Date(selectedYear, selectedMonth, 1);
+        return debtsWithStatus
+            .filter(d => d.computedStatus === 'paid')
+            .filter(d => {
+                const refDate = new Date((d.payment_date || d.due_date) + 'T12:00:00');
+                return refDate >= monthStart && refDate < monthEnd;
+            })
+            .reduce((s, d) => s + Number(d.installment_amount), 0);
+    }, [debtsWithStatus, selectedMonth, selectedYear]);
 
     // Handlers
     const handleAddSangria = async () => {
@@ -194,6 +275,49 @@ const DespesasTab: React.FC<DespesasTabProps> = ({
             alert("Erro ao adicionar despesa: " + e.message);
         } finally {
             setIsSubmitting(false);
+        }
+    };
+
+    const handleEditFutureDebt = (debt: IceCreamFutureDebt) => {
+        setEditingDebt(debt);
+        setEditDebtForm({
+            supplier_name: debt.supplier_name,
+            installment_amount: debt.installment_amount.toString(),
+            due_date: debt.due_date,
+            categoryId: debt.category_id || '',
+            description: debt.description || ''
+        });
+        setShowEditFutureDebtModal(true);
+    };
+
+    const handleSaveEditFutureDebt = async () => {
+        if (!editingDebt) return;
+        setIsSubmitting(true);
+        try {
+            await onUpdateFutureDebt(editingDebt.id, {
+                supplier_name: editDebtForm.supplier_name,
+                installment_amount: parseFloat(editDebtForm.installment_amount.replace(',', '.')),
+                due_date: editDebtForm.due_date,
+                category_id: editDebtForm.categoryId,
+                description: editDebtForm.description
+            });
+            setShowEditFutureDebtModal(false);
+            setEditingDebt(null);
+            if (fetchData) await fetchData();
+        } catch (e: any) {
+            alert("Erro ao atualizar conta: " + e.message);
+        } finally {
+            setIsSubmitting(false);
+        }
+    };
+
+    const handleDeleteFutureDebt = async (id: string) => {
+        if (!confirm("Tem certeza que deseja excluir esta conta a pagar?")) return;
+        try {
+            await onDeleteFutureDebt(id);
+            if (fetchData) await fetchData();
+        } catch (e: any) {
+            alert("Erro ao excluir conta: " + e.message);
         }
     };
 
@@ -320,7 +444,7 @@ const DespesasTab: React.FC<DespesasTabProps> = ({
             </div>
 
             {/* CARDS DE RESUMO */}
-            <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-5 gap-6">
                 <div className="bg-white p-8 rounded-[40px] border-2 border-red-100 shadow-sm relative overflow-hidden group">
                     <div className="absolute top-0 right-0 p-8 opacity-10 group-hover:scale-110 transition-transform">
                         <TrendingDown size={80} />
@@ -330,22 +454,40 @@ const DespesasTab: React.FC<DespesasTabProps> = ({
                     <p className="text-[10px] font-bold text-gray-400 uppercase mt-2">Total de saídas avulsas</p>
                 </div>
 
-                <div className="bg-white p-8 rounded-[40px] border-2 border-purple-100 shadow-sm relative overflow-hidden group">
+                <div className="bg-white p-8 rounded-[40px] border-2 border-red-100 shadow-sm relative overflow-hidden group">
                     <div className="absolute top-0 right-0 p-8 opacity-10 group-hover:scale-110 transition-transform">
-                        <Clock size={80} />
+                        <AlertCircle size={80} className="text-red-500" />
                     </div>
-                    <span className="text-[10px] font-black text-purple-500 uppercase tracking-widest block mb-4">Débitos Futuros</span>
-                    <h3 className="text-4xl font-black text-purple-700 italic">{formatCurrency(totalFutureDebts)}</h3>
-                    <p className="text-[10px] font-bold text-gray-400 uppercase mt-2">Parcelas a vencer</p>
+                    <span className="text-[10px] font-black text-red-500 uppercase tracking-widest block mb-4">Vencido</span>
+                    <h3 className="text-4xl font-black text-red-700 italic">{formatCurrency(totalVencido)}</h3>
+                    <p className="text-[10px] font-bold text-gray-400 uppercase mt-2">Contas em atraso</p>
                 </div>
 
-                <div className="bg-blue-950 p-8 rounded-[40px] shadow-2xl relative overflow-hidden group">
+                <div className="bg-white p-8 rounded-[40px] border-2 border-yellow-100 shadow-sm relative overflow-hidden group">
                     <div className="absolute top-0 right-0 p-8 opacity-10 group-hover:scale-110 transition-transform">
-                        <DollarSign size={80} className="text-white" />
+                        <Clock size={80} className="text-yellow-500" />
                     </div>
-                    <span className="text-[10px] font-black text-blue-400 uppercase tracking-widest block mb-4">Total Despesas</span>
-                    <h3 className="text-4xl font-black text-white italic">{formatCurrency(totalSangriasMonth + totalFutureDebts)}</h3>
-                    <p className="text-[10px] font-bold text-blue-300/50 uppercase mt-2">Comprometimento mensal</p>
+                    <span className="text-[10px] font-black text-yellow-600 uppercase tracking-widest block mb-4">A Vencer (7 dias)</span>
+                    <h3 className="text-4xl font-black text-yellow-700 italic">{formatCurrency(totalAVencer7d)}</h3>
+                    <p className="text-[10px] font-bold text-gray-400 uppercase mt-2">Próximos vencimentos</p>
+                </div>
+
+                <div className="bg-white p-8 rounded-[40px] border-2 border-purple-100 shadow-sm relative overflow-hidden group">
+                    <div className="absolute top-0 right-0 p-8 opacity-10 group-hover:scale-110 transition-transform">
+                        <DollarSign size={80} className="text-purple-500" />
+                    </div>
+                    <span className="text-[10px] font-black text-purple-500 uppercase tracking-widest block mb-4">Total do Mês</span>
+                    <h3 className="text-4xl font-black text-purple-700 italic">{formatCurrency(totalMesAtual)}</h3>
+                    <p className="text-[10px] font-bold text-gray-400 uppercase mt-2">Compromissos em aberto</p>
+                </div>
+
+                <div className="bg-blue-950 p-8 rounded-[40px] shadow-2xl relative overflow-hidden group font-sans">
+                    <div className="absolute top-0 right-0 p-8 opacity-10 group-hover:scale-110 transition-transform">
+                        <CheckCircle2 size={80} className="text-white" />
+                    </div>
+                    <span className="text-[10px] font-black text-emerald-400 uppercase tracking-widest block mb-4">Pago no Mês</span>
+                    <h3 className="text-4xl font-black text-white italic">{formatCurrency(totalPagoMes)}</h3>
+                    <p className="text-[10px] font-bold text-blue-300/50 uppercase mt-2">Já quitado</p>
                 </div>
             </div>
 
@@ -361,7 +503,7 @@ const DespesasTab: React.FC<DespesasTabProps> = ({
                     onClick={() => setActiveSubTab('dividas')}
                     className={`px-6 md:px-8 py-2.5 md:py-3 rounded-2xl text-[10px] md:text-xs font-black uppercase transition-all flex items-center gap-2 whitespace-nowrap ${activeSubTab === 'dividas' ? 'bg-purple-600 text-white shadow-lg shadow-purple-100' : 'text-gray-400 hover:bg-gray-50'}`}
                 >
-                    <Clock size={16} /> Dívidas Parceladas
+                    <Clock size={16} /> Contas a Pagar
                 </button>
                 <button 
                     onClick={() => setActiveSubTab('categorias')}
@@ -450,39 +592,129 @@ const DespesasTab: React.FC<DespesasTabProps> = ({
 
                 {activeSubTab === 'dividas' && (
                     <div className="p-8 space-y-6">
-                        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-                            {filteredFutureDebts.map(debt => (
-                                <div key={debt.id} className="bg-white rounded-3xl border-2 border-purple-50 p-6 space-y-4 hover:border-purple-200 transition-all group">
-                                    <div className="flex justify-between items-start">
-                                        <div className="p-3 bg-purple-50 text-purple-600 rounded-2xl group-hover:scale-110 transition-transform">
-                                            <Clock size={20} />
-                                        </div>
-                                        <span className="px-3 py-1 bg-gray-100 text-gray-500 rounded-full text-[8px] font-black uppercase">
-                                            Parc. {debt.installment_number}/{debt.total_installments}
-                                        </span>
-                                    </div>
-                                    <div>
-                                        <h4 className="font-black text-blue-950 uppercase text-xs truncate">{debt.supplier_name}</h4>
-                                        <p className="text-[9px] text-gray-400 font-bold uppercase mt-1">Vence em: {new Date(debt.due_date + 'T12:00:00').toLocaleDateString('pt-BR')}</p>
-                                    </div>
-                                    <div className="pt-4 border-t flex justify-between items-center">
-                                        <span className="text-xl font-black text-purple-700 italic">{formatCurrency(debt.installment_amount)}</span>
-                                        <button 
-                                            onClick={() => onPayFutureDebt(debt.id)}
-                                            className="p-3 bg-green-50 text-green-600 rounded-xl hover:bg-green-600 hover:text-white transition-all active:scale-90"
-                                            title="Marcar como Pago"
-                                        >
-                                            <CheckCircle2 size={18} />
-                                        </button>
-                                    </div>
+                        <div className="flex flex-col md:flex-row gap-4 items-center justify-between">
+                            <div className="flex flex-col md:flex-row gap-3 w-full md:w-auto">
+                                <div className="relative">
+                                    <Search className="absolute left-4 top-1/2 -translate-y-1/2 text-gray-400" size={18} />
+                                    <input 
+                                        value={debtSearchTerm}
+                                        onChange={e => setDebtSearchTerm(e.target.value)}
+                                        placeholder="BUSCAR FORNECEDOR OU DESCRIÇÃO..."
+                                        className="pl-12 pr-4 py-3 bg-gray-50 rounded-2xl font-black uppercase text-[10px] outline-none border-2 border-transparent focus:border-purple-100 w-full md:w-80 transition-all"
+                                    />
                                 </div>
-                            ))}
-                            {filteredFutureDebts.length === 0 && (
-                                <div className="col-span-full py-20 text-center opacity-20">
-                                    <CheckCircle2 size={48} className="mx-auto mb-4" />
-                                    <p className="font-black uppercase italic tracking-widest">Tudo em dia! Sem dívidas pendentes.</p>
-                                </div>
-                            )}
+                                <select
+                                    value={debtStatusFilter}
+                                    onChange={e => setDebtStatusFilter(e.target.value as any)}
+                                    className="px-4 py-3 bg-gray-50 rounded-2xl font-black uppercase text-[10px] outline-none border-2 border-transparent focus:border-purple-100 cursor-pointer"
+                                >
+                                    <option value="pending">PENDENTES (EM ABERTO/VENCIDOS)</option>
+                                    <option value="overdue">ATRASADOS (VENCIDOS)</option>
+                                    <option value="paid">PAGOS</option>
+                                    <option value="all">TODOS</option>
+                                </select>
+                            </div>
+                        </div>
+
+                        <div className="overflow-x-auto no-scrollbar">
+                            <table className="w-full text-left">
+                                <thead className="bg-gray-50 text-[9px] font-black text-gray-400 uppercase tracking-widest border-b">
+                                    <tr>
+                                        <th className="px-6 py-5">Vencimento</th>
+                                        <th className="px-6 py-5">Fornecedor</th>
+                                        <th className="px-6 py-5">Categoria</th>
+                                        <th className="px-6 py-5">Parcela</th>
+                                        <th className="px-6 py-5 text-right">Valor</th>
+                                        <th className="px-6 py-5 text-center">Status</th>
+                                        <th className="px-6 py-5 text-center">Ações</th>
+                                    </tr>
+                                </thead>
+                                <tbody className="divide-y divide-gray-50 font-bold text-[10px]">
+                                    {filteredFutureDebts.map(debt => {
+                                        const statusColors = {
+                                            paid: 'bg-emerald-50 text-emerald-700 border-emerald-100',
+                                            overdue: 'bg-red-50 text-red-700 border-red-100 animate-pulse',
+                                            due_soon: 'bg-yellow-50 text-yellow-700 border-yellow-100',
+                                            ok: 'bg-blue-50 text-blue-700 border-blue-100'
+                                        }[debt.computedStatus];
+
+                                        const statusLabels = {
+                                            paid: 'PAGO',
+                                            overdue: 'VENCIDO',
+                                            due_soon: 'A VENCER (7D)',
+                                            ok: 'EM DIA'
+                                        }[debt.computedStatus];
+
+                                        return (
+                                            <tr key={debt.id} className="hover:bg-purple-50/20 transition-colors group">
+                                                <td className="px-6 py-4">
+                                                    <div className="font-black text-blue-950">{new Date(debt.due_date + 'T12:00:00').toLocaleDateString('pt-BR')}</div>
+                                                    {debt.status === 'paid' && debt.payment_date && (
+                                                        <div className="text-[8px] text-emerald-600 uppercase mt-0.5">Pago em: {new Date(debt.payment_date + 'T12:00:00').toLocaleDateString('pt-BR')}</div>
+                                                    )}
+                                                </td>
+                                                <td className="px-6 py-4">
+                                                    <div className="font-black text-blue-950 uppercase">{debt.supplier_name}</div>
+                                                    {debt.description && <div className="text-[8px] text-gray-400 italic font-medium uppercase mt-0.5">{debt.description}</div>}
+                                                </td>
+                                                <td className="px-6 py-4">
+                                                    <span className="px-3 py-1 bg-gray-50 border border-gray-100 rounded-full text-[8px] font-black uppercase tracking-tighter text-gray-500">
+                                                        {sangriaCategories.find(c => c.id === debt.category_id)?.name || 'OUTROS'}
+                                                    </span>
+                                                </td>
+                                                <td className="px-6 py-4 text-gray-400 uppercase">
+                                                    {debt.installment_number} / {debt.total_installments}
+                                                </td>
+                                                <td className="px-6 py-4 text-right">
+                                                    <span className="text-purple-700 font-black text-sm italic">{formatCurrency(debt.installment_amount)}</span>
+                                                </td>
+                                                <td className="px-6 py-4 text-center">
+                                                    <span className={`px-3 py-1 rounded-full text-[8px] font-black uppercase tracking-tighter border ${statusColors}`}>
+                                                        {statusLabels}
+                                                    </span>
+                                                </td>
+                                                <td className="px-6 py-4">
+                                                    <div className="flex justify-center gap-1.5 opacity-0 group-hover:opacity-100 transition-opacity">
+                                                        {debt.status !== 'paid' && (
+                                                            <button 
+                                                                onClick={() => onPayFutureDebt(debt.id)}
+                                                                className="p-2 text-emerald-600 hover:bg-emerald-50 rounded-xl transition-all"
+                                                                title="Marcar como Pago"
+                                                            >
+                                                                <CheckCircle2 size={16} />
+                                                            </button>
+                                                        )}
+                                                        <button 
+                                                            onClick={() => handleEditFutureDebt(debt)}
+                                                            className="p-2 text-blue-600 hover:bg-blue-50 rounded-xl transition-all"
+                                                            title="Editar"
+                                                        >
+                                                            <PencilLine size={16} />
+                                                        </button>
+                                                        <button 
+                                                            onClick={() => handleDeleteFutureDebt(debt.id)}
+                                                            className="p-2 text-red-600 hover:bg-red-50 rounded-xl transition-all"
+                                                            title="Excluir"
+                                                        >
+                                                            <Trash2 size={16} />
+                                                        </button>
+                                                    </div>
+                                                </td>
+                                            </tr>
+                                        );
+                                    })}
+                                    {filteredFutureDebts.length === 0 && (
+                                        <tr>
+                                            <td colSpan={7} className="px-6 py-20 text-center">
+                                                <div className="flex flex-col items-center gap-4 opacity-20">
+                                                    <CheckCircle2 size={48} />
+                                                    <p className="font-black uppercase italic tracking-widest">Nenhuma conta encontrada</p>
+                                                </div>
+                                            </td>
+                                        </tr>
+                                    )}
+                                </tbody>
+                            </table>
                         </div>
                     </div>
                 )}
@@ -565,6 +797,16 @@ const DespesasTab: React.FC<DespesasTabProps> = ({
                 setForm={setEditSangriaForm}
                 categories={sangriaCategories}
                 isSubmitting={isSubmitting}
+            />
+
+            <EditFutureDebtModal 
+                isOpen={showEditFutureDebtModal}
+                onClose={() => setShowEditFutureDebtModal(false)}
+                form={editDebtForm}
+                setForm={setEditDebtForm}
+                categories={sangriaCategories}
+                isSubmitting={isSubmitting}
+                onSubmit={handleSaveEditFutureDebt}
             />
         </div>
     );
