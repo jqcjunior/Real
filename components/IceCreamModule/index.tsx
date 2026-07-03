@@ -62,6 +62,27 @@ const IceCreamModule: React.FC<IceCreamModuleProps> = ({
 }) => {
     const [activeTab, setActiveTab] = useState<'pdv' | 'dre' | 'dre_mensal' | 'stock' | 'audit' | 'produtos' | 'despesas'>('pdv');
 
+    // Fallback: garante que o seletor de lojas nunca fique vazio, mesmo que o prop `stores` chegue incompleto
+    const [fallbackStores, setFallbackStores] = useState<any[]>([]);
+
+    useEffect(() => {
+        const hasIceCreamStores = stores.some(s => ICE_CREAM_STORE_IDS.includes(s.id));
+        if (!hasIceCreamStores) {
+            supabase
+                .from('stores')
+                .select('id, number, name, city')
+                .in('id', ICE_CREAM_STORE_IDS)
+                .then(({ data }) => {
+                    if (data) setFallbackStores(data);
+                });
+        }
+    }, [stores]);
+
+    const iceCreamStoresForSelector = useMemo(() => {
+        const fromProp = stores.filter(s => ICE_CREAM_STORE_IDS.includes(s.id));
+        return fromProp.length > 0 ? fromProp : fallbackStores;
+    }, [stores, fallbackStores]);
+
     // ═══════════════════════════════════════════════════════════════
     // ⚙️ INTERNAL STATES (Ice Cream Module)
     // ═══════════════════════════════════════════════════════════════
@@ -935,6 +956,15 @@ const IceCreamModule: React.FC<IceCreamModuleProps> = ({
     const [showSangriaDetailModal, setShowSangriaDetailModal] = useState<'day' | 'month' | null>(null);
     const [showEditSangriaModal, setShowEditSangriaModal] = useState(false);
 
+    const tabScrollRef = React.useRef<HTMLDivElement>(null);
+
+    useEffect(() => {
+        const activeBtn = tabScrollRef.current?.querySelector(`[data-tab="${activeTab}"]`);
+        if (activeBtn) {
+            activeBtn.scrollIntoView({ behavior: 'smooth', inline: 'center', block: 'nearest' });
+        }
+    }, [activeTab]);
+
     // Form States
     const [editingProduct, setEditingProduct] = useState<IceCreamItem | null>(null);
     const [editingSangria, setEditingSangria] = useState<IceCreamSangria | null>(null);
@@ -1622,18 +1652,12 @@ const IceCreamModule: React.FC<IceCreamModuleProps> = ({
                         <div className="md:hidden">
                             {(isAdmin || isGerente) ? (
                                 <select 
-                                    key={`store-select-mobile-${stores.length}`}
+                                    key={`store-select-mobile-${iceCreamStoresForSelector.length}`}
                                     value={effectiveStoreId} 
                                     onChange={e => setEffectiveStoreId(e.target.value)}
                                     className="bg-slate-100 border-none rounded-xl px-3 py-2 text-[9px] font-black uppercase text-slate-600 outline-none cursor-pointer"
                                 >
-                                    {stores
-                                        .filter(s => [
-                                            '0eef2f53-4732-4824-84a5-2092234efaef',
-                                            'cbeeb1ea-911f-4d3a-87a9-3c38aafa0673'
-                                        ].includes(s.id))
-                                        .map(s => <option key={s.id} value={s.id}>{s.name}</option>)
-                                    }
+                                    {iceCreamStoresForSelector.map(s => <option key={s.id} value={s.id}>{s.name}</option>)}
                                 </select>
                             ) : (
                                 <div className="bg-slate-100 rounded-xl px-3 py-2 text-[9px] font-black uppercase text-slate-600 border border-slate-200">
@@ -1643,57 +1667,55 @@ const IceCreamModule: React.FC<IceCreamModuleProps> = ({
                         </div>
                     </div>
 
-                    <div className="flex items-center gap-1.5 bg-slate-100/80 p-1.5 rounded-2xl overflow-x-auto no-scrollbar max-w-full touch-pan-x">
-                        <button onClick={() => setActiveTab('pdv')} className={`px-3 py-2.5 rounded-xl text-[10px] font-black uppercase transition-all flex items-center gap-2 whitespace-nowrap shrink-0 ${activeTab === 'pdv' ? 'bg-white text-blue-600 shadow-md ring-1 ring-slate-200/50' : 'text-slate-500 hover:text-slate-700 hover:bg-white/50'}`}>
-                            <ShoppingCart size={15} /> PDV
-                        </button>
-                        <button onClick={() => setActiveTab('dre')} className={`px-3 py-2.5 rounded-xl text-[10px] font-black uppercase transition-all flex items-center gap-2 whitespace-nowrap shrink-0 ${activeTab === 'dre' ? 'bg-white text-blue-600 shadow-md ring-1 ring-slate-200/50' : 'text-slate-500 hover:text-slate-700 hover:bg-white/50'}`}>
-                            <TrendingUp size={15} /> DRE Diário
-                        </button>
-                        {canManage && (
-                            <button onClick={() => setActiveTab('dre_mensal')} className={`px-3 py-2.5 rounded-xl text-[10px] font-black uppercase transition-all flex items-center gap-2 whitespace-nowrap shrink-0 ${activeTab === 'dre_mensal' ? 'bg-white text-blue-600 shadow-md ring-1 ring-slate-200/50' : 'text-slate-500 hover:text-slate-700 hover:bg-white/50'}`}>
-                                <Calendar size={15} /> DRE Mensal
+                    <div className="relative w-full md:w-auto">
+                        <div ref={tabScrollRef} className="flex items-center gap-1.5 bg-slate-100/80 p-1.5 rounded-2xl overflow-x-auto no-scrollbar max-w-full touch-pan-x">
+                            <button data-tab="pdv" onClick={() => setActiveTab('pdv')} className={`px-3 py-2.5 rounded-xl text-[10px] font-black uppercase transition-all flex items-center gap-2 whitespace-nowrap shrink-0 ${activeTab === 'pdv' ? 'bg-white text-blue-600 shadow-md ring-1 ring-slate-200/50' : 'text-slate-500 hover:text-slate-700 hover:bg-white/50'}`}>
+                                <ShoppingCart size={15} /> PDV
                             </button>
-                        )}
-                        {canManage && can('MODULE_ICECREAM_DESPESAS') && (
-                            <button onClick={() => setActiveTab('despesas')} className={`relative px-3 py-2.5 rounded-xl text-[10px] font-black uppercase transition-all flex items-center gap-2 whitespace-nowrap shrink-0 ${activeTab === 'despesas' ? 'bg-white text-red-600 shadow-md ring-1 ring-slate-200/50' : 'text-slate-500 hover:text-slate-700 hover:bg-white/50'}`}>
-                                <DollarSign size={15} /> Despesas
-                                {overdueDebtsCount > 0 && (
-                                    <span className="absolute -top-1 -right-1 min-w-[16px] h-4 px-1 bg-red-600 text-white text-[8px] font-black rounded-full flex items-center justify-center animate-pulse">
-                                        {overdueDebtsCount}
-                                    </span>
-                                )}
+                            <button data-tab="dre" onClick={() => setActiveTab('dre')} className={`px-3 py-2.5 rounded-xl text-[10px] font-black uppercase transition-all flex items-center gap-2 whitespace-nowrap shrink-0 ${activeTab === 'dre' ? 'bg-white text-blue-600 shadow-md ring-1 ring-slate-200/50' : 'text-slate-500 hover:text-slate-700 hover:bg-white/50'}`}>
+                                <TrendingUp size={15} /> DRE Diário
                             </button>
-                        )}
-                        <button onClick={() => setActiveTab('stock')} className={`px-3 py-2.5 rounded-xl text-[10px] font-black uppercase transition-all flex items-center gap-2 whitespace-nowrap shrink-0 ${activeTab === 'stock' ? 'bg-white text-blue-600 shadow-md ring-1 ring-slate-200/50' : 'text-slate-500 hover:text-slate-700 hover:bg-white/50'}`}>
-                            <Package size={15} /> Estoque
-                        </button>
-                        {(canManage || isSorvete) && (
-                            <button onClick={() => setActiveTab('audit')} className={`px-3 py-2.5 rounded-xl text-[10px] font-black uppercase transition-all flex items-center gap-2 whitespace-nowrap shrink-0 ${activeTab === 'audit' ? 'bg-white text-blue-600 shadow-md ring-1 ring-slate-200/50' : 'text-slate-500 hover:text-slate-700 hover:bg-white/50'}`}>
-                                <History size={15} /> Auditoria
+                            {canManage && (
+                                <button data-tab="dre_mensal" onClick={() => setActiveTab('dre_mensal')} className={`px-3 py-2.5 rounded-xl text-[10px] font-black uppercase transition-all flex items-center gap-2 whitespace-nowrap shrink-0 ${activeTab === 'dre_mensal' ? 'bg-white text-blue-600 shadow-md ring-1 ring-slate-200/50' : 'text-slate-500 hover:text-slate-700 hover:bg-white/50'}`}>
+                                    <Calendar size={15} /> DRE Mensal
+                                </button>
+                            )}
+                            {canManage && can('MODULE_ICECREAM_DESPESAS') && (
+                                <button data-tab="despesas" onClick={() => setActiveTab('despesas')} className={`relative px-3 py-2.5 rounded-xl text-[10px] font-black uppercase transition-all flex items-center gap-2 whitespace-nowrap shrink-0 ${activeTab === 'despesas' ? 'bg-white text-red-600 shadow-md ring-1 ring-slate-200/50' : 'text-slate-500 hover:text-slate-700 hover:bg-white/50'}`}>
+                                    <DollarSign size={15} /> Despesas
+                                    {overdueDebtsCount > 0 && (
+                                        <span className="absolute -top-1 -right-1 min-w-[16px] h-4 px-1 bg-red-600 text-white text-[8px] font-black rounded-full flex items-center justify-center animate-pulse">
+                                            {overdueDebtsCount}
+                                        </span>
+                                    )}
+                                </button>
+                            )}
+                            <button data-tab="stock" onClick={() => setActiveTab('stock')} className={`px-3 py-2.5 rounded-xl text-[10px] font-black uppercase transition-all flex items-center gap-2 whitespace-nowrap shrink-0 ${activeTab === 'stock' ? 'bg-white text-blue-600 shadow-md ring-1 ring-slate-200/50' : 'text-slate-500 hover:text-slate-700 hover:bg-white/50'}`}>
+                                <Package size={15} /> Estoque
                             </button>
-                        )}
-                        {canManage && (
-                            <button onClick={() => setActiveTab('produtos')} className={`px-3 py-2.5 rounded-xl text-[10px] font-black uppercase transition-all flex items-center gap-2 whitespace-nowrap shrink-0 ${activeTab === 'produtos' ? 'bg-white text-blue-600 shadow-md ring-1 ring-slate-200/50' : 'text-slate-500 hover:text-slate-700 hover:bg-white/50'}`}>
-                                <Settings size={15} /> Produtos
-                            </button>
-                        )}
+                            {(canManage || isSorvete) && (
+                                <button data-tab="audit" onClick={() => setActiveTab('audit')} className={`px-3 py-2.5 rounded-xl text-[10px] font-black uppercase transition-all flex items-center gap-2 whitespace-nowrap shrink-0 ${activeTab === 'audit' ? 'bg-white text-blue-600 shadow-md ring-1 ring-slate-200/50' : 'text-slate-500 hover:text-slate-700 hover:bg-white/50'}`}>
+                                    <History size={15} /> Auditoria
+                                </button>
+                            )}
+                            {canManage && (
+                                <button data-tab="produtos" onClick={() => setActiveTab('produtos')} className={`px-3 py-2.5 rounded-xl text-[10px] font-black uppercase transition-all flex items-center gap-2 whitespace-nowrap shrink-0 ${activeTab === 'produtos' ? 'bg-white text-blue-600 shadow-md ring-1 ring-slate-200/50' : 'text-slate-500 hover:text-slate-700 hover:bg-white/50'}`}>
+                                    <Settings size={15} /> Produtos
+                                </button>
+                            )}
+                        </div>
+                        {/* Indicador visual de que há mais abas para rolar — só aparece no mobile */}
+                        <div className="pointer-events-none absolute right-0 top-1.5 bottom-1.5 w-8 bg-gradient-to-l from-slate-50 to-transparent rounded-r-2xl md:hidden" />
                     </div>
                     <div className="hidden md:flex items-center gap-3">
                         {(isAdmin || isGerente) ? (
                             <select 
-                                key={`store-select-desktop-${stores.length}`}
+                                key={`store-select-desktop-${iceCreamStoresForSelector.length}`}
                                 value={effectiveStoreId} 
                                 onChange={e => setEffectiveStoreId(e.target.value)}
                                 className="bg-slate-100 border-none rounded-xl px-4 py-2.5 text-[10px] font-black uppercase text-slate-600 outline-none cursor-pointer hover:bg-slate-200 transition-all"
                             >
-                                {stores
-                                    .filter(s => [
-                                        '0eef2f53-4732-4824-84a5-2092234efaef',
-                                        'cbeeb1ea-911f-4d3a-87a9-3c38aafa0673'
-                                    ].includes(s.id))
-                                    .map(s => <option key={s.id} value={s.id}>{s.name}</option>)
-                                }
+                                {iceCreamStoresForSelector.map(s => <option key={s.id} value={s.id}>{s.name}</option>)}
                             </select>
                         ) : (
                             <div className="bg-slate-100 rounded-xl px-4 py-2.5 text-[10px] font-black uppercase text-slate-600 border border-slate-200">
