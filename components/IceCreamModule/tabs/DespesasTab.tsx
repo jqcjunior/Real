@@ -62,7 +62,7 @@ const DespesasTab: React.FC<DespesasTabProps> = ({
     can,
     fetchData
 }) => {
-    const [activeSubTab, setActiveSubTab] = useState<'sangrias' | 'dividas' | 'categorias'>('sangrias');
+    const [activeSubTab, setActiveSubTab] = useState<'sangrias' | 'dividas' | 'categorias'>('dividas');
     const [selectedMonth, setSelectedMonth] = useState(new Date().getMonth() + 1);
     const [selectedYear, setSelectedYear] = useState(new Date().getFullYear());
     const [searchTerm, setSearchTerm] = useState('');
@@ -159,7 +159,7 @@ const DespesasTab: React.FC<DespesasTabProps> = ({
             const isOverdueAlways = d.computedStatus === 'overdue';
 
             // Vencidos sempre aparecem, independente do mês selecionado
-            const passesMonthFilter = inSelectedMonth || isOverdueAlways;
+            const passesMonthFilter = inSelectedMonth || isOverdueAlways || d.computedStatus === 'paid';
 
             const passesStatusFilter =
                 debtStatusFilter === 'all' ? true :
@@ -457,21 +457,25 @@ const DespesasTab: React.FC<DespesasTabProps> = ({
 
         const statusLabel: Record<string, string> = { overdue: 'Vencido', due_soon: 'A vencer', paid: 'Pago', ok: 'Em dia' };
 
-        const rows = debtsWithStatus
-            .slice()
-            .sort((a, b) => new Date(a.due_date).getTime() - new Date(b.due_date).getTime())
-            .map(d => {
-                const category = sangriaCategories.find(c => c.id === d.category_id)?.name || 'OUTROS';
-                return `
-                    <tr>
-                        <td>${new Date(d.due_date + 'T12:00:00').toLocaleDateString('pt-BR')}</td>
-                        <td>${statusLabel[d.computedStatus]}</td>
-                        <td>${d.supplier_name}</td>
-                        <td>${category}</td>
-                        <td>${d.installment_number}/${d.total_installments}</td>
-                        <td style="text-align:right">${formatCurrency(Number(d.installment_amount))}</td>
-                    </tr>`;
-            }).join('');
+        const sorted = debtsWithStatus.slice().sort((a, b) => new Date(a.due_date).getTime() - new Date(b.due_date).getTime());
+        const pendentes = sorted.filter(d => d.computedStatus !== 'paid');
+        const pagas = sorted.filter(d => d.computedStatus === 'paid');
+
+        const renderRows = (list: typeof sorted) => list.map(d => {
+            const category = sangriaCategories.find(c => c.id === d.category_id)?.name || 'OUTROS';
+            return `
+                <tr>
+                    <td>${new Date(d.due_date + 'T12:00:00').toLocaleDateString('pt-BR')}</td>
+                    <td>${statusLabel[d.computedStatus]}</td>
+                    <td>${d.supplier_name}</td>
+                    <td>${category}</td>
+                    <td>${d.installment_number}/${d.total_installments}</td>
+                    <td style="text-align:right">${formatCurrency(Number(d.installment_amount))}</td>
+                </tr>`;
+        }).join('');
+
+        const totalPendentes = pendentes.reduce((s, d) => s + Number(d.installment_amount), 0);
+        const totalPagas = pagas.reduce((s, d) => s + Number((d as any).paid_amount ?? d.installment_amount), 0);
 
         const html = `
             <html>
@@ -481,17 +485,22 @@ const DespesasTab: React.FC<DespesasTabProps> = ({
                     @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;700;900&display=swap');
                     @page { size: A4; margin: 15mm; }
                     body { font-family: 'Inter', sans-serif; margin: 0; padding: 0; color: #1a1a1a; }
-                    .header { text-align: center; margin-bottom: 30px; border-bottom: 2px solid #7c3aed; padding-bottom: 20px; }
-                    .header h1 { margin: 0; font-size: 24px; font-weight: 900; color: #7c3aed; text-transform: uppercase; font-style: italic; }
-                    .header p { margin: 5px 0; font-size: 12px; font-weight: 700; color: #666; text-transform: uppercase; }
-                    table { width: 100%; border-collapse: collapse; margin-top: 20px; }
-                    th { background: #ede9fe; color: #6d28d9; font-size: 10px; font-weight: 900; text-transform: uppercase; padding: 12px 8px; text-align: left; border-bottom: 2px solid #7c3aed; }
-                    td { padding: 10px 8px; font-size: 10px; border-bottom: 1px solid #f3f4f6; font-weight: 600; }
-                    .footer { margin-top: 40px; border-top: 2px solid #7c3aed; padding-top: 20px; display: flex; justify-content: space-between; align-items: center; }
-                    .total-box { background: #7c3aed; color: white; padding: 15px 30px; border-radius: 10px; text-align: right; }
-                    .total-label { font-size: 10px; font-weight: 900; text-transform: uppercase; display: block; }
-                    .total-value { font-size: 20px; font-weight: 900; font-style: italic; }
-                    .signature { margin-top: 60px; text-align: center; border-top: 1px solid #ccc; width: 250px; padding-top: 10px; font-size: 10px; font-weight: 700; text-transform: uppercase; }
+                    .header { text-align: center; margin-bottom: 24px; border-bottom: 2px solid #7c3aed; padding-bottom: 16px; }
+                    .header h1 { margin: 0; font-size: 22px; font-weight: 900; color: #7c3aed; text-transform: uppercase; font-style: italic; }
+                    .header p { margin: 4px 0; font-size: 11px; font-weight: 700; color: #666; text-transform: uppercase; }
+                    .section-title { font-size: 13px; font-weight: 900; text-transform: uppercase; margin: 24px 0 8px; padding: 8px 12px; border-radius: 8px; }
+                    .section-pendentes { background: #fef2f2; color: #b91c1c; }
+                    .section-pagas { background: #ecfdf5; color: #047857; }
+                    table { width: 100%; border-collapse: collapse; }
+                    th { background: #f3f4f6; color: #374151; font-size: 9px; font-weight: 900; text-transform: uppercase; padding: 10px 8px; text-align: left; border-bottom: 2px solid #d1d5db; }
+                    td { padding: 9px 8px; font-size: 10px; border-bottom: 1px solid #f3f4f6; font-weight: 600; }
+                    .subtotal-row { background: #fafafa; font-weight: 900; }
+                    .footer { margin-top: 30px; border-top: 2px solid #7c3aed; padding-top: 16px; display: flex; justify-content: space-between; align-items: center; }
+                    .total-box { background: #7c3aed; color: white; padding: 12px 24px; border-radius: 10px; text-align: right; }
+                    .total-label { font-size: 9px; font-weight: 900; text-transform: uppercase; display: block; }
+                    .total-value { font-size: 18px; font-weight: 900; font-style: italic; }
+                    .signature { margin-top: 50px; text-align: center; border-top: 1px solid #ccc; width: 220px; padding-top: 8px; font-size: 9px; font-weight: 700; text-transform: uppercase; }
+                    .empty { text-align: center; color: #9ca3af; padding: 16px; font-size: 10px; font-style: italic; }
                 </style>
             </head>
             <body>
@@ -500,12 +509,27 @@ const DespesasTab: React.FC<DespesasTabProps> = ({
                     <p>${store?.name || 'REDE REAL'} — ${monthLabel} / ${selectedYear}</p>
                     <p>Gerado em: ${new Date().toLocaleString('pt-BR')}</p>
                 </div>
+
+                <div class="section-title section-pendentes">Pendentes / Vencidas (${pendentes.length})</div>
+                ${pendentes.length > 0 ? `
                 <table>
-                    <thead>
-                        <tr><th>Vencimento</th><th>Status</th><th>Fornecedor</th><th>Categoria</th><th>Parcela</th><th style="text-align:right;">Valor</th></tr>
-                    </thead>
-                    <tbody>${rows}</tbody>
-                </table>
+                    <thead><tr><th>Vencimento</th><th>Status</th><th>Fornecedor</th><th>Categoria</th><th>Parcela</th><th style="text-align:right;">Valor</th></tr></thead>
+                    <tbody>
+                        ${renderRows(pendentes)}
+                        <tr class="subtotal-row"><td colspan="5" style="text-align:right">Subtotal Pendentes/Vencidas</td><td style="text-align:right">${formatCurrency(totalPendentes)}</td></tr>
+                    </tbody>
+                </table>` : '<p class="empty">Nenhuma conta pendente ou vencida</p>'}
+
+                <div class="section-title section-pagas">Pagas (${pagas.length})</div>
+                ${pagas.length > 0 ? `
+                <table>
+                    <thead><tr><th>Vencimento</th><th>Status</th><th>Fornecedor</th><th>Categoria</th><th>Parcela</th><th style="text-align:right;">Valor</th></tr></thead>
+                    <tbody>
+                        ${renderRows(pagas)}
+                        <tr class="subtotal-row"><td colspan="5" style="text-align:right">Subtotal Pagas</td><td style="text-align:right">${formatCurrency(totalPagas)}</td></tr>
+                    </tbody>
+                </table>` : '<p class="empty">Nenhuma conta paga no período</p>'}
+
                 <div class="footer">
                     <div class="signature">Assinatura do Responsável</div>
                     <div class="total-box">
@@ -513,6 +537,7 @@ const DespesasTab: React.FC<DespesasTabProps> = ({
                         <span class="total-value">${formatCurrency(totalVencido + totalAVencer7d)}</span>
                     </div>
                 </div>
+
                 <script>
                     window.onload = () => { setTimeout(() => { window.print(); window.close(); }, 500); };
                 </script>
@@ -577,7 +602,7 @@ const DespesasTab: React.FC<DespesasTabProps> = ({
                         <TrendingDown size={80} className="absolute -top-2 -right-2 opacity-10" />
                     </div>
                     <span className="text-[10px] font-black text-red-500 uppercase tracking-widest block mb-4 relative">Sangrias do Mês</span>
-                    <h3 className="text-2xl md:text-3xl font-black text-red-700 italic break-words leading-tight relative">{formatCurrency(totalSangriasMonth)}</h3>
+                    <h3 className="text-lg md:text-2xl font-black text-red-700 italic break-words leading-tight relative">{formatCurrency(totalSangriasMonth)}</h3>
                     <p className="text-[10px] font-bold text-gray-400 uppercase mt-2 relative">Total de saídas avulsas</p>
                 </div>
 
@@ -586,7 +611,7 @@ const DespesasTab: React.FC<DespesasTabProps> = ({
                         <AlertCircle size={80} className="absolute -top-2 -right-2 opacity-10 text-red-500" />
                     </div>
                     <span className="text-[10px] font-black text-red-500 uppercase tracking-widest block mb-4 relative">Vencido</span>
-                    <h3 className="text-2xl md:text-3xl font-black text-red-700 italic break-words leading-tight relative">{formatCurrency(totalVencido)}</h3>
+                    <h3 className="text-lg md:text-2xl font-black text-red-700 italic break-words leading-tight relative">{formatCurrency(totalVencido)}</h3>
                     <p className="text-[10px] font-bold text-gray-400 uppercase mt-2 relative">Contas em atraso</p>
                 </div>
 
@@ -595,7 +620,7 @@ const DespesasTab: React.FC<DespesasTabProps> = ({
                         <Clock size={80} className="absolute -top-2 -right-2 opacity-10 text-yellow-500" />
                     </div>
                     <span className="text-[10px] font-black text-yellow-600 uppercase tracking-widest block mb-4 relative">A Vencer (7 dias)</span>
-                    <h3 className="text-2xl md:text-3xl font-black text-yellow-700 italic break-words leading-tight relative">{formatCurrency(totalAVencer7d)}</h3>
+                    <h3 className="text-lg md:text-2xl font-black text-yellow-700 italic break-words leading-tight relative">{formatCurrency(totalAVencer7d)}</h3>
                     <p className="text-[10px] font-bold text-gray-400 uppercase mt-2 relative">Próximos vencimentos</p>
                 </div>
 
@@ -604,7 +629,7 @@ const DespesasTab: React.FC<DespesasTabProps> = ({
                         <DollarSign size={80} className="absolute -top-2 -right-2 opacity-10 text-purple-500" />
                     </div>
                     <span className="text-[10px] font-black text-purple-500 uppercase tracking-widest block mb-4 relative">Total do Mês</span>
-                    <h3 className="text-2xl md:text-3xl font-black text-purple-700 italic break-words leading-tight relative">{formatCurrency(totalMesAtual)}</h3>
+                    <h3 className="text-lg md:text-2xl font-black text-purple-700 italic break-words leading-tight relative">{formatCurrency(totalMesAtual)}</h3>
                     <p className="text-[10px] font-bold text-gray-400 uppercase mt-2 relative">Compromissos em aberto</p>
                 </div>
 
@@ -613,7 +638,7 @@ const DespesasTab: React.FC<DespesasTabProps> = ({
                         <CheckCircle2 size={80} className="absolute -top-2 -right-2 opacity-10 text-white" />
                     </div>
                     <span className="text-[10px] font-black text-emerald-400 uppercase tracking-widest block mb-4 relative">Pago no Mês</span>
-                    <h3 className="text-2xl md:text-3xl font-black text-white italic break-words leading-tight relative">{formatCurrency(totalPagoMes)}</h3>
+                    <h3 className="text-lg md:text-2xl font-black text-white italic break-words leading-tight relative">{formatCurrency(totalPagoMes)}</h3>
                     <p className="text-[10px] font-bold text-blue-300/50 uppercase mt-2 relative">Já quitado</p>
                 </div>
             </div>
