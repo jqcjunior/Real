@@ -1614,8 +1614,11 @@ const BuyOrderAnalytic: React.FC<BuyOrderAnalyticProps> = ({ user, stores }) => 
                 Importar Análise de Fornecedor
               </h3>
               
-              <p className="text-sm text-gray-600 mb-6">
+              <p className="text-sm text-gray-600 mb-2">
                 Faça upload do arquivo Excel (.xls ou .xlsx) exportado do sistema do fornecedor
+              </p>
+              <p className="text-[11px] text-[#94a3b8] font-normal mb-6">
+                💡 Prefira o .xlsx quando possível — maior precisão na leitura dos dados.
               </p>
 
               <div className="flex flex-col sm:flex-row justify-center items-center gap-4">
