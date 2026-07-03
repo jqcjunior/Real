@@ -17,6 +17,7 @@ import { formatCurrency } from '../../constants';
 import { printSaleReceipt } from '@/services/thermalPrinterService';
 import { MONTHS } from './constants';
 import { useDREStats } from './hooks/useDREStats';
+import { PRINT_BASE_STYLES, buildPrintHeader, buildPrintFooter, PRINT_AUTOCLOSE_SCRIPT } from './services/printTheme';
 
 // Tab imports (main ones stay direct)
 import PDVTab from './tabs/PDVTab';
@@ -699,13 +700,17 @@ const IceCreamModule: React.FC<IceCreamModuleProps> = ({
     };
 
     const onUpdateFutureDebt = async (id: string, data: Partial<IceCreamFutureDebt>) => {
-        const { error } = await supabase.from('ice_cream_future_debts').update({
+        const updatePayload: any = {
             supplier_name: data.supplier_name,
             installment_amount: data.installment_amount,
             due_date: data.due_date,
             category_id: data.category_id,
             description: data.description
-        }).eq('id', id);
+        };
+        if ((data as any).payment_date !== undefined) updatePayload.payment_date = (data as any).payment_date;
+        if ((data as any).payment_method !== undefined) updatePayload.payment_method = (data as any).payment_method;
+
+        const { error } = await supabase.from('ice_cream_future_debts').update(updatePayload).eq('id', id);
         if (error) throw error;
         await fetchData();
     };
@@ -1236,128 +1241,54 @@ const IceCreamModule: React.FC<IceCreamModuleProps> = ({
         const store = stores.find(s => s.id === effectiveStoreId);
         const dateStr = new Date(displayDate + 'T00:00:00').toLocaleDateString('pt-BR', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' });
 
+        const productCards = dreStats.resumoItensRodape.map(([name, data]: [string, any]) => `
+            <div class="rp-mini-card">
+                <p class="rp-mini-label">${name}</p>
+                <p class="rp-mini-sub">Qtd ${data.qtd}</p>
+                <p class="rp-mini-value rp-mono">${formatCurrency(data.total)}</p>
+            </div>`).join('');
+
+        const canceledBlock = dreStats.dayCanceledCount > 0 ? `
+            <div class="rp-alert">
+                <p class="rp-alert-title">${dreStats.dayCanceledCount} vendas canceladas · ${formatCurrency(dreStats.dayCanceledTotal)}</p>
+                ${dreStats.dayCanceledDetails.map((c: any) => `
+                    <p class="rp-alert-line"><strong>#${c.saleCode}</strong> — ${formatCurrency(c.totalValue)} · ${c.cancelReason}</p>
+                    <p class="rp-alert-line" style="padding-left:14px;opacity:0.8;">${c.itemsSummary}</p>
+                `).join('')}
+            </div>` : '';
+
+        const paymentBoxes = Object.entries(dreStats.dayMethods).map(([method, data]: [string, any]) => {
+            const label = method === 'pix' ? 'Pix' : method === 'money' ? 'Dinheiro' : method === 'card' ? 'Cartão' : 'Fiado';
+            return `<div class="rp-mini-card"><p class="rp-mini-label">${label} (${data.count})</p><p class="rp-mini-value rp-mono">${formatCurrency(data.total)}</p></div>`;
+        }).join('');
+
         const html = `
           <html>
             <head>
-              <title>DRE DIÁRIO - ${store?.name || '---'}</title>
-              <style>
-                @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;700;900&display=swap');
-                @page { size: A4; margin: 8mm; }
-                body { font-family: 'Inter', Arial, sans-serif; margin: 0; padding: 0; color: #1a1a1a; line-height: 1.2; font-size: 10px; }
-                .header { text-align: center; margin-bottom: 15px; border-bottom: 2px solid #eee; padding-bottom: 10px; }
-                .header h1 { margin: 0; font-size: 18px; font-weight: 900; text-transform: uppercase; letter-spacing: -1px; }
-                .header h2 { margin: 3px 0; font-size: 16px; color: #666; font-weight: 700; }
-                .header p { margin: 3px 0; font-size: 12px; color: #999; text-transform: capitalize; }
-                .section { margin-bottom: 10px; page-break-inside: avoid; }
-                .section-title { font-size: 11px; font-weight: 900; text-transform: uppercase; color: #666; margin-bottom: 8px; display: flex; align-items: center; gap: 8px; border-left: 4px solid #3b82f6; padding-left: 10px; }
-                .product-table { width: 100%; border-collapse: collapse; margin-bottom: 10px; }
-                .product-table tr:nth-child(even) { background-color: #f9f9f9; }
-                .product-table td { padding: 4px; font-size: 9px; border-bottom: 1px solid #eee; }
-                .product-name { font-weight: 700; text-transform: uppercase; }
-                .product-qty { text-align: right; color: #3b82f6; font-weight: 900; }
-                .product-total { text-align: right; font-weight: 900; }
-                .canceled-box { background-color: #fef2f2; border: 1px solid #fee2e2; padding: 10px; border-radius: 8px; margin-bottom: 15px; }
-                .canceled-box p { margin: 0; font-size: 11px; font-weight: 900; color: #991b1b; }
-                .payment-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
-                .payment-box { border: 1px solid #eee; padding: 10px; border-radius: 8px; }
-                .payment-box h5 { margin: 0 0 5px 0; font-size: 9px; font-weight: 900; text-transform: uppercase; color: #666; }
-                .payment-box .row { display: flex; justify-content: space-between; font-size: 10px; margin-bottom: 2px; }
-                .payment-box .total { font-size: 12px; font-weight: 900; color: #1a1a1a; margin-top: 5px; border-top: 1px dashed #eee; padding-top: 5px; }
-                .grand-total { text-align: center; padding: 15px; background: #f8fafc; border-radius: 15px; margin: 20px 0; border: 2px solid #e2e8f0; }
-                .grand-total p { margin: 0; font-size: 9px; font-weight: 900; color: #64748b; text-transform: uppercase; letter-spacing: 1px; }
-                .grand-total h3 { margin: 5px 0 0 0; font-size: 24px; font-weight: 900; color: #1e293b; font-style: italic; }
-                .signatures { display: flex; justify-content: space-between; margin-top: 40px; gap: 30px; }
-                .sig-block { flex: 1; text-align: center; }
-                .sig-line { border-top: 1px solid #000; margin-bottom: 5px; }
-                .sig-label { font-size: 9px; font-weight: 700; text-transform: uppercase; color: #666; }
-                .footer { margin-top: 20px; text-align: center; font-size: 8px; color: #999; border-top: 1px solid #eee; padding-top: 10px; }
-                .no-print { display: flex; justify-content: center; margin-top: 20px; }
-                .close-btn { background: #ef4444; color: white; border: none; padding: 10px 20px; border-radius: 8px; font-weight: bold; cursor: pointer; font-size: 12px; }
-                @media print { .no-print { display: none; } }
-              </style>
+              <title>DRE diário — ${store?.name || '—'}</title>
+              <style>${PRINT_BASE_STYLES}</style>
             </head>
             <body>
-              <div class="header">
-                <h1>🍦 DRE DIÁRIO - SORVETERIA REAL</h1>
-                <h2>${store?.name || '---'}</h2>
-                <p>${dateStr}</p>
+              ${buildPrintHeader({ eyebrow: 'Sorveteria real', title: 'DRE diário', storeLine: store?.name || '—', periodLine: dateStr })}
+              <div class="rp-section">
+                <div class="rp-section-title">Vendas do período</div>
+                <div class="rp-mini-grid">${productCards || '<p style="color:#94A3B8;font-size:11px;">Nenhuma venda registrada</p>'}</div>
               </div>
-              
-              <div class="section">
-                <div class="section-title">Detalhamento de Vendas do Período</div>
-                <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 8px;">
-                  ${dreStats.resumoItensRodape.map(([name, data]: [string, any]) => `
-                    <div style="background: #f8fafc; padding: 6px; border-radius: 6px; border: 1px solid #e2e8f0;">
-                      <div style="font-weight: 900; text-transform: uppercase; color: #1e293b; font-size: 9px; margin-bottom: 2px;">${name}</div>
-                      <div style="font-weight: 700; color: #64748b; font-size: 8px;">QTD: ${data.qtd}</div>
-                      <div style="font-weight: 900; color: #3b82f6; font-size: 10px; margin-top: 1px;">R$ ${data.total.toFixed(2).replace('.', ',')}</div>
-                    </div>
-                  `).join('')}
-                </div>
-                ${dreStats.resumoItensRodape.length === 0 ? '<div style="text-align: center; padding: 10px; color: #94a3b8; font-style: italic;">Nenhuma venda registrada</div>' : ''}
+              ${canceledBlock}
+              <div class="rp-section">
+                <div class="rp-section-title">Métodos de pagamento</div>
+                <div class="rp-mini-grid">${paymentBoxes}</div>
               </div>
-              
-              ${dreStats.dayCanceledCount > 0 ? `
-                <div class="canceled-box">
-                  <p style="margin-bottom: 5px;">❌ VENDAS CANCELADAS: ${dreStats.dayCanceledCount} vendas | TOTAL: R$ ${dreStats.dayCanceledTotal.toFixed(2).replace('.', ',')}</p>
-                  ${dreStats.dayCanceledDetails.map((c: any) => `
-                    <div style="font-size: 9px; margin: 2px 0; padding: 3px; background: white; border-radius: 4px;">
-                      <strong>#${c.saleCode}</strong> - R$ ${c.totalValue.toFixed(2).replace('.', ',')} 
-                      <span style="color: #991b1b; font-size: 8px;">• ${c.cancelReason}</span>
-                    </div>
-                  `).join('')}
-                </div>
-              ` : ''}
-              
-              <div class="section">
-                <div class="section-title">Resumo por Método de Pagamento</div>
-                <div class="payment-grid">
-                  ${Object.entries(dreStats.dayMethods).map(([method, data]: [string, any]) => {
-                    const label = method === 'pix' ? 'Pix' : method === 'money' ? 'Dinheiro' : method === 'card' ? 'Cartão' : 'Fiado';
-                    return `
-                      <div class="payment-box">
-                        <h5>${label} (${data.count})</h5>
-                        <div class="total" style="margin: 0; padding: 0; border: none; font-size: 12px;">
-                          <span style="color: #059669;">R$ ${data.total.toFixed(2).replace('.', ',')}</span>
-                        </div>
-                      </div>
-                    `;
-                  }).join('')}
-                </div>
+              <div class="rp-kpi-row total">
+                <span>Total financeiro geral</span>
+                <span class="rp-mono">${formatCurrency(dreStats.dayIn)}</span>
               </div>
-              
-              <div class="grand-total">
-                <p>Total Financeiro Geral</p>
-                <h3>R$ ${dreStats.dayIn.toFixed(2).replace('.', ',')}</h3>
+              <div class="rp-signatures">
+                <div class="rp-sig-block"><div class="rp-sig-line"></div><p class="rp-sig-label">Balconista</p></div>
+                <div class="rp-sig-block"><div class="rp-sig-line"></div><p class="rp-sig-label">${user.name} · gerente</p></div>
               </div>
-              
-              <div class="signatures">
-                <div class="sig-block">
-                  <div class="sig-line" style="margin-top: 40px;"></div>
-                  <div class="sig-label">Balconista</div>
-                </div>
-                <div class="sig-block">
-                  <div class="sig-line" style="margin-top: 40px;"></div>
-                  <div class="sig-label">${user.name} (Gerente)</div>
-                </div>
-              </div>
-              
-              <div class="footer">
-                Gerado em: ${new Date().toLocaleString('pt-BR')} | Sistema de Gestão Sorveteria Real
-              </div>
-
-              <div class="no-print">
-                <button class="close-btn" onclick="window.close()">FECHAR RELATÓRIO</button>
-              </div>
-              
-              <script>
-                window.onload = () => {
-                  setTimeout(() => {
-                    window.print();
-                    setTimeout(() => window.close(), 500);
-                  }, 500);
-                };
-              </script>
+              ${buildPrintFooter()}
+              ${PRINT_AUTOCLOSE_SCRIPT}
             </body>
           </html>
         `;
@@ -1371,158 +1302,78 @@ const IceCreamModule: React.FC<IceCreamModuleProps> = ({
         if (!printWindow) { alert("Pop-up bloqueado!"); return; }
         const store = stores.find(s => s.id === effectiveStoreId);
         const monthLabel = MONTHS.find(m => m.value === selectedMonth)?.label;
+
+        const productCards = dreStats.monthSalesDetail.map((item: any) => `
+            <div class="rp-mini-card">
+                <p class="rp-mini-label">${item.productName}</p>
+                <p class="rp-mini-sub">Qtd ${item.quantity}</p>
+                <p class="rp-mini-value rp-mono">${formatCurrency(item.totalValue)}</p>
+            </div>`).join('');
+
+        const paymentCards = `
+            <div class="rp-mini-card"><p class="rp-mini-label">Pix (${dreStats.monthMethodsCount.pix})</p><p class="rp-mini-value rp-mono">${formatCurrency(dreStats.monthMethods.pix)}</p></div>
+            <div class="rp-mini-card"><p class="rp-mini-label">Dinheiro (${dreStats.monthMethodsCount.money})</p><p class="rp-mini-value rp-mono">${formatCurrency(dreStats.monthMethods.money)}</p></div>
+            <div class="rp-mini-card"><p class="rp-mini-label">Cartão (${dreStats.monthMethodsCount.card})</p><p class="rp-mini-value rp-mono">${formatCurrency(dreStats.monthMethods.card)}</p></div>
+            <div class="rp-mini-card"><p class="rp-mini-label">Fiado (${dreStats.monthMethodsCount.fiado})</p><p class="rp-mini-value rp-mono">${formatCurrency(dreStats.monthMethods.fiado)}</p></div>
+        `;
+
+        const partnersRows = filteredPartners.length > 0
+            ? filteredPartners.map(p => `<tr><td>${p.partner_name}</td><td>${p.percentage}%</td><td style="text-align:right" class="rp-mono">${formatCurrency((dreStats.profit * p.percentage) / 100)}</td></tr>`).join('')
+            : '<tr><td colspan="3" style="text-align:center;color:#94A3B8;padding:14px;">Nenhuma partilha configurada</td></tr>';
+
+        const fiadoRows = monthFiadoGrouped.length > 0
+            ? monthFiadoGrouped.map(f => `<tr><td>${f.name}</td><td style="text-align:right" class="rp-mono">${formatCurrency(f.total)}</td></tr>`).join('')
+            : '<tr><td colspan="2" style="text-align:center;color:#94A3B8;padding:14px;">Nenhum débito no período</td></tr>';
+
+        const canceledRows = dreStats.monthCanceledDetails.length > 0
+            ? dreStats.monthCanceledDetails.map((c: any) => `<tr><td>#${c.saleCode}</td><td>${new Date(c.createdAt).toLocaleDateString('pt-BR')}</td><td>${c.canceledBy}</td><td>${c.itemsSummary}</td><td>${c.cancelReason}</td><td style="text-align:right" class="rp-mono">${formatCurrency(c.totalValue)}</td></tr>`).join('')
+            : '<tr><td colspan="6" style="text-align:center;color:#94A3B8;padding:14px;">Nenhuma venda cancelada</td></tr>';
+
         const html = `
-            <!DOCTYPE html>
             <html>
             <head>
-                <title>DRE Mensal - Sorveteria Real</title>
-                <style>
-                    @page { size: A4; margin: 15mm; }
-                    body { font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; padding: 0; color: #1e293b; line-height: 1.4; }
-                    .header { border-bottom: 3px solid #1e3a8a; padding-bottom: 10px; margin-bottom: 20px; display: flex; justify-content: space-between; align-items: flex-end; }
-                    .header h2 { color: #1e3a8a; margin: 0; text-transform: uppercase; font-style: italic; font-weight: 900; font-size: 24px; }
-                    .header p { margin: 0; font-size: 12px; font-weight: bold; color: #64748b; }
-                    .section { margin-bottom: 20px; padding: 15px; border: 1px solid #e2e8f0; border-radius: 12px; background: #fff; }
-                    .section-title { font-size: 11px; font-weight: 900; color: #1e3a8a; text-transform: uppercase; letter-spacing: 0.1em; margin-bottom: 10px; border-bottom: 1px solid #e2e8f0; padding-bottom: 5px; }
-                    .kpi { display: flex; justify-content: space-between; font-weight: bold; font-size: 14px; padding: 5px 0; }
-                    .total-row { border-top: 2px solid #1e3a8a; margin-top: 5px; padding-top: 5px; font-size: 18px; color: #1e3a8a; }
-                    table { width: 100%; border-collapse: collapse; margin-top: 5px; }
-                    th { text-align: left; padding: 8px; border-bottom: 2px solid #cbd5e1; font-size: 10px; text-transform: uppercase; color: #64748b; }
-                    td { padding: 8px; border-bottom: 1px solid #f1f5f9; font-size: 11px; font-weight: 600; }
-                    .text-right { text-align: right; }
-                    .footer { margin-top: 30px; text-align: center; font-size: 9px; color: #94a3b8; border-top: 1px solid #e2e8f0; padding-top: 10px; }
-                    .no-print { display: flex; justify-content: center; margin-top: 20px; }
-                    .close-btn { background: #ef4444; color: white; border: none; padding: 10px 20px; border-radius: 8px; font-weight: bold; cursor: pointer; font-size: 12px; }
-                    @media print { .no-print { display: none; } }
-                </style>
+                <title>DRE mensal — sorveteria real</title>
+                <style>${PRINT_BASE_STYLES}</style>
             </head>
             <body>
-                <div class="header">
-                    <div>
-                        <h2>SORVETERIA REAL</h2>
-                        <p>Relatório Gerencial de Resultados</p>
-                    </div>
-                    <div class="text-right">
-                        <p>UNIDADE: ${store?.number || '---'} | ${store?.city || ''}</p>
-                        <p>REFERÊNCIA: ${monthLabel} / ${selectedYear}</p>
-                    </div>
+                ${buildPrintHeader({ eyebrow: 'Sorveteria real', title: 'DRE mensal', storeLine: `Unidade ${store?.number || '—'} · ${store?.city || ''}`, periodLine: `${monthLabel} de ${selectedYear}` })}
+                <div class="rp-section">
+                    <div class="rp-section-title">Resumo financeiro</div>
+                    <div class="rp-kpi-row"><span>Faturamento bruto (+)</span><span class="rp-mono" style="color:#173404">${formatCurrency(dreStats.monthIn)}</span></div>
+                    <div class="rp-kpi-row"><span>Sangrias (-)</span><span class="rp-mono" style="color:#791F1F">${formatCurrency(dreStats.monthSangriaTotal)}</span></div>
+                    <div class="rp-kpi-row"><span>Contas a pagar do mês (-)</span><span class="rp-mono" style="color:#3C3489">${formatCurrency(dreStats.monthFutureDebts)}</span></div>
+                    <div class="rp-kpi-row total"><span>Lucro líquido (=)</span><span class="rp-mono">${formatCurrency(dreStats.profit)}</span></div>
                 </div>
-    
-                <div class="section">
-                    <div class="section-title">Resumo Financeiro</div>
-                    <div class="kpi"><span>Faturamento Bruto (+)</span> <span style="color:#059669">${formatCurrency(dreStats.monthIn)}</span></div>
-                    <div class="kpi"><span>Sangrias (-)</span> <span style="color:#dc2626">${formatCurrency(dreStats.monthSangriaTotal)}</span></div>
-                    <div class="kpi"><span>Contas a Pagar do Mês (-)</span> <span style="color:#7c3aed">${formatCurrency(dreStats.monthFutureDebts)}</span></div>
-                    <div class="kpi total-row"><span>LUCRO LÍQUIDO (=)</span> <span>${formatCurrency(dreStats.profit)}</span></div>
+                <div class="rp-section">
+                    <div class="rp-section-title">Resumo operacional do período</div>
+                    <div class="rp-kpi-row"><span>Total de sangrias</span><span class="rp-mono">${formatCurrency(dreStats.monthSangriaTotal)}</span></div>
+                    <div class="rp-kpi-row"><span>Contas a pagar (mês)</span><span class="rp-mono">${formatCurrency(dreStats.monthFutureDebts)}</span></div>
+                    <div class="rp-kpi-row"><span>Total de avarias</span><span class="rp-mono">${dreStats.monthWastageTotal.toFixed(2)}</span></div>
+                    <div class="rp-kpi-row"><span>Vendas canceladas</span><span class="rp-mono">${formatCurrency(dreStats.monthCanceledTotal)}</span></div>
+                    <div class="rp-kpi-row"><span>Margem líquida</span><span class="rp-mono">${dreStats.monthIn > 0 ? ((dreStats.profit / dreStats.monthIn) * 100).toFixed(1) : '0.0'}%</span></div>
                 </div>
-    
-                <div class="section">
-                    <div class="section-title">RESUMO OPERACIONAL DO PERÍODO</div>
-                    <div class="kpi"><span>Total de Sangrias</span> <span>${formatCurrency(dreStats.monthSangriaTotal)}</span></div>
-                    <div class="kpi"><span>Contas a Pagar (Mês)</span> <span>${formatCurrency(dreStats.monthFutureDebts)}</span></div>
-                    <div class="kpi"><span>Total de Avarias</span> <span>${dreStats.monthWastageTotal.toFixed(2)}</span></div>
-                    <div class="kpi"><span>Vendas Canceladas</span> <span>${formatCurrency(dreStats.monthCanceledTotal)}</span></div>
-                    <div class="kpi"><span>Margem Líquida (%)</span> <span>${dreStats.monthIn > 0 ? ((dreStats.profit / dreStats.monthIn) * 100).toFixed(1) : '0.0'}%</span></div>
+                <div class="rp-section">
+                    <div class="rp-section-title">Vendas do período</div>
+                    <div class="rp-mini-grid">${productCards || '<p style="color:#94A3B8;font-size:11px;">Nenhuma venda registrada</p>'}</div>
                 </div>
-    
-                <div class="section">
-                    <div class="section-title">Detalhamento de Vendas do Período</div>
-                    <div style="display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 10px;">
-                        ${dreStats.monthSalesDetail.map((item: any) => `
-                            <div style="background: #f8fafc; padding: 10px; border-radius: 8px; border: 1px solid #e2e8f0;">
-                                <div style="font-weight: 900; text-transform: uppercase; color: #1e293b; font-size: 9px; margin-bottom: 4px; line-height: 1.2;">${item.productName}</div>
-                                <div style="font-weight: 700; color: #64748b; font-size: 8px;">QTD: ${item.quantity}</div>
-                                <div style="font-weight: 900; color: #3b82f6; font-size: 10px; margin-top: 2px;">R$ ${item.totalValue.toFixed(2).replace('.', ',')}</div>
-                            </div>
-                        `).join('')}
-                    </div>
-                    ${dreStats.monthSalesDetail.length === 0 ? '<div style="text-align: center; padding: 20px; color: #94a3b8; font-style: italic;">Nenhuma venda registrada no período</div>' : ''}
+                <div class="rp-section">
+                    <div class="rp-section-title">Métodos de pagamento</div>
+                    <div class="rp-mini-grid">${paymentCards}</div>
                 </div>
-
-                <div class="section">
-                    <div class="section-title">Resumo por Método de Pagamento</div>
-                    <div style="display: grid; grid-template-columns: 1fr 1fr 1fr 1fr; gap: 10px;">
-                        <div style="background: #f0fdf4; padding: 10px; border-radius: 8px; border: 1px solid #dcfce7;">
-                            <div style="font-weight: 900; color: #166534; font-size: 9px; text-transform: uppercase;">Pix (${dreStats.monthMethodsCount.pix})</div>
-                            <div style="font-weight: 900; color: #15803d; font-size: 11px; margin-top: 4px;">R$ ${dreStats.monthMethods.pix.toFixed(2).replace('.', ',')}</div>
-                        </div>
-                        <div style="background: #f0fdf4; padding: 10px; border-radius: 8px; border: 1px solid #dcfce7;">
-                            <div style="font-weight: 900; color: #166534; font-size: 9px; text-transform: uppercase;">Dinheiro (${dreStats.monthMethodsCount.money})</div>
-                            <div style="font-weight: 900; color: #15803d; font-size: 11px; margin-top: 4px;">R$ ${dreStats.monthMethods.money.toFixed(2).replace('.', ',')}</div>
-                        </div>
-                        <div style="background: #f0fdf4; padding: 10px; border-radius: 8px; border: 1px solid #dcfce7;">
-                            <div style="font-weight: 900; color: #166534; font-size: 9px; text-transform: uppercase;">Cartão (${dreStats.monthMethodsCount.card})</div>
-                            <div style="font-weight: 900; color: #15803d; font-size: 11px; margin-top: 4px;">R$ ${dreStats.monthMethods.card.toFixed(2).replace('.', ',')}</div>
-                        </div>
-                        <div style="background: #f0fdf4; padding: 10px; border-radius: 8px; border: 1px solid #dcfce7;">
-                            <div style="font-weight: 900; color: #166534; font-size: 9px; text-transform: uppercase;">Fiado (${dreStats.monthMethodsCount.fiado})</div>
-                            <div style="font-weight: 900; color: #15803d; font-size: 11px; margin-top: 4px;">R$ ${dreStats.monthMethods.fiado.toFixed(2).replace('.', ',')}</div>
-                        </div>
-                    </div>
+                <div class="rp-section">
+                    <div class="rp-section-title">Partilha de lucros</div>
+                    <table class="rp-table"><thead><tr><th>Sócio</th><th>Percentual</th><th style="text-align:right">Repasse</th></tr></thead><tbody>${partnersRows}</tbody></table>
                 </div>
-
-                <div class="section">
-                    <div class="section-title">Partilha de Lucros (Sócios/Parceiros)</div>
-                    <table>
-                        <thead>
-                            <tr><th>Nome do Parceiro</th><th>Porcentagem</th><th class="text-right">Valor Repasse</th></tr>
-                        </thead>
-                        <tbody>
-                            ${filteredPartners.length > 0 
-                                ? filteredPartners.map(p => `<tr><td>${p.partner_name}</td><td>${p.percentage}%</td><td class="text-right">${formatCurrency((dreStats.profit * p.percentage) / 100)}</td></tr>`).join('')
-                                : '<tr><td colspan="3" style="text-align:center; color:#94a3b8; font-style:italic;">Nenhuma partilha configurada</td></tr>'
-                            }
-                        </tbody>
-                    </table>
+                <div class="rp-section">
+                    <div class="rp-section-title">Débitos de funcionários</div>
+                    <table class="rp-table"><thead><tr><th>Colaborador</th><th style="text-align:right">Total acumulado</th></tr></thead><tbody>${fiadoRows}</tbody></table>
                 </div>
-    
-                <div class="section">
-                    <div class="section-title">Débitos de Funcionários (Vendas Fiado)</div>
-                    <table>
-                        <thead>
-                            <tr>
-                                <th>Colaborador</th>
-                                <th class="text-right">Total Acumulado</th>
-                            </tr>
-                        </thead>
-                        <tbody>
-                            ${monthFiadoGrouped.length > 0 
-                                ? monthFiadoGrouped.map(f => `<tr><td>${f.name}</td><td class="text-right">${formatCurrency(f.total)}</td></tr>`).join('')
-                                : '<tr><td colspan="2" style="text-align:center; color:#94a3b8; font-style:italic;">Nenhum débito registrado no período</td></tr>'
-                            }
-                        </tbody>
-                    </table>
+                <div class="rp-section">
+                    <div class="rp-section-title">Vendas canceladas</div>
+                    <table class="rp-table"><thead><tr><th>Código</th><th>Data</th><th>Cancelado por</th><th>Item</th><th>Motivo</th><th style="text-align:right">Valor</th></tr></thead><tbody>${canceledRows}</tbody></table>
                 </div>
-    
-                <div class="section">
-                    <div class="section-title">Detalhamento de Vendas Canceladas</div>
-                    <table>
-                        <thead>
-                            <tr><th>Código</th><th>Data</th><th>Cancelado Por</th><th>Motivo</th><th class="text-right">Valor</th></tr>
-                        </thead>
-                        <tbody>
-                            ${dreStats.monthCanceledDetails.length > 0 
-                                ? dreStats.monthCanceledDetails.map((c: any) => `<tr><td>#${c.saleCode}</td><td>${new Date(c.createdAt).toLocaleDateString()}</td><td>${c.canceledBy}</td><td>${c.cancelReason}</td><td class="text-right">${formatCurrency(c.totalValue)}</td></tr>`).join('')
-                                : '<tr><td colspan="5" style="text-align:center; color:#94a3b8; font-style:italic;">Nenhuma venda cancelada no período</td></tr>'
-                            }
-                        </tbody>
-                    </table>
-                </div>
-    
-                <div class="footer">
-                    Documento gerado em ${new Date().toLocaleString('pt-BR')} por Sorveteria Real
-                </div>
-
-                <div class="no-print">
-                    <button class="close-btn" onclick="window.close()">FECHAR RELATÓRIO</button>
-                </div>
-    
-                <script>
-                    window.onload = () => {
-                        window.print();
-                        setTimeout(() => window.close(), 1000);
-                    };
-                </script>
+                ${buildPrintFooter()}
+                ${PRINT_AUTOCLOSE_SCRIPT}
             </body>
             </html>
         `;

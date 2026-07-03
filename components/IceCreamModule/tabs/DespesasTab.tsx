@@ -17,6 +17,7 @@ import EditFutureDebtModal from '../modals/EditFutureDebtModal';
 import PayFutureDebtModal from '../modals/PayFutureDebtModal';
 import CategoryManager from '../modals/CategoryManager';
 import { printSangriasReport } from '../services/printService';
+import { printContasAPagarReport } from '../services/printContasPagarReport';
 
 interface DespesasTabProps {
     sangrias: IceCreamSangria[];
@@ -93,7 +94,8 @@ const DespesasTab: React.FC<DespesasTabProps> = ({
     });
     const [editingDebt, setEditingDebt] = useState<IceCreamFutureDebt | null>(null);
     const [editDebtForm, setEditDebtForm] = useState({
-        supplier_name: '', installment_amount: '', due_date: '', categoryId: '', description: ''
+        supplier_name: '', installment_amount: '', due_date: '', categoryId: '', description: '',
+        payment_date: '', payment_method: ''
     });
     const [showPayDebtModal, setShowPayDebtModal] = useState(false);
     const [payingDebt, setPayingDebt] = useState<IceCreamFutureDebt | null>(null);
@@ -292,7 +294,9 @@ const DespesasTab: React.FC<DespesasTabProps> = ({
             installment_amount: debt.installment_amount.toString(),
             due_date: debt.due_date,
             categoryId: debt.category_id || '',
-            description: debt.description || ''
+            description: debt.description || '',
+            payment_date: (debt as any).payment_date || new Date().toISOString().split('T')[0],
+            payment_method: (debt as any).payment_method || ''
         });
         setShowEditFutureDebtModal(true);
     };
@@ -301,13 +305,18 @@ const DespesasTab: React.FC<DespesasTabProps> = ({
         if (!editingDebt) return;
         setIsSubmitting(true);
         try {
-            await onUpdateFutureDebt(editingDebt.id, {
+            const payload: any = {
                 supplier_name: editDebtForm.supplier_name,
                 installment_amount: parseFloat(editDebtForm.installment_amount.replace(',', '.')),
                 due_date: editDebtForm.due_date,
                 category_id: editDebtForm.categoryId,
                 description: editDebtForm.description
-            });
+            };
+            if (editingDebt.status === 'paid') {
+                payload.payment_date = editDebtForm.payment_date;
+                payload.payment_method = editDebtForm.payment_method;
+            }
+            await onUpdateFutureDebt(editingDebt.id, payload);
             setShowEditFutureDebtModal(false);
             setEditingDebt(null);
             if (fetchData) await fetchData();
@@ -351,6 +360,8 @@ const DespesasTab: React.FC<DespesasTabProps> = ({
             setIsSubmitting(false);
         }
     };
+
+
 
     const handleEditSangria = (sangria: IceCreamSangria) => {
         setEditingSangria(sangria);
@@ -421,6 +432,80 @@ const DespesasTab: React.FC<DespesasTabProps> = ({
         });
     };
 
+    const handlePrintContasPagar = () => {
+        const store = stores.find(s => s.id === effectiveStoreId);
+        const monthLabel = MONTHS.find(m => m.value === selectedMonth)?.label;
+        const printWindow = window.open('', '_blank', 'width=800,height=600');
+        if (!printWindow) return;
+
+        const statusLabel: Record<string, string> = { overdue: 'Vencido', due_soon: 'A vencer', paid: 'Pago', ok: 'Em dia' };
+
+        const rows = debtsWithStatus
+            .slice()
+            .sort((a, b) => new Date(a.due_date).getTime() - new Date(b.due_date).getTime())
+            .map(d => {
+                const category = sangriaCategories.find(c => c.id === d.category_id)?.name || 'OUTROS';
+                return `
+                    <tr>
+                        <td>${new Date(d.due_date + 'T12:00:00').toLocaleDateString('pt-BR')}</td>
+                        <td>${statusLabel[d.computedStatus]}</td>
+                        <td>${d.supplier_name}</td>
+                        <td>${category}</td>
+                        <td>${d.installment_number}/${d.total_installments}</td>
+                        <td style="text-align:right">${formatCurrency(Number(d.installment_amount))}</td>
+                    </tr>`;
+            }).join('');
+
+        const html = `
+            <html>
+            <head>
+                <title>Contas a Pagar - ${monthLabel} ${selectedYear}</title>
+                <style>
+                    @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;700;900&display=swap');
+                    @page { size: A4; margin: 15mm; }
+                    body { font-family: 'Inter', sans-serif; margin: 0; padding: 0; color: #1a1a1a; }
+                    .header { text-align: center; margin-bottom: 30px; border-bottom: 2px solid #7c3aed; padding-bottom: 20px; }
+                    .header h1 { margin: 0; font-size: 24px; font-weight: 900; color: #7c3aed; text-transform: uppercase; font-style: italic; }
+                    .header p { margin: 5px 0; font-size: 12px; font-weight: 700; color: #666; text-transform: uppercase; }
+                    table { width: 100%; border-collapse: collapse; margin-top: 20px; }
+                    th { background: #ede9fe; color: #6d28d9; font-size: 10px; font-weight: 900; text-transform: uppercase; padding: 12px 8px; text-align: left; border-bottom: 2px solid #7c3aed; }
+                    td { padding: 10px 8px; font-size: 10px; border-bottom: 1px solid #f3f4f6; font-weight: 600; }
+                    .footer { margin-top: 40px; border-top: 2px solid #7c3aed; padding-top: 20px; display: flex; justify-content: space-between; align-items: center; }
+                    .total-box { background: #7c3aed; color: white; padding: 15px 30px; border-radius: 10px; text-align: right; }
+                    .total-label { font-size: 10px; font-weight: 900; text-transform: uppercase; display: block; }
+                    .total-value { font-size: 20px; font-weight: 900; font-style: italic; }
+                    .signature { margin-top: 60px; text-align: center; border-top: 1px solid #ccc; width: 250px; padding-top: 10px; font-size: 10px; font-weight: 700; text-transform: uppercase; }
+                </style>
+            </head>
+            <body>
+                <div class="header">
+                    <h1>Relatório de Contas a Pagar</h1>
+                    <p>${store?.name || 'REDE REAL'} — ${monthLabel} / ${selectedYear}</p>
+                    <p>Gerado em: ${new Date().toLocaleString('pt-BR')}</p>
+                </div>
+                <table>
+                    <thead>
+                        <tr><th>Vencimento</th><th>Status</th><th>Fornecedor</th><th>Categoria</th><th>Parcela</th><th style="text-align:right;">Valor</th></tr>
+                    </thead>
+                    <tbody>${rows}</tbody>
+                </table>
+                <div class="footer">
+                    <div class="signature">Assinatura do Responsável</div>
+                    <div class="total-box">
+                        <span class="total-label">Total Vencido + A Vencer</span>
+                        <span class="total-value">${formatCurrency(totalVencido + totalAVencer7d)}</span>
+                    </div>
+                </div>
+                <script>
+                    window.onload = () => { setTimeout(() => { window.print(); window.close(); }, 500); };
+                </script>
+            </body>
+            </html>
+        `;
+        printWindow.document.write(html);
+        printWindow.document.close();
+    };
+
     return (
         <div className="p-4 md:p-8 space-y-8 animate-in fade-in duration-500 max-w-7xl mx-auto pb-24">
             {/* HEADER */}
@@ -452,13 +537,7 @@ const DespesasTab: React.FC<DespesasTabProps> = ({
                     </div>
                 </div>
 
-                <div className="grid grid-cols-2 md:flex gap-3 w-full md:w-auto">
-                    <button 
-                        onClick={handlePrint}
-                        className="px-4 md:px-6 py-3 md:py-4 bg-gray-900 text-white rounded-xl md:rounded-2xl font-black uppercase text-[10px] md:text-xs shadow-lg shadow-gray-100 hover:bg-gray-800 transition-all flex items-center justify-center gap-2 border-b-4 border-gray-700 active:scale-95"
-                    >
-                        <Printer size={16} /> <span className="truncate">Relatório</span>
-                    </button>
+                <div className="grid grid-cols-2 gap-3 w-full md:flex md:w-auto">
                     <button 
                         onClick={() => setShowSangriaModal(true)}
                         className="px-4 md:px-6 py-3 md:py-4 bg-red-600 text-white rounded-xl md:rounded-2xl font-black uppercase text-[10px] md:text-xs shadow-lg shadow-red-100 hover:bg-red-700 transition-all flex items-center justify-center gap-2 border-b-4 border-red-900 active:scale-95"
@@ -475,50 +554,50 @@ const DespesasTab: React.FC<DespesasTabProps> = ({
             </div>
 
             {/* CARDS DE RESUMO */}
-            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-5 gap-6">
-                <div className="bg-white p-8 rounded-[40px] border-2 border-red-100 shadow-sm relative overflow-hidden group">
-                    <div className="absolute top-0 right-0 p-8 opacity-10 group-hover:scale-110 transition-transform">
-                        <TrendingDown size={80} />
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-5 gap-4 md:gap-6">
+                <div className="bg-white p-6 md:p-8 rounded-[40px] border-2 border-red-100 shadow-sm relative">
+                    <div className="absolute top-0 right-0 w-24 h-24 overflow-hidden rounded-tr-[40px] pointer-events-none">
+                        <TrendingDown size={80} className="absolute -top-2 -right-2 opacity-10" />
                     </div>
-                    <span className="text-[10px] font-black text-red-500 uppercase tracking-widest block mb-4">Sangrias do Mês</span>
-                    <h3 className="text-4xl font-black text-red-700 italic">{formatCurrency(totalSangriasMonth)}</h3>
-                    <p className="text-[10px] font-bold text-gray-400 uppercase mt-2">Total de saídas avulsas</p>
+                    <span className="text-[10px] font-black text-red-500 uppercase tracking-widest block mb-4 relative">Sangrias do Mês</span>
+                    <h3 className="text-2xl md:text-3xl font-black text-red-700 italic break-words leading-tight relative">{formatCurrency(totalSangriasMonth)}</h3>
+                    <p className="text-[10px] font-bold text-gray-400 uppercase mt-2 relative">Total de saídas avulsas</p>
                 </div>
 
-                <div className="bg-white p-8 rounded-[40px] border-2 border-red-100 shadow-sm relative overflow-hidden group">
-                    <div className="absolute top-0 right-0 p-8 opacity-10 group-hover:scale-110 transition-transform">
-                        <AlertCircle size={80} className="text-red-500" />
+                <div className="bg-white p-6 md:p-8 rounded-[40px] border-2 border-red-100 shadow-sm relative">
+                    <div className="absolute top-0 right-0 w-24 h-24 overflow-hidden rounded-tr-[40px] pointer-events-none">
+                        <AlertCircle size={80} className="absolute -top-2 -right-2 opacity-10 text-red-500" />
                     </div>
-                    <span className="text-[10px] font-black text-red-500 uppercase tracking-widest block mb-4">Vencido</span>
-                    <h3 className="text-4xl font-black text-red-700 italic">{formatCurrency(totalVencido)}</h3>
-                    <p className="text-[10px] font-bold text-gray-400 uppercase mt-2">Contas em atraso</p>
+                    <span className="text-[10px] font-black text-red-500 uppercase tracking-widest block mb-4 relative">Vencido</span>
+                    <h3 className="text-2xl md:text-3xl font-black text-red-700 italic break-words leading-tight relative">{formatCurrency(totalVencido)}</h3>
+                    <p className="text-[10px] font-bold text-gray-400 uppercase mt-2 relative">Contas em atraso</p>
                 </div>
 
-                <div className="bg-white p-8 rounded-[40px] border-2 border-yellow-100 shadow-sm relative overflow-hidden group">
-                    <div className="absolute top-0 right-0 p-8 opacity-10 group-hover:scale-110 transition-transform">
-                        <Clock size={80} className="text-yellow-500" />
+                <div className="bg-white p-6 md:p-8 rounded-[40px] border-2 border-yellow-100 shadow-sm relative">
+                    <div className="absolute top-0 right-0 w-24 h-24 overflow-hidden rounded-tr-[40px] pointer-events-none">
+                        <Clock size={80} className="absolute -top-2 -right-2 opacity-10 text-yellow-500" />
                     </div>
-                    <span className="text-[10px] font-black text-yellow-600 uppercase tracking-widest block mb-4">A Vencer (7 dias)</span>
-                    <h3 className="text-4xl font-black text-yellow-700 italic">{formatCurrency(totalAVencer7d)}</h3>
-                    <p className="text-[10px] font-bold text-gray-400 uppercase mt-2">Próximos vencimentos</p>
+                    <span className="text-[10px] font-black text-yellow-600 uppercase tracking-widest block mb-4 relative">A Vencer (7 dias)</span>
+                    <h3 className="text-2xl md:text-3xl font-black text-yellow-700 italic break-words leading-tight relative">{formatCurrency(totalAVencer7d)}</h3>
+                    <p className="text-[10px] font-bold text-gray-400 uppercase mt-2 relative">Próximos vencimentos</p>
                 </div>
 
-                <div className="bg-white p-8 rounded-[40px] border-2 border-purple-100 shadow-sm relative overflow-hidden group">
-                    <div className="absolute top-0 right-0 p-8 opacity-10 group-hover:scale-110 transition-transform">
-                        <DollarSign size={80} className="text-purple-500" />
+                <div className="bg-white p-6 md:p-8 rounded-[40px] border-2 border-purple-100 shadow-sm relative">
+                    <div className="absolute top-0 right-0 w-24 h-24 overflow-hidden rounded-tr-[40px] pointer-events-none">
+                        <DollarSign size={80} className="absolute -top-2 -right-2 opacity-10 text-purple-500" />
                     </div>
-                    <span className="text-[10px] font-black text-purple-500 uppercase tracking-widest block mb-4">Total do Mês</span>
-                    <h3 className="text-4xl font-black text-purple-700 italic">{formatCurrency(totalMesAtual)}</h3>
-                    <p className="text-[10px] font-bold text-gray-400 uppercase mt-2">Compromissos em aberto</p>
+                    <span className="text-[10px] font-black text-purple-500 uppercase tracking-widest block mb-4 relative">Total do Mês</span>
+                    <h3 className="text-2xl md:text-3xl font-black text-purple-700 italic break-words leading-tight relative">{formatCurrency(totalMesAtual)}</h3>
+                    <p className="text-[10px] font-bold text-gray-400 uppercase mt-2 relative">Compromissos em aberto</p>
                 </div>
 
-                <div className="bg-blue-950 p-8 rounded-[40px] shadow-2xl relative overflow-hidden group font-sans">
-                    <div className="absolute top-0 right-0 p-8 opacity-10 group-hover:scale-110 transition-transform">
-                        <CheckCircle2 size={80} className="text-white" />
+                <div className="bg-blue-950 p-6 md:p-8 rounded-[40px] shadow-2xl relative font-sans">
+                    <div className="absolute top-0 right-0 w-24 h-24 overflow-hidden rounded-tr-[40px] pointer-events-none">
+                        <CheckCircle2 size={80} className="absolute -top-2 -right-2 opacity-10 text-white" />
                     </div>
-                    <span className="text-[10px] font-black text-emerald-400 uppercase tracking-widest block mb-4">Pago no Mês</span>
-                    <h3 className="text-4xl font-black text-white italic">{formatCurrency(totalPagoMes)}</h3>
-                    <p className="text-[10px] font-bold text-blue-300/50 uppercase mt-2">Já quitado</p>
+                    <span className="text-[10px] font-black text-emerald-400 uppercase tracking-widest block mb-4 relative">Pago no Mês</span>
+                    <h3 className="text-2xl md:text-3xl font-black text-white italic break-words leading-tight relative">{formatCurrency(totalPagoMes)}</h3>
+                    <p className="text-[10px] font-bold text-blue-300/50 uppercase mt-2 relative">Já quitado</p>
                 </div>
             </div>
 
@@ -560,9 +639,9 @@ const DespesasTab: React.FC<DespesasTabProps> = ({
                             </div>
                             <button 
                                 onClick={handlePrint}
-                                className="w-full md:w-auto px-6 py-4 bg-gray-950 text-white rounded-2xl font-black uppercase text-[10px] flex items-center justify-center gap-2 hover:bg-gray-800 transition-all"
+                                className="w-full md:w-auto px-6 py-4 bg-red-700 text-white rounded-2xl font-black uppercase text-[10px] flex items-center justify-center gap-2 hover:bg-red-800 transition-all"
                             >
-                                <Printer size={16} /> Imprimir Relatório
+                                <Printer size={16} /> Imprimir Sangrias
                             </button>
                         </div>
 
@@ -645,6 +724,12 @@ const DespesasTab: React.FC<DespesasTabProps> = ({
                                     <option value="all">TODOS</option>
                                 </select>
                             </div>
+                            <button
+                                onClick={handlePrintContasPagar}
+                                className="w-full md:w-auto px-6 py-3 bg-purple-700 text-white rounded-2xl font-black uppercase text-[10px] flex items-center justify-center gap-2 hover:bg-purple-800 transition-all"
+                            >
+                                <Printer size={16} /> Imprimir Contas a Pagar
+                            </button>
                         </div>
 
                         <div className="overflow-x-auto no-scrollbar">
@@ -838,6 +923,7 @@ const DespesasTab: React.FC<DespesasTabProps> = ({
                 categories={sangriaCategories}
                 isSubmitting={isSubmitting}
                 onSubmit={handleSaveEditFutureDebt}
+                isPaid={editingDebt?.status === 'paid'}
             />
 
             <PayFutureDebtModal 

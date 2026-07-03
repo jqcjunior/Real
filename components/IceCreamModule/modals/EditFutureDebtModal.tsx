@@ -1,5 +1,5 @@
 import React from 'react';
-import { X, Save, Loader2, Calendar, DollarSign, Tag, FileText } from 'lucide-react';
+import { X, Save, Loader2, Calendar, DollarSign, Tag, FileText, CheckCircle2 } from 'lucide-react';
 import { IceCreamSangriaCategory } from '../../../types';
 
 interface EditFutureDebtModalProps {
@@ -11,15 +11,18 @@ interface EditFutureDebtModalProps {
         due_date: string;
         categoryId: string;
         description: string;
+        payment_date: string;
+        payment_method: string;
     };
     setForm: React.Dispatch<React.SetStateAction<any>>;
     categories: IceCreamSangriaCategory[];
     isSubmitting: boolean;
     onSubmit: () => Promise<void>;
+    isPaid?: boolean;
 }
 
 const EditFutureDebtModal: React.FC<EditFutureDebtModalProps> = ({
-    isOpen, onClose, form, setForm, categories, isSubmitting, onSubmit
+    isOpen, onClose, form, setForm, categories, isSubmitting, onSubmit, isPaid
 }) => {
     if (!isOpen) return null;
 
@@ -74,6 +77,38 @@ const EditFutureDebtModal: React.FC<EditFutureDebtModalProps> = ({
                             />
                         </div>
                     </div>
+
+                    {isPaid && (
+                        <div className="bg-emerald-50 border border-emerald-100 rounded-2xl p-5 space-y-4">
+                            <p className="text-[10px] font-black text-emerald-700 uppercase tracking-widest flex items-center gap-2">
+                                <CheckCircle2 size={14} /> Dados do pagamento
+                            </p>
+                            <div className="grid grid-cols-2 gap-4">
+                                <div className="space-y-2">
+                                    <label className="text-[10px] font-black text-gray-400 uppercase ml-2">Data do Pagamento</label>
+                                    <input
+                                        type="date"
+                                        value={form.payment_date}
+                                        onChange={e => setForm({ ...form, payment_date: e.target.value })}
+                                        className="w-full p-3 bg-white border-none rounded-[16px] font-black text-xs outline-none focus:ring-4 focus:ring-emerald-500/20"
+                                    />
+                                </div>
+                                <div className="space-y-2">
+                                    <label className="text-[10px] font-black text-gray-400 uppercase ml-2">Forma de Pagamento</label>
+                                    <select
+                                        value={form.payment_method}
+                                        onChange={e => setForm({ ...form, payment_method: e.target.value })}
+                                        className="w-full p-3 bg-white border-none rounded-[16px] font-black text-xs outline-none focus:ring-4 focus:ring-emerald-500/20"
+                                    >
+                                        <option value="">Selecione...</option>
+                                        {['PIX', 'DINHEIRO', 'CARTÃO', 'TRANSFERÊNCIA', 'BOLETO'].map(m => (
+                                            <option key={m} value={m}>{m}</option>
+                                        ))}
+                                    </select>
+                                </div>
+                            </div>
+                        </div>
+                    )}
 
                     <div className="space-y-2">
                         <label className="text-[10px] font-black text-gray-400 uppercase ml-2 flex items-center gap-2">

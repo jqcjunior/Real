@@ -90,13 +90,18 @@ export const useDREStats = ({
             if (sale.status === 'canceled') {
                 const val = Number(sale.total_value || 0);
                 monthCanceledTotal += val;
+                const canceledItems = (sales ?? []).filter(item => item.saleId === sale.id);
+                const itemsSummary = canceledItems.length > 0
+                    ? canceledItems.map(item => `${item.productName} (${item.unitsSold}x)`).join(', ')
+                    : 'Item não identificado';
                 monthCanceledDetails.push({
                     id: sale.id,
                     saleCode: sale.sale_code,
                     createdAt: sale.created_at,
                     totalValue: val,
                     canceledBy: sale.canceled_by_name || 'N/A',
-                    cancelReason: sale.cancel_reason || 'N/A'
+                    cancelReason: sale.cancel_reason || 'N/A',
+                    itemsSummary
                 });
                 return;
             }
@@ -146,13 +151,18 @@ export const useDREStats = ({
             if (sale.status === 'canceled') {
                 const val = Number(sale.total_value || 0);
                 dayCanceledTotal += val;
+                const canceledItems = (sales ?? []).filter(item => item.saleId === sale.id);
+                const itemsSummary = canceledItems.length > 0
+                    ? canceledItems.map(item => `${item.productName} (${item.unitsSold}x)`).join(', ')
+                    : 'Item não identificado';
                 dayCanceledDetails.push({
                     id: sale.id,
                     saleCode: sale.sale_code,
                     createdAt: sale.created_at,
                     totalValue: val,
                     canceledBy: sale.canceled_by_name || 'N/A',
-                    cancelReason: sale.cancel_reason || 'N/A'
+                    cancelReason: sale.cancel_reason || 'N/A',
+                    itemsSummary
                 });
                 return;
             }
