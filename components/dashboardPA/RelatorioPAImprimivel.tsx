@@ -452,10 +452,10 @@ const RelatorioPAImprimivel: React.FC<RelatorioProps> = ({ storeId, storeName, s
                           <div>
                             <p className="text-[9px] font-black text-slate-800 uppercase tracking-tighter mb-1">VENDAS</p>
                             <p className="text-[7.5px] font-bold text-slate-400 mb-0.5 whitespace-nowrap">
-                              Meta: R$ {(parametros?.vendas_minimo || 0).toLocaleString('pt-BR', { maximumFractionDigits: 0 })}
+                              Meta: R$ {(parametros?.vendas_minimo || 0).toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
                             </p>
                             <p className={`text-[15px] font-black leading-none mb-1 whitespace-nowrap ${v.atingiu_meta_vendas ? 'text-emerald-600' : 'text-red-500'}`}>
-                              R$ {v.total_vendas.toLocaleString('pt-BR', { maximumFractionDigits: 0 })}
+                              R$ {v.total_vendas.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
                             </p>
                             {(() => {
                               const meta = parametros?.vendas_minimo || 0;
@@ -505,10 +505,10 @@ const RelatorioPAImprimivel: React.FC<RelatorioProps> = ({ storeId, storeName, s
                           <div>
                             <p className="text-[9px] font-black text-slate-800 uppercase tracking-tighter mb-1">TICKET</p>
                             <p className="text-[7.5px] font-bold text-slate-400 mb-0.5 whitespace-nowrap">
-                              Meta: R$ {(parametros?.ticket_minimo || 0).toFixed(0)}
+                              Meta: R$ {(parametros?.ticket_minimo || 0).toFixed(2)}
                             </p>
                             <p className={`text-[15px] font-black leading-none mb-1 whitespace-nowrap ${v.atingiu_meta_ticket ? 'text-blue-600' : 'text-red-500'}`}>
-                              R$ {v.ticket_medio.toFixed(0)}
+                              R$ {v.ticket_medio.toFixed(2)}
                             </p>
                             {(() => {
                               const meta = parametros?.ticket_minimo || 0;
