@@ -1753,25 +1753,47 @@ function gradesArrayToObject(grades: any): Record<string, Record<string, number>
           </div>
         )}
         <div className="p-4 md:p-6 border-t flex flex-col md:flex-row justify-between items-center gap-4">
-          <button
-            onClick={() => {
-              setError("");
-              setStep((s) => Math.max(0, s - 1));
-            }}
-            style={{
-              visibility: step === 0 ? "hidden" : "visible",
-              height: 32,
-              padding: "0 14px",
-              borderRadius: 6,
-              fontSize: 13,
-              cursor: "pointer",
-              border: "1px solid #d1d5db",
-              background: "transparent",
-              fontWeight: 500,
-            }}
-          >
-            ← Voltar
-          </button>
+          <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+            <button
+              onClick={() => {
+                setError("");
+                setStep((s) => Math.max(0, s - 1));
+              }}
+              style={{
+                visibility: step === 0 ? "hidden" : "visible",
+                height: 32,
+                padding: "0 14px",
+                borderRadius: 6,
+                fontSize: 13,
+                cursor: "pointer",
+                border: "1px solid #d1d5db",
+                background: "transparent",
+                fontWeight: 500,
+              }}
+            >
+              ← Voltar
+            </button>
+            <button
+              onClick={() => {
+                if (window.confirm("Deseja realmente cancelar este pedido? Todas as informações preenchidas serão perdidas.")) {
+                  resetStateAndFetch();
+                }
+              }}
+              style={{
+                height: 32,
+                padding: "0 14px",
+                borderRadius: 6,
+                fontSize: 13,
+                cursor: "pointer",
+                border: "1px solid #fca5a5",
+                background: "#fef2f2",
+                color: "#dc2626",
+                fontWeight: 600,
+              }}
+            >
+              ✕ Cancelar Pedido
+            </button>
+          </div>
           <div
             style={{
               display: "flex",

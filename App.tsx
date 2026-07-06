@@ -1190,7 +1190,14 @@ const App: React.FC = () => {
                 ${isSidebarOpen ? 'translate-x-0' : '-translate-x-full'}
             `}>
                 <div className="flex items-center justify-between mb-8">
-                    <div className="flex items-center gap-3">
+                    <button
+                        onClick={() => {
+                            setCurrentView('welcome');
+                            if (window.innerWidth < 768) setIsSidebarOpen(false);
+                        }}
+                        className="flex items-center gap-3 text-left hover:opacity-80 transition-opacity cursor-pointer"
+                        style={{ background: 'none', border: 'none', padding: 0 }}
+                    >
                         <div className="relative">
                             <img src={BRAND_LOGO} alt="Logo" referrerPolicy="no-referrer" className="h-[52px] w-auto object-contain dark:brightness-125" />
                         </div>
@@ -1217,7 +1224,7 @@ const App: React.FC = () => {
                                 Grupo Real Calçados
                             </p>
                         </div>
-                    </div>
+                    </button>
                     <button onClick={() => setIsSidebarOpen(false)} className="p-2 text-slate-400 hover:text-slate-900 dark:hover:text-white">
                         <X size={24} />
                     </button>
