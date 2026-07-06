@@ -13,6 +13,7 @@ interface DashboardManagerProps {
   stockMovements: IceCreamStockMovement[];
   stock: IceCreamStock[];
   weightRevenue?: number;
+  weightTicket?: number;
   weightPA?: number;
 }
 
@@ -79,7 +80,7 @@ const KPICard = ({ label, value, target, icon: Icon, type = 'currency', mode = '
   );
 };
 
-const DashboardManager: React.FC<DashboardManagerProps> = ({ user, stores, performanceData, goalsData, sangrias, stockMovements, stock, weightRevenue = 50, weightPA = 50 }) => {
+const DashboardManager: React.FC<DashboardManagerProps> = ({ user, stores, performanceData, goalsData, sangrias, stockMovements, stock, weightRevenue = 50, weightTicket = 30, weightPA = 20 }) => {
   const currentMonthStr = useMemo(() => {
     const now = new Date();
     return `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`;
@@ -217,10 +218,14 @@ const DashboardManager: React.FC<DashboardManagerProps> = ({ user, stores, perfo
 
           const paTarget = Number(p?.paTarget || goal?.paTarget || 0);
           const pPA = calcPercent(paActual, paTarget, 'higher');
-          
+
+          const ticketTargetVal = Number(p?.ticketTarget || goal?.ticketTarget || 0);
+          const pTicket = calcPercent(tktActual, ticketTargetVal, 'higher');
+
           const wRev = weightRevenue / 100;
+          const wTicket = weightTicket / 100;
           const wPA = weightPA / 100;
-          const scoreFinal = (pF * wRev) + (pPA * wPA);
+          const scoreFinal = (pF * wRev) + (pTicket * wTicket) + (pPA * wPA);
 
           return {
               storeId,
@@ -241,7 +246,7 @@ const DashboardManager: React.FC<DashboardManagerProps> = ({ user, stores, perfo
       });
 
       return ranked.sort((a, b) => b.score - a.score);
-  }, [performanceData, goalsData, selectedMonth, stores, weightRevenue, weightPA]);
+  }, [performanceData, goalsData, selectedMonth, stores, weightRevenue, weightTicket, weightPA]);
 
   // 🆕 NOVO: Calcular médias da rede (sem expor valores absolutos)
   const networkAverages = useMemo(() => {
@@ -476,7 +481,8 @@ const DashboardManager: React.FC<DashboardManagerProps> = ({ user, stores, perfo
     };
 
     const otherMetricsWeight = (
-        (safeRatio(curr.paActual, curr.paTarget, 'higher') * 0.50)
+        (safeRatio(curr.paActual, curr.paTarget, 'higher') * (weightPA / 100)) +
+        (safeRatio(curr.ticketActual, curr.ticketTarget, 'higher') * (weightTicket / 100))
     );
 
     const targetScoreDecimal = target.score / 100;
@@ -579,7 +585,7 @@ const DashboardManager: React.FC<DashboardManagerProps> = ({ user, stores, perfo
                                 </div>
                                 <div>
                                     <h3 className="text-xs sm:text-sm font-black text-slate-900 dark:text-white uppercase italic tracking-tighter">Ranking <span className="text-blue-600 dark:text-blue-400">Ponderado</span></h3>
-                                    <p className="text-[8px] sm:text-[9px] font-bold text-slate-400 dark:text-slate-500 uppercase tracking-widest mt-0.5">Critério: {weightRevenue}% Meta / {weightPA}% P.A</p>
+                                    <p className="text-[8px] sm:text-[9px] font-bold text-slate-400 dark:text-slate-500 uppercase tracking-widest mt-0.5">Critério: {weightRevenue}% Meta / {weightTicket}% Ticket / {weightPA}% P.A</p>
                                 </div>
                             </div>
                         </div>
