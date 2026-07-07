@@ -1136,7 +1136,7 @@ export default function BuyOrderModule({ user }: { user?: User }) {
           `
           id, numero_pedido, marca, fornecedor, representante, telefone, email,
           fat_inicio, fat_fim, prazos, desconto, markup, user_name, user_role,
-          created_at, exported_at,
+          created_at, exported_at, status, central_status,
           buy_order_items (
             id, item_order, referencia, tipo, cor1, cor2, cor3, modelo, 
             total_pares, custo, preco_venda, grades,
@@ -1775,7 +1775,11 @@ function gradesArrayToObject(grades: any): Record<string, Record<string, number>
             </button>
             <button
               onClick={() => {
-                if (window.confirm("Deseja realmente cancelar este pedido? Todas as informações preenchidas serão perdidas.")) {
+                const isReviewingSavedOrder = !!editingOrderId && !!editingOrder;
+                const confirmMsg = isReviewingSavedOrder
+                  ? "Fechar sem salvar? Nenhuma alteração será gravada — o pedido continua exatamente como estava (inclusive se estiver em Stand By)."
+                  : "Deseja realmente cancelar este pedido? Todas as informações preenchidas serão perdidas.";
+                if (window.confirm(confirmMsg)) {
                   resetStateAndFetch();
                 }
               }}
@@ -1785,13 +1789,13 @@ function gradesArrayToObject(grades: any): Record<string, Record<string, number>
                 borderRadius: 6,
                 fontSize: 13,
                 cursor: "pointer",
-                border: "1px solid #fca5a5",
-                background: "#fef2f2",
-                color: "#dc2626",
+                border: (!!editingOrderId && !!editingOrder) ? "1px solid #d1d5db" : "1px solid #fca5a5",
+                background: (!!editingOrderId && !!editingOrder) ? "#f8fafc" : "#fef2f2",
+                color: (!!editingOrderId && !!editingOrder) ? "#374151" : "#dc2626",
                 fontWeight: 600,
               }}
             >
-              ✕ Cancelar Pedido
+              {(!!editingOrderId && !!editingOrder) ? "← Fechar sem salvar" : "✕ Cancelar Pedido"}
             </button>
           </div>
           <div

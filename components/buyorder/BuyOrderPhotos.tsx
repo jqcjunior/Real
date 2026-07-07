@@ -375,15 +375,53 @@ export const BuyOrderPhotos: React.FC<BuyOrderPhotosProps> = ({ currentUser }) =
     setRefSearchLoading(true);
     setRefSearchDone(false);
     try {
-      const { data, error } = await supabase
+      // 1) Fotos já cadastradas no catálogo mestre
+      const { data: catalogData, error: catalogError } = await supabase
         .from('product_catalog')
         .select('referencia, marca, cor1, tipo, modelo, image_url')
         .ilike('referencia', `%${term}%`)
-        .order('referencia', { ascending: true })
         .limit(24);
+      if (catalogError) throw catalogError;
 
-      if (error) throw error;
-      setRefSearchResults(data || []);
+      // 2) Busca em TODOS os pedidos/sub-pedidos, mesmo sem foto ainda
+      const { data: itemsData, error: itemsError } = await supabase
+        .from('buy_order_items')
+        .select('referencia, tipo, modelo, cor1, order_id, buy_orders(numero_pedido, marca, fornecedor, status)')
+        .ilike('referencia', `%${term}%`)
+        .limit(50);
+      if (itemsError) throw itemsError;
+
+      const catalogMap = new Map(
+        (catalogData || []).map(c => [`${c.referencia}_${c.cor1 || ''}`, c])
+      );
+
+      const merged = new Map<string, any>();
+
+      (itemsData || []).forEach((it: any) => {
+        const key = `${it.referencia}_${it.cor1 || ''}`;
+        const catalogEntry = catalogMap.get(key);
+        if (!merged.has(key)) {
+          merged.set(key, {
+            referencia: it.referencia,
+            cor1: it.cor1,
+            tipo: it.tipo,
+            modelo: it.modelo,
+            marca: catalogEntry?.marca || it.buy_orders?.marca || it.buy_orders?.fornecedor,
+            image_url: catalogEntry?.image_url || null,
+            order_id: it.order_id,
+            numero_pedido: it.buy_orders?.numero_pedido,
+            status: it.buy_orders?.status,
+          });
+        }
+      });
+
+      // Mantém no resultado fotos antigas do catálogo que não batem com nenhum pedido atual
+      (catalogData || []).forEach(c => {
+        const key = `${c.referencia}_${c.cor1 || ''}`;
+        if (!merged.has(key)) merged.set(key, c);
+      });
+
+      setRefSearchResults(Array.from(merged.values()));
       setRefSearchDone(true);
     } catch (err) {
       console.error('Erro na busca por referência:', err);
@@ -764,6 +802,18 @@ export const BuyOrderPhotos: React.FC<BuyOrderPhotosProps> = ({ currentUser }) =
                     </span>
                     <span className="text-[9px] text-slate-500 dark:text-slate-400 truncate">{item.marca}</span>
                     <span className="text-[9px] text-slate-400 dark:text-slate-500 uppercase truncate">COR: {item.cor1 || '—'}</span>
+                    {item.numero_pedido && !item.image_url && (
+                      <button
+                        onClick={() => {
+                          setSelectedOrderId(item.order_id);
+                          setHighlightReference(item.referencia);
+                          clearRefSearch();
+                        }}
+                        className="mt-1 text-[8px] font-bold text-indigo-600 hover:underline text-left"
+                      >
+                        ⚡ Pedido #{item.numero_pedido} — Ir e fotografar
+                      </button>
+                    )}
                   </div>
                 ))}
               </div>

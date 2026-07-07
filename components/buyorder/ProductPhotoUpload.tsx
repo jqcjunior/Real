@@ -1,5 +1,5 @@
 import React, { useRef, useState } from 'react';
-import { Camera } from 'lucide-react';
+import { Camera, X, RefreshCw } from 'lucide-react';
 import { SupabaseClient } from '@supabase/supabase-js';
 
 interface ProductPhotoUploadProps {
@@ -42,9 +42,9 @@ const resizeImage = (file: File, maxSize = 400): Promise<Blob> => {
 
 function sanitizePath(str: string): string {
   return str
-    .normalize('NFD') // divide caracteres acentuados em caractere + acento decomposto
-    .replace(/[\u0300-\u036f]/g, '') // remove acentos
-    .replace(/[^a-zA-Z0-9_\-\.\/]/g, '_') // caracteres especiais/espaços → underscore
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .replace(/[^a-zA-Z0-9_\-\.\/]/g, '_')
     .toLowerCase();
 }
 
@@ -54,6 +54,7 @@ const ProductPhotoUpload: React.FC<ProductPhotoUploadProps> = ({
   const inputRef = useRef<HTMLInputElement>(null);
   const [uploading, setUploading] = useState(false);
   const [preview, setPreview] = useState<string | null>(existingImageUrl || null);
+  const [zoomOpen, setZoomOpen] = useState(false);
 
   React.useEffect(() => {
     setPreview(existingImageUrl || null);
@@ -94,10 +95,10 @@ const ProductPhotoUpload: React.FC<ProductPhotoUploadProps> = ({
       <input ref={inputRef} type="file" accept="image/*" capture="environment"
         style={{ display: 'none' }} onChange={handleFileSelect} />
       {preview ? (
-        <img src={preview} alt="Produto" onClick={() => inputRef.current?.click()}
+        <img src={preview} alt="Produto" onClick={() => setZoomOpen(true)}
           style={{ width: 40, height: 40, objectFit: 'contain', background: '#f9fafb', borderRadius: 4,
-            border: '1px solid #e5e7eb', cursor: 'pointer' }}
-          title="Clique para trocar a foto" />
+            border: '1px solid #e5e7eb', cursor: 'zoom-in' }}
+          title="Clique para ampliar" />
       ) : (
         <button onClick={() => inputRef.current?.click()} disabled={uploading || !referencia}
           title={!referencia ? 'Preencha a referência primeiro' : 'Adicionar foto do produto'}
@@ -106,6 +107,73 @@ const ProductPhotoUpload: React.FC<ProductPhotoUploadProps> = ({
             display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
           {uploading ? '...' : <Camera size={16} color="#6b7280" />}
         </button>
+      )}
+
+      {/* Popup de visualização ampliada */}
+      {zoomOpen && preview && (
+        <div
+          onClick={() => setZoomOpen(false)}
+          style={{
+            position: 'fixed',
+            inset: 0,
+            background: 'rgba(15,23,42,0.75)',
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            zIndex: 1000,
+            padding: 24,
+            cursor: 'zoom-out',
+          }}
+        >
+          <div
+            onClick={(e) => e.stopPropagation()}
+            style={{
+              background: '#fff',
+              borderRadius: 12,
+              padding: 16,
+              maxWidth: 480,
+              width: '100%',
+              display: 'flex',
+              flexDirection: 'column',
+              gap: 12,
+              cursor: 'default',
+              boxShadow: '0 20px 60px rgba(0,0,0,0.35)',
+            }}
+          >
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+              <span style={{ fontSize: 13, fontWeight: 700, color: '#1e293b' }}>
+                {referencia || 'Produto'}{cor1 ? ` · ${cor1}` : ''}
+              </span>
+              <button
+                onClick={() => setZoomOpen(false)}
+                style={{
+                  border: 'none', background: '#f1f5f9', borderRadius: 6, width: 28, height: 28,
+                  display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer',
+                }}
+              >
+                <X size={16} color="#475569" />
+              </button>
+            </div>
+
+            <img
+              src={preview}
+              alt="Produto ampliado"
+              style={{ width: '100%', maxHeight: '60vh', objectFit: 'contain', background: '#f9fafb', borderRadius: 8 }}
+            />
+
+            <button
+              onClick={() => { setZoomOpen(false); inputRef.current?.click(); }}
+              disabled={uploading}
+              style={{
+                display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 6,
+                padding: '8px 12px', borderRadius: 8, border: '1px solid #d1d5db',
+                background: '#fff', color: '#374151', fontSize: 12, fontWeight: 600, cursor: 'pointer',
+              }}
+            >
+              <RefreshCw size={13} /> Trocar Foto
+            </button>
+          </div>
+        </div>
       )}
     </div>
   );
