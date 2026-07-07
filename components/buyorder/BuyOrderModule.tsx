@@ -1125,6 +1125,7 @@ export default function BuyOrderModule({ user }: { user?: User }) {
   }
 
   const [editingOrderId, setEditingOrderId] = useState<string | null>(null);
+  const [showCloseWizardConfirm, setShowCloseWizardConfirm] = useState(false);
   const [editingOrder, setEditingOrder] = useState<any>(null);
 
   const handleEditOrder = async (orderId: string) => {
@@ -1774,15 +1775,7 @@ function gradesArrayToObject(grades: any): Record<string, Record<string, number>
               ← Voltar
             </button>
             <button
-              onClick={() => {
-                const isReviewingSavedOrder = !!editingOrderId && !!editingOrder;
-                const confirmMsg = isReviewingSavedOrder
-                  ? "Fechar sem salvar? Nenhuma alteração será gravada — o pedido continua exatamente como estava (inclusive se estiver em Stand By)."
-                  : "Deseja realmente cancelar este pedido? Todas as informações preenchidas serão perdidas.";
-                if (window.confirm(confirmMsg)) {
-                  resetStateAndFetch();
-                }
-              }}
+              onClick={() => setShowCloseWizardConfirm(true)}
               style={{
                 height: 32,
                 padding: "0 14px",
@@ -2774,6 +2767,106 @@ function gradesArrayToObject(grades: any): Record<string, Record<string, number>
           </div>
         )}
       </div>
+      )}
+
+      {/* Modal de Fechar Wizard sem salvar */}
+      {showCloseWizardConfirm && (
+        <div
+          style={{
+            position: "fixed",
+            inset: 0,
+            background: "rgba(0,0,0,0.6)",
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "center",
+            zIndex: 200,
+          }}
+        >
+          <div
+            style={{
+              background: "#fff",
+              borderRadius: 10,
+              width: 400,
+              maxWidth: "90vw",
+              overflow: "hidden",
+            }}
+          >
+            <div
+              style={{
+                padding: "16px",
+                background: (!!editingOrderId && !!editingOrder) ? "#f0f9ff" : "#fef2f2",
+                borderBottom: (!!editingOrderId && !!editingOrder) ? "1px solid #bae6fd" : "1px solid #fecaca",
+              }}
+            >
+              <div
+                style={{
+                  fontSize: 16,
+                  fontWeight: 700,
+                  color: (!!editingOrderId && !!editingOrder) ? "#0369a1" : "#991b1b",
+                  textAlign: "center",
+                }}
+              >
+                {(!!editingOrderId && !!editingOrder) ? "Fechar sem salvar?" : "⚠️ Cancelar Pedido"}
+              </div>
+            </div>
+            <div style={{ padding: 20 }}>
+              <p
+                style={{
+                  fontSize: 13,
+                  color: "#374151",
+                  textAlign: "center",
+                }}
+              >
+                {(!!editingOrderId && !!editingOrder)
+                  ? "Nenhuma alteração será gravada — o pedido continua exatamente como estava (inclusive se estiver em Stand By)."
+                  : "Todas as informações preenchidas serão perdidas."}
+              </p>
+            </div>
+            <div
+              style={{
+                padding: "12px 16px",
+                borderTop: "0.5px solid #e5e7eb",
+                display: "flex",
+                justifyContent: "flex-end",
+                gap: 8,
+              }}
+            >
+              <button
+                onClick={() => setShowCloseWizardConfirm(false)}
+                style={{
+                  height: 32,
+                  padding: "0 16px",
+                  borderRadius: 6,
+                  border: "1px solid #d1d5db",
+                  background: "#fff",
+                  cursor: "pointer",
+                  fontSize: 12,
+                }}
+              >
+                Continuar Editando
+              </button>
+              <button
+                onClick={() => {
+                  setShowCloseWizardConfirm(false);
+                  resetStateAndFetch();
+                }}
+                style={{
+                  height: 32,
+                  padding: "0 16px",
+                  borderRadius: 6,
+                  border: "none",
+                  background: (!!editingOrderId && !!editingOrder) ? "#0369a1" : "#dc2626",
+                  color: "#fff",
+                  cursor: "pointer",
+                  fontSize: 12,
+                  fontWeight: 600,
+                }}
+              >
+                {(!!editingOrderId && !!editingOrder) ? "Fechar" : "❌ Cancelar Pedido"}
+              </button>
+            </div>
+          </div>
+        </div>
       )}
 
       {/* Modal de Confirmação de Exclusão */}
