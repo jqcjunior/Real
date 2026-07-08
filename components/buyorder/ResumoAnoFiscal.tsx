@@ -217,6 +217,11 @@ export const ResumoAnoFiscal: React.FC<ResumoAnoFiscalProps> = ({ user, stores, 
 
   useEffect(() => { if (selectedStore) loadData(selectedStore); }, [selectedStore, loadData]);
 
+  useEffect(() => {
+    setSimValor('');
+    setSimMesRefIdx(0);
+  }, [selectedStore]);
+
   const matriz = useMemo(() =>
     rollingMonths.map(({ mes, ano }) => {
       const m = painelData.find(i => i.mes === mes && i.ano === ano);
@@ -233,23 +238,44 @@ export const ResumoAnoFiscal: React.FC<ResumoAnoFiscalProps> = ({ user, stores, 
 
   const totais = useMemo(() => ({
     cota:  matriz.reduce((a, r) => a + r.cota, 0),
+    desp:  matriz.reduce((a, r) => a + r.desp, 0),
     real:  matriz.reduce((a, r) => a + r.real, 0),
     prev:  matriz.reduce((a, r) => a + r.prev, 0),
     comp:  matriz.reduce((a, r) => a + r.comp, 0),
     saldo: matriz.reduce((a, r) => a + r.saldo, 0),
   }), [matriz]);
 
+  const poderCompraMes = useMemo(() => {
+    return matriz.map((_, idx) => {
+      const mesesVencimento = [
+        idx + 3,
+        idx + 4,
+        idx + 5
+      ];
+
+      if (mesesVencimento.some(i => i >= matriz.length))
+        return null;
+
+      return {
+        total: mesesVencimento.reduce(
+          (soma, i) => soma + Math.max(matriz[i].saldo, 0),
+          0
+        ),
+        meses: mesesVencimento.map(i => matriz[i])
+      };
+    });
+  }, [matriz]);
+
   const simulacao = useMemo(() => {
     const valorNum = toNumber(simValor.replace(',', '.'));
     if (valorNum <= 0) return null;
 
-    const idxAlvo = [simMesRefIdx + 3, simMesRefIdx + 4, simMesRefIdx + 5];
-    const forasDaJanela = idxAlvo.some(i => i >= matriz.length);
-    if (forasDaJanela) {
+    const poderAtual = poderCompraMes[simMesRefIdx];
+    if (!poderAtual) {
       return { erro: 'Fora da janela de 12 meses visível. Escolha um mês de referência mais próximo.' };
     }
 
-    const mesesAlvo = idxAlvo.map(i => matriz[i]);
+    const mesesAlvo = poderAtual.meses;
     const valorIgual = valorNum / 3;
 
     const linhas = mesesAlvo.map(m => ({
@@ -262,10 +288,10 @@ export const ResumoAnoFiscal: React.FC<ResumoAnoFiscalProps> = ({ user, stores, 
 
     const algumEstoura = linhas.some(l => l.estoura);
     const maxIgual = Math.min(...mesesAlvo.map(m => m.saldo)) * 3;
-    const maxAbsoluto = mesesAlvo.reduce((a, m) => a + Math.max(m.saldo, 0), 0);
+    const maxAbsoluto = poderAtual.total;
 
     return { linhas, algumEstoura, maxIgual: Math.max(maxIgual, 0), maxAbsoluto, valorSolicitado: valorNum };
-  }, [simValor, simMesRefIdx, matriz]);
+  }, [simValor, simMesRefIdx, poderCompraMes]);
 
   const pedidosFiltrados = useMemo(() => pedidos.filter(p => {
     if (filtro === 'todos')      return true;
@@ -297,6 +323,8 @@ export const ResumoAnoFiscal: React.FC<ResumoAnoFiscalProps> = ({ user, stores, 
       </div>
     );
   };
+
+  const temFiltroSimulador = simValor !== '' || simMesRefIdx !== 0;
 
   return (
     <div className="space-y-4 pb-12">
@@ -389,15 +417,28 @@ export const ResumoAnoFiscal: React.FC<ResumoAnoFiscalProps> = ({ user, stores, 
           </div>
 
           <div className="bg-white border border-slate-200 rounded-xl overflow-hidden shadow-sm">
-            <button
-              onClick={() => setShowSimulador(s => !s)}
-              className="w-full flex items-center justify-between px-4 py-3 bg-slate-50 border-b border-slate-100 hover:bg-slate-100 transition-colors"
-            >
-              <span className="text-[10px] font-black uppercase tracking-widest text-slate-500">
-                🧮 Simulador de Compra
-              </span>
-              {showSimulador ? <ChevronUp className="w-4 h-4 text-slate-400" /> : <ChevronDown className="w-4 h-4 text-slate-400" />}
-            </button>
+            <div className="w-full flex items-center justify-between px-4 py-3 bg-slate-50 border-b border-slate-100 select-none">
+              <button
+                onClick={() => setShowSimulador(s => !s)}
+                className="flex items-center gap-2 cursor-pointer outline-none bg-transparent border-none p-0 text-left"
+              >
+                <span className="text-[10px] font-black uppercase tracking-widest text-slate-500">
+                  🧮 Simulador de Compra
+                </span>
+                {showSimulador ? <ChevronUp className="w-4 h-4 text-slate-400" /> : <ChevronDown className="w-4 h-4 text-slate-400" />}
+              </button>
+              {temFiltroSimulador && (
+                <button
+                  onClick={() => {
+                    setSimValor('');
+                    setSimMesRefIdx(0);
+                  }}
+                  className="px-2 py-1 text-[9px] font-black uppercase tracking-widest text-red-600 bg-red-50 border border-red-200 rounded hover:bg-red-100 transition-colors cursor-pointer"
+                >
+                  Limpar
+                </button>
+              )}
+            </div>
 
             {showSimulador && (
               <div className="p-4 space-y-4">
@@ -427,6 +468,16 @@ export const ResumoAnoFiscal: React.FC<ResumoAnoFiscalProps> = ({ user, stores, 
                         <option key={i} value={i}>{MONTH_NAMES[m.mes - 1]}/{m.ano}</option>
                       ))}
                     </select>
+                  </div>
+                </div>
+
+                <div className="bg-slate-50 border border-slate-200 rounded-xl p-3.5 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2">
+                  <div>
+                    <p className="text-[9px] font-black uppercase tracking-widest text-slate-400">💪 Poder de Compra</p>
+                    <p className="text-[10px] text-slate-400 mt-0.5">Soma do saldo disponível dos vencimentos de 90, 120 e 150 dias.</p>
+                  </div>
+                  <div className="text-[15px] font-black font-mono text-slate-800 shrink-0">
+                    {poderCompraMes[simMesRefIdx] ? fmt(poderCompraMes[simMesRefIdx]!.total) : '—'}
                   </div>
                 </div>
 
@@ -509,7 +560,7 @@ export const ResumoAnoFiscal: React.FC<ResumoAnoFiscalProps> = ({ user, stores, 
                   <tr className="border-b border-slate-100 bg-slate-50/50">
                     {[
                       'Mês Ref.','Cota Mensal','Despesas Legacy','Cota Real',
-                      'Cota Previsão','Total Comprometido','Saldo','Utilização'
+                      'Cota Previsão','Total Comprometido','Saldo','Poder Compra','Utilização'
                     ].map(h => (
                       <th key={h} className="px-4 py-2.5 text-[9px] font-black uppercase tracking-widest text-slate-400 whitespace-nowrap">
                         {h}
@@ -569,6 +620,12 @@ export const ResumoAnoFiscal: React.FC<ResumoAnoFiscalProps> = ({ user, stores, 
                           {fmt(row.saldo)}
                         </td>
 
+                        <td className={`px-4 py-3.5 font-mono font-black ${cur ? 'text-white' : 'text-slate-600'}`}>
+                          {poderCompraMes[idx] !== null && poderCompraMes[idx] !== undefined
+                            ? fmt(poderCompraMes[idx]!.total)
+                            : '—'}
+                        </td>
+
                         <td className="px-4 py-3.5">
                           {cur ? (
                             <div className="flex items-center gap-2 min-w-[90px]">
@@ -589,12 +646,14 @@ export const ResumoAnoFiscal: React.FC<ResumoAnoFiscalProps> = ({ user, stores, 
                   <tr className="border-t-2 border-slate-200 bg-slate-50 text-[11px] font-black text-slate-700">
                     <td className="px-4 py-3 uppercase tracking-wider text-slate-500">Total</td>
                     <td className="px-4 py-3 font-mono">{fmtK(totais.cota)}</td>
+                    <td className="px-4 py-3 font-mono text-orange-500">{totais.desp > 0 ? fmtK(totais.desp) : '—'}</td>
                     <td className="px-4 py-3 font-mono text-emerald-600">{fmtK(totais.real)}</td>
                     <td className="px-4 py-3 font-mono text-blue-500">{fmtK(totais.prev)}</td>
                     <td className="px-4 py-3 font-mono">{fmtK(totais.comp)}</td>
                     <td className={`px-4 py-3 font-mono ${totais.saldo<0?'text-red-600':'text-emerald-600'}`}>
                       {fmt(totais.saldo)}
                     </td>
+                    <td className="px-4 py-3 font-mono text-slate-400">—</td>
                     <td className="px-4 py-3 font-mono text-slate-500">
                       {totais.cota > 0 ? `${Math.round((totais.comp/totais.cota)*100)}%` : '0%'}
                     </td>
