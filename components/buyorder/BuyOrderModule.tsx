@@ -355,6 +355,8 @@ export default function BuyOrderModule({ user }: { user?: User }) {
     setupSession();
   }, [user]);
   const [prazosRaw, setPrazosRaw] = useState("");
+  const orderFormRef = useRef<HTMLDivElement>(null);
+  const [highlightHeader, setHighlightHeader] = useState(false);
   const [items, setItems] = useState<OrderItem[]>([]);
   const [pedidos, setPedidos] = useState<SubOrder[]>([]);
   const [saving, setSaving] = useState(false);
@@ -1196,13 +1198,29 @@ function gradesArrayToObject(grades: any): Record<string, Record<string, number>
 
     if (!isCopy) {
       setEditingOrder(order);
+      
+      setTimeout(() => {
+        orderFormRef.current?.scrollIntoView({
+          behavior: "smooth",
+          block: "start"
+        });
+      }, 100);
+
+      setHighlightHeader(true);
+      setTimeout(() => {
+        setHighlightHeader(false);
+      }, 2000);
     } else {
       setEditingOrder(null);
     }
 
+    const savedRole = (order.user_role === "gerente" || order.user_role === "manager")
+      ? "gerente"
+      : "comprador";
+
     // 1. Preencher Cabeçalho
     setCab({
-      role: order.user_role,
+      role: savedRole,
       brand_id: null,
       marca: order.marca,
       fornecedor: order.fornecedor,
@@ -1317,7 +1335,15 @@ function gradesArrayToObject(grades: any): Record<string, Record<string, number>
     setEditingOrderId(order.id);
     setNumeroPedidoSalvo(order.numero_pedido);
     
-    toast.info("📝 Pedido carregado - Revise cada etapa e salve");
+    if (!isCopy) {
+      if (order.status === "stand_by") {
+        toast.info("Pedido Stand By carregado para edição.");
+      } else {
+        toast.info(`Pedido #${order.numero_pedido} carregado para edição.`);
+      }
+    } else {
+      toast.info("📝 Pedido carregado - Revise cada etapa e salve");
+    }
   };
 
   const handleDeleteOrder = async (orderId: string) => {
@@ -1544,46 +1570,62 @@ function gradesArrayToObject(grades: any): Record<string, Record<string, number>
       {/* Header */}
       {!gerenteBloqueadoCriacao && (
         <div
+          ref={orderFormRef}
           style={{
-            background: "#fff",
-            border: "0.5px solid #e5e7eb",
+            background: highlightHeader ? "#eff6ff" : "#fff",
+            border: highlightHeader ? "1.5px solid #3b82f6" : "0.5px solid #e5e7eb",
             borderRadius: 10,
             overflow: "hidden",
+            transition: "all 0.5s ease",
           }}
         >
         {/* Título + role */}
         <div className="p-4 md:p-6 border-b flex flex-col md:flex-row md:items-center md:justify-between gap-4">
-          <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
-            {numeroPedidoSalvo ? (
-              <span style={{ fontSize: 15, fontWeight: 600 }}>
-                Pedido #{numeroPedidoSalvo}
+          <div className="flex flex-col gap-1.5">
+            <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+              {editingOrderId && editingOrder ? (
+                <span style={{ fontSize: 15, fontWeight: 600 }}>
+                  ✏️ Editando Pedido #{editingOrder.numero_pedido || numeroPedidoSalvo}
+                </span>
+              ) : (
+                <span style={{ fontSize: 15, fontWeight: 500 }} className="flex items-center gap-2">
+                  Novo pedido de compra
+                  {items.length > 0 && (
+                    <button
+                      onClick={resetStateAndFetch}
+                      className="text-[10px] text-red-600 hover:text-red-800 font-bold px-2 py-0.5 rounded hover:bg-red-50 border border-red-200 transition-colors ml-2"
+                      title="Descartar todos os dados e começar do zero"
+                    >
+                      Descartar
+                    </button>
+                  )}
+                </span>
+              )}
+              <span
+                style={{
+                  fontSize: 11,
+                  padding: "2px 8px",
+                  borderRadius: 20,
+                  background: cab.role === "comprador" ? "#E6F1FB" : "#EAF3DE",
+                  color: cab.role === "comprador" ? "#0C447C" : "#27500A",
+                  border: `0.5px solid ${cab.role === "comprador" ? "#B5D4F4" : "#C0DD97"}`,
+                }}
+              >
+                {cab.role === "comprador" ? "Modo Comprador" : "Modo Gerente"}
               </span>
-            ) : (
-              <span style={{ fontSize: 15, fontWeight: 500 }} className="flex items-center gap-2">
-                Novo pedido de compra
-                {items.length > 0 && (
-                  <button
-                    onClick={resetStateAndFetch}
-                    className="text-[10px] text-red-600 hover:text-red-800 font-bold px-2 py-0.5 rounded hover:bg-red-50 border border-red-200 transition-colors ml-2"
-                    title="Descartar todos os dados e começar do zero"
-                  >
-                    Descartar
-                  </button>
+            </div>
+            {editingOrderId && editingOrder && (
+              <div className="flex items-center gap-2 mt-1">
+                <span className="text-[10px] font-bold px-2.5 py-0.5 rounded bg-blue-50 text-blue-700 border border-blue-200 uppercase tracking-wider">
+                  Modo Edição
+                </span>
+                {editingOrder?.status === "stand_by" && (
+                  <span className="text-[10px] font-bold px-2.5 py-0.5 rounded bg-amber-50 text-amber-700 border border-amber-200 uppercase tracking-wider animate-pulse">
+                    Stand By
+                  </span>
                 )}
-              </span>
+              </div>
             )}
-            <span
-              style={{
-                fontSize: 11,
-                padding: "2px 8px",
-                borderRadius: 20,
-                background: cab.role === "comprador" ? "#E6F1FB" : "#EAF3DE",
-                color: cab.role === "comprador" ? "#0C447C" : "#27500A",
-                border: `0.5px solid ${cab.role === "comprador" ? "#B5D4F4" : "#C0DD97"}`,
-              }}
-            >
-              {cab.role === "comprador" ? "Modo Comprador" : "Modo Gerente"}
-            </span>
           </div>
           {String(user?.role || "").toUpperCase() === "ADMIN" && (
             <div style={{ display: "flex", gap: 5 }}>
