@@ -7,7 +7,6 @@ import { Loader2, RefreshCw, ChevronDown, ChevronUp, Mail, Store } from 'lucide-
 
 const MONTH_NAMES = ["Jan","Fev","Mar","Abr","Mai","Jun","Jul","Ago","Set","Out","Nov","Dez"];
 
-// Lista definitiva de lojas — hardcoded para garantir exibição independente da prop stores
 const TODAS_LOJAS: { number: string; city: string }[] = [
   { number: "5",   city: "Petrolina"     },
   { number: "8",   city: "Catu"          },
@@ -28,8 +27,6 @@ const TODAS_LOJAS: { number: string; city: string }[] = [
   { number: "102", city: "Itamaraju"     },
   { number: "109", city: "C. Jacuípe"    },
 ];
-
-// ─── Helpers ───────────────────────────────────────────────────────────────────
 
 const toNumber = (v: any): number => {
   if (v === null || v === undefined) return 0;
@@ -55,13 +52,6 @@ const fmtDate = (d: string | null | undefined): string => {
   return p.length === 3 ? `${p[2]}/${p[1]}/${p[0].slice(2)}` : d;
 };
 
-
-
-// ─── Semáforo ─────────────────────────────────────────────────────────────────
-//  🟢 Verde   = exportado + central_status: cadastrado  → na central
-//  🟡 Amarelo = exportado + central_status: exportado   → aguard. cadastro
-//  🔴 Vermelho = rascunho | confirmado                  → só digitado
-
 interface Sem { dot: string; bg: string; border: string; color: string; label: string; }
 
 const getSem = (status: string, cs: string): Sem => {
@@ -73,8 +63,6 @@ const getSem = (status: string, cs: string): Sem => {
     return { dot:'bg-amber-400',   bg:'bg-amber-50',   border:'border-amber-200',   color:'text-amber-700',   label:'Ag. Cadastro' };
   return   { dot:'bg-red-500',     bg:'bg-red-50',     border:'border-red-200',     color:'text-red-700',     label: s === 'confirmado' ? 'Confirmado' : 'Rascunho' };
 };
-
-// ─── Interfaces ────────────────────────────────────────────────────────────────
 
 interface PainelItem {
   mes: number; ano: number; store_number: string;
@@ -93,8 +81,6 @@ interface Pedido {
 
 interface ResumoAnoFiscalProps { user: any; stores: any[]; supabase: any; }
 
-// ─── Componente ───────────────────────────────────────────────────────────────
-
 export const ResumoAnoFiscal: React.FC<ResumoAnoFiscalProps> = ({ user, stores, supabase }) => {
 
   const [selectedStore, setSelectedStore] = useState<string>('5');
@@ -105,11 +91,13 @@ export const ResumoAnoFiscal: React.FC<ResumoAnoFiscalProps> = ({ user, stores, 
   const [expandedId, setExpandedId]       = useState<string | null>(null);
   const [filtro, setFiltro]               = useState<'todos'|'cadastrado'|'exportado'|'rascunho'>('todos');
 
-  // Rola permissão: gerente fica preso na própria loja
+  const [simValor, setSimValor]           = useState<string>('');
+  const [simMesRefIdx, setSimMesRefIdx]   = useState<number>(0);
+  const [showSimulador, setShowSimulador] = useState<boolean>(false);
+
   const isAdmin = useMemo(() =>
     ['admin','super_admin','comprador'].includes((user?.role || '').toLowerCase()), [user]);
 
-  // Lojas disponíveis: usa TODAS_LOJAS, mas cruza com stores prop se disponível para pegar status
   const lojas = useMemo(() => {
     if (!stores || stores.length === 0) return TODAS_LOJAS;
     const ativos = new Set(
@@ -117,13 +105,11 @@ export const ResumoAnoFiscal: React.FC<ResumoAnoFiscalProps> = ({ user, stores, 
         .filter(s => !s.status || s.status === 'active')
         .map(s => String(s.number))
     );
-    // se stores veio com dados, filtra; senão usa hardcoded completo
     return ativos.size > 0
       ? TODAS_LOJAS.filter(l => ativos.has(l.number))
       : TODAS_LOJAS;
   }, [stores]);
 
-  // Loja inicial — gerente fica na sua, admin começa na 5
   useEffect(() => {
     if (isAdmin) {
       setSelectedStore(prev => prev || '5');
@@ -133,7 +119,6 @@ export const ResumoAnoFiscal: React.FC<ResumoAnoFiscalProps> = ({ user, stores, 
     }
   }, [isAdmin, user, stores]);
 
-  // Janela de 12 meses rolantes
   const rollingMonths = useMemo(() => {
     const now = new Date();
     let m = now.getMonth() + 1, y = now.getFullYear();
@@ -144,11 +129,9 @@ export const ResumoAnoFiscal: React.FC<ResumoAnoFiscalProps> = ({ user, stores, 
     });
   }, []);
 
-  // Info da loja selecionada
   const lojaInfo = useMemo(() =>
     TODAS_LOJAS.find(l => l.number === selectedStore), [selectedStore]);
 
-  // ── Carga ────────────────────────────────────────────────────────────────────
   const loadData = useCallback(async (store: string, isRefresh = false) => {
     if (!store) return;
     isRefresh ? setRefreshing(true) : setLoading(true);
@@ -160,7 +143,6 @@ export const ResumoAnoFiscal: React.FC<ResumoAnoFiscalProps> = ({ user, stores, 
       const cy = now.getFullYear();
       const cm = now.getMonth() + 1;
 
-      // Painel cotas — 3 anos de cobertura
       const painelP = [cy, cy+1, cy+2].map(y =>
         supabase.rpc('get_cotas_painel', {
           p_ano: y,
@@ -170,13 +152,11 @@ export const ResumoAnoFiscal: React.FC<ResumoAnoFiscalProps> = ({ user, stores, 
         })
       );
 
-      // Pedidos — todos; filtraremos por loja via sub_orders
       const pedidosP = supabase
         .from('buy_orders')
         .select('id,numero_pedido,marca,fornecedor,representante,status,central_status,fat_inicio,fat_fim,vencimentos,prazos,export_count,exported_at,created_at,email,email_representante')
         .order('numero_pedido', { ascending: false });
 
-      // Sub-orders — para identificar lojas e totais
       const subP = supabase
         .from('buy_order_sub_orders')
         .select('order_id,total_pares,valor_bruto,lojas_numeros');
@@ -187,10 +167,8 @@ export const ResumoAnoFiscal: React.FC<ResumoAnoFiscalProps> = ({ user, stores, 
         subP
       ]);
 
-      // Painel
       setPainelData(painelRes.flatMap((r: any) => r.data || []));
 
-      // Mapa de sub_orders por order_id
       const storeNum = parseInt(store, 10);
       type SubAgg = { total_pares: number; valor: number; lojas: Set<number> };
       const subMap = new Map<string, SubAgg>();
@@ -211,7 +189,6 @@ export const ResumoAnoFiscal: React.FC<ResumoAnoFiscalProps> = ({ user, stores, 
         }
       }
 
-      // Pedidos da loja selecionada
       const filtered: Pedido[] = (pedidosRes.data || [])
         .filter((p: any) => {
           const agg = subMap.get(p.id);
@@ -240,11 +217,8 @@ export const ResumoAnoFiscal: React.FC<ResumoAnoFiscalProps> = ({ user, stores, 
 
   useEffect(() => { if (selectedStore) loadData(selectedStore); }, [selectedStore, loadData]);
 
-  // ── Matriz mensal 90/120/150 ──────────────────────────────────────────────────
   const matriz = useMemo(() =>
     rollingMonths.map(({ mes, ano }) => {
-      // Cada linha = dados diretos do mês de referência
-      // A RPC já calcula as parcelas por mês internamente
       const m = painelData.find(i => i.mes === mes && i.ano === ano);
       const cota    = toNumber(m?.valor_cota);
       const desp    = toNumber(m?.despesas_legacy);
@@ -257,7 +231,6 @@ export const ResumoAnoFiscal: React.FC<ResumoAnoFiscalProps> = ({ user, stores, 
     }),
   [rollingMonths, painelData]);
 
-  // Totais
   const totais = useMemo(() => ({
     cota:  matriz.reduce((a, r) => a + r.cota, 0),
     real:  matriz.reduce((a, r) => a + r.real, 0),
@@ -266,7 +239,34 @@ export const ResumoAnoFiscal: React.FC<ResumoAnoFiscalProps> = ({ user, stores, 
     saldo: matriz.reduce((a, r) => a + r.saldo, 0),
   }), [matriz]);
 
-  // Pedidos filtrados
+  const simulacao = useMemo(() => {
+    const valorNum = toNumber(simValor.replace(',', '.'));
+    if (valorNum <= 0) return null;
+
+    const idxAlvo = [simMesRefIdx + 3, simMesRefIdx + 4, simMesRefIdx + 5];
+    const forasDaJanela = idxAlvo.some(i => i >= matriz.length);
+    if (forasDaJanela) {
+      return { erro: 'Fora da janela de 12 meses visível. Escolha um mês de referência mais próximo.' };
+    }
+
+    const mesesAlvo = idxAlvo.map(i => matriz[i]);
+    const valorIgual = valorNum / 3;
+
+    const linhas = mesesAlvo.map(m => ({
+      mes: m.mes, ano: m.ano,
+      saldoAtual: m.saldo,
+      consumoSimulado: valorIgual,
+      saldoDepois: m.saldo - valorIgual,
+      estoura: (m.saldo - valorIgual) < 0,
+    }));
+
+    const algumEstoura = linhas.some(l => l.estoura);
+    const maxIgual = Math.min(...mesesAlvo.map(m => m.saldo)) * 3;
+    const maxAbsoluto = mesesAlvo.reduce((a, m) => a + Math.max(m.saldo, 0), 0);
+
+    return { linhas, algumEstoura, maxIgual: Math.max(maxIgual, 0), maxAbsoluto, valorSolicitado: valorNum };
+  }, [simValor, simMesRefIdx, matriz]);
+
   const pedidosFiltrados = useMemo(() => pedidos.filter(p => {
     if (filtro === 'todos')      return true;
     if (filtro === 'cadastrado') return p.status === 'exportado' && p.central_status === 'cadastrado';
@@ -282,7 +282,6 @@ export const ResumoAnoFiscal: React.FC<ResumoAnoFiscalProps> = ({ user, stores, 
     rascunho:   pedidos.filter(p => p.status!=='exportado').length,
   }), [pedidos]);
 
-  // Barra de utilização
   const PctBar = ({ pct }: { pct: number }) => {
     const cap = Math.min(pct, 100);
     const color = pct >= 100 ? 'bg-red-500' : pct >= 85 ? 'bg-amber-400' : 'bg-emerald-400';
@@ -299,14 +298,9 @@ export const ResumoAnoFiscal: React.FC<ResumoAnoFiscalProps> = ({ user, stores, 
     );
   };
 
-  // ─────────────────────────────────────────────────────────────────────────────
-  // RENDER
-  // ─────────────────────────────────────────────────────────────────────────────
-
   return (
     <div className="space-y-4 pb-12">
 
-      {/* ══ CABEÇALHO + BOTÃO ATUALIZAR ═══════════════════════════════════════ */}
       <div className="flex items-center justify-between">
         <div>
           <h2 className="text-base font-black text-slate-800 tracking-tight">Central de Cotas</h2>
@@ -327,10 +321,8 @@ export const ResumoAnoFiscal: React.FC<ResumoAnoFiscalProps> = ({ user, stores, 
         </button>
       </div>
 
-      {/* ══ SELETOR DE LOJAS — sempre visível para admin/comprador ══════════════ */}
       {isAdmin && (
         <div className="bg-white border border-slate-200 rounded-xl shadow-sm overflow-hidden">
-          {/* Título da seção */}
           <div className="flex items-center gap-2 px-4 py-2.5 border-b border-slate-100 bg-slate-50">
             <Store className="w-3.5 h-3.5 text-slate-400" />
             <span className="text-[10px] font-black uppercase tracking-widest text-slate-400">
@@ -343,7 +335,6 @@ export const ResumoAnoFiscal: React.FC<ResumoAnoFiscalProps> = ({ user, stores, 
             )}
           </div>
 
-          {/* Grid de lojas */}
           <div className="p-3 flex flex-wrap gap-2">
             {lojas.map(loja => {
               const sel = loja.number === selectedStore;
@@ -371,7 +362,6 @@ export const ResumoAnoFiscal: React.FC<ResumoAnoFiscalProps> = ({ user, stores, 
         </div>
       )}
 
-      {/* ══ LOADING ═══════════════════════════════════════════════════════════ */}
       {loading ? (
         <div className="flex flex-col items-center justify-center py-24 gap-3">
           <Loader2 className="w-7 h-7 animate-spin text-slate-300" />
@@ -380,7 +370,6 @@ export const ResumoAnoFiscal: React.FC<ResumoAnoFiscalProps> = ({ user, stores, 
       ) : (
         <>
 
-          {/* ══ BLOCO 1 — CARDS DE RESUMO ═════════════════════════════════════ */}
           <div className="grid grid-cols-2 lg:grid-cols-5 gap-3">
             {([
               { k:'Cota Total',    v:totais.cota,  color:'text-slate-800', sub:'Orçamento 12 meses' },
@@ -399,7 +388,112 @@ export const ResumoAnoFiscal: React.FC<ResumoAnoFiscalProps> = ({ user, stores, 
             ))}
           </div>
 
-          {/* ══ BLOCO 2 — MATRIZ MENSAL ═══════════════════════════════════════ */}
+          <div className="bg-white border border-slate-200 rounded-xl overflow-hidden shadow-sm">
+            <button
+              onClick={() => setShowSimulador(s => !s)}
+              className="w-full flex items-center justify-between px-4 py-3 bg-slate-50 border-b border-slate-100 hover:bg-slate-100 transition-colors"
+            >
+              <span className="text-[10px] font-black uppercase tracking-widest text-slate-500">
+                🧮 Simulador de Compra
+              </span>
+              {showSimulador ? <ChevronUp className="w-4 h-4 text-slate-400" /> : <ChevronDown className="w-4 h-4 text-slate-400" />}
+            </button>
+
+            {showSimulador && (
+              <div className="p-4 space-y-4">
+                <div className="flex flex-col sm:flex-row gap-3">
+                  <div className="flex-1">
+                    <label className="text-[9px] font-black uppercase tracking-widest text-slate-400 block mb-1">
+                      Valor do Pedido
+                    </label>
+                    <input
+                      type="text"
+                      value={simValor}
+                      onChange={e => setSimValor(e.target.value)}
+                      placeholder="Ex: 90000"
+                      className="w-full px-3 py-2 border border-slate-200 rounded-lg text-sm font-mono font-bold text-slate-700 outline-none focus:border-slate-400"
+                    />
+                  </div>
+                  <div className="flex-1">
+                    <label className="text-[9px] font-black uppercase tracking-widest text-slate-400 block mb-1">
+                      Mês da Compra
+                    </label>
+                    <select
+                      value={simMesRefIdx}
+                      onChange={e => setSimMesRefIdx(Number(e.target.value))}
+                      className="w-full px-3 py-2 border border-slate-200 rounded-lg text-sm font-bold text-slate-700 outline-none focus:border-slate-400"
+                    >
+                      {rollingMonths.map((m, i) => (
+                        <option key={i} value={i}>{MONTH_NAMES[m.mes - 1]}/{m.ano}</option>
+                      ))}
+                    </select>
+                  </div>
+                </div>
+
+                {simulacao?.erro && (
+                  <div className="bg-amber-50 border border-amber-200 rounded-lg px-3 py-2 text-[11px] font-semibold text-amber-700">
+                    {simulacao.erro}
+                  </div>
+                )}
+
+                {simulacao && !simulacao.erro && (
+                  <>
+                    <div className="overflow-x-auto">
+                      <table className="w-full text-left border-collapse min-w-[520px]">
+                        <thead>
+                          <tr className="border-b border-slate-100 bg-slate-50/50">
+                            {['Mês Alvo','Saldo Atual','Consumo Simulado','Saldo Depois','Status'].map(h => (
+                              <th key={h} className="px-3 py-2 text-[9px] font-black uppercase tracking-widest text-slate-400 whitespace-nowrap">{h}</th>
+                            ))}
+                          </tr>
+                        </thead>
+                        <tbody>
+                          {simulacao.linhas!.map((l, i) => (
+                            <tr key={i} className={`border-b text-[12px] ${l.estoura ? 'bg-red-50' : ''}`}>
+                              <td className="px-3 py-2.5 font-black text-slate-700 whitespace-nowrap">
+                                {MONTH_NAMES[l.mes-1]}/{String(l.ano).slice(-2)}
+                              </td>
+                              <td className="px-3 py-2.5 font-mono text-slate-600">{fmt(l.saldoAtual)}</td>
+                              <td className="px-3 py-2.5 font-mono text-blue-600">{fmt(l.consumoSimulado)}</td>
+                              <td className={`px-3 py-2.5 font-mono font-black ${l.estoura ? 'text-red-600' : 'text-emerald-600'}`}>
+                                {fmt(l.saldoDepois)}
+                              </td>
+                              <td className="px-3 py-2.5">
+                                {l.estoura
+                                  ? <span className="text-[9px] font-black text-red-600 bg-red-100 px-2 py-0.5 rounded-full">🔴 Estoura</span>
+                                  : <span className="text-[9px] font-black text-emerald-600 bg-emerald-100 px-2 py-0.5 rounded-full">🟢 Cabe</span>}
+                              </td>
+                            </tr>
+                          ))}
+                        </tbody>
+                      </table>
+                    </div>
+
+                    {simulacao.algumEstoura ? (
+                      <div className="bg-red-50 border border-red-200 rounded-lg p-3 space-y-1.5">
+                        <p className="text-[11px] font-black text-red-700">
+                          ⚠️ Este pedido de {fmt(simulacao.valorSolicitado!)} não cabe integralmente na cota dos 3 meses.
+                        </p>
+                        <p className="text-[11px] text-red-600">
+                          <strong>Máximo com divisão igual entre os 3 meses:</strong> {fmt(simulacao.maxIgual!)}
+                        </p>
+                        <p className="text-[11px] text-red-600">
+                          <strong>Máximo absoluto (aceitando distribuição desigual):</strong> {fmt(simulacao.maxAbsoluto!)}
+                        </p>
+                      </div>
+                    ) : (
+                      <div className="bg-emerald-50 border border-emerald-200 rounded-lg p-3">
+                        <p className="text-[11px] font-black text-emerald-700">
+                          ✅ Pedido de {fmt(simulacao.valorSolicitado!)} cabe integralmente nos 3 meses de vencimento.
+                        </p>
+                      </div>
+                    )}
+                  </>
+                )}
+              </div>
+            )}
+          </div>
+
           <div className="bg-white border border-slate-200 rounded-xl overflow-hidden shadow-sm">
             <div className="px-4 py-2.5 border-b border-slate-100 bg-slate-50 flex items-center justify-between">
               <h3 className="text-[10px] font-black uppercase tracking-widest text-slate-400">
@@ -437,7 +531,6 @@ export const ResumoAnoFiscal: React.FC<ResumoAnoFiscalProps> = ({ user, stores, 
                                    'hover:bg-slate-50'
                           }`}>
 
-                        {/* Mês */}
                         <td className="px-4 py-3.5 font-black whitespace-nowrap">
                           <span className={cur ? 'text-white' : 'text-slate-700'}>
                             {MONTH_NAMES[row.mes-1]}/{String(row.ano).slice(-2)}
@@ -449,32 +542,26 @@ export const ResumoAnoFiscal: React.FC<ResumoAnoFiscalProps> = ({ user, stores, 
                           )}
                         </td>
 
-                        {/* Cota */}
                         <td className={`px-4 py-3.5 font-mono font-semibold ${cur?'text-slate-300':'text-slate-600'}`}>
                           {fmtK(row.cota)}
                         </td>
 
-                        {/* Despesas Legacy */}
                         <td className={`px-4 py-3.5 font-mono font-semibold ${cur?'text-orange-300':'text-orange-500'}`}>
                           {row.desp > 0 ? fmtK(row.desp) : <span className={cur?'text-slate-600':'text-slate-300'}>—</span>}
                         </td>
 
-                        {/* Real */}
                         <td className={`px-4 py-3.5 font-mono font-semibold ${cur?'text-emerald-300':'text-emerald-600'}`}>
                           {row.real > 0 ? fmtK(row.real) : <span className={cur?'text-slate-600':'text-slate-300'}>—</span>}
                         </td>
 
-                        {/* Previsão */}
                         <td className={`px-4 py-3.5 font-mono font-semibold ${cur?'text-blue-300':'text-blue-500'}`}>
                           {row.prev > 0 ? fmtK(row.prev) : <span className={cur?'text-slate-600':'text-slate-300'}>—</span>}
                         </td>
 
-                        {/* Comprometido */}
                         <td className={`px-4 py-3.5 font-mono font-bold ${cur?'text-slate-200':'text-slate-800'}`}>
                           {row.comp > 0 ? fmtK(row.comp) : <span className={cur?'text-slate-600':'text-slate-300'}>—</span>}
                         </td>
 
-                        {/* Saldo */}
                         <td className={`px-4 py-3.5 font-mono font-black ${
                           cur  ? (neg ? 'text-red-300' : 'text-emerald-300') :
                           neg  ? 'text-red-600' : 'text-emerald-600'
@@ -482,7 +569,6 @@ export const ResumoAnoFiscal: React.FC<ResumoAnoFiscalProps> = ({ user, stores, 
                           {fmt(row.saldo)}
                         </td>
 
-                        {/* Utilização */}
                         <td className="px-4 py-3.5">
                           {cur ? (
                             <div className="flex items-center gap-2 min-w-[90px]">
@@ -518,10 +604,8 @@ export const ResumoAnoFiscal: React.FC<ResumoAnoFiscalProps> = ({ user, stores, 
             </div>
           </div>
 
-          {/* ══ BLOCO 3 — LISTA DE PEDIDOS ════════════════════════════════════ */}
           <div className="bg-white border border-slate-200 rounded-xl overflow-hidden shadow-sm">
 
-            {/* Header + filtros semáforo */}
             <div className="px-4 py-3 border-b border-slate-100 bg-slate-50 flex flex-wrap items-center gap-3">
               <h3 className="text-[10px] font-black uppercase tracking-widest text-slate-400 mr-auto">
                 Pedidos · Loja {selectedStore} {lojaInfo ? `· ${lojaInfo.city}` : ''}
@@ -552,7 +636,6 @@ export const ResumoAnoFiscal: React.FC<ResumoAnoFiscalProps> = ({ user, stores, 
               </div>
             </div>
 
-            {/* Tabela de pedidos */}
             {pedidosFiltrados.length === 0 ? (
               <div className="py-16 text-center">
                 <p className="text-[11px] font-black text-slate-300 uppercase tracking-widest">
@@ -587,23 +670,19 @@ export const ResumoAnoFiscal: React.FC<ResumoAnoFiscalProps> = ({ user, stores, 
                             onClick={() => setExpandedId(exp ? null : ped.id)}
                             className="border-b border-slate-50 hover:bg-slate-50/60 transition-colors text-[12px] cursor-pointer"
                           >
-                            {/* Semáforo dot */}
                             <td className="pl-4 py-3.5">
                               <span className={`w-2.5 h-2.5 rounded-full inline-block ${sem.dot}`} title={sem.label} />
                             </td>
 
-                            {/* Número */}
                             <td className="px-3 py-3.5 font-black text-slate-700 tabular-nums whitespace-nowrap">
                               #{ped.numero_pedido}
                             </td>
 
-                            {/* Marca / Fornecedor */}
                             <td className="px-3 py-3.5 min-w-[140px]">
                               <p className="font-black text-slate-800 text-[12px] uppercase leading-tight">{ped.marca}</p>
                               <p className="text-[10px] text-slate-400 font-semibold mt-0.5 leading-tight">{ped.fornecedor}</p>
                             </td>
 
-                            {/* Faturamento */}
                             <td className="px-3 py-3.5 text-slate-500 font-medium whitespace-nowrap text-[11px]">
                               {fmtDate(ped.fat_inicio)}
                               {ped.fat_fim && ped.fat_fim !== ped.fat_inicio && (
@@ -611,7 +690,6 @@ export const ResumoAnoFiscal: React.FC<ResumoAnoFiscalProps> = ({ user, stores, 
                               )}
                             </td>
 
-                            {/* Vencimentos */}
                             <td className="px-3 py-3.5 text-[11px]">
                               {venc.length > 0 ? (
                                 <div className="flex flex-col gap-0.5">
@@ -625,17 +703,14 @@ export const ResumoAnoFiscal: React.FC<ResumoAnoFiscalProps> = ({ user, stores, 
                               ) : <span className="text-slate-300">—</span>}
                             </td>
 
-                            {/* Pares */}
                             <td className="px-3 py-3.5 font-mono font-bold text-slate-700 text-right tabular-nums">
                               {(ped.total_pares||0).toLocaleString('pt-BR')}
                             </td>
 
-                            {/* Valor */}
                             <td className="px-3 py-3.5 font-mono font-black text-slate-800 text-right tabular-nums whitespace-nowrap">
                               {fmt(ped.valor_bruto_total||0)}
                             </td>
 
-                            {/* Badge */}
                             <td className="px-3 py-3.5">
                               <span className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[9px] font-black border ${sem.bg} ${sem.color} ${sem.border}`}>
                                 <span className={`w-1 h-1 rounded-full ${sem.dot}`} />
@@ -643,19 +718,16 @@ export const ResumoAnoFiscal: React.FC<ResumoAnoFiscalProps> = ({ user, stores, 
                               </span>
                             </td>
 
-                            {/* Toggle */}
                             <td className="pr-4 py-3.5 text-slate-300">
                               {exp ? <ChevronUp className="w-3.5 h-3.5"/> : <ChevronDown className="w-3.5 h-3.5"/>}
                             </td>
                           </tr>
 
-                          {/* Linha expandida */}
                           {exp && (
                             <tr className="border-b border-slate-100 bg-slate-50/80">
                               <td colSpan={9} className="px-8 py-4">
                                 <div className="flex flex-wrap gap-8 items-start text-[11px]">
 
-                                  {/* Detalhes gerais */}
                                   <div className="space-y-1.5 min-w-[180px]">
                                     <p className="text-[9px] font-black uppercase tracking-widest text-slate-400 mb-2">Detalhes</p>
                                     {ped.representante && (
@@ -674,7 +746,6 @@ export const ResumoAnoFiscal: React.FC<ResumoAnoFiscalProps> = ({ user, stores, 
                                     )}
                                   </div>
 
-                                  {/* Parcelas */}
                                   {venc.length > 0 && (
                                     <div className="space-y-1.5 min-w-[150px]">
                                       <p className="text-[9px] font-black uppercase tracking-widest text-slate-400 mb-2">Parcelas</p>
@@ -689,7 +760,6 @@ export const ResumoAnoFiscal: React.FC<ResumoAnoFiscalProps> = ({ user, stores, 
                                     </div>
                                   )}
 
-                                  {/* Botão e-mail */}
                                   <div className="ml-auto self-center">
                                     {canMail ? (
                                       <a
@@ -719,7 +789,6 @@ export const ResumoAnoFiscal: React.FC<ResumoAnoFiscalProps> = ({ user, stores, 
               </div>
             )}
 
-            {/* Rodapé totais */}
             {pedidosFiltrados.length > 0 && (
               <div className="px-4 py-3 border-t border-slate-100 bg-slate-50 flex items-center justify-between text-[11px] font-semibold text-slate-500">
                 <span>
