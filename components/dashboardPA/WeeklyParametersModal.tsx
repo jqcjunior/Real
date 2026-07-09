@@ -553,6 +553,9 @@ export const WeeklyParametersModal: React.FC<WeeklyParametersModalProps> = ({ st
             </div>
             <div>
               <div className="relative flex items-center bg-slate-50 dark:bg-slate-800/40 hover:bg-slate-100 dark:hover:bg-slate-800 border border-slate-200 dark:border-slate-700/80 rounded-lg px-2.5 py-1 pr-8 transition-colors">
+                <span className="text-sm sm:text-base font-black text-slate-900 dark:text-white uppercase italic tracking-tight whitespace-nowrap mr-1">
+                  Configurar Metas —
+                </span>
                 <select
                   value={selectedWeek?.id}
                   onChange={(e) => onWeekChange?.(e.target.value)}
@@ -567,7 +570,7 @@ export const WeeklyParametersModal: React.FC<WeeklyParametersModalProps> = ({ st
                         value={week.id}
                         className="text-slate-900 dark:text-slate-100 bg-white dark:bg-slate-900 font-normal not-italic text-sm"
                       >
-                        Configurar Metas — {formatPeriod(week)}
+                        {formatPeriod(week)}
                       </option>
                     ))}
                 </select>
