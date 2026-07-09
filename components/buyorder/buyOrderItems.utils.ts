@@ -308,6 +308,15 @@ export async function fetchPreviousPrice(referencia: string): Promise<number | n
 // HELPER: Mapear tipo do frontend para modelo do banco
 // ─────────────────────────────────────────────
  
+// Palavras-chave de tipos de produto que são ACESSÓRIOS mas não contêm "ACES" no nome
+const ACESSORIO_KEYWORDS = [
+  'FRASQUEIRA', 'BOLSA', 'MOCHILA', 'CARTEIRA', 'CINTO', 'NECESSAIRE',
+  'BONE', 'BONÉ', 'TOUCA', 'MEIA', 'MEIAS', 'OCULOS', 'ÓCULOS',
+  'RELOGIO', 'RELÓGIO', 'PULSEIRA', 'CHAVEIRO', 'LENCO', 'LENÇO',
+  'ECOBAG', 'SHOPPER', 'POCHETE', 'MALA', 'PORTA-CARTAO', 'PORTA CARTAO',
+  'PORTA-MOEDAS', 'PORTA MOEDAS', 'CARTEIRINHA'
+];
+
 /**
  * Converte tipo legível para código aceito pelo banco.
  * 
@@ -323,6 +332,9 @@ export function tipoParaModelo(tipo: string): ModeloValido {
  
   // Infantil feminino/masculino → INF
   if (t.includes('INFANT')) return 'INF';
+
+  // Tipos de acessório conhecidos que não contêm "ACES" no nome
+  if (ACESSORIO_KEYWORDS.some(keyword => t.includes(keyword))) return 'ACES';
  
   throw new Error(`Não foi possível mapear tipo "${tipo}" para modelo válido (MASC|FEM|INF|ACES)`);
 }
