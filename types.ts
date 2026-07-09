@@ -260,6 +260,7 @@ export interface MonthlyGoal {
   delinquencyTarget: number;
 
   businessDays: number;
+  qtdVendedores?: number;
   trend: 'up' | 'stable' | 'down';
 }
 

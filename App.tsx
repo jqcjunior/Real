@@ -585,6 +585,7 @@ const App: React.FC = () => {
                 ticketTarget: Number(x.ticket_target || 0), 
                 delinquencyTarget: Number(x.delinquency_target || 2.0), 
                 businessDays: Number(x.business_days || 26), 
+                qtdVendedores: x.qtd_vendedores ? Number(x.qtd_vendedores) : undefined,
                 trend: x.trend || 'stable' 
             })));
 
@@ -1554,7 +1555,7 @@ const App: React.FC = () => {
                             }
                         }} />;
                         if ((currentView === 'dashboard_loja' || currentView === 'dashboard_manager') && can('MODULE_DASHBOARD_MANAGER')) return <DashboardManager user={user!} stores={stores} performanceData={performanceData} goalsData={goalsData} sangrias={icSangrias} stockMovements={icStockMovements} stock={iceCreamStock} weightRevenue={goalsRankingParams?.weight_revenue ?? 50} weightTicket={goalsRankingParams?.weight_ticket ?? 30} weightPA={goalsRankingParams?.weight_pa ?? 20} />;
-                        if (currentView === 'metas' && can('MODULE_METAS')) return <GoalRegistration user={user!} stores={isAdmin ? stores : stores.filter(s => s.id === user?.storeId)} goalsData={goalsData} onRefresh={fetchData} onSaveGoals={async (data) => { for(const row of data) { await supabase.from('monthly_goals').upsert({ store_id: row.storeId, year: row.year, month: row.month, revenue_target: row.revenueTarget, pa_target: row.paTarget, pu_target: row.puTarget, ticket_target: row.ticketTarget, items_target: row.itemsTarget, business_days: row.businessDays, delinquency_target: row.delinquencyTarget, trend: row.trend }, { onConflict: 'store_id, year, month' }); } fetchData(); }} />;
+                        if (currentView === 'metas' && can('MODULE_METAS')) return <GoalRegistration user={user!} stores={isAdmin ? stores : stores.filter(s => s.id === user?.storeId)} goalsData={goalsData} onRefresh={fetchData} onSaveGoals={async (data) => { for(const row of data) { await supabase.from('monthly_goals').upsert({ store_id: row.storeId, year: row.year, month: row.month, revenue_target: row.revenueTarget, pa_target: row.paTarget, pu_target: row.puTarget, ticket_target: row.ticketTarget, items_target: row.itemsTarget, business_days: row.businessDays, delinquency_target: row.delinquencyTarget, qtd_vendedores: row.qtdVendedores || null, trend: row.trend }, { onConflict: 'store_id, year, month' }); } fetchData(); }} />;
                         if (currentView === 'dre_accounts' && can('MODULE_DRE_ACCOUNTS')) return <DREAccounts />;
                         if (currentView === 'buy_order_photos' && can('MODULE_BUY_ORDERS')) return <BuyOrderPhotos currentUser={user!} />;
                         if (currentView === 'buy_order_conferencia' && can('MODULE_BUY_ORDERS')) return <BuyOrderConferencia currentUser={user!} stores={stores} />;

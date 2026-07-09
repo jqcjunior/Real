@@ -48,7 +48,7 @@ const GoalRegistration: React.FC<GoalRegistrationProps> = ({
     const initial: Record<string, any> = {};
     activeStores.forEach(store => {
       const existing = (goalsData || []).find(g => g.storeId === store.id && Number(g.year) === Number(selectedYear) && Number(g.month) === Number(selectedMonth));
-      initial[store.id] = existing ? { ...existing, paTarget: String(existing.paTarget || 0).replace('.', ',') } : { storeId: store.id, year: selectedYear, month: selectedMonth, revenueTarget: 0, itemsTarget: 0, paTarget: '0,00', puTarget: 0, ticketTarget: 0, delinquencyTarget: 2, businessDays: 26, trend: 'stable' };
+      initial[store.id] = existing ? { ...existing, paTarget: String(existing.paTarget || 0).replace('.', ',') } : { storeId: store.id, year: selectedYear, month: selectedMonth, revenueTarget: 0, itemsTarget: 0, paTarget: '0,00', puTarget: 0, ticketTarget: 0, delinquencyTarget: 2, businessDays: 26, qtdVendedores: 0, trend: 'stable' };
     });
     setFormData(initial);
   }, [activeStores, goalsData, selectedYear, selectedMonth]);
@@ -68,7 +68,8 @@ const GoalRegistration: React.FC<GoalRegistrationProps> = ({
           puTarget: Number(item.puTarget) || 0,
           ticketTarget: Number(item.ticketTarget) || 0,
           delinquencyTarget: Number(item.delinquencyTarget) || 0,
-          businessDays: Number(item.businessDays) || 0
+          businessDays: Number(item.businessDays) || 0,
+          qtdVendedores: Number(item.qtdVendedores) || 0
       })) as MonthlyGoal[];
       await onSaveGoals(dataToSave);
       setSaveStatus('success');
@@ -117,7 +118,7 @@ const GoalRegistration: React.FC<GoalRegistrationProps> = ({
         nextCol = Math.max(0, colIndex - 1);
       } else if (e.key === 'ArrowRight') {
         if (input.type === 'text' && input.selectionEnd !== input.value.length) return;
-        nextCol = Math.min(5, colIndex + 1);
+        nextCol = Math.min(6, colIndex + 1);
       } else if (e.key === 'ArrowUp') {
         nextRow = Math.max(0, rowIndex - 1);
       } else if (e.key === 'ArrowDown' || e.key === 'Enter') {
@@ -267,6 +268,7 @@ const GoalRegistration: React.FC<GoalRegistrationProps> = ({
               <tr className="bg-slate-50 dark:bg-slate-800 text-[8px] font-black uppercase text-slate-400 dark:text-slate-500 tracking-widest border-b dark:border-slate-700">
                 <th className="px-6 py-4 w-48 sticky left-0 bg-slate-50 dark:bg-slate-800 border-r dark:border-slate-700">Unidade / Cidade</th>
                 <th className="px-4 py-4 text-center">Dias Úteis</th>
+                <th className="px-4 py-4 text-center">Qtd Vendedores</th>
                 <th className="px-4 py-4 text-center">Faturamento (R$)</th>
                 <th className="px-4 py-4 text-center">Itens (PR)</th>
                 <th className="px-4 py-4 text-center">P.A (Virg.)</th>
@@ -290,19 +292,22 @@ const GoalRegistration: React.FC<GoalRegistrationProps> = ({
                       <input type="number" data-row={rowIndex} data-col={0} onKeyDown={e => handleKeyDown(e, rowIndex, 0)} value={row.businessDays || ''} onChange={e => handleChange(store.id, 'businessDays', e.target.value)} className="w-full p-2 bg-slate-50 dark:bg-slate-800 border-none rounded-lg font-black text-slate-900 dark:text-slate-100 text-center text-[11px] outline-none focus:bg-white dark:focus:bg-slate-700 focus:ring-2 focus:ring-blue-100 dark:focus:ring-blue-900/30" placeholder="26" />
                     </td>
                     <td className="px-3 py-2">
-                      <input type="number" data-row={rowIndex} data-col={1} onKeyDown={e => handleKeyDown(e, rowIndex, 1)} value={row.revenueTarget || ''} onChange={e => handleChange(store.id, 'revenueTarget', e.target.value)} className="w-full p-2 bg-slate-50 dark:bg-slate-800 border-none rounded-lg font-black text-slate-900 dark:text-slate-100 text-center text-[11px] outline-none focus:bg-white dark:focus:bg-slate-700 focus:ring-2 focus:ring-blue-100 dark:focus:ring-blue-900/30" placeholder="0" />
+                      <input type="number" data-row={rowIndex} data-col={1} onKeyDown={e => handleKeyDown(e, rowIndex, 1)} value={row.qtdVendedores || ''} onChange={e => handleChange(store.id, 'qtdVendedores', e.target.value)} className="w-full p-2 bg-indigo-50 dark:bg-indigo-900/20 border-none rounded-lg font-black text-indigo-700 dark:text-indigo-400 text-center text-[11px] outline-none focus:bg-white dark:focus:bg-slate-700 focus:ring-2 focus:ring-indigo-100 dark:focus:ring-indigo-900/30" placeholder="0" />
                     </td>
                     <td className="px-3 py-2">
-                      <input type="number" data-row={rowIndex} data-col={2} onKeyDown={e => handleKeyDown(e, rowIndex, 2)} value={row.itemsTarget || ''} onChange={e => handleChange(store.id, 'itemsTarget', e.target.value)} className="w-full p-2 bg-slate-50 dark:bg-slate-800 border-none rounded-lg font-black text-slate-600 dark:text-slate-400 text-center text-[11px] outline-none focus:bg-white dark:focus:bg-slate-700 focus:ring-2 focus:ring-blue-100 dark:focus:ring-blue-900/30" placeholder="0" />
+                      <input type="number" data-row={rowIndex} data-col={2} onKeyDown={e => handleKeyDown(e, rowIndex, 2)} value={row.revenueTarget || ''} onChange={e => handleChange(store.id, 'revenueTarget', e.target.value)} className="w-full p-2 bg-slate-50 dark:bg-slate-800 border-none rounded-lg font-black text-slate-900 dark:text-slate-100 text-center text-[11px] outline-none focus:bg-white dark:focus:bg-slate-700 focus:ring-2 focus:ring-blue-100 dark:focus:ring-blue-900/30" placeholder="0" />
                     </td>
                     <td className="px-3 py-2">
-                      <input type="text" data-row={rowIndex} data-col={3} onKeyDown={e => handleKeyDown(e, rowIndex, 3)} value={row.paTarget || ''} onChange={e => handleChange(store.id, 'paTarget', e.target.value)} className="w-full p-2 bg-purple-50 dark:bg-purple-900/20 border-none rounded-lg font-black text-purple-700 dark:text-purple-400 text-center text-[11px] outline-none focus:bg-white dark:focus:bg-slate-700 focus:ring-2 focus:ring-purple-100 dark:focus:ring-purple-900/30" placeholder="0,00" />
+                      <input type="number" data-row={rowIndex} data-col={3} onKeyDown={e => handleKeyDown(e, rowIndex, 3)} value={row.itemsTarget || ''} onChange={e => handleChange(store.id, 'itemsTarget', e.target.value)} className="w-full p-2 bg-slate-50 dark:bg-slate-800 border-none rounded-lg font-black text-slate-600 dark:text-slate-400 text-center text-[11px] outline-none focus:bg-white dark:focus:bg-slate-700 focus:ring-2 focus:ring-blue-100 dark:focus:ring-blue-900/30" placeholder="0" />
                     </td>
                     <td className="px-3 py-2">
-                      <input type="number" data-row={rowIndex} data-col={4} onKeyDown={e => handleKeyDown(e, rowIndex, 4)} value={row.puTarget || ''} onChange={e => handleChange(store.id, 'puTarget', e.target.value)} className="w-full p-2 bg-slate-50 dark:bg-slate-800 border-none rounded-lg font-black text-orange-700 dark:text-orange-400 text-center text-[11px] outline-none focus:bg-white dark:focus:bg-slate-700 focus:ring-2 focus:ring-orange-100 dark:focus:ring-orange-900/30" placeholder="0" />
+                      <input type="text" data-row={rowIndex} data-col={4} onKeyDown={e => handleKeyDown(e, rowIndex, 4)} value={row.paTarget || ''} onChange={e => handleChange(store.id, 'paTarget', e.target.value)} className="w-full p-2 bg-purple-50 dark:bg-purple-900/20 border-none rounded-lg font-black text-purple-700 dark:text-purple-400 text-center text-[11px] outline-none focus:bg-white dark:focus:bg-slate-700 focus:ring-2 focus:ring-purple-100 dark:focus:ring-purple-900/30" placeholder="0,00" />
                     </td>
                     <td className="px-3 py-2">
-                      <input type="number" data-row={rowIndex} data-col={5} onKeyDown={e => handleKeyDown(e, rowIndex, 5)} value={row.ticketTarget || ''} onChange={e => handleChange(store.id, 'ticketTarget', e.target.value)} className="w-full p-2 bg-emerald-50 dark:bg-emerald-900/20 border-none rounded-lg font-black text-emerald-700 dark:text-emerald-400 text-center text-[11px] outline-none focus:bg-white dark:focus:bg-slate-700 focus:ring-2 focus:ring-emerald-100 dark:focus:ring-emerald-900/30" placeholder="0" />
+                      <input type="number" data-row={rowIndex} data-col={5} onKeyDown={e => handleKeyDown(e, rowIndex, 5)} value={row.puTarget || ''} onChange={e => handleChange(store.id, 'puTarget', e.target.value)} className="w-full p-2 bg-slate-50 dark:bg-slate-800 border-none rounded-lg font-black text-orange-700 dark:text-orange-400 text-center text-[11px] outline-none focus:bg-white dark:focus:bg-slate-700 focus:ring-2 focus:ring-orange-100 dark:focus:ring-orange-900/30" placeholder="0" />
+                    </td>
+                    <td className="px-3 py-2">
+                      <input type="number" data-row={rowIndex} data-col={6} onKeyDown={e => handleKeyDown(e, rowIndex, 6)} value={row.ticketTarget || ''} onChange={e => handleChange(store.id, 'ticketTarget', e.target.value)} className="w-full p-2 bg-emerald-50 dark:bg-emerald-900/20 border-none rounded-lg font-black text-emerald-700 dark:text-emerald-400 text-center text-[11px] outline-none focus:bg-white dark:focus:bg-slate-700 focus:ring-2 focus:ring-emerald-100 dark:focus:ring-emerald-900/30" placeholder="0" />
                     </td>
                   </tr>
                 );
