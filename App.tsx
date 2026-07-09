@@ -142,9 +142,23 @@ const App: React.FC = () => {
                 const userId = parsed.user_id || parsed.id;
                 
                 if (userId) {
-                    // ✅ Session será estabelecida por useEffect
                     if (!parsed.id) parsed.id = userId;
-                    return parsed;
+
+                    // ✅ Normalizar role (mesma lógica do handleLogin)
+                    const rawRole = String(parsed.role || parsed.role_level || '').toUpperCase().trim();
+                    let mappedRole: UserRole = parsed.role; // preserva se já for um valor válido do enum
+                    if (rawRole === 'ADMIN' || rawRole === 'ADMINISTRADOR') mappedRole = UserRole.ADMIN;
+                    else if (rawRole === 'MANAGER' || rawRole === 'GERENTE') mappedRole = UserRole.MANAGER;
+                    else if (rawRole === 'CAIXA' || rawRole === 'CASHIER') mappedRole = UserRole.CASHIER;
+                    else if (rawRole === 'SORVETE' || rawRole === 'SORVETERIA' || rawRole === 'ICE_CREAM') mappedRole = UserRole.ICE_CREAM;
+
+                    const normalized: User = {
+                        ...parsed,
+                        role: mappedRole,
+                        storeId: parsed.storeId || parsed.store_id || null
+                    };
+
+                    return normalized;
                 }
             }
         } catch (e) {
