@@ -110,6 +110,25 @@ export const WeeklyParametersModal: React.FC<WeeklyParametersModalProps> = ({ st
   const [error, setError] = useState<string | null>(null);
   const [toast, setToast] = useState<{ message: string; type: 'success' | 'error' } | null>(null);
   const [periodWeeks, setPeriodWeeks] = useState<any[]>([]);
+  const [metaCalculada, setMetaCalculada] = useState<number | null>(null);
+  const [loadingMeta, setLoadingMeta] = useState(false);
+
+  const fetchMetaCalculada = async (storeId: string, semanaId: string) => {
+    setLoadingMeta(true);
+    try {
+      const { data, error } = await supabase.rpc('fn_calc_meta_semanal_rolante', {
+        p_store_id: storeId,
+        p_semana_id: semanaId
+      });
+      if (error) throw error;
+      setMetaCalculada(data !== null ? Number(data) : null);
+    } catch (err) {
+      console.error('Erro ao calcular meta rolante:', err);
+      setMetaCalculada(null);
+    } finally {
+      setLoadingMeta(false);
+    }
+  };
 
   useEffect(() => {
     if (stores && stores.length > 0) {
@@ -121,6 +140,7 @@ export const WeeklyParametersModal: React.FC<WeeklyParametersModalProps> = ({ st
     const fetchParams = async () => {
       setLoading(true);
       setError(null);
+      setMetaCalculada(null);
       
       try {
         // Garantir que a lista de lojas esteja populada
@@ -223,6 +243,7 @@ export const WeeklyParametersModal: React.FC<WeeklyParametersModalProps> = ({ st
             });
           }
           setSaved(false);
+          fetchMetaCalculada(selectedStoreId, selectedWeek.id);
         }
       } catch (err: any) {
         setError(`Erro inesperado: ${err.message}`);
@@ -234,9 +255,25 @@ export const WeeklyParametersModal: React.FC<WeeklyParametersModalProps> = ({ st
     fetchParams();
   }, [stores, selectedWeek]);
 
+  useEffect(() => {
+    if (metaCalculada !== null && draft && draft.vendas_minimo !== null) {
+      const val = Number(metaCalculada.toFixed(2));
+      if (draft.vendas_minimo !== val) {
+        setDraft((prev: any) => {
+          if (!prev) return prev;
+          return {
+            ...prev,
+            vendas_minimo: val
+          };
+        });
+      }
+    }
+  }, [metaCalculada]);
+
   const handleSelectStore = (storeId: string) => {
     setSelectedStoreId(storeId);
     setSaved(false);
+    setMetaCalculada(null);
     
     const existingParams = params[storeId];
     
@@ -263,6 +300,8 @@ export const WeeklyParametersModal: React.FC<WeeklyParametersModalProps> = ({ st
         pu_inc_valor: null,
       });
     }
+
+    fetchMetaCalculada(storeId, selectedWeek.id);
   };
 
   const handleCopyFromPreviousWeek = async () => {
@@ -718,7 +757,7 @@ export const WeeklyParametersModal: React.FC<WeeklyParametersModalProps> = ({ st
                           if (active) {
                             setDraft({
                               ...draft,
-                              vendas_minimo: 30000,
+                              vendas_minimo: metaCalculada !== null ? Number(metaCalculada.toFixed(2)) : 0,
                               vendas_valor_base: 150,
                               vendas_incremento: 5000,
                               vendas_inc_valor: 50
@@ -742,15 +781,27 @@ export const WeeklyParametersModal: React.FC<WeeklyParametersModalProps> = ({ st
                     </label>
                   </div>
                   <div className={`grid grid-cols-2 md:grid-cols-4 gap-3 transition-opacity duration-250 ${draft.vendas_minimo === null ? 'opacity-35 pointer-events-none' : ''}`}>
-                    <div className="bg-emerald-50/10 dark:bg-emerald-950/5 p-3 rounded-xl border border-emerald-50 dark:border-emerald-900/10">
-                      <label className="text-[9px] font-black text-slate-400 uppercase mb-1 block">Mínimo (Meta)</label>
-                      <input
-                        type="number" step="100" min="0"
-                        value={draft.vendas_minimo || ''}
-                        onChange={e => setDraft({ ...draft, vendas_minimo: e.target.value === '' ? '' : e.target.value })}
-                        onBlur={() => setDraft(prev => prev ? { ...prev, vendas_minimo: prev.vendas_minimo === '' ? null : Number(prev.vendas_minimo) } : null)}
-                        className="w-full bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-lg px-2 py-1.5 text-xs font-black outline-none focus:border-emerald-400 transition-all"
-                      />
+                    <div className="bg-emerald-50/10 dark:bg-emerald-950/5 p-3 rounded-xl border border-emerald-50 dark:border-emerald-900/10 flex flex-col justify-between">
+                      <div>
+                        <label className="text-[9px] font-black text-slate-400 uppercase mb-1 block">Mínimo (Meta)</label>
+                        {loadingMeta ? (
+                          <div className="w-full bg-slate-50 dark:bg-slate-800/50 border border-slate-200 dark:border-slate-800 rounded-lg px-2 py-1.5 h-8 flex items-center gap-1.5 text-xs font-semibold italic text-slate-500">
+                            <Loader2 size={12} className="animate-spin text-emerald-500" />
+                            Calculando...
+                          </div>
+                        ) : metaCalculada === null ? (
+                          <div className="w-full bg-amber-50/50 dark:bg-amber-950/20 border border-amber-200 dark:border-amber-900/30 rounded-lg px-2 py-1.5 text-[10px] font-bold text-amber-600 dark:text-amber-400 leading-tight">
+                            ⚠️ Configure a meta mensal em Cadastro de Metas
+                          </div>
+                        ) : (
+                          <div className="w-full bg-slate-50 dark:bg-slate-800/50 border border-slate-200 dark:border-slate-800 rounded-lg px-2 py-1.5 h-8 flex items-center text-xs font-black text-slate-700 dark:text-slate-300">
+                            {new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(draft.vendas_minimo || 0)}
+                          </div>
+                        )}
+                      </div>
+                      <p className="text-[8px] text-slate-400 italic mt-1 leading-normal">
+                        Calculado automaticamente com base na meta mensal
+                      </p>
                     </div>
                     <div className="bg-emerald-50/10 dark:bg-emerald-950/5 p-3 rounded-xl border border-emerald-50 dark:border-emerald-900/10">
                       <label className="text-[9px] font-black text-slate-400 uppercase mb-1 block">Base (Prêmio)</label>
