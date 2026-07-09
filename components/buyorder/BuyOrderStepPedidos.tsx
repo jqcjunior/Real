@@ -1106,83 +1106,87 @@ export default function StepPedidos({
                         {item.ref.slice(-3)}
                       </div>
 
-                      {/* Primeira linha: #1 B110 FEM (canto superior direito) */}
-                      <div className="flex items-center justify-between relative z-10 gap-1.5">
-                        <div className="flex items-center gap-1.5 min-w-0 flex-1">
-                          <span className="text-[8px] font-black text-slate-400 bg-slate-100 rounded px-1 shrink-0 group-hover:bg-slate-200 transition-colors">
-                            #{idx + 1}
-                          </span>
-                          <span className="text-[10px] font-black text-slate-800 truncate uppercase tracking-tight">{item.ref}</span>
-                          {jaVinculado && (
-                            <div className="w-4 h-4 bg-green-600 text-white rounded-full flex items-center justify-center text-[10px] font-black shadow-md border border-white shrink-0">✓</div>
-                          )}
+                      {/* Content Flex Wrapper */}
+                      <div className="flex items-center gap-2 relative z-10 w-full">
+                        {/* Coluna Texto (esquerda) */}
+                        <div className="flex-1 min-w-0">
+                          {/* Primeira linha: #1 B110 FEM (canto superior direito) */}
+                          <div className="flex items-center justify-between gap-1.5">
+                            <div className="flex items-center gap-1.5 min-w-0 flex-1">
+                              <span className="text-[8px] font-black text-slate-400 bg-slate-100 rounded px-1 shrink-0 group-hover:bg-slate-200 transition-colors">
+                                #{idx + 1}
+                              </span>
+                              <span className="text-[10px] font-black text-slate-800 truncate uppercase tracking-tight">{item.ref}</span>
+                              {jaVinculado && (
+                                <div className="w-4 h-4 bg-green-600 text-white rounded-full flex items-center justify-center text-[10px] font-black shadow-md border border-white shrink-0">✓</div>
+                              )}
+                            </div>
+                            {getCategoryBadge(item.tipo).label && (
+                              <span className={`text-[8px] font-black px-1.5 py-0.5 rounded uppercase shrink-0 ${getCategoryBadge(item.tipo).color}`}>
+                                {getCategoryBadge(item.tipo).label}
+                              </span>
+                            )}
+                          </div>
+                          
+                          {/* Segunda linha: Descrição limpa */}
+                          <div className="text-[9px] text-slate-500 font-bold truncate mt-1 opacity-70">
+                            {cleanModelo(item.tipo) || '—'}
+                          </div>
+
+                          {/* Terceira linha / Rodapé: Valores e Cores Compactos */}
+                          <div className="mt-2">
+                            <div className="flex items-center gap-1 mb-1">
+                              <span className="text-[8px] text-slate-400 font-bold leading-none">C</span>
+                              <span className="text-[9px] font-bold text-slate-500 leading-none">{fmtBRL(item.custo)}</span>
+                              <span className="mx-0.5 text-slate-200 text-[8px]">·</span>
+                              <span className="text-[8px] text-slate-400 font-bold leading-none">V</span>
+                              <span className="text-[9px] font-black text-green-700 leading-none">{fmtBRL(item.preco_venda)}</span>
+                            </div>
+                            <div className="flex items-center gap-1 overflow-hidden">
+                              {[item.cor1, item.cor2, item.cor3].filter(Boolean).map((cor, i) => {
+                                const resume = getResumedColor(cor);
+                                return resume ? (
+                                  <span key={i} className="text-[8px] font-bold text-slate-600 leading-none truncate max-w-[40px]" title={cor}>
+                                    {resume}{i < [item.cor1, item.cor2, item.cor3].filter(Boolean).filter(c => getResumedColor(c)).length - 1 ? ' ·' : ''}
+                                  </span>
+                                ) : null;
+                              })}
+                            </div>
+                          </div>
                         </div>
-                        {getCategoryBadge(item.tipo).label && (
-                          <span className={`text-[8px] font-black px-1.5 py-0.5 rounded uppercase shrink-0 ${getCategoryBadge(item.tipo).color}`}>
-                            {getCategoryBadge(item.tipo).label}
-                          </span>
+
+                        {/* Coluna Imagem (direita, se houver) */}
+                        {item._catalogImageUrl && (
+                          <div 
+                            className="shrink-0 pointer-events-none"
+                            style={{
+                              width: '44px',
+                              height: '44px',
+                              border: '1px solid #ECECEC',
+                              borderRadius: '6px',
+                              background: '#FFFFFF',
+                              boxShadow: '0 1px 3px rgba(0,0,0,0.08)',
+                              display: 'flex',
+                              alignItems: 'center',
+                              justifyContent: 'center',
+                              padding: '2px',
+                              overflow: 'hidden'
+                            }}
+                          >
+                            <img
+                              src={item._catalogImageUrl}
+                              alt={item.ref}
+                              referrerPolicy="no-referrer"
+                              style={{
+                                width: '100%',
+                                height: '100%',
+                                objectFit: 'contain',
+                                borderRadius: '4px'
+                              }}
+                            />
+                          </div>
                         )}
                       </div>
-                      
-                      {/* Segunda linha: Descrição limpa */}
-                      <div className="text-[9px] text-slate-500 font-bold truncate mt-1 relative z-10 opacity-70 pr-16">
-                        {cleanModelo(item.modelo) || '—'}
-                      </div>
-
-                      {/* Terceira linha / Rodapé: Valores e Cores Compactos */}
-                      <div className="mt-2 relative z-10">
-                        <div className="flex items-center gap-1 mb-1">
-                          <span className="text-[8px] text-slate-400 font-bold leading-none">C</span>
-                          <span className="text-[9px] font-bold text-slate-500 leading-none">{fmtBRL(item.custo)}</span>
-                          <span className="mx-0.5 text-slate-200 text-[8px]">·</span>
-                          <span className="text-[8px] text-slate-400 font-bold leading-none">V</span>
-                          <span className="text-[9px] font-black text-green-700 leading-none">{fmtBRL(item.preco_venda)}</span>
-                        </div>
-                        <div className="flex items-center gap-1 overflow-hidden pr-16">
-                          {[item.cor1, item.cor2, item.cor3].filter(Boolean).map((cor, i) => {
-                            const resume = getResumedColor(cor);
-                            return resume ? (
-                              <span key={i} className="text-[8px] font-bold text-slate-600 leading-none truncate max-w-[40px]" title={cor}>
-                                {resume}{i < [item.cor1, item.cor2, item.cor3].filter(Boolean).filter(c => getResumedColor(c)).length - 1 ? ' ·' : ''}
-                              </span>
-                            ) : null;
-                          })}
-                        </div>
-                      </div>
-
-                      {/* Miniatura discreta no canto inferior direito */}
-                      {item._catalogImageUrl && (
-                        <div 
-                          className="absolute pointer-events-none z-20"
-                          style={{
-                            right: '6px',
-                            bottom: '3px',
-                            width: '55px',
-                            height: '55px',
-                            border: '1px solid #ECECEC',
-                            borderRadius: '6px',
-                            background: '#FFFFFF',
-                            boxShadow: '0 1px 3px rgba(0,0,0,0.08)',
-                            display: 'flex',
-                            alignItems: 'center',
-                            justifyContent: 'center',
-                            padding: '2px',
-                            overflow: 'hidden'
-                          }}
-                        >
-                          <img
-                            src={item._catalogImageUrl}
-                            alt={item.ref}
-                            referrerPolicy="no-referrer"
-                            style={{
-                              width: '100%',
-                              height: '100%',
-                              objectFit: 'contain',
-                              borderRadius: '4px'
-                            }}
-                          />
-                        </div>
-                      )}
                     </div>
                   );
                 })}
