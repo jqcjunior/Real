@@ -22,10 +22,10 @@ interface WeekData {
 interface PAParametros {
   store_id: string;
   semana_id?: string;
-  pa_inicial: number;
-  incremento_pa: number;
-  valor_base: number;
-  incremento_valor: number;
+  pa_inicial: number | null;
+  incremento_pa: number | null;
+  valor_base: number | null;
+  incremento_valor: number | null;
   vendas_minimo: number | null;
   vendas_incremento: number | null;
   vendas_valor_base: number | null;
@@ -34,6 +34,10 @@ interface PAParametros {
   ticket_incremento: number | null;
   ticket_valor_base: number | null;
   ticket_inc_valor: number | null;
+  pu_minimo: number | null;
+  pu_incremento: number | null;
+  pu_valor_base: number | null;
+  pu_inc_valor: number | null;
 }
 
 interface WeeklyParametersModalProps {
@@ -49,17 +53,16 @@ const parseLocalDate = (dateStr: string): Date => {
   return new Date(year, month - 1, day);
 };
 
-function calcularPremioTotal(performance: { pa: number; vendas: number; ticket: number }, params: PAParametros): number {
+function calcularPremioTotal(performance: { pa: number; vendas: number; ticket: number; pu: number }, params: PAParametros): number {
   if (!params) return 0;
   
   let total = 0;
   
   // 1. Prêmio por P.A
-  const paMeta = params.pa_inicial || 0;
-  if (performance.pa >= paMeta) {
-    const excedente = performance.pa - paMeta;
+  if (params.pa_inicial !== null && params.pa_inicial !== undefined && performance.pa >= params.pa_inicial) {
+    const excedente = performance.pa - params.pa_inicial;
     const incrementos = Math.floor((excedente + 0.00001) / (params.incremento_pa || 1));
-    total += params.valor_base + (incrementos * params.incremento_valor);
+    total += (params.valor_base || 0) + (incrementos * (params.incremento_valor || 0));
   }
   
   // 2. Prêmio por Vendas
@@ -78,6 +81,16 @@ function calcularPremioTotal(performance: { pa: number; vendas: number; ticket: 
     const inc = params.ticket_incremento || 1;
     const valInc = params.ticket_inc_valor || 0;
     const excedente = performance.ticket - params.ticket_minimo;
+    const incrementos = Math.floor((excedente + 0.00001) / inc);
+    total += base + (incrementos * valInc);
+  }
+  
+  // 4. Prêmio por P.U.
+  if (params.pu_minimo !== null && params.pu_minimo !== undefined && performance.pu >= params.pu_minimo) {
+    const base = params.pu_valor_base || 0;
+    const inc = params.pu_incremento || 1;
+    const valInc = params.pu_inc_valor || 0;
+    const excedente = performance.pu - params.pu_minimo;
     const incrementos = Math.floor((excedente + 0.00001) / inc);
     total += base + (incrementos * valInc);
   }
@@ -161,10 +174,10 @@ export const WeeklyParametersModal: React.FC<WeeklyParametersModalProps> = ({ st
             map[p.store_id] = {
               store_id: p.store_id,
               semana_id: p.semana_id,
-              pa_inicial: p.pa_inicial !== null ? Number(p.pa_inicial) : 1.60,
-              incremento_pa: p.incremento_pa !== null ? Number(p.incremento_pa) : 0.05,
-              valor_base: p.valor_base !== null ? Number(p.valor_base) : 50,
-              incremento_valor: p.incremento_valor !== null ? Number(p.incremento_valor) : 0.10,
+              pa_inicial: p.pa_inicial !== null ? Number(p.pa_inicial) : null,
+              incremento_pa: p.incremento_pa !== null ? Number(p.incremento_pa) : null,
+              valor_base: p.valor_base !== null ? Number(p.valor_base) : null,
+              incremento_valor: p.incremento_valor !== null ? Number(p.incremento_valor) : null,
               vendas_minimo: p.vendas_minimo !== null ? Number(p.vendas_minimo) : null,
               vendas_incremento: p.vendas_incremento !== null ? Number(p.vendas_incremento) : null,
               vendas_valor_base: p.vendas_valor_base !== null ? Number(p.vendas_valor_base) : null,
@@ -173,6 +186,10 @@ export const WeeklyParametersModal: React.FC<WeeklyParametersModalProps> = ({ st
               ticket_incremento: p.ticket_incremento !== null ? Number(p.ticket_incremento) : null,
               ticket_valor_base: p.ticket_valor_base !== null ? Number(p.ticket_valor_base) : null,
               ticket_inc_valor: p.ticket_inc_valor !== null ? Number(p.ticket_inc_valor) : null,
+              pu_minimo: p.pu_minimo !== null ? Number(p.pu_minimo) : null,
+              pu_incremento: p.pu_incremento !== null ? Number(p.pu_incremento) : null,
+              pu_valor_base: p.pu_valor_base !== null ? Number(p.pu_valor_base) : null,
+              pu_inc_valor: p.pu_inc_valor !== null ? Number(p.pu_inc_valor) : null,
             };
           });
         }
@@ -198,10 +215,10 @@ export const WeeklyParametersModal: React.FC<WeeklyParametersModalProps> = ({ st
     } else {
       setDraft({
         store_id: storeId,
-        pa_inicial: 1.60,
-        incremento_pa: 0.05,
-        valor_base: 50,
-        incremento_valor: 0.10,
+        pa_inicial: null,
+        incremento_pa: null,
+        valor_base: null,
+        incremento_valor: null,
         vendas_minimo: null,
         vendas_incremento: null,
         vendas_valor_base: null,
@@ -210,6 +227,10 @@ export const WeeklyParametersModal: React.FC<WeeklyParametersModalProps> = ({ st
         ticket_incremento: null,
         ticket_valor_base: null,
         ticket_inc_valor: null,
+        pu_minimo: null,
+        pu_incremento: null,
+        pu_valor_base: null,
+        pu_inc_valor: null,
       });
     }
   };
@@ -270,6 +291,10 @@ export const WeeklyParametersModal: React.FC<WeeklyParametersModalProps> = ({ st
           ticket_incremento: item.ticket_incremento,
           ticket_valor_base: item.ticket_valor_base,
           ticket_inc_valor: item.ticket_inc_valor,
+          pu_minimo: item.pu_minimo,
+          pu_incremento: item.pu_incremento,
+          pu_valor_base: item.pu_valor_base,
+          pu_inc_valor: item.pu_inc_valor,
           updated_at: new Date().toISOString()
         };
       });
@@ -287,10 +312,10 @@ export const WeeklyParametersModal: React.FC<WeeklyParametersModalProps> = ({ st
         map[p.store_id] = {
           store_id: p.store_id,
           semana_id: p.semana_id,
-          pa_inicial: p.pa_inicial !== null ? Number(p.pa_inicial) : 1.60,
-          incremento_pa: p.incremento_pa !== null ? Number(p.incremento_pa) : 0.05,
-          valor_base: p.valor_base !== null ? Number(p.valor_base) : 50,
-          incremento_valor: p.incremento_valor !== null ? Number(p.incremento_valor) : 0.10,
+          pa_inicial: p.pa_inicial !== null ? Number(p.pa_inicial) : null,
+          incremento_pa: p.incremento_pa !== null ? Number(p.incremento_pa) : null,
+          valor_base: p.valor_base !== null ? Number(p.valor_base) : null,
+          incremento_valor: p.incremento_valor !== null ? Number(p.incremento_valor) : null,
           vendas_minimo: p.vendas_minimo !== null ? Number(p.vendas_minimo) : null,
           vendas_incremento: p.vendas_incremento !== null ? Number(p.vendas_incremento) : null,
           vendas_valor_base: p.vendas_valor_base !== null ? Number(p.vendas_valor_base) : null,
@@ -299,6 +324,10 @@ export const WeeklyParametersModal: React.FC<WeeklyParametersModalProps> = ({ st
           ticket_incremento: p.ticket_incremento !== null ? Number(p.ticket_incremento) : null,
           ticket_valor_base: p.ticket_valor_base !== null ? Number(p.ticket_valor_base) : null,
           ticket_inc_valor: p.ticket_inc_valor !== null ? Number(p.ticket_inc_valor) : null,
+          pu_minimo: p.pu_minimo !== null ? Number(p.pu_minimo) : null,
+          pu_incremento: p.pu_incremento !== null ? Number(p.pu_incremento) : null,
+          pu_valor_base: p.pu_valor_base !== null ? Number(p.pu_valor_base) : null,
+          pu_inc_valor: p.pu_inc_valor !== null ? Number(p.pu_inc_valor) : null,
         };
       });
 
@@ -337,10 +366,10 @@ export const WeeklyParametersModal: React.FC<WeeklyParametersModalProps> = ({ st
       const payload = storeWeeks.map((sw: any) => ({
         store_id: selectedStoreId,
         semana_id: sw.id,
-        pa_inicial: draft.pa_inicial !== null ? Number(draft.pa_inicial) : 0,
-        incremento_pa: draft.incremento_pa !== null ? Number(draft.incremento_pa) : 1,
-        valor_base: draft.valor_base !== null ? Number(draft.valor_base) : 0,
-        incremento_valor: draft.incremento_valor !== null ? Number(draft.incremento_valor) : 0,
+        pa_inicial: (draft.pa_inicial !== null && draft.pa_inicial !== undefined && String(draft.pa_inicial) !== '') ? Number(draft.pa_inicial) : null,
+        incremento_pa: (draft.incremento_pa !== null && draft.incremento_pa !== undefined && String(draft.incremento_pa) !== '') ? Number(draft.incremento_pa) : null,
+        valor_base: (draft.valor_base !== null && draft.valor_base !== undefined && String(draft.valor_base) !== '') ? Number(draft.valor_base) : null,
+        incremento_valor: (draft.incremento_valor !== null && draft.incremento_valor !== undefined && String(draft.incremento_valor) !== '') ? Number(draft.incremento_valor) : null,
         vendas_minimo: (draft.vendas_minimo !== null && draft.vendas_minimo !== undefined && String(draft.vendas_minimo) !== '') ? Number(draft.vendas_minimo) : null,
         vendas_incremento: (draft.vendas_incremento !== null && draft.vendas_incremento !== undefined && String(draft.vendas_incremento) !== '') ? Number(draft.vendas_incremento) : null,
         vendas_valor_base: (draft.vendas_valor_base !== null && draft.vendas_valor_base !== undefined && String(draft.vendas_valor_base) !== '') ? Number(draft.vendas_valor_base) : null,
@@ -349,6 +378,10 @@ export const WeeklyParametersModal: React.FC<WeeklyParametersModalProps> = ({ st
         ticket_incremento: (draft.ticket_incremento !== null && draft.ticket_incremento !== undefined && String(draft.ticket_incremento) !== '') ? Number(draft.ticket_incremento) : null,
         ticket_valor_base: (draft.ticket_valor_base !== null && draft.ticket_valor_base !== undefined && String(draft.ticket_valor_base) !== '') ? Number(draft.ticket_valor_base) : null,
         ticket_inc_valor: (draft.ticket_inc_valor !== null && draft.ticket_inc_valor !== undefined && String(draft.ticket_inc_valor) !== '') ? Number(draft.ticket_inc_valor) : null,
+        pu_minimo: (draft.pu_minimo !== null && draft.pu_minimo !== undefined && String(draft.pu_minimo) !== '') ? Number(draft.pu_minimo) : null,
+        pu_incremento: (draft.pu_incremento !== null && draft.pu_incremento !== undefined && String(draft.pu_incremento) !== '') ? Number(draft.pu_incremento) : null,
+        pu_valor_base: (draft.pu_valor_base !== null && draft.pu_valor_base !== undefined && String(draft.pu_valor_base) !== '') ? Number(draft.pu_valor_base) : null,
+        pu_inc_valor: (draft.pu_inc_valor !== null && draft.pu_inc_valor !== undefined && String(draft.pu_inc_valor) !== '') ? Number(draft.pu_inc_valor) : null,
         updated_at: new Date().toISOString()
       }));
 
@@ -380,10 +413,10 @@ export const WeeklyParametersModal: React.FC<WeeklyParametersModalProps> = ({ st
       const payload = {
         store_id: selectedStoreId,
         semana_id: semanaId,
-        pa_inicial: draft.pa_inicial !== null ? Number(draft.pa_inicial) : 0,
-        incremento_pa: draft.incremento_pa !== null ? Number(draft.incremento_pa) : 1,
-        valor_base: draft.valor_base !== null ? Number(draft.valor_base) : 0,
-        incremento_valor: draft.incremento_valor !== null ? Number(draft.incremento_valor) : 0,
+        pa_inicial: (draft.pa_inicial !== null && draft.pa_inicial !== undefined && String(draft.pa_inicial) !== '') ? Number(draft.pa_inicial) : null,
+        incremento_pa: (draft.incremento_pa !== null && draft.incremento_pa !== undefined && String(draft.incremento_pa) !== '') ? Number(draft.incremento_pa) : null,
+        valor_base: (draft.valor_base !== null && draft.valor_base !== undefined && String(draft.valor_base) !== '') ? Number(draft.valor_base) : null,
+        incremento_valor: (draft.incremento_valor !== null && draft.incremento_valor !== undefined && String(draft.incremento_valor) !== '') ? Number(draft.incremento_valor) : null,
         vendas_minimo: (draft.vendas_minimo !== null && draft.vendas_minimo !== undefined && String(draft.vendas_minimo) !== '') ? Number(draft.vendas_minimo) : null,
         vendas_incremento: (draft.vendas_incremento !== null && draft.vendas_incremento !== undefined && String(draft.vendas_incremento) !== '') ? Number(draft.vendas_incremento) : null,
         vendas_valor_base: (draft.vendas_valor_base !== null && draft.vendas_valor_base !== undefined && String(draft.vendas_valor_base) !== '') ? Number(draft.vendas_valor_base) : null,
@@ -392,6 +425,10 @@ export const WeeklyParametersModal: React.FC<WeeklyParametersModalProps> = ({ st
         ticket_incremento: (draft.ticket_incremento !== null && draft.ticket_incremento !== undefined && String(draft.ticket_incremento) !== '') ? Number(draft.ticket_incremento) : null,
         ticket_valor_base: (draft.ticket_valor_base !== null && draft.ticket_valor_base !== undefined && String(draft.ticket_valor_base) !== '') ? Number(draft.ticket_valor_base) : null,
         ticket_inc_valor: (draft.ticket_inc_valor !== null && draft.ticket_inc_valor !== undefined && String(draft.ticket_inc_valor) !== '') ? Number(draft.ticket_inc_valor) : null,
+        pu_minimo: (draft.pu_minimo !== null && draft.pu_minimo !== undefined && String(draft.pu_minimo) !== '') ? Number(draft.pu_minimo) : null,
+        pu_incremento: (draft.pu_incremento !== null && draft.pu_incremento !== undefined && String(draft.pu_incremento) !== '') ? Number(draft.pu_incremento) : null,
+        pu_valor_base: (draft.pu_valor_base !== null && draft.pu_valor_base !== undefined && String(draft.pu_valor_base) !== '') ? Number(draft.pu_valor_base) : null,
+        pu_inc_valor: (draft.pu_inc_valor !== null && draft.pu_inc_valor !== undefined && String(draft.pu_inc_valor) !== '') ? Number(draft.pu_inc_valor) : null,
         updated_at: new Date().toISOString()
       };
 
@@ -429,10 +466,10 @@ export const WeeklyParametersModal: React.FC<WeeklyParametersModalProps> = ({ st
   const cleanDraftForCalc = (d: any): PAParametros => {
     return {
       store_id: d.store_id,
-      pa_inicial: d.pa_inicial === '' || d.pa_inicial === null || d.pa_inicial === undefined ? 0 : Number(d.pa_inicial),
-      incremento_pa: d.incremento_pa === '' || d.incremento_pa === null || d.incremento_pa === undefined ? 1 : Number(d.incremento_pa),
-      valor_base: d.valor_base === '' || d.valor_base === null || d.valor_base === undefined ? 0 : Number(d.valor_base),
-      incremento_valor: d.incremento_valor === '' || d.incremento_valor === null || d.incremento_valor === undefined ? 0 : Number(d.incremento_valor),
+      pa_inicial: d.pa_inicial === '' || d.pa_inicial === null || d.pa_inicial === undefined ? null : Number(d.pa_inicial),
+      incremento_pa: d.incremento_pa === '' || d.incremento_pa === null || d.incremento_pa === undefined ? null : Number(d.incremento_pa),
+      valor_base: d.valor_base === '' || d.valor_base === null || d.valor_base === undefined ? null : Number(d.valor_base),
+      incremento_valor: d.incremento_valor === '' || d.incremento_valor === null || d.incremento_valor === undefined ? null : Number(d.incremento_valor),
       vendas_minimo: d.vendas_minimo === '' || d.vendas_minimo === null || d.vendas_minimo === undefined ? null : Number(d.vendas_minimo),
       vendas_incremento: d.vendas_incremento === '' || d.vendas_incremento === null || d.vendas_incremento === undefined ? null : Number(d.vendas_incremento),
       vendas_valor_base: d.vendas_valor_base === '' || d.vendas_valor_base === null || d.vendas_valor_base === undefined ? null : Number(d.vendas_valor_base),
@@ -441,21 +478,27 @@ export const WeeklyParametersModal: React.FC<WeeklyParametersModalProps> = ({ st
       ticket_incremento: d.ticket_incremento === '' || d.ticket_incremento === null || d.ticket_incremento === undefined ? null : Number(d.ticket_incremento),
       ticket_valor_base: d.ticket_valor_base === '' || d.ticket_valor_base === null || d.ticket_valor_base === undefined ? null : Number(d.ticket_valor_base),
       ticket_inc_valor: d.ticket_inc_valor === '' || d.ticket_inc_valor === null || d.ticket_inc_valor === undefined ? null : Number(d.ticket_inc_valor),
+      pu_minimo: d.pu_minimo === '' || d.pu_minimo === null || d.pu_minimo === undefined ? null : Number(d.pu_minimo),
+      pu_incremento: d.pu_incremento === '' || d.pu_incremento === null || d.pu_incremento === undefined ? null : Number(d.pu_incremento),
+      pu_valor_base: d.pu_valor_base === '' || d.pu_valor_base === null || d.pu_valor_base === undefined ? null : Number(d.pu_valor_base),
+      pu_inc_valor: d.pu_inc_valor === '' || d.pu_inc_valor === null || d.pu_inc_valor === undefined ? null : Number(d.pu_inc_valor),
     };
   };
 
   const draftCleaned = draft ? cleanDraftForCalc(draft) : null;
 
   const previewTotal = draftCleaned ? calcularPremioTotal({ 
-    pa: draftCleaned.pa_inicial, 
+    pa: draftCleaned.pa_inicial || 0, 
     vendas: draftCleaned.vendas_minimo || 0, 
-    ticket: draftCleaned.ticket_minimo || 0 
+    ticket: draftCleaned.ticket_minimo || 0,
+    pu: draftCleaned.pu_minimo || 0
   }, draftCleaned) : 0;
 
   const previewMaisUm = draftCleaned ? calcularPremioTotal({ 
-    pa: draftCleaned.pa_inicial + (draftCleaned.incremento_pa || 0), 
+    pa: (draftCleaned.pa_inicial || 0) + (draftCleaned.incremento_pa || 0), 
     vendas: (draftCleaned.vendas_minimo || 0) + (draftCleaned.vendas_incremento || 0), 
-    ticket: (draftCleaned.ticket_minimo || 0) + (draftCleaned.ticket_incremento || 0) 
+    ticket: (draftCleaned.ticket_minimo || 0) + (draftCleaned.ticket_incremento || 0),
+    pu: (draftCleaned.pu_minimo || 0) + (draftCleaned.pu_incremento || 0)
   }, draftCleaned) : 0;
 
   const formatPeriod = (week: WeekData) => {
@@ -607,13 +650,45 @@ export const WeeklyParametersModal: React.FC<WeeklyParametersModalProps> = ({ st
 
                 {/* 1. VENDAS */}
                 <section className="space-y-3">
-                  <div className="flex items-center gap-3">
-                    <span className="text-[10px] font-black text-emerald-600 dark:text-emerald-400 uppercase tracking-[0.2em] bg-emerald-50 dark:bg-emerald-900/20 px-3 py-1 rounded-full">
-                      1. Vendas (R$)
-                    </span>
-                    <div className="h-px bg-emerald-50 dark:bg-emerald-900/10 flex-1"></div>
+                  <div className="flex items-center justify-between gap-3 bg-slate-50/50 dark:bg-slate-800/10 p-2 rounded-xl border border-slate-100 dark:border-slate-800/20">
+                    <div className="flex items-center gap-2">
+                      <span className={`text-[10px] font-black uppercase tracking-[0.2em] px-3 py-1 rounded-full ${draft.vendas_minimo !== null ? 'text-emerald-600 dark:text-emerald-400 bg-emerald-50 dark:bg-emerald-900/20' : 'text-slate-400 dark:text-slate-500 bg-slate-100 dark:bg-slate-800'}`}>
+                        1. Vendas (R$)
+                      </span>
+                    </div>
+                    <label className="relative inline-flex items-center cursor-pointer select-none">
+                      <input
+                        type="checkbox"
+                        checked={draft.vendas_minimo !== null}
+                        onChange={(e) => {
+                          const active = e.target.checked;
+                          if (active) {
+                            setDraft({
+                              ...draft,
+                              vendas_minimo: 30000,
+                              vendas_valor_base: 150,
+                              vendas_incremento: 5000,
+                              vendas_inc_valor: 50
+                            });
+                          } else {
+                            setDraft({
+                              ...draft,
+                              vendas_minimo: null,
+                              vendas_incremento: null,
+                              vendas_valor_base: null,
+                              vendas_inc_valor: null
+                            });
+                          }
+                        }}
+                        className="sr-only peer"
+                      />
+                      <div className="w-8 h-4 bg-slate-200 peer-focus:outline-none rounded-full peer dark:bg-slate-700 peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-slate-300 after:border after:rounded-full after:h-3 after:w-3 after:transition-all dark:border-slate-600 peer-checked:bg-emerald-500"></div>
+                      <span className="ml-2 text-[10px] font-black uppercase tracking-tighter text-slate-500">
+                        {draft.vendas_minimo !== null ? 'Ativo' : 'Inativo'}
+                      </span>
+                    </label>
                   </div>
-                  <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+                  <div className={`grid grid-cols-2 md:grid-cols-4 gap-3 transition-opacity duration-250 ${draft.vendas_minimo === null ? 'opacity-35 pointer-events-none' : ''}`}>
                     <div className="bg-emerald-50/10 dark:bg-emerald-950/5 p-3 rounded-xl border border-emerald-50 dark:border-emerald-900/10">
                       <label className="text-[9px] font-black text-slate-400 uppercase mb-1 block">Mínimo (Meta)</label>
                       <input
@@ -659,13 +734,45 @@ export const WeeklyParametersModal: React.FC<WeeklyParametersModalProps> = ({ st
 
                 {/* 2. TICKET */}
                 <section className="space-y-3">
-                  <div className="flex items-center gap-3">
-                    <span className="text-[10px] font-black text-blue-600 dark:text-blue-400 uppercase tracking-[0.2em] bg-blue-50 dark:bg-blue-900/20 px-3 py-1 rounded-full">
-                      2. Ticket (R$)
-                    </span>
-                    <div className="h-px bg-blue-50 dark:bg-blue-900/10 flex-1"></div>
+                  <div className="flex items-center justify-between gap-3 bg-slate-50/50 dark:bg-slate-800/10 p-2 rounded-xl border border-slate-100 dark:border-slate-800/20">
+                    <div className="flex items-center gap-2">
+                      <span className={`text-[10px] font-black uppercase tracking-[0.2em] px-3 py-1 rounded-full ${draft.ticket_minimo !== null ? 'text-blue-600 dark:text-blue-400 bg-blue-50 dark:bg-blue-900/20' : 'text-slate-400 dark:text-slate-500 bg-slate-100 dark:bg-slate-800'}`}>
+                        2. Ticket (R$)
+                      </span>
+                    </div>
+                    <label className="relative inline-flex items-center cursor-pointer select-none">
+                      <input
+                        type="checkbox"
+                        checked={draft.ticket_minimo !== null}
+                        onChange={(e) => {
+                          const active = e.target.checked;
+                          if (active) {
+                            setDraft({
+                              ...draft,
+                              ticket_minimo: 150,
+                              ticket_valor_base: 100,
+                              ticket_incremento: 10,
+                              ticket_inc_valor: 20
+                            });
+                          } else {
+                            setDraft({
+                              ...draft,
+                              ticket_minimo: null,
+                              ticket_incremento: null,
+                              ticket_valor_base: null,
+                              ticket_inc_valor: null
+                            });
+                          }
+                        }}
+                        className="sr-only peer"
+                      />
+                      <div className="w-8 h-4 bg-slate-200 peer-focus:outline-none rounded-full peer dark:bg-slate-700 peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-slate-300 after:border after:rounded-full after:h-3 after:w-3 after:transition-all dark:border-slate-600 peer-checked:bg-blue-500"></div>
+                      <span className="ml-2 text-[10px] font-black uppercase tracking-tighter text-slate-500">
+                        {draft.ticket_minimo !== null ? 'Ativo' : 'Inativo'}
+                      </span>
+                    </label>
                   </div>
-                  <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+                  <div className={`grid grid-cols-2 md:grid-cols-4 gap-3 transition-opacity duration-250 ${draft.ticket_minimo === null ? 'opacity-35 pointer-events-none' : ''}`}>
                     <div className="bg-blue-50/10 dark:bg-blue-950/5 p-3 rounded-xl border border-blue-50 dark:border-blue-900/10">
                       <label className="text-[9px] font-black text-slate-400 uppercase mb-1 block">Mínimo (Meta)</label>
                       <input
@@ -693,7 +800,7 @@ export const WeeklyParametersModal: React.FC<WeeklyParametersModalProps> = ({ st
                         value={draft.ticket_incremento || ''}
                         onChange={e => setDraft({ ...draft, ticket_incremento: e.target.value === '' ? '' : e.target.value })}
                         onBlur={() => setDraft(prev => prev ? { ...prev, ticket_incremento: prev.ticket_incremento === '' ? null : Number(prev.ticket_incremento) } : null)}
-                        className="w-full bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-lg px-3 py-1.5 text-xs font-black outline-none focus:border-blue-400 transition-all"
+                        className="w-full bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-lg px-2 py-1.5 text-xs font-black outline-none focus:border-blue-400 transition-all"
                       />
                     </div>
                     <div className="bg-blue-50/10 dark:bg-blue-950/5 p-3 rounded-xl border border-blue-50 dark:border-blue-900/10">
@@ -711,20 +818,52 @@ export const WeeklyParametersModal: React.FC<WeeklyParametersModalProps> = ({ st
 
                 {/* 3. P.A */}
                 <section className="space-y-3">
-                  <div className="flex items-center gap-3">
-                    <span className="text-[10px] font-black text-orange-600 dark:text-orange-400 uppercase tracking-[0.2em] bg-orange-50 dark:bg-orange-900/20 px-3 py-1 rounded-full">
-                      3. P.A
-                    </span>
-                    <div className="h-px bg-orange-50 dark:bg-orange-900/10 flex-1"></div>
+                  <div className="flex items-center justify-between gap-3 bg-slate-50/50 dark:bg-slate-800/10 p-2 rounded-xl border border-slate-100 dark:border-slate-800/20">
+                    <div className="flex items-center gap-2">
+                      <span className={`text-[10px] font-black uppercase tracking-[0.2em] px-3 py-1 rounded-full ${draft.pa_inicial !== null ? 'text-orange-600 dark:text-orange-400 bg-orange-50 dark:bg-orange-900/20' : 'text-slate-400 dark:text-slate-500 bg-slate-100 dark:bg-slate-800'}`}>
+                        3. P.A
+                      </span>
+                    </div>
+                    <label className="relative inline-flex items-center cursor-pointer select-none">
+                      <input
+                        type="checkbox"
+                        checked={draft.pa_inicial !== null}
+                        onChange={(e) => {
+                          const active = e.target.checked;
+                          if (active) {
+                            setDraft({
+                              ...draft,
+                              pa_inicial: 1.60,
+                              incremento_pa: 0.05,
+                              valor_base: 50,
+                              incremento_valor: 10
+                            });
+                          } else {
+                            setDraft({
+                              ...draft,
+                              pa_inicial: null,
+                              incremento_pa: null,
+                              valor_base: null,
+                              incremento_valor: null
+                            });
+                          }
+                        }}
+                        className="sr-only peer"
+                      />
+                      <div className="w-8 h-4 bg-slate-200 peer-focus:outline-none rounded-full peer dark:bg-slate-700 peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-slate-300 after:border after:rounded-full after:h-3 after:w-3 after:transition-all dark:border-slate-600 peer-checked:bg-orange-500"></div>
+                      <span className="ml-2 text-[10px] font-black uppercase tracking-tighter text-slate-500">
+                        {draft.pa_inicial !== null ? 'Ativo' : 'Inativo'}
+                      </span>
+                    </label>
                   </div>
-                  <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+                  <div className={`grid grid-cols-2 md:grid-cols-4 gap-3 transition-opacity duration-250 ${draft.pa_inicial === null ? 'opacity-35 pointer-events-none' : ''}`}>
                     <div className="bg-orange-50/10 dark:bg-orange-950/5 p-3 rounded-xl border border-orange-50 dark:border-orange-900/10">
                       <label className="text-[9px] font-black text-slate-400 uppercase mb-1 block">P.A Meta</label>
                       <input
                         type="number" step="0.05" min="0"
                         value={draft.pa_inicial || ''}
                         onChange={e => setDraft({ ...draft, pa_inicial: e.target.value === '' ? '' : e.target.value })}
-                        onBlur={() => setDraft(prev => prev ? { ...prev, pa_inicial: prev.pa_inicial === '' ? 1.60 : Number(prev.pa_inicial) } : null)}
+                        onBlur={() => setDraft(prev => prev ? { ...prev, pa_inicial: prev.pa_inicial === '' ? null : Number(prev.pa_inicial) } : null)}
                         className="w-full bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-lg px-2 py-1.5 text-xs font-black outline-none focus:border-orange-400 transition-all"
                       />
                     </div>
@@ -734,7 +873,7 @@ export const WeeklyParametersModal: React.FC<WeeklyParametersModalProps> = ({ st
                         type="number" step="5" min="0"
                         value={draft.valor_base || ''}
                         onChange={e => setDraft({ ...draft, valor_base: e.target.value === '' ? '' : e.target.value })}
-                        onBlur={() => setDraft(prev => prev ? { ...prev, valor_base: prev.valor_base === '' ? 50 : Number(prev.valor_base) } : null)}
+                        onBlur={() => setDraft(prev => prev ? { ...prev, valor_base: prev.valor_base === '' ? null : Number(prev.valor_base) } : null)}
                         className="w-full bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-lg px-2 py-1.5 text-xs font-black outline-none focus:border-orange-400 transition-all"
                       />
                     </div>
@@ -744,7 +883,7 @@ export const WeeklyParametersModal: React.FC<WeeklyParametersModalProps> = ({ st
                         type="number" step="0.05" min="0"
                         value={draft.incremento_pa || ''}
                         onChange={e => setDraft({ ...draft, incremento_pa: e.target.value === '' ? '' : e.target.value })}
-                        onBlur={() => setDraft(prev => prev ? { ...prev, incremento_pa: prev.incremento_pa === '' ? 0.05 : Number(prev.incremento_pa) } : null)}
+                        onBlur={() => setDraft(prev => prev ? { ...prev, incremento_pa: prev.incremento_pa === '' ? null : Number(prev.incremento_pa) } : null)}
                         className="w-full bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-lg px-2 py-1.5 text-xs font-black outline-none focus:border-orange-400 transition-all"
                       />
                     </div>
@@ -754,8 +893,92 @@ export const WeeklyParametersModal: React.FC<WeeklyParametersModalProps> = ({ st
                         type="number" step="1" min="0"
                         value={draft.incremento_valor || ''}
                         onChange={e => setDraft({ ...draft, incremento_valor: e.target.value === '' ? '' : e.target.value })}
-                        onBlur={() => setDraft(prev => prev ? { ...prev, incremento_valor: prev.incremento_valor === '' ? 0.10 : Number(prev.incremento_valor) } : null)}
+                        onBlur={() => setDraft(prev => prev ? { ...prev, incremento_valor: prev.incremento_valor === '' ? null : Number(prev.incremento_valor) } : null)}
                         className="w-full bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-lg px-2 py-1.5 text-xs font-black outline-none focus:border-orange-400 transition-all"
+                      />
+                    </div>
+                  </div>
+                </section>
+
+                {/* 4. P.U. */}
+                <section className="space-y-3">
+                  <div className="flex items-center justify-between gap-3 bg-slate-50/50 dark:bg-slate-800/10 p-2 rounded-xl border border-slate-100 dark:border-slate-800/20">
+                    <div className="flex items-center gap-2">
+                      <span className={`text-[10px] font-black uppercase tracking-[0.2em] px-3 py-1 rounded-full ${draft.pu_minimo !== null ? 'text-violet-600 dark:text-violet-400 bg-violet-50 dark:bg-violet-900/20' : 'text-slate-400 dark:text-slate-500 bg-slate-100 dark:bg-slate-800'}`}>
+                        4. P.U. (Preço Unitário)
+                      </span>
+                    </div>
+                    <label className="relative inline-flex items-center cursor-pointer select-none">
+                      <input
+                        type="checkbox"
+                        checked={draft.pu_minimo !== null}
+                        onChange={(e) => {
+                          const active = e.target.checked;
+                          if (active) {
+                            setDraft({
+                              ...draft,
+                              pu_minimo: 80,
+                              pu_incremento: 5,
+                              pu_valor_base: 50,
+                              pu_inc_valor: 15
+                            });
+                          } else {
+                            setDraft({
+                              ...draft,
+                              pu_minimo: null,
+                              pu_incremento: null,
+                              pu_valor_base: null,
+                              pu_inc_valor: null
+                            });
+                          }
+                        }}
+                        className="sr-only peer"
+                      />
+                      <div className="w-8 h-4 bg-slate-200 peer-focus:outline-none rounded-full peer dark:bg-slate-700 peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-slate-300 after:border after:rounded-full after:h-3 after:w-3 after:transition-all dark:border-slate-600 peer-checked:bg-violet-500"></div>
+                      <span className="ml-2 text-[10px] font-black uppercase tracking-tighter text-slate-500">
+                        {draft.pu_minimo !== null ? 'Ativo' : 'Inativo'}
+                      </span>
+                    </label>
+                  </div>
+                  <div className={`grid grid-cols-2 md:grid-cols-4 gap-3 transition-opacity duration-250 ${draft.pu_minimo === null ? 'opacity-35 pointer-events-none' : ''}`}>
+                    <div className="bg-violet-50/10 dark:bg-violet-950/5 p-3 rounded-xl border border-violet-50 dark:border-violet-900/10">
+                      <label className="text-[9px] font-black text-slate-400 uppercase mb-1 block">P.U Meta</label>
+                      <input
+                        type="number" step="1" min="0"
+                        value={draft.pu_minimo || ''}
+                        onChange={e => setDraft({ ...draft, pu_minimo: e.target.value === '' ? '' : e.target.value })}
+                        onBlur={() => setDraft(prev => prev ? { ...prev, pu_minimo: prev.pu_minimo === '' ? null : Number(prev.pu_minimo) } : null)}
+                        className="w-full bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-lg px-2 py-1.5 text-xs font-black outline-none focus:border-violet-400 transition-all"
+                      />
+                    </div>
+                    <div className="bg-violet-50/10 dark:bg-violet-950/5 p-3 rounded-xl border border-violet-50 dark:border-violet-900/10">
+                      <label className="text-[9px] font-black text-slate-400 uppercase mb-1 block">Base (Prêmio)</label>
+                      <input
+                        type="number" step="5" min="0"
+                        value={draft.pu_valor_base || ''}
+                        onChange={e => setDraft({ ...draft, pu_valor_base: e.target.value === '' ? '' : e.target.value })}
+                        onBlur={() => setDraft(prev => prev ? { ...prev, pu_valor_base: prev.pu_valor_base === '' ? null : Number(prev.pu_valor_base) } : null)}
+                        className="w-full bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-lg px-2 py-1.5 text-xs font-black outline-none focus:border-violet-400 transition-all"
+                      />
+                    </div>
+                    <div className="bg-violet-50/10 dark:bg-violet-950/5 p-3 rounded-xl border border-violet-50 dark:border-violet-900/10">
+                      <label className="text-[9px] font-black text-slate-400 uppercase mb-1 block">Inc. Faixa</label>
+                      <input
+                        type="number" step="1" min="0"
+                        value={draft.pu_incremento || ''}
+                        onChange={e => setDraft({ ...draft, pu_incremento: e.target.value === '' ? '' : e.target.value })}
+                        onBlur={() => setDraft(prev => prev ? { ...prev, pu_incremento: prev.pu_incremento === '' ? null : Number(prev.pu_incremento) } : null)}
+                        className="w-full bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-lg px-2 py-1.5 text-xs font-black outline-none focus:border-violet-400 transition-all"
+                      />
+                    </div>
+                    <div className="bg-violet-50/10 dark:bg-violet-950/5 p-3 rounded-xl border border-violet-50 dark:border-violet-900/10">
+                      <label className="text-[9px] font-black text-slate-400 uppercase mb-1 block">Valor Inc.</label>
+                      <input
+                        type="number" step="1" min="0"
+                        value={draft.pu_inc_valor || ''}
+                        onChange={e => setDraft({ ...draft, pu_inc_valor: e.target.value === '' ? '' : e.target.value })}
+                        onBlur={() => setDraft(prev => prev ? { ...prev, pu_inc_valor: prev.pu_inc_valor === '' ? null : Number(prev.pu_inc_valor) } : null)}
+                        className="w-full bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-lg px-2 py-1.5 text-xs font-black outline-none focus:border-violet-400 transition-all"
                       />
                     </div>
                   </div>

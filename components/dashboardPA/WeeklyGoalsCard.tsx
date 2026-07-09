@@ -26,10 +26,16 @@ interface GoalParameters {
   ticket_inc_valor: number | null;
   
   // P.A
-  pa_inicial: number;
-  valor_base: number;
-  incremento_pa: number;
-  incremento_valor: number;
+  pa_inicial: number | null;
+  valor_base: number | null;
+  incremento_pa: number | null;
+  incremento_valor: number | null;
+
+  // P.U
+  pu_minimo: number | null;
+  pu_valor_base: number | null;
+  pu_incremento: number | null;
+  pu_inc_valor: number | null;
 }
 
 const WeeklyGoalsCard: React.FC<WeeklyGoalsCardProps> = ({ storeId, storeName, storeNumber, selectedMonth, selectedYear, semanaId }) => {
@@ -66,18 +72,22 @@ const WeeklyGoalsCard: React.FC<WeeklyGoalsCardProps> = ({ storeId, storeName, s
       if (data && data.length > 0) {
         const row = data[0];
         setParams({
-          vendas_minimo: row.vendas_minimo,
-          vendas_valor_base: row.vendas_valor_base,
-          vendas_incremento: row.vendas_incremento,
-          vendas_inc_valor: row.vendas_inc_valor,
-          ticket_minimo: row.ticket_minimo,
-          ticket_valor_base: row.ticket_valor_base,
-          ticket_incremento: row.ticket_incremento,
-          ticket_inc_valor: row.ticket_inc_valor,
-          pa_inicial: Number(row.pa_inicial),
-          valor_base: Number(row.valor_base),
-          incremento_pa: Number(row.incremento_pa),
-          incremento_valor: Number(row.incremento_valor),
+          vendas_minimo: row.vendas_minimo !== null ? Number(row.vendas_minimo) : null,
+          vendas_valor_base: row.vendas_valor_base !== null ? Number(row.vendas_valor_base) : null,
+          vendas_incremento: row.vendas_incremento !== null ? Number(row.vendas_incremento) : null,
+          vendas_inc_valor: row.vendas_inc_valor !== null ? Number(row.vendas_inc_valor) : null,
+          ticket_minimo: row.ticket_minimo !== null ? Number(row.ticket_minimo) : null,
+          ticket_valor_base: row.ticket_valor_base !== null ? Number(row.ticket_valor_base) : null,
+          ticket_incremento: row.ticket_incremento !== null ? Number(row.ticket_incremento) : null,
+          ticket_inc_valor: row.ticket_inc_valor !== null ? Number(row.ticket_inc_valor) : null,
+          pa_inicial: row.pa_inicial !== null ? Number(row.pa_inicial) : null,
+          valor_base: row.valor_base !== null ? Number(row.valor_base) : null,
+          incremento_pa: row.incremento_pa !== null ? Number(row.incremento_pa) : null,
+          incremento_valor: row.incremento_valor !== null ? Number(row.incremento_valor) : null,
+          pu_minimo: row.pu_minimo !== null ? Number(row.pu_minimo) : null,
+          pu_valor_base: row.pu_valor_base !== null ? Number(row.pu_valor_base) : null,
+          pu_incremento: row.pu_incremento !== null ? Number(row.pu_incremento) : null,
+          pu_inc_valor: row.pu_inc_valor !== null ? Number(row.pu_inc_valor) : null,
         });
       } else {
         setParams(null);
@@ -133,15 +143,36 @@ const WeeklyGoalsCard: React.FC<WeeklyGoalsCardProps> = ({ storeId, storeName, s
     );
   }
 
-  const faixasVendas = params.vendas_minimo && params.vendas_incremento
+  const faixasVendas = params.vendas_minimo !== null && params.vendas_incremento !== null
     ? calcularFaixas(params.vendas_minimo, params.vendas_valor_base || 0, params.vendas_incremento, params.vendas_inc_valor || 0)
     : null;
 
-  const faixasTicket = params.ticket_minimo && params.ticket_incremento
+  const faixasTicket = params.ticket_minimo !== null && params.ticket_incremento !== null
     ? calcularFaixas(params.ticket_minimo, params.ticket_valor_base || 0, params.ticket_incremento, params.ticket_inc_valor || 0)
     : null;
 
-  const faixasPA = calcularFaixas(params.pa_inicial, params.valor_base, params.incremento_pa, params.incremento_valor);
+  const faixasPA = params.pa_inicial !== null && params.incremento_pa !== null
+    ? calcularFaixas(params.pa_inicial, params.valor_base || 0, params.incremento_pa, params.incremento_valor || 0)
+    : null;
+
+  const faixasPU = params.pu_minimo !== null && params.pu_incremento !== null
+    ? calcularFaixas(params.pu_minimo, params.pu_valor_base || 0, params.pu_incremento, params.pu_inc_valor || 0)
+    : null;
+
+  const noneActive = !faixasVendas && !faixasTicket && !faixasPA && !faixasPU;
+
+  if (noneActive) {
+    return (
+      <div className="bg-white dark:bg-slate-900 rounded-[32px] p-8 border border-slate-100 dark:border-slate-800 shadow-sm">
+        <div className="flex flex-col items-center justify-center h-48 text-center gap-4 opacity-40">
+          <Target className="w-12 h-12 text-slate-400" />
+          <p className="text-xs font-black italic uppercase tracking-tighter text-slate-500">
+            Nenhum indicador de premiação ativo para esta semana
+          </p>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="bg-gradient-to-br from-slate-50 to-white dark:from-slate-900 dark:to-slate-800 rounded-[40px] border border-slate-100 dark:border-slate-800 shadow-xl overflow-hidden mb-8">
@@ -279,55 +310,110 @@ const WeeklyGoalsCard: React.FC<WeeklyGoalsCardProps> = ({ storeId, storeName, s
         )}
 
         {/* 3. META DE P.A */}
-        <motion.div
-          initial={{ opacity: 0, y: 20 }}
-          animate={{ opacity: 1, y: 0 }}
-          transition={{ delay: 0.2 }}
-          className="space-y-3"
-        >
-          <div className="flex items-center gap-3">
-            <div className="p-2 bg-orange-100 dark:bg-orange-900/20 rounded-xl">
-              <Trophy className="w-5 h-5 text-orange-600 dark:text-orange-400" />
-            </div>
-            <div>
-              <h4 className="text-sm font-black italic uppercase tracking-tighter text-slate-900 dark:text-white">
-                📊 P.A
-              </h4>
-            </div>
-          </div>
-
-          <div className="grid grid-cols-2 md:grid-cols-4 gap-2">
-            {faixasPA.map((faixa, idx) => (
-              <div
-                key={idx}
-                className={`relative p-3 rounded-xl border-2 flex flex-col justify-between transition-all ${
-                  idx === 0
-                    ? 'bg-orange-50 dark:bg-orange-900/10 border-orange-200 dark:border-orange-800'
-                    : 'bg-slate-50 dark:bg-slate-800/50 border-slate-200 dark:border-slate-700 hover:border-orange-300 dark:hover:border-orange-700'
-                }`}
-              >
-                {idx > 0 && (
-                  <div className="absolute -top-1.5 -right-1.5 px-1.5 py-0.5 bg-orange-500 text-white rounded-full text-[8px] font-black uppercase">
-                    +{idx}
-                  </div>
-                )}
-                <p className="text-[9px] font-black text-slate-400 uppercase mb-1">
-                  {idx === 0 ? 'BASE' : `BÔNUS +${idx}`}
-                </p>
-                <div className="flex items-center gap-1 font-black text-sm tabular-nums">
-                  <span className="text-orange-700 dark:text-orange-400">
-                    {faixa.nivel.toFixed(2)}
-                  </span>
-                  <span className="text-slate-300">→</span>
-                  <span className="text-orange-600 dark:text-orange-300">
-                    💵 {faixa.premio.toFixed(0)}
-                  </span>
-                </div>
+        {faixasPA && (
+          <motion.div
+            initial={{ opacity: 0, y: 20 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ delay: 0.2 }}
+            className="space-y-3"
+          >
+            <div className="flex items-center gap-3">
+              <div className="p-2 bg-orange-100 dark:bg-orange-900/20 rounded-xl">
+                <Trophy className="w-5 h-5 text-orange-600 dark:text-orange-400" />
               </div>
-            ))}
-          </div>
+              <div>
+                <h4 className="text-sm font-black italic uppercase tracking-tighter text-slate-900 dark:text-white">
+                  📊 P.A
+                </h4>
+              </div>
+            </div>
 
-        </motion.div>
+            <div className="grid grid-cols-2 md:grid-cols-4 gap-2">
+              {faixasPA.map((faixa, idx) => (
+                <div
+                  key={idx}
+                  className={`relative p-3 rounded-xl border-2 flex flex-col justify-between transition-all ${
+                    idx === 0
+                      ? 'bg-orange-50 dark:bg-orange-900/10 border-orange-200 dark:border-orange-800'
+                      : 'bg-slate-50 dark:bg-slate-800/50 border-slate-200 dark:border-slate-700 hover:border-orange-300 dark:hover:border-orange-700'
+                  }`}
+                >
+                  {idx > 0 && (
+                    <div className="absolute -top-1.5 -right-1.5 px-1.5 py-0.5 bg-orange-500 text-white rounded-full text-[8px] font-black uppercase">
+                      +{idx}
+                    </div>
+                  )}
+                  <p className="text-[9px] font-black text-slate-400 uppercase mb-1">
+                    {idx === 0 ? 'BASE' : `BÔNUS +${idx}`}
+                  </p>
+                  <div className="flex items-center gap-1 font-black text-sm tabular-nums">
+                    <span className="text-orange-700 dark:text-orange-400">
+                      {faixa.nivel.toFixed(2)}
+                    </span>
+                    <span className="text-slate-300">→</span>
+                    <span className="text-orange-600 dark:text-orange-300">
+                      💵 {faixa.premio.toFixed(0)}
+                    </span>
+                  </div>
+                </div>
+              ))}
+            </div>
+
+          </motion.div>
+        )}
+
+        {/* 4. META DE P.U */}
+        {faixasPU && (
+          <motion.div
+            initial={{ opacity: 0, y: 20 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ delay: 0.3 }}
+            className="space-y-3"
+          >
+            <div className="flex items-center gap-3">
+              <div className="p-2 bg-violet-100 dark:bg-violet-900/20 rounded-xl">
+                <Award className="w-5 h-5 text-violet-600 dark:text-violet-400" />
+              </div>
+              <div>
+                <h4 className="text-sm font-black italic uppercase tracking-tighter text-slate-900 dark:text-white">
+                  🏷️ P.U (PREÇO UNITÁRIO MÉDIO)
+                </h4>
+              </div>
+            </div>
+
+            <div className="grid grid-cols-2 md:grid-cols-4 gap-2">
+              {faixasPU.map((faixa, idx) => (
+                <div
+                  key={idx}
+                  className={`relative p-3 rounded-xl border-2 flex flex-col justify-between transition-all ${
+                    idx === 0
+                      ? 'bg-violet-50 dark:bg-violet-900/10 border-violet-200 dark:border-violet-800'
+                      : 'bg-slate-50 dark:bg-slate-800/50 border-slate-200 dark:border-slate-700 hover:border-violet-300 dark:hover:border-violet-700'
+                  }`}
+                >
+                  {idx > 0 && (
+                    <div className="absolute -top-1.5 -right-1.5 px-1.5 py-0.5 bg-violet-500 text-white rounded-full text-[8px] font-black uppercase">
+                      +{idx}
+                    </div>
+                  )}
+                  <p className="text-[9px] font-black text-slate-400 uppercase mb-1">
+                    {idx === 0 ? 'BASE' : `BÔNUS +${idx}`}
+                  </p>
+                  <div className="flex items-center gap-1 font-black text-sm tabular-nums">
+                    <span className="text-violet-700 dark:text-violet-400">
+                      R$ {faixa.nivel.toFixed(2)}
+                    </span>
+                    <span className="text-slate-300">→</span>
+                    <span className="text-violet-600 dark:text-violet-300">
+                      💵 {faixa.premio.toFixed(0)}
+                    </span>
+                  </div>
+                </div>
+              ))}
+            </div>
+
+          </motion.div>
+        )}
 
         {/* Footer com Resumo */}
         <div className="pt-4 border-t-2 border-slate-200 dark:border-slate-800 flex items-center justify-center">

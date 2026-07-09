@@ -3,10 +3,11 @@ export interface PAParameters {
   store_id: string;
   mes_ref?: number;
   ano_ref?: number;
-  pa_inicial: number;
-  incremento_pa: number;
-  valor_base: number;
-  incremento_valor: number;
+  semana_id?: string | null;
+  pa_inicial: number | null;
+  incremento_pa: number | null;
+  valor_base: number | null;
+  incremento_valor: number | null;
   vendas_minimo: number | null;
   vendas_incremento: number | null;
   vendas_valor_base: number | null;
@@ -15,6 +16,10 @@ export interface PAParameters {
   ticket_incremento: number | null;
   ticket_valor_base: number | null;
   ticket_inc_valor: number | null;
+  pu_minimo?: number | null;
+  pu_incremento?: number | null;
+  pu_valor_base?: number | null;
+  pu_inc_valor?: number | null;
   criado_por_role?: string;
   criado_por_id?: string;
   updated_at?: string;
@@ -68,9 +73,11 @@ export interface PASale {
   valor_premio_pa?: number;
   valor_premio_vendas?: number;
   valor_premio_ticket?: number;
+  valor_premio_pu?: number;
   valor_premio_total?: number;
   atingiu_meta_vendas?: boolean;
   atingiu_meta_ticket?: boolean;
+  atingiu_meta_pu?: boolean;
 }
 
 export interface PAStoreSummary {
