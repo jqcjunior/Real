@@ -19,18 +19,35 @@ const NotificationHeader: React.FC<NotificationHeaderProps> = ({ user, stores, a
     // 1. Efeito para carregar e ouvir notificações de demandas em tempo real
     useEffect(() => {
         const fetchDemandNotifications = async () => {
-            const { data, error } = await supabase
-                .from('demands_notifications')
-                .select('*')
-                .eq('user_id', user.id)
-                .eq('is_read', false)
-                .order('created_at', { ascending: false });
-            
-            if (data) setDemandNotifications(data);
-            if (error) console.error("Erro ao carregar notificações de chamados:", error);
+            const userId = user?.id || user?.user_id || (user as any)?.userId;
+            if (!userId || typeof userId !== 'string' || !/^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$/.test(userId)) {
+                return;
+            }
+
+            try {
+                const { ensureSession } = await import('../services/authService');
+                await ensureSession(userId);
+
+                const { data, error } = await supabase
+                    .from('demands_notifications')
+                    .select('*')
+                    .eq('user_id', userId)
+                    .eq('is_read', false)
+                    .order('created_at', { ascending: false });
+                
+                if (data) setDemandNotifications(data);
+                if (error) console.error("Erro ao carregar notificações de chamados:", error);
+            } catch (err) {
+                console.error("Erro no fluxo de carregar notificações de chamados:", err);
+            }
         };
 
         fetchDemandNotifications();
+
+        const userId = user?.id || user?.user_id || (user as any)?.userId;
+        if (!userId || typeof userId !== 'string' || !/^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$/.test(userId)) {
+            return;
+        }
 
         // Inscreve no Real-time para o sino atualizar na hora
         const channel = supabase
@@ -40,7 +57,7 @@ const NotificationHeader: React.FC<NotificationHeaderProps> = ({ user, stores, a
                     event: 'INSERT', 
                     schema: 'public', 
                     table: 'demands_notifications', 
-                    filter: `user_id=eq.${user.id}` 
+                    filter: `user_id=eq.${userId}` 
                 }, 
                 (payload) => {
                     setDemandNotifications(prev => [payload.new, ...prev]);
@@ -52,11 +69,19 @@ const NotificationHeader: React.FC<NotificationHeaderProps> = ({ user, stores, a
         return () => {
             supabase.removeChannel(channel);
         };
-    }, [user.id]);
+    }, [user?.id, user?.user_id, (user as any)?.userId]);
 
     useEffect(() => {
         const fetchPendingSurveys = async () => {
+            const userId = user?.id || user?.user_id || (user as any)?.userId;
+            if (!userId || typeof userId !== 'string' || !/^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$/.test(userId)) {
+                return;
+            }
+
             try {
+                const { ensureSession } = await import('../services/authService');
+                await ensureSession(userId);
+
                 const { data: surveysData, error: sError } = await supabase
                     .from('surveys')
                     .select('*')
@@ -86,7 +111,7 @@ const NotificationHeader: React.FC<NotificationHeaderProps> = ({ user, stores, a
                             if (roleLevel !== 'seller' && roleLevel !== 'vendedor') return false;
                         }
                         if (survey.target_category === 'specific_users') {
-                            if (!survey.target_user_ids?.includes(user.id)) return false;
+                            if (!survey.target_user_ids?.includes(userId)) return false;
                         }
                         return true;
                     });
@@ -95,7 +120,7 @@ const NotificationHeader: React.FC<NotificationHeaderProps> = ({ user, stores, a
                 const { data: responses, error: rError } = await supabase
                     .from('survey_responses')
                     .select('survey_id')
-                    .eq('user_id', user.id);
+                    .eq('user_id', userId);
 
                 if (rError) throw rError;
 
@@ -109,7 +134,7 @@ const NotificationHeader: React.FC<NotificationHeaderProps> = ({ user, stores, a
         };
 
         fetchPendingSurveys();
-    }, [user.id, user.storeId, (user as any).store_id, (user as any).role_level]);
+    }, [user?.id, user?.user_id, (user as any)?.userId, user?.storeId, (user as any)?.store_id, (user as any)?.role_level]);
 
     const pendingAccessRequests = useMemo(() => {
         if (!can('ALWAYS')) return [];

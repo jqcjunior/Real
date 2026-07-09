@@ -434,6 +434,7 @@ const DashboardPAAdmin: React.FC<DashboardPAAdminProps> = ({ user, stores, onRef
             if (viewMode === 'semana' && selectedWeek) loadWeekPerformance();
             else loadMonthPerformance();
           }}
+          onWeekChange={(weekId) => setSelectedWeek(weekId)}
         />
       )}
 

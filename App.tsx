@@ -190,8 +190,14 @@ const App: React.FC = () => {
 
     const checkUnreadDemands = async () => {
         if (!user) return;
+        const userId = user.id || user.user_id || (user as any).userId;
+        if (!userId || typeof userId !== 'string' || !/^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$/.test(userId)) {
+            setHasUnreadDemands(false);
+            return;
+        }
+
         try {
-            await ensureSession();
+            await ensureSession(userId);
             
             let query = supabase
                 .from('demands_v2')
@@ -206,7 +212,7 @@ const App: React.FC = () => {
             // @ts-ignore
             const userStoreId = user.store_id || user.storeId;
             if (!isAdminOrTecnico) {
-                if (userStoreId) {
+                if (userStoreId && typeof userStoreId === 'string' && /^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$/.test(userStoreId)) {
                     query = query.eq('store_id', userStoreId);
                 } else {
                     setHasUnreadDemands(false);

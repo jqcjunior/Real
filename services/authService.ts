@@ -43,39 +43,44 @@ export async function loginUser(email: string, password: string) {
 }
 
 /**
- * ✅ CORRIGIDO: Reestabelecer sessão a partir do localStorage
+ * ✅ CORRIGIDO: Reestabelecer sessão a partir de um userId ou localStorage
  */
-export async function ensureSession() {
-  const userStr = localStorage.getItem('realcalcados_user'); // ✅ CORRIGIDO
+export async function ensureSession(explicitUserId?: string) {
+  let userId = explicitUserId;
 
-  if (!userStr) {
-    console.warn('⚠️ ensureSession: Nenhum usuário encontrado no localStorage');
+  if (!userId) {
+    const userStr = localStorage.getItem('realcalcados_user'); // ✅ CORRIGIDO
+
+    if (!userStr) {
+      console.warn('⚠️ ensureSession: Nenhum usuário encontrado no localStorage ou fornecido explicitamente');
+      return;
+    }
+
+    try {
+      const user = JSON.parse(userStr);
+      userId = user?.user_id || user?.id || user?.userId;
+    } catch (e) {
+      console.error('❌ Erro ao parsear usuário do localStorage:', e);
+    }
+  }
+
+  if (!userId) {
+    console.error('❌ ensureSession: Usuário sem ID válido');
     return;
   }
 
   try {
-    const user = JSON.parse(userStr);
-    const userId = user?.user_id || user?.id || user?.userId;
-    
-    if (!userId) {
-      console.error('❌ ensureSession: Usuário sem ID válido');
-      localStorage.removeItem('realcalcados_user'); // Limpa dados corrompidos
-      return;
-    }
-
     const { error } = await supabase.rpc('set_user_session', {
       p_user_id: String(userId)
     });
 
     if (error) {
       console.warn('⚠️ Erro ao reestabelecer sessão (não bloqueante):', error);
-      // Não limpa o localStorage aqui - pode ser erro temporário
     } else {
       console.log('✅ Sessão reestabelecida para:', userId);
     }
   } catch (e) {
     console.error('❌ Erro ao restaurar sessão:', e);
-    localStorage.removeItem('realcalcados_user');
   }
 }
 

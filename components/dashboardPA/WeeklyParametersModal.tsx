@@ -4,7 +4,7 @@
 // ============================================
 
 import React, { useState, useEffect } from 'react';
-import { X, Check, ChevronRight, Loader2, Settings, Trophy, Zap, Copy } from 'lucide-react';
+import { X, Check, ChevronRight, ChevronDown, Loader2, Settings, Trophy, Zap, Copy } from 'lucide-react';
 import { supabase } from '../../services/supabaseClient';
 import { Store } from '../../types';
 import { format } from 'date-fns';
@@ -46,6 +46,7 @@ interface WeeklyParametersModalProps {
   onSaved: () => void;
   selectedWeek: WeekData;
   allWeeks: WeekData[];
+  onWeekChange?: (weekId: string) => void;
 }
 
 const parseLocalDate = (dateStr: string): Date => {
@@ -98,7 +99,7 @@ function calcularPremioTotal(performance: { pa: number; vendas: number; ticket: 
   return total;
 }
 
-export const WeeklyParametersModal: React.FC<WeeklyParametersModalProps> = ({ stores, onClose, onSaved, selectedWeek, allWeeks }) => {
+export const WeeklyParametersModal: React.FC<WeeklyParametersModalProps> = ({ stores, onClose, onSaved, selectedWeek, allWeeks, onWeekChange }) => {
   const [localStores, setLocalStores] = useState<Store[]>(stores || []);
   const [params, setParams] = useState<Record<string, PAParametros>>({});
   const [selectedStoreId, setSelectedStoreId] = useState<string | null>(null);
@@ -194,6 +195,35 @@ export const WeeklyParametersModal: React.FC<WeeklyParametersModalProps> = ({ st
           });
         }
         setParams(map);
+
+        if (selectedStoreId) {
+          const updatedParams = map[selectedStoreId];
+          if (updatedParams) {
+            setDraft(updatedParams);
+          } else {
+            // Loja não tem parâmetros configurados ainda para esta nova semana
+            setDraft({
+              store_id: selectedStoreId,
+              pa_inicial: null,
+              incremento_pa: null,
+              valor_base: null,
+              incremento_valor: null,
+              vendas_minimo: null,
+              vendas_incremento: null,
+              vendas_valor_base: null,
+              vendas_inc_valor: null,
+              ticket_minimo: null,
+              ticket_incremento: null,
+              ticket_valor_base: null,
+              ticket_inc_valor: null,
+              pu_minimo: null,
+              pu_incremento: null,
+              pu_valor_base: null,
+              pu_inc_valor: null,
+            });
+          }
+          setSaved(false);
+        }
       } catch (err: any) {
         setError(`Erro inesperado: ${err.message}`);
       } finally {
@@ -522,9 +552,29 @@ export const WeeklyParametersModal: React.FC<WeeklyParametersModalProps> = ({ st
               <Settings size={18} className="text-orange-600 dark:text-orange-400" />
             </div>
             <div>
-              <h2 className="text-sm sm:text-base font-black text-slate-900 dark:text-white uppercase italic tracking-tight">
-                Configurar Metas — {formatPeriod(selectedWeek)}
-              </h2>
+              <div className="relative flex items-center bg-slate-50 dark:bg-slate-800/40 hover:bg-slate-100 dark:hover:bg-slate-800 border border-slate-200 dark:border-slate-700/80 rounded-lg px-2.5 py-1 pr-8 transition-colors">
+                <select
+                  value={selectedWeek?.id}
+                  onChange={(e) => onWeekChange?.(e.target.value)}
+                  disabled={!onWeekChange}
+                  className="appearance-none bg-transparent text-sm sm:text-base font-black text-slate-900 dark:text-white uppercase italic tracking-tight focus:outline-none cursor-pointer disabled:cursor-default disabled:opacity-100 w-full"
+                >
+                  {[...allWeeks]
+                    .sort((a, b) => a.data_inicio.localeCompare(b.data_inicio))
+                    .map((week) => (
+                      <option
+                        key={week.id}
+                        value={week.id}
+                        className="text-slate-900 dark:text-slate-100 bg-white dark:bg-slate-900 font-normal not-italic text-sm"
+                      >
+                        Configurar Metas — {formatPeriod(week)}
+                      </option>
+                    ))}
+                </select>
+                <div className="absolute right-2.5 top-1/2 -translate-y-1/2 pointer-events-none text-slate-500 dark:text-slate-400">
+                  <ChevronDown size={16} />
+                </div>
+              </div>
               <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest leading-none">
                 {loading ? 'Carregando...' : `${localStores.length} LOJAS ATIVAS`}
               </p>
