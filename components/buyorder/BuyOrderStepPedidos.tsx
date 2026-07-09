@@ -109,6 +109,36 @@ function totPares(qtds: Record<string, number>): number {
   return Object.values(qtds).reduce((s, v) => s + (v || 0), 0);
 }
 
+const getCategoryBadge = (tipo: string): { label: string; color: string } => {
+  const t = (tipo || '').toUpperCase().trim();
+  if (t === 'ACES' || t.includes('ACESSORIO') || t.includes('ACESSÓRIO')) 
+    return { label: 'ACES', color: 'bg-purple-100 text-purple-700 border border-purple-200' };
+  if (t === 'INF' || t.includes('INFANTIL')) 
+    return { label: 'INF', color: 'bg-amber-100 text-amber-700 border border-amber-200' };
+  if (t === 'FEM' || t.includes('FEMININO')) 
+    return { label: 'FEM', color: 'bg-pink-100 text-pink-700 border border-pink-200' };
+  if (t === 'MASC' || t.includes('MASCULINO')) 
+    return { label: 'MASC', color: 'bg-blue-100 text-blue-700 border border-blue-200' };
+  return { label: t || '', color: t ? 'bg-gray-100 text-gray-700 border border-gray-200' : 'bg-transparent text-transparent border-transparent' };
+};
+
+const cleanModelo = (modelo: string): string => {
+  if (!modelo) return '';
+  return modelo
+    .replace(/\bFEMININO\b/gi, '')
+    .replace(/\bMASCULINO\b/gi, '')
+    .replace(/\bINFANTIL\b/gi, '')
+    .replace(/\bACESSORIO\b/gi, '')
+    .replace(/\bACESSÓRIO\b/gi, '')
+    .replace(/\s+/g, ' ')
+    .trim();
+};
+
+const getResumedColor = (cor: string): string => {
+  if (!cor) return '';
+  return cor.trim().split(/\s+/)[0];
+};
+
 function sanitizeQtds(qtds: Record<string, any>): Record<string, number> {
   const result: Record<string, number> = {};
   for (const [k, v] of Object.entries(qtds || {})) {
@@ -1076,36 +1106,83 @@ export default function StepPedidos({
                         {item.ref.slice(-3)}
                       </div>
 
-                      <div className="flex items-center gap-1.5 relative z-10">
-                        <span className="text-[8px] font-black text-slate-400 bg-slate-100 rounded px-1 shrink-0 group-hover:bg-slate-200 transition-colors">
-                          #{idx + 1}
-                        </span>
-                        <span className="text-[10px] font-black text-slate-800 truncate flex-1 uppercase tracking-tight">{item.ref}</span>
-                        {jaVinculado && (
-                          <div className="w-4 h-4 bg-green-600 text-white rounded-full flex items-center justify-center text-[10px] font-black shadow-md border border-white">✓</div>
+                      {/* Primeira linha: #1 B110 FEM (canto superior direito) */}
+                      <div className="flex items-center justify-between relative z-10 gap-1.5">
+                        <div className="flex items-center gap-1.5 min-w-0 flex-1">
+                          <span className="text-[8px] font-black text-slate-400 bg-slate-100 rounded px-1 shrink-0 group-hover:bg-slate-200 transition-colors">
+                            #{idx + 1}
+                          </span>
+                          <span className="text-[10px] font-black text-slate-800 truncate uppercase tracking-tight">{item.ref}</span>
+                          {jaVinculado && (
+                            <div className="w-4 h-4 bg-green-600 text-white rounded-full flex items-center justify-center text-[10px] font-black shadow-md border border-white shrink-0">✓</div>
+                          )}
+                        </div>
+                        {getCategoryBadge(item.tipo).label && (
+                          <span className={`text-[8px] font-black px-1.5 py-0.5 rounded uppercase shrink-0 ${getCategoryBadge(item.tipo).color}`}>
+                            {getCategoryBadge(item.tipo).label}
+                          </span>
                         )}
                       </div>
                       
-                      <div className="text-[9px] text-slate-500 font-bold truncate mt-1 relative z-10 opacity-70">
-                        {item.tipo || '—'} · {item.modelo}
+                      {/* Segunda linha: Descrição limpa */}
+                      <div className="text-[9px] text-slate-500 font-bold truncate mt-1 relative z-10 opacity-70 pr-16">
+                        {cleanModelo(item.modelo) || '—'}
                       </div>
 
+                      {/* Terceira linha / Rodapé: Valores e Cores Compactos */}
                       <div className="mt-2 relative z-10">
-                        <div className="flex items-center gap-1 mb-1.5">
-                          <span className="text-[8px] text-slate-400 leading-none">C</span>
+                        <div className="flex items-center gap-1 mb-1">
+                          <span className="text-[8px] text-slate-400 font-bold leading-none">C</span>
                           <span className="text-[9px] font-bold text-slate-500 leading-none">{fmtBRL(item.custo)}</span>
                           <span className="mx-0.5 text-slate-200 text-[8px]">·</span>
-                          <span className="text-[8px] text-slate-400 leading-none">V</span>
+                          <span className="text-[8px] text-slate-400 font-bold leading-none">V</span>
                           <span className="text-[9px] font-black text-green-700 leading-none">{fmtBRL(item.preco_venda)}</span>
                         </div>
-                        <div className="flex items-center gap-2">
-                          {[item.cor1, item.cor2, item.cor3].filter(Boolean).map((cor, i) => (
-                            <span key={i} className="text-[8px] font-bold text-slate-600 leading-none truncate max-w-[44px]">
-                              {cor}{i < [item.cor1, item.cor2, item.cor3].filter(Boolean).length - 1 ? ' ·' : ''}
-                            </span>
-                          ))}
+                        <div className="flex items-center gap-1 overflow-hidden pr-16">
+                          {[item.cor1, item.cor2, item.cor3].filter(Boolean).map((cor, i) => {
+                            const resume = getResumedColor(cor);
+                            return resume ? (
+                              <span key={i} className="text-[8px] font-bold text-slate-600 leading-none truncate max-w-[40px]" title={cor}>
+                                {resume}{i < [item.cor1, item.cor2, item.cor3].filter(Boolean).filter(c => getResumedColor(c)).length - 1 ? ' ·' : ''}
+                              </span>
+                            ) : null;
+                          })}
                         </div>
                       </div>
+
+                      {/* Miniatura discreta no canto inferior direito */}
+                      {item._catalogImageUrl && (
+                        <div 
+                          className="absolute pointer-events-none z-20"
+                          style={{
+                            right: '6px',
+                            bottom: '3px',
+                            width: '55px',
+                            height: '55px',
+                            border: '1px solid #ECECEC',
+                            borderRadius: '6px',
+                            background: '#FFFFFF',
+                            boxShadow: '0 1px 3px rgba(0,0,0,0.08)',
+                            display: 'flex',
+                            alignItems: 'center',
+                            justifyContent: 'center',
+                            padding: '2px',
+                            overflow: 'hidden'
+                          }}
+                        >
+                          <img
+                            src={item._catalogImageUrl}
+                            alt={item.ref}
+                            referrerPolicy="no-referrer"
+                            style={{
+                              width: '100%',
+                              height: '100%',
+                              objectFit: 'contain',
+                              borderRadius: '4px'
+                            }}
+                          />
+                        </div>
+                      )}
                     </div>
                   );
                 })}
