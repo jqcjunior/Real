@@ -54,6 +54,7 @@ const LOJAS = [5, 8, 9, 26, 31, 34, 40, 43, 44, 45, 50, 56, 72, 88, 96, 100, 102
 
 export default function BuyOrderDashboard({ user }: { user: any }) {
   const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
   const [userStoreNumber, setUserStoreNumber] = useState<number | null>(null);
   const [summary, setSummary] = useState<DashboardSummary | null>(null);
   const [typeStats, setTypeStats] = useState<TypeStat[]>([]);
@@ -164,6 +165,7 @@ export default function BuyOrderDashboard({ user }: { user: any }) {
 
   const fetchData = async () => {
     setLoading(true);
+    setError(null);
     try {
       const currentYear = new Date().getFullYear();
 
@@ -264,14 +266,18 @@ export default function BuyOrderDashboard({ user }: { user: any }) {
         const items     = itemsByOrder.get(order.id) || [];
 
         if (user?.role !== 'ADMIN' && userStoreNumber) {
-          const incluiLoja = subOrders.some((sub: any) =>
-            (sub.lojas_numeros || []).map(String).includes(String(userStoreNumber))
-          );
+          const incluiLoja = subOrders.some((sub: any) => {
+            const subLojas = Array.isArray(sub.lojas_numeros) ? sub.lojas_numeros : [];
+            return subLojas.map(String).includes(String(userStoreNumber));
+          });
           if (!incluiLoja) continue;
         }
 
         const todasLojas = Array.from(new Set(
-          subOrders.flatMap((sub: any) => (sub.lojas_numeros || []).map(Number))
+          subOrders.flatMap((sub: any) => {
+            const subLojas = Array.isArray(sub.lojas_numeros) ? sub.lojas_numeros : [];
+            return subLojas.map(Number);
+          })
         ));
         if (todasLojas.length === 0) continue;
 
@@ -294,8 +300,16 @@ export default function BuyOrderDashboard({ user }: { user: any }) {
           else if (dept === 'MASC') dept = 'MASCULINO';
           else if (dept === 'INF')  dept = 'INFANTIL';
 
-          const itemSubOrderNums: number[] = (item.buy_order_item_suborder_grades || [])
-            .map((g: any) => Number(g.sub_order_num))
+          // Ensure it's safe if buy_order_item_suborder_grades is not an array
+          const suborderGradesRelation = item.buy_order_item_suborder_grades;
+          const suborderGradesArray = Array.isArray(suborderGradesRelation)
+            ? suborderGradesRelation
+            : suborderGradesRelation
+              ? [suborderGradesRelation]
+              : [];
+
+          const itemSubOrderNums: number[] = suborderGradesArray
+            .map((g: any) => Number(g?.sub_order_num))
             .filter((n: number) => !isNaN(n));
 
           let activeSubOrders = subOrders;
@@ -311,7 +325,8 @@ export default function BuyOrderDashboard({ user }: { user: any }) {
 
           // Lógica unificada para TODOS os itens (calçados e acessórios)
           for (const sub of activeSubOrders) {
-            const lojas: number[] = (sub.lojas_numeros || []).map(Number);
+            const subLojas = Array.isArray(sub.lojas_numeros) ? sub.lojas_numeros : [];
+            const lojas: number[] = subLojas.map(Number);
             if (lojas.length === 0) continue;
 
             const itemGrades = gradeMap.get(item.id);
@@ -319,10 +334,11 @@ export default function BuyOrderDashboard({ user }: { user: any }) {
             if (!gradLetra) continue;
 
             // Extrair quantidade da grade específica do JSONB
-            const gradeEntry = (item.grades || []).find((g: any) => g.letra === gradLetra);
+            const gradesList = Array.isArray(item.grades) ? item.grades : [];
+            const gradeEntry = gradesList.find((g: any) => g && g.letra === gradLetra);
             if (!gradeEntry || !gradeEntry.tamanhos) continue;
 
-            const qtdPerStore = Object.values(gradeEntry.tamanhos as Record<string, number>)
+            const qtdPerStore = Object.values((gradeEntry.tamanhos || {}) as Record<string, number>)
               .reduce((sum: number, v: number) => sum + (typeof v === 'number' ? v : 0), 0);
 
             const valorPerStore = qtdPerStore * Number(item.custo || 0) * fatorDesconto;
@@ -367,7 +383,7 @@ export default function BuyOrderDashboard({ user }: { user: any }) {
 
           storeParesMap.forEach((pares, lojaNum) => {
             mAgg.pares_por_loja.set(lojaNum, (mAgg.pares_por_loja.get(lojaNum) || 0) + pares);
-            mAgg.valor_por_loja.set(lojaNum, (mAgg.valor_por_loja.get(lojaNum) || 0) + storeValorMap.get(lojaNum)!);
+            mAgg.valor_por_loja.set(lojaNum, (mAgg.valor_por_loja.get(lojaNum) || 0) + (storeValorMap.get(lojaNum) || 0));
 
             // Store Aggregation
             const loja = String(lojaNum);
@@ -377,13 +393,13 @@ export default function BuyOrderDashboard({ user }: { user: any }) {
             } else {
               sAgg.pares    += pares;
             }
-            sAgg.valor      += storeValorMap.get(lojaNum)!;
+            sAgg.valor      += (storeValorMap.get(lojaNum) || 0);
             sAgg.pedidos.add(order.id);
             storeAgg.set(loja, sAgg);
 
             // Brand Aggregation per store
             bAgg.pares_por_loja.set(lojaNum, (bAgg.pares_por_loja.get(lojaNum) || 0) + pares);
-            bAgg.valor_por_loja.set(lojaNum, (bAgg.valor_por_loja.get(lojaNum) || 0) + storeValorMap.get(lojaNum)!);
+            bAgg.valor_por_loja.set(lojaNum, (bAgg.valor_por_loja.get(lojaNum) || 0) + (storeValorMap.get(lojaNum) || 0));
           });
 
           bAgg.pares += itemTotalParesOfDraft;
@@ -463,8 +479,9 @@ export default function BuyOrderDashboard({ user }: { user: any }) {
       });
       setTypeStats(builtTypes);
 
-    } catch (err) {
+    } catch (err: any) {
       console.error('Erro ao buscar dashboard:', err);
+      setError(err?.message || String(err));
     } finally {
       setLoading(false);
     }
@@ -609,6 +626,30 @@ export default function BuyOrderDashboard({ user }: { user: any }) {
     return (
       <div className="flex h-screen items-center justify-center bg-slate-50 dark:bg-slate-900">
         <Activity className="animate-spin text-blue-600 mb-4" size={32} />
+      </div>
+    );
+  }
+
+  if (error) {
+    return (
+      <div className="flex flex-col h-screen items-center justify-center bg-slate-50 dark:bg-slate-900 p-6 text-center">
+        <div className="max-w-md p-6 bg-white dark:bg-slate-800 rounded-2xl shadow-xl border border-red-200 dark:border-red-900/30 space-y-4">
+          <div className="w-12 h-12 bg-red-100 dark:bg-red-900/20 text-red-600 dark:text-red-400 rounded-full flex items-center justify-center mx-auto text-xl font-bold">
+            ⚠️
+          </div>
+          <h2 className="text-lg font-black text-slate-900 dark:text-white uppercase tracking-tight">
+            Erro ao buscar dashboard
+          </h2>
+          <p className="text-sm text-slate-500 dark:text-slate-400 leading-relaxed">
+            {error}
+          </p>
+          <button
+            onClick={() => fetchData()}
+            className="w-full px-4 py-2 bg-blue-600 text-white rounded-lg text-sm font-bold uppercase tracking-wider hover:bg-blue-700 transition"
+          >
+            Tentar Novamente
+          </button>
+        </div>
       </div>
     );
   }

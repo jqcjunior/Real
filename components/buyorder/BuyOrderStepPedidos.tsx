@@ -1121,7 +1121,7 @@ export default function StepPedidos({
                                 <div className="w-4 h-4 bg-green-600 text-white rounded-full flex items-center justify-center text-[10px] font-black shadow-md border border-white shrink-0">✓</div>
                               )}
                             </div>
-                            {getCategoryBadge(item.tipo).label && (
+                            {!item._catalogImageUrl && getCategoryBadge(item.tipo).label && (
                               <span className={`text-[8px] font-black px-1.5 py-0.5 rounded uppercase shrink-0 ${getCategoryBadge(item.tipo).color}`}>
                                 {getCategoryBadge(item.tipo).label}
                               </span>
@@ -1157,33 +1157,40 @@ export default function StepPedidos({
 
                         {/* Coluna Imagem (direita, se houver) */}
                         {item._catalogImageUrl && (
-                          <div 
-                            className="shrink-0 pointer-events-none"
-                            style={{
-                              width: '44px',
-                              height: '44px',
-                              border: '1px solid #ECECEC',
-                              borderRadius: '6px',
-                              background: '#FFFFFF',
-                              boxShadow: '0 1px 3px rgba(0,0,0,0.08)',
-                              display: 'flex',
-                              alignItems: 'center',
-                              justifyContent: 'center',
-                              padding: '2px',
-                              overflow: 'hidden'
-                            }}
-                          >
-                            <img
-                              src={item._catalogImageUrl}
-                              alt={item.ref}
-                              referrerPolicy="no-referrer"
+                          <div className="flex flex-col items-center gap-1 shrink-0">
+                            {getCategoryBadge(item.tipo).label && (
+                              <span className={`text-[7px] font-black px-1 py-0.5 rounded uppercase shrink-0 max-w-[44px] text-center truncate ${getCategoryBadge(item.tipo).color}`}>
+                                {getCategoryBadge(item.tipo).label}
+                              </span>
+                            )}
+                            <div 
+                              className="pointer-events-none"
                               style={{
-                                width: '100%',
-                                height: '100%',
-                                objectFit: 'contain',
-                                borderRadius: '4px'
+                                width: '44px',
+                                height: '44px',
+                                border: '1px solid #ECECEC',
+                                borderRadius: '6px',
+                                background: '#FFFFFF',
+                                boxShadow: '0 1px 3px rgba(0,0,0,0.08)',
+                                display: 'flex',
+                                alignItems: 'center',
+                                justifyContent: 'center',
+                                padding: '2px',
+                                overflow: 'hidden'
                               }}
-                            />
+                            >
+                              <img
+                                src={item._catalogImageUrl}
+                                alt={item.ref}
+                                referrerPolicy="no-referrer"
+                                style={{
+                                  width: '100%',
+                                  height: '100%',
+                                  objectFit: 'contain',
+                                  borderRadius: '4px'
+                                }}
+                              />
+                            </div>
                           </div>
                         )}
                       </div>
