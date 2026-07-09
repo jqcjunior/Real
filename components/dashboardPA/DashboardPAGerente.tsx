@@ -675,7 +675,25 @@ const DashboardPAGerente: React.FC<DashboardPAGerenteProps> = ({ user, store }) 
     `;
   };
  
-  if (!user || !store) {
+  if (user && !store) {
+    return (
+      <div className="flex items-center justify-center h-screen bg-slate-50 dark:bg-slate-950">
+        <div className="text-center space-y-4 max-w-md px-6">
+          <div className="w-16 h-16 bg-amber-100 dark:bg-amber-900/20 rounded-full flex items-center justify-center mx-auto">
+            <AlertCircle className="w-8 h-8 text-amber-600" />
+          </div>
+          <h3 className="text-lg font-black text-slate-800 dark:text-white uppercase italic">
+            Nenhuma loja vinculada
+          </h3>
+          <p className="text-slate-500 dark:text-slate-400 text-sm">
+            Sua conta não está associada a nenhuma loja. Se você é administrador, use o menu "Meta Semanal Admin" em vez deste. Se você é gerente, entre em contato com o administrador do sistema.
+          </p>
+        </div>
+      </div>
+    );
+  }
+
+  if (!user) {
     return (
       <div className="flex items-center justify-center h-screen bg-slate-50 dark:bg-slate-950">
         <div className="text-center space-y-4">

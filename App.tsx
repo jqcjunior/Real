@@ -1313,8 +1313,14 @@ const App: React.FC = () => {
                                 {visibleItems.map((item: any) => {
                                     if (item.isGroup) {
                                         const visibleSubItems = item.subItems!.filter((sub: any) => {
-                                            // ✅ ADMIN vê TODOS os sub-itens
-                                            if (user?.role === UserRole.ADMIN) return true;
+                                            if (sub.id === 'dashboard_pa_manager') {
+                                                if (user?.role === UserRole.ADMIN) {
+                                                    return !!user?.storeId;
+                                                }
+                                            } else {
+                                                // ✅ ADMIN vê TODOS os sub-itens
+                                                if (user?.role === UserRole.ADMIN) return true;
+                                            }
                                             
                                             // Para outros usuários
                                             const userRole = String(user?.role || '').toLowerCase();
