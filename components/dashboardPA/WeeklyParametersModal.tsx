@@ -164,123 +164,123 @@ export const WeeklyParametersModal: React.FC<WeeklyParametersModalProps> = ({ st
     }
   }, [stores]);
 
-  useEffect(() => {
-    const fetchParams = async () => {
-      setLoading(true);
-      setError(null);
-      setMetaCalculada(null);
-      setMetaDetalhada(null);
-      
-      try {
-        // Garantir que a lista de lojas esteja populada
-        let activeStores = [...(stores || [])];
-        if (activeStores.length === 0) {
-          const { data: dbStores, error: dbError } = await supabase
-            .from('stores')
-            .select('*');
-          
-          if (!dbError && dbStores) {
-            activeStores = dbStores.map((s: any) => ({
-              id: s.id,
-              number: String(s.number),
-              name: s.name || '',
-              city: s.city || '',
-              managerName: s.manager_name || '',
-              managerEmail: s.manager_email || '',
-              managerPhone: s.manager_phone || '',
-              status: s.status || 'active'
-            }));
-            setLocalStores(activeStores);
-          }
-        } else {
+  const fetchParams = async () => {
+    setLoading(true);
+    setError(null);
+    setMetaCalculada(null);
+    setMetaDetalhada(null);
+    
+    try {
+      // Garantir que a lista de lojas esteja populada
+      let activeStores = [...(stores || [])];
+      if (activeStores.length === 0) {
+        const { data: dbStores, error: dbError } = await supabase
+          .from('stores')
+          .select('*');
+        
+        if (!dbError && dbStores) {
+          activeStores = dbStores.map((s: any) => ({
+            id: s.id,
+            number: String(s.number),
+            name: s.name || '',
+            city: s.city || '',
+            managerName: s.manager_name || '',
+            managerEmail: s.manager_email || '',
+            managerPhone: s.manager_phone || '',
+            status: s.status || 'active'
+          }));
           setLocalStores(activeStores);
         }
+      } else {
+        setLocalStores(activeStores);
+      }
 
-        // Buscar as semanas de todas as lojas para este mesmo período
-        const { data: weeksData, error: weeksError } = await supabase
-          .from('Dashboard_PA_Semanas')
-          .select('*')
-          .eq('data_inicio', selectedWeek.data_inicio);
+      // Buscar as semanas de todas as lojas para este mesmo período
+      const { data: weeksData, error: weeksError } = await supabase
+        .from('Dashboard_PA_Semanas')
+        .select('*')
+        .eq('data_inicio', selectedWeek.data_inicio);
 
-        if (weeksError) throw weeksError;
-        setPeriodWeeks(weeksData || []);
+      if (weeksError) throw weeksError;
+      setPeriodWeeks(weeksData || []);
 
-        const weekIds = weeksData ? weeksData.map((w: any) => w.id) : [];
+      const weekIds = weeksData ? weeksData.map((w: any) => w.id) : [];
 
-        const { data, error: fetchError } = await supabase
-          .from('Dashboard_PA_Parametros')
-          .select(`*`)
-          .in('semana_id', weekIds);
-        
-        if (fetchError) {
-          setError(`Erro ao carregar parâmetros: ${fetchError.message}`);
-          setLoading(false);
-          return;
-        }
-        
-        const map: Record<string, PAParametros> = {};
-        if (data) {
-          data.forEach((p: any) => { 
-            map[p.store_id] = {
-              store_id: p.store_id,
-              semana_id: p.semana_id,
-              pa_inicial: p.pa_inicial !== null ? Number(p.pa_inicial) : null,
-              incremento_pa: p.incremento_pa !== null ? Number(p.incremento_pa) : null,
-              valor_base: p.valor_base !== null ? Number(p.valor_base) : null,
-              incremento_valor: p.incremento_valor !== null ? Number(p.incremento_valor) : null,
-              vendas_minimo: p.vendas_minimo !== null ? Number(p.vendas_minimo) : null,
-              vendas_incremento: p.vendas_incremento !== null ? Number(p.vendas_incremento) : null,
-              vendas_valor_base: p.vendas_valor_base !== null ? Number(p.vendas_valor_base) : null,
-              vendas_inc_valor: p.vendas_inc_valor !== null ? Number(p.vendas_inc_valor) : null,
-              ticket_minimo: p.ticket_minimo !== null ? Number(p.ticket_minimo) : null,
-              ticket_incremento: p.ticket_incremento !== null ? Number(p.ticket_incremento) : null,
-              ticket_valor_base: p.ticket_valor_base !== null ? Number(p.ticket_valor_base) : null,
-              ticket_inc_valor: p.ticket_inc_valor !== null ? Number(p.ticket_inc_valor) : null,
-              pu_minimo: p.pu_minimo !== null ? Number(p.pu_minimo) : null,
-              pu_incremento: p.pu_incremento !== null ? Number(p.pu_incremento) : null,
-              pu_valor_base: p.pu_valor_base !== null ? Number(p.pu_valor_base) : null,
-              pu_inc_valor: p.pu_inc_valor !== null ? Number(p.pu_inc_valor) : null,
-            };
+      const { data, error: fetchError } = await supabase
+        .from('Dashboard_PA_Parametros')
+        .select(`*`)
+        .in('semana_id', weekIds);
+      
+      if (fetchError) {
+        setError(`Erro ao carregar parâmetros: ${fetchError.message}`);
+        setLoading(false);
+        return;
+      }
+      
+      const map: Record<string, PAParametros> = {};
+      if (data) {
+        data.forEach((p: any) => { 
+          map[p.store_id] = {
+            store_id: p.store_id,
+            semana_id: p.semana_id,
+            pa_inicial: p.pa_inicial !== null ? Number(p.pa_inicial) : null,
+            incremento_pa: p.incremento_pa !== null ? Number(p.incremento_pa) : null,
+            valor_base: p.valor_base !== null ? Number(p.valor_base) : null,
+            incremento_valor: p.incremento_valor !== null ? Number(p.incremento_valor) : null,
+            vendas_minimo: p.vendas_minimo !== null ? Number(p.vendas_minimo) : null,
+            vendas_incremento: p.vendas_incremento !== null ? Number(p.vendas_incremento) : null,
+            vendas_valor_base: p.vendas_valor_base !== null ? Number(p.vendas_valor_base) : null,
+            vendas_inc_valor: p.vendas_inc_valor !== null ? Number(p.vendas_inc_valor) : null,
+            ticket_minimo: p.ticket_minimo !== null ? Number(p.ticket_minimo) : null,
+            ticket_incremento: p.ticket_incremento !== null ? Number(p.ticket_incremento) : null,
+            ticket_valor_base: p.ticket_valor_base !== null ? Number(p.ticket_valor_base) : null,
+            ticket_inc_valor: p.ticket_inc_valor !== null ? Number(p.ticket_inc_valor) : null,
+            pu_minimo: p.pu_minimo !== null ? Number(p.pu_minimo) : null,
+            pu_incremento: p.pu_incremento !== null ? Number(p.pu_incremento) : null,
+            pu_valor_base: p.pu_valor_base !== null ? Number(p.pu_valor_base) : null,
+            pu_inc_valor: p.pu_inc_valor !== null ? Number(p.pu_inc_valor) : null,
+          };
+        });
+      }
+      setParams(map);
+
+      if (selectedStoreId) {
+        const updatedParams = map[selectedStoreId];
+        if (updatedParams) {
+          setDraft(updatedParams);
+        } else {
+          // Loja não tem parâmetros configurados ainda para esta nova semana
+          setDraft({
+            store_id: selectedStoreId,
+            pa_inicial: null,
+            incremento_pa: null,
+            valor_base: null,
+            incremento_valor: null,
+            vendas_minimo: null,
+            vendas_incremento: null,
+            vendas_valor_base: null,
+            vendas_inc_valor: null,
+            ticket_minimo: null,
+            ticket_incremento: null,
+            ticket_valor_base: null,
+            ticket_inc_valor: null,
+            pu_minimo: null,
+            pu_incremento: null,
+            pu_valor_base: null,
+            pu_inc_valor: null,
           });
         }
-        setParams(map);
-
-        if (selectedStoreId) {
-          const updatedParams = map[selectedStoreId];
-          if (updatedParams) {
-            setDraft(updatedParams);
-          } else {
-            // Loja não tem parâmetros configurados ainda para esta nova semana
-            setDraft({
-              store_id: selectedStoreId,
-              pa_inicial: null,
-              incremento_pa: null,
-              valor_base: null,
-              incremento_valor: null,
-              vendas_minimo: null,
-              vendas_incremento: null,
-              vendas_valor_base: null,
-              vendas_inc_valor: null,
-              ticket_minimo: null,
-              ticket_incremento: null,
-              ticket_valor_base: null,
-              ticket_inc_valor: null,
-              pu_minimo: null,
-              pu_incremento: null,
-              pu_valor_base: null,
-              pu_inc_valor: null,
-            });
-          }
-          setSaved(false);
-          fetchMetaCalculada(selectedStoreId, getSemanaIdParaLoja(selectedStoreId));
-        }
-      } catch (err: any) {
-        setError(`Erro inesperado: ${err.message}`);
-      } finally {
-        setLoading(false);
+        setSaved(false);
+        fetchMetaCalculada(selectedStoreId, getSemanaIdParaLoja(selectedStoreId));
       }
-    };
-    
+    } catch (err: any) {
+      setError(`Erro inesperado: ${err.message}`);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  useEffect(() => {
     fetchParams();
   }, [stores, selectedWeek]);
 
@@ -577,9 +577,9 @@ export const WeeklyParametersModal: React.FC<WeeklyParametersModalProps> = ({ st
       const resultado = await aplicarImportacaoSemanal(pendingImport, selectedWeek.data_inicio);
       setImportResult(resultado);
       setPendingImport(null);
-      // Recarrega os parâmetros da tela
-      setParams({});
       setSelectedStoreId(null);
+      // Busca de verdade os parâmetros atualizados no banco (não apenas zera a tela)
+      await fetchParams();
       onSaved();
       setToast({ message: `✅ ${resultado.atualizados} atualizadas, ${resultado.criados} criadas!`, type: 'success' });
       setTimeout(() => setToast(null), 5000);
