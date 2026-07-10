@@ -4,10 +4,11 @@
 // ============================================
 
 import React, { useState, useEffect } from 'react';
-import { X, Check, ChevronRight, ChevronDown, Loader2, Settings, Trophy, Zap, Copy } from 'lucide-react';
+import { X, Check, ChevronRight, ChevronDown, Loader2, Settings, Trophy, Zap, Copy, Upload, FileSpreadsheet } from 'lucide-react';
 import { supabase } from '../../services/supabaseClient';
 import { Store } from '../../types';
 import { format } from 'date-fns';
+import { parseRelatorioSemanal, aplicarImportacaoSemanal, LojaAgregada } from '../../services/weeklyPerformanceParser.service';
 
 interface WeekData {
   id: string;
@@ -112,6 +113,18 @@ export const WeeklyParametersModal: React.FC<WeeklyParametersModalProps> = ({ st
   const [periodWeeks, setPeriodWeeks] = useState<any[]>([]);
   const [metaCalculada, setMetaCalculada] = useState<number | null>(null);
   const [loadingMeta, setLoadingMeta] = useState(false);
+  const [metaDetalhada, setMetaDetalhada] = useState<{ meta_loja: number; qtd_vendedores: number } | null>(null);
+  const [showImportModal, setShowImportModal] = useState(false);
+  const [importing, setImporting] = useState(false);
+  const [pendingImport, setPendingImport] = useState<LojaAgregada[] | null>(null);
+  const [importResult, setImportResult] = useState<{ atualizados: number; criados: number; semNaSemanaEscolhida: string[] } | null>(null);
+
+  // Cada loja tem seu próprio registro em Dashboard_PA_Semanas para o mesmo período —
+  // nunca usar selectedWeek.id diretamente para outra loja que não seja a original.
+  const getSemanaIdParaLoja = (storeId: string): string => {
+    const storeWeek = periodWeeks?.find((w: any) => w.store_id === storeId);
+    return storeWeek?.id || selectedWeek.id;
+  };
 
   const fetchMetaCalculada = async (storeId: string, semanaId: string) => {
     setLoadingMeta(true);
@@ -122,9 +135,24 @@ export const WeeklyParametersModal: React.FC<WeeklyParametersModalProps> = ({ st
       });
       if (error) throw error;
       setMetaCalculada(data !== null ? Number(data) : null);
+
+      // Detalhamento (total da loja + quantidade de vendedores) — só para exibição
+      const { data: detalhe, error: errDetalhe } = await supabase.rpc('fn_calc_meta_semanal_detalhado', {
+        p_store_id: storeId,
+        p_semana_id: semanaId
+      });
+      if (!errDetalhe && detalhe && detalhe.length > 0) {
+        setMetaDetalhada({
+          meta_loja: Number(detalhe[0].meta_loja),
+          qtd_vendedores: Number(detalhe[0].qtd_vendedores)
+        });
+      } else {
+        setMetaDetalhada(null);
+      }
     } catch (err) {
       console.error('Erro ao calcular meta rolante:', err);
       setMetaCalculada(null);
+      setMetaDetalhada(null);
     } finally {
       setLoadingMeta(false);
     }
@@ -141,6 +169,7 @@ export const WeeklyParametersModal: React.FC<WeeklyParametersModalProps> = ({ st
       setLoading(true);
       setError(null);
       setMetaCalculada(null);
+      setMetaDetalhada(null);
       
       try {
         // Garantir que a lista de lojas esteja populada
@@ -243,7 +272,7 @@ export const WeeklyParametersModal: React.FC<WeeklyParametersModalProps> = ({ st
             });
           }
           setSaved(false);
-          fetchMetaCalculada(selectedStoreId, selectedWeek.id);
+          fetchMetaCalculada(selectedStoreId, getSemanaIdParaLoja(selectedStoreId));
         }
       } catch (err: any) {
         setError(`Erro inesperado: ${err.message}`);
@@ -274,6 +303,7 @@ export const WeeklyParametersModal: React.FC<WeeklyParametersModalProps> = ({ st
     setSelectedStoreId(storeId);
     setSaved(false);
     setMetaCalculada(null);
+    setMetaDetalhada(null);
     
     const existingParams = params[storeId];
     
@@ -301,7 +331,7 @@ export const WeeklyParametersModal: React.FC<WeeklyParametersModalProps> = ({ st
       });
     }
 
-    fetchMetaCalculada(storeId, selectedWeek.id);
+    fetchMetaCalculada(storeId, getSemanaIdParaLoja(storeId));
   };
 
   const handleCopyFromPreviousWeek = async () => {
@@ -524,6 +554,42 @@ export const WeeklyParametersModal: React.FC<WeeklyParametersModalProps> = ({ st
     }
   };
 
+  const handleImportFile = async (event: React.ChangeEvent<HTMLInputElement>) => {
+    const file = event.target.files?.[0];
+    if (!file) return;
+    setImporting(true);
+    setImportResult(null);
+    try {
+      const dados = await parseRelatorioSemanal(file);
+      setPendingImport(dados);
+    } catch (err: any) {
+      alert('Erro ao ler o arquivo: ' + err.message);
+    } finally {
+      setImporting(false);
+      event.target.value = '';
+    }
+  };
+
+  const confirmarImportacao = async () => {
+    if (!pendingImport) return;
+    setImporting(true);
+    try {
+      const resultado = await aplicarImportacaoSemanal(pendingImport, selectedWeek.data_inicio);
+      setImportResult(resultado);
+      setPendingImport(null);
+      // Recarrega os parâmetros da tela
+      setParams({});
+      setSelectedStoreId(null);
+      onSaved();
+      setToast({ message: `✅ ${resultado.atualizados} atualizadas, ${resultado.criados} criadas!`, type: 'success' });
+      setTimeout(() => setToast(null), 5000);
+    } catch (err: any) {
+      alert('Erro ao aplicar importação: ' + err.message);
+    } finally {
+      setImporting(false);
+    }
+  };
+
   const selectedStore = localStores.find(s => s.id === selectedStoreId);
   
   const storesSorted = [...localStores].sort((a, b) => {
@@ -580,6 +646,66 @@ export const WeeklyParametersModal: React.FC<WeeklyParametersModalProps> = ({ st
     }
   };
 
+  if (pendingImport) {
+    return (
+      <div className="fixed inset-0 z-[300] flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-sm">
+        <div className="bg-white dark:bg-slate-900 rounded-2xl shadow-2xl border border-slate-200 dark:border-slate-800 w-full max-w-lg max-h-[85vh] flex flex-col overflow-hidden">
+          <div className="px-6 py-4 border-b border-slate-200 dark:border-slate-800 flex items-center gap-3">
+            <div className="p-2 bg-emerald-50 dark:bg-emerald-900/20 rounded-lg">
+              <Upload size={18} className="text-emerald-600 dark:text-emerald-400" />
+            </div>
+            <div>
+              <h3 className="text-sm font-black text-slate-900 dark:text-white uppercase italic">Confirmar Importação</h3>
+              <p className="text-[9px] font-bold text-slate-400 uppercase tracking-widest">{pendingImport.length} lojas identificadas</p>
+            </div>
+          </div>
+          <div className="flex-1 overflow-y-auto p-4">
+            <table className="w-full text-left">
+              <thead>
+                <tr className="text-[8px] font-black uppercase text-slate-400 border-b dark:border-slate-800">
+                  <th className="pb-2">Loja</th>
+                  <th className="pb-2 text-center">Vendedores</th>
+                  <th className="pb-2 text-right">P.A. Média</th>
+                  <th className="pb-2 text-right">Ticket Médio</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-slate-50 dark:divide-slate-800/50">
+                {pendingImport.map(l => (
+                  <tr key={l.store_id} className="text-[11px]">
+                    <td className="py-2 font-black text-slate-700 dark:text-slate-300">L.{l.store_number}</td>
+                    <td className="py-2 text-center font-bold text-slate-500">{l.qtd_vendedores}</td>
+                    <td className="py-2 text-right font-mono font-bold text-orange-600">{l.media_pa.toFixed(2)}</td>
+                    <td className="py-2 text-right font-mono font-bold text-blue-600">R$ {l.media_ticket.toFixed(2)}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+            <p className="text-[9px] text-slate-400 italic mt-4 leading-relaxed">
+              * P.A. e Ticket serão gravados como "Mínimo (Meta)" na semana selecionada ({formatPeriod(selectedWeek)}). Base/Incremento de premiação já configurados não serão alterados. Qtd. de Vendedores atualiza o Cadastro de Metas do mês.
+            </p>
+          </div>
+          <div className="flex gap-3 p-4 border-t border-slate-200 dark:border-slate-800">
+            <button
+              onClick={() => setPendingImport(null)}
+              disabled={importing}
+              className="flex-1 py-3 bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 dark:hover:bg-slate-700 rounded-xl font-black text-[10px] uppercase text-slate-600 dark:text-slate-300 transition-all"
+            >
+              Cancelar
+            </button>
+            <button
+              onClick={confirmarImportacao}
+              disabled={importing}
+              className="flex-1 py-3 bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl font-black text-[10px] uppercase transition-all flex items-center justify-center gap-2 disabled:opacity-50"
+            >
+              {importing ? <Loader2 size={14} className="animate-spin" /> : <Check size={14} />}
+              Confirmar Importação
+            </button>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
   return (
     <div className="fixed inset-0 z-[200] flex items-center justify-center p-2 sm:p-4 bg-slate-900/60 backdrop-blur-sm">
       <div className="bg-white dark:bg-slate-900 rounded-2xl shadow-2xl border border-slate-200 dark:border-slate-800 w-full max-w-4xl max-h-[95vh] sm:max-h-[90vh] flex flex-col overflow-hidden leading-tight">
@@ -624,6 +750,16 @@ export const WeeklyParametersModal: React.FC<WeeklyParametersModalProps> = ({ st
           </div>
           
           <div className="flex items-center gap-2 self-end sm:self-auto">
+            <input type="file" id="import-semanal-upload" accept=".xlsx,.xls" className="hidden" onChange={handleImportFile} />
+            <button
+              onClick={() => document.getElementById('import-semanal-upload')?.click()}
+              disabled={importing}
+              className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-[9px] sm:text-[10px] font-black uppercase tracking-wider bg-emerald-100 hover:bg-emerald-200 dark:bg-emerald-900/30 dark:hover:bg-emerald-900/50 text-emerald-700 dark:text-emerald-400 border border-emerald-200 dark:border-emerald-800 transition-all disabled:opacity-50"
+              title="Importar Ticket, P.A. e Qtd. Vendedores da semana atual"
+            >
+              {importing ? <Loader2 size={12} className="animate-spin" /> : <FileSpreadsheet size={12} />}
+              IMPORTAR SEMANA
+            </button>
             <button
               onClick={handleCopyFromPreviousWeek}
               disabled={loading || saving}
@@ -666,7 +802,7 @@ export const WeeklyParametersModal: React.FC<WeeklyParametersModalProps> = ({ st
                 <Loader2 size={20} className="animate-spin text-orange-500" />
               </div>
             ) : (
-              <div className="flex sm:flex-col overflow-x-auto sm:overflow-x-visible">
+              <div className="flex sm:flex-col gap-0.5 p-1.5 overflow-x-auto sm:overflow-x-visible">
                 {storesSorted.map(store => {
                   const hasParams = !!params[store.id];
                   const isSelected = selectedStoreId === store.id;
@@ -674,29 +810,28 @@ export const WeeklyParametersModal: React.FC<WeeklyParametersModalProps> = ({ st
                     <button
                       key={store.id}
                       onClick={() => handleSelectStore(store.id)}
-                      className={`flex-shrink-0 sm:flex-shrink sm:w-full text-left px-4 py-2.5 sm:py-3 flex items-center justify-between gap-3 transition-all border-r sm:border-r-0 sm:border-b border-slate-100 dark:border-slate-800/50 ${
+                      className={`flex-shrink-0 sm:flex-shrink sm:w-full text-left px-3 py-2.5 rounded-xl flex items-center gap-3 transition-all ${
                         isSelected
-                          ? 'bg-orange-50 dark:bg-orange-900/20 border-b-2 sm:border-b-0 sm:border-l-4 border-orange-500'
-                          : 'hover:bg-white dark:hover:bg-slate-800/30'
+                          ? 'bg-white dark:bg-slate-800 shadow-sm ring-1 ring-orange-200 dark:ring-orange-900/50'
+                          : 'hover:bg-white/70 dark:hover:bg-slate-800/40'
                       }`}
                     >
-                      <div className="min-w-0">
-                        <p className={`text-[10px] font-black uppercase truncate ${isSelected ? 'text-orange-600 dark:text-orange-400' : 'text-slate-700 dark:text-slate-300'}`}>
-                          L.{store.number}
+                      <div className={`w-1 h-8 rounded-full shrink-0 transition-colors ${isSelected ? 'bg-orange-500' : 'bg-transparent'}`} />
+                      <div className="min-w-0 flex-1">
+                        <p className={`text-[11px] font-black uppercase truncate leading-tight ${isSelected ? 'text-orange-600 dark:text-orange-400' : 'text-slate-700 dark:text-slate-300'}`}>
+                          Loja {store.number}
                         </p>
-                        <p className="text-[9px] font-bold text-slate-400 truncate uppercase">{store.city}</p>
+                        <p className="text-[9px] font-semibold text-slate-400 truncate uppercase tracking-wide mt-0.5">{store.city}</p>
                       </div>
-                      <div className="flex items-center gap-1.5">
-                        <div 
-                          className={`w-2.5 h-2.5 rounded-full transition-all duration-300 ${
-                            hasParams 
-                              ? 'bg-emerald-500 shadow-sm shadow-emerald-500/50' 
-                              : 'bg-slate-300 dark:bg-slate-750'
-                          }`}
-                          title={hasParams ? 'Parâmetros configurados para esta semana' : 'Parâmetros pendentes para esta semana'}
-                        />
-                        <ChevronRight size={12} className={isSelected ? 'text-orange-500' : 'text-slate-300'} />
-                      </div>
+                      <span
+                        className={`shrink-0 px-1.5 py-0.5 rounded-full text-[7px] font-black uppercase tracking-widest ${
+                          hasParams
+                            ? 'bg-emerald-100 text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-400'
+                            : 'bg-slate-100 text-slate-400 dark:bg-slate-800 dark:text-slate-500'
+                        }`}
+                      >
+                        {hasParams ? 'OK' : '—'}
+                      </span>
                     </button>
                   );
                 })}
@@ -799,8 +934,14 @@ export const WeeklyParametersModal: React.FC<WeeklyParametersModalProps> = ({ st
                           </div>
                         )}
                       </div>
+                      {metaDetalhada && (
+                        <p className="text-[8px] text-emerald-600 dark:text-emerald-400 font-bold mt-1 leading-normal">
+                          Loja: {new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(metaDetalhada.meta_loja)}
+                          {' ÷ '}{metaDetalhada.qtd_vendedores} vendedor{metaDetalhada.qtd_vendedores !== 1 ? 'es' : ''}
+                        </p>
+                      )}
                       <p className="text-[8px] text-slate-400 italic mt-1 leading-normal">
-                        Calculado automaticamente com base na meta mensal
+                        Calculado automaticamente com base na meta mensal (descontando feriados e dias já vendidos)
                       </p>
                     </div>
                     <div className="bg-emerald-50/10 dark:bg-emerald-950/5 p-3 rounded-xl border border-emerald-50 dark:border-emerald-900/10">

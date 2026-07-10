@@ -17,6 +17,10 @@ class ApiService {
 
       const userData = data[0];
 
+      if (!userData.is_valid) {
+        throw new Error(userData.error_message || 'Credenciais inválidas');
+      }
+
       // Aceitar id ou user_id
       const userId = userData.id || userData.user_id || userData.userId;
 

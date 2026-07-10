@@ -95,6 +95,15 @@ export const ResumoAnoFiscal: React.FC<ResumoAnoFiscalProps> = ({ user, stores, 
   const [simMesRefIdx, setSimMesRefIdx]   = useState<number>(0);
   const [showSimulador, setShowSimulador] = useState<boolean>(false);
 
+  // Simulação Múltipla — agora com várias lojas por pedido (máx. 5, igual ao limite real de sub-pedidos)
+  const MAX_LOJAS_POR_PEDIDO = 5;
+  interface SimRow { id: string; lojas: string[]; valor: string; mesRefIdx: number; }
+  const [simRows, setSimRows]                     = useState<SimRow[]>([]);
+  const [storesPainelCache, setStoresPainelCache] = useState<Record<string, PainelItem[]>>({});
+  const [loadingStores, setLoadingStores]         = useState<Set<string>>(new Set());
+  const [showSimuladorMultiplo, setShowSimuladorMultiplo] = useState<boolean>(false);
+  const [expandedSimLoja, setExpandedSimLoja] = useState<string | null>(null); // formato: `${rowId}-${loja}`
+
   const isAdmin = useMemo(() =>
     ['admin','super_admin','comprador'].includes((user?.role || '').toLowerCase()), [user]);
 
@@ -128,6 +137,92 @@ export const ResumoAnoFiscal: React.FC<ResumoAnoFiscalProps> = ({ user, stores, 
       return cur;
     });
   }, []);
+
+  // Constrói a matriz (Cota/Legacy/Real/Previsão/Saldo) para QUALQUER conjunto de dados de painel
+  const buildMatrizFor = useCallback((data: PainelItem[]) =>
+    rollingMonths.map(({ mes, ano }) => {
+      const m = data.find(i => i.mes === mes && i.ano === ano);
+      const cota = toNumber(m?.valor_cota);
+      const desp = toNumber(m?.despesas_legacy);
+      const real = toNumber(m?.pedidos_real);
+      const prev = toNumber(m?.pedidos_previsao);
+      const comp = desp + real + prev;
+      const saldo = cota - comp;
+      const pct = cota > 0 ? Math.round((comp / cota) * 100) : 0;
+      return { mes, ano, cota, desp, real, prev, comp, saldo, pct };
+    }),
+  [rollingMonths]);
+
+  // Carrega o painel de cotas de UMA loja específica (usado pela Simulação Múltipla)
+  const loadStorePainel = useCallback(async (store: string) => {
+    if (!store || storesPainelCache[store] || loadingStores.has(store)) return;
+    setLoadingStores(prev => new Set(prev).add(store));
+    try {
+      await ensureSession();
+      const now = new Date();
+      const cy = now.getFullYear();
+      const cm = now.getMonth() + 1;
+      const painelP = [cy, cy+1, cy+2].map(y =>
+        supabase.rpc('get_cotas_painel', {
+          p_ano: y,
+          p_mes_inicio: y === cy ? cm : 1,
+          p_mes_fim: 12,
+          p_store_number: store
+        })
+      );
+      const painelRes = await Promise.all(painelP);
+      const data = painelRes.flatMap((r: any) => r.data || []);
+      setStoresPainelCache(prev => ({ ...prev, [store]: data }));
+    } catch (err: any) {
+      console.error('Erro ao carregar loja', store, err);
+      toast.error(`Erro ao carregar loja ${store}: ` + err.message);
+    } finally {
+      setLoadingStores(prev => { const s = new Set(prev); s.delete(store); return s; });
+    }
+  }, [supabase, storesPainelCache, loadingStores]);
+
+  const addSimRow = useCallback(() => {
+    setSimRows(prev => [...prev, { id: `${Date.now()}-${Math.random()}`, lojas: [], valor: '', mesRefIdx: 0 }]);
+  }, []);
+
+  const removeSimRow = useCallback((id: string) => {
+    setSimRows(prev => prev.filter(r => r.id !== id));
+  }, []);
+
+  const updateSimRow = useCallback((id: string, patch: Partial<Omit<SimRow, 'lojas'>>) => {
+    setSimRows(prev => prev.map(r => r.id === id ? { ...r, ...patch } : r));
+  }, []);
+
+  // Marca/desmarca uma loja dentro de um pedido — respeita o limite de 5
+  const toggleLojaNaRow = useCallback((rowId: string, loja: string) => {
+    setSimRows(prev => prev.map(r => {
+      if (r.id !== rowId) return r;
+      const jaTem = r.lojas.includes(loja);
+      if (jaTem) return { ...r, lojas: r.lojas.filter(l => l !== loja) };
+      if (r.lojas.length >= MAX_LOJAS_POR_PEDIDO) {
+        toast.error(`Máximo de ${MAX_LOJAS_POR_PEDIDO} lojas por pedido.`);
+        return r;
+      }
+      return { ...r, lojas: [...r.lojas, loja] };
+    }));
+    loadStorePainel(loja);
+  }, [loadStorePainel]);
+
+  // Calcula o resultado para UMA loja específica dentro de um pedido
+  const calcSimRowLoja = useCallback((row: SimRow, loja: string) => {
+    const data = storesPainelCache[loja];
+    if (!data) return { status: 'loading' as const };
+    const rowMatriz = buildMatrizFor(data);
+    const valorNum = toNumber(row.valor.replace(',', '.'));
+    if (valorNum <= 0) return { status: 'vazio' as const };
+    const idxAlvo = [row.mesRefIdx + 3, row.mesRefIdx + 4, row.mesRefIdx + 5];
+    if (idxAlvo.some(i => i >= rowMatriz.length)) return { status: 'fora_janela' as const };
+    const mesesAlvo = idxAlvo.map(i => rowMatriz[i]);
+    const valorIgual = valorNum / 3;
+    const cabe = mesesAlvo.every(m => (m.saldo - valorIgual) >= 0);
+    const maxIgual = Math.max(Math.min(...mesesAlvo.map(m => m.saldo)) * 3, 0);
+    return { status: 'ok' as const, cabe, maxIgual, mesesAlvo, valorIgual, valorNum };
+  }, [storesPainelCache, buildMatrizFor]);
 
   const lojaInfo = useMemo(() =>
     TODAS_LOJAS.find(l => l.number === selectedStore), [selectedStore]);
@@ -222,19 +317,7 @@ export const ResumoAnoFiscal: React.FC<ResumoAnoFiscalProps> = ({ user, stores, 
     setSimMesRefIdx(0);
   }, [selectedStore]);
 
-  const matriz = useMemo(() =>
-    rollingMonths.map(({ mes, ano }) => {
-      const m = painelData.find(i => i.mes === mes && i.ano === ano);
-      const cota    = toNumber(m?.valor_cota);
-      const desp    = toNumber(m?.despesas_legacy);
-      const real    = toNumber(m?.pedidos_real);
-      const prev    = toNumber(m?.pedidos_previsao);
-      const comp    = desp + real + prev;
-      const saldo   = cota - comp;
-      const pct     = cota > 0 ? Math.round((comp / cota) * 100) : 0;
-      return { mes, ano, cota, desp, real, prev, comp, saldo, pct };
-    }),
-  [rollingMonths, painelData]);
+  const matriz = useMemo(() => buildMatrizFor(painelData), [painelData, buildMatrizFor]);
 
   const totais = useMemo(() => ({
     cota:  matriz.reduce((a, r) => a + r.cota, 0),
@@ -541,6 +624,200 @@ export const ResumoAnoFiscal: React.FC<ResumoAnoFiscalProps> = ({ user, stores, 
                     )}
                   </>
                 )}
+              </div>
+            )}
+          </div>
+
+          {/* SIMULAÇÃO MÚLTIPLA — vários pedidos, lojas diferentes */}
+          <div className="bg-white border border-slate-200 rounded-xl overflow-hidden shadow-sm">
+            <button
+              onClick={() => setShowSimuladorMultiplo(s => !s)}
+              className="w-full flex items-center justify-between px-4 py-3 bg-slate-50 border-b border-slate-100 hover:bg-slate-100 transition-colors"
+            >
+              <span className="text-[10px] font-black uppercase tracking-widest text-slate-500">
+                📋 Simulação Múltipla — Vários Pedidos
+              </span>
+              {showSimuladorMultiplo ? <ChevronUp className="w-4 h-4 text-slate-400" /> : <ChevronDown className="w-4 h-4 text-slate-400" />}
+            </button>
+
+            {showSimuladorMultiplo && (
+              <div className="p-4 space-y-3">
+                {simRows.length === 0 && (
+                  <p className="text-[11px] text-slate-400 text-center py-4">
+                    Nenhum pedido adicionado. Clique em "+ Adicionar Pedido" para começar.
+                  </p>
+                )}
+
+                {simRows.map((row, idx) => {
+                  const label = `Pedido ${String.fromCharCode(65 + idx)}`;
+                  return (
+                    <div key={row.id} className="border border-slate-200 rounded-lg p-3 space-y-3">
+                      <div className="flex items-center justify-between">
+                        <span className="text-[10px] font-black text-slate-600 uppercase">
+                          {label} <span className="text-slate-400 font-medium normal-case">({row.lojas.length}/{MAX_LOJAS_POR_PEDIDO} lojas)</span>
+                        </span>
+                        <button
+                          onClick={() => removeSimRow(row.id)}
+                          className="text-[9px] font-black text-red-500 hover:text-red-700 px-2 py-0.5 rounded hover:bg-red-50"
+                        >
+                          ✕ Remover Pedido
+                        </button>
+                      </div>
+
+                      {/* Valor + mês do pedido */}
+                      <div className="flex flex-col sm:flex-row gap-2">
+                        <input
+                          type="text"
+                          value={row.valor}
+                          onChange={e => updateSimRow(row.id, { valor: e.target.value })}
+                          placeholder="Valor do pedido (ex: 50000)"
+                          className="flex-1 px-2.5 py-1.5 border border-slate-200 rounded-lg text-[11px] font-mono font-bold text-slate-700 outline-none focus:border-slate-400"
+                        />
+                        <select
+                          value={row.mesRefIdx}
+                          onChange={e => updateSimRow(row.id, { mesRefIdx: Number(e.target.value) })}
+                          className="flex-1 px-2.5 py-1.5 border border-slate-200 rounded-lg text-[11px] font-bold text-slate-700 outline-none focus:border-slate-400"
+                        >
+                          {rollingMonths.map((m, i) => (
+                            <option key={i} value={i}>{MONTH_NAMES[m.mes - 1]}/{m.ano}</option>
+                          ))}
+                        </select>
+                      </div>
+
+                      {/* Grid de seleção de lojas — até 5 */}
+                      <div>
+                        <p className="text-[9px] font-black uppercase tracking-widest text-slate-400 mb-1.5">
+                          Testar nas lojas
+                        </p>
+                        <div className="flex flex-wrap gap-1.5">
+                          {TODAS_LOJAS.map(l => {
+                            const marcada = row.lojas.includes(l.number);
+                            const bloqueada = !marcada && row.lojas.length >= MAX_LOJAS_POR_PEDIDO;
+                            return (
+                              <button
+                                key={l.number}
+                                disabled={bloqueada}
+                                onClick={() => toggleLojaNaRow(row.id, l.number)}
+                                title={l.city}
+                                className={`px-2 py-1 rounded-lg border text-[10px] font-black transition-all ${
+                                  marcada
+                                    ? 'bg-slate-800 border-slate-800 text-white'
+                                    : bloqueada
+                                      ? 'bg-slate-50 border-slate-100 text-slate-300 cursor-not-allowed'
+                                      : 'bg-white border-slate-200 text-slate-500 hover:border-slate-400'
+                                }`}
+                              >
+                                {l.number}
+                              </button>
+                            );
+                          })}
+                        </div>
+                      </div>
+
+                      {/* Resultado por loja marcada — com detalhamento expansível */}
+                      {row.lojas.length > 0 && (
+                        <div className="space-y-1.5 pt-1">
+                          {row.lojas.map(loja => {
+                            const result = calcSimRowLoja(row, loja);
+                            const lojaInfoRow = TODAS_LOJAS.find(l => l.number === loja);
+                            const chaveExp = `${row.id}-${loja}`;
+                            const aberto = expandedSimLoja === chaveExp;
+                            const podeExpandir = result.status === 'ok';
+
+                            return (
+                              <div key={loja} className="border border-slate-100 rounded-lg overflow-hidden">
+                                <div
+                                  onClick={() => podeExpandir && setExpandedSimLoja(aberto ? null : chaveExp)}
+                                  className={`flex items-center gap-2 text-[11px] px-2.5 py-2 ${podeExpandir ? 'cursor-pointer hover:bg-slate-50' : ''}`}
+                                >
+                                  <span className="font-black text-slate-500 w-24 shrink-0">
+                                    Loja {loja} · {lojaInfoRow?.city}
+                                  </span>
+                                  {result.status === 'loading' && (
+                                    <span className="text-slate-400 flex items-center gap-1.5">
+                                      <Loader2 className="w-3 h-3 animate-spin" /> Carregando...
+                                    </span>
+                                  )}
+                                  {result.status === 'vazio' && (
+                                    <span className="text-slate-400">Digite um valor.</span>
+                                  )}
+                                  {result.status === 'fora_janela' && (
+                                    <span className="text-amber-600 font-bold">Fora da janela de 12 meses.</span>
+                                  )}
+                                  {result.status === 'ok' && (
+                                    <>
+                                      <span className={`font-black px-2 py-0.5 rounded-full ${
+                                        result.cabe ? 'bg-emerald-100 text-emerald-700' : 'bg-red-100 text-red-700'
+                                      }`}>
+                                        {result.cabe ? `🟢 Passa` : `🔴 Não passa — máx. ${fmt(result.maxIgual!)}`}
+                                      </span>
+                                      <span className="ml-auto text-slate-300">
+                                        {aberto ? <ChevronUp className="w-3.5 h-3.5" /> : <ChevronDown className="w-3.5 h-3.5" />}
+                                      </span>
+                                    </>
+                                  )}
+                                </div>
+
+                                {aberto && result.status === 'ok' && (
+                                  <div className="border-t border-slate-100 bg-slate-50/50 px-2.5 py-2">
+                                    <table className="w-full text-left border-collapse">
+                                      <thead>
+                                        <tr>
+                                          {['Mês Alvo','Saldo Atual','Consumo','Saldo Depois'].map(h => (
+                                            <th key={h} className="pb-1 text-[8px] font-black uppercase tracking-widest text-slate-400 whitespace-nowrap pr-3">{h}</th>
+                                          ))}
+                                        </tr>
+                                      </thead>
+                                      <tbody>
+                                        {result.mesesAlvo!.map((m, i) => {
+                                          const depois = m.saldo - result.valorIgual!;
+                                          const est = depois < 0;
+                                          return (
+                                            <tr key={i} className={est ? 'bg-red-50' : ''}>
+                                              <td className="py-1 pr-3 font-black text-slate-600 whitespace-nowrap text-[10px]">
+                                                {MONTH_NAMES[m.mes-1]}/{String(m.ano).slice(-2)}
+                                              </td>
+                                              <td className="py-1 pr-3 font-mono text-slate-500 text-[10px]">{fmt(m.saldo)}</td>
+                                              <td className="py-1 pr-3 font-mono text-blue-600 text-[10px]">{fmt(result.valorIgual!)}</td>
+                                              <td className={`py-1 pr-3 font-mono font-black text-[10px] ${est ? 'text-red-600' : 'text-emerald-600'}`}>
+                                                {fmt(depois)}
+                                              </td>
+                                            </tr>
+                                          );
+                                        })}
+                                      </tbody>
+                                    </table>
+                                  </div>
+                                )}
+                              </div>
+                            );
+                          })}
+                        </div>
+                      )}
+                    </div>
+                  );
+                })}
+
+                <button
+                  onClick={addSimRow}
+                  className="w-full py-2.5 border-2 border-dashed border-slate-300 rounded-lg text-[11px] font-black text-slate-500 hover:border-slate-400 hover:bg-slate-50 transition-all"
+                >
+                  + Adicionar Pedido
+                </button>
+
+                {simRows.length > 0 && (() => {
+                  const todosResultados = simRows.flatMap(row => row.lojas.map(loja => calcSimRowLoja(row, loja)));
+                  const passam = todosResultados.filter(r => r.status === 'ok' && r.cabe).length;
+                  const naoPassam = todosResultados.filter(r => r.status === 'ok' && !r.cabe).length;
+                  return (
+                    <div className="bg-slate-50 border border-slate-200 rounded-lg p-3 flex items-center justify-between">
+                      <span className="text-[10px] font-black text-slate-500 uppercase">Resumo</span>
+                      <span className="text-[11px] font-bold text-slate-600">
+                        {passam} passam · {naoPassam} não passam · {simRows.length} pedido{simRows.length!==1?'s':''}
+                      </span>
+                    </div>
+                  );
+                })()}
               </div>
             )}
           </div>
