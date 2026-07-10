@@ -294,13 +294,33 @@ const DashboardPAAdmin: React.FC<DashboardPAAdminProps> = ({ user, stores, onRef
   const loadMonthPerformance = async () => {
     setLoading(true);
     try {
+      // Busca semanas que INTERSECTAM o mês (não só as que começam nele) —
+      // necessário para o rateio correto de semanas que atravessam a virada do mês
+      const primeiroDiaMes = `${selectedYear}-${String(selectedMonth).padStart(2, '0')}-01`;
+      const ultimoDiaMesDate = new Date(selectedYear, selectedMonth, 0);
+      const ultimoDiaMes = `${ultimoDiaMesDate.getFullYear()}-${String(ultimoDiaMesDate.getMonth() + 1).padStart(2, '0')}-${String(ultimoDiaMesDate.getDate()).padStart(2, '0')}`;
+
       const { data: monthWeeks } = await supabase
         .from('Dashboard_PA_Semanas').select('*')
-        .gte('data_inicio', `${selectedYear}-${String(selectedMonth).padStart(2, '0')}-01`)
-        .lt('data_inicio', `${selectedYear}-${String(selectedMonth + 1).padStart(2, '0')}-01`);
+        .lte('data_inicio', ultimoDiaMes)
+        .gte('data_fim', primeiroDiaMes);
  
       if (!monthWeeks || monthWeeks.length === 0) { setPerformance([]); return; }
       const weekIds = monthWeeks.map(w => w.id);
+
+      // Fração de cada semana pertencente a este mês (1.0 = semana inteira no mês;
+      // menor que 1.0 = semana atravessa a virada, rateada por dias elegíveis)
+      const fracoesPorSemana: Record<string, number> = {};
+      await Promise.all(
+        monthWeeks.map(async (w) => {
+          const { data: fracao } = await supabase.rpc('fn_fracao_mes_semana', {
+            p_semana_id: w.id,
+            p_ano_alvo: selectedYear,
+            p_mes_alvo: selectedMonth
+          });
+          fracoesPorSemana[w.id] = fracao !== null ? Number(fracao) : 1;
+        })
+      );
  
       const { data: salesData } = await supabase.from('Dashboard_PA_Vendas').select('*').in('semana_id', weekIds);
       const { data: premiosData } = await supabase.from('Dashboard_PA_Premiacoes').select('*').in('semana_id', weekIds);
@@ -323,9 +343,11 @@ const DashboardPAAdmin: React.FC<DashboardPAAdminProps> = ({ user, stores, onRef
             const storeSalesForWeek = salesData?.filter(s => s.semana_id === w.id && s.store_id === store.id) || [];
             const storeParamsForWeek = paramsData?.find(p => p.semana_id === w.id && p.store_id === store.id) || null;
             const paMeta = storeParamsForWeek?.pa_inicial || 1.6;
+            const fracaoMes = fracoesPorSemana[w.id] ?? 1;
 
             if (storeSalesForWeek.length > 0) {
               const totalVendasSemanal = storeSalesForWeek.reduce((acc, s) => acc + (s.total_vendas || 0), 0);
+              const totalVendasRateado = totalVendasSemanal * fracaoMes;
               const avgPA = storeSalesForWeek.reduce((acc, s) => acc + (s.pa || 0), 0) / storeSalesForWeek.length;
               const avgTicket = storeSalesForWeek.reduce((acc, s) => acc + (s.total_vendas || 0), 0) / 
                 storeSalesForWeek.reduce((acc, s) => acc + (s.qtde_vendas || 0), 1);
@@ -334,7 +356,7 @@ const DashboardPAAdmin: React.FC<DashboardPAAdminProps> = ({ user, stores, onRef
                 ? calcularPremioTotal({ pa: avgPA, vendas: totalVendasSemanal, ticket: avgTicket }, storeParamsForWeek as PAParametros) 
                 : 0;
 
-              totalVendas += totalVendasSemanal;
+              totalVendas += totalVendasRateado;
               totalPremioCalc += premioCalcSemanal;
               sumPAs += avgPA;
               sumPAMetas += paMeta;
