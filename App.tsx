@@ -988,10 +988,10 @@ const App: React.FC = () => {
           },
           {
             label: 'Meta Semanal',
-            view: 'dashboard_pa_manager',
+            view: isAdminUser ? 'dashboard_pa' : 'dashboard_pa_manager',
             color: 'bg-purple-600',
             icon: <Target size={32} />,
-            permission: 'MODULE_DASHBOARD_PA_MANAGER',
+            permission: isAdminUser ? 'MODULE_DASHBOARD_PA' : 'MODULE_DASHBOARD_PA_MANAGER',
           },
           {
             label: 'Pedido Compra',
