@@ -64,6 +64,7 @@ export async function parseRelatorioSemanal(file: File): Promise<LojaAgregada[]>
   }
 
   const porLoja: Record<string, { pa: number[]; ticket: number[]; vendedores: Set<string> }> = {};
+  const colDias = headers.indexOf('dias');
 
   for (let i = headerIndex + 1; i < rawData.length; i++) {
     const row = rawData[i];
@@ -75,6 +76,10 @@ export async function parseRelatorioSemanal(file: File): Promise<LojaAgregada[]>
     if (hifenIdx === -1) continue;
     const storeNumber = vendedorCell.substring(0, hifenIdx).trim();
     if (!/^\d+$/.test(storeNumber)) continue;
+
+    // Ignora vendedores com 0 dias trabalhados — não contam na média nem na contagem de vendedores
+    const diasTrabalhados = colDias >= 0 ? parseValorBR(row[colDias]) : 1;
+    if (diasTrabalhados <= 0) continue;
 
     const pa = parseValorBR(row[colPA]);
     const ticket = parseValorBR(row[colTicket]);

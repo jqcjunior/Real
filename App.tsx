@@ -952,6 +952,12 @@ const App: React.FC = () => {
     };
 
     useEffect(() => {
+        if (user && stores.length === 0) {
+            fetchData({ role: user.role, storeId: user.storeId });
+        }
+    }, [user]);
+
+    useEffect(() => {
         const channel = supabase.channel('online-sync-global')
             .on('postgres_changes', { event: '*', schema: 'public', table: 'financial_receipts' }, () => fetchData())
             .on('postgres_changes', { event: '*', schema: 'public', table: 'financial_card_sales' }, () => fetchData())

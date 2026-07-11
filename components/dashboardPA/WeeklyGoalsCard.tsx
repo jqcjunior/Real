@@ -3,6 +3,10 @@ import { TrendingUp, DollarSign, Trophy, Target, Zap, Award } from 'lucide-react
 import { motion } from 'framer-motion';
 import { supabase } from '../../services/supabaseClient';
 
+const formatBRL = (value: number): string => {
+  return new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(value);
+};
+
 interface WeeklyGoalsCardProps {
   storeId: string;
   storeName: string;
@@ -242,7 +246,7 @@ const WeeklyGoalsCard: React.FC<WeeklyGoalsCardProps> = ({ storeId, storeName, s
                   </p>
                   <div className="flex items-center gap-1 font-black text-sm tabular-nums">
                     <span className="text-emerald-700 dark:text-emerald-400">
-                      R$ {(faixa.nivel / 1000).toFixed(0)}k
+                      {formatBRL(faixa.nivel)}
                     </span>
                     <span className="text-slate-300">→</span>
                     <span className="text-emerald-600 dark:text-emerald-300">
@@ -295,7 +299,7 @@ const WeeklyGoalsCard: React.FC<WeeklyGoalsCardProps> = ({ storeId, storeName, s
                   </p>
                   <div className="flex items-center gap-1 font-black text-sm tabular-nums">
                     <span className="text-blue-700 dark:text-blue-400">
-                      R$ {faixa.nivel.toFixed(0)}
+                      {formatBRL(faixa.nivel)}
                     </span>
                     <span className="text-slate-300">→</span>
                     <span className="text-blue-600 dark:text-blue-300">
@@ -401,7 +405,7 @@ const WeeklyGoalsCard: React.FC<WeeklyGoalsCardProps> = ({ storeId, storeName, s
                   </p>
                   <div className="flex items-center gap-1 font-black text-sm tabular-nums">
                     <span className="text-violet-700 dark:text-violet-400">
-                      R$ {faixa.nivel.toFixed(2)}
+                      {formatBRL(faixa.nivel)}
                     </span>
                     <span className="text-slate-300">→</span>
                     <span className="text-violet-600 dark:text-violet-300">

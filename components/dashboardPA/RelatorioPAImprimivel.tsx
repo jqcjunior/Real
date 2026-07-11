@@ -451,10 +451,10 @@ const RelatorioPAImprimivel: React.FC<RelatorioProps> = ({ storeId, storeName, s
                           
                           <div>
                             <p className="text-[9px] font-black text-slate-800 uppercase tracking-tighter mb-1">VENDAS</p>
-                            <p className="text-[7.5px] font-bold text-slate-400 mb-0.5 whitespace-nowrap">
+                            <p className="text-[7px] font-bold text-slate-400 mb-0.5 leading-tight break-words">
                               Meta: R$ {(parametros?.vendas_minimo || 0).toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
                             </p>
-                            <p className={`text-[15px] font-black leading-none mb-1 whitespace-nowrap ${v.atingiu_meta_vendas ? 'text-emerald-600' : 'text-red-500'}`}>
+                            <p className={`text-[12px] font-black leading-tight mb-1 break-words ${v.atingiu_meta_vendas ? 'text-emerald-600' : 'text-red-500'}`}>
                               R$ {v.total_vendas.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
                             </p>
                             {(() => {

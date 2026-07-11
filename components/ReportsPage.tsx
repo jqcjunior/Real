@@ -566,16 +566,17 @@ export default function CentralRelatorios({
 
     if (reportId === "semestral") {
       const flatSemestral: any[] = [];
+      const labels = data.labels || { sem1_ref: "1º Sem Atual", sem2_ant: "2º Sem Anterior", sem1_ant: "1º Sem Anterior" };
       if (data.lojas && Array.isArray(data.lojas)) {
         data.lojas.forEach((l: any) => {
           flatSemestral.push({
             loja: `${l.store_number} - ${l.store_name}`,
-            pares_sem1_2026: l.sem1_2026_pares,
-            valor_sem1_2026: l.sem1_2026_valor,
-            pares_sem2_2025: l.sem2_2025_pares,
-            valor_sem2_2025: l.sem2_2025_valor,
-            pares_sem1_2025: l.sem1_2025_pares,
-            valor_sem1_2025: l.sem1_2025_valor
+            [`${labels.sem1_ref} - Pares`]: l.sem1_ref_pares,
+            [`${labels.sem1_ref} - Valor`]: l.sem1_ref_valor,
+            [`${labels.sem2_ant} - Pares`]: l.sem2_ant_pares,
+            [`${labels.sem2_ant} - Valor`]: l.sem2_ant_valor,
+            [`${labels.sem1_ant} - Pares`]: l.sem1_ant_pares,
+            [`${labels.sem1_ant} - Valor`]: l.sem1_ant_valor
           });
         });
       }
@@ -627,7 +628,9 @@ export default function CentralRelatorios({
         } else {
           rpcParams = { p_year: filterYear, p_month: filterMonth };
         }
-      } else if (["pedidos_fornecedor", "resumo_loja", "categorias", "parametros_genero", "marcas_sem_compra", "desempenho_compras", "markup_marcas"].includes(report.id)) {
+      } else if (report.id === "semestral") {
+        rpcParams = { p_ref_year: filterYear };
+      } else if (["pedidos_fornecedor", "resumo_loja", "categorias", "parametros_genero", "marcas_sem_compra", "desempenho_compras", "markup_marcas", "pesquisas"].includes(report.id)) {
         if (report.id === "marcas_sem_compra") {
           rpcParams = { p_months_active: filterMonthsRange };
         } else {
@@ -698,10 +701,11 @@ export default function CentralRelatorios({
           secondaryMetricValue = totalPares.toLocaleString("pt-BR");
         }
       } else if (report.id === "semestral") {
-        primaryMetricName = "Rede 1º Sem 2026";
-        primaryMetricValue = Number(data.rede?.sem1_2026_valor || 0).toLocaleString("pt-BR", { style: "currency", currency: "BRL" });
-        secondaryMetricName = "Pares Sem1 2026";
-        secondaryMetricValue = Number(data.rede?.sem1_2026_pares || 0).toLocaleString("pt-BR");
+        const labelRef = data.labels?.sem1_ref || "1º Sem Atual";
+        primaryMetricName = `Rede ${labelRef}`;
+        primaryMetricValue = Number(data.rede?.sem1_ref_valor || 0).toLocaleString("pt-BR", { style: "currency", currency: "BRL" });
+        secondaryMetricName = `Pares ${labelRef}`;
+        secondaryMetricValue = Number(data.rede?.sem1_ref_pares || 0).toLocaleString("pt-BR");
       } else if (report.id === "cotas") {
         const totalLimit = flatRows.reduce((acc, curr) => acc + Number(curr.cota_inicial || curr.limite || 0), 0);
         const totalUsed = flatRows.reduce((acc, curr) => acc + Number(curr.cota_utilizada || curr.utilizado || 0), 0);
@@ -783,7 +787,9 @@ export default function CentralRelatorios({
     let periodText = "";
     if (["ranking_mensal", "premiacao_mensal", "cotas", "dre"].includes(report.id)) {
       periodText = `Período: ${MONTHS_NAMES[filterMonth - 1]} de ${filterYear}`;
-    } else if (["pedidos_fornecedor", "resumo_loja", "categorias", "parametros_genero", "marcas_sem_compra", "desempenho_compras", "markup_marcas"].includes(report.id)) {
+    } else if (report.id === "semestral") {
+      periodText = `Ano de referência: ${filterYear}`;
+    } else if (["pedidos_fornecedor", "resumo_loja", "categorias", "parametros_genero", "marcas_sem_compra", "desempenho_compras", "markup_marcas", "pesquisas"].includes(report.id)) {
       periodText = `Estatísticas baseadas nos últimos ${filterMonthsRange} meses`;
     } else if (report.id === "premiacoes_semanal") {
       periodText = filterStartDate 
@@ -1104,10 +1110,11 @@ export default function CentralRelatorios({
       if (!respData) return;
 
       const rede = respData.rede || {};
+      const labels = respData.labels || { sem1_ref: "1º Sem Atual", sem2_ant: "2º Sem Anterior", sem1_ant: "1º Sem Anterior" };
       doc.setFont("Helvetica", "normal");
       doc.setFontSize(10);
       doc.setTextColor(50, 50, 50);
-      doc.text(`Rede 1º Sem 2026: ${Number(rede.sem1_2026_pares || 0).toLocaleString('pt-BR')} pares | R$ ${Number(rede.sem1_2026_valor || 0).toLocaleString('pt-BR', {minimumFractionDigits: 2})}`, 14, 34);
+      doc.text(`Rede ${labels.sem1_ref}: ${Number(rede.sem1_ref_pares || 0).toLocaleString('pt-BR')} pares | R$ ${Number(rede.sem1_ref_valor || 0).toLocaleString('pt-BR', {minimumFractionDigits: 2})}`, 14, 34);
 
       const lojasList = respData.lojas || [];
 
@@ -1115,15 +1122,15 @@ export default function CentralRelatorios({
         startY: 40,
         headStyles: { fillColor: PRIMARY_COLOR, fontSize: 8 },
         styles: { fontSize: 7, cellPadding: 2 },
-        head: [['Loja', '1ºSem 2026 Pares', '1ºSem 2026 Valor', '2ºSem 2025 Pares', '2ºSem 2025 Valor', '1ºSem 2025 Pares', '1ºSem 2025 Valor']],
+        head: [['Loja', `${labels.sem1_ref} Pares`, `${labels.sem1_ref} Valor`, `${labels.sem2_ant} Pares`, `${labels.sem2_ant} Valor`, `${labels.sem1_ant} Pares`, `${labels.sem1_ant} Valor`]],
         body: lojasList.map((l: any) => [
           `${l.store_number || ""} - ${l.store_name || ""}`,
-          Number(l.sem1_2026_pares || 0).toLocaleString('pt-BR'),
-          `R$ ${Number(l.sem1_2026_valor || 0).toLocaleString('pt-BR', {minimumFractionDigits: 2})}`,
-          Number(l.sem2_2025_pares || 0).toLocaleString('pt-BR'),
-          `R$ ${Number(l.sem2_2025_valor || 0).toLocaleString('pt-BR', {minimumFractionDigits: 2})}`,
-          Number(l.sem1_2025_pares || 0).toLocaleString('pt-BR'),
-          `R$ ${Number(l.sem1_2025_valor || 0).toLocaleString('pt-BR', {minimumFractionDigits: 2})}`
+          Number(l.sem1_ref_pares || 0).toLocaleString('pt-BR'),
+          `R$ ${Number(l.sem1_ref_valor || 0).toLocaleString('pt-BR', {minimumFractionDigits: 2})}`,
+          Number(l.sem2_ant_pares || 0).toLocaleString('pt-BR'),
+          `R$ ${Number(l.sem2_ant_valor || 0).toLocaleString('pt-BR', {minimumFractionDigits: 2})}`,
+          Number(l.sem1_ant_pares || 0).toLocaleString('pt-BR'),
+          `R$ ${Number(l.sem1_ant_valor || 0).toLocaleString('pt-BR', {minimumFractionDigits: 2})}`
         ])
       });
 
