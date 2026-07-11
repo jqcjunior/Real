@@ -172,20 +172,50 @@ export async function aplicarImportacaoSemanal(
         .eq('semana_id', semanaLoja.id);
       if (!updateError) atualizados++;
     } else {
-      // Cria novo registro com valores padrão de base/incremento
+      // Buscar a última configuração que esta loja já usou, para não resetar os valores de premiação
+      const { data: configAnterior } = await supabase
+        .from('Dashboard_PA_Parametros')
+        .select(`
+          incremento_pa, valor_base, incremento_valor,
+          ticket_incremento, ticket_valor_base, ticket_inc_valor,
+          vendas_valor_base, vendas_incremento, vendas_inc_valor
+        `)
+        .eq('store_id', loja.store_id)
+        .not('pa_inicial', 'is', null)
+        .order('updated_at', { ascending: false })
+        .limit(1)
+        .maybeSingle();
+
+      // Calcular a meta mínima de vendas usando a mesma função que o resto do sistema usa
+      let vendasMinimoCalculado: number | null = null;
+      try {
+        const { data: metaVendas } = await supabase.rpc('fn_calc_meta_semanal_rolante', {
+          p_store_id: loja.store_id,
+          p_semana_id: semanaLoja.id
+        });
+        vendasMinimoCalculado = metaVendas !== null ? Number(metaVendas) : null;
+      } catch (e) {
+        console.warn('Não foi possível calcular meta de vendas para', loja.store_number, e);
+      }
+
+      // Cria novo registro herdando a configuração anterior da loja (ou um padrão só se nunca houve configuração)
       const { error: insertError } = await supabase
         .from('Dashboard_PA_Parametros')
         .insert({
           store_id: loja.store_id,
           semana_id: semanaLoja.id,
           pa_inicial: loja.media_pa,
-          incremento_pa: 0.05,
-          valor_base: 50,
-          incremento_valor: 10,
+          incremento_pa: configAnterior?.incremento_pa ?? 0.05,
+          valor_base: configAnterior?.valor_base ?? 50,
+          incremento_valor: configAnterior?.incremento_valor ?? 10,
           ticket_minimo: loja.media_ticket,
-          ticket_incremento: 10,
-          ticket_valor_base: 100,
-          ticket_inc_valor: 20,
+          ticket_incremento: configAnterior?.ticket_incremento ?? 10,
+          ticket_valor_base: configAnterior?.ticket_valor_base ?? 100,
+          ticket_inc_valor: configAnterior?.ticket_inc_valor ?? 20,
+          vendas_minimo: vendasMinimoCalculado,
+          vendas_valor_base: configAnterior?.vendas_valor_base ?? 25,
+          vendas_incremento: configAnterior?.vendas_incremento ?? 1000,
+          vendas_inc_valor: configAnterior?.vendas_inc_valor ?? 5,
           updated_at: new Date().toISOString()
         });
       if (!insertError) criados++;
