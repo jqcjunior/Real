@@ -3,6 +3,7 @@ import React, { useState, useEffect } from 'react';
 import { AdminUser, AdminRoleLevel, User, UserRole, Store } from '../types';
 import { UserPlus, Search, Edit3, Trash2, ShieldCheck, Mail, Lock, X, Save, Loader2, Power, ShieldAlert, BadgeCheck, Eye, UserCog, History, Users as UsersIcon, Wallet, Briefcase, Shield, ChevronRight, IceCream, Building2 } from 'lucide-react';
 import { supabase } from '../services/supabaseClient';
+import { ensureSession } from '../services/authService';
 
 interface AdminUsersManagementProps {
     currentUser: User | null;
@@ -40,6 +41,7 @@ const AdminUsersManagement: React.FC<AdminUsersManagementProps> = ({ currentUser
     const fetchAdmins = async () => {
         setIsLoading(true);
         try {
+            await ensureSession();
             const { data, error } = await supabase
                 .from('admin_users')
                 .select('*')
@@ -57,6 +59,7 @@ const AdminUsersManagement: React.FC<AdminUsersManagementProps> = ({ currentUser
     const fetchPendingUsers = async () => {
         setIsLoading(true);
         try {
+            await ensureSession();
             const { data, error } = await supabase
                 .from('admin_users')
                 .select('*')
