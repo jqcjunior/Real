@@ -36,7 +36,7 @@ const PurchaseAuthorization = lazy(() => import('./components/PurchaseAuthorizat
 const TermoAutorizacao = lazy(() => import('./components/TermoAutorizacao'));
 const SystemAudit = lazy(() => import('./components/SystemAudit'));
 const OSDemandsModule = lazy(() => import('./components/OSDemandsModule'));
-const DemandsSystemV2 = lazy(() => import('./components/DemandsSystemV2'));
+const ChamadosSystem = lazy(() => import('./components/chamados/ChamadosSystem'));
 const DashboardPAModule = lazy(() => import('./components/dashboardPA/DashboardPAModule'));
 const DashboardPAGerente = lazy(() => import('./components/dashboardPA/DashboardPAGerente'));
 import BuyOrderModule from './components/buyorder/BuyOrderModule.tsx';
@@ -1901,7 +1901,7 @@ const App: React.FC = () => {
                         if (currentView === 'audit' && can('MODULE_AUDIT')) return <SystemAudit currentUser={user!} logs={logs} receipts={receipts} cashErrors={cashErrors} iceCreamSales={iceCreamSales} icPromissories={icPromissories} cardSales={cardSales} pixSales={pixSales} closures={closures} stores={isAdmin ? stores : stores.filter(s => s.id === user?.storeId)} can={can} />;
                         if (currentView === 'settings' && can('MODULE_SETTINGS')) return <AdminSettings stores={stores} onAddStore={async (s) => { await supabase.from('stores').insert([s]); fetchData(); }} onUpdateStore={async (s) => { const { id, ...updates } = s; await supabase.from('stores').update(updates).eq('id', id); fetchData(); }} onDeleteStore={async (id) => { await supabase.from('stores').delete().eq('id', id); fetchData(); }} />;
                         if ((currentView === 'os_demandas' || currentView === 'demands_v2') && can('MODULE_DEMANDS')) return (
-                            <DemandsSystemV2 
+                            <ChamadosSystem 
                                 user={user!} 
                                 stores={stores} 
                                 onUnreadUpdate={checkUnreadDemands}
