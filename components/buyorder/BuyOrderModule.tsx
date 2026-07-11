@@ -1797,37 +1797,38 @@ function gradesArrayToObject(grades: any): Record<string, Record<string, number>
         )}
         <div className="p-4 md:p-6 border-t flex flex-col md:flex-row justify-between items-center gap-4">
           <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
-            <button
-              onClick={() => {
-                setError("");
-                setStep((s) => Math.max(0, s - 1));
-              }}
-              style={{
-                visibility: step === 0 ? "hidden" : "visible",
-                height: 32,
-                padding: "0 14px",
-                borderRadius: 6,
-                fontSize: 13,
-                cursor: "pointer",
-                border: "1px solid #d1d5db",
-                background: "transparent",
-                fontWeight: 500,
-              }}
-            >
-              ← Voltar
-            </button>
+            {step > 0 && (
+              <button
+                onClick={() => {
+                  setError("");
+                  setStep((s) => Math.max(0, s - 1));
+                }}
+                style={{
+                  height: 32,
+                  padding: "0 14px",
+                  borderRadius: 6,
+                  fontSize: 13,
+                  cursor: "pointer",
+                  border: "1px solid #d1d5db",
+                  background: "transparent",
+                  fontWeight: 500,
+                }}
+              >
+                ← Voltar
+              </button>
+            )}
             <button
               onClick={() => setShowCloseWizardConfirm(true)}
               style={{
                 height: 32,
-                padding: "0 14px",
+                padding: "0 20px",
                 borderRadius: 6,
                 fontSize: 13,
-                cursor: "pointer",
-                border: (!!editingOrderId && !!editingOrder) ? "1px solid #d1d5db" : "1px solid #fca5a5",
-                background: (!!editingOrderId && !!editingOrder) ? "#f8fafc" : "#fef2f2",
-                color: (!!editingOrderId && !!editingOrder) ? "#374151" : "#dc2626",
                 fontWeight: 600,
+                cursor: "pointer",
+                border: "none",
+                background: (!!editingOrderId && !!editingOrder) ? "#64748b" : "#dc2626",
+                color: "#fff",
               }}
             >
               {(!!editingOrderId && !!editingOrder) ? "← Fechar sem salvar" : "✕ Cancelar Pedido"}
@@ -4026,7 +4027,7 @@ function StepItens({
     }));
   }
 
-  async function saveItem() {
+  async function saveItem(manterAberto: boolean = false) {
     setIsCalculating(true);
     const custo = parseFloat(form.custo) || 0;
     const preco_venda = (isAdmin && form.vendaEditadaManualmente && form.vendaManual !== "") 
@@ -4050,8 +4051,23 @@ function StepItens({
     if (editIdx >= 0)
       setItems((its) => its.map((it, i) => (i === editIdx ? item : it)));
     else setItems((its) => [...its, item]);
-    setShowPopup(false);
-    setIsCalculating(false);
+
+    if (manterAberto && editIdx === -1) {
+      // Mantém Referência/Tipo/Modelo/Custo — limpa só as cores para a próxima variante
+      setForm((f) => ({
+        ...f,
+        cor1: "",
+        cor2: "",
+        cor3: "",
+      }));
+      setCor2Manual(false);
+      setCor3Manual(false);
+      setIsCalculating(false);
+      setTimeout(() => cor1InputRef.current?.focus(), 50);
+    } else {
+      setShowPopup(false);
+      setIsCalculating(false);
+    }
   }
 
   function delItem(i: number) {
@@ -5125,12 +5141,34 @@ function StepItens({
               >
                 Cancelar
               </button>
+              {editIdx === -1 && (
+                <button
+                  onClick={() => saveItem(true)}
+                  disabled={isCalculating || !form.ref || !form.cor1}
+                  title="Salva este item e mantém Referência/Tipo/Modelo/Custo preenchidos para cadastrar a próxima cor rapidamente"
+                  style={{
+                    height: isMobile ? 38 : 30,
+                    padding: "0 16px",
+                    borderRadius: 6,
+                    fontSize: 13,
+                    fontWeight: 600,
+                    cursor: "pointer",
+                    border: "1px solid #185FA5",
+                    background: "#fff",
+                    color: (isCalculating || !form.ref || !form.cor1) ? "#9ca3af" : "#185FA5",
+                    flex: isMobile ? 1 : "initial",
+                    whiteSpace: "nowrap",
+                  }}
+                >
+                  + Nova Cor
+                </button>
+              )}
               <button
                 ref={btnSalvarRef}
                 onKeyDown={(e) => {
-                  if (e.key === "Enter") saveItem();
+                  if (e.key === "Enter") saveItem(false);
                 }}
-                onClick={saveItem}
+                onClick={() => saveItem(false)}
                 disabled={isCalculating}
                 style={{
                   height: isMobile ? 38 : 30,
