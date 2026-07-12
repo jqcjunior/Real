@@ -24,7 +24,7 @@ const DashboardAdmin = lazy(() => {
     });
 });
 const DashboardManager = lazy(() => import('./components/DashboardManager'));
-const GoalRegistration = lazy(() => import('./components/GoalRegistration'));
+const GoalRegistration = lazy(() => import('./components/metas/GoalRegistration'));
 const IceCreamModule = lazy(() => import('./components/IceCreamModule'));
 const CashRegisterModule = lazy(() => import('./components/CashRegisterModule'));
 const AgendaSystem = lazy(() => import('./components/AgendaSystem'));

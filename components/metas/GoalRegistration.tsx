@@ -1,8 +1,8 @@
 import React, { useState, useEffect, useMemo } from 'react';
-import { User, UserRole, Store, MonthlyGoal } from '../types';
-import { formatCurrency } from '../constants';
+import { User, UserRole, Store, MonthlyGoal } from '../../types';
+import { formatCurrency } from '../../constants';
 import { Target, Loader2, Save, Calendar, CalendarDays, CheckCircle2, ChevronDown, Activity, Info, Package, DollarSign, FileSpreadsheet, Upload } from 'lucide-react';
-import { parseMetasFile, insertMetas } from '../services/metasParser.service';
+import { parseMetasFile, insertMetas } from '../../services/metasParser.service';
 
 interface GoalRegistrationProps {
   user: User;
