@@ -1835,7 +1835,7 @@ function gradesArrayToObject(grades: any): Record<string, Record<string, number>
                 color: "#fff",
               }}
             >
-              {(!!editingOrderId && !!editingOrder) ? "← Fechar sem salvar" : "✕ Cancelar Pedido"}
+              {(!!editingOrderId && !!editingOrder) ? "← Fechar sem salvar" : "← Cancelar"}
             </button>
           </div>
           <div
