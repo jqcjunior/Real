@@ -35,7 +35,6 @@ const AccessControlManagement = lazy(() => import('./components/AccessControlMan
 const PurchaseAuthorization = lazy(() => import('./components/PurchaseAuthorization'));
 const TermoAutorizacao = lazy(() => import('./components/TermoAutorizacao'));
 const SystemAudit = lazy(() => import('./components/SystemAudit'));
-const OSDemandsModule = lazy(() => import('./components/OSDemandsModule'));
 const ChamadosSystem = lazy(() => import('./components/chamados/ChamadosSystem'));
 const DashboardPAModule = lazy(() => import('./components/dashboardPA/DashboardPAModule'));
 const DashboardPAGerente = lazy(() => import('./components/dashboardPA/DashboardPAGerente'));
