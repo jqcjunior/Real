@@ -215,7 +215,7 @@ const GoalRegistration: React.FC<GoalRegistrationProps> = ({
           </div>
         </div>
 
-        <div className="flex items-center gap-2">
+        <div className="flex items-center gap-2 flex-wrap justify-center w-full md:w-auto">
             <div className="flex bg-slate-100 dark:bg-slate-800 p-1 rounded-xl border border-slate-200 dark:border-slate-700">
                 <select 
                     value={selectedMonth} 
@@ -262,7 +262,7 @@ const GoalRegistration: React.FC<GoalRegistrationProps> = ({
       </div>
 
       <div className="bg-white dark:bg-slate-900 rounded-[32px] shadow-sm border border-slate-100 dark:border-slate-800 overflow-hidden flex-1">
-        <div className="overflow-x-auto no-scrollbar h-full">
+        <div className="hidden md:block overflow-x-auto no-scrollbar h-full">
           <table className="w-full text-left border-collapse">
             <thead className="sticky top-0 bg-white dark:bg-slate-900 z-20">
               <tr className="bg-slate-50 dark:bg-slate-800 text-[8px] font-black uppercase text-slate-400 dark:text-slate-500 tracking-widest border-b dark:border-slate-700">
@@ -314,6 +314,52 @@ const GoalRegistration: React.FC<GoalRegistrationProps> = ({
               })}
             </tbody>
           </table>
+        </div>
+
+        {/* MOBILE — cartões empilhados por loja, em vez da tabela */}
+        <div className="md:hidden p-3 space-y-3">
+          {activeStores.map((store, rowIndex) => {
+            const row = formData[store.id];
+            if (!row) return null;
+            return (
+              <div key={store.id} className="bg-slate-50 dark:bg-slate-800/50 rounded-2xl p-4 border border-slate-100 dark:border-slate-800">
+                <div className="mb-3">
+                  <span className="text-[11px] font-black text-slate-900 dark:text-white uppercase italic">#{store.number} - {store.name.substring(0, 18)}</span>
+                  <p className="text-[9px] font-bold text-slate-400 uppercase">{store.city}</p>
+                </div>
+                <div className="grid grid-cols-2 gap-2.5">
+                  <div>
+                    <label className="text-[8px] font-black text-slate-400 uppercase block mb-1">Dias úteis</label>
+                    <input type="number" value={row.businessDays || ''} onChange={e => handleChange(store.id, 'businessDays', e.target.value)} className="w-full p-3 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-xl font-black text-slate-900 dark:text-slate-100 text-center text-[13px] outline-none focus:ring-2 focus:ring-blue-100" placeholder="26" />
+                  </div>
+                  <div>
+                    <label className="text-[8px] font-black text-indigo-400 uppercase block mb-1">Qtd vendedores</label>
+                    <input type="number" value={row.qtdVendedores || ''} onChange={e => handleChange(store.id, 'qtdVendedores', e.target.value)} className="w-full p-3 bg-indigo-50 dark:bg-indigo-900/20 border border-indigo-100 dark:border-indigo-800 rounded-xl font-black text-indigo-700 dark:text-indigo-400 text-center text-[13px] outline-none focus:ring-2 focus:ring-indigo-100" placeholder="0" />
+                  </div>
+                  <div>
+                    <label className="text-[8px] font-black text-slate-400 uppercase block mb-1">Faturamento (R$)</label>
+                    <input type="number" value={row.revenueTarget || ''} onChange={e => handleChange(store.id, 'revenueTarget', e.target.value)} className="w-full p-3 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-xl font-black text-slate-900 dark:text-slate-100 text-center text-[13px] outline-none focus:ring-2 focus:ring-blue-100" placeholder="0" />
+                  </div>
+                  <div>
+                    <label className="text-[8px] font-black text-slate-400 uppercase block mb-1">Itens (PR)</label>
+                    <input type="number" value={row.itemsTarget || ''} onChange={e => handleChange(store.id, 'itemsTarget', e.target.value)} className="w-full p-3 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-xl font-black text-slate-600 dark:text-slate-400 text-center text-[13px] outline-none focus:ring-2 focus:ring-blue-100" placeholder="0" />
+                  </div>
+                  <div>
+                    <label className="text-[8px] font-black text-purple-400 uppercase block mb-1">P.A (vírg.)</label>
+                    <input type="text" value={row.paTarget || ''} onChange={e => handleChange(store.id, 'paTarget', e.target.value)} className="w-full p-3 bg-purple-50 dark:bg-purple-900/20 border border-purple-100 dark:border-purple-800 rounded-xl font-black text-purple-700 dark:text-purple-400 text-center text-[13px] outline-none focus:ring-2 focus:ring-purple-100" placeholder="0,00" />
+                  </div>
+                  <div>
+                    <label className="text-[8px] font-black text-orange-400 uppercase block mb-1">P.U médio</label>
+                    <input type="number" value={row.puTarget || ''} onChange={e => handleChange(store.id, 'puTarget', e.target.value)} className="w-full p-3 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-xl font-black text-orange-700 dark:text-orange-400 text-center text-[13px] outline-none focus:ring-2 focus:ring-orange-100" placeholder="0" />
+                  </div>
+                  <div className="col-span-2">
+                    <label className="text-[8px] font-black text-emerald-400 uppercase block mb-1">Ticket médio</label>
+                    <input type="number" value={row.ticketTarget || ''} onChange={e => handleChange(store.id, 'ticketTarget', e.target.value)} className="w-full p-3 bg-emerald-50 dark:bg-emerald-900/20 border border-emerald-100 dark:border-emerald-800 rounded-xl font-black text-emerald-700 dark:text-emerald-400 text-center text-[13px] outline-none focus:ring-2 focus:ring-emerald-100" placeholder="0" />
+                  </div>
+                </div>
+              </div>
+            );
+          })}
         </div>
       </div>
     </div>

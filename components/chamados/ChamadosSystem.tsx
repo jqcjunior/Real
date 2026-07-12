@@ -50,7 +50,7 @@ const ChamadosSystem: React.FC<ChamadosSystemProps> = ({ user, stores, onUnreadU
     const [stats, setStats] = useState({ resolved: 0, paused: 0, avgTime: '0h' });
     const [storeUsers, setStoreUsers] = useState<AdminUser[]>([]);
     const [selectedTargetUser, setSelectedTargetUser] = useState<string | null>(null);
-    const [mobileView, setMobileView] = useState<'list' | 'chat'>('list');
+    const [mobileView, setMobileView] = useState<'stores' | 'list' | 'chat'>(isAdmin ? 'stores' : 'list');
     const [showSidePanel, setShowSidePanel] = useState(false); // painel deslizante no notebook (1024–1280px)
     const [sidePanelTab, setSidePanelTab] = useState<'stats' | 'assign'>('stats');
 
@@ -225,6 +225,12 @@ const ChamadosSystem: React.FC<ChamadosSystemProps> = ({ user, stores, onUnreadU
         }
         // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [selectedDemand?.id]);
+
+    useEffect(() => {
+        if (selectedStoreId && isAdmin) {
+            setMobileView('list');
+        }
+    }, [selectedStoreId, isAdmin]);
     useEffect(() => { messageEndRef.current?.scrollIntoView({ behavior: 'smooth' }); }, [messages.length]);
     useEffect(() => { if (selectedStoreId) loadStoreUsers(selectedStoreId); }, [selectedStoreId]);
 
@@ -422,7 +428,7 @@ const ChamadosSystem: React.FC<ChamadosSystemProps> = ({ user, stores, onUnreadU
     // RENDER
     // ═══════════════════════════════════════════════════════════
     return (
-        <div className="flex flex-col h-[calc(100vh-120px)] bg-slate-50 dark:bg-slate-950 rounded-3xl overflow-hidden border border-slate-200 dark:border-slate-800 shadow-2xl relative">
+        <div className="flex flex-col h-full min-h-[600px] bg-transparent relative">
             {/* Header */}
             <div className="bg-white dark:bg-slate-900 p-3 lg:p-6 border-b border-slate-200 dark:border-slate-800 flex flex-col sm:flex-row justify-between items-center gap-3 lg:gap-4">
                 <div className="flex items-center gap-3 lg:gap-4 w-full lg:w-auto">
@@ -469,9 +475,28 @@ const ChamadosSystem: React.FC<ChamadosSystemProps> = ({ user, stores, onUnreadU
             </div>
 
             {/* ═══ MOBILE (<1024px) ═══ */}
-            <div className="flex-1 flex lg:hidden flex-col overflow-hidden">
+            <div className="flex-1 flex lg:hidden flex-col overflow-y-auto">
+                {mobileView === 'stores' && isAdmin && (
+                    <div className="flex-1 flex flex-col p-3">
+                        <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-3">Escolha a loja</p>
+                        <div className="flex flex-col gap-2">
+                            {filteredStores.map(store => (
+                                <ChamadoStoreItem key={store.id} store={store} isSelected={selectedStoreId === store.id}
+                                    count={storeCounts[store.id] || { total: 0, urgent: 0, unread: 0 }} onSelect={setSelectedStoreId} />
+                            ))}
+                        </div>
+                    </div>
+                )}
                 {mobileView === 'list' && (
                     <div className="flex-1 flex flex-col overflow-hidden">
+                        {isAdmin && (
+                            <button
+                                onClick={() => setMobileView('stores')}
+                                className="flex items-center gap-2 px-3 py-2.5 text-[11px] font-bold text-slate-500 border-b border-slate-200 dark:border-slate-800"
+                            >
+                                <ChevronRight size={16} className="rotate-180" /> Lojas
+                            </button>
+                        )}
                         <div className="bg-white/80 dark:bg-slate-900/80 backdrop-blur-md p-2 border-b border-slate-200 dark:border-slate-800 flex gap-1">
                             {(['abertas', 'pausadas', 'resolvidas'] as const).map(tab => (
                                 <button key={tab} onClick={() => setActiveTab(tab)} className={`flex-1 py-2.5 rounded-xl text-[10px] font-black uppercase tracking-widest transition-all ${activeTab === tab ? 'bg-blue-600 text-white shadow-lg' : 'text-slate-400 hover:bg-slate-100 dark:hover:bg-slate-800'}`}>

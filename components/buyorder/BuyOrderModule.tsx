@@ -356,6 +356,7 @@ export default function BuyOrderModule({ user }: { user?: User }) {
   }, [user]);
   const [prazosRaw, setPrazosRaw] = useState("");
   const orderFormRef = useRef<HTMLDivElement>(null);
+  const prazosInputRef = useRef<HTMLInputElement>(null);
   const [highlightHeader, setHighlightHeader] = useState(false);
   const [items, setItems] = useState<OrderItem[]>([]);
   const [pedidos, setPedidos] = useState<SubOrder[]>([]);
@@ -1742,6 +1743,7 @@ function gradesArrayToObject(grades: any): Record<string, Record<string, number>
             roundBase={roundBase}
             isMobile={isMobile}
             user={user}
+            prazosInputRef={prazosInputRef}
           />
         )}
         {step === 1 && (
@@ -3237,6 +3239,7 @@ function StepCabecalho({
   roundBase,
   isMobile,
   user,
+  prazosInputRef,
 }: {
   cab: Cabecalho;
   setCab: Dispatch<SetStateAction<Cabecalho>>;
@@ -3247,6 +3250,7 @@ function StepCabecalho({
   roundBase: number;
   isMobile?: boolean;
   user?: any;
+  prazosInputRef: React.RefObject<HTMLInputElement | null>;
 }) {
   const { fetchAndFillBrand, isLoading } = useBrandAutocomplete();
   const [brands, setBrands] = useState<Brand[]>([]);
@@ -3512,12 +3516,23 @@ function StepCabecalho({
               onChange={(e) =>
                 setCab((c) => ({ ...c, fat_fim: e.target.value }))
               }
+              onBlur={() => {
+                // Preenche automaticamente 90/120/150 ao terminar de digitar a Data Final —
+                // só se o campo Prazos ainda estiver vazio. Vale para Gerente e Admin igualmente,
+                // e continua 100% editável depois (mesmo padrão do preço sugerido).
+                if (cab.fat_fim && !prazosRaw.trim()) {
+                  const defaultPrazos = "90/120/150";
+                  setPrazosRaw(defaultPrazos);
+                  setCab((c) => ({ ...c, prazos: parsePrazos(defaultPrazos) }));
+                }
+              }}
               className={`w-full h-10 px-3 border rounded-lg text-sm focus:ring-2 focus:ring-blue-500 outline-none transition-all ${!cab.fat_fim || (cab.fat_inicio && (new Date(cab.fat_inicio + "T00:00:00").getMonth() !== new Date(cab.fat_fim + "T00:00:00").getMonth() || new Date(cab.fat_inicio + "T00:00:00").getFullYear() !== new Date(cab.fat_fim + "T00:00:00").getFullYear())) ? "border-red-300 bg-red-50/30" : "border-slate-300"}`}
             />
           </div>
           <div>
             <label style={labelStyle}>Prazos * (ex: 90/120/150)</label>
             <input
+              ref={prazosInputRef}
               value={prazosRaw}
               onChange={(e) => {
                 setPrazosRaw(e.target.value);
