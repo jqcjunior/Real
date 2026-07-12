@@ -55,6 +55,26 @@
 </head>
   <body>
     <div id="root"></div>
+    <script>
+      // BuyOrder: ao confirmar a marca com Enter, avança para a Data Inicial.
+      // Os demais campos já possuem navegação sequencial no componente React.
+      document.addEventListener('keydown', function (event) {
+        if (event.key !== 'Enter') return;
+
+        const target = event.target;
+        if (!(target instanceof HTMLInputElement)) return;
+        if (target.placeholder !== 'Digite a marca...') return;
+
+        event.preventDefault();
+        const container = target.closest('.p-4, .md\\:p-6')?.parentElement?.parentElement || document;
+        const dataInicial = container.querySelector('input[type="date"]');
+
+        if (dataInicial instanceof HTMLInputElement) {
+          dataInicial.focus();
+          dataInicial.select?.();
+        }
+      });
+    </script>
     <script type="module" src="/index.tsx"></script>
   </body>
 </html>
