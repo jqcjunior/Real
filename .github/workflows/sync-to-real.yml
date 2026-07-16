@@ -1,0 +1,24 @@
+name: Sync to Real (repositório oficial)
+
+on:
+  push:
+    branches:
+      - main
+
+jobs:
+  sync:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout Real-Admin
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Push mirror to jqcjunior/Real
+        env:
+          SYNC_PAT: ${{ secrets.SYNC_PAT }}
+        run: |
+          git config user.name "sync-bot"
+          git config user.email "sync-bot@users.noreply.github.com"
+          git remote add oficial https://x-access-token:${SYNC_PAT}@github.com/jqcjunior/Real.git
+          git push oficial HEAD:main --force
