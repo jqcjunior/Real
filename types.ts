@@ -1,0 +1,782 @@
+
+/* =========================
+   ROLES / USUÁRIOS
+========================= */
+export enum UserRole {
+  ADMIN = 'ADMIN',
+  SUPER_ADMIN = 'SUPER_ADMIN',
+  MANAGER = 'MANAGER',
+  CASHIER = 'CASHIER',
+  ICE_CREAM = 'ICE_CREAM',
+  COBRADOR = 'COBRADOR'
+}
+
+export interface User {
+  id: string;
+  user_id?: string;
+  name: string;
+  role: UserRole;
+  storeId?: string;
+  store_id?: string;
+  email: string;
+  password?: string;
+  photo?: string;
+}
+
+/* =========================
+   ESTOQUE / SORVETERIA
+========================= */
+export interface IceCreamStock {
+  id: string;
+  stock_id: string; 
+  store_id: string;
+  product_base: string;
+  stock_initial: number;
+  stock_current: number;
+  unit: string;
+  is_active: boolean;
+  created_at?: string;
+}
+
+export interface IceCreamRecipeItem {
+  stock_base_name: string;
+  quantity: number;
+}
+
+export interface IceCreamItem {
+  id: string;
+  storeId: string;
+  name: string;
+  category: IceCreamCategory;
+  price: number;
+  flavor?: string;
+  active: boolean;
+  consumptionPerSale?: number;
+  consumption_per_sale?: number;
+  recipe?: IceCreamRecipeItem[];
+  image_url?: string;
+  created_at?: string;
+}
+
+export interface IceCreamStockMovement {
+  id: string;
+  stock_id: string;
+  store_id: string;
+  user_id: string;
+  quantity: number;
+  movement_type: string;
+  reason: string;
+  created_at: string;
+}
+
+export interface IceCreamSangriaCategory {
+  id: string;
+  store_id: string;
+  name: string;
+  is_active: boolean;
+  created_at: string;
+}
+
+export interface IceCreamSangria {
+  id: string;
+  store_id: string;
+  user_id: string;
+  category_id: string;
+  amount: number;
+  description: string;
+  transaction_date?: string;
+  notes?: string;
+  metadata?: any;
+  created_at: string;
+}
+
+export interface IceCreamDailySale {
+  id: string;
+  sale_id?: string;
+  saleId?: string;
+  storeId: string;
+  itemId: string;
+  productName: string;
+  category: string;
+  flavor: string;
+  unitsSold: number;
+  unitPrice: number;
+  totalValue: number;
+  paymentMethod: IceCreamPaymentMethod;
+  buyer_name?: string;
+  createdAt?: string;
+  saleCode?: string;
+  status?: 'active' | 'canceled' | 'completed';
+  cancel_reason?: string;
+  canceled_by?: string;
+  ml?: string;
+}
+
+export interface Sale {
+  id: string;
+  store_id: string;
+  total_value: number;
+  total_amount?: number;
+  status: 'active' | 'canceled' | 'completed';
+  canceled_by_name?: string;
+  cancel_reason?: string;
+  created_at: string;
+  sale_code: string;
+  buyer_name?: string;
+}
+
+export type IceCreamSale = Sale;
+
+export interface SalePayment {
+  id: string;
+  sale_id: string;
+  store_id: string;
+  payment_method: IceCreamPaymentMethod;
+  amount: number;
+  created_at: string;
+  sale_code?: string;
+  status?: string;
+}
+
+export type IceCreamPaymentMethod =
+  | 'Pix'
+  | 'Cartão'
+  | 'Dinheiro'
+  | 'Fiado'
+  | 'Misto';
+
+export type IceCreamCategory =
+  | 'Sundae'
+  | 'Milkshake'
+  | 'Casquinha'
+  | 'Cascão'
+  | 'Cascão Trufado'
+  | 'Copinho'
+  | 'Bebidas'
+  | 'Adicionais';
+
+export interface IceCreamPromissoryNote {
+  id: string;
+  storeId: string;
+  buyer_name: string;
+  value: number;
+  date: string;
+  status: 'pending' | 'paid';
+  createdAt: Date;
+}
+
+export interface IceCreamFutureDebt {
+  id: string;
+  store_id: string;
+  supplier_name: string;
+  total_amount: number;
+  installment_number: number;
+  total_installments: number;
+  installment_amount: number;
+  due_date: string;
+  payment_date?: string;
+  status: 'pending' | 'paid' | 'overdue';
+  category_id?: string;
+  description?: string;
+  created_by?: string;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface DREMethodSummary {
+  pix: number;
+  money: number;
+  card: number;
+  fiado: number;
+}
+
+export interface DREMethodCount {
+  pix: number;
+  money: number;
+  card: number;
+  fiado: number;
+}
+
+export interface SaleDetailItem {
+  productName: string;
+  quantity: number;
+  totalValue: number;
+}
+
+export interface StoreProfitPartner {
+  id: string;
+  store_id: string;
+  partner_name: string;
+  percentage: number;
+  active: boolean;
+  created_at?: string;
+}
+
+/* =========================
+   PERMISSÕES / LOJAS
+========================= */
+export interface PagePermission {
+  id: string;
+  page_key: string;
+  label: string;
+  module_group: string;
+  allow_admin: boolean;
+  allow_manager: boolean;
+  allow_cashier: boolean;
+  allow_sorvete: boolean;
+  allow_cobrador: boolean;
+  sort_order: number;
+}
+
+export interface Store {
+  id: string;
+  number: string;
+  name: string;
+  city: string;
+  managerName: string;
+  managerEmail: string;
+  managerPhone: string;
+  status?: 'active' | 'pending' | 'inactive';
+  role?: UserRole;
+  password?: string;
+  passwordResetRequested?: boolean;
+  has_gelateria?: boolean;
+  gerente_pode_lancar_pedido?: boolean;
+  state?: string;
+}
+
+/* =========================
+   🔹 METAS MENSAIS
+========================= */
+export interface MonthlyGoal {
+  id?: string;
+  storeId: string;
+  year: number;
+  month: number;
+
+  revenueTarget: number;
+  itemsTarget: number;
+  paTarget: number;
+  puTarget: number;
+  ticketTarget: number;
+  delinquencyTarget: number;
+
+  businessDays: number;
+  qtdVendedores?: number;
+  trend: 'up' | 'stable' | 'down';
+}
+
+/* =========================
+   🔹 PERFORMANCE ATUALIZADA
+========================= */
+export interface MonthlyPerformance {
+  id?: string;
+  storeId: string;
+  month: string;
+
+  revenueActual: number;
+  itemsActual: number;
+  salesActual: number;
+  delinquencyRate: number;
+
+  itemsPerTicket: number;
+  unitPriceAverage: number;
+  averageTicket: number;
+  percentMeta: number;
+
+  revenueTarget: number;
+  itemsTarget: number;
+  paTarget: number;
+  puTarget: number;
+  ticketTarget: number;
+  delinquencyTarget: number;
+
+  trend: 'up' | 'down' | 'stable';
+  businessDays: number;
+}
+
+export interface CashRegisterClosure {
+  id: string;
+  storeId: string;
+  closedBy: string;
+  date: string;
+  totalSales: number;
+  totalExpenses: number;
+  balance: number;
+  notes?: string;
+  createdAt: string;
+}
+
+export interface SystemLog {
+  id?: string;
+  created_at: string;
+  userId: string;
+  userName: string;
+  userRole: UserRole;
+  action: string;
+  details: string;
+}
+
+export type TaskPriority = 'highest' | 'high' | 'medium' | 'low' | 'lowest';
+
+export interface AgendaItem {
+  id: string;
+  userId: string;
+  title: string;
+  description: string;
+  dueDate: string;
+  dueTime: string;
+  priority: TaskPriority;
+  isCompleted: boolean;
+  createdAt: Date;
+}
+
+export type DownloadCategory = 'spreadsheet' | 'media' | 'video' | 'image' | 'audio' | 'other';
+
+export interface DownloadItem {
+  id: string;
+  title: string;
+  description: string | null;
+  category: DownloadCategory;
+  url: string;
+  fileName: string | null;
+  size: string | null;
+  campaign: string | null;
+  createdAt: Date;
+  createdBy: string;
+}
+
+export interface CashError {
+  id: string;
+  storeId: string;
+  userId: string;
+  userName: string;
+  date: string;
+  type: 'surplus' | 'shortage';
+  value: number;
+  reason?: string;
+  createdAt: Date;
+}
+
+export interface Receipt {
+  id: string;
+  storeId?: string;
+  receiptNumber?: number;
+  formattedNumber?: string;
+  issuerName: string;
+  payer: string;
+  recipient: string;
+  value: number;
+  valueInWords: string;
+  reference: string;
+  date: string;
+  createdAt: Date;
+}
+
+export interface CreditCardSale {
+  id: string;
+  storeId: string;
+  userId: string;
+  userName: string;
+  date: string;
+  brand: string;
+  value: number;
+  authorizationCode?: string;
+  saleCode: string;
+  createdAt?: string;
+}
+
+export interface PixSale {
+  id: string;
+  storeId: string;
+  userId: string;
+  userName: string;
+  date: string;
+  saleCode: string; // Número da Ficha
+  value: number;
+  clientName: string;
+  createdAt?: string;
+}
+
+export type AdminRoleLevel = 'admin' | 'manager' | 'cashier' | 'sorvete' | 'seller' | 'estoquista' | 'cobranca' | 'cobrador';
+
+export interface AdminUser {
+  id: string;
+  name: string;
+  email: string;
+  password?: string;
+  status: 'active' | 'inactive' | 'pending' | 'blocked' | 'rejected';
+  role_level: AdminRoleLevel;
+  store_id: string | null;
+  last_activity?: string;
+  created_at: string;
+}
+
+/* =========================
+   🔹 SISTEMA DE PESQUISAS
+========================= */
+export type SurveyTargetType = 'internal' | 'external';
+export type SurveyTargetCategory = 'all_managers' | 'all_cashiers' | 'all_sellers' | 'all_estoquistas' | 'all_cobranca' | 'all_ice_cream' | 'specific_stores' | 'specific_users' | 'all_employees';
+export type SurveyQuestionType = 'short_text' | 'rating' | 'multiple_choice' | 'yes_no' | 'product_item' | 'emoji_scale';
+export type SurveyResultVisibility = 'admin' | 'store_manager' | 'respondent';
+
+export interface Survey {
+  id: string;
+  title: string;
+  description: string | null;
+  target_type: SurveyTargetType;
+  target_category: SurveyTargetCategory | null;
+  target_store_ids: string[] | null;
+  target_user_ids: string[] | null;
+  results_visible_to: SurveyResultVisibility[];
+  is_active: boolean;
+  allow_anonymous?: boolean;
+  allow_multiple_responses?: boolean;
+  notify_pending?: boolean;
+  created_by: string;
+  created_at: string;
+  updated_at: string;
+  public_token?: string;
+  logo_url?: string | null;
+  cover_image_url?: string | null;
+  welcome_message?: string | null;
+  thank_you_message?: string;
+}
+
+export interface SurveySection {
+  id: string;
+  survey_id: string;
+  name: string;
+  description?: string | null;
+  image_url?: string | null;
+  sort_order: number;
+  display_mode?: 'one_by_one' | 'all_at_once' | null;
+  created_at?: string;
+}
+
+export interface SurveyQuestion {
+  id: string;
+  survey_id: string;
+  question_text: string;
+  section?: string | null;
+  section_id?: string | null;
+  question_type: SurveyQuestionType;
+  options: string[];
+  is_required: boolean;
+  sort_order: number;
+  is_active?: boolean;
+  created_at: string;
+  photo_id?: string | null;
+}
+
+export interface SurveyResponse {
+  id: string;
+  survey_id: string;
+  user_id: string | null;
+  invitation_id: string | null;
+  store_id: string | null;
+  created_at: string;
+}
+
+export interface SurveyAnswerDetail {
+  id: string;
+  response_id: string;
+  question_id: string;
+  answer_text: string | null;
+  created_at: string;
+}
+
+export interface SurveyInvitation {
+  id: string;
+  survey_id: string;
+  store_id: string;
+  customer_name: string;
+  customer_email: string | null;
+  customer_phone: string | null;
+  invitation_token: string;
+  status: 'pending' | 'sent' | 'responded' | 'expired';
+  sent_at: string | null;
+  responded_at: string | null;
+  expires_at: string | null;
+  created_at: string;
+}
+
+export interface NfcPage {
+  id: string;
+  store_id: string;
+  survey_id: string;
+  cover_image_url?: string;
+  instagram?: string;
+  whatsapp_store?: string;
+  whatsapp_manager?: string;
+  whatsapp_central?: string;
+  whatsapp_beneficios?: string;
+  is_active: boolean;
+  pix_key?: string;
+  pix_qrcode_url?: string;
+  show_instagram?: boolean;
+  show_pix?: boolean;
+  show_survey?: boolean;
+  show_whatsapp_store?: boolean;
+  show_whatsapp_manager?: boolean;
+  show_whatsapp_central?: boolean;
+  show_whatsapp_beneficios?: boolean;
+  created_at?: string;
+  updated_at?: string;
+}
+
+/* =========================
+   🔹 DEMANDAS (OS)
+========================= */
+export type DemandPriority = 'urgente' | 'alta' | 'media' | 'baixa';
+export type DemandStatus = 'aberta' | 'em_andamento' | 'resolvida' | 'cancelada';
+
+export interface Demand {
+  id: string;
+  store_id: string;
+  title: string;
+  description: string;
+  category: string;
+  priority: DemandPriority;
+  status: DemandStatus;
+  sla_hours: number;
+  created_at: string;
+  created_by: string;
+  // Join fields
+  store_name?: string;
+  store_number?: string;
+}
+
+export interface DemandMessage {
+  id: string;
+  demand_id: string;
+  sender_name: string;
+  message: string;
+  is_admin: boolean;
+  read: boolean;
+  created_at: string;
+}
+
+export interface DemandCategory {
+  id: string;
+  name: string;
+  label: string;
+  is_active: boolean;
+  created_at?: string;
+}
+
+/* =========================
+   🔹 DEMANDAS V2 (OS)
+========================= */
+export type DemandV2Priority = 'urgente' | 'alta' | 'media' | 'baixa';
+export type DemandV2Status = 'aberta' | 'em_andamento' | 'pausada' | 'resolvida' | 'cancelada';
+export type DemandV2MessageType = 'comment' | 'status_change' | 'assignment';
+
+export interface DemandV2 {
+  id: string;
+  ticket_number: string;
+  store_id: string;
+  title: string;
+  description: string;
+  category: string;
+  priority: DemandV2Priority;
+  status: DemandV2Status;
+  sla_hours: number;
+  sla_deadline: string;
+  created_by: string;
+  assigned_to: string | null;
+  resolved_by: string | null;
+  unread_count: number;
+  total_messages: number;
+  total_attachments: number;
+  response_time_minutes: number | null;
+  resolution_time_minutes: number | null;
+  is_archived: boolean;
+  archive_semester: string;
+  created_at: string;
+  updated_at: string;
+  paused_at: string | null;
+  resolved_at: string | null;
+  // Join fields
+  store_name?: string;
+  store_number?: string;
+  creator_name?: string;
+  assigned_name?: string;
+}
+
+export interface DemandMessageV2 {
+  id: string;
+  demand_id: string;
+  sender_id: string;
+  sender_name: string;
+  sender_role: string;
+  message: string;
+  message_type: DemandV2MessageType;
+  is_read: boolean;
+  read_at: string | null;
+  read_by: string | null;
+  created_at: string;
+  attachments?: DemandAttachmentV2[];
+}
+
+export interface DemandAttachmentV2 {
+  id: string;
+  demand_id: string;
+  message_id: string;
+  file_name: string;
+  file_url: string;
+  file_size: number;
+  file_type: string;
+  is_compressed: boolean;
+  original_size: number;
+  compression_ratio: number;
+  image_width: number | null;
+  image_height: number | null;
+  uploaded_from_mobile: boolean;
+  should_be_deleted_at: string | null;
+  is_deleted: boolean;
+  deleted_at: string | null;
+  created_at: string;
+}
+
+export interface DemandNotificationV2 {
+  id: string;
+  demand_id: string;
+  user_id: string;
+  notification_type: 'new_demand' | 'new_message' | 'assigned' | 'status_change' | 'sla_warning' | 'sla_exceeded' | 'new_attachment' | 'new_order' | 'new_goal' | 'new_survey';
+  title: string;
+  message: string;
+  is_read: boolean;
+  read_at: string | null;
+  created_at: string;
+}
+
+/* =========================
+   DASHBOARD PA
+========================= */
+export interface PAParameters {
+  id: string;
+  min_pa: number;
+  max_pa: number;
+  award_value: number;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface PAWeek {
+  id: string;
+  week_number: number;
+  month: number;
+  year: number;
+  start_date: string;
+  end_date: string;
+  is_active: boolean;
+  created_at: string;
+}
+
+export interface PASale {
+  id: string;
+  week_id: string;
+  store_id: string;
+  seller_name: string;
+  total_sales: number;
+  pa_value: number;
+  items_sold: number;
+  is_eligible: boolean;
+  award_amount: number;
+  created_at: string;
+}
+
+export interface PAAward {
+  id: string;
+  week_id: string;
+  store_id: string;
+  seller_name: string;
+  amount: number;
+  status: 'pending' | 'paid';
+  paid_at?: string;
+  created_at: string;
+}
+
+export interface PAStoreSummary {
+  store_id: string;
+  store_name: string;
+  total_sales: number;
+  avg_pa: number;
+  total_awards: number;
+  eligible_sellers: number;
+}
+
+export interface DetailedAdvice {
+  prioridade: string;
+  meta: string;
+  indicadores: string[];
+  ranking: string;
+  acoes: string[];
+  frase?: string;
+}
+
+export interface MotivationalPhrase {
+  id: string;
+  frase: string;
+  categoria: 'atraso' | 'pressao' | 'meta_batida' | 'vendas';
+  created_at?: string;
+}
+
+export interface PurchaseParameterGlobal {
+    id: string;
+    year: number;
+    month: number;
+    feminino_pct: number;
+    infantil_menina_pct: number;
+    infantil_menino_pct: number;
+    masculino_pct: number;
+    acessorio_pct: number;
+    sub_metas: any;
+    cota_default: number;
+    created_at: string;
+}
+
+export interface PurchaseParameterStore {
+    id: string;
+    store_number: string;
+    year: number;
+    month: number;
+    feminino_pct: number | null;
+    infantil_menina_pct: number | null;
+    infantil_menino_pct: number | null;
+    masculino_pct: number | null;
+    acessorio_pct: number | null;
+    sub_metas: any | null;
+    cota_valor: number | null;
+    created_at: string;
+}
+
+export interface PurchaseQuotaControl {
+    id: string;
+    store_number: string;
+    year: number;
+    month: number;
+    cota_inicial: number;
+    cota_utilizada: number;
+    cota_disponivel: number;
+    cota_gerente_inicial: number;
+    cota_gerente_utilizada: number;
+    cota_gerente_disponivel: number;
+    cota_comprador_inicial: number;
+    cota_comprador_utilizada: number;
+    cota_comprador_disponivel: number;
+    percentual_utilizado: number;
+    status: string;
+}
+
+export interface PurchaseQuotaTransaction {
+    id: string;
+    quota_control_id: string;
+    order_id: string;
+    item_id?: string;
+    valor_abatido: number;
+    tipo_comprador: 'GERENTE' | 'COMPRADOR';
+    descricao: string;
+    created_at: string;
+}

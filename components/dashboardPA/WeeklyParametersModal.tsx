@@ -1,0 +1,1270 @@
+// ============================================
+// WEEKLY PARAMETERS MODAL - Dashboard PA
+// Configuração de parâmetros de premiação por loja
+// ============================================
+
+import React, { useState, useEffect } from 'react';
+import { X, Check, ChevronRight, ChevronDown, Loader2, Settings, Trophy, Zap, Copy, Upload, FileSpreadsheet } from 'lucide-react';
+import { supabase } from '../../services/supabaseClient';
+import { Store } from '../../types';
+import { format } from 'date-fns';
+import { parseRelatorioSemanal, aplicarImportacaoSemanal, LojaAgregada } from '../../services/weeklyPerformanceParser.service';
+
+interface WeekData {
+  id: string;
+  data_inicio: string;
+  data_fim: string;
+  mes_ref?: number;
+  ano_ref?: number;
+  store_id?: string;
+  status?: string;
+}
+
+interface PAParametros {
+  store_id: string;
+  semana_id?: string;
+  pa_inicial: number | null;
+  incremento_pa: number | null;
+  valor_base: number | null;
+  incremento_valor: number | null;
+  vendas_minimo: number | null;
+  vendas_incremento: number | null;
+  vendas_valor_base: number | null;
+  vendas_inc_valor: number | null;
+  ticket_minimo: number | null;
+  ticket_incremento: number | null;
+  ticket_valor_base: number | null;
+  ticket_inc_valor: number | null;
+  pu_minimo: number | null;
+  pu_incremento: number | null;
+  pu_valor_base: number | null;
+  pu_inc_valor: number | null;
+}
+
+interface WeeklyParametersModalProps {
+  stores: Store[];
+  onClose: () => void;
+  onSaved: () => void;
+  selectedWeek: WeekData;
+  allWeeks: WeekData[];
+  onWeekChange?: (weekId: string) => void;
+}
+
+const parseLocalDate = (dateStr: string): Date => {
+  const [year, month, day] = dateStr.split('-').map(Number);
+  return new Date(year, month - 1, day);
+};
+
+function calcularPremioTotal(performance: { pa: number; vendas: number; ticket: number; pu: number }, params: PAParametros): number {
+  if (!params) return 0;
+  
+  let total = 0;
+  
+  // 1. Prêmio por P.A
+  if (params.pa_inicial !== null && params.pa_inicial !== undefined && performance.pa >= params.pa_inicial) {
+    const excedente = performance.pa - params.pa_inicial;
+    const incrementos = Math.floor((excedente + 0.00001) / (params.incremento_pa || 1));
+    total += (params.valor_base || 0) + (incrementos * (params.incremento_valor || 0));
+  }
+  
+  // 2. Prêmio por Vendas
+  if (params.vendas_minimo !== null && performance.vendas >= params.vendas_minimo) {
+    const base = params.vendas_valor_base || 0;
+    const inc = params.vendas_incremento || 1;
+    const valInc = params.vendas_inc_valor || 0;
+    const excedente = performance.vendas - params.vendas_minimo;
+    const incrementos = Math.floor((excedente + 0.00001) / inc);
+    total += base + (incrementos * valInc);
+  }
+  
+  // 3. Prêmio por Ticket
+  if (params.ticket_minimo !== null && performance.ticket >= params.ticket_minimo) {
+    const base = params.ticket_valor_base || 0;
+    const inc = params.ticket_incremento || 1;
+    const valInc = params.ticket_inc_valor || 0;
+    const excedente = performance.ticket - params.ticket_minimo;
+    const incrementos = Math.floor((excedente + 0.00001) / inc);
+    total += base + (incrementos * valInc);
+  }
+  
+  // 4. Prêmio por P.U.
+  if (params.pu_minimo !== null && params.pu_minimo !== undefined && performance.pu >= params.pu_minimo) {
+    const base = params.pu_valor_base || 0;
+    const inc = params.pu_incremento || 1;
+    const valInc = params.pu_inc_valor || 0;
+    const excedente = performance.pu - params.pu_minimo;
+    const incrementos = Math.floor((excedente + 0.00001) / inc);
+    total += base + (incrementos * valInc);
+  }
+  
+  return total;
+}
+
+export const WeeklyParametersModal: React.FC<WeeklyParametersModalProps> = ({ stores, onClose, onSaved, selectedWeek, allWeeks, onWeekChange }) => {
+  const [localStores, setLocalStores] = useState<Store[]>(stores || []);
+  const [params, setParams] = useState<Record<string, PAParametros>>({});
+  const [selectedStoreId, setSelectedStoreId] = useState<string | null>(null);
+  const [draft, setDraft] = useState<any>(null);
+  const [saving, setSaving] = useState(false);
+  const [saved, setSaved] = useState(false);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
+  const [toast, setToast] = useState<{ message: string; type: 'success' | 'error' } | null>(null);
+  const [periodWeeks, setPeriodWeeks] = useState<any[]>([]);
+  const [metaCalculada, setMetaCalculada] = useState<number | null>(null);
+  const [loadingMeta, setLoadingMeta] = useState(false);
+  const [metaDetalhada, setMetaDetalhada] = useState<{ meta_loja: number; qtd_vendedores: number } | null>(null);
+  const [showImportModal, setShowImportModal] = useState(false);
+  const [importing, setImporting] = useState(false);
+  const [pendingImport, setPendingImport] = useState<LojaAgregada[] | null>(null);
+  const [importResult, setImportResult] = useState<{ atualizados: number; criados: number; semNaSemanaEscolhida: string[] } | null>(null);
+
+  // Cada loja tem seu próprio registro em Dashboard_PA_Semanas para o mesmo período —
+  // nunca usar selectedWeek.id diretamente para outra loja que não seja a original.
+  const getSemanaIdParaLoja = (storeId: string): string => {
+    const storeWeek = periodWeeks?.find((w: any) => w.store_id === storeId);
+    return storeWeek?.id || selectedWeek.id;
+  };
+
+  const fetchMetaCalculada = async (storeId: string, semanaId: string) => {
+    setLoadingMeta(true);
+    try {
+      const { data, error } = await supabase.rpc('fn_calc_meta_semanal_rolante', {
+        p_store_id: storeId,
+        p_semana_id: semanaId
+      });
+      if (error) throw error;
+      setMetaCalculada(data !== null ? Number(data) : null);
+
+      // Detalhamento (total da loja + quantidade de vendedores) — só para exibição
+      const { data: detalhe, error: errDetalhe } = await supabase.rpc('fn_calc_meta_semanal_detalhado', {
+        p_store_id: storeId,
+        p_semana_id: semanaId
+      });
+      if (!errDetalhe && detalhe && detalhe.length > 0) {
+        setMetaDetalhada({
+          meta_loja: Number(detalhe[0].meta_loja),
+          qtd_vendedores: Number(detalhe[0].qtd_vendedores)
+        });
+      } else {
+        setMetaDetalhada(null);
+      }
+    } catch (err) {
+      console.error('Erro ao calcular meta rolante:', err);
+      setMetaCalculada(null);
+      setMetaDetalhada(null);
+    } finally {
+      setLoadingMeta(false);
+    }
+  };
+
+  useEffect(() => {
+    if (stores && stores.length > 0) {
+      setLocalStores(stores);
+    }
+  }, [stores]);
+
+  const fetchParams = async () => {
+    setLoading(true);
+    setError(null);
+    setMetaCalculada(null);
+    setMetaDetalhada(null);
+    
+    try {
+      // Garantir que a lista de lojas esteja populada
+      let activeStores = [...(stores || [])];
+      if (activeStores.length === 0) {
+        const { data: dbStores, error: dbError } = await supabase
+          .from('stores')
+          .select('*');
+        
+        if (!dbError && dbStores) {
+          activeStores = dbStores.map((s: any) => ({
+            id: s.id,
+            number: String(s.number),
+            name: s.name || '',
+            city: s.city || '',
+            managerName: s.manager_name || '',
+            managerEmail: s.manager_email || '',
+            managerPhone: s.manager_phone || '',
+            status: s.status || 'active'
+          }));
+          setLocalStores(activeStores);
+        }
+      } else {
+        setLocalStores(activeStores);
+      }
+
+      // Buscar as semanas de todas as lojas para este mesmo período
+      const { data: weeksData, error: weeksError } = await supabase
+        .from('Dashboard_PA_Semanas')
+        .select('*')
+        .eq('data_inicio', selectedWeek.data_inicio);
+
+      if (weeksError) throw weeksError;
+      setPeriodWeeks(weeksData || []);
+
+      const weekIds = weeksData ? weeksData.map((w: any) => w.id) : [];
+
+      const { data, error: fetchError } = await supabase
+        .from('Dashboard_PA_Parametros')
+        .select(`*`)
+        .in('semana_id', weekIds);
+      
+      if (fetchError) {
+        setError(`Erro ao carregar parâmetros: ${fetchError.message}`);
+        setLoading(false);
+        return;
+      }
+      
+      const map: Record<string, PAParametros> = {};
+      if (data) {
+        data.forEach((p: any) => { 
+          map[p.store_id] = {
+            store_id: p.store_id,
+            semana_id: p.semana_id,
+            pa_inicial: p.pa_inicial !== null ? Number(p.pa_inicial) : null,
+            incremento_pa: p.incremento_pa !== null ? Number(p.incremento_pa) : null,
+            valor_base: p.valor_base !== null ? Number(p.valor_base) : null,
+            incremento_valor: p.incremento_valor !== null ? Number(p.incremento_valor) : null,
+            vendas_minimo: p.vendas_minimo !== null ? Number(p.vendas_minimo) : null,
+            vendas_incremento: p.vendas_incremento !== null ? Number(p.vendas_incremento) : null,
+            vendas_valor_base: p.vendas_valor_base !== null ? Number(p.vendas_valor_base) : null,
+            vendas_inc_valor: p.vendas_inc_valor !== null ? Number(p.vendas_inc_valor) : null,
+            ticket_minimo: p.ticket_minimo !== null ? Number(p.ticket_minimo) : null,
+            ticket_incremento: p.ticket_incremento !== null ? Number(p.ticket_incremento) : null,
+            ticket_valor_base: p.ticket_valor_base !== null ? Number(p.ticket_valor_base) : null,
+            ticket_inc_valor: p.ticket_inc_valor !== null ? Number(p.ticket_inc_valor) : null,
+            pu_minimo: p.pu_minimo !== null ? Number(p.pu_minimo) : null,
+            pu_incremento: p.pu_incremento !== null ? Number(p.pu_incremento) : null,
+            pu_valor_base: p.pu_valor_base !== null ? Number(p.pu_valor_base) : null,
+            pu_inc_valor: p.pu_inc_valor !== null ? Number(p.pu_inc_valor) : null,
+          };
+        });
+      }
+      setParams(map);
+
+      if (selectedStoreId) {
+        const updatedParams = map[selectedStoreId];
+        if (updatedParams) {
+          setDraft(updatedParams);
+        } else {
+          // Loja não tem parâmetros configurados ainda para esta nova semana
+          setDraft({
+            store_id: selectedStoreId,
+            pa_inicial: null,
+            incremento_pa: null,
+            valor_base: null,
+            incremento_valor: null,
+            vendas_minimo: null,
+            vendas_incremento: null,
+            vendas_valor_base: null,
+            vendas_inc_valor: null,
+            ticket_minimo: null,
+            ticket_incremento: null,
+            ticket_valor_base: null,
+            ticket_inc_valor: null,
+            pu_minimo: null,
+            pu_incremento: null,
+            pu_valor_base: null,
+            pu_inc_valor: null,
+          });
+        }
+        setSaved(false);
+        fetchMetaCalculada(selectedStoreId, getSemanaIdParaLoja(selectedStoreId));
+      }
+    } catch (err: any) {
+      setError(`Erro inesperado: ${err.message}`);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  useEffect(() => {
+    fetchParams();
+  }, [stores, selectedWeek]);
+
+  useEffect(() => {
+    if (metaCalculada !== null && draft && draft.vendas_minimo !== null) {
+      const val = Number(metaCalculada.toFixed(2));
+      if (draft.vendas_minimo !== val) {
+        setDraft((prev: any) => {
+          if (!prev) return prev;
+          return {
+            ...prev,
+            vendas_minimo: val
+          };
+        });
+      }
+    }
+  }, [metaCalculada]);
+
+  const handleSelectStore = (storeId: string) => {
+    setSelectedStoreId(storeId);
+    setSaved(false);
+    setMetaCalculada(null);
+    setMetaDetalhada(null);
+    
+    const existingParams = params[storeId];
+    
+    if (existingParams) {
+      setDraft(existingParams);
+    } else {
+      setDraft({
+        store_id: storeId,
+        pa_inicial: null,
+        incremento_pa: null,
+        valor_base: null,
+        incremento_valor: null,
+        vendas_minimo: null,
+        vendas_incremento: null,
+        vendas_valor_base: null,
+        vendas_inc_valor: null,
+        ticket_minimo: null,
+        ticket_incremento: null,
+        ticket_valor_base: null,
+        ticket_inc_valor: null,
+        pu_minimo: null,
+        pu_incremento: null,
+        pu_valor_base: null,
+        pu_inc_valor: null,
+      });
+    }
+
+    fetchMetaCalculada(storeId, getSemanaIdParaLoja(storeId));
+  };
+
+  const handleCopyFromPreviousWeek = async () => {
+    setLoading(true);
+    setError(null);
+    try {
+      const sortedWeeks = [...allWeeks].sort((a, b) => a.data_inicio.localeCompare(b.data_inicio));
+      const currentIndex = sortedWeeks.findIndex(w => w.data_inicio === selectedWeek.data_inicio);
+      const prevWeek = currentIndex > 0 ? sortedWeeks[currentIndex - 1] : null;
+
+      if (!prevWeek) {
+        setToast({ message: 'Nenhuma semana anterior encontrada para copiar.', type: 'error' });
+        setTimeout(() => setToast(null), 4000);
+        return;
+      }
+
+      // Fetch all week rows for previous period across all stores
+      const { data: prevPeriodWeeks, error: prevWeeksErr } = await supabase
+        .from('Dashboard_PA_Semanas')
+        .select('*')
+        .eq('data_inicio', prevWeek.data_inicio);
+
+      if (prevWeeksErr) throw prevWeeksErr;
+
+      const prevWeekIds = prevPeriodWeeks ? prevPeriodWeeks.map((w: any) => w.id) : [];
+
+      // Fetch parameters for those week rows
+      const { data: prevParams, error: prevParamsErr } = await supabase
+        .from('Dashboard_PA_Parametros')
+        .select('*')
+        .in('semana_id', prevWeekIds);
+
+      if (prevParamsErr) throw prevParamsErr;
+
+      if (!prevParams || prevParams.length === 0) {
+        setToast({ message: 'Nenhum parâmetro encontrado na semana anterior para copiar.', type: 'error' });
+        setTimeout(() => setToast(null), 4000);
+        return;
+      }
+
+      // Prepare payload to current week rows
+      const copyPayload = prevParams.map((item: any) => {
+        const storeWeek = periodWeeks.find((w: any) => w.store_id === item.store_id);
+        return {
+          store_id: item.store_id,
+          semana_id: storeWeek?.id || selectedWeek.id,
+          pa_inicial: item.pa_inicial,
+          incremento_pa: item.incremento_pa,
+          valor_base: item.valor_base,
+          incremento_valor: item.incremento_valor,
+          vendas_minimo: item.vendas_minimo,
+          vendas_incremento: item.vendas_incremento,
+          vendas_valor_base: item.vendas_valor_base,
+          vendas_inc_valor: item.vendas_inc_valor,
+          ticket_minimo: item.ticket_minimo,
+          ticket_incremento: item.ticket_incremento,
+          ticket_valor_base: item.ticket_valor_base,
+          ticket_inc_valor: item.ticket_inc_valor,
+          pu_minimo: item.pu_minimo,
+          pu_incremento: item.pu_incremento,
+          pu_valor_base: item.pu_valor_base,
+          pu_inc_valor: item.pu_inc_valor,
+          updated_at: new Date().toISOString()
+        };
+      });
+
+      const { error: copyUpsertError } = await supabase
+        .from('Dashboard_PA_Parametros')
+        .upsert(copyPayload, { onConflict: 'store_id,semana_id' });
+
+      if (copyUpsertError) {
+        throw new Error(`Erro ao salvar parâmetros copiados: ${copyUpsertError.message}`);
+      }
+
+      const map: Record<string, PAParametros> = { ...params };
+      copyPayload.forEach((p: any) => {
+        map[p.store_id] = {
+          store_id: p.store_id,
+          semana_id: p.semana_id,
+          pa_inicial: p.pa_inicial !== null ? Number(p.pa_inicial) : null,
+          incremento_pa: p.incremento_pa !== null ? Number(p.incremento_pa) : null,
+          valor_base: p.valor_base !== null ? Number(p.valor_base) : null,
+          incremento_valor: p.incremento_valor !== null ? Number(p.incremento_valor) : null,
+          vendas_minimo: p.vendas_minimo !== null ? Number(p.vendas_minimo) : null,
+          vendas_incremento: p.vendas_incremento !== null ? Number(p.vendas_incremento) : null,
+          vendas_valor_base: p.vendas_valor_base !== null ? Number(p.vendas_valor_base) : null,
+          vendas_inc_valor: p.vendas_inc_valor !== null ? Number(p.vendas_inc_valor) : null,
+          ticket_minimo: p.ticket_minimo !== null ? Number(p.ticket_minimo) : null,
+          ticket_incremento: p.ticket_incremento !== null ? Number(p.ticket_incremento) : null,
+          ticket_valor_base: p.ticket_valor_base !== null ? Number(p.ticket_valor_base) : null,
+          ticket_inc_valor: p.ticket_inc_valor !== null ? Number(p.ticket_inc_valor) : null,
+          pu_minimo: p.pu_minimo !== null ? Number(p.pu_minimo) : null,
+          pu_incremento: p.pu_incremento !== null ? Number(p.pu_incremento) : null,
+          pu_valor_base: p.pu_valor_base !== null ? Number(p.pu_valor_base) : null,
+          pu_inc_valor: p.pu_inc_valor !== null ? Number(p.pu_inc_valor) : null,
+        };
+      });
+
+      setParams(map);
+      const formattedPrevWeek = format(parseLocalDate(prevWeek.data_inicio), 'dd/MM');
+      setToast({ message: `Parâmetros copiados da semana anterior (${formattedPrevWeek})!`, type: 'success' });
+      setTimeout(() => setToast(null), 4000);
+      onSaved();
+    } catch (err: any) {
+      setError(err.message);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handleApplyToAllWeeksOfMonth = async () => {
+    if (!draft || !selectedStoreId) return;
+    setSaving(true);
+    try {
+      // Fetch all week rows for this store for the same month/year
+      const { data: storeWeeks, error: storeWeeksErr } = await supabase
+        .from('Dashboard_PA_Semanas')
+        .select('*')
+        .eq('store_id', selectedStoreId)
+        .eq('mes_ref', selectedWeek.mes_ref)
+        .eq('ano_ref', selectedWeek.ano_ref);
+
+      if (storeWeeksErr) throw storeWeeksErr;
+
+      if (!storeWeeks || storeWeeks.length === 0) {
+        setToast({ message: 'Nenhuma semana encontrada para esta loja neste mês.', type: 'error' });
+        setTimeout(() => setToast(null), 4000);
+        return;
+      }
+
+      const payload = storeWeeks.map((sw: any) => ({
+        store_id: selectedStoreId,
+        semana_id: sw.id,
+        pa_inicial: (draft.pa_inicial !== null && draft.pa_inicial !== undefined && String(draft.pa_inicial) !== '') ? Number(draft.pa_inicial) : null,
+        incremento_pa: (draft.incremento_pa !== null && draft.incremento_pa !== undefined && String(draft.incremento_pa) !== '') ? Number(draft.incremento_pa) : null,
+        valor_base: (draft.valor_base !== null && draft.valor_base !== undefined && String(draft.valor_base) !== '') ? Number(draft.valor_base) : null,
+        incremento_valor: (draft.incremento_valor !== null && draft.incremento_valor !== undefined && String(draft.incremento_valor) !== '') ? Number(draft.incremento_valor) : null,
+        vendas_minimo: (draft.vendas_minimo !== null && draft.vendas_minimo !== undefined && String(draft.vendas_minimo) !== '') ? Number(draft.vendas_minimo) : null,
+        vendas_incremento: (draft.vendas_incremento !== null && draft.vendas_incremento !== undefined && String(draft.vendas_incremento) !== '') ? Number(draft.vendas_incremento) : null,
+        vendas_valor_base: (draft.vendas_valor_base !== null && draft.vendas_valor_base !== undefined && String(draft.vendas_valor_base) !== '') ? Number(draft.vendas_valor_base) : null,
+        vendas_inc_valor: (draft.vendas_inc_valor !== null && draft.vendas_inc_valor !== undefined && String(draft.vendas_inc_valor) !== '') ? Number(draft.vendas_inc_valor) : null,
+        ticket_minimo: (draft.ticket_minimo !== null && draft.ticket_minimo !== undefined && String(draft.ticket_minimo) !== '') ? Number(draft.ticket_minimo) : null,
+        ticket_incremento: (draft.ticket_incremento !== null && draft.ticket_incremento !== undefined && String(draft.ticket_incremento) !== '') ? Number(draft.ticket_incremento) : null,
+        ticket_valor_base: (draft.ticket_valor_base !== null && draft.ticket_valor_base !== undefined && String(draft.ticket_valor_base) !== '') ? Number(draft.ticket_valor_base) : null,
+        ticket_inc_valor: (draft.ticket_inc_valor !== null && draft.ticket_inc_valor !== undefined && String(draft.ticket_inc_valor) !== '') ? Number(draft.ticket_inc_valor) : null,
+        pu_minimo: (draft.pu_minimo !== null && draft.pu_minimo !== undefined && String(draft.pu_minimo) !== '') ? Number(draft.pu_minimo) : null,
+        pu_incremento: (draft.pu_incremento !== null && draft.pu_incremento !== undefined && String(draft.pu_incremento) !== '') ? Number(draft.pu_incremento) : null,
+        pu_valor_base: (draft.pu_valor_base !== null && draft.pu_valor_base !== undefined && String(draft.pu_valor_base) !== '') ? Number(draft.pu_valor_base) : null,
+        pu_inc_valor: (draft.pu_inc_valor !== null && draft.pu_inc_valor !== undefined && String(draft.pu_inc_valor) !== '') ? Number(draft.pu_inc_valor) : null,
+        updated_at: new Date().toISOString()
+      }));
+
+      const { error: applyError } = await supabase
+        .from('Dashboard_PA_Parametros')
+        .upsert(payload, { onConflict: 'store_id,semana_id' });
+
+      if (applyError) throw applyError;
+
+      setToast({ message: 'Metas aplicadas a todas as semanas do mês com sucesso! 🎉', type: 'success' });
+      setTimeout(() => setToast(null), 4000);
+      onSaved();
+    } catch (err: any) {
+      alert('Erro ao aplicar a todas as semanas: ' + err.message);
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const handleSave = async () => {
+    if (!draft || !selectedStoreId) return;
+    
+    setSaving(true);
+    
+    try {
+      const storeWeek = periodWeeks?.find((w: any) => w.store_id === selectedStoreId);
+      const semanaId = storeWeek?.id || selectedWeek.id;
+
+      const payload = {
+        store_id: selectedStoreId,
+        semana_id: semanaId,
+        pa_inicial: (draft.pa_inicial !== null && draft.pa_inicial !== undefined && String(draft.pa_inicial) !== '') ? Number(draft.pa_inicial) : null,
+        incremento_pa: (draft.incremento_pa !== null && draft.incremento_pa !== undefined && String(draft.incremento_pa) !== '') ? Number(draft.incremento_pa) : null,
+        valor_base: (draft.valor_base !== null && draft.valor_base !== undefined && String(draft.valor_base) !== '') ? Number(draft.valor_base) : null,
+        incremento_valor: (draft.incremento_valor !== null && draft.incremento_valor !== undefined && String(draft.incremento_valor) !== '') ? Number(draft.incremento_valor) : null,
+        vendas_minimo: (draft.vendas_minimo !== null && draft.vendas_minimo !== undefined && String(draft.vendas_minimo) !== '') ? Number(draft.vendas_minimo) : null,
+        vendas_incremento: (draft.vendas_incremento !== null && draft.vendas_incremento !== undefined && String(draft.vendas_incremento) !== '') ? Number(draft.vendas_incremento) : null,
+        vendas_valor_base: (draft.vendas_valor_base !== null && draft.vendas_valor_base !== undefined && String(draft.vendas_valor_base) !== '') ? Number(draft.vendas_valor_base) : null,
+        vendas_inc_valor: (draft.vendas_inc_valor !== null && draft.vendas_inc_valor !== undefined && String(draft.vendas_inc_valor) !== '') ? Number(draft.vendas_inc_valor) : null,
+        ticket_minimo: (draft.ticket_minimo !== null && draft.ticket_minimo !== undefined && String(draft.ticket_minimo) !== '') ? Number(draft.ticket_minimo) : null,
+        ticket_incremento: (draft.ticket_incremento !== null && draft.ticket_incremento !== undefined && String(draft.ticket_incremento) !== '') ? Number(draft.ticket_incremento) : null,
+        ticket_valor_base: (draft.ticket_valor_base !== null && draft.ticket_valor_base !== undefined && String(draft.ticket_valor_base) !== '') ? Number(draft.ticket_valor_base) : null,
+        ticket_inc_valor: (draft.ticket_inc_valor !== null && draft.ticket_inc_valor !== undefined && String(draft.ticket_inc_valor) !== '') ? Number(draft.ticket_inc_valor) : null,
+        pu_minimo: (draft.pu_minimo !== null && draft.pu_minimo !== undefined && String(draft.pu_minimo) !== '') ? Number(draft.pu_minimo) : null,
+        pu_incremento: (draft.pu_incremento !== null && draft.pu_incremento !== undefined && String(draft.pu_incremento) !== '') ? Number(draft.pu_incremento) : null,
+        pu_valor_base: (draft.pu_valor_base !== null && draft.pu_valor_base !== undefined && String(draft.pu_valor_base) !== '') ? Number(draft.pu_valor_base) : null,
+        pu_inc_valor: (draft.pu_inc_valor !== null && draft.pu_inc_valor !== undefined && String(draft.pu_inc_valor) !== '') ? Number(draft.pu_inc_valor) : null,
+        updated_at: new Date().toISOString()
+      };
+
+      console.log('💾 [SAVE] Enviando payload completo:', payload);
+
+      const { error: saveError } = await supabase
+        .from('Dashboard_PA_Parametros')
+        .upsert(payload, { onConflict: 'store_id,semana_id' });
+
+      if (saveError) throw saveError;
+
+      const cleanedDraftToStore = draftCleaned ? { ...draftCleaned } : draft;
+      setParams(prev => ({ ...prev, [selectedStoreId]: cleanedDraftToStore }));
+      setSaved(true);
+      onSaved();
+      
+      setTimeout(() => setSaved(false), 2000);
+      console.log('✅ [SAVE] Sucesso ao salvar os 12 parâmetros!');
+    } catch (err: any) {
+      console.error('❌ [SAVE] Erro crítico:', err);
+      alert('Erro ao salvar parâmetros: ' + err.message);
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const handleImportFile = async (event: React.ChangeEvent<HTMLInputElement>) => {
+    const file = event.target.files?.[0];
+    if (!file) return;
+    setImporting(true);
+    setImportResult(null);
+    try {
+      const dados = await parseRelatorioSemanal(file);
+      setPendingImport(dados);
+    } catch (err: any) {
+      alert('Erro ao ler o arquivo: ' + err.message);
+    } finally {
+      setImporting(false);
+      event.target.value = '';
+    }
+  };
+
+  const confirmarImportacao = async () => {
+    if (!pendingImport) return;
+    setImporting(true);
+    try {
+      const resultado = await aplicarImportacaoSemanal(pendingImport, selectedWeek.data_inicio);
+      setImportResult(resultado);
+      setPendingImport(null);
+      setSelectedStoreId(null);
+      // Busca de verdade os parâmetros atualizados no banco (não apenas zera a tela)
+      await fetchParams();
+      onSaved();
+      setToast({ message: `✅ ${resultado.atualizados} atualizadas, ${resultado.criados} criadas!`, type: 'success' });
+      setTimeout(() => setToast(null), 5000);
+    } catch (err: any) {
+      alert('Erro ao aplicar importação: ' + err.message);
+    } finally {
+      setImporting(false);
+    }
+  };
+
+  const selectedStore = localStores.find(s => s.id === selectedStoreId);
+  
+  const storesSorted = [...localStores].sort((a, b) => {
+    const numA = parseInt(a.number || '0');
+    const numB = parseInt(b.number || '0');
+    return numA - numB;
+  });
+
+  const cleanDraftForCalc = (d: any): PAParametros => {
+    return {
+      store_id: d.store_id,
+      pa_inicial: d.pa_inicial === '' || d.pa_inicial === null || d.pa_inicial === undefined ? null : Number(d.pa_inicial),
+      incremento_pa: d.incremento_pa === '' || d.incremento_pa === null || d.incremento_pa === undefined ? null : Number(d.incremento_pa),
+      valor_base: d.valor_base === '' || d.valor_base === null || d.valor_base === undefined ? null : Number(d.valor_base),
+      incremento_valor: d.incremento_valor === '' || d.incremento_valor === null || d.incremento_valor === undefined ? null : Number(d.incremento_valor),
+      vendas_minimo: d.vendas_minimo === '' || d.vendas_minimo === null || d.vendas_minimo === undefined ? null : Number(d.vendas_minimo),
+      vendas_incremento: d.vendas_incremento === '' || d.vendas_incremento === null || d.vendas_incremento === undefined ? null : Number(d.vendas_incremento),
+      vendas_valor_base: d.vendas_valor_base === '' || d.vendas_valor_base === null || d.vendas_valor_base === undefined ? null : Number(d.vendas_valor_base),
+      vendas_inc_valor: d.vendas_inc_valor === '' || d.vendas_inc_valor === null || d.vendas_inc_valor === undefined ? null : Number(d.vendas_inc_valor),
+      ticket_minimo: d.ticket_minimo === '' || d.ticket_minimo === null || d.ticket_minimo === undefined ? null : Number(d.ticket_minimo),
+      ticket_incremento: d.ticket_incremento === '' || d.ticket_incremento === null || d.ticket_incremento === undefined ? null : Number(d.ticket_incremento),
+      ticket_valor_base: d.ticket_valor_base === '' || d.ticket_valor_base === null || d.ticket_valor_base === undefined ? null : Number(d.ticket_valor_base),
+      ticket_inc_valor: d.ticket_inc_valor === '' || d.ticket_inc_valor === null || d.ticket_inc_valor === undefined ? null : Number(d.ticket_inc_valor),
+      pu_minimo: d.pu_minimo === '' || d.pu_minimo === null || d.pu_minimo === undefined ? null : Number(d.pu_minimo),
+      pu_incremento: d.pu_incremento === '' || d.pu_incremento === null || d.pu_incremento === undefined ? null : Number(d.pu_incremento),
+      pu_valor_base: d.pu_valor_base === '' || d.pu_valor_base === null || d.pu_valor_base === undefined ? null : Number(d.pu_valor_base),
+      pu_inc_valor: d.pu_inc_valor === '' || d.pu_inc_valor === null || d.pu_inc_valor === undefined ? null : Number(d.pu_inc_valor),
+    };
+  };
+
+  const draftCleaned = draft ? cleanDraftForCalc(draft) : null;
+
+  const previewTotal = draftCleaned ? calcularPremioTotal({ 
+    pa: draftCleaned.pa_inicial || 0, 
+    vendas: draftCleaned.vendas_minimo || 0, 
+    ticket: draftCleaned.ticket_minimo || 0,
+    pu: draftCleaned.pu_minimo || 0
+  }, draftCleaned) : 0;
+
+  const previewMaisUm = draftCleaned ? calcularPremioTotal({ 
+    pa: (draftCleaned.pa_inicial || 0) + (draftCleaned.incremento_pa || 0), 
+    vendas: (draftCleaned.vendas_minimo || 0) + (draftCleaned.vendas_incremento || 0), 
+    ticket: (draftCleaned.ticket_minimo || 0) + (draftCleaned.ticket_incremento || 0),
+    pu: (draftCleaned.pu_minimo || 0) + (draftCleaned.pu_incremento || 0)
+  }, draftCleaned) : 0;
+
+  const formatPeriod = (week: WeekData) => {
+    try {
+      const dInicio = parseLocalDate(week.data_inicio);
+      const dFim = parseLocalDate(week.data_fim);
+      return `${format(dInicio, 'dd/MM')} a ${format(dFim, 'dd/MM')}`;
+    } catch {
+      return '';
+    }
+  };
+
+  if (pendingImport) {
+    return (
+      <div className="fixed inset-0 z-[300] flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-sm">
+        <div className="bg-white dark:bg-slate-900 rounded-2xl shadow-2xl border border-slate-200 dark:border-slate-800 w-full max-w-lg max-h-[85vh] flex flex-col overflow-hidden">
+          <div className="px-6 py-4 border-b border-slate-200 dark:border-slate-800 flex items-center gap-3">
+            <div className="p-2 bg-emerald-50 dark:bg-emerald-900/20 rounded-lg">
+              <Upload size={18} className="text-emerald-600 dark:text-emerald-400" />
+            </div>
+            <div>
+              <h3 className="text-sm font-black text-slate-900 dark:text-white uppercase italic">Confirmar Importação</h3>
+              <p className="text-[9px] font-bold text-slate-400 uppercase tracking-widest">{pendingImport.length} lojas identificadas</p>
+            </div>
+          </div>
+          <div className="flex-1 overflow-y-auto p-4">
+            <table className="w-full text-left">
+              <thead>
+                <tr className="text-[8px] font-black uppercase text-slate-400 border-b dark:border-slate-800">
+                  <th className="pb-2">Loja</th>
+                  <th className="pb-2 text-center">Vendedores</th>
+                  <th className="pb-2 text-right">P.A. Média</th>
+                  <th className="pb-2 text-right">Ticket Médio</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-slate-50 dark:divide-slate-800/50">
+                {pendingImport.map(l => (
+                  <tr key={l.store_id} className="text-[11px]">
+                    <td className="py-2 font-black text-slate-700 dark:text-slate-300">L.{l.store_number}</td>
+                    <td className="py-2 text-center font-bold text-slate-500">{l.qtd_vendedores}</td>
+                    <td className="py-2 text-right font-mono font-bold text-orange-600">{l.media_pa.toFixed(2)}</td>
+                    <td className="py-2 text-right font-mono font-bold text-blue-600">R$ {l.media_ticket.toFixed(2)}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+            <p className="text-[9px] text-slate-400 italic mt-4 leading-relaxed">
+              * P.A. e Ticket serão gravados como "Mínimo (Meta)" na semana selecionada ({formatPeriod(selectedWeek)}). Base/Incremento de premiação já configurados não serão alterados. Qtd. de Vendedores atualiza o Cadastro de Metas do mês.
+            </p>
+          </div>
+          <div className="flex gap-3 p-4 border-t border-slate-200 dark:border-slate-800">
+            <button
+              onClick={() => setPendingImport(null)}
+              disabled={importing}
+              className="flex-1 py-3 bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 dark:hover:bg-slate-700 rounded-xl font-black text-[10px] uppercase text-slate-600 dark:text-slate-300 transition-all"
+            >
+              Cancelar
+            </button>
+            <button
+              onClick={confirmarImportacao}
+              disabled={importing}
+              className="flex-1 py-3 bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl font-black text-[10px] uppercase transition-all flex items-center justify-center gap-2 disabled:opacity-50"
+            >
+              {importing ? <Loader2 size={14} className="animate-spin" /> : <Check size={14} />}
+              Confirmar Importação
+            </button>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
+  return (
+    <div className="fixed inset-0 z-[200] flex items-center justify-center p-2 sm:p-4 bg-slate-900/60 backdrop-blur-sm">
+      <div className="bg-white dark:bg-slate-900 rounded-2xl shadow-2xl border border-slate-200 dark:border-slate-800 w-full max-w-4xl max-h-[95vh] sm:max-h-[90vh] flex flex-col overflow-hidden leading-tight">
+        
+        {/* Header Compacto */}
+        <div className="flex flex-col sm:flex-row sm:items-center justify-between px-4 py-3 sm:px-6 sm:py-4 border-b border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 gap-3 z-10">
+          <div className="flex items-center gap-3">
+            <div className="p-2 bg-orange-50 dark:bg-orange-900/20 rounded-lg">
+              <Settings size={18} className="text-orange-600 dark:text-orange-400" />
+            </div>
+            <div>
+              <div className="relative flex items-center bg-slate-50 dark:bg-slate-800/40 hover:bg-slate-100 dark:hover:bg-slate-800 border border-slate-200 dark:border-slate-700/80 rounded-lg px-2.5 py-1 pr-8 transition-colors">
+                <span className="text-sm sm:text-base font-black text-slate-900 dark:text-white uppercase italic tracking-tight whitespace-nowrap mr-1">
+                  Configurar Metas —
+                </span>
+                <select
+                  value={selectedWeek?.id}
+                  onChange={(e) => onWeekChange?.(e.target.value)}
+                  disabled={!onWeekChange}
+                  className="appearance-none bg-transparent text-sm sm:text-base font-black text-slate-900 dark:text-white uppercase italic tracking-tight focus:outline-none cursor-pointer disabled:cursor-default disabled:opacity-100 w-full"
+                >
+                  {[...allWeeks]
+                    .sort((a, b) => a.data_inicio.localeCompare(b.data_inicio))
+                    .map((week) => (
+                      <option
+                        key={week.id}
+                        value={week.id}
+                        className="text-slate-900 dark:text-slate-100 bg-white dark:bg-slate-900 font-normal not-italic text-sm"
+                      >
+                        {formatPeriod(week)}
+                      </option>
+                    ))}
+                </select>
+                <div className="absolute right-2.5 top-1/2 -translate-y-1/2 pointer-events-none text-slate-500 dark:text-slate-400">
+                  <ChevronDown size={16} />
+                </div>
+              </div>
+              <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest leading-none">
+                {loading ? 'Carregando...' : `${localStores.length} LOJAS ATIVAS`}
+              </p>
+            </div>
+          </div>
+          
+          <div className="flex items-center gap-2 self-end sm:self-auto">
+            <input type="file" id="import-semanal-upload" accept=".xlsx,.xls" className="hidden" onChange={handleImportFile} />
+            <button
+              onClick={() => document.getElementById('import-semanal-upload')?.click()}
+              disabled={importing}
+              className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-[9px] sm:text-[10px] font-black uppercase tracking-wider bg-emerald-100 hover:bg-emerald-200 dark:bg-emerald-900/30 dark:hover:bg-emerald-900/50 text-emerald-700 dark:text-emerald-400 border border-emerald-200 dark:border-emerald-800 transition-all disabled:opacity-50"
+              title="Importar Ticket, P.A. e Qtd. Vendedores da semana atual"
+            >
+              {importing ? <Loader2 size={12} className="animate-spin" /> : <FileSpreadsheet size={12} />}
+              IMPORTAR SEMANA
+            </button>
+            <button
+              onClick={handleCopyFromPreviousWeek}
+              disabled={loading || saving}
+              className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-[9px] sm:text-[10px] font-black uppercase tracking-wider bg-slate-100 hover:bg-slate-200 dark:bg-slate-800 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-300 border border-slate-200 dark:border-slate-700 transition-all disabled:opacity-50"
+              title="Copiar dados da semana anterior para esta"
+            >
+              <Copy size={12} className="text-orange-500" />
+              COPIAR DA SEMANA ANTERIOR
+            </button>
+            <button
+              onClick={onClose}
+              className="p-1.5 rounded-lg text-slate-400 hover:text-slate-900 dark:hover:text-white hover:bg-slate-100 dark:hover:bg-slate-800 transition-all"
+            >
+              <X size={18} />
+            </button>
+          </div>
+        </div>
+
+        {toast && (
+          <div className={`mx-4 mt-2 p-2 border rounded-lg ${toast.type === 'success' ? 'bg-emerald-50 dark:bg-emerald-900/20 border-emerald-100 dark:border-emerald-800 text-emerald-600 dark:text-emerald-400' : 'bg-rose-50 dark:bg-rose-900/20 border-rose-100 dark:border-rose-800 text-rose-600 dark:text-rose-400'}`}>
+            <p className="text-[10px] font-bold text-center uppercase tracking-wider">
+              {toast.message}
+            </p>
+          </div>
+        )}
+
+        {error && (
+          <div className="mx-4 mt-2 p-2 bg-red-50 dark:bg-red-900/20 border border-red-100 dark:border-red-800 rounded-lg">
+            <p className="text-[10px] font-bold text-red-600 dark:text-red-400 text-center uppercase">
+              ⚠️ {error}
+            </p>
+          </div>
+        )}
+
+        <div className="flex flex-1 overflow-hidden flex-col sm:flex-row">
+          {/* Lista de Lojas */}
+          <div className="w-full sm:w-48 md:w-56 border-b sm:border-b-0 sm:border-r border-slate-200 dark:border-slate-800 overflow-y-auto bg-slate-50/30 dark:bg-slate-900/30 max-h-[120px] sm:max-h-full">
+            {loading ? (
+              <div className="flex items-center justify-center py-8">
+                <Loader2 size={20} className="animate-spin text-orange-500" />
+              </div>
+            ) : (
+              <div className="flex sm:flex-col gap-0.5 p-1.5 overflow-x-auto sm:overflow-x-visible">
+                {storesSorted.map(store => {
+                  const hasParams = !!params[store.id];
+                  const isSelected = selectedStoreId === store.id;
+                  return (
+                    <button
+                      key={store.id}
+                      onClick={() => handleSelectStore(store.id)}
+                      className={`flex-shrink-0 sm:flex-shrink sm:w-full text-left px-3 py-2.5 rounded-xl flex items-center gap-3 transition-all ${
+                        isSelected
+                          ? 'bg-white dark:bg-slate-800 shadow-sm ring-1 ring-orange-200 dark:ring-orange-900/50'
+                          : 'hover:bg-white/70 dark:hover:bg-slate-800/40'
+                      }`}
+                    >
+                      <div className={`w-1 h-8 rounded-full shrink-0 transition-colors ${isSelected ? 'bg-orange-500' : 'bg-transparent'}`} />
+                      <div className="min-w-0 flex-1">
+                        <p className={`text-[11px] font-black uppercase truncate leading-tight ${isSelected ? 'text-orange-600 dark:text-orange-400' : 'text-slate-700 dark:text-slate-300'}`}>
+                          Loja {store.number}
+                        </p>
+                        <p className="text-[9px] font-semibold text-slate-400 truncate uppercase tracking-wide mt-0.5">{store.city}</p>
+                      </div>
+                      <span
+                        className={`shrink-0 px-1.5 py-0.5 rounded-full text-[7px] font-black uppercase tracking-widest ${
+                          hasParams
+                            ? 'bg-emerald-100 text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-400'
+                            : 'bg-slate-100 text-slate-400 dark:bg-slate-800 dark:text-slate-500'
+                        }`}
+                      >
+                        {hasParams ? 'OK' : '—'}
+                      </span>
+                    </button>
+                  );
+                })}
+              </div>
+            )}
+          </div>
+
+          {/* Painel de Edição */}
+          <div className="flex-1 overflow-y-auto p-4 sm:p-6 md:p-8 bg-white dark:bg-slate-900">
+            {!selectedStoreId ? (
+              <div className="flex flex-col items-center justify-center h-full text-center gap-4 py-12">
+                <div className="p-6 bg-slate-50 dark:bg-slate-800/50 rounded-3xl border border-slate-100 dark:border-slate-800">
+                  <Settings size={40} className="text-slate-200 dark:text-slate-700" />
+                </div>
+                <p className="text-xs font-black text-slate-400 uppercase italic tracking-widest">
+                  Selecione uma loja para editar
+                </p>
+              </div>
+            ) : draft && (
+              <div className="space-y-6 max-w-3xl mx-auto pb-4">
+                {/* Cabeçalho da Loja */}
+                <div className="flex flex-wrap items-center justify-between gap-3 bg-slate-50 dark:bg-slate-800/30 p-4 rounded-xl border border-slate-100 dark:border-slate-800">
+                  <div className="min-w-0">
+                    <h3 className="text-base sm:text-lg font-black text-slate-900 dark:text-white uppercase italic truncate">
+                      Loja {selectedStore?.number} — {selectedStore?.city}
+                    </h3>
+                    <p className="text-[9px] font-bold text-slate-400 uppercase tracking-tighter truncate">{selectedStore?.name}</p>
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <button
+                      type="button"
+                      onClick={handleApplyToAllWeeksOfMonth}
+                      disabled={saving}
+                      className="px-3 py-1.5 bg-blue-100 text-blue-700 hover:bg-blue-200 dark:bg-blue-900/30 dark:text-blue-400 rounded-lg text-[10px] font-black uppercase tracking-wider transition-all"
+                    >
+                      Aplicar a todo o mês
+                    </button>
+                    <div className={`px-3 py-1.5 rounded-lg text-[9px] font-black uppercase italic ${params[selectedStoreId] ? 'bg-emerald-100 text-emerald-700 dark:bg-emerald-900/20 dark:text-emerald-400' : 'bg-slate-200 text-slate-500 dark:bg-slate-700 dark:text-slate-400'}`}>
+                      {params[selectedStoreId] ? 'Configurado' : 'Pendente'}
+                    </div>
+                  </div>
+                </div>
+
+                {/* 1. VENDAS */}
+                <section className="space-y-3">
+                  <div className="flex items-center justify-between gap-3 bg-slate-50/50 dark:bg-slate-800/10 p-2 rounded-xl border border-slate-100 dark:border-slate-800/20">
+                    <div className="flex items-center gap-2">
+                      <span className={`text-[10px] font-black uppercase tracking-[0.2em] px-3 py-1 rounded-full ${draft.vendas_minimo !== null ? 'text-emerald-600 dark:text-emerald-400 bg-emerald-50 dark:bg-emerald-900/20' : 'text-slate-400 dark:text-slate-500 bg-slate-100 dark:bg-slate-800'}`}>
+                        1. Vendas (R$)
+                      </span>
+                    </div>
+                    <label className="relative inline-flex items-center cursor-pointer select-none">
+                      <input
+                        type="checkbox"
+                        checked={draft.vendas_minimo !== null}
+                        onChange={(e) => {
+                          const active = e.target.checked;
+                          if (active) {
+                            setDraft({
+                              ...draft,
+                              vendas_minimo: metaCalculada !== null ? Number(metaCalculada.toFixed(2)) : 0,
+                              vendas_valor_base: 150,
+                              vendas_incremento: 5000,
+                              vendas_inc_valor: 50
+                            });
+                          } else {
+                            setDraft({
+                              ...draft,
+                              vendas_minimo: null,
+                              vendas_incremento: null,
+                              vendas_valor_base: null,
+                              vendas_inc_valor: null
+                            });
+                          }
+                        }}
+                        className="sr-only peer"
+                      />
+                      <div className="w-8 h-4 bg-slate-200 peer-focus:outline-none rounded-full peer dark:bg-slate-700 peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-slate-300 after:border after:rounded-full after:h-3 after:w-3 after:transition-all dark:border-slate-600 peer-checked:bg-emerald-500"></div>
+                      <span className="ml-2 text-[10px] font-black uppercase tracking-tighter text-slate-500">
+                        {draft.vendas_minimo !== null ? 'Ativo' : 'Inativo'}
+                      </span>
+                    </label>
+                  </div>
+                  <div className={`grid grid-cols-2 md:grid-cols-4 gap-3 transition-opacity duration-250 ${draft.vendas_minimo === null ? 'opacity-35 pointer-events-none' : ''}`}>
+                    <div className="bg-emerald-50/10 dark:bg-emerald-950/5 p-3 rounded-xl border border-emerald-50 dark:border-emerald-900/10 flex flex-col justify-between">
+                      <div>
+                        <label className="text-[9px] font-black text-slate-400 uppercase mb-1 block">Mínimo (Meta)</label>
+                        {loadingMeta ? (
+                          <div className="w-full bg-slate-50 dark:bg-slate-800/50 border border-slate-200 dark:border-slate-800 rounded-lg px-2 py-1.5 h-8 flex items-center gap-1.5 text-xs font-semibold italic text-slate-500">
+                            <Loader2 size={12} className="animate-spin text-emerald-500" />
+                            Calculando...
+                          </div>
+                        ) : metaCalculada === null ? (
+                          <div className="w-full bg-amber-50/50 dark:bg-amber-950/20 border border-amber-200 dark:border-amber-900/30 rounded-lg px-2 py-1.5 text-[10px] font-bold text-amber-600 dark:text-amber-400 leading-tight">
+                            ⚠️ Configure a meta mensal em Cadastro de Metas
+                          </div>
+                        ) : (
+                          <div className="w-full bg-slate-50 dark:bg-slate-800/50 border border-slate-200 dark:border-slate-800 rounded-lg px-2 py-1.5 h-8 flex items-center text-xs font-black text-slate-700 dark:text-slate-300">
+                            {new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(draft.vendas_minimo || 0)}
+                          </div>
+                        )}
+                      </div>
+                      {metaDetalhada && (
+                        <p className="text-[8px] text-emerald-600 dark:text-emerald-400 font-bold mt-1 leading-normal">
+                          Loja: {new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(metaDetalhada.meta_loja)}
+                          {' ÷ '}{metaDetalhada.qtd_vendedores} vendedor{metaDetalhada.qtd_vendedores !== 1 ? 'es' : ''}
+                        </p>
+                      )}
+                      <p className="text-[8px] text-slate-400 italic mt-1 leading-normal">
+                        Calculado automaticamente com base na meta mensal (descontando feriados e dias já vendidos)
+                      </p>
+                    </div>
+                    <div className="bg-emerald-50/10 dark:bg-emerald-950/5 p-3 rounded-xl border border-emerald-50 dark:border-emerald-900/10">
+                      <label className="text-[9px] font-black text-slate-400 uppercase mb-1 block">Base (Prêmio)</label>
+                      <input
+                        type="number" step="5" min="0"
+                        value={draft.vendas_valor_base || ''}
+                        onChange={e => setDraft({ ...draft, vendas_valor_base: e.target.value === '' ? '' : e.target.value })}
+                        onBlur={() => setDraft(prev => prev ? { ...prev, vendas_valor_base: prev.vendas_valor_base === '' ? null : Number(prev.vendas_valor_base) } : null)}
+                        className="w-full bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-lg px-2 py-1.5 text-xs font-black outline-none focus:border-emerald-400 transition-all"
+                      />
+                    </div>
+                    <div className="bg-emerald-50/10 dark:bg-emerald-950/5 p-3 rounded-xl border border-emerald-50 dark:border-emerald-900/10">
+                      <label className="text-[9px] font-black text-slate-400 uppercase mb-1 block">Incremento</label>
+                      <input
+                        type="number" step="100" min="0"
+                        value={draft.vendas_incremento || ''}
+                        onChange={e => setDraft({ ...draft, vendas_incremento: e.target.value === '' ? '' : e.target.value })}
+                        onBlur={() => setDraft(prev => prev ? { ...prev, vendas_incremento: prev.vendas_incremento === '' ? null : Number(prev.vendas_incremento) } : null)}
+                        className="w-full bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-lg px-2 py-1.5 text-xs font-black outline-none focus:border-emerald-400 transition-all"
+                      />
+                    </div>
+                    <div className="bg-emerald-50/10 dark:bg-emerald-950/5 p-3 rounded-xl border border-emerald-50 dark:border-emerald-900/10">
+                      <label className="text-[9px] font-black text-slate-400 uppercase mb-1 block">Valor Inc.</label>
+                      <input
+                        type="number" step="5" min="0"
+                        value={draft.vendas_inc_valor || ''}
+                        onChange={e => setDraft({ ...draft, vendas_inc_valor: e.target.value === '' ? '' : e.target.value })}
+                        onBlur={() => setDraft(prev => prev ? { ...prev, vendas_inc_valor: prev.vendas_inc_valor === '' ? null : Number(prev.vendas_inc_valor) } : null)}
+                        className="w-full bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-lg px-2 py-1.5 text-xs font-black outline-none focus:border-emerald-400 transition-all"
+                      />
+                    </div>
+                  </div>
+                </section>
+
+                {/* 2. TICKET */}
+                <section className="space-y-3">
+                  <div className="flex items-center justify-between gap-3 bg-slate-50/50 dark:bg-slate-800/10 p-2 rounded-xl border border-slate-100 dark:border-slate-800/20">
+                    <div className="flex items-center gap-2">
+                      <span className={`text-[10px] font-black uppercase tracking-[0.2em] px-3 py-1 rounded-full ${draft.ticket_minimo !== null ? 'text-blue-600 dark:text-blue-400 bg-blue-50 dark:bg-blue-900/20' : 'text-slate-400 dark:text-slate-500 bg-slate-100 dark:bg-slate-800'}`}>
+                        2. Ticket (R$)
+                      </span>
+                    </div>
+                    <label className="relative inline-flex items-center cursor-pointer select-none">
+                      <input
+                        type="checkbox"
+                        checked={draft.ticket_minimo !== null}
+                        onChange={(e) => {
+                          const active = e.target.checked;
+                          if (active) {
+                            setDraft({
+                              ...draft,
+                              ticket_minimo: 150,
+                              ticket_valor_base: 100,
+                              ticket_incremento: 10,
+                              ticket_inc_valor: 20
+                            });
+                          } else {
+                            setDraft({
+                              ...draft,
+                              ticket_minimo: null,
+                              ticket_incremento: null,
+                              ticket_valor_base: null,
+                              ticket_inc_valor: null
+                            });
+                          }
+                        }}
+                        className="sr-only peer"
+                      />
+                      <div className="w-8 h-4 bg-slate-200 peer-focus:outline-none rounded-full peer dark:bg-slate-700 peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-slate-300 after:border after:rounded-full after:h-3 after:w-3 after:transition-all dark:border-slate-600 peer-checked:bg-blue-500"></div>
+                      <span className="ml-2 text-[10px] font-black uppercase tracking-tighter text-slate-500">
+                        {draft.ticket_minimo !== null ? 'Ativo' : 'Inativo'}
+                      </span>
+                    </label>
+                  </div>
+                  <div className={`grid grid-cols-2 md:grid-cols-4 gap-3 transition-opacity duration-250 ${draft.ticket_minimo === null ? 'opacity-35 pointer-events-none' : ''}`}>
+                    <div className="bg-blue-50/10 dark:bg-blue-950/5 p-3 rounded-xl border border-blue-50 dark:border-blue-900/10">
+                      <label className="text-[9px] font-black text-slate-400 uppercase mb-1 block">Mínimo (Meta)</label>
+                      <input
+                        type="number" step="1" min="0"
+                        value={draft.ticket_minimo || ''}
+                        onChange={e => setDraft({ ...draft, ticket_minimo: e.target.value === '' ? '' : e.target.value })}
+                        onBlur={() => setDraft(prev => prev ? { ...prev, ticket_minimo: prev.ticket_minimo === '' ? null : Number(prev.ticket_minimo) } : null)}
+                        className="w-full bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-lg px-2 py-1.5 text-xs font-black outline-none focus:border-blue-400 transition-all"
+                      />
+                    </div>
+                    <div className="bg-blue-50/10 dark:bg-blue-950/5 p-3 rounded-xl border border-blue-50 dark:border-blue-900/10">
+                      <label className="text-[9px] font-black text-slate-400 uppercase mb-1 block">Base (Prêmio)</label>
+                      <input
+                        type="number" step="5" min="0"
+                        value={draft.ticket_valor_base || ''}
+                        onChange={e => setDraft({ ...draft, ticket_valor_base: e.target.value === '' ? '' : e.target.value })}
+                        onBlur={() => setDraft(prev => prev ? { ...prev, ticket_valor_base: prev.ticket_valor_base === '' ? null : Number(prev.ticket_valor_base) } : null)}
+                        className="w-full bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-lg px-2 py-1.5 text-xs font-black outline-none focus:border-blue-400 transition-all"
+                      />
+                    </div>
+                    <div className="bg-blue-50/10 dark:bg-blue-950/5 p-3 rounded-xl border border-blue-50 dark:border-blue-900/10">
+                      <label className="text-[9px] font-black text-slate-400 uppercase mb-1 block">Incremento</label>
+                      <input
+                        type="number" step="1" min="0"
+                        value={draft.ticket_incremento || ''}
+                        onChange={e => setDraft({ ...draft, ticket_incremento: e.target.value === '' ? '' : e.target.value })}
+                        onBlur={() => setDraft(prev => prev ? { ...prev, ticket_incremento: prev.ticket_incremento === '' ? null : Number(prev.ticket_incremento) } : null)}
+                        className="w-full bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-lg px-2 py-1.5 text-xs font-black outline-none focus:border-blue-400 transition-all"
+                      />
+                    </div>
+                    <div className="bg-blue-50/10 dark:bg-blue-950/5 p-3 rounded-xl border border-blue-50 dark:border-blue-900/10">
+                      <label className="text-[9px] font-black text-slate-400 uppercase mb-1 block">Valor Inc.</label>
+                      <input
+                        type="number" step="5" min="0"
+                        value={draft.ticket_inc_valor || ''}
+                        onChange={e => setDraft({ ...draft, ticket_inc_valor: e.target.value === '' ? '' : e.target.value })}
+                        onBlur={() => setDraft(prev => prev ? { ...prev, ticket_inc_valor: prev.ticket_inc_valor === '' ? null : Number(prev.ticket_inc_valor) } : null)}
+                        className="w-full bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-lg px-2 py-1.5 text-xs font-black outline-none focus:border-blue-400 transition-all"
+                      />
+                    </div>
+                  </div>
+                </section>
+
+                {/* 3. P.A */}
+                <section className="space-y-3">
+                  <div className="flex items-center justify-between gap-3 bg-slate-50/50 dark:bg-slate-800/10 p-2 rounded-xl border border-slate-100 dark:border-slate-800/20">
+                    <div className="flex items-center gap-2">
+                      <span className={`text-[10px] font-black uppercase tracking-[0.2em] px-3 py-1 rounded-full ${draft.pa_inicial !== null ? 'text-orange-600 dark:text-orange-400 bg-orange-50 dark:bg-orange-900/20' : 'text-slate-400 dark:text-slate-500 bg-slate-100 dark:bg-slate-800'}`}>
+                        3. P.A
+                      </span>
+                    </div>
+                    <label className="relative inline-flex items-center cursor-pointer select-none">
+                      <input
+                        type="checkbox"
+                        checked={draft.pa_inicial !== null}
+                        onChange={(e) => {
+                          const active = e.target.checked;
+                          if (active) {
+                            setDraft({
+                              ...draft,
+                              pa_inicial: 1.60,
+                              incremento_pa: 0.05,
+                              valor_base: 50,
+                              incremento_valor: 10
+                            });
+                          } else {
+                            setDraft({
+                              ...draft,
+                              pa_inicial: null,
+                              incremento_pa: null,
+                              valor_base: null,
+                              incremento_valor: null
+                            });
+                          }
+                        }}
+                        className="sr-only peer"
+                      />
+                      <div className="w-8 h-4 bg-slate-200 peer-focus:outline-none rounded-full peer dark:bg-slate-700 peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-slate-300 after:border after:rounded-full after:h-3 after:w-3 after:transition-all dark:border-slate-600 peer-checked:bg-orange-500"></div>
+                      <span className="ml-2 text-[10px] font-black uppercase tracking-tighter text-slate-500">
+                        {draft.pa_inicial !== null ? 'Ativo' : 'Inativo'}
+                      </span>
+                    </label>
+                  </div>
+                  <div className={`grid grid-cols-2 md:grid-cols-4 gap-3 transition-opacity duration-250 ${draft.pa_inicial === null ? 'opacity-35 pointer-events-none' : ''}`}>
+                    <div className="bg-orange-50/10 dark:bg-orange-950/5 p-3 rounded-xl border border-orange-50 dark:border-orange-900/10">
+                      <label className="text-[9px] font-black text-slate-400 uppercase mb-1 block">P.A Meta</label>
+                      <input
+                        type="number" step="0.05" min="0"
+                        value={draft.pa_inicial || ''}
+                        onChange={e => setDraft({ ...draft, pa_inicial: e.target.value === '' ? '' : e.target.value })}
+                        onBlur={() => setDraft(prev => prev ? { ...prev, pa_inicial: prev.pa_inicial === '' ? null : Number(prev.pa_inicial) } : null)}
+                        className="w-full bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-lg px-2 py-1.5 text-xs font-black outline-none focus:border-orange-400 transition-all"
+                      />
+                    </div>
+                    <div className="bg-orange-50/10 dark:bg-orange-950/5 p-3 rounded-xl border border-orange-50 dark:border-orange-900/10">
+                      <label className="text-[9px] font-black text-slate-400 uppercase mb-1 block">Base (Prêmio)</label>
+                      <input
+                        type="number" step="5" min="0"
+                        value={draft.valor_base || ''}
+                        onChange={e => setDraft({ ...draft, valor_base: e.target.value === '' ? '' : e.target.value })}
+                        onBlur={() => setDraft(prev => prev ? { ...prev, valor_base: prev.valor_base === '' ? null : Number(prev.valor_base) } : null)}
+                        className="w-full bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-lg px-2 py-1.5 text-xs font-black outline-none focus:border-orange-400 transition-all"
+                      />
+                    </div>
+                    <div className="bg-orange-50/10 dark:bg-orange-950/5 p-3 rounded-xl border border-orange-50 dark:border-orange-900/10">
+                      <label className="text-[9px] font-black text-slate-400 uppercase mb-1 block">Inc. Faixa</label>
+                      <input
+                        type="number" step="0.05" min="0"
+                        value={draft.incremento_pa || ''}
+                        onChange={e => setDraft({ ...draft, incremento_pa: e.target.value === '' ? '' : e.target.value })}
+                        onBlur={() => setDraft(prev => prev ? { ...prev, incremento_pa: prev.incremento_pa === '' ? null : Number(prev.incremento_pa) } : null)}
+                        className="w-full bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-lg px-2 py-1.5 text-xs font-black outline-none focus:border-orange-400 transition-all"
+                      />
+                    </div>
+                    <div className="bg-orange-50/10 dark:bg-orange-950/5 p-3 rounded-xl border border-orange-50 dark:border-orange-900/10">
+                      <label className="text-[9px] font-black text-slate-400 uppercase mb-1 block">Valor Inc.</label>
+                      <input
+                        type="number" step="1" min="0"
+                        value={draft.incremento_valor || ''}
+                        onChange={e => setDraft({ ...draft, incremento_valor: e.target.value === '' ? '' : e.target.value })}
+                        onBlur={() => setDraft(prev => prev ? { ...prev, incremento_valor: prev.incremento_valor === '' ? null : Number(prev.incremento_valor) } : null)}
+                        className="w-full bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-lg px-2 py-1.5 text-xs font-black outline-none focus:border-orange-400 transition-all"
+                      />
+                    </div>
+                  </div>
+                </section>
+
+                {/* 4. P.U. */}
+                <section className="space-y-3">
+                  <div className="flex items-center justify-between gap-3 bg-slate-50/50 dark:bg-slate-800/10 p-2 rounded-xl border border-slate-100 dark:border-slate-800/20">
+                    <div className="flex items-center gap-2">
+                      <span className={`text-[10px] font-black uppercase tracking-[0.2em] px-3 py-1 rounded-full ${draft.pu_minimo !== null ? 'text-violet-600 dark:text-violet-400 bg-violet-50 dark:bg-violet-900/20' : 'text-slate-400 dark:text-slate-500 bg-slate-100 dark:bg-slate-800'}`}>
+                        4. P.U. (Preço Unitário)
+                      </span>
+                    </div>
+                    <label className="relative inline-flex items-center cursor-pointer select-none">
+                      <input
+                        type="checkbox"
+                        checked={draft.pu_minimo !== null}
+                        onChange={(e) => {
+                          const active = e.target.checked;
+                          if (active) {
+                            setDraft({
+                              ...draft,
+                              pu_minimo: 80,
+                              pu_incremento: 5,
+                              pu_valor_base: 50,
+                              pu_inc_valor: 15
+                            });
+                          } else {
+                            setDraft({
+                              ...draft,
+                              pu_minimo: null,
+                              pu_incremento: null,
+                              pu_valor_base: null,
+                              pu_inc_valor: null
+                            });
+                          }
+                        }}
+                        className="sr-only peer"
+                      />
+                      <div className="w-8 h-4 bg-slate-200 peer-focus:outline-none rounded-full peer dark:bg-slate-700 peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-slate-300 after:border after:rounded-full after:h-3 after:w-3 after:transition-all dark:border-slate-600 peer-checked:bg-violet-500"></div>
+                      <span className="ml-2 text-[10px] font-black uppercase tracking-tighter text-slate-500">
+                        {draft.pu_minimo !== null ? 'Ativo' : 'Inativo'}
+                      </span>
+                    </label>
+                  </div>
+                  <div className={`grid grid-cols-2 md:grid-cols-4 gap-3 transition-opacity duration-250 ${draft.pu_minimo === null ? 'opacity-35 pointer-events-none' : ''}`}>
+                    <div className="bg-violet-50/10 dark:bg-violet-950/5 p-3 rounded-xl border border-violet-50 dark:border-violet-900/10">
+                      <label className="text-[9px] font-black text-slate-400 uppercase mb-1 block">P.U Meta</label>
+                      <input
+                        type="number" step="1" min="0"
+                        value={draft.pu_minimo || ''}
+                        onChange={e => setDraft({ ...draft, pu_minimo: e.target.value === '' ? '' : e.target.value })}
+                        onBlur={() => setDraft(prev => prev ? { ...prev, pu_minimo: prev.pu_minimo === '' ? null : Number(prev.pu_minimo) } : null)}
+                        className="w-full bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-lg px-2 py-1.5 text-xs font-black outline-none focus:border-violet-400 transition-all"
+                      />
+                    </div>
+                    <div className="bg-violet-50/10 dark:bg-violet-950/5 p-3 rounded-xl border border-violet-50 dark:border-violet-900/10">
+                      <label className="text-[9px] font-black text-slate-400 uppercase mb-1 block">Base (Prêmio)</label>
+                      <input
+                        type="number" step="5" min="0"
+                        value={draft.pu_valor_base || ''}
+                        onChange={e => setDraft({ ...draft, pu_valor_base: e.target.value === '' ? '' : e.target.value })}
+                        onBlur={() => setDraft(prev => prev ? { ...prev, pu_valor_base: prev.pu_valor_base === '' ? null : Number(prev.pu_valor_base) } : null)}
+                        className="w-full bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-lg px-2 py-1.5 text-xs font-black outline-none focus:border-violet-400 transition-all"
+                      />
+                    </div>
+                    <div className="bg-violet-50/10 dark:bg-violet-950/5 p-3 rounded-xl border border-violet-50 dark:border-violet-900/10">
+                      <label className="text-[9px] font-black text-slate-400 uppercase mb-1 block">Inc. Faixa</label>
+                      <input
+                        type="number" step="1" min="0"
+                        value={draft.pu_incremento || ''}
+                        onChange={e => setDraft({ ...draft, pu_incremento: e.target.value === '' ? '' : e.target.value })}
+                        onBlur={() => setDraft(prev => prev ? { ...prev, pu_incremento: prev.pu_incremento === '' ? null : Number(prev.pu_incremento) } : null)}
+                        className="w-full bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-lg px-2 py-1.5 text-xs font-black outline-none focus:border-violet-400 transition-all"
+                      />
+                    </div>
+                    <div className="bg-violet-50/10 dark:bg-violet-950/5 p-3 rounded-xl border border-violet-50 dark:border-violet-900/10">
+                      <label className="text-[9px] font-black text-slate-400 uppercase mb-1 block">Valor Inc.</label>
+                      <input
+                        type="number" step="1" min="0"
+                        value={draft.pu_inc_valor || ''}
+                        onChange={e => setDraft({ ...draft, pu_inc_valor: e.target.value === '' ? '' : e.target.value })}
+                        onBlur={() => setDraft(prev => prev ? { ...prev, pu_inc_valor: prev.pu_inc_valor === '' ? null : Number(prev.pu_inc_valor) } : null)}
+                        className="w-full bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-lg px-2 py-1.5 text-xs font-black outline-none focus:border-violet-400 transition-all"
+                      />
+                    </div>
+                  </div>
+                </section>
+
+                {/* Preview e Botão */}
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4 pt-4">
+                  <div className="bg-slate-50 dark:bg-slate-800/40 p-3 rounded-xl border border-slate-200 dark:border-slate-800 flex items-center justify-between">
+                    <div>
+                      <p className="text-[8px] font-bold text-slate-400 uppercase tracking-widest leading-none">Total Bases</p>
+                      <p className="text-sm font-black text-emerald-600 tabular-nums">R$ {previewTotal.toFixed(2)}</p>
+                    </div>
+                    <div className="text-right">
+                      <p className="text-[8px] font-bold text-slate-400 uppercase tracking-widest leading-none">Metas +1</p>
+                      <p className="text-sm font-black text-blue-500 tabular-nums">R$ {previewMaisUm.toFixed(2)}</p>
+                    </div>
+                  </div>
+
+                  <button
+                    onClick={handleSave}
+                    disabled={saving}
+                    className={`flex items-center justify-center gap-2 py-3 rounded-xl font-black uppercase text-xs tracking-widest transition-all active:scale-[0.97] shadow-lg ${
+                      saved
+                        ? 'bg-emerald-500 text-white'
+                        : 'bg-slate-900 dark:bg-orange-600 hover:bg-black dark:hover:bg-orange-500 text-white disabled:opacity-50'
+                    }`}
+                  >
+                    {saving ? (
+                      <Loader2 size={16} className="animate-spin" />
+                    ) : saved ? (
+                      <><Check size={16} /> Gravado!</>
+                    ) : (
+                      <><Check size={16} /> Salvar Parâmetros</>
+                    )}
+                  </button>
+                </div>
+              </div>
+            )}
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+};

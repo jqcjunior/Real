@@ -1,0 +1,204 @@
+import "dotenv/config";
+import express from "express";
+import { createServer as createViteServer } from "vite";
+import path from "path";
+import { exec } from "child_process";
+import fs from "fs";
+import { exportBuyOrderToExcel } from "./services/excelExportService";
+
+// Armazenamento temporário em memória para arquivos
+const fileCache = new Map<string, { buffer: Buffer, fileName: string, timestamp: number }>();
+
+// Limpeza periódica do cache (arquivos com mais de 30 minutos)
+setInterval(() => {
+  const now = Date.now();
+  for (const [id, file] of fileCache.entries()) {
+    if (now - file.timestamp > 30 * 60 * 1000) {
+      fileCache.delete(id);
+    }
+  }
+}, 5 * 60 * 1000);
+
+async function startServer() {
+  const app = express();
+  const PORT = 3000;
+
+  // Middleware para JSON com limite maior para pedidos grandes
+  app.use(express.json({ limit: '50mb' }));
+
+  // Endpoint para exportação de pedido de compra usando XLSX (SheetJS)
+  app.post("/api/exportar-comprar-ordem-excel", async (req, res) => {
+    try {
+      const { orderId } = req.body;
+
+      if (!orderId) {
+        return res.status(400).json({ error: 'orderId é obrigatório' });
+      }
+
+      console.log(`📦 Exportando pedido: ${orderId}`);
+
+      // Gerar Excel usando o serviço atualizado
+      const result = await exportBuyOrderToExcel(orderId);
+
+      const filename = result.filename;
+      
+      // Armazena no cache para download direto (evita problemas de Blob em iFrame)
+      const id = Math.random().toString(36).substring(2, 15);
+      fileCache.set(id, { buffer: result.buffer as Buffer, fileName: filename, timestamp: Date.now() });
+
+      res.json({ success: true, downloadId: id });
+
+    } catch (error: any) {
+      console.error('❌ Erro ao exportar Excel:', error);
+      res.status(500).json({ 
+        error: 'Erro ao gerar Excel',
+        message: error.message
+      });
+    }
+  });
+
+  app.post('/api/export-buy-order', async (req, res) => {
+    try {
+        const { orderId } = req.body;
+        
+        if (!orderId) {
+            return res.status(400).json({ error: 'orderId obrigatório' });
+        }
+
+        const result = await exportBuyOrderToExcel(orderId);
+        
+        res.setHeader('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
+        res.setHeader('Content-Disposition', `attachment; filename="${result.filename}.xlsx"`);
+        res.send(Buffer.from(result.buffer as ArrayBuffer));
+        
+    } catch (error: any) {
+        console.error('Erro ao exportar:', error);
+        res.status(500).json({ error: error.message });
+    }
+  });
+
+  // Endpoint para receber o arquivo do cliente e gerar um link de download direto
+  app.post("/api/prepare-download", (req, res) => {
+    try {
+      const { base64, fileName } = req.body;
+      if (!base64 || !fileName) {
+        return res.status(400).send("Dados incompletos");
+      }
+
+      const id = Math.random().toString(36).substring(2, 15) + Math.random().toString(36).substring(2, 15);
+      const buffer = Buffer.from(base64, 'base64');
+      
+      fileCache.set(id, {
+        buffer,
+        fileName,
+        timestamp: Date.now()
+      });
+
+      res.json({ id });
+    } catch (error) {
+      console.error("Erro ao preparar download:", error);
+      res.status(500).send("Erro ao preparar download");
+    }
+  });
+
+  // Endpoint de download direto (GET) para evitar problemas com blob URLs em iframes
+  app.get("/api/download-file/:id", (req, res) => {
+    const { id } = req.params;
+    const file = fileCache.get(id);
+
+    if (!file) {
+      return res.status(404).send("Arquivo não encontrado ou link expirado");
+    }
+
+    // Cabeçalhos robustos para forçar o download e evitar bloqueios de permissão
+    res.setHeader('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
+    res.setHeader('Content-Disposition', `attachment; filename="${file.fileName}"`);
+    res.setHeader('Cache-Control', 'no-cache');
+    res.setHeader('Pragma', 'no-cache');
+    res.send(file.buffer);
+  });
+
+  // Endpoint para disparo real de template via WhatsApp Cloud API
+  app.post("/api/whatsapp/send-template", async (req, res) => {
+    try {
+      const { to, phoneNumberId, templateName, languageCode, parameters } = req.body;
+
+      if (!process.env.WHATSAPP_SYSTEM_TOKEN) {
+        return res.status(500).json({ success: false, error: 'WHATSAPP_SYSTEM_TOKEN não configurado no servidor' });
+      }
+      if (!to || !phoneNumberId || !templateName || !languageCode) {
+        return res.status(400).json({ success: false, error: 'Parâmetros obrigatórios faltando' });
+      }
+
+      const response = await fetch(`https://graph.facebook.com/v21.0/${phoneNumberId}/messages`, {
+        method: 'POST',
+        headers: {
+          'Authorization': `Bearer ${process.env.WHATSAPP_SYSTEM_TOKEN}`,
+          'Content-Type': 'application/json'
+        },
+        body: JSON.stringify({
+          messaging_product: 'whatsapp',
+          to,
+          type: 'template',
+          template: {
+            name: templateName,
+            language: { code: languageCode },
+            components: [{
+              type: 'body',
+              parameters: (parameters || []).map((text: string) => ({ type: 'text', text }))
+            }]
+          }
+        })
+      });
+
+      const data = await response.json();
+      res.json({ success: response.ok, data });
+    } catch (error: any) {
+      console.error('Erro ao enviar template WhatsApp:', error);
+      res.status(500).json({ success: false, error: error.message });
+    }
+  });
+
+  // Endpoint para sincronizar templates aprovados/pendentes direto da Meta
+  app.get("/api/whatsapp/templates/sync", async (req, res) => {
+    try {
+      const WABA_ID = '948616291573437'; // Real Calçados Relacionamento
+
+      if (!process.env.WHATSAPP_SYSTEM_TOKEN) {
+        return res.status(500).json({ success: false, error: 'WHATSAPP_SYSTEM_TOKEN não configurado no servidor' });
+      }
+
+      const response = await fetch(
+        `https://graph.facebook.com/v21.0/${WABA_ID}/message_templates?fields=name,status,category,language,components&limit=100`,
+        { headers: { 'Authorization': `Bearer ${process.env.WHATSAPP_SYSTEM_TOKEN}` } }
+      );
+
+      const data = await response.json();
+      res.json({ success: response.ok, templates: data.data || [], error: data.error });
+    } catch (error: any) {
+      console.error('Erro ao sincronizar templates WhatsApp:', error);
+      res.status(500).json({ success: false, error: error.message });
+    }
+  });
+
+  // Vite middleware para desenvolvimento
+  if (process.env.NODE_ENV !== "production") {
+    const vite = await createViteServer({
+      server: { middlewareMode: true },
+      appType: "spa",
+    });
+    app.use(vite.middlewares);
+  } else {
+    const distPath = path.join(process.cwd(), 'dist');
+    app.use(express.static(distPath));
+    app.get('*path', (req, res) => {
+      res.sendFile(path.join(distPath, 'index.html'));
+    });
+  }
+
+  app.listen(PORT, "0.0.0.0", () => {
+    console.log(`Servidor rodando em http://0.0.0.0:${PORT}`);
+  });
+}
+
+startServer();

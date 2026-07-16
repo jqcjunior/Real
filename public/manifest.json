@@ -1,0 +1,22 @@
+{
+  "name": "Real Admin - Gestão Real Calçados",
+  "short_name": "RealAdmin",
+  "description": "Sistema de Gestão Real Calçados",
+  "start_url": "/",
+  "display": "standalone",
+  "orientation": "portrait",
+  "background_color": "#ffffff",
+  "theme_color": "#1a237e",
+  "icons": [
+    {
+      "src": "/icons/icon-192.png",
+      "sizes": "192x192",
+      "type": "image/png"
+    },
+    {
+      "src": "/icons/icon-512.png",
+      "sizes": "512x512",
+      "type": "image/png"
+    }
+  ]
+}

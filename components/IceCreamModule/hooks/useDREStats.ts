@@ -1,0 +1,314 @@
+import { useMemo } from 'react';
+import { 
+    IceCreamDailySale, Sale, SalePayment, IceCreamSangria, 
+    IceCreamStockMovement, IceCreamFutureDebt, SaleDetailItem, DREMethodCount,
+    AdminUser
+} from '../../../types';
+
+interface UseDREStatsProps {
+    user: any;
+    sales: IceCreamDailySale[];
+    salePayments: SalePayment[];
+    salesHeaders: Sale[];
+    sangrias: IceCreamSangria[];
+    stockMovements: IceCreamStockMovement[];
+    futureDebts: IceCreamFutureDebt[];
+    sangriaCategories: any[];
+    adminUsers: AdminUser[];
+    selectedYear: string | number;
+    selectedMonth: string | number;
+    displayDate: string;
+    effectiveStoreId: string;
+}
+
+export const useDREStats = ({
+    user,
+    sales,
+    salePayments,
+    salesHeaders,
+    sangrias,
+    stockMovements,
+    futureDebts,
+    sangriaCategories,
+    adminUsers,
+    selectedYear,
+    selectedMonth,
+    displayDate,
+    effectiveStoreId
+}: UseDREStatsProps) => {
+    const isAdmin = user?.role === 'ADMIN';
+
+    return useMemo(() => {
+        const dDate = new Date(displayDate + 'T00:00:00');
+        const currentYear = dDate.getFullYear();
+        const currentMonth = dDate.getMonth();
+        const currentDate = dDate.getDate();
+
+        const monthStart = new Date(Number(selectedYear), Number(selectedMonth) - 1, 1, 0, 0, 0);
+        const monthEnd = new Date(Number(selectedYear), Number(selectedMonth), 1, 0, 0, 0);
+
+        const dayStart = new Date(currentYear, currentMonth, currentDate, 0, 0, 0);
+        const dayEnd = new Date(currentYear, currentMonth, currentDate + 1, 0, 0, 0);
+
+        let monthIn = 0;
+        const monthMethods = { pix: 0, money: 0, card: 0, fiado: 0 };
+        const monthMethodsCount: DREMethodCount = { pix: 0, money: 0, card: 0, fiado: 0 };
+        const monthFiadoDetails: any[] = [];
+        
+        let monthCanceledTotal = 0;
+        const monthCanceledDetails: any[] = [];
+
+        let dayCanceledTotal = 0;
+        const dayCanceledDetails: any[] = [];
+
+        let dayIn = 0;
+        const dayMethods = { 
+            pix: { count: 0, total: 0 }, 
+            money: { count: 0, total: 0 }, 
+            card: { count: 0, total: 0 }, 
+            fiado: { count: 0, total: 0 } 
+        };
+
+        // ── BLOCO 1: DRE MENSAL ─────────────────────────────────────────────────────
+        // Filtra pelo selectedMonth/selectedYear (seletor do DRE Mensal)
+        const monthSalesHeaders = (salesHeaders ?? []).filter(s => {
+            if (!s.created_at) return false;
+            const d = new Date(s.created_at);
+            const matchesStore = effectiveStoreId === 'all' || s.store_id === effectiveStoreId;
+            return d >= monthStart && d < monthEnd && matchesStore;
+        });
+
+        console.log('=== useDREStats ===');
+        console.log('salesHeaders recebidos:', salesHeaders?.length);
+        console.log('salePayments recebidos:', salePayments?.length);
+        console.log('selectedMonth:', selectedMonth, 'selectedYear:', selectedYear);
+        console.log('monthStart:', monthStart, 'monthEnd:', monthEnd);
+        console.log('monthSalesHeaders após filtro:', monthSalesHeaders?.length);
+        console.log('===================');
+
+        monthSalesHeaders.forEach(sale => {
+            if (sale.status === 'canceled') {
+                const val = Number(sale.total_value || 0);
+                monthCanceledTotal += val;
+                const canceledItems = (sales ?? []).filter(item => item.saleId === sale.id);
+                const itemsSummary = canceledItems.length > 0
+                    ? canceledItems.map(item => `${item.productName} (${item.unitsSold}x)`).join(', ')
+                    : 'Item não identificado';
+                monthCanceledDetails.push({
+                    id: sale.id,
+                    saleCode: sale.sale_code,
+                    createdAt: sale.created_at,
+                    totalValue: val,
+                    canceledBy: sale.canceled_by_name || 'N/A',
+                    cancelReason: sale.cancel_reason || 'N/A',
+                    itemsSummary
+                });
+                return;
+            }
+
+            if (sale.status !== 'completed') return;
+
+            const val = Number(sale.total_value || 0);
+            monthIn += val;
+
+            const payments = (salePayments ?? []).filter(p => p.sale_id === sale.id);
+            payments.forEach(p => {
+                const valP = Number(p.amount || 0);
+                const method = p.payment_method?.toLowerCase();
+                if (method === 'pix') { monthMethods.pix += valP; monthMethodsCount.pix++; }
+                else if (method === 'dinheiro') { monthMethods.money += valP; monthMethodsCount.money++; }
+                else if (method === 'cartão') { monthMethods.card += valP; monthMethodsCount.card++; }
+                else if (method === 'fiado') {
+                    monthMethods.fiado += valP;
+                    monthMethodsCount.fiado++;
+
+                    const saleItems = (sales ?? []).filter(item => item.saleId === sale.id);
+                    const productLabel = saleItems.length > 0
+                        ? saleItems.map(item => `${item.productName} (${item.unitsSold}x)`).join(', ')
+                        : 'Venda Diversa';
+
+                    monthFiadoDetails.push({
+                        buyer_name: sale.buyer_name || 'NÃO INFORMADO',
+                        totalValue: p.amount,
+                        saleCode: sale.sale_code || '---',
+                        createdAt: p.created_at,
+                        productName: productLabel
+                    });
+                }
+            });
+        });
+
+        // ── BLOCO 2: DRE DIÁRIO ──────────────────────────────────────────────────────
+        // Filtra pelo displayDate (calendário do DRE Diário) — independente do selectedMonth
+        const daySalesHeaders = (salesHeaders ?? []).filter(s => {
+            if (!s.created_at) return false;
+            const d = new Date(s.created_at);
+            const matchesStore = effectiveStoreId === 'all' || s.store_id === effectiveStoreId;
+            return d >= dayStart && d < dayEnd && matchesStore;
+        });
+
+        daySalesHeaders.forEach(sale => {
+            if (sale.status === 'canceled') {
+                const val = Number(sale.total_value || 0);
+                dayCanceledTotal += val;
+                const canceledItems = (sales ?? []).filter(item => item.saleId === sale.id);
+                const itemsSummary = canceledItems.length > 0
+                    ? canceledItems.map(item => `${item.productName} (${item.unitsSold}x)`).join(', ')
+                    : 'Item não identificado';
+                dayCanceledDetails.push({
+                    id: sale.id,
+                    saleCode: sale.sale_code,
+                    createdAt: sale.created_at,
+                    totalValue: val,
+                    canceledBy: sale.canceled_by_name || 'N/A',
+                    cancelReason: sale.cancel_reason || 'N/A',
+                    itemsSummary
+                });
+                return;
+            }
+
+            if (sale.status !== 'completed') return;
+
+            const val = Number(sale.total_value || 0);
+            dayIn += val;
+
+            const payments = (salePayments ?? []).filter(p => p.sale_id === sale.id);
+            payments.forEach(p => {
+                const valP = Number(p.amount || 0);
+                const method = p.payment_method?.toLowerCase();
+                if (method === 'pix') { dayMethods.pix.total += valP; dayMethods.pix.count++; }
+                else if (method === 'dinheiro') { dayMethods.money.total += valP; dayMethods.money.count++; }
+                else if (method === 'cartão') { dayMethods.card.total += valP; dayMethods.card.count++; }
+                else if (method === 'fiado') { dayMethods.fiado.total += valP; dayMethods.fiado.count++; }
+            });
+        });
+        // ─────────────────────────────────────────────────────────────────────────────
+
+        const monthSalesDetail: SaleDetailItem[] = [];
+        const salesByProduct: Record<string, { quantity: number; totalValue: number }> = {};
+
+        const monthSalesItems = (sales ?? []).filter(s => {
+            if (!s.createdAt) return false;
+            const d = new Date(s.createdAt);
+            const matchesStore = effectiveStoreId === 'all' || s.storeId === effectiveStoreId;
+            return d >= monthStart && d < monthEnd && s.status === 'completed' && matchesStore;
+        });
+
+        monthSalesItems.forEach(item => {
+            if (!salesByProduct[item.productName]) {
+                salesByProduct[item.productName] = { quantity: 0, totalValue: 0 };
+            }
+            salesByProduct[item.productName].quantity += Number(item.unitsSold || 0);
+            salesByProduct[item.productName].totalValue += Number(item.totalValue || 0);
+        });
+
+        Object.entries(salesByProduct).forEach(([productName, data]) => {
+            monthSalesDetail.push({ productName, ...data });
+        });
+
+        const monthFutureDebts = (futureDebts ?? []).filter((d: any) => {
+            if (d.status !== 'paid' || !d.payment_date) return false;
+            const date = new Date(d.payment_date + 'T12:00:00');
+            const matchesStore = effectiveStoreId === 'all' || d.store_id === effectiveStoreId;
+            return date >= monthStart && date < monthEnd && matchesStore;
+        }).reduce((acc, d: any) => {
+            const value = d.paid_amount != null ? Number(d.paid_amount) : Number(d.installment_amount || 0);
+            return acc + value;
+        }, 0);
+
+        const monthSangrias = (sangrias ?? []).filter(s => {
+            if (!s.transaction_date && !s.created_at) return false;
+            const dateToUse = s.transaction_date || s.created_at;
+            const d = new Date(dateToUse + 'T00:00:00');
+            const matchesStore = effectiveStoreId === 'all' || s.store_id === effectiveStoreId;
+            return d >= monthStart && d < monthEnd && matchesStore;
+        });
+        const monthSangriaTotal = monthSangrias.reduce((acc, s) => acc + Number(s.amount || 0), 0);
+
+        const daySangrias = (sangrias ?? []).filter(s => {
+            if (!s.transaction_date && !s.created_at) return false;
+            const dateToUse = s.transaction_date || s.created_at;
+            const d = new Date(dateToUse + 'T00:00:00');
+            const matchesStore = effectiveStoreId === 'all' || s.store_id === effectiveStoreId;
+            return d >= dayStart && d < dayEnd && matchesStore;
+        });
+        const daySangriaTotal = daySangrias.reduce((acc, s) => acc + Number(s.amount || 0), 0);
+
+        const monthWastage = (stockMovements ?? []).filter(m => {
+            if (!m.created_at) return false;
+            const d = new Date(m.created_at);
+            const matchesStore = effectiveStoreId === 'all' || m.store_id === effectiveStoreId;
+            return d >= monthStart && d < monthEnd && matchesStore && m.movement_type === 'AVARIA';
+        });
+        const monthWastageTotal = monthWastage.reduce((acc, m) => acc + Math.abs(Number(m.quantity || 0)), 0);
+
+        const dayWastage = (stockMovements ?? []).filter(m => {
+            if (!m.created_at) return false;
+            const d = new Date(m.created_at);
+            const matchesStore = effectiveStoreId === 'all' || m.store_id === effectiveStoreId;
+            return d >= dayStart && d < dayEnd && matchesStore && m.movement_type === 'AVARIA';
+        });
+        const dayWastageTotal = dayWastage.reduce((acc, m) => acc + Math.abs(Number(m.quantity || 0)), 0);
+
+        const daySales = (sales ?? []).filter(s => {
+            if (!s.createdAt) return false;
+            const d = new Date(s.createdAt);
+            const matchesStore = effectiveStoreId === 'all' || s.storeId === effectiveStoreId;
+            return d >= dayStart && d < dayEnd && s.status === 'completed' && matchesStore;
+        });
+
+        const resumo: Record<string, { qtd: number; total: number }> = {};
+        daySales.forEach(venda => {
+            if (!resumo[venda.productName]) {
+                resumo[venda.productName] = { qtd: 0, total: 0 };
+            }
+            resumo[venda.productName].qtd += Number(venda.unitsSold || 0);
+            resumo[venda.productName].total += Number(venda.totalValue || 0);
+        });
+
+        const profit = monthIn - monthSangriaTotal - monthFutureDebts;
+        const dayProfit = dayIn - daySangriaTotal;
+
+        return {
+            monthIn,
+            monthMethods,
+            monthMethodsCount,
+            monthFiadoDetails,
+            monthCanceledTotal,
+            monthCanceledDetails,
+            monthSangriaTotal,
+            monthSangrias,
+            monthWastageTotal,
+            monthSalesDetail,
+            monthFutureDebts,
+            dayIn,
+            dayMethods,
+            dayCanceledTotal,
+            dayCanceledDetails,
+            dayCanceledCount: dayCanceledDetails.length,
+            daySangriaTotal,
+            daySangrias,
+            dayExits: daySangrias.map(s => ({
+                ...s,
+                userName: adminUsers.find(u => u.id === s.user_id)?.name || (s.user_id === user.id ? user.name : 'SISTEMA'),
+                value: s.amount || 0,
+                category: sangriaCategories.find(c => c.id === s.category_id)?.name || 'OUTROS'
+            })),
+            monthExits: monthSangrias.map(s => ({
+                ...s,
+                userName: adminUsers.find(u => u.id === s.user_id)?.name || (s.user_id === user.id ? user.name : 'SISTEMA'),
+                value: s.amount || 0,
+                category: sangriaCategories.find(c => c.id === s.category_id)?.name || 'OUTROS'
+            })),
+            dayWastageTotal,
+            daySales,
+            resumo,
+            resumoItensRodape: Object.entries(resumo),
+            profit,
+            dayProfit
+        };
+    }, [
+        sales, salePayments, salesHeaders, sangrias, stockMovements, 
+        futureDebts, sangriaCategories, adminUsers, selectedYear, selectedMonth, displayDate, effectiveStoreId
+    ]);
+};

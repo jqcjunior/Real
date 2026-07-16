@@ -1,0 +1,1170 @@
+import React, { useState, useEffect, useMemo, useCallback } from 'react';
+import { ensureSession } from '../../services/authService';
+import { toast } from 'sonner';
+import { Loader2, RefreshCw, ChevronDown, ChevronUp, Mail, Store, DollarSign } from 'lucide-react';
+import IncluirCotaModal from './IncluirCotaModal.tsx';
+
+// ─── Constantes ────────────────────────────────────────────────────────────────
+
+const MONTH_NAMES = ["Jan","Fev","Mar","Abr","Mai","Jun","Jul","Ago","Set","Out","Nov","Dez"];
+
+const TODAS_LOJAS: { number: string; city: string }[] = [
+  { number: "5",   city: "Petrolina"     },
+  { number: "8",   city: "Catu"          },
+  { number: "9",   city: "P. Seguro"     },
+  { number: "26",  city: "Cruz das Almas"},
+  { number: "31",  city: "Euclides"      },
+  { number: "34",  city: "Brumado"       },
+  { number: "40",  city: "Jequié"        },
+  { number: "43",  city: "Ipiaú"         },
+  { number: "44",  city: "Livramento"    },
+  { number: "45",  city: "Brumado 2"     },
+  { number: "50",  city: "Euclides 2"    },
+  { number: "56",  city: "T. Freitas"    },
+  { number: "72",  city: "Eunápolis"     },
+  { number: "88",  city: "Jequié 2"      },
+  { number: "96",  city: "Itapetinga"    },
+  { number: "100", city: "L. Freitas"    },
+  { number: "102", city: "Itamaraju"     },
+  { number: "109", city: "C. Jacuípe"    },
+];
+
+const toNumber = (v: any): number => {
+  if (v === null || v === undefined) return 0;
+  const n = Number(v);
+  return isNaN(n) ? 0 : n;
+};
+
+const fmt = (v: number): string => {
+  const abs = Math.abs(v);
+  const s = abs.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+  return (v < 0 ? '−R$ ' : 'R$ ') + s;
+};
+
+const fmtK = (v: number): string => {
+  const abs = Math.abs(v);
+  const s = abs.toLocaleString('pt-BR', { minimumFractionDigits: 0, maximumFractionDigits: 0 });
+  return (v < 0 ? '−R$ ' : 'R$ ') + s;
+};
+
+const fmtDate = (d: string | null | undefined): string => {
+  if (!d) return '—';
+  const p = d.split('-');
+  return p.length === 3 ? `${p[2]}/${p[1]}/${p[0].slice(2)}` : d;
+};
+
+interface Sem { dot: string; bg: string; border: string; color: string; label: string; }
+
+const getSem = (status: string, cs: string): Sem => {
+  const s = (status || '').toLowerCase();
+  const c = (cs || '').toLowerCase();
+  if (s === 'exportado' && c === 'cadastrado')
+    return { dot:'bg-emerald-500', bg:'bg-emerald-50', border:'border-emerald-200', color:'text-emerald-700', label:'Cadastrado' };
+  if (s === 'exportado' && c === 'exportado')
+    return { dot:'bg-amber-400',   bg:'bg-amber-50',   border:'border-amber-200',   color:'text-amber-700',   label:'Ag. Cadastro' };
+  return   { dot:'bg-red-500',     bg:'bg-red-50',     border:'border-red-200',     color:'text-red-700',     label: s === 'confirmado' ? 'Confirmado' : 'Rascunho' };
+};
+
+interface PainelItem {
+  mes: number; ano: number; store_number: string;
+  valor_cota: number; pedidos_real: number; pedidos_previsao: number;
+  despesas_legacy: number;
+}
+
+interface Pedido {
+  id: string; numero_pedido: number; marca: string; fornecedor: string;
+  representante: string | null; status: string; central_status: string;
+  fat_inicio: string; fat_fim: string; vencimentos: string[]; prazos: number[];
+  export_count: number; exported_at: string | null; created_at: string;
+  email: string | null; email_representante: string | null;
+  total_pares?: number; valor_bruto_total?: number; lojas?: number[];
+}
+
+interface ResumoAnoFiscalProps { user: any; stores: any[]; supabase: any; }
+
+export const ResumoAnoFiscal: React.FC<ResumoAnoFiscalProps> = ({ user, stores, supabase }) => {
+
+  const [selectedStore, setSelectedStore] = useState<string>('5');
+  const [painelData, setPainelData]       = useState<PainelItem[]>([]);
+  const [pedidos, setPedidos]             = useState<Pedido[]>([]);
+  const [loading, setLoading]             = useState(true);
+  const [refreshing, setRefreshing]       = useState(false);
+  const [expandedId, setExpandedId]       = useState<string | null>(null);
+  const [filtro, setFiltro]               = useState<'todos'|'cadastrado'|'exportado'|'rascunho'>('todos');
+  const [isQuotaModalOpen, setIsQuotaModalOpen] = useState(false);
+
+  const [simValor, setSimValor]           = useState<string>('');
+  const [simMesRefIdx, setSimMesRefIdx]   = useState<number>(0);
+  const [showSimulador, setShowSimulador] = useState<boolean>(false);
+
+  // Simulação Múltipla — agora com várias lojas por pedido (máx. 5, igual ao limite real de sub-pedidos)
+  const MAX_LOJAS_POR_PEDIDO = 5;
+  interface SimRow { id: string; lojas: string[]; valor: string; mesRefIdx: number; }
+  const [simRows, setSimRows]                     = useState<SimRow[]>([]);
+  const [storesPainelCache, setStoresPainelCache] = useState<Record<string, PainelItem[]>>({});
+  const [loadingStores, setLoadingStores]         = useState<Set<string>>(new Set());
+  const [showSimuladorMultiplo, setShowSimuladorMultiplo] = useState<boolean>(false);
+  const [expandedSimLoja, setExpandedSimLoja] = useState<string | null>(null); // formato: `${rowId}-${loja}`
+
+  const isAdmin = useMemo(() =>
+    ['admin','super_admin','comprador'].includes((user?.role || '').toLowerCase()), [user]);
+
+  const lojas = useMemo(() => {
+    if (!stores || stores.length === 0) return TODAS_LOJAS;
+    const ativos = new Set(
+      stores
+        .filter(s => !s.status || s.status === 'active')
+        .map(s => String(s.number))
+    );
+    return ativos.size > 0
+      ? TODAS_LOJAS.filter(l => ativos.has(l.number))
+      : TODAS_LOJAS;
+  }, [stores]);
+
+  useEffect(() => {
+    if (isAdmin) {
+      setSelectedStore(prev => prev || '5');
+    } else if (user?.storeId && stores?.length) {
+      const match = stores.find((s: any) => s.id === user.storeId);
+      if (match) setSelectedStore(String(match.number));
+    }
+  }, [isAdmin, user, stores]);
+
+  const rollingMonths = useMemo(() => {
+    const now = new Date();
+    let m = now.getMonth() + 1, y = now.getFullYear();
+    return Array.from({ length: 12 }, () => {
+      const cur = { mes: m, ano: y };
+      if (++m > 12) { m = 1; y++; }
+      return cur;
+    });
+  }, []);
+
+  // Constrói a matriz (Cota/Legacy/Real/Previsão/Saldo) para QUALQUER conjunto de dados de painel
+  const buildMatrizFor = useCallback((data: PainelItem[]) =>
+    rollingMonths.map(({ mes, ano }) => {
+      const m = data.find(i => i.mes === mes && i.ano === ano);
+      const cota = toNumber(m?.valor_cota);
+      const desp = toNumber(m?.despesas_legacy);
+      const real = toNumber(m?.pedidos_real);
+      const prev = toNumber(m?.pedidos_previsao);
+      const comp = desp + real + prev;
+      const saldo = cota - comp;
+      const pct = cota > 0 ? Math.round((comp / cota) * 100) : 0;
+      return { mes, ano, cota, desp, real, prev, comp, saldo, pct };
+    }),
+  [rollingMonths]);
+
+  // Carrega o painel de cotas de UMA loja específica (usado pela Simulação Múltipla)
+  const loadStorePainel = useCallback(async (store: string) => {
+    if (!store || storesPainelCache[store] || loadingStores.has(store)) return;
+    setLoadingStores(prev => new Set(prev).add(store));
+    try {
+      await ensureSession();
+      const now = new Date();
+      const cy = now.getFullYear();
+      const cm = now.getMonth() + 1;
+      const painelP = [cy, cy+1, cy+2].map(y =>
+        supabase.rpc('get_cotas_painel', {
+          p_ano: y,
+          p_mes_inicio: y === cy ? cm : 1,
+          p_mes_fim: 12,
+          p_store_number: store
+        })
+      );
+      const painelRes = await Promise.all(painelP);
+      const data = painelRes.flatMap((r: any) => r.data || []);
+      setStoresPainelCache(prev => ({ ...prev, [store]: data }));
+    } catch (err: any) {
+      console.error('Erro ao carregar loja', store, err);
+      toast.error(`Erro ao carregar loja ${store}: ` + err.message);
+    } finally {
+      setLoadingStores(prev => { const s = new Set(prev); s.delete(store); return s; });
+    }
+  }, [supabase, storesPainelCache, loadingStores]);
+
+  const addSimRow = useCallback(() => {
+    setSimRows(prev => [...prev, { id: `${Date.now()}-${Math.random()}`, lojas: [], valor: '', mesRefIdx: 0 }]);
+  }, []);
+
+  const removeSimRow = useCallback((id: string) => {
+    setSimRows(prev => prev.filter(r => r.id !== id));
+  }, []);
+
+  const updateSimRow = useCallback((id: string, patch: Partial<Omit<SimRow, 'lojas'>>) => {
+    setSimRows(prev => prev.map(r => r.id === id ? { ...r, ...patch } : r));
+  }, []);
+
+  // Marca/desmarca uma loja dentro de um pedido — respeita o limite de 5
+  const toggleLojaNaRow = useCallback((rowId: string, loja: string) => {
+    setSimRows(prev => prev.map(r => {
+      if (r.id !== rowId) return r;
+      const jaTem = r.lojas.includes(loja);
+      if (jaTem) return { ...r, lojas: r.lojas.filter(l => l !== loja) };
+      if (r.lojas.length >= MAX_LOJAS_POR_PEDIDO) {
+        toast.error(`Máximo de ${MAX_LOJAS_POR_PEDIDO} lojas por pedido.`);
+        return r;
+      }
+      return { ...r, lojas: [...r.lojas, loja] };
+    }));
+    loadStorePainel(loja);
+  }, [loadStorePainel]);
+
+  // Calcula o resultado para UMA loja específica dentro de um pedido
+  const calcSimRowLoja = useCallback((row: SimRow, loja: string) => {
+    const data = storesPainelCache[loja];
+    if (!data) return { status: 'loading' as const };
+    const rowMatriz = buildMatrizFor(data);
+    const valorNum = toNumber(row.valor.replace(',', '.'));
+    if (valorNum <= 0) return { status: 'vazio' as const };
+    const idxAlvo = [row.mesRefIdx + 3, row.mesRefIdx + 4, row.mesRefIdx + 5];
+    if (idxAlvo.some(i => i >= rowMatriz.length)) return { status: 'fora_janela' as const };
+    const mesesAlvo = idxAlvo.map(i => rowMatriz[i]);
+    const valorIgual = valorNum / 3;
+    const cabe = mesesAlvo.every(m => (m.saldo - valorIgual) >= 0);
+    const maxIgual = Math.max(Math.min(...mesesAlvo.map(m => m.saldo)) * 3, 0);
+    return { status: 'ok' as const, cabe, maxIgual, mesesAlvo, valorIgual, valorNum };
+  }, [storesPainelCache, buildMatrizFor]);
+
+  const lojaInfo = useMemo(() =>
+    TODAS_LOJAS.find(l => l.number === selectedStore), [selectedStore]);
+
+  const loadData = useCallback(async (store: string, isRefresh = false) => {
+    if (!store) return;
+    isRefresh ? setRefreshing(true) : setLoading(true);
+
+    try {
+      await ensureSession();
+
+      const now = new Date();
+      const cy = now.getFullYear();
+      const cm = now.getMonth() + 1;
+
+      const painelP = [cy, cy+1, cy+2].map(y =>
+        supabase.rpc('get_cotas_painel', {
+          p_ano: y,
+          p_mes_inicio: y === cy ? cm : 1,
+          p_mes_fim: 12,
+          p_store_number: store
+        })
+      );
+
+      const pedidosP = supabase
+        .from('buy_orders')
+        .select('id,numero_pedido,marca,fornecedor,representante,status,central_status,fat_inicio,fat_fim,vencimentos,prazos,export_count,exported_at,created_at,email,email_representante')
+        .order('numero_pedido', { ascending: false });
+
+      const subP = supabase
+        .from('buy_order_sub_orders')
+        .select('order_id,total_pares,valor_bruto,lojas_numeros');
+
+      const [[...painelRes], pedidosRes, subRes] = await Promise.all([
+        Promise.all(painelP),
+        pedidosP,
+        subP
+      ]);
+
+      setPainelData(painelRes.flatMap((r: any) => r.data || []));
+
+      const storeNum = parseInt(store, 10);
+      type SubAgg = { total_pares: number; valor: number; lojas: Set<number> };
+      const subMap = new Map<string, SubAgg>();
+
+      for (const so of (subRes.data || [])) {
+        const lojas: number[] = Array.isArray(so.lojas_numeros) ? so.lojas_numeros : [];
+        const agg = subMap.get(so.order_id);
+        if (agg) {
+          agg.total_pares += toNumber(so.total_pares);
+          agg.valor       += toNumber(so.valor_bruto);
+          lojas.forEach(l => agg.lojas.add(l));
+        } else {
+          subMap.set(so.order_id, {
+            total_pares: toNumber(so.total_pares),
+            valor:       toNumber(so.valor_bruto),
+            lojas:       new Set(lojas)
+          });
+        }
+      }
+
+      const filtered: Pedido[] = (pedidosRes.data || [])
+        .filter((p: any) => {
+          const agg = subMap.get(p.id);
+          return agg ? agg.lojas.has(storeNum) : false;
+        })
+        .map((p: any) => {
+          const agg = subMap.get(p.id)!;
+          return {
+            ...p,
+            total_pares:     agg.total_pares,
+            valor_bruto_total: agg.valor,
+            lojas:           Array.from(agg.lojas).sort((a, b) => a - b)
+          };
+        });
+
+      setPedidos(filtered);
+
+    } catch (err: any) {
+      console.error('Erro Central de Cotas:', err);
+      toast.error('Erro ao carregar: ' + err.message);
+    } finally {
+      setLoading(false);
+      setRefreshing(false);
+    }
+  }, [supabase]);
+
+  useEffect(() => { if (selectedStore) loadData(selectedStore); }, [selectedStore, loadData]);
+
+  useEffect(() => {
+    setSimValor('');
+    setSimMesRefIdx(0);
+  }, [selectedStore]);
+
+  const matriz = useMemo(() => buildMatrizFor(painelData), [painelData, buildMatrizFor]);
+
+  const totais = useMemo(() => ({
+    cota:  matriz.reduce((a, r) => a + r.cota, 0),
+    desp:  matriz.reduce((a, r) => a + r.desp, 0),
+    real:  matriz.reduce((a, r) => a + r.real, 0),
+    prev:  matriz.reduce((a, r) => a + r.prev, 0),
+    comp:  matriz.reduce((a, r) => a + r.comp, 0),
+    saldo: matriz.reduce((a, r) => a + r.saldo, 0),
+  }), [matriz]);
+
+  const poderCompraMes = useMemo(() => {
+    return matriz.map((_, idx) => {
+      const mesesVencimento = [
+        idx + 3,
+        idx + 4,
+        idx + 5
+      ];
+
+      if (mesesVencimento.some(i => i >= matriz.length))
+        return null;
+
+      return {
+        total: mesesVencimento.reduce(
+          (soma, i) => soma + Math.max(matriz[i].saldo, 0),
+          0
+        ),
+        meses: mesesVencimento.map(i => matriz[i])
+      };
+    });
+  }, [matriz]);
+
+  const simulacao = useMemo(() => {
+    const valorNum = toNumber(simValor.replace(',', '.'));
+    if (valorNum <= 0) return null;
+
+    const poderAtual = poderCompraMes[simMesRefIdx];
+    if (!poderAtual) {
+      return { erro: 'Fora da janela de 12 meses visível. Escolha um mês de referência mais próximo.' };
+    }
+
+    const mesesAlvo = poderAtual.meses;
+    const valorIgual = valorNum / 3;
+
+    const linhas = mesesAlvo.map(m => ({
+      mes: m.mes, ano: m.ano,
+      saldoAtual: m.saldo,
+      consumoSimulado: valorIgual,
+      saldoDepois: m.saldo - valorIgual,
+      estoura: (m.saldo - valorIgual) < 0,
+    }));
+
+    const algumEstoura = linhas.some(l => l.estoura);
+    const maxIgual = Math.min(...mesesAlvo.map(m => m.saldo)) * 3;
+    const maxAbsoluto = poderAtual.total;
+
+    return { linhas, algumEstoura, maxIgual: Math.max(maxIgual, 0), maxAbsoluto, valorSolicitado: valorNum };
+  }, [simValor, simMesRefIdx, poderCompraMes]);
+
+  const pedidosFiltrados = useMemo(() => pedidos.filter(p => {
+    if (filtro === 'todos')      return true;
+    if (filtro === 'cadastrado') return p.status === 'exportado' && p.central_status === 'cadastrado';
+    if (filtro === 'exportado')  return p.status === 'exportado' && p.central_status === 'exportado';
+    if (filtro === 'rascunho')   return p.status !== 'exportado';
+    return true;
+  }), [pedidos, filtro]);
+
+  const cnt = useMemo(() => ({
+    todos:     pedidos.length,
+    cadastrado: pedidos.filter(p => p.status==='exportado' && p.central_status==='cadastrado').length,
+    exportado:  pedidos.filter(p => p.status==='exportado' && p.central_status==='exportado').length,
+    rascunho:   pedidos.filter(p => p.status!=='exportado').length,
+  }), [pedidos]);
+
+  const PctBar = ({ pct }: { pct: number }) => {
+    const cap = Math.min(pct, 100);
+    const color = pct >= 100 ? 'bg-red-500' : pct >= 85 ? 'bg-amber-400' : 'bg-emerald-400';
+    return (
+      <div className="flex items-center gap-2 min-w-[90px]">
+        <div className="flex-1 bg-slate-100 rounded-full h-1.5 overflow-hidden">
+          <div className={`h-full rounded-full ${color}`} style={{ width: `${cap}%` }} />
+        </div>
+        <span className={`text-[10px] font-black tabular-nums w-6 text-right shrink-0
+          ${pct>=100?'text-red-600':pct>=85?'text-amber-600':'text-slate-400'}`}>
+          {pct}%
+        </span>
+      </div>
+    );
+  };
+
+  const temFiltroSimulador = simValor !== '' || simMesRefIdx !== 0;
+
+  return (
+    <div className="space-y-4 pb-12">
+
+      <div className="flex items-center justify-between flex-wrap gap-3">
+        <div>
+          <h2 className="text-base font-black text-slate-800 tracking-tight">Central de Cotas</h2>
+          <p className="text-[11px] text-slate-400 font-medium mt-0.5">
+            Janela 90/120/150 dias
+            {rollingMonths.length === 12 && (
+              <> · {MONTH_NAMES[rollingMonths[0].mes-1]}/{rollingMonths[0].ano} → {MONTH_NAMES[rollingMonths[11].mes-1]}/{rollingMonths[11].ano}</>
+            )}
+          </p>
+        </div>
+        <div className="flex items-center gap-2">
+          {isAdmin && (
+            <button
+              onClick={() => setIsQuotaModalOpen(true)}
+              className="flex items-center gap-1.5 px-3.5 py-1.5 text-[11px] font-black text-white bg-emerald-600 hover:bg-emerald-700 rounded-lg transition-colors shadow-sm uppercase tracking-wider"
+            >
+              <DollarSign className="w-3.5 h-3.5" />
+              + Incluir Cota
+            </button>
+          )}
+          <button
+            onClick={() => loadData(selectedStore, true)}
+            disabled={refreshing}
+            className="flex items-center gap-1.5 px-3 py-1.5 text-[11px] font-bold text-slate-500 border border-slate-200 rounded-lg hover:bg-slate-50 transition-colors disabled:opacity-50"
+          >
+            <RefreshCw className={`w-3.5 h-3.5 ${refreshing ? 'animate-spin' : ''}`} />
+            Atualizar
+          </button>
+        </div>
+      </div>
+
+      {isAdmin && (
+        <div className="bg-white border border-slate-200 rounded-xl shadow-sm overflow-hidden">
+          <div className="flex items-center gap-2 px-4 py-2.5 border-b border-slate-100 bg-slate-50">
+            <Store className="w-3.5 h-3.5 text-slate-400" />
+            <span className="text-[10px] font-black uppercase tracking-widest text-slate-400">
+              Selecionar Loja
+            </span>
+            {lojaInfo && (
+              <span className="ml-auto text-[11px] font-black text-slate-600">
+                Loja {selectedStore} · {lojaInfo.city}
+              </span>
+            )}
+          </div>
+
+          <div className="p-3 flex flex-wrap gap-2">
+            {lojas.map(loja => {
+              const sel = loja.number === selectedStore;
+              return (
+                <button
+                  key={loja.number}
+                  onClick={() => { setSelectedStore(loja.number); setExpandedId(null); }}
+                  title={loja.city}
+                  className={`flex flex-col items-center px-3 py-2 rounded-lg border text-center transition-all min-w-[52px] ${
+                    sel
+                      ? 'bg-slate-800 border-slate-800 shadow-sm'
+                      : 'bg-white border-slate-200 hover:border-slate-400 hover:bg-slate-50'
+                  }`}
+                >
+                  <span className={`text-[13px] font-black leading-none ${sel ? 'text-white' : 'text-slate-700'}`}>
+                    {loja.number}
+                  </span>
+                  <span className={`text-[9px] font-medium leading-none mt-1 max-w-[48px] truncate ${sel ? 'text-slate-300' : 'text-slate-400'}`}>
+                    {loja.city}
+                  </span>
+                </button>
+              );
+            })}
+          </div>
+        </div>
+      )}
+
+      {loading ? (
+        <div className="flex flex-col items-center justify-center py-24 gap-3">
+          <Loader2 className="w-7 h-7 animate-spin text-slate-300" />
+          <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Carregando dados...</p>
+        </div>
+      ) : (
+        <>
+
+          <div className="grid grid-cols-2 lg:grid-cols-5 gap-3">
+            {([
+              { k:'Cota Total',    v:totais.cota,  color:'text-slate-800', sub:'Orçamento 12 meses' },
+              { k:'Comprometido',  v:totais.comp,  color:'text-slate-700', sub:'Real + Previsão' },
+              { k:'Cota Real',     v:totais.real,  color:'text-emerald-600', sub:'Pedidos cadastrados' },
+              { k:'Cota Previsão', v:totais.prev,  color:'text-blue-600', sub:'Não cadastrados ainda' },
+              { k:'Saldo Livre',   v:totais.saldo, color: totais.saldo < 0 ? 'text-red-600' : 'text-emerald-600', sub:'Disponível para compra' },
+            ] as const).map(c => (
+              <div key={c.k} className="bg-white border border-slate-200 rounded-xl p-3.5 shadow-sm">
+                <p className="text-[9px] font-black uppercase tracking-widest text-slate-400">{c.k}</p>
+                <p className={`text-[15px] font-black font-mono mt-2 leading-none ${c.color}`}>
+                  {fmtK(c.v)}
+                </p>
+                <p className="text-[9px] text-slate-400 mt-1.5 font-medium">{c.sub}</p>
+              </div>
+            ))}
+          </div>
+
+          <div className="bg-white border border-slate-200 rounded-xl overflow-hidden shadow-sm">
+            <div className="w-full flex items-center justify-between px-4 py-3 bg-slate-50 border-b border-slate-100 select-none">
+              <button
+                onClick={() => setShowSimulador(s => !s)}
+                className="flex items-center gap-2 cursor-pointer outline-none bg-transparent border-none p-0 text-left"
+              >
+                <span className="text-[10px] font-black uppercase tracking-widest text-slate-500">
+                  🧮 Simulador de Compra
+                </span>
+                {showSimulador ? <ChevronUp className="w-4 h-4 text-slate-400" /> : <ChevronDown className="w-4 h-4 text-slate-400" />}
+              </button>
+              {temFiltroSimulador && (
+                <button
+                  onClick={() => {
+                    setSimValor('');
+                    setSimMesRefIdx(0);
+                  }}
+                  className="px-2 py-1 text-[9px] font-black uppercase tracking-widest text-red-600 bg-red-50 border border-red-200 rounded hover:bg-red-100 transition-colors cursor-pointer"
+                >
+                  Limpar
+                </button>
+              )}
+            </div>
+
+            {showSimulador && (
+              <div className="p-4 space-y-4">
+                <div className="flex flex-col sm:flex-row gap-3">
+                  <div className="flex-1">
+                    <label className="text-[9px] font-black uppercase tracking-widest text-slate-400 block mb-1">
+                      Valor do Pedido
+                    </label>
+                    <input
+                      type="text"
+                      value={simValor}
+                      onChange={e => setSimValor(e.target.value)}
+                      placeholder="Ex: 90000"
+                      className="w-full px-3 py-2 border border-slate-200 rounded-lg text-sm font-mono font-bold text-slate-700 outline-none focus:border-slate-400"
+                    />
+                  </div>
+                  <div className="flex-1">
+                    <label className="text-[9px] font-black uppercase tracking-widest text-slate-400 block mb-1">
+                      Mês da Compra
+                    </label>
+                    <select
+                      value={simMesRefIdx}
+                      onChange={e => setSimMesRefIdx(Number(e.target.value))}
+                      className="w-full px-3 py-2 border border-slate-200 rounded-lg text-sm font-bold text-slate-700 outline-none focus:border-slate-400"
+                    >
+                      {rollingMonths.map((m, i) => (
+                        <option key={i} value={i}>{MONTH_NAMES[m.mes - 1]}/{m.ano}</option>
+                      ))}
+                    </select>
+                  </div>
+                </div>
+
+                <div className="bg-slate-50 border border-slate-200 rounded-xl p-3.5 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2">
+                  <div>
+                    <p className="text-[9px] font-black uppercase tracking-widest text-slate-400">💪 Poder de Compra</p>
+                    <p className="text-[10px] text-slate-400 mt-0.5">Soma do saldo disponível dos vencimentos de 90, 120 e 150 dias.</p>
+                  </div>
+                  <div className="text-[15px] font-black font-mono text-slate-800 shrink-0">
+                    {poderCompraMes[simMesRefIdx] ? fmt(poderCompraMes[simMesRefIdx]!.total) : '—'}
+                  </div>
+                </div>
+
+                {simulacao?.erro && (
+                  <div className="bg-amber-50 border border-amber-200 rounded-lg px-3 py-2 text-[11px] font-semibold text-amber-700">
+                    {simulacao.erro}
+                  </div>
+                )}
+
+                {simulacao && !simulacao.erro && (
+                  <>
+                    <div className="overflow-x-auto">
+                      <table className="w-full text-left border-collapse min-w-[520px]">
+                        <thead>
+                          <tr className="border-b border-slate-100 bg-slate-50/50">
+                            {['Mês Alvo','Saldo Atual','Consumo Simulado','Saldo Depois','Status'].map(h => (
+                              <th key={h} className="px-3 py-2 text-[9px] font-black uppercase tracking-widest text-slate-400 whitespace-nowrap">{h}</th>
+                            ))}
+                          </tr>
+                        </thead>
+                        <tbody>
+                          {simulacao.linhas!.map((l, i) => (
+                            <tr key={i} className={`border-b text-[12px] ${l.estoura ? 'bg-red-50' : ''}`}>
+                              <td className="px-3 py-2.5 font-black text-slate-700 whitespace-nowrap">
+                                {MONTH_NAMES[l.mes-1]}/{String(l.ano).slice(-2)}
+                              </td>
+                              <td className="px-3 py-2.5 font-mono text-slate-600">{fmt(l.saldoAtual)}</td>
+                              <td className="px-3 py-2.5 font-mono text-blue-600">{fmt(l.consumoSimulado)}</td>
+                              <td className={`px-3 py-2.5 font-mono font-black ${l.estoura ? 'text-red-600' : 'text-emerald-600'}`}>
+                                {fmt(l.saldoDepois)}
+                              </td>
+                              <td className="px-3 py-2.5">
+                                {l.estoura
+                                  ? <span className="text-[9px] font-black text-red-600 bg-red-100 px-2 py-0.5 rounded-full">🔴 Estoura</span>
+                                  : <span className="text-[9px] font-black text-emerald-600 bg-emerald-100 px-2 py-0.5 rounded-full">🟢 Cabe</span>}
+                              </td>
+                            </tr>
+                          ))}
+                        </tbody>
+                      </table>
+                    </div>
+
+                    {simulacao.algumEstoura ? (
+                      <div className="bg-red-50 border border-red-200 rounded-lg p-3 space-y-1.5">
+                        <p className="text-[11px] font-black text-red-700">
+                          ⚠️ Este pedido de {fmt(simulacao.valorSolicitado!)} não cabe integralmente na cota dos 3 meses.
+                        </p>
+                        <p className="text-[11px] text-red-600">
+                          <strong>Máximo com divisão igual entre os 3 meses:</strong> {fmt(simulacao.maxIgual!)}
+                        </p>
+                        <p className="text-[11px] text-red-600">
+                          <strong>Máximo absoluto (aceitando distribuição desigual):</strong> {fmt(simulacao.maxAbsoluto!)}
+                        </p>
+                      </div>
+                    ) : (
+                      <div className="bg-emerald-50 border border-emerald-200 rounded-lg p-3">
+                        <p className="text-[11px] font-black text-emerald-700">
+                          ✅ Pedido de {fmt(simulacao.valorSolicitado!)} cabe integralmente nos 3 meses de vencimento.
+                        </p>
+                      </div>
+                    )}
+                  </>
+                )}
+              </div>
+            )}
+          </div>
+
+          {/* SIMULAÇÃO MÚLTIPLA — vários pedidos, lojas diferentes */}
+          <div className="bg-white border border-slate-200 rounded-xl overflow-hidden shadow-sm">
+            <button
+              onClick={() => setShowSimuladorMultiplo(s => !s)}
+              className="w-full flex items-center justify-between px-4 py-3 bg-slate-50 border-b border-slate-100 hover:bg-slate-100 transition-colors"
+            >
+              <span className="text-[10px] font-black uppercase tracking-widest text-slate-500">
+                📋 Simulação Múltipla — Vários Pedidos
+              </span>
+              {showSimuladorMultiplo ? <ChevronUp className="w-4 h-4 text-slate-400" /> : <ChevronDown className="w-4 h-4 text-slate-400" />}
+            </button>
+
+            {showSimuladorMultiplo && (
+              <div className="p-4 space-y-3">
+                {simRows.length === 0 && (
+                  <p className="text-[11px] text-slate-400 text-center py-4">
+                    Nenhum pedido adicionado. Clique em "+ Adicionar Pedido" para começar.
+                  </p>
+                )}
+
+                {simRows.map((row, idx) => {
+                  const label = `Pedido ${String.fromCharCode(65 + idx)}`;
+                  return (
+                    <div key={row.id} className="border border-slate-200 rounded-lg p-3 space-y-3">
+                      <div className="flex items-center justify-between">
+                        <span className="text-[10px] font-black text-slate-600 uppercase">
+                          {label} <span className="text-slate-400 font-medium normal-case">({row.lojas.length}/{MAX_LOJAS_POR_PEDIDO} lojas)</span>
+                        </span>
+                        <button
+                          onClick={() => removeSimRow(row.id)}
+                          className="text-[9px] font-black text-red-500 hover:text-red-700 px-2 py-0.5 rounded hover:bg-red-50"
+                        >
+                          ✕ Remover Pedido
+                        </button>
+                      </div>
+
+                      {/* Valor + mês do pedido */}
+                      <div className="flex flex-col sm:flex-row gap-2">
+                        <input
+                          type="text"
+                          value={row.valor}
+                          onChange={e => updateSimRow(row.id, { valor: e.target.value })}
+                          placeholder="Valor do pedido (ex: 50000)"
+                          className="flex-1 px-2.5 py-1.5 border border-slate-200 rounded-lg text-[11px] font-mono font-bold text-slate-700 outline-none focus:border-slate-400"
+                        />
+                        <select
+                          value={row.mesRefIdx}
+                          onChange={e => updateSimRow(row.id, { mesRefIdx: Number(e.target.value) })}
+                          className="flex-1 px-2.5 py-1.5 border border-slate-200 rounded-lg text-[11px] font-bold text-slate-700 outline-none focus:border-slate-400"
+                        >
+                          {rollingMonths.map((m, i) => (
+                            <option key={i} value={i}>{MONTH_NAMES[m.mes - 1]}/{m.ano}</option>
+                          ))}
+                        </select>
+                      </div>
+
+                      {/* Grid de seleção de lojas — até 5 */}
+                      <div>
+                        <p className="text-[9px] font-black uppercase tracking-widest text-slate-400 mb-1.5">
+                          Testar nas lojas
+                        </p>
+                        <div className="flex flex-wrap gap-1.5">
+                          {TODAS_LOJAS.map(l => {
+                            const marcada = row.lojas.includes(l.number);
+                            const bloqueada = !marcada && row.lojas.length >= MAX_LOJAS_POR_PEDIDO;
+                            return (
+                              <button
+                                key={l.number}
+                                disabled={bloqueada}
+                                onClick={() => toggleLojaNaRow(row.id, l.number)}
+                                title={l.city}
+                                className={`px-2 py-1 rounded-lg border text-[10px] font-black transition-all ${
+                                  marcada
+                                    ? 'bg-slate-800 border-slate-800 text-white'
+                                    : bloqueada
+                                      ? 'bg-slate-50 border-slate-100 text-slate-300 cursor-not-allowed'
+                                      : 'bg-white border-slate-200 text-slate-500 hover:border-slate-400'
+                                }`}
+                              >
+                                {l.number}
+                              </button>
+                            );
+                          })}
+                        </div>
+                      </div>
+
+                      {/* Resultado por loja marcada — com detalhamento expansível */}
+                      {row.lojas.length > 0 && (
+                        <div className="space-y-1.5 pt-1">
+                          {row.lojas.map(loja => {
+                            const result = calcSimRowLoja(row, loja);
+                            const lojaInfoRow = TODAS_LOJAS.find(l => l.number === loja);
+                            const chaveExp = `${row.id}-${loja}`;
+                            const aberto = expandedSimLoja === chaveExp;
+                            const podeExpandir = result.status === 'ok';
+
+                            return (
+                              <div key={loja} className="border border-slate-100 rounded-lg overflow-hidden">
+                                <div
+                                  onClick={() => podeExpandir && setExpandedSimLoja(aberto ? null : chaveExp)}
+                                  className={`flex items-center gap-2 text-[11px] px-2.5 py-2 ${podeExpandir ? 'cursor-pointer hover:bg-slate-50' : ''}`}
+                                >
+                                  <span className="font-black text-slate-500 w-24 shrink-0">
+                                    Loja {loja} · {lojaInfoRow?.city}
+                                  </span>
+                                  {result.status === 'loading' && (
+                                    <span className="text-slate-400 flex items-center gap-1.5">
+                                      <Loader2 className="w-3 h-3 animate-spin" /> Carregando...
+                                    </span>
+                                  )}
+                                  {result.status === 'vazio' && (
+                                    <span className="text-slate-400">Digite um valor.</span>
+                                  )}
+                                  {result.status === 'fora_janela' && (
+                                    <span className="text-amber-600 font-bold">Fora da janela de 12 meses.</span>
+                                  )}
+                                  {result.status === 'ok' && (
+                                    <>
+                                      <span className={`font-black px-2 py-0.5 rounded-full ${
+                                        result.cabe ? 'bg-emerald-100 text-emerald-700' : 'bg-red-100 text-red-700'
+                                      }`}>
+                                        {result.cabe ? `🟢 Passa` : `🔴 Não passa — máx. ${fmt(result.maxIgual!)}`}
+                                      </span>
+                                      <span className="ml-auto text-slate-300">
+                                        {aberto ? <ChevronUp className="w-3.5 h-3.5" /> : <ChevronDown className="w-3.5 h-3.5" />}
+                                      </span>
+                                    </>
+                                  )}
+                                </div>
+
+                                {aberto && result.status === 'ok' && (
+                                  <div className="border-t border-slate-100 bg-slate-50/50 px-2.5 py-2">
+                                    <table className="w-full text-left border-collapse">
+                                      <thead>
+                                        <tr>
+                                          {['Mês Alvo','Saldo Atual','Consumo','Saldo Depois'].map(h => (
+                                            <th key={h} className="pb-1 text-[8px] font-black uppercase tracking-widest text-slate-400 whitespace-nowrap pr-3">{h}</th>
+                                          ))}
+                                        </tr>
+                                      </thead>
+                                      <tbody>
+                                        {result.mesesAlvo!.map((m, i) => {
+                                          const depois = m.saldo - result.valorIgual!;
+                                          const est = depois < 0;
+                                          return (
+                                            <tr key={i} className={est ? 'bg-red-50' : ''}>
+                                              <td className="py-1 pr-3 font-black text-slate-600 whitespace-nowrap text-[10px]">
+                                                {MONTH_NAMES[m.mes-1]}/{String(m.ano).slice(-2)}
+                                              </td>
+                                              <td className="py-1 pr-3 font-mono text-slate-500 text-[10px]">{fmt(m.saldo)}</td>
+                                              <td className="py-1 pr-3 font-mono text-blue-600 text-[10px]">{fmt(result.valorIgual!)}</td>
+                                              <td className={`py-1 pr-3 font-mono font-black text-[10px] ${est ? 'text-red-600' : 'text-emerald-600'}`}>
+                                                {fmt(depois)}
+                                              </td>
+                                            </tr>
+                                          );
+                                        })}
+                                      </tbody>
+                                    </table>
+                                  </div>
+                                )}
+                              </div>
+                            );
+                          })}
+                        </div>
+                      )}
+                    </div>
+                  );
+                })}
+
+                <button
+                  onClick={addSimRow}
+                  className="w-full py-2.5 border-2 border-dashed border-slate-300 rounded-lg text-[11px] font-black text-slate-500 hover:border-slate-400 hover:bg-slate-50 transition-all"
+                >
+                  + Adicionar Pedido
+                </button>
+
+                {simRows.length > 0 && (() => {
+                  const todosResultados = simRows.flatMap(row => row.lojas.map(loja => calcSimRowLoja(row, loja)));
+                  const passam = todosResultados.filter(r => r.status === 'ok' && r.cabe).length;
+                  const naoPassam = todosResultados.filter(r => r.status === 'ok' && !r.cabe).length;
+                  return (
+                    <div className="bg-slate-50 border border-slate-200 rounded-lg p-3 flex items-center justify-between">
+                      <span className="text-[10px] font-black text-slate-500 uppercase">Resumo</span>
+                      <span className="text-[11px] font-bold text-slate-600">
+                        {passam} passam · {naoPassam} não passam · {simRows.length} pedido{simRows.length!==1?'s':''}
+                      </span>
+                    </div>
+                  );
+                })()}
+              </div>
+            )}
+          </div>
+
+          <div className="bg-white border border-slate-200 rounded-xl overflow-hidden shadow-sm">
+            <div className="px-4 py-2.5 border-b border-slate-100 bg-slate-50 flex items-center justify-between">
+              <h3 className="text-[10px] font-black uppercase tracking-widest text-slate-400">
+                Matriz de Cotas · Mês a Mês
+              </h3>
+              <span className="text-[10px] text-slate-400 font-semibold">
+                Loja {selectedStore} {lojaInfo ? `· ${lojaInfo.city}` : ''}
+              </span>
+            </div>
+            <div className="overflow-x-auto">
+              <table className="w-full text-left border-collapse min-w-[680px]">
+                <thead>
+                  <tr className="border-b border-slate-100 bg-slate-50/50">
+                    {[
+                      'Mês Ref.','Cota Mensal','Despesas Legacy','Cota Real',
+                      'Cota Previsão','Total Comprometido','Saldo','Poder Compra','Utilização'
+                    ].map(h => (
+                      <th key={h} className="px-4 py-2.5 text-[9px] font-black uppercase tracking-widest text-slate-400 whitespace-nowrap">
+                        {h}
+                      </th>
+                    ))}
+                  </tr>
+                </thead>
+                <tbody>
+                  {matriz.map((row, idx) => {
+                    const cur  = idx === 0;
+                    const neg  = row.saldo < 0;
+                    const warn = !neg && row.pct >= 85;
+                    return (
+                      <tr key={`${row.mes}-${row.ano}`}
+                          className={`border-b text-[12px] transition-colors ${
+                            cur  ? 'bg-slate-800' :
+                            neg  ? 'bg-red-50 hover:bg-red-100/70' :
+                            warn ? 'bg-amber-50 hover:bg-amber-100/70' :
+                                   'hover:bg-slate-50'
+                          }`}>
+
+                        <td className="px-4 py-3.5 font-black whitespace-nowrap">
+                          <span className={cur ? 'text-white' : 'text-slate-700'}>
+                            {MONTH_NAMES[row.mes-1]}/{String(row.ano).slice(-2)}
+                          </span>
+                          {cur && (
+                            <span className="ml-2 text-[8px] font-black bg-white/20 text-white/80 px-1.5 py-0.5 rounded uppercase">
+                              Atual
+                            </span>
+                          )}
+                        </td>
+
+                        <td className={`px-4 py-3.5 font-mono font-semibold ${cur?'text-slate-300':'text-slate-600'}`}>
+                          {fmtK(row.cota)}
+                        </td>
+
+                        <td className={`px-4 py-3.5 font-mono font-semibold ${cur?'text-orange-300':'text-orange-500'}`}>
+                          {row.desp > 0 ? fmtK(row.desp) : <span className={cur?'text-slate-600':'text-slate-300'}>—</span>}
+                        </td>
+
+                        <td className={`px-4 py-3.5 font-mono font-semibold ${cur?'text-emerald-300':'text-emerald-600'}`}>
+                          {row.real > 0 ? fmtK(row.real) : <span className={cur?'text-slate-600':'text-slate-300'}>—</span>}
+                        </td>
+
+                        <td className={`px-4 py-3.5 font-mono font-semibold ${cur?'text-blue-300':'text-blue-500'}`}>
+                          {row.prev > 0 ? fmtK(row.prev) : <span className={cur?'text-slate-600':'text-slate-300'}>—</span>}
+                        </td>
+
+                        <td className={`px-4 py-3.5 font-mono font-bold ${cur?'text-slate-200':'text-slate-800'}`}>
+                          {row.comp > 0 ? fmtK(row.comp) : <span className={cur?'text-slate-600':'text-slate-300'}>—</span>}
+                        </td>
+
+                        <td className={`px-4 py-3.5 font-mono font-black ${
+                          cur  ? (neg ? 'text-red-300' : 'text-emerald-300') :
+                          neg  ? 'text-red-600' : 'text-emerald-600'
+                        }`}>
+                          {fmt(row.saldo)}
+                        </td>
+
+                        <td className={`px-4 py-3.5 font-mono font-black ${cur ? 'text-white' : 'text-slate-600'}`}>
+                          {poderCompraMes[idx] !== null && poderCompraMes[idx] !== undefined
+                            ? fmt(poderCompraMes[idx]!.total)
+                            : '—'}
+                        </td>
+
+                        <td className="px-4 py-3.5">
+                          {cur ? (
+                            <div className="flex items-center gap-2 min-w-[90px]">
+                              <div className="flex-1 bg-white/10 rounded-full h-1.5">
+                                <div className="h-full bg-white/50 rounded-full" style={{ width:`${Math.min(row.pct,100)}%` }} />
+                              </div>
+                              <span className="text-[10px] font-black text-white/60 w-6 text-right">{row.pct}%</span>
+                            </div>
+                          ) : (
+                            <PctBar pct={row.pct} />
+                          )}
+                        </td>
+                      </tr>
+                    );
+                  })}
+                </tbody>
+                <tfoot>
+                  <tr className="border-t-2 border-slate-200 bg-slate-50 text-[11px] font-black text-slate-700">
+                    <td className="px-4 py-3 uppercase tracking-wider text-slate-500">Total</td>
+                    <td className="px-4 py-3 font-mono">{fmtK(totais.cota)}</td>
+                    <td className="px-4 py-3 font-mono text-orange-500">{totais.desp > 0 ? fmtK(totais.desp) : '—'}</td>
+                    <td className="px-4 py-3 font-mono text-emerald-600">{fmtK(totais.real)}</td>
+                    <td className="px-4 py-3 font-mono text-blue-500">{fmtK(totais.prev)}</td>
+                    <td className="px-4 py-3 font-mono">{fmtK(totais.comp)}</td>
+                    <td className={`px-4 py-3 font-mono ${totais.saldo<0?'text-red-600':'text-emerald-600'}`}>
+                      {fmt(totais.saldo)}
+                    </td>
+                    <td className="px-4 py-3 font-mono text-slate-400">—</td>
+                    <td className="px-4 py-3 font-mono text-slate-500">
+                      {totais.cota > 0 ? `${Math.round((totais.comp/totais.cota)*100)}%` : '0%'}
+                    </td>
+                  </tr>
+                </tfoot>
+              </table>
+            </div>
+          </div>
+
+          <div className="bg-white border border-slate-200 rounded-xl overflow-hidden shadow-sm">
+
+            <div className="px-4 py-3 border-b border-slate-100 bg-slate-50 flex flex-wrap items-center gap-3">
+              <h3 className="text-[10px] font-black uppercase tracking-widest text-slate-400 mr-auto">
+                Pedidos · Loja {selectedStore} {lojaInfo ? `· ${lojaInfo.city}` : ''}
+              </h3>
+              <div className="flex gap-1.5 flex-wrap">
+                {([
+                  { k:'todos',      label:'Todos',          dot:null           },
+                  { k:'cadastrado', label:'Cadastrado',     dot:'bg-emerald-500'},
+                  { k:'exportado',  label:'Ag. Cadastro',   dot:'bg-amber-400' },
+                  { k:'rascunho',   label:'Rascunho/Conf.', dot:'bg-red-500'   },
+                ] as const).map(f => (
+                  <button
+                    key={f.k}
+                    onClick={() => setFiltro(f.k)}
+                    className={`flex items-center gap-1.5 px-2.5 py-1.5 text-[10px] font-black rounded-lg border transition-all ${
+                      filtro === f.k
+                        ? 'bg-slate-800 text-white border-slate-800'
+                        : 'bg-white text-slate-500 border-slate-200 hover:border-slate-400'
+                    }`}
+                  >
+                    {f.dot && <span className={`w-1.5 h-1.5 rounded-full ${f.dot}`} />}
+                    {f.label}
+                    <span className={`text-[9px] px-1 rounded ${filtro===f.k?'bg-white/20 text-white':'bg-slate-100 text-slate-400'}`}>
+                      {cnt[f.k]}
+                    </span>
+                  </button>
+                ))}
+              </div>
+            </div>
+
+            {pedidosFiltrados.length === 0 ? (
+              <div className="py-16 text-center">
+                <p className="text-[11px] font-black text-slate-300 uppercase tracking-widest">
+                  Nenhum pedido encontrado para esta loja
+                </p>
+              </div>
+            ) : (
+              <div className="overflow-x-auto">
+                <table className="w-full text-left border-collapse min-w-[820px]">
+                  <thead>
+                    <tr className="border-b border-slate-100 bg-slate-50/50">
+                      <th className="w-8 pl-4 py-2.5" />
+                      {['#','Marca / Fornecedor','Faturamento','Vencimentos','Pares','Valor Bruto','Status',''].map(h => (
+                        <th key={h} className="px-3 py-2.5 text-[9px] font-black uppercase tracking-widest text-slate-400 whitespace-nowrap">
+                          {h}
+                        </th>
+                      ))}
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {pedidosFiltrados.map(ped => {
+                      const sem     = getSem(ped.status, ped.central_status);
+                      const exp     = expandedId === ped.id;
+                      const canMail = ped.status === 'exportado';
+                      const venc    = Array.isArray(ped.vencimentos) ? ped.vencimentos : [];
+                      const prazos  = Array.isArray(ped.prazos)      ? ped.prazos      : [];
+                      const emailTo = ped.email_representante || ped.email || '';
+
+                      return (
+                        <React.Fragment key={ped.id}>
+                          <tr
+                            onClick={() => setExpandedId(exp ? null : ped.id)}
+                            className="border-b border-slate-50 hover:bg-slate-50/60 transition-colors text-[12px] cursor-pointer"
+                          >
+                            <td className="pl-4 py-3.5">
+                              <span className={`w-2.5 h-2.5 rounded-full inline-block ${sem.dot}`} title={sem.label} />
+                            </td>
+
+                            <td className="px-3 py-3.5 font-black text-slate-700 tabular-nums whitespace-nowrap">
+                              #{ped.numero_pedido}
+                            </td>
+
+                            <td className="px-3 py-3.5 min-w-[140px]">
+                              <p className="font-black text-slate-800 text-[12px] uppercase leading-tight">{ped.marca}</p>
+                              <p className="text-[10px] text-slate-400 font-semibold mt-0.5 leading-tight">{ped.fornecedor}</p>
+                            </td>
+
+                            <td className="px-3 py-3.5 text-slate-500 font-medium whitespace-nowrap text-[11px]">
+                              {fmtDate(ped.fat_inicio)}
+                              {ped.fat_fim && ped.fat_fim !== ped.fat_inicio && (
+                                <span className="text-slate-300"> › {fmtDate(ped.fat_fim)}</span>
+                              )}
+                            </td>
+
+                            <td className="px-3 py-3.5 text-[11px]">
+                              {venc.length > 0 ? (
+                                <div className="flex flex-col gap-0.5">
+                                  {venc.map((v, i) => (
+                                    <span key={i} className="font-mono text-slate-500 whitespace-nowrap">
+                                      {prazos[i] ? <span className="text-slate-300 mr-1">{prazos[i]}d</span> : null}
+                                      {fmtDate(v)}
+                                    </span>
+                                  ))}
+                                </div>
+                              ) : <span className="text-slate-300">—</span>}
+                            </td>
+
+                            <td className="px-3 py-3.5 font-mono font-bold text-slate-700 text-right tabular-nums">
+                              {(ped.total_pares||0).toLocaleString('pt-BR')}
+                            </td>
+
+                            <td className="px-3 py-3.5 font-mono font-black text-slate-800 text-right tabular-nums whitespace-nowrap">
+                              {fmt(ped.valor_bruto_total||0)}
+                            </td>
+
+                            <td className="px-3 py-3.5">
+                              <span className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[9px] font-black border ${sem.bg} ${sem.color} ${sem.border}`}>
+                                <span className={`w-1 h-1 rounded-full ${sem.dot}`} />
+                                {sem.label}
+                              </span>
+                            </td>
+
+                            <td className="pr-4 py-3.5 text-slate-300">
+                              {exp ? <ChevronUp className="w-3.5 h-3.5"/> : <ChevronDown className="w-3.5 h-3.5"/>}
+                            </td>
+                          </tr>
+
+                          {exp && (
+                            <tr className="border-b border-slate-100 bg-slate-50/80">
+                              <td colSpan={9} className="px-8 py-4">
+                                <div className="flex flex-wrap gap-8 items-start text-[11px]">
+
+                                  <div className="space-y-1.5 min-w-[180px]">
+                                    <p className="text-[9px] font-black uppercase tracking-widest text-slate-400 mb-2">Detalhes</p>
+                                    {ped.representante && (
+                                      <p className="text-slate-600"><span className="font-bold text-slate-400">Representante: </span>{ped.representante}</p>
+                                    )}
+                                    <p className="text-slate-600">
+                                      <span className="font-bold text-slate-400">Exportações: </span>
+                                      {ped.export_count||0}×
+                                      {ped.exported_at && <span className="text-slate-400 ml-2">último: {fmtDate(ped.exported_at.substring(0,10))}</span>}
+                                    </p>
+                                    {(ped.lojas||[]).length > 0 && (
+                                      <p className="text-slate-600">
+                                        <span className="font-bold text-slate-400">Lojas do pedido: </span>
+                                        {(ped.lojas||[]).join(' · ')}
+                                      </p>
+                                    )}
+                                  </div>
+
+                                  {venc.length > 0 && (
+                                    <div className="space-y-1.5 min-w-[150px]">
+                                      <p className="text-[9px] font-black uppercase tracking-widest text-slate-400 mb-2">Parcelas</p>
+                                      {venc.map((v, i) => (
+                                        <div key={i} className="flex items-center gap-2.5">
+                                          <span className="w-9 text-center bg-slate-200 text-slate-600 rounded text-[9px] font-black py-0.5">
+                                            {prazos[i] ? `${prazos[i]}d` : `${i+1}ª`}
+                                          </span>
+                                          <span className="font-mono text-slate-600">{fmtDate(v)}</span>
+                                        </div>
+                                      ))}
+                                    </div>
+                                  )}
+
+                                  <div className="ml-auto self-center">
+                                    {canMail ? (
+                                      <a
+                                        href={`mailto:${emailTo}?subject=Pedido%20%23${ped.numero_pedido}%20${encodeURIComponent(ped.marca)}&body=Segue%20pedido%20exportado%20para%20cadastro%20na%20central.`}
+                                        onClick={e => e.stopPropagation()}
+                                        className="inline-flex items-center gap-2 px-4 py-2 bg-slate-800 text-white rounded-lg text-[11px] font-black hover:bg-slate-700 transition-colors"
+                                      >
+                                        <Mail className="w-3.5 h-3.5" />
+                                        Enviar para Central
+                                      </a>
+                                    ) : (
+                                      <p className="text-[10px] text-slate-400 bg-slate-100 border border-slate-200 rounded-lg px-3 py-2 text-center max-w-[160px]">
+                                        Exporte antes de enviar à central
+                                      </p>
+                                    )}
+                                  </div>
+
+                                </div>
+                              </td>
+                            </tr>
+                          )}
+                        </React.Fragment>
+                      );
+                    })}
+                  </tbody>
+                </table>
+              </div>
+            )}
+
+            {pedidosFiltrados.length > 0 && (
+              <div className="px-4 py-3 border-t border-slate-100 bg-slate-50 flex items-center justify-between text-[11px] font-semibold text-slate-500">
+                <span>
+                  {pedidosFiltrados.length} pedido{pedidosFiltrados.length!==1?'s':''}
+                  {filtro !== 'todos' && <span className="ml-1 text-slate-400">· filtro: {filtro}</span>}
+                </span>
+                <span className="font-black font-mono text-slate-700">
+                  {fmt(pedidosFiltrados.reduce((a,p) => a+(p.valor_bruto_total||0), 0))}
+                  <span className="ml-3 font-normal text-slate-400">
+                    {pedidosFiltrados.reduce((a,p) => a+(p.total_pares||0), 0).toLocaleString('pt-BR')} pares
+                  </span>
+                </span>
+              </div>
+            )}
+          </div>
+
+        </>
+      )}
+
+      <IncluirCotaModal
+        isOpen={isQuotaModalOpen}
+        onClose={() => setIsQuotaModalOpen(false)}
+        onSuccess={() => loadData(selectedStore, true)}
+        stores={stores}
+      />
+    </div>
+  );
+};
+
+export default ResumoAnoFiscal;

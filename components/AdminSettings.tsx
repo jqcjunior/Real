@@ -1,0 +1,524 @@
+import React, { useState, useEffect } from 'react';
+import { Store } from '../types';
+import { Settings, Plus, Save, Trash2, CheckCircle, XCircle, IceCream, Building2, MapPin, Hash, Info, Loader2, AlertTriangle, X, Database, Download, Lock, Unlock, Users } from 'lucide-react';
+import { supabase } from '../services/supabaseClient';
+import apiService from '../services/apiService';
+import { toast } from 'sonner';
+
+interface AdminSettingsProps {
+    stores: Store[];
+    onAddStore: (store: any) => Promise<void>;
+    onUpdateStore: (store: any) => Promise<void>;
+    onDeleteStore: (id: string) => Promise<void>;
+}
+
+interface StoreToggleListProps {
+    fieldName: 'gerente_pode_lancar_pedido' | 'has_gelateria';
+    rpcFunctionName: 'fn_set_gerente_pode_lancar_pedido' | 'fn_set_has_gelateria';
+    labelOn: string;
+    labelOff: string;
+    currentUser: any;
+    stores: Store[];
+}
+
+const StoreToggleList: React.FC<StoreToggleListProps> = ({
+    fieldName,
+    rpcFunctionName,
+    labelOn,
+    labelOff,
+    currentUser,
+    stores
+}) => {
+    const [storesList, setStoresList] = useState<any[]>([]);
+    const [isLoading, setIsLoading] = useState(true);
+
+    useEffect(() => {
+        let isMounted = true;
+        async function fetchPermissions() {
+            setIsLoading(true);
+            try {
+                const { data, error } = await supabase
+                    .from('stores')
+                    .select('id, number, name, gerente_pode_lancar_pedido, has_gelateria')
+                    .order('number', { ascending: true });
+                if (error) throw error;
+                if (!isMounted) return;
+                const loadedStores = data || [];
+                loadedStores.sort((a, b) => parseInt(a.number, 10) - parseInt(b.number, 10));
+                setStoresList(loadedStores);
+            } catch (err) {
+                console.error("Erro ao carregar permissões das lojas:", err);
+            } finally {
+                if (isMounted) {
+                    setIsLoading(false);
+                }
+            }
+        }
+        fetchPermissions();
+        return () => {
+            isMounted = false;
+        };
+    }, [stores]);
+
+    const handleToggle = async (store: any) => {
+        const currentValue = store[fieldName] !== false;
+        const newValue = !currentValue;
+
+        // Otimista
+        setStoresList(prev =>
+            prev.map(s => s.id === store.id ? { ...s, [fieldName]: newValue } : s)
+        );
+
+        try {
+            const { error } = await supabase.rpc(rpcFunctionName, {
+                p_user_id: currentUser?.id || '',
+                p_store_id: store.id,
+                p_value: newValue
+            });
+
+            if (error) throw error;
+            toast.success(`Configuração da loja ${store.number} atualizada com sucesso!`);
+        } catch (err: any) {
+            console.error("Erro ao atualizar permissão via RPC:", err);
+            toast.error("Erro ao atualizar a configuração no banco de dados.");
+            // Reverter
+            setStoresList(prev =>
+                prev.map(s => s.id === store.id ? { ...s, [fieldName]: currentValue } : s)
+            );
+        }
+    };
+
+    if (isLoading) {
+        return (
+            <div className="flex items-center justify-center py-8">
+                <Loader2 className="animate-spin text-blue-600" size={24} />
+                <span className="ml-2 font-black text-[10px] uppercase text-gray-400 tracking-wider">Carregando dados...</span>
+            </div>
+        );
+    }
+
+    return (
+        <div className="divide-y divide-gray-100 max-h-96 overflow-y-auto pr-2">
+            {storesList.map(store => {
+                const isActive = store[fieldName] !== false;
+                return (
+                    <div key={store.id} className="flex justify-between items-center py-4">
+                        <div className="flex items-center gap-3">
+                            <div className="p-2.5 bg-gray-50 text-gray-600 rounded-xl border border-gray-100">
+                                <Building2 size={16} />
+                            </div>
+                            <div>
+                                <p className="text-xs font-black text-blue-950 uppercase italic tracking-tight">
+                                    LOJA {store.number} - {store.name}
+                                </p>
+                                <p className="text-[9px] font-bold text-gray-400 uppercase tracking-widest mt-0.5">
+                                    {isActive ? labelOn : labelOff}
+                                </p>
+                            </div>
+                        </div>
+                        
+                        <button
+                            type="button"
+                            onClick={() => handleToggle(store)}
+                            className={`relative inline-flex h-6 w-11 shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-none ${
+                                isActive ? 'bg-emerald-600' : 'bg-gray-200'
+                            }`}
+                        >
+                            <span
+                                aria-hidden="true"
+                                className={`pointer-events-none inline-block h-5 w-5 transform rounded-full bg-white shadow ring-0 transition duration-200 ease-in-out ${
+                                    isActive ? 'translate-x-5' : 'translate-x-0'
+                                }`}
+                            />
+                        </button>
+                    </div>
+                );
+            })}
+            {storesList.length === 0 && (
+                <p className="text-center text-[10px] font-black text-gray-400 uppercase tracking-widest py-6">Nenhuma loja encontrada.</p>
+            )}
+        </div>
+    );
+};
+
+const AdminSettings: React.FC<AdminSettingsProps> = ({ stores, onAddStore, onUpdateStore, onDeleteStore }) => {
+    const [newStore, setNewStore] = useState({ number: '', name: '', city: '', state: 'BA', status: 'active', has_gelateria: false });
+    const [isSubmitting, setIsSubmitting] = useState(false);
+    const [loadingStoreId, setLoadingStoreId] = useState<string | null>(null);
+    const [confirmDeleteId, setConfirmDeleteId] = useState<string | null>(null);
+    const [isBackingUp, setIsBackingUp] = useState(false);
+
+    const [activeTab, setActiveTab] = useState<'compras' | 'sorvete'>('compras');
+
+    const currentUserObj = apiService.getUser();
+    const isUserAdmin = String(currentUserObj?.role || "").toLowerCase() === 'admin';
+
+
+    const handleExportBackup = async () => {
+        setIsBackingUp(true);
+        try {
+            const tables = [
+                'admin_users', 'stores', 'monthly_goals', 'monthly_performance_actual',
+                'ice_cream_items', 'ice_cream_daily_sales', 'ice_cream_finances',
+                'ice_cream_stock', 'ice_cream_promissory_notes', 'cash_register_closures',
+                'financial_receipts', 'cash_errors', 'agenda_tasks', 'downloads',
+                'page_permissions', 'financial_card_brands', 'financial_card_sales'
+            ];
+
+            const backupData: any = {
+                version: '1.0',
+                timestamp: new Date().toISOString(),
+                data: {}
+            };
+
+            for (const table of tables) {
+                const { data, error } = await supabase.from(table).select('*');
+                if (!error) {
+                    backupData.data[table] = data;
+                }
+            }
+
+            const blob = new Blob([JSON.stringify(backupData, null, 2)], { type: 'application/json' });
+            const url = URL.createObjectURL(blob);
+            const link = document.createElement('a');
+            link.href = url;
+            link.download = `backup_real_admin_${new Date().toISOString().split('T')[0]}.json`;
+            document.body.appendChild(link);
+            link.click();
+            document.body.removeChild(link);
+            URL.revokeObjectURL(url);
+            
+            alert("Backup gerado com sucesso!");
+        } catch (error) {
+            console.error("Erro no backup:", error);
+            alert("Erro ao gerar backup.");
+        } finally {
+            setIsBackingUp(false);
+        }
+    };
+
+    const handleAdd = async (e: React.FormEvent) => {
+        e.preventDefault();
+        if (!newStore.number || !newStore.name) {
+            alert("Preencha o número e o nome da loja.");
+            return;
+        }
+        setIsSubmitting(true);
+        try {
+            await onAddStore(newStore);
+            setNewStore({ number: '', name: '', city: '', state: 'BA', status: 'active', has_gelateria: false });
+        } catch (error) { 
+            console.error(error);
+        }
+        finally { setIsSubmitting(false); }
+    };
+
+    const toggleStatus = async (store: Store) => {
+        setLoadingStoreId(store.id);
+        const newStatus = store.status === 'active' ? 'inactive' : 'active';
+        try {
+            await onUpdateStore({ id: store.id, status: newStatus });
+        } catch (err) {
+            alert("Erro ao alterar status da loja.");
+        } finally {
+            setLoadingStoreId(null);
+        }
+    };
+
+    const toggleGelateria = async (store: Store) => {
+        setLoadingStoreId(store.id);
+        const newValue = !store.has_gelateria;
+        try {
+            await onUpdateStore({ id: store.id, has_gelateria: newValue });
+        } catch (err) {
+            alert("Erro ao atualizar status da Gelateria");
+        } finally {
+            setLoadingStoreId(null);
+        }
+    };
+
+    const toggleGerentePedido = async (store: Store) => {
+        setLoadingStoreId(store.id);
+        const newValue = store.gerente_pode_lancar_pedido === false ? true : false;
+        try {
+            await onUpdateStore({ id: store.id, gerente_pode_lancar_pedido: newValue });
+        } catch (err) {
+            alert("Erro ao atualizar permissão de lançamento de pedidos.");
+        } finally {
+            setLoadingStoreId(null);
+        }
+    };
+
+    const confirmDelete = async (id: string) => {
+        setLoadingStoreId(id);
+        try {
+            await onDeleteStore(id);
+            setConfirmDeleteId(null);
+        } catch (err: any) {
+            console.error("Erro capturado no AdminSettings:", err);
+        } finally {
+            setLoadingStoreId(null);
+        }
+    };
+
+    return (
+        <div className="p-4 md:p-8 max-w-7xl mx-auto space-y-8 animate-in fade-in pb-24">
+            <div className="flex flex-col md:flex-row justify-between items-center bg-white p-8 rounded-[40px] shadow-sm border border-gray-100 gap-6">
+                <div className="flex items-center gap-4">
+                    <div className="p-4 bg-gray-950 text-white rounded-3xl shadow-xl shadow-gray-100">
+                        <Settings size={32} />
+                    </div>
+                    <div>
+                        <h2 className="text-2xl md:text-3xl font-black text-blue-950 uppercase italic tracking-tighter">Configuração de Lojas</h2>
+                        <p className="text-[10px] font-black text-gray-400 uppercase tracking-widest mt-1">Cadastro e Ativação de Recursos de Rede</p>
+                    </div>
+                </div>
+            </div>
+
+            {/* SEÇÃO DE SOLICITAÇÕES PENDENTES */}
+            {stores.some(s => s.status === 'pending') && (
+                <div className="bg-amber-50 p-8 rounded-[40px] border border-amber-100 shadow-sm animate-in slide-in-from-top-4 duration-500">
+                    <div className="flex items-center justify-between mb-8">
+                        <h3 className="text-xs font-black text-amber-600 uppercase tracking-[0.3em] flex items-center gap-3">
+                            <AlertTriangle size={18} /> Solicitações de Acesso Pendentes
+                        </h3>
+                        <span className="bg-amber-100 text-amber-700 px-4 py-1.5 rounded-full text-[10px] font-black uppercase tracking-widest">
+                            {stores.filter(s => s.status === 'pending').length} Pendentes
+                        </span>
+                    </div>
+                    <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+                        {stores.filter(s => s.status === 'pending').map(store => (
+                            <div key={store.id} className="bg-white p-6 rounded-3xl shadow-sm border border-amber-200 relative overflow-hidden group">
+                                <div className="flex justify-between items-start mb-4">
+                                    <div className="flex items-center gap-3">
+                                        <div className="p-3 bg-amber-100 text-amber-600 rounded-2xl">
+                                            <Building2 size={20} />
+                                        </div>
+                                        <div>
+                                            <h4 className="text-lg font-black text-blue-950 italic uppercase tracking-tighter leading-none">LOJA {store.number}</h4>
+                                            <p className="text-[9px] font-black text-gray-400 uppercase mt-1">{store.name}</p>
+                                        </div>
+                                    </div>
+                                </div>
+                                <div className="space-y-3 mb-6">
+                                    <div className="flex items-center gap-2 text-gray-500">
+                                        <MapPin size={14} />
+                                        <span className="text-[10px] font-bold uppercase">{store.city}</span>
+                                    </div>
+                                    <div className="p-3 bg-gray-50 rounded-xl border border-gray-100">
+                                        <p className="text-[8px] font-black text-gray-400 uppercase tracking-widest mb-1">Responsável</p>
+                                        <p className="text-[10px] font-black text-blue-900 uppercase">{store.managerName || 'NÃO INFORMADO'}</p>
+                                        <p className="text-[9px] font-bold text-gray-500">{store.managerEmail || '---'}</p>
+                                    </div>
+                                </div>
+                                <div className="flex gap-2">
+                                    <button 
+                                        onClick={() => onUpdateStore({ ...store, status: 'active' })}
+                                        className="flex-1 py-3 bg-green-600 text-white rounded-xl font-black uppercase text-[9px] shadow-lg hover:bg-green-700 transition-all flex items-center justify-center gap-2 border-b-4 border-green-800"
+                                    >
+                                        <CheckCircle size={14} /> Aprovar
+                                    </button>
+                                    <button 
+                                        onClick={() => onDeleteStore(store.id)}
+                                        className="py-3 px-4 bg-white text-red-600 rounded-xl font-black uppercase text-[9px] border border-red-100 hover:bg-red-50 transition-all"
+                                    >
+                                        <X size={14} /> Recusar
+                                    </button>
+                                </div>
+                            </div>
+                        ))}
+                    </div>
+                </div>
+            )}
+
+            <div className="bg-white p-8 rounded-[40px] shadow-sm border border-gray-100">
+                <h3 className="text-xs font-black text-gray-400 uppercase tracking-[0.3em] mb-8 flex items-center gap-3">
+                    <Plus size={18} className="text-blue-600" /> Registrar Nova Unidade
+                </h3>
+                <form onSubmit={handleAdd} className="grid grid-cols-1 md:grid-cols-12 gap-6 items-end">
+                    <div className="md:col-span-2 space-y-2">
+                        <label className="text-[10px] font-black text-gray-500 uppercase ml-2 flex items-center gap-1.5"><Hash size={12}/> Número</label>
+                        <input required value={newStore.number} onChange={e => setNewStore({...newStore, number: e.target.value})} className="w-full p-4 bg-gray-50 border border-gray-100 rounded-2xl font-black text-blue-900 outline-none focus:ring-4 focus:ring-blue-50 transition-all" placeholder="Ex: 01" />
+                    </div>
+                    <div className="md:col-span-4 space-y-2">
+                        <label className="text-[10px] font-black text-gray-500 uppercase ml-2 flex items-center gap-1.5"><Building2 size={12}/> Nome Fantasia</label>
+                        <input required value={newStore.name} onChange={e => setNewStore({...newStore, name: e.target.value.toUpperCase()})} className="w-full p-4 bg-gray-50 border border-gray-100 rounded-2xl font-black text-blue-900 outline-none focus:ring-4 focus:ring-blue-50 transition-all" placeholder="Ex: LOJA CENTRO" />
+                    </div>
+                    <div className="md:col-span-4 space-y-2">
+                        <label className="text-[10px] font-black text-gray-500 uppercase ml-2 flex items-center gap-1.5"><MapPin size={12}/> Cidade</label>
+                        <input required value={newStore.city} onChange={e => setNewStore({...newStore, city: e.target.value.toUpperCase()})} className="w-full p-4 bg-gray-50 border border-gray-100 rounded-2xl font-black text-blue-900 outline-none focus:ring-4 focus:ring-blue-50 transition-all" placeholder="Ex: SALVADOR" />
+                    </div>
+                    <div className="md:col-span-2">
+                        <button type="submit" disabled={isSubmitting} className="w-full py-4 bg-blue-950 text-white rounded-2xl font-black uppercase text-[11px] shadow-xl hover:bg-black transition-all flex items-center justify-center gap-3 border-b-4 border-slate-800 disabled:opacity-50">
+                            {isSubmitting ? <Loader2 className="animate-spin" size={18} /> : <Save size={18} />} Salvar
+                        </button>
+                    </div>
+                </form>
+            </div>
+
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+                {[...stores].sort((a,b) => (parseInt(a.number) || 0) - (parseInt(b.number) || 0)).map(store => (
+                    <div key={store.id} className={`p-8 rounded-[40px] shadow-sm border transition-all hover:shadow-xl relative overflow-hidden ${store.status === 'active' ? 'bg-white border-gray-100' : 'bg-gray-50 border-gray-200 opacity-75 grayscale'}`}>
+                        {loadingStoreId === store.id && (
+                            <div className="absolute inset-0 bg-white/60 backdrop-blur-[2px] z-20 rounded-[40px] flex items-center justify-center font-black text-blue-600 uppercase text-[10px] italic">
+                                <Loader2 className="animate-spin mr-2" /> Sincronizando...
+                            </div>
+                        )}
+
+                        {/* OVERLAY DE CONFIRMAÇÃO DE EXCLUSÃO */}
+                        {confirmDeleteId === store.id && (
+                            <div className="absolute inset-0 bg-red-600 z-30 flex flex-col items-center justify-center p-6 text-center animate-in fade-in zoom-in duration-200">
+                                <AlertTriangle className="text-white mb-3" size={40} />
+                                <p className="text-white font-black uppercase text-xs tracking-widest leading-tight mb-6">Deseja realmente excluir esta unidade permanentemente?</p>
+                                <div className="flex gap-2 w-full">
+                                    <button onClick={() => confirmDelete(store.id)} className="flex-1 bg-white text-red-600 py-3 rounded-2xl font-black uppercase text-[10px] shadow-lg active:scale-95 transition-all">Sim, Excluir</button>
+                                    <button onClick={() => setConfirmDeleteId(null)} className="flex-1 bg-red-800 text-white py-3 rounded-2xl font-black uppercase text-[10px] active:scale-95 transition-all">Cancelar</button>
+                                </div>
+                            </div>
+                        )}
+
+                        <div className="flex justify-between items-start mb-6">
+                            <div className="flex items-center gap-4">
+                                <div className={`p-3 rounded-2xl ${store.status === 'active' ? 'bg-blue-50 text-blue-600' : 'bg-gray-200 text-gray-500'}`}>
+                                    <Building2 size={24} />
+                                </div>
+                                <div>
+                                    <h4 className="text-xl font-black text-blue-950 italic uppercase tracking-tighter leading-none">LOJA {store.number}</h4>
+                                    <p className="text-[10px] font-black text-gray-400 uppercase mt-1">{store.name || '---'}</p>
+                                </div>
+                            </div>
+                            <button onClick={() => toggleStatus(store)} className={`p-2 rounded-xl transition-all shadow-sm border ${store.status === 'active' ? 'text-green-600 bg-white border-green-100 hover:bg-green-50' : 'text-gray-400 bg-gray-100 border-gray-200'}`}>
+                                {store.status === 'active' ? <CheckCircle size={20} /> : <XCircle size={20} />}
+                            </button>
+                        </div>
+
+                        <div className="space-y-4">
+                            <div className="flex items-center gap-3 text-gray-500">
+                                <MapPin size={16} />
+                                <span className="text-xs font-bold uppercase">{store.city} - {store.state || 'BA'}</span>
+                            </div>
+                            
+                            <div className="pt-6 border-t border-gray-100 flex justify-between items-center">
+                                <button 
+                                    onClick={() => toggleGelateria(store)}
+                                    className={`flex items-center gap-2 px-4 py-2.5 rounded-2xl text-[9px] font-black uppercase transition-all border-b-4 ${store.has_gelateria ? 'bg-purple-600 text-white border-purple-900 shadow-lg' : 'bg-gray-100 text-gray-400 border-gray-300 active:scale-95'}`}
+                                >
+                                    <IceCream size={14} /> 
+                                    {store.has_gelateria ? 'Gelateria Ativa' : 'Ativar Gelateria'}
+                                </button>
+
+                                <button 
+                                    onClick={() => toggleGerentePedido(store)}
+                                    className={`flex items-center gap-2 px-4 py-2.5 rounded-2xl text-[9px] font-black uppercase transition-all border-b-4 ${store.gerente_pode_lancar_pedido !== false ? 'bg-emerald-600 text-white border-emerald-900 shadow-lg' : 'bg-gray-100 text-gray-400 border-gray-300 active:scale-95'}`}
+                                >
+                                    {store.gerente_pode_lancar_pedido !== false ? <Unlock size={14} /> : <Lock size={14} />}
+                                    {store.gerente_pode_lancar_pedido !== false ? 'Pedidos Liberados' : 'Pedidos Bloqueados'}
+                                </button>
+
+                                <button 
+                                    onClick={() => setConfirmDeleteId(store.id)} 
+                                    className="p-3 text-gray-300 hover:text-red-600 transition-all rounded-xl hover:bg-red-50"
+                                    title="Remover Unidade"
+                                >
+                                    <Trash2 size={20} />
+                                </button>
+                            </div>
+                        </div>
+                    </div>
+                ))}
+                {stores.length === 0 && (
+                    <div className="col-span-full py-20 text-center bg-gray-50 border-2 border-dashed border-gray-200 rounded-[40px]">
+                        <Info className="mx-auto text-gray-300 mb-4" size={48} />
+                        <p className="text-sm font-black text-gray-400 uppercase tracking-widest">Nenhuma unidade cadastrada</p>
+                    </div>
+                )}
+            </div>
+
+            {/* NOVO CARD: CONFIGURAÇÕES POR LOJA */}
+            {isUserAdmin && (
+                <div className="bg-white p-8 rounded-[40px] shadow-sm border border-gray-100">
+                    <div className="flex items-center gap-4 mb-8">
+                        <div className="p-4 bg-blue-50 text-blue-600 rounded-3xl">
+                            <Lock size={24} />
+                        </div>
+                        <div>
+                            <h3 className="text-lg font-black text-blue-950 uppercase italic tracking-tighter">Configurações por Loja</h3>
+                            <p className="text-[10px] font-black text-gray-400 uppercase tracking-widest mt-1">Gerencie os acessos, recursos e ativações de módulos de cada unidade</p>
+                        </div>
+                    </div>
+
+                    {/* ABAS */}
+                    <div className="flex border-b border-gray-100 mb-6 gap-6">
+                        <button
+                            type="button"
+                            onClick={() => setActiveTab('compras')}
+                            className={`pb-3 text-xs font-black uppercase tracking-wider transition-all duration-200 border-b-2 ${
+                                activeTab === 'compras'
+                                    ? 'border-blue-600 text-blue-600'
+                                    : 'border-transparent text-gray-400 hover:text-gray-600'
+                            }`}
+                        >
+                            Compras
+                        </button>
+                        <button
+                            type="button"
+                            onClick={() => setActiveTab('sorvete')}
+                            className={`pb-3 text-xs font-black uppercase tracking-wider transition-all duration-200 border-b-2 ${
+                                activeTab === 'sorvete'
+                                    ? 'border-blue-600 text-blue-600'
+                                    : 'border-transparent text-gray-400 hover:text-gray-600'
+                            }`}
+                        >
+                            Sorvete
+                        </button>
+                    </div>
+
+                    {activeTab === 'compras' ? (
+                        <StoreToggleList
+                            fieldName="gerente_pode_lancar_pedido"
+                            rpcFunctionName="fn_set_gerente_pode_lancar_pedido"
+                            labelOn="Lançamento Liberado"
+                            labelOff="Lançamento Bloqueado"
+                            currentUser={currentUserObj}
+                            stores={stores}
+                        />
+                    ) : (
+                        <StoreToggleList
+                            fieldName="has_gelateria"
+                            rpcFunctionName="fn_set_has_gelateria"
+                            labelOn="Módulo Sorvete Ativo"
+                            labelOff="Módulo Sorvete Inativo"
+                            currentUser={currentUserObj}
+                            stores={stores}
+                        />
+                    )}
+                </div>
+            )}
+
+            {/* SEÇÃO DE BACKUP */}
+            <div className="bg-white p-8 rounded-[40px] shadow-sm border border-gray-100">
+                <div className="flex flex-col md:flex-row justify-between items-center gap-6">
+                    <div className="flex items-center gap-4">
+                        <div className="p-4 bg-blue-50 text-blue-600 rounded-3xl">
+                            <Database size={24} />
+                        </div>
+                        <div>
+                            <h3 className="text-lg font-black text-blue-950 uppercase italic tracking-tighter">Backup do Sistema</h3>
+                            <p className="text-[10px] font-black text-gray-400 uppercase tracking-widest mt-1">Exportação de Segurança de Todos os Dados</p>
+                        </div>
+                    </div>
+                    <button 
+                        onClick={handleExportBackup}
+                        disabled={isBackingUp}
+                        className="w-full md:w-auto bg-blue-600 text-white px-8 py-4 rounded-2xl font-black uppercase text-xs shadow-xl hover:bg-black transition-all active:scale-95 border-b-4 border-blue-900 flex items-center justify-center gap-3 disabled:opacity-50"
+                    >
+                        {isBackingUp ? <Loader2 className="animate-spin" size={18} /> : <Download size={18} />}
+                        Gerar Backup Completo (JSON)
+                    </button>
+                </div>
+            </div>
+        </div>
+    );
+};
+
+export default AdminSettings;
